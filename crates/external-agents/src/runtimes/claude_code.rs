@@ -297,6 +297,7 @@ mod tests {
             &script,
             r#"#!/bin/sh
 printf '%s\n' "$*" >> "$CLAUDE_ARGS_LOG"
+cat >/dev/null
 printf '%s\n' '{"result":"ok","session_id":"sid-1"}'
 "#,
         )?;
