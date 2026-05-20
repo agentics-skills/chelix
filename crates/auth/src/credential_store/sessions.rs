@@ -16,6 +16,34 @@ use crate::{
     },
 };
 
+#[cfg(feature = "vault")]
+#[derive(Debug, thiserror::Error)]
+pub enum PasswordVaultChangeError {
+    #[error("current password is incorrect")]
+    IncorrectCurrentPassword,
+    #[error(
+        "vault password does not match current password; unlock with recovery key before changing password"
+    )]
+    VaultBadCredential,
+    #[error("vault state changed while changing password; retry the password change")]
+    VaultStateChanged,
+    #[error(transparent)]
+    Database(#[from] sqlx::Error),
+    #[error(transparent)]
+    Auth(#[from] Error),
+    #[error(transparent)]
+    Vault(#[from] moltis_vault::VaultError),
+}
+
+#[cfg(feature = "vault")]
+fn map_vault_password_change_error(error: moltis_vault::VaultError) -> PasswordVaultChangeError {
+    match error {
+        moltis_vault::VaultError::BadCredential => PasswordVaultChangeError::VaultBadCredential,
+        moltis_vault::VaultError::Sealed => PasswordVaultChangeError::VaultStateChanged,
+        other => PasswordVaultChangeError::Vault(other),
+    }
+}
+
 impl CredentialStore {
     /// Maximum number of concurrent active sessions. Oldest sessions are evicted when the cap is reached.
     const MAX_SESSIONS: i64 = 10;
@@ -279,6 +307,18 @@ impl CredentialStore {
         Ok(())
     }
 
+    /// Set the first auth password and initialize/rewrap the vault atomically when present.
+    #[cfg(feature = "vault")]
+    pub async fn set_initial_password_and_prepare_vault(
+        &self,
+        password: &str,
+    ) -> std::result::Result<Option<moltis_vault::RecoveryKey>, PasswordVaultChangeError> {
+        if self.is_setup_complete() {
+            return Err(Error::Validation("password already set".into()).into());
+        }
+        self.insert_password_and_prepare_vault(password).await
+    }
+
     /// Add a password when none exists yet (e.g. after passkey-only setup).
     ///
     /// This marks setup complete so auth is enforced immediately.
@@ -293,6 +333,84 @@ impl CredentialStore {
             .await?;
         self.mark_setup_complete().await?;
         Ok(())
+    }
+
+    /// Add an auth password and initialize/rewrap the vault atomically when present.
+    #[cfg(feature = "vault")]
+    pub async fn add_password_and_prepare_vault(
+        &self,
+        password: &str,
+    ) -> std::result::Result<Option<moltis_vault::RecoveryKey>, PasswordVaultChangeError> {
+        self.insert_password_and_prepare_vault(password).await
+    }
+
+    #[cfg(feature = "vault")]
+    async fn insert_password_and_prepare_vault(
+        &self,
+        password: &str,
+    ) -> std::result::Result<Option<moltis_vault::RecoveryKey>, PasswordVaultChangeError> {
+        let Some(ref vault) = self.vault else {
+            self.add_password(password).await?;
+            return Ok(None);
+        };
+
+        if matches!(vault.status().await?, moltis_vault::VaultStatus::Sealed) {
+            vault
+                .unseal(password)
+                .await
+                .map_err(map_vault_password_change_error)?;
+        }
+
+        let mut tx = self.pool.begin().await?;
+        let has_password: Option<(i64,)> =
+            sqlx::query_as("SELECT id FROM auth_password WHERE id = 1")
+                .fetch_optional(&mut *tx)
+                .await?;
+        if has_password.is_some() {
+            return Err(Error::Validation("password already set".into()).into());
+        }
+
+        let recovery_key = match vault.status().await? {
+            moltis_vault::VaultStatus::Uninitialized => {
+                Some(vault.initialize_in_transaction(password, &mut tx).await?)
+            },
+            moltis_vault::VaultStatus::Sealed => {
+                return Err(PasswordVaultChangeError::VaultStateChanged);
+            },
+            moltis_vault::VaultStatus::Unsealed => {
+                vault
+                    .rewrap_unsealed_in_transaction(password, &mut tx)
+                    .await
+                    .map_err(map_vault_password_change_error)?;
+                None
+            },
+        };
+
+        let hash = hash_password(password)?;
+        sqlx::query("INSERT INTO auth_password (id, password_hash) VALUES (1, ?)")
+            .bind(&hash)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            "INSERT INTO auth_state (id, auth_disabled, updated_at)
+             VALUES (1, 0, datetime('now'))
+             ON CONFLICT(id) DO UPDATE
+             SET auth_disabled = 0, updated_at = excluded.updated_at",
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        if recovery_key.is_some() {
+            vault
+                .unseal(password)
+                .await
+                .map_err(map_vault_password_change_error)?;
+        }
+        self.setup_complete.store(true, Ordering::Relaxed);
+        self.auth_disabled.store(false, Ordering::Relaxed);
+        moltis_config::update_config(|c| c.auth.disabled = false).map_err(Error::from)?;
+        Ok(recovery_key)
     }
 
     /// Mark initial setup as complete without setting a password (e.g. passkey-only setup).
@@ -357,6 +475,75 @@ impl CredentialStore {
             .execute(&self.pool)
             .await?;
 
+        Ok(())
+    }
+
+    /// Change the auth password and rotate the vault wrapper atomically.
+    #[cfg(feature = "vault")]
+    pub async fn change_password_and_rotate_vault(
+        &self,
+        current: &str,
+        new_password: &str,
+    ) -> std::result::Result<(), PasswordVaultChangeError> {
+        let Some(ref vault) = self.vault else {
+            self.change_password(current, new_password).await?;
+            return Ok(());
+        };
+
+        let mut tx = self.pool.begin().await?;
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT password_hash FROM auth_password WHERE id = 1")
+                .fetch_optional(&mut *tx)
+                .await?;
+        let Some((current_hash,)) = row else {
+            return Err(PasswordVaultChangeError::IncorrectCurrentPassword);
+        };
+        if !verify_password(current, &current_hash) {
+            return Err(PasswordVaultChangeError::IncorrectCurrentPassword);
+        }
+
+        if matches!(vault.status().await?, moltis_vault::VaultStatus::Sealed) {
+            vault
+                .unseal(current)
+                .await
+                .map_err(map_vault_password_change_error)?;
+        }
+
+        match vault.status().await? {
+            moltis_vault::VaultStatus::Uninitialized => {},
+            moltis_vault::VaultStatus::Sealed => {
+                return Err(PasswordVaultChangeError::VaultStateChanged);
+            },
+            moltis_vault::VaultStatus::Unsealed => {
+                match vault
+                    .change_password_in_transaction(current, new_password, &mut tx)
+                    .await
+                {
+                    Ok(()) => {},
+                    Err(moltis_vault::VaultError::BadCredential) => {
+                        vault
+                            .rewrap_unsealed_in_transaction(new_password, &mut tx)
+                            .await
+                            .map_err(map_vault_password_change_error)?;
+                    },
+                    Err(error) => return Err(map_vault_password_change_error(error)),
+                }
+            },
+        }
+
+        let hash = hash_password(new_password)?;
+        sqlx::query(
+            "UPDATE auth_password SET password_hash = ?, updated_at = datetime('now') WHERE id = 1",
+        )
+        .bind(&hash)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query("DELETE FROM auth_sessions")
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
         Ok(())
     }
 
