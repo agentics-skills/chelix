@@ -1,20 +1,4 @@
-use {super::*, serial_test::serial};
-
-fn clear_container_mount_test_state() {
-    TEST_CONTAINER_MOUNT_OVERRIDES
-        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .clear();
-}
-
-fn set_test_container_mount_override(cli: &str, reference: &str, mounts: Vec<ContainerMount>) {
-    TEST_CONTAINER_MOUNT_OVERRIDES
-        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .insert(test_container_mount_override_key(cli, reference), mounts);
-}
+use super::*;
 
 #[test]
 fn test_find_available_port() {
@@ -110,27 +94,6 @@ fn test_build_container_launch_args_without_profile_dir() {
 }
 
 #[test]
-fn test_parse_container_mounts_from_inspect() {
-    let mounts = parse_container_mounts_from_inspect(
-        r#"[
-                {
-                    "Mounts": [
-                        {
-                            "Source": "/var/lib/docker/volumes/moltis-data/_data",
-                            "Destination": "/home/moltis/.moltis"
-                        }
-                    ]
-                }
-            ]"#,
-    );
-
-    assert_eq!(mounts, vec![ContainerMount {
-        source: PathBuf::from("/var/lib/docker/volumes/moltis-data/_data"),
-        destination: PathBuf::from("/home/moltis/.moltis"),
-    }]);
-}
-
-#[test]
 fn browser_profile_mount_path_uses_configured_host_data_dir() {
     let guest_profile = moltis_config::data_dir()
         .join("browser")
@@ -168,34 +131,6 @@ fn browser_profile_mount_path_ignores_relative_host_data_dir() {
 }
 
 #[test]
-#[serial(browser_container_mount_overrides)]
-fn browser_profile_mount_path_auto_detects_host_data_dir() {
-    clear_container_mount_test_state();
-    let guest_data_dir = moltis_config::data_dir();
-    set_test_container_mount_override("docker", "parent-container", vec![ContainerMount {
-        source: PathBuf::from("/var/lib/docker/volumes/moltis-data/_data"),
-        destination: guest_data_dir.clone(),
-    }]);
-    let guest_profile = guest_data_dir
-        .join("browser")
-        .join("profile")
-        .join("sandbox")
-        .join("browser-issue-977");
-
-    let mount_dir =
-        host_visible_path_with_references("docker", None, &guest_profile, &[String::from(
-            "parent-container",
-        )]);
-
-    assert_eq!(
-        mount_dir,
-        PathBuf::from(
-            "/var/lib/docker/volumes/moltis-data/_data/browser/profile/sandbox/browser-issue-977"
-        )
-    );
-}
-
-#[test]
 fn browser_profile_mount_path_keeps_custom_paths_outside_data_dir() {
     let mount_dir = profile_mount_dir_for_backend(
         ContainerBackend::Docker,
@@ -223,6 +158,38 @@ fn browser_profile_precreate_skips_untranslated_mount() {
 
     assert_eq!(
         profile_precreate_dir(Some(guest_dir), Some(guest_dir)),
+        None
+    );
+}
+
+#[test]
+fn browser_profile_permission_hint_points_to_host_data_dir() {
+    let logs = "Failed to create /data/browser-profile/SingletonLock: Permission denied (13)";
+    let hint = browser_profile_permission_hint(
+        Some(logs),
+        Some(Path::new(
+            "/home/moltis/.moltis/browser/profile/sandbox/browser-abc",
+        )),
+        None,
+    )
+    .unwrap();
+
+    assert!(hint.contains("under `[tools.exec.sandbox]`"));
+    assert!(hint.contains("/home/moltis/.moltis/browser/profile/sandbox/browser-abc"));
+}
+
+#[test]
+fn browser_profile_permission_hint_skips_when_host_data_dir_is_configured() {
+    let logs = "Failed to create /data/browser-profile/SingletonLock: Permission denied (13)";
+
+    assert_eq!(
+        browser_profile_permission_hint(
+            Some(logs),
+            Some(Path::new(
+                "/home/moltis/.moltis/browser/profile/sandbox/browser-abc"
+            )),
+            Some(Path::new("/host/moltis-data")),
+        ),
         None
     );
 }
