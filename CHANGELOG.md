@@ -19,6 +19,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+## [20260523.01] - 2026-05-23
+### Added
+- [openai-codex] Add reasoning effort support (#1005)
+
+
+### Removed
+- [gateway] Remove needless return
+
+
+### Fixed
+- [vault] Keep auth password changes in sync (#1026)
+- [sandbox] Auto-detect docker host data mounts (#1035)
+- [e2e] Wait for new chat sessions to settle
+- [telephony] Dispatch Twilio gather speech (#1034)
+- Fix sandbox media file reads in Docker (#1040)
+- [gateway] Use mp3 for chat voice generation (#1041)
+- [voice] Return wav metadata for piper audio (#1043)
+
 ## [20260519.01] - 2026-05-19
 ### Fixed
 - [web] Avoid false websocket disconnect timeouts (#1023)
