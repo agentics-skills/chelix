@@ -1,4 +1,127 @@
-use super::*;
+use {
+    super::*,
+    crate::{AgentRuntimeLimitSource, AgentRuntimeLimits},
+};
+
+#[test]
+fn agent_runtime_limits_use_global_fallbacks() {
+    let config: MoltisConfig = toml::from_str(
+        r#"
+[tools]
+agent_timeout_secs = 120
+agent_max_iterations = 11
+
+[agents.presets.quick]
+model = "openai/gpt-5.2"
+"#,
+    )
+    .unwrap();
+
+    let limits = config.agent_runtime_limits("quick");
+    assert_eq!(limits.timeout_secs, 120);
+    assert_eq!(limits.timeout_source, AgentRuntimeLimitSource::GlobalTools);
+    assert_eq!(limits.max_iterations, 11);
+    assert_eq!(
+        limits.max_iterations_source,
+        AgentRuntimeLimitSource::GlobalTools
+    );
+}
+
+#[test]
+fn agent_runtime_limits_use_partial_preset_overrides() {
+    let config: MoltisConfig = toml::from_str(
+        r#"
+[tools]
+agent_timeout_secs = 120
+agent_max_iterations = 11
+
+[agents.presets.quick]
+timeout_secs = 5
+"#,
+    )
+    .unwrap();
+
+    let limits = config.agent_runtime_limits("quick");
+    assert_eq!(limits.timeout_secs, 5);
+    assert_eq!(limits.timeout_source, AgentRuntimeLimitSource::AgentPreset);
+    assert_eq!(limits.max_iterations, 11);
+    assert_eq!(
+        limits.max_iterations_source,
+        AgentRuntimeLimitSource::GlobalTools
+    );
+}
+
+#[test]
+fn spawned_agent_runtime_limits_preserve_default_no_timeout() {
+    let config: MoltisConfig = toml::from_str(
+        r#"
+[agents.presets.quick]
+max_iterations = 7
+"#,
+    )
+    .unwrap();
+
+    let preset = config.agents.get_preset("quick");
+    let limits = AgentRuntimeLimits::resolve_for_spawned_agent(&config.tools, preset);
+    assert_eq!(limits.timeout_secs, 0);
+    assert_eq!(limits.max_iterations, 7);
+}
+
+#[test]
+fn spawned_agent_runtime_limits_require_preset_timeout() {
+    let config: MoltisConfig = toml::from_str(
+        r#"
+[tools]
+agent_timeout_secs = 1800
+
+[agents.presets.deep]
+max_iterations = 80
+"#,
+    )
+    .unwrap();
+
+    let preset = config.agents.get_preset("deep");
+    let limits = AgentRuntimeLimits::resolve_for_spawned_agent(&config.tools, preset);
+    assert_eq!(limits.timeout_secs, 0);
+    assert_eq!(limits.timeout_source, AgentRuntimeLimitSource::GlobalTools);
+    assert_eq!(limits.max_iterations, 80);
+}
+
+#[test]
+fn spawned_agent_runtime_limits_use_preset_timeout() {
+    let config: MoltisConfig = toml::from_str(
+        r#"
+[tools]
+agent_timeout_secs = 1800
+
+[agents.presets.deep]
+timeout_secs = 600
+max_iterations = 80
+"#,
+    )
+    .unwrap();
+
+    let preset = config.agents.get_preset("deep");
+    let limits = AgentRuntimeLimits::resolve_for_spawned_agent(&config.tools, preset);
+    assert_eq!(limits.timeout_secs, 600);
+    assert_eq!(limits.timeout_source, AgentRuntimeLimitSource::AgentPreset);
+    assert_eq!(limits.max_iterations, 80);
+}
+
+#[test]
+fn preset_max_iterations_must_be_positive() {
+    let result = validate_toml_str(
+        r#"
+[agents.presets.quick]
+max_iterations = 0
+"#,
+    );
+    assert!(result.diagnostics.iter().any(|diagnostic| {
+        diagnostic.severity == Severity::Error
+            && diagnostic.category == "invalid-value"
+            && diagnostic.path == "agents.presets.quick.max_iterations"
+    }));
+}
 
 #[test]
 fn reasoning_effort_valid_values_no_error() {
