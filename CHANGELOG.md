@@ -19,6 +19,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+## [20260525.01] - 2026-05-25
+### Added
+- [agents] Support per-agent runtime limits (#1066)
+- Agents as capability boundaries (MCP, sandbox, skills) (#1049)
+
+
+### Removed
+- Remove file size allowlist
+- [web] Remove token bar race assertion
+
+
+### Fixed
+- [web] Restore light mode syntax highlighting (#1047)
+- [vault] Initialize existing password vaults (#1050)
+- [gateway] Register config-declared hooks (#1048)
+- [onboarding] Show configured LLMs in recommendations (#1058)
+- [web] Prevent chat toolbar horizontal overflow (#1062)
+- [sessions] Surface auto-title generation failures (#1064)
+- [web] Show long model names in picker (#1060)
+- [mcp] Hide stdio env values from status (#1063)
+- [providers] Validate OpenAI-compatible endpoint URLs (#1061)
+- [sandbox] Quiet image prebuild logs (#1065)
+
 ## [20260523.01] - 2026-05-23
 ### Added
 - [openai-codex] Add reasoning effort support (#1005)
