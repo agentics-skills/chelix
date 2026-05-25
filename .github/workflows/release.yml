@@ -66,6 +66,20 @@ jobs:
             exit 1
           fi
 
+  trigger-provider-integration:
+    if: startsWith(github.ref, 'refs/tags/') && env.RELEASE_DRY_RUN != 'true'
+    runs-on: ubuntu-latest
+    name: Trigger Provider Integration Tests
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch provider integration workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REF: ${{ github.ref_name }}
+        run: gh workflow run provider-integration.yml --ref "$RELEASE_REF"
+
   biome:
     needs: zizmor
     runs-on: ubuntu-latest
