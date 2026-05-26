@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+## [20260526.03] - 2026-05-26
+
 ## [20260526.02] - 2026-05-26
 ### Fixed
 - [ci] Stabilize release checks
