@@ -5,6 +5,42 @@ on:
     # Weekly on Monday at 06:00 UTC to conserve provider quotas.
     - cron: "0 6 * * 1"
   workflow_dispatch:
+  workflow_call:
+    secrets:
+      MINIMAX_API_KEY:
+        required: false
+      MOONSHOT_API_KEY:
+        required: false
+      FIREWORKS_API_KEY:
+        required: false
+      ANTHROPIC_API_KEY:
+        required: false
+      OPENAI_API_KEY:
+        required: false
+      MISTRAL_API_KEY:
+        required: false
+      OPENROUTER_API_KEY:
+        required: false
+      KIMI_API_KEY:
+        required: false
+      DEEPSEEK_API_KEY:
+        required: false
+      GEMINI_API_KEY:
+        required: false
+      Z_API_KEY:
+        required: false
+      ALIBABA_CODING_API_KEY:
+        required: false
+      ALIBABA_CODING_BASE_URL:
+        required: false
+      VERCEL_TOKEN:
+        required: false
+      VERCEL_TEAM_ID:
+        required: false
+      VERCEL_PROJECT_ID:
+        required: false
+      DAYTONA_API_KEY:
+        required: false
 
 concurrency:
   group: provider-integration

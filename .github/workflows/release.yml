@@ -66,19 +66,29 @@ jobs:
             exit 1
           fi
 
-  trigger-provider-integration:
+  provider-integration:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    name: Trigger Provider Integration Tests
     permissions:
-      actions: write
       contents: read
-    steps:
-      - name: Dispatch provider integration workflow
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_REF: ${{ github.ref_name }}
-        run: gh workflow run provider-integration.yml --repo "$GITHUB_REPOSITORY" --ref "$RELEASE_REF"
+    uses: ./.github/workflows/provider-integration.yml
+    secrets:
+      MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+      MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+      FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      Z_API_KEY: ${{ secrets.Z_API_KEY }}
+      ALIBABA_CODING_API_KEY: ${{ secrets.ALIBABA_CODING_API_KEY }}
+      ALIBABA_CODING_BASE_URL: ${{ secrets.ALIBABA_CODING_BASE_URL }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
 
   biome:
     needs: zizmor
