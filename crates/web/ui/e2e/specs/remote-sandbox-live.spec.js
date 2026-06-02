@@ -25,10 +25,10 @@ const DAYTONA_API_KEY = process.env.DAYTONA_API_KEY;
 const VERCEL_API = "https://vercel.com/api";
 
 async function skipIfVercelSandboxUnavailable(response) {
-	if (response.status !== 402) return;
+	if (![402, 403].includes(response.status)) return;
 
 	const body = await response.text();
-	test.skip(true, `Vercel sandbox unavailable for this account: ${body || "HTTP 402"}`);
+	test.skip(true, `Vercel sandbox unavailable for this account: ${body || `HTTP ${response.status}`}`);
 }
 
 async function createVercelSandbox() {
