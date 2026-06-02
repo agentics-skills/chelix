@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+## [20260602.02] - 2026-06-02
+
 ## [20260602.01] - 2026-06-02
 ### Added
 - Add NEAR AI Cloud provider (#1031)
