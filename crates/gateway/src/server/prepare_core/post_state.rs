@@ -405,6 +405,13 @@ pub(super) async fn complete_startup(
         vault.clone(),
     );
 
+    // Wire the LLM provider registry for lightweight generation (auto-title,
+    // session summary, tts.generate_phrase). This wiring was removed in
+    // 56facfe3; restore it so `state.inner.llm_providers` is populated. The
+    // background discovery task mutates the same Arc in place (`*reg =
+    // new_registry`), so a single clone here stays valid after discovery.
+    state.inner.write().await.llm_providers = Some(Arc::clone(&registry));
+
     {
         let (webhook_tx, webhook_rx) = tokio::sync::mpsc::channel::<i64>(256);
         let webhook_store: Arc<dyn moltis_webhooks::store::WebhookStore> = {
