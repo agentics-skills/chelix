@@ -1,16 +1,24 @@
 //! `CompactionMode::Structured` — head + LLM structured-summary + tail.
 //!
 //! Same head/tail boundary logic as `recency_preserving`, but the middle
-//! region is summarised with a single LLM call using a structured
-//! template (Goal / Progress / Decisions / Files / Next Steps). Iterative
-//! re-compaction detects a previous compaction summary in the head and
-//! asks the model to preserve and update it instead of re-summarising.
+//! region is summarised with a single LLM call using a comprehensive
+//! structured template (Conversation Overview / Technical Foundation /
+//! Codebase Status / Problem Resolution / Progress Tracking / Active Work
+//! State / Recent Operations / Continuation Plan). Iterative re-compaction
+//! detects a previous compaction summary in the head and asks the model to
+//! preserve and update it instead of re-summarising.
 //!
 //! On LLM failure (stream error or empty summary), automatically falls
 //! back to `recency_preserving` so compaction never silently drops
 //! information.
 //!
-//! Inspired by `hermes-agent`'s `ContextCompressor` and `openclaw`'s
+//! The detailed-summary prompt is modelled on GitHub Copilot's agent
+//! conversation-history summarizer (`comprehensive, detailed summary ...
+//! without any loss of context`): it deliberately does NOT cap the summary
+//! length, since aggressive token targets are what cause multi-hour work to
+//! be compressed into a lossy stub.
+//!
+//! Also inspired by `hermes-agent`'s `ContextCompressor` and `openclaw`'s
 //! `safeguard` compaction.
 
 use {
@@ -31,61 +39,128 @@ use super::{
 
 /// Structured-summary template used by [`run`].
 ///
-/// Mirrors the convention used by `hermes-agent`'s `ContextCompressor` and
-/// `openclaw`'s `safeguard` compaction — Goal / Progress / Decisions /
-/// Files / Next Steps. Kept verbatim here so future edits are easy to
-/// diff and test fixtures can match against the literal template.
+/// An eight-section comprehensive handoff template adapted from GitHub
+/// Copilot's agent history summarizer: Conversation Overview, Technical
+/// Foundation, Codebase Status, Problem Resolution, Progress Tracking,
+/// Active Work State, Recent Operations, and Continuation Plan. Kept
+/// verbatim here so future edits are easy to diff and test fixtures can
+/// match against the literal template.
 const STRUCTURED_TEMPLATE: &str = "\
-## Goal
-[What the user is trying to accomplish]
+## 1. Conversation Overview
+- Primary Objectives: [all explicit user requests and overarching goals, \
+with exact quotes]
+- Session Context: [high-level narrative of the conversation flow and key \
+phases]
+- User Intent Evolution: [how the user's needs or direction changed \
+throughout the conversation]
 
-## Constraints & Preferences
-[User preferences, coding style, constraints, important decisions]
+## 2. Technical Foundation
+[Each core technology, framework, library, architectural pattern, and \
+environment detail — with version/configuration and the purpose or \
+reasoning behind it. One item per line.]
 
-## Progress
-### Done
-[Completed work — include specific file paths, commands run, results obtained]
-### In Progress
-[Work currently underway]
-### Blocked
-[Any blockers or issues encountered]
+## 3. Codebase Status
+[For every file read, created, or modified — list each with its full path \
+and, indented beneath it:
+  - Purpose: why this file matters to the work
+  - Current State: what was read, changed, or still needs changing
+  - Key Code Segments: important functions/classes, with verbatim snippets \
+where they matter and line numbers when known
+  - Dependencies: how it relates to other components]
 
-## Key Decisions
-[Important technical decisions and why they were made]
+## 4. Problem Resolution
+- Issues Encountered: [technical problems, bugs, or challenges — include \
+error messages verbatim]
+- Solutions Implemented: [how each problem was resolved, and the reasoning]
+- Debugging Context: [ongoing troubleshooting efforts or known issues]
+- Lessons Learned: [important insights or patterns discovered]
 
-## Relevant Files
-[Files read, modified, or created — with brief note on each]
+## 5. Progress Tracking
+- Completed Tasks: [what is successfully implemented, with status]
+- Partially Complete Work: [tasks in progress with current completion \
+status]
+- Validated Outcomes: [features or code confirmed working, and exactly how \
+it was verified — commands run and their output]
 
-## Next Steps
-[What needs to happen next to continue the work]
+## 6. Active Work State
+- Current Focus: [precisely what was being worked on in the most recent \
+messages]
+- Recent Context: [detailed description of the last few exchanges]
+- Working Code: [code snippets being modified or discussed recently, \
+verbatim]
+- Immediate Context: [the specific problem or feature being addressed right \
+before this summary]
 
-## Critical Context
-[Any specific values, error messages, configuration details, or data that would be lost without explicit preservation]";
+## 7. Recent Operations
+- Last Commands: [specific tools/actions executed just before \
+summarization, with exact command names and arguments]
+- Tool Results Summary: [key outcomes from recent tool executions — \
+truncate very long results but keep the essential information]
+- Pre-Summary State: [what was actively being done when the context budget \
+was reached]
+- Operation Context: [why these commands were run and how they relate to \
+the user's goals]
+
+## 8. Continuation Plan
+[Each pending task with specific, concrete next steps and verbatim quotes \
+from recent messages; which tasks are most urgent or logically sequential; \
+and the immediate next action to take]";
 
 /// System-message instructions that frame the structured summary call.
 const STRUCTURED_SYSTEM_INSTRUCTIONS: &str = "\
-You are a conversation summarizer. The messages that follow are an agentic \
-coding session you must summarize. Your summary must capture: active tasks \
-and their current status (in-progress, blocked, pending); batch operation \
-progress; the last thing the user asked for and what was being done about \
-it; decisions made and their rationale; TODOs, open questions, and \
-constraints; any commitments or follow-ups promised. Prioritize recent \
-context over older history. Preserve all opaque identifiers exactly as \
-written (no shortening or reconstruction): UUIDs, hashes, tokens, API \
-keys, hostnames, IPs, ports, URLs, and file names. After the conversation, \
-you will receive a final instruction telling you which template to fill in.";
+You are a conversation summarizer for an agentic coding session. Your task \
+is to create a comprehensive, detailed summary of the conversation that \
+captures all essential information needed to seamlessly continue the work \
+without any loss of context. This summary compacts the conversation while \
+preserving critical technical details, decisions, and progress.\n\
+\n\
+Pay special attention to the most recent commands and tool executions that \
+led to this summarization being triggered: the last commands run, the key \
+tool results (truncate very long output but preserve essential \
+information), the immediate state, and what was being worked on right \
+before the context budget was reached.\n\
+\n\
+Before producing the final summary, work through the conversation \
+systematically: a chronological review of phases and transitions; map \
+every explicit and implicit user request, goal, and expectation; catalog \
+all technical concepts, tools, frameworks, and architectural decisions; \
+document every file, function, and code pattern discussed or modified; \
+assess what is done versus what remains pending; and verify that all \
+context required for continuation is captured.\n\
+\n\
+Quality guidelines: be precise (exact filenames, function names, variable \
+names, technical terms); be complete (capture everything needed to \
+continue without re-reading the full conversation); be clear (write for \
+someone picking up exactly where the work left off); be verbatim (use \
+direct quotes for task specifications and recent work, and preserve all \
+opaque identifiers exactly as written — UUIDs, hashes, tokens, API keys, \
+hostnames, IPs, ports, URLs, and file paths — never shorten or \
+reconstruct them); and include enough technical depth for complex \
+decisions and code patterns.\n\
+\n\
+Do NOT abbreviate to save space. This is a comprehensive handoff document; \
+err on the side of including more detail, not less. After the conversation, \
+you will receive a final instruction telling you which template to fill \
+in.";
 
 /// User-message instructions for the first compaction of a session.
 fn first_compaction_instructions() -> String {
     format!(
-        "Produce a structured handoff summary for a later assistant that will \
-         continue this conversation after the earlier turns above are compacted. \
-         Use this exact structure, filling every section (write \"(none)\" if a \
-         section has nothing to report):\n\n{STRUCTURED_TEMPLATE}\n\n\
-         Target roughly 800 tokens. Be specific — include file paths, command \
-         outputs, error messages, and concrete values rather than vague \
-         descriptions. Write only the summary body. Do not include any preamble \
-         or prefix."
+        "Produce a comprehensive, detailed handoff summary for a later \
+         assistant that will continue this conversation after the earlier \
+         turns above are compacted. Fill in every section of the structure \
+         below; write \"(none)\" only if a section genuinely has nothing to \
+         report.\n\n\
+         Pay special attention to the most recent commands and tool results, \
+         what was being worked on when the context budget was reached, and \
+         how those recent operations connect to the overall goals.\n\n\
+         {STRUCTURED_TEMPLATE}\n\n\
+         Be exhaustive and detailed — include exact file paths, command \
+         outputs, error messages verbatim, code snippets, configuration \
+         values, and concrete values rather than vague descriptions. Do not \
+         omit information to save space; the goal is zero loss of context so \
+         the work can continue seamlessly. Write only the summary body, with \
+         no preamble or prefix."
     )
 }
 
@@ -95,22 +170,25 @@ fn iterative_instructions(previous_summary: &str) -> String {
     format!(
         "You are updating a previous compaction summary. The first message in \
          the conversation above is a previous compaction's structured summary; \
-         the remaining messages are new turns that need to be incorporated.\n\n\
+         the remaining messages are new turns that must be incorporated.\n\n\
          PREVIOUS SUMMARY:\n{previous_summary}\n\n\
-         Update the summary using this exact structure. PRESERVE all existing \
-         information that is still relevant. ADD new progress. Move items from \
-         \"In Progress\" to \"Done\" when completed. Remove information only \
-         if it is clearly obsolete.\n\n{STRUCTURED_TEMPLATE}\n\n\
-         Target roughly 800 tokens. Be specific — include file paths, command \
-         outputs, error messages, and concrete values. Write only the summary \
-         body. Do not include any preamble or prefix."
+         Update the summary using the structure below. PRESERVE all existing \
+         information that is still relevant — do not drop detail from the \
+         previous summary unless it is clearly obsolete. ADD new progress with \
+         full detail, and move items from in-progress to done when \
+         completed.\n\n{STRUCTURED_TEMPLATE}\n\n\
+         Be exhaustive and detailed — include exact file paths, command \
+         outputs, error messages verbatim, code snippets, configuration \
+         values, and concrete values. Do not omit information to save space; \
+         the goal is zero loss of context. Write only the summary body, with \
+         no preamble or prefix."
     )
 }
 
 /// Default value of `max_summary_tokens` the user can leave untouched.
 /// Mirrors `default_compaction_max_summary_tokens` in `moltis_config::schema`
 /// so we can detect when the user has explicitly set something different.
-const DEFAULT_MAX_SUMMARY_TOKENS: u32 = 4_096;
+const DEFAULT_MAX_SUMMARY_TOKENS: u32 = 8_192;
 
 /// State shared across runs so the "summary_model is not wired yet"
 /// warning is emitted at most once per configuration, not on every

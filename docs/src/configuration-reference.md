@@ -300,7 +300,7 @@ User profile collected during onboarding.
 | `tail_budget_ratio` | float | `0.20` | Tail protection window as a fraction of `threshold_percent × context_window`. |
 | `tool_prune_char_threshold` | integer | `200` | Tool-result content longer than this is replaced with a placeholder in the collapsed middle region. |
 | `summary_model` | optional string | `null` | Provider-qualified model for LLM summary calls (e.g. `"openrouter/google/gemini-2.5-flash"`). ⚠️ **Not yet implemented** — setting this field triggers a warning. |
-| `max_summary_tokens` | integer | `4096` | Maximum output tokens for LLM summary calls. `0` accepts provider default. ⚠️ **Not yet implemented** — has no effect. |
+| `max_summary_tokens` | integer | `8192` | Maximum output tokens for LLM summary calls. `0` accepts provider default. ⚠️ **Not yet implemented** — has no effect. |
 | `show_settings_hint` | bool | `true` | Whether the "Change `chat.compaction.mode` in moltis.toml…" hint is included in compaction notifications. |
 
 

@@ -81,23 +81,36 @@ sessions.
 
 **Head + LLM structured summary + tail.** The highest-fidelity mode. Same
 head and tail boundary logic as `recency_preserving`, but the middle is
-summarised with a single LLM call using a structured template:
+summarised with a single LLM call using a comprehensive structured
+template:
 
 ```
-## Goal
-## Constraints & Preferences
-## Progress
-### Done / ### In Progress / ### Blocked
-## Key Decisions
-## Relevant Files
-## Next Steps
-## Critical Context
+## 1. Conversation Overview
+## 2. Technical Foundation
+## 3. Codebase Status
+## 4. Problem Resolution
+## 5. Progress Tracking
+## 6. Active Work State
+## 7. Recent Operations
+## 8. Continuation Plan
 ```
 
-This is the same convention used by `hermes-agent`'s `ContextCompressor`
-and `openclaw`'s compaction safeguard. Iterative re-compaction preserves
-and updates prior summary sections (work moves from *In Progress* to
-*Done* as it completes).
+The prompt is modelled on GitHub Copilot's agent conversation-history
+summarizer — *"a comprehensive, detailed summary … without any loss of
+context"* — and deliberately does **not** cap the summary length: the
+model is told to be exhaustive and preserve file paths, commands, tool
+output, error messages, and code snippets verbatim, rather than aiming
+for a small token target. (Earlier revisions targeted ~800–2000 tokens,
+which compressed long sessions into a lossy stub.) Iterative
+re-compaction preserves and updates prior summary sections (work moves
+from *In Progress* to *Done* as it completes).
+
+> **Output-length ceilings.** The summary length is bounded only by the
+> provider's output limit. Gemini and OpenAI-compatible providers set no
+> `max_tokens` on the summary call, so the full detailed summary streams
+> through. The Anthropic provider currently hardcodes `max_tokens: 4096`
+> for streamed calls, which can truncate a very long summary on
+> Claude models.
 
 **Strengths**
 - Highest fidelity — preserves reasoning, decisions, and cross-session
@@ -168,7 +181,7 @@ protect_tail_min = 20               # Minimum tail messages kept verbatim (recen
 tail_budget_ratio = 0.20            # Tail size as fraction of threshold_percent × context_window.
 tool_prune_char_threshold = 200     # Middle tool results longer than this get placeholder-replaced.
 summary_model = "openrouter/google/gemini-2.5-flash"   # RESERVED — see note below.
-max_summary_tokens = 4096           # RESERVED — see note below.
+max_summary_tokens = 8192           # RESERVED — see note below.
 show_settings_hint = true           # Show "Change chat.compaction.mode in moltis.toml…" footer.
 ```
 

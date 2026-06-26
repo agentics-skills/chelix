@@ -206,7 +206,7 @@ pub struct CompactionConfig {
     pub summary_model: Option<String>,
 
     /// Maximum output tokens reserved for LLM summary calls. Set to `0`
-    /// to accept the provider default. Default: `4096`.
+    /// to accept the provider default. Default: `8192`.
     ///
     /// **Not wired yet** — tracked by beads issue `moltis-8me`. Until
     /// that lands, the streaming summary call runs with whatever the
@@ -250,7 +250,7 @@ fn default_compaction_tool_prune_chars() -> u32 {
 }
 
 fn default_compaction_max_summary_tokens() -> u32 {
-    4_096
+    8_192
 }
 
 fn default_compaction_show_settings_hint() -> bool {
