@@ -874,6 +874,8 @@ Each channel account (`channels.<channel_type>.<account_name>`) is an arbitrary 
 | `policy` | optional `ToolPolicyConfig` (see below) | — | Tool policy override merged on top of global `[tools.policy]`. |
 | `model_overrides` | map of `ModelOverride` | `{}` | Per-model context window overrides. Keys are model IDs. |
 
+For `custom-*` providers, a non-empty `models` list is treated as a whitelist. If `fetch_models = true`, `/models` is still fetched and returned model metadata (for example `capabilities` and `context_length`) is applied to matching whitelisted models.
+
 ### `providers.<name>.model_overrides.<model_id>` — ModelOverride
 
 | Key | Type | Default | Description |

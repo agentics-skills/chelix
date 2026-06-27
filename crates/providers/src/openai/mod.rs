@@ -128,6 +128,8 @@ pub struct OpenAiProvider {
     /// Provider-scoped per-model context window overrides from
     /// `[providers.<name>.model_overrides.<id>]` config.
     context_window_provider: std::collections::HashMap<String, u32>,
+    /// Context window reported by live model discovery.
+    discovered_context_window: Option<u32>,
     /// Optional override for the completion-based probe timeout (seconds).
     /// `None` uses the trait default (30s).
     probe_timeout_secs: Option<u64>,

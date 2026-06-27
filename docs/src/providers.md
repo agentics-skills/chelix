@@ -49,8 +49,11 @@ Any OpenAI-compatible endpoint can be added with a `custom-` prefix:
 enabled = true
 api_key = "..."
 base_url = "https://my-service.example.com/v1"
+fetch_models = true
 models = ["my-model"]
 ```
+
+For `custom-*` providers, `models = [...]` is a whitelist when set: only those model IDs are registered. With `fetch_models = true`, Moltis still calls `/models` and uses returned metadata such as `capabilities` and `context_length` for the whitelisted models.
 
 ## Configuration
 

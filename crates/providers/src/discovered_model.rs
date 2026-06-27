@@ -19,6 +19,10 @@ pub struct DiscoveredModel {
     /// Used to surface the most relevant models in the UI.
     pub recommended: bool,
     pub capabilities: Option<ModelCapabilities>,
+    /// Context window (in tokens) reported by the provider API
+    /// (e.g. `context_length` / `max_input_tokens` from `/v1/models`).
+    /// `None` for static catalog entries or APIs that don't expose it.
+    pub context_window: Option<u32>,
 }
 
 impl DiscoveredModel {
@@ -29,6 +33,7 @@ impl DiscoveredModel {
             created_at: None,
             recommended: false,
             capabilities: None,
+            context_window: None,
         }
     }
 
@@ -44,6 +49,11 @@ impl DiscoveredModel {
 
     pub fn with_capabilities(mut self, capabilities: ModelCapabilities) -> Self {
         self.capabilities = Some(capabilities);
+        self
+    }
+
+    pub fn with_context_window(mut self, context_window: u32) -> Self {
+        self.context_window = Some(context_window);
         self
     }
 }
@@ -63,9 +73,10 @@ pub fn catalog_to_discovered(
         .collect()
 }
 
-pub(crate) fn merge_preferred_and_discovered_models(
+fn merge_models(
     preferred: Vec<String>,
     discovered: Vec<DiscoveredModel>,
+    append_unpreferred_discovered: bool,
 ) -> Vec<DiscoveredModel> {
     let discovered_by_id: HashMap<String, &DiscoveredModel> =
         discovered.iter().map(|m| (m.id.clone(), m)).collect();
@@ -83,6 +94,7 @@ pub(crate) fn merge_preferred_and_discovered_models(
                 created_at: d.created_at,
                 recommended: d.recommended,
                 capabilities: d.capabilities,
+                context_window: d.context_window,
             }
         } else {
             DiscoveredModel::new(model_id.clone(), model_id)
@@ -90,14 +102,31 @@ pub(crate) fn merge_preferred_and_discovered_models(
         merged.push(model);
     }
 
-    for model in discovered {
-        if !seen.insert(model.id.clone()) {
-            continue;
+    if append_unpreferred_discovered {
+        for model in discovered {
+            if !seen.insert(model.id.clone()) {
+                continue;
+            }
+            merged.push(model);
         }
-        merged.push(model);
     }
 
     merged
+}
+
+pub(crate) fn merge_preferred_and_discovered_models(
+    preferred: Vec<String>,
+    discovered: Vec<DiscoveredModel>,
+) -> Vec<DiscoveredModel> {
+    merge_models(preferred, discovered, true)
+}
+
+pub(crate) fn merge_preferred_and_discovered_models_whitelist(
+    preferred: Vec<String>,
+    discovered: Vec<DiscoveredModel>,
+) -> Vec<DiscoveredModel> {
+    let append_unpreferred_discovered = preferred.is_empty();
+    merge_models(preferred, discovered, append_unpreferred_discovered)
 }
 
 pub(crate) fn merge_discovered_with_fallback_catalog(
@@ -127,6 +156,7 @@ pub(crate) fn merge_discovered_with_fallback_catalog(
                 created_at: m.created_at,
                 recommended: m.recommended,
                 capabilities: m.capabilities,
+                context_window: m.context_window,
             }
         })
         .collect()
@@ -163,5 +193,49 @@ mod tests {
 
         let ids: Vec<&str> = merged.iter().map(|m| m.id.as_str()).collect();
         assert_eq!(ids, vec!["fallback-a", "fallback-b"]);
+    }
+
+    #[test]
+    fn whitelist_merge_keeps_only_preferred_when_preferred_non_empty() {
+        let merged =
+            merge_preferred_and_discovered_models_whitelist(vec!["preferred-a".into()], vec![
+                DiscoveredModel::new("preferred-a", "Preferred A"),
+                DiscoveredModel::new("discovered-only", "Discovered Only"),
+            ]);
+
+        let ids: Vec<&str> = merged.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, vec!["preferred-a"]);
+        assert_eq!(merged[0].display_name, "Preferred A");
+    }
+
+    #[test]
+    fn whitelist_merge_preserves_discovered_metadata_for_preferred_models() {
+        let capabilities = ModelCapabilities {
+            text_generation: true,
+            tools: true,
+            vision: false,
+            reasoning: true,
+        };
+        let merged =
+            merge_preferred_and_discovered_models_whitelist(vec!["combo/glm".into()], vec![
+                DiscoveredModel::new("combo/glm", "Combo GLM")
+                    .with_capabilities(capabilities)
+                    .with_context_window(1_000_000),
+            ]);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].capabilities, Some(capabilities));
+        assert_eq!(merged[0].context_window, Some(1_000_000));
+    }
+
+    #[test]
+    fn whitelist_merge_keeps_all_discovered_when_preferred_empty() {
+        let merged = merge_preferred_and_discovered_models_whitelist(Vec::new(), vec![
+            DiscoveredModel::new("live-a", "Live A"),
+            DiscoveredModel::new("live-b", "Live B"),
+        ]);
+
+        let ids: Vec<&str> = merged.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, vec!["live-a", "live-b"]);
     }
 }

@@ -45,6 +45,7 @@ pub(crate) use config_helpers::{
 #[allow(unused_imports)]
 pub(crate) use discovered_model::{
     merge_discovered_with_fallback_catalog, merge_preferred_and_discovered_models,
+    merge_preferred_and_discovered_models_whitelist,
 };
 #[allow(unused_imports)]
 pub(crate) use http::{retry_after_ms_from_headers, with_retry_after_marker};

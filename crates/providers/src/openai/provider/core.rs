@@ -58,6 +58,7 @@ impl OpenAiProvider {
             model_capabilities,
             context_window_global: std::collections::HashMap::new(),
             context_window_provider: std::collections::HashMap::new(),
+            discovered_context_window: None,
             probe_timeout_secs: None,
         }
     }
@@ -71,6 +72,12 @@ impl OpenAiProvider {
     #[must_use]
     pub(crate) fn with_model_capabilities(mut self, capabilities: ModelCapabilities) -> Self {
         self.model_capabilities = capabilities;
+        self
+    }
+
+    #[must_use]
+    pub(crate) fn with_discovered_context_window(mut self, context_window: Option<u32>) -> Self {
+        self.discovered_context_window = context_window;
         self
     }
 
@@ -140,6 +147,7 @@ impl OpenAiProvider {
             model_capabilities: self.model_capabilities,
             context_window_global: self.context_window_global.clone(),
             context_window_provider: self.context_window_provider.clone(),
+            discovered_context_window: self.discovered_context_window,
             probe_timeout_secs: self.probe_timeout_secs,
         }
     }
@@ -388,11 +396,20 @@ impl LlmProvider for OpenAiProvider {
     }
 
     fn context_window(&self) -> u32 {
-        context_window_for_model_with_config(
-            &self.model,
-            &self.context_window_global,
-            &self.context_window_provider,
-        )
+        let normalized = crate::model_id::capability_model_id(&self.model);
+        if let Some(&context_window) = self.context_window_provider.get(normalized) {
+            return context_window;
+        }
+        if let Some(&context_window) = self.context_window_global.get(normalized) {
+            return context_window;
+        }
+        self.discovered_context_window.unwrap_or_else(|| {
+            context_window_for_model_with_config(
+                &self.model,
+                &self.context_window_global,
+                &self.context_window_provider,
+            )
+        })
     }
 
     fn supports_vision(&self) -> bool {

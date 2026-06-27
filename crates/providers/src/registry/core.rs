@@ -1065,8 +1065,7 @@ impl ProviderRegistry {
             let Some(base_url) = entry.base_url.as_ref().filter(|u| !u.trim().is_empty()) else {
                 continue;
             };
-            let has_explicit_models = !configured_models_for_provider(config, name).is_empty();
-            if !has_explicit_models && should_fetch_models(config, name) {
+            if should_fetch_models(config, name) {
                 pending.push((
                     name.clone(),
                     openai::start_model_discovery(api_key.clone(), base_url.clone()),

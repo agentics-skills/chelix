@@ -1106,7 +1106,7 @@ impl ProviderRegistry {
                 Vec::new()
             };
 
-            let models = merge_preferred_and_discovered_models(preferred, discovered);
+            let models = merge_preferred_and_discovered_models_whitelist(preferred, discovered);
             if models.is_empty() {
                 tracing::debug!(
                     provider = %name,
@@ -1120,11 +1120,12 @@ impl ProviderRegistry {
                 let caps = model
                     .capabilities
                     .unwrap_or_else(|| ModelCapabilities::infer(&model.id));
-                let (model_id, display_name, created_at, recommended) = (
+                let (model_id, display_name, created_at, recommended, context_window) = (
                     model.id,
                     model.display_name,
                     model.created_at,
                     model.recommended,
+                    model.context_window,
                 );
                 if self.has_provider_model(name, &model_id) {
                     continue;
@@ -1138,6 +1139,7 @@ impl ProviderRegistry {
                 .with_stream_transport(entry.stream_transport)
                 .with_cache_retention(entry.cache_retention)
                 .with_model_capabilities(caps)
+                .with_discovered_context_window(context_window)
                 .with_capabilities(openai::OpenAiProviderCapabilities {
                     reasoning_content_model_prefixes: CUSTOM_REASONING_CONTENT_MODEL_PREFIXES,
                     qwen_models_require_single_leading_system: true,

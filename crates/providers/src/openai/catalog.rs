@@ -4,7 +4,7 @@ use secrecy::ExposeSecret;
 
 use tracing::{debug, warn};
 
-use crate::DiscoveredModel;
+use crate::{DiscoveredModel, ModelCapabilities};
 
 const OPENAI_MODELS_ENDPOINT_PATH: &str = "/models";
 
@@ -124,6 +124,35 @@ fn is_chat_capable_model(model_id: &str) -> bool {
     crate::is_chat_capable_model(model_id)
 }
 
+fn metadata_bool(obj: &serde_json::Map<String, serde_json::Value>, keys: &[&str]) -> Option<bool> {
+    keys.iter()
+        .find_map(|key| obj.get(*key).and_then(serde_json::Value::as_bool))
+}
+
+fn parse_capabilities(entry: &serde_json::Value) -> Option<ModelCapabilities> {
+    let capabilities = entry.get("capabilities")?.as_object()?;
+    let tools = metadata_bool(capabilities, &["tool_calling", "tools", "function_calling"])
+        .unwrap_or(false);
+    let vision = metadata_bool(capabilities, &["vision"]).unwrap_or(false);
+    let reasoning = metadata_bool(capabilities, &["reasoning"])
+        .or_else(|| metadata_bool(capabilities, &["thinking"]))
+        .unwrap_or(false);
+    Some(ModelCapabilities {
+        text_generation: true,
+        tools,
+        vision,
+        reasoning,
+    })
+}
+
+fn parse_context_window(entry: &serde_json::Value) -> Option<u32> {
+    ["context_length", "context_window", "max_input_tokens"]
+        .iter()
+        .find_map(|key| entry.get(*key).and_then(serde_json::Value::as_u64))
+        .and_then(|value| u32::try_from(value).ok())
+        .filter(|value| *value > 0)
+}
+
 fn parse_model_entry(entry: &serde_json::Value) -> Option<DiscoveredModel> {
     let obj = entry.as_object()?;
     let model_id = obj
@@ -146,11 +175,16 @@ fn parse_model_entry(entry: &serde_json::Value) -> Option<DiscoveredModel> {
     let created_at = obj.get("created").and_then(serde_json::Value::as_i64);
 
     let recommended = is_recommended_openai_model(model_id);
-    Some(
-        DiscoveredModel::new(model_id, normalize_display_name(model_id, display_name))
-            .with_created_at(created_at)
-            .with_recommended(recommended),
-    )
+    let mut model = DiscoveredModel::new(model_id, normalize_display_name(model_id, display_name))
+        .with_created_at(created_at)
+        .with_recommended(recommended);
+    if let Some(capabilities) = parse_capabilities(entry) {
+        model = model.with_capabilities(capabilities);
+    }
+    if let Some(context_window) = parse_context_window(entry) {
+        model = model.with_context_window(context_window);
+    }
+    Some(model)
 }
 
 /// Known OpenAI flagship model IDs (latest generation, no date suffix).
@@ -296,4 +330,70 @@ pub fn available_models(api_key: &secrecy::Secret<String>, base_url: &str) -> Ve
     let merged = crate::merge_discovered_with_fallback_catalog(discovered, fallback);
     debug!(model_count = merged.len(), "loaded openai models catalog");
     merged
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_model_entry_reads_provider_capabilities_and_context_length() {
+        let entry = serde_json::json!({
+            "id": "Combos/z.ai/glm",
+            "created": 1_782_516_658_i64,
+            "context_length": 1_000_000,
+            "capabilities": {
+                "tool_calling": true,
+                "reasoning": true,
+                "vision": false,
+                "thinking": true
+            }
+        });
+
+        let model = parse_model_entry(&entry).expect("model parses");
+        assert_eq!(model.id, "Combos/z.ai/glm");
+        assert_eq!(model.context_window, Some(1_000_000));
+        assert_eq!(
+            model.capabilities,
+            Some(ModelCapabilities {
+                text_generation: true,
+                tools: true,
+                vision: false,
+                reasoning: true,
+            })
+        );
+    }
+
+    #[test]
+    fn parse_model_entry_uses_thinking_when_reasoning_is_missing() {
+        let entry = serde_json::json!({
+            "id": "Combos/cx/gpt",
+            "max_input_tokens": 400_000,
+            "capabilities": {
+                "tool_calling": true,
+                "thinking": true,
+                "vision": true
+            }
+        });
+
+        let model = parse_model_entry(&entry).expect("model parses");
+        assert_eq!(model.context_window, Some(400_000));
+        assert_eq!(
+            model.capabilities.expect("capabilities parsed").reasoning,
+            true
+        );
+    }
+
+    #[test]
+    fn parse_model_entry_leaves_metadata_empty_for_bare_entries() {
+        let entry = serde_json::json!({
+            "id": "Combos/cx/gpt-mini",
+            "created": 1_782_516_658_i64
+        });
+
+        let model = parse_model_entry(&entry).expect("model parses");
+        assert_eq!(model.capabilities, None);
+        assert_eq!(model.context_window, None);
+    }
 }
