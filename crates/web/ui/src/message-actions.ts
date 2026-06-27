@@ -43,7 +43,7 @@ export interface MessageActionContext {
 	messageEl: HTMLElement;
 	sessionKey: string;
 	messageIndex?: number;
-	text?: string;
+	text: string;
 	runId?: string;
 	hasAudio?: boolean;
 	audioWarning?: string;
@@ -70,8 +70,7 @@ export function appendMessageActions(ctx: MessageActionContext): void {
 	// ── Copy button ──────────────────────────────────────────
 	const copyBtn = actionButton("icon-copy", "Copy");
 	copyBtn.addEventListener("click", () => {
-		const text = extractPlainText(messageEl);
-		copyToClipboard(text, "", "Failed to copy to clipboard").then((ok) => {
+		copyToClipboard(ctx.text, "", "Failed to copy to clipboard").then((ok) => {
 			if (!ok) return;
 			copyBtn.replaceChildren(iconSpan("icon-checkmark"));
 			copyBtn.title = "Copied";
@@ -221,22 +220,4 @@ function retrySend(sessionKey: string, text: string): void {
 			showToast(res.error?.message || "Retry failed", "error");
 		}
 	});
-}
-
-// ── Text extraction ──────────────────────────────────────────
-
-function extractPlainText(messageEl: HTMLElement): string {
-	const clone = messageEl.cloneNode(true) as HTMLElement;
-	for (const sel of [
-		".msg-model-footer",
-		".msg-action-bar",
-		".msg-reasoning",
-		".msg-voice-player-slot",
-		".msg-voice-warning",
-	]) {
-		for (const el of clone.querySelectorAll(sel)) {
-			el.remove();
-		}
-	}
-	return (clone.textContent || "").trim();
 }
