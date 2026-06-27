@@ -38,6 +38,7 @@ export default {
 		"Sandboxes are disabled on cloud deploys without a container runtime. Install on a VM with Docker or Apple Container to enable this feature.",
 	sandboxToggleTooltip: "Toggle sandbox mode",
 	sandboxImageTooltip: "Sandbox image",
+	sandboxImageDefault: "Par défaut",
 	mcpEnabled: "MCP",
 	mcpEnabledTooltip: "MCP tools enabled \u2014 click to disable for this session",
 	mcpDisabled: "MCP off",

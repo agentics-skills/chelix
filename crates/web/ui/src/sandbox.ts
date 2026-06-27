@@ -7,6 +7,7 @@ import * as S from "./state";
 
 interface SandboxInfoRecord {
 	backend?: string;
+	default_image?: string;
 }
 
 interface SessionPatchResult {
@@ -124,7 +125,18 @@ export function bindSandboxToggleEvents(): void {
 
 // ── Sandbox image selector ──────────────────────────────────
 
-const DEFAULT_IMAGE = "ubuntu:25.10";
+/**
+ * Effective default sandbox image as resolved by the server (runtime/backend
+ * override → config → built-in constant), surfaced via `sandboxInfo`. Returns
+ * an empty string when the server has not provided it yet — the UI must never
+ * fall back to a guessed/hardcoded image, since that would misinform the user
+ * about the container that actually starts.
+ */
+function serverDefaultImage(): string {
+	const info = S.sandboxInfo as SandboxInfoRecord | null;
+	return info?.default_image || "";
+}
+
 let sandboxImageBtnEl: HTMLButtonElement | null = null;
 let sandboxImageBtnClickHandler: ((e: MouseEvent) => void) | null = null;
 let sandboxImageDocClickHandler: (() => void) | null = null;
@@ -138,7 +150,12 @@ export function updateSandboxImageUI(image: string | null): void {
 		imageLabel.textContent = t("chat:sandboxUnavailable");
 		return;
 	}
-	imageLabel.textContent = truncateHash(image || DEFAULT_IMAGE);
+	// Show the per-session image when set, otherwise the real effective default
+	// resolved by the server. Never fall back to a hardcoded image: when the
+	// server default is not known yet, leave the label empty rather than
+	// displaying a value that may not match the container that actually starts.
+	const effective = image || serverDefaultImage();
+	imageLabel.textContent = effective ? truncateHash(effective) : "";
 }
 
 export function bindSandboxImageEvents(): void {
@@ -301,7 +318,10 @@ function populateImageDropdown(): void {
 		imgHeader.textContent = "Image";
 		dropdown.appendChild(imgHeader);
 
-		addImageOption(dropdown, DEFAULT_IMAGE, !S.sessionSandboxImage);
+		// "Default" option: uses the real server-resolved default image. When the
+		// server has not reported it yet, render a neutral label instead of a
+		// guessed image so the user is never misinformed.
+		addImageOption(dropdown, serverDefaultImage(), !S.sessionSandboxImage, undefined, true);
 		for (const img of images) {
 			const isCurrent = S.sessionSandboxImage === img.tag;
 			addImageOption(dropdown, img.tag, isCurrent, `${img.skill_name} (${img.size})`);
@@ -323,7 +343,13 @@ function selectBackend(backendId: string): void {
 	}
 }
 
-function addImageOption(dropdown: HTMLElement, tag: string, isActive: boolean, subtitle?: string): void {
+function addImageOption(
+	dropdown: HTMLElement,
+	tag: string,
+	isActive: boolean,
+	subtitle?: string,
+	isDefault = false,
+): void {
 	const opt = document.createElement("div");
 	opt.className = "px-3 py-2 text-xs cursor-pointer hover:bg-[var(--surface2)] transition-colors";
 	if (isActive) {
@@ -332,8 +358,11 @@ function addImageOption(dropdown: HTMLElement, tag: string, isActive: boolean, s
 	}
 
 	const label = document.createElement("div");
-	label.textContent = truncateHash(tag);
-	label.title = tag;
+	// The default entry shows the real server image; when it is not known yet,
+	// fall back to a neutral label rather than a hardcoded image name.
+	const display = tag || (isDefault ? t("chat:sandboxImageDefault") : "");
+	label.textContent = truncateHash(display);
+	label.title = tag || display;
 	opt.appendChild(label);
 
 	if (subtitle) {
@@ -346,7 +375,8 @@ function addImageOption(dropdown: HTMLElement, tag: string, isActive: boolean, s
 
 	opt.addEventListener("click", (e: MouseEvent): void => {
 		e.stopPropagation();
-		selectImage(tag === DEFAULT_IMAGE ? null : tag);
+		// Selecting the default entry clears the per-session override (null).
+		selectImage(isDefault ? null : tag);
 	});
 
 	dropdown.appendChild(opt);

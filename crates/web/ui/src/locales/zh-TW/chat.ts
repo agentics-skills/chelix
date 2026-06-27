@@ -38,6 +38,7 @@ export default {
 		"雲端部署未提供容器執行環境，因此沙盒功能已停用。請在具備 Docker 或 Apple Container 的虛擬機器上安裝以啟用此功能。",
 	sandboxToggleTooltip: "切換沙盒模式",
 	sandboxImageTooltip: "沙盒映像檔",
+	sandboxImageDefault: "預設",
 	mcpEnabled: "MCP",
 	mcpEnabledTooltip: "MCP 工具已啟用 \u2014 按一下可在此工作階段停用",
 	mcpDisabled: "MCP 已關閉",
