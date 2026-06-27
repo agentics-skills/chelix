@@ -8,6 +8,13 @@
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
+  --mobile-viewport-height: 100vh;
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --mobile-viewport-height: 100dvh;
+  }
 }
 
 /* Adjust body padding for safe areas */
@@ -17,9 +24,20 @@ body {
   padding-right: var(--safe-right);
 }
 
+/* Disable double-tap-to-zoom (pinch-zoom is blocked via the viewport meta). */
+html {
+  touch-action: manipulation;
+}
+
 /* ── Navigation Panel Mobile Styles ── */
 
 @media (max-width: 767px) {
+  html,
+  body {
+    height: var(--mobile-viewport-height);
+    min-height: var(--mobile-viewport-height);
+  }
+
   /* Navigation as slide-out drawer on mobile */
   .nav-panel {
     position: fixed;
@@ -184,8 +202,27 @@ body {
 
 @media (max-width: 767px) {
   header {
+    /* Super low top bar to save vertical space. */
+    padding-top: calc(2px + var(--safe-top)) !important;
+    padding-bottom: 2px !important;
     padding-left: calc(6px + var(--safe-left));
     padding-right: calc(6px + var(--safe-right));
+    gap: 6px !important;
+  }
+
+  /* Header buttons must not inflate the bar via the 44px touch-target rule. */
+  header .header-link-btn,
+  header #commandPaletteBtn,
+  header .burger-btn,
+  header #logoutBtn {
+    min-height: 0 !important;
+    height: 28px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  header #titleLink {
+    font-size: 0.85rem !important;
   }
 
   /* Hide bot name on mobile, keep emoji only */
@@ -304,6 +341,12 @@ body {
     max-width: 92%;
   }
 
+  /* Agent markdown messages span the full width (no left-squeeze). */
+  .msg.assistant {
+    max-width: 100%;
+    align-self: stretch;
+  }
+
   .msg.exec-card {
     max-width: 95%;
   }
@@ -326,14 +369,48 @@ body {
   }
 
   .chat-toolbar {
-    flex-wrap: nowrap;
+    /* Single non-wrapping row; overflow is reachable via horizontal scroll. */
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
     column-gap: 4px;
-    row-gap: 4px;
     min-width: 0;
-    height: 36px !important;
+    height: 40px !important;
+    min-height: 0 !important;
+    align-items: center;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
     padding-left: calc(6px + var(--safe-left)) !important;
     padding-right: calc(6px + var(--safe-right)) !important;
     border-radius: 0 !important;
+  }
+
+  .chat-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Every toolbar item keeps its size — never shrink, never wrap. */
+  .chat-toolbar > * {
+    flex: 0 0 auto !important;
+  }
+
+  /* Session name must not push actions away (no auto margin on a scroll row). */
+  .chat-toolbar #sessionNameMount {
+    margin-left: 0 !important;
+    flex: 0 0 auto !important;
+  }
+
+  .chat-toolbar #sessionHeaderToolbarMount > div,
+  .chat-toolbar #sessionActionsMount > div,
+  .chat-toolbar #sessionActionsMount > div > div {
+    flex-wrap: nowrap !important;
+  }
+
+  /* The 44px touch-target rule inflates Rename/Auto-title and breaks the row. */
+  .chat-toolbar button {
+    min-height: 0 !important;
   }
 
   .chat-toolbar .model-combo-btn {
@@ -388,15 +465,17 @@ body {
   }
 
   .chat-input-row {
+    /* Keep the composer close to the viewport edge; its own height keeps controls above the home indicator. */
+    padding-top: 6px !important;
     padding-left: calc(6px + var(--safe-left)) !important;
     padding-right: calc(6px + var(--safe-right)) !important;
-    padding-bottom: calc(8px + var(--safe-bottom)) !important;
+    padding-bottom: 0 !important;
     border-radius: 0 !important;
   }
 
   .chat-composer {
     border-radius: 18px;
-    padding: 10px 10px 8px;
+    padding: 8px 10px;
   }
 
   .chat-composer-footer {

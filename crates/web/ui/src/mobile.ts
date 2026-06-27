@@ -6,10 +6,44 @@ let sessionsPanel: HTMLElement | null = null;
 let sessionsOverlay: HTMLElement | null = null;
 let sessionsToggle: HTMLElement | null = null;
 let burgerBtn: HTMLElement | null = null;
+let viewportHeightRaf = 0;
+let viewportHeightTimers: number[] = [];
+
+const MOBILE_VIEWPORT_HEIGHT_VAR = "--mobile-viewport-height";
 
 // Check if we're in mobile view
 function isMobile(): boolean {
 	return window.innerWidth < 768;
+}
+
+function applyMobileViewportHeight(): void {
+	if (!isMobile()) {
+		document.documentElement.style.removeProperty(MOBILE_VIEWPORT_HEIGHT_VAR);
+		return;
+	}
+
+	const visualHeight = window.visualViewport?.height || 0;
+	const innerHeight = window.innerHeight || 0;
+	const clientHeight = document.documentElement.clientHeight || 0;
+	const keyboardOpen = visualHeight > 0 && innerHeight > 0 && visualHeight < innerHeight - 120;
+	const height = keyboardOpen ? visualHeight : Math.max(visualHeight, innerHeight, clientHeight);
+
+	if (height > 0) {
+		document.documentElement.style.setProperty(MOBILE_VIEWPORT_HEIGHT_VAR, `${Math.ceil(height)}px`);
+	}
+}
+
+function scheduleMobileViewportHeightSync(): void {
+	applyMobileViewportHeight();
+
+	if (viewportHeightRaf) window.cancelAnimationFrame(viewportHeightRaf);
+	viewportHeightRaf = window.requestAnimationFrame(() => {
+		viewportHeightRaf = 0;
+		applyMobileViewportHeight();
+	});
+
+	viewportHeightTimers.forEach((timer) => window.clearTimeout(timer));
+	viewportHeightTimers = [50, 250, 700].map((delay) => window.setTimeout(applyMobileViewportHeight, delay));
 }
 
 // Open navigation panel
@@ -93,6 +127,8 @@ function handleSessionClick(e: Event): void {
 
 // Handle resize - reset states when switching between mobile/desktop
 function handleResize(): void {
+	scheduleMobileViewportHeightSync();
+
 	if (isMobile()) {
 		// Mobile view - show toggle button if sessions panel is not open
 		if (!sessionsPanel?.classList.contains("open")) {
@@ -156,6 +192,14 @@ export function initMobile(): void {
 
 	// Handle resize events
 	window.addEventListener("resize", handleResize);
+	window.addEventListener("orientationchange", scheduleMobileViewportHeightSync);
+	window.addEventListener("pageshow", scheduleMobileViewportHeightSync);
+	window.addEventListener("load", scheduleMobileViewportHeightSync);
+	window.visualViewport?.addEventListener("resize", scheduleMobileViewportHeightSync);
+	document.addEventListener("visibilitychange", () => {
+		if (!document.hidden) scheduleMobileViewportHeightSync();
+	});
+	scheduleMobileViewportHeightSync();
 
 	// Escape key closes panels
 	document.addEventListener("keydown", (e: KeyboardEvent) => {

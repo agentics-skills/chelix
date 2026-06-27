@@ -701,7 +701,7 @@
   border-top: 0;
   background: var(--bg);
   min-width: 0;
-  padding: 16px 24px 18px;
+  padding: 16px 24px 0;
 }
 
 .chat-composer {
