@@ -63,21 +63,22 @@ fn new_text_tool_call(
 /// Tries parsers in priority order: fenced, XML function, bare JSON.
 pub fn parse_tool_calls_from_text(text: &str) -> (Vec<ToolCall>, Option<String>) {
     let mut blocks: Vec<ParsedBlock> = Vec::new();
+    let fenced_code_ranges = markdown_fenced_code_ranges(text);
 
     // 1. Find all fenced ```tool_call blocks.
     collect_fenced_blocks(text, &mut blocks);
 
     // 2. Find all XML <function=...> blocks.
-    collect_function_blocks(text, &mut blocks);
+    collect_function_blocks(text, &mut blocks, &fenced_code_ranges);
 
     // 3. Find XML <invoke name="..."><arg name="...">value</arg></invoke> blocks.
-    collect_invoke_blocks(text, &mut blocks);
+    collect_invoke_blocks(text, &mut blocks, &fenced_code_ranges);
 
     // 4. Find Zhipu (Z.AI) <tool_call>name<arg_key>...</arg_key><arg_value>...</arg_value></tool_call> blocks.
-    collect_zhipu_blocks(text, &mut blocks);
+    collect_zhipu_blocks(text, &mut blocks, &fenced_code_ranges);
 
     // 5. Find bare JSON {"tool": ...} blocks.
-    collect_bare_json_blocks(text, &mut blocks);
+    collect_bare_json_blocks(text, &mut blocks, &fenced_code_ranges);
 
     if blocks.is_empty() {
         return (vec![], Some(text.to_string()));
@@ -135,14 +136,91 @@ pub fn looks_like_failed_tool_call(text: &Option<String>) -> bool {
     let Some(t) = text.as_deref() else {
         return false;
     };
-    let lower = t.to_ascii_lowercase();
-    (lower.contains("\"tool\"")
-        || lower.contains("tool_call")
+
+    if parse_tool_call_from_text(t).is_some() {
+        return false;
+    }
+
+    if has_failed_fenced_tool_call(t) {
+        return true;
+    }
+
+    let prose = strip_markdown_code_for_tool_heuristic(t);
+    let lower = prose.to_ascii_lowercase();
+
+    lower.contains("\"tool\"")
+        || lower.contains("<tool_call")
         || lower.contains("<function=")
         || lower.contains("<invoke")
         || lower.contains("<arg_key>")
-        || lower.contains("<arg_value>"))
-        && parse_tool_call_from_text(t).is_none()
+        || lower.contains("<arg_value>")
+}
+
+fn has_failed_fenced_tool_call(text: &str) -> bool {
+    let start_marker = "```tool_call";
+    let mut search_from = 0;
+
+    while let Some(start) = text[search_from..].find(start_marker) {
+        let abs_start = search_from + start;
+        let after_marker = abs_start + start_marker.len();
+        let rest = &text[after_marker..];
+        let Some(end_rel) = rest.find("```") else {
+            return true;
+        };
+        let json_str = rest[..end_rel].trim();
+        if try_parse_tool_json(json_str).is_none() {
+            return true;
+        }
+        search_from = after_marker + end_rel + 3;
+    }
+
+    false
+}
+
+fn markdown_fenced_code_ranges(text: &str) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+    let mut search_from = 0;
+
+    while let Some(start_rel) = text[search_from..].find("```") {
+        let start = search_from + start_rel;
+        let after_open = start + 3;
+        let Some(end_rel) = text[after_open..].find("```") else {
+            ranges.push((start, text.len()));
+            break;
+        };
+        let end = after_open + end_rel + 3;
+        ranges.push((start, end));
+        search_from = end;
+    }
+
+    ranges
+}
+
+fn is_inside_ranges(pos: usize, ranges: &[(usize, usize)]) -> bool {
+    ranges
+        .iter()
+        .any(|(start, end)| pos >= *start && pos < *end)
+}
+
+fn strip_markdown_code_for_tool_heuristic(text: &str) -> String {
+    let ranges = markdown_fenced_code_ranges(text);
+    if ranges.is_empty() {
+        return text.to_string();
+    }
+
+    let mut out = String::with_capacity(text.len());
+    let mut cursor = 0;
+    for (start, end) in ranges {
+        if cursor < start {
+            out.push_str(&text[cursor..start]);
+        }
+        cursor = end;
+    }
+    if cursor < text.len() {
+        out.push_str(&text[cursor..]);
+    }
+
+    out
 }
 
 // ── Fenced block parser ─────────────────────────────────────────────────────
@@ -174,12 +252,20 @@ fn collect_fenced_blocks(text: &str, blocks: &mut Vec<ParsedBlock>) {
 
 // ── XML function parser ─────────────────────────────────────────────────────
 
-fn collect_function_blocks(text: &str, blocks: &mut Vec<ParsedBlock>) {
+fn collect_function_blocks(
+    text: &str,
+    blocks: &mut Vec<ParsedBlock>,
+    fenced_code_ranges: &[(usize, usize)],
+) {
     let start_marker = "<function=";
     let mut search_from = 0;
 
     while let Some(start_rel) = text[search_from..].find(start_marker) {
         let abs_start = search_from + start_rel;
+        if is_inside_ranges(abs_start, fenced_code_ranges) {
+            search_from = abs_start + start_marker.len();
+            continue;
+        }
         let after_marker = abs_start + start_marker.len();
         let rest = &text[after_marker..];
 
@@ -274,12 +360,20 @@ fn extract_xml_attr<'a>(attr_str: &'a str, attr_name: &str) -> Option<&'a str> {
 }
 
 /// Collect `<invoke name="tool"><arg name="key">value</arg></invoke>` blocks.
-fn collect_invoke_blocks(text: &str, blocks: &mut Vec<ParsedBlock>) {
+fn collect_invoke_blocks(
+    text: &str,
+    blocks: &mut Vec<ParsedBlock>,
+    fenced_code_ranges: &[(usize, usize)],
+) {
     let start_marker = "<invoke";
     let mut search_from = 0;
 
     while let Some(start_rel) = text[search_from..].find(start_marker) {
         let abs_start = search_from + start_rel;
+        if is_inside_ranges(abs_start, fenced_code_ranges) {
+            search_from = abs_start + start_marker.len();
+            continue;
+        }
         let after_marker = abs_start + start_marker.len();
         let rest = &text[after_marker..];
 
@@ -382,13 +476,21 @@ fn collect_invoke_blocks(text: &str, blocks: &mut Vec<ParsedBlock>) {
 ///   prevents stray prose like "<tool_call>maybe</tool_call>" from matching;
 /// - a `<tool_call>` has no closing `</tool_call>` — stop parsing because no
 ///   later complete block can be recovered from the remaining suffix.
-fn collect_zhipu_blocks(text: &str, blocks: &mut Vec<ParsedBlock>) {
+fn collect_zhipu_blocks(
+    text: &str,
+    blocks: &mut Vec<ParsedBlock>,
+    fenced_code_ranges: &[(usize, usize)],
+) {
     let open = "<tool_call>";
     let close = "</tool_call>";
     let mut cursor = 0;
 
     while let Some(rel_start) = text[cursor..].find(open) {
         let abs_start = cursor + rel_start;
+        if is_inside_ranges(abs_start, fenced_code_ranges) {
+            cursor = abs_start + open.len();
+            continue;
+        }
         let content_start = abs_start + open.len();
         let Some(rel_end) = text[content_start..].find(close) else {
             break;
@@ -461,12 +563,20 @@ fn collect_zhipu_blocks(text: &str, blocks: &mut Vec<ParsedBlock>) {
 
 // ── Bare JSON parser ────────────────────────────────────────────────────────
 
-fn collect_bare_json_blocks(text: &str, blocks: &mut Vec<ParsedBlock>) {
+fn collect_bare_json_blocks(
+    text: &str,
+    blocks: &mut Vec<ParsedBlock>,
+    fenced_code_ranges: &[(usize, usize)],
+) {
     let needle = r#""tool""#;
     let mut search_from = 0;
 
     while let Some(hit_rel) = text[search_from..].find(needle) {
         let abs_hit = search_from + hit_rel;
+        if is_inside_ranges(abs_hit, fenced_code_ranges) {
+            search_from = abs_hit + needle.len();
+            continue;
+        }
 
         // Walk back to find the opening `{`.
         let Some(obj_start) = text[..abs_hit].rfind('{') else {
@@ -676,6 +786,18 @@ Step 2:
     }
 
     #[test]
+    fn does_not_parse_tool_json_inside_generic_markdown_code_fence() {
+        let text = r#"Here is a documentation example:
+```json
+{"tool": "exec", "arguments": {"command": "whoami"}}
+```
+This is quoted code, not an action."#;
+        let (calls, remaining) = parse_tool_calls_from_text(text);
+        assert!(calls.is_empty());
+        assert_eq!(remaining.as_deref(), Some(text));
+    }
+
+    #[test]
     fn parse_bare_json_with_trailing_comma() {
         let text = r#"{"tool": "calc", "arguments": {"expression": "2+2",}}"#;
         let (calls, _) = parse_tool_calls_from_text(text);
@@ -714,7 +836,7 @@ Step 2:
             r#"Here's what I'll do: {"tool": "exec", "arguments": {BROKEN"#.into()
         )));
         assert!(looks_like_failed_tool_call(&Some(
-            "tool_call something".into()
+            "```tool_call\nsomething broken".into()
         )));
     }
 
@@ -724,6 +846,24 @@ Step 2:
         assert!(!looks_like_failed_tool_call(&Some(
             "Hello, how can I help?".into()
         )));
+    }
+
+    #[test]
+    fn report_with_quoted_tool_call_examples_is_not_malformed_tool_call() {
+        let text = r#"# Long report
+
+The previous UI output mentioned `tool_call`, but this is an analysis report.
+
+```text
+detected malformed tool call in stream, requesting retry
+```
+
+```json
+{"tool": "exec", "arguments": {"command": "grep -rn tool_call crates"}}
+```
+
+The fix is to avoid treating quoted code as an executable tool call."#;
+        assert!(!looks_like_failed_tool_call(&Some(text.into())));
     }
 
     #[test]
