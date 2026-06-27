@@ -210,37 +210,6 @@ html {
     gap: 3px !important;
   }
 
-  /* Header buttons must not inflate the bar via the 44px touch-target rule. */
-  header .header-link-btn,
-  header #commandPaletteBtn,
-  header .burger-btn,
-  header #logoutBtn {
-    min-height: 0 !important;
-    height: 15px !important;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
-  }
-
-  header #commandPaletteBtn,
-  header .header-link-btn {
-    gap: 3px !important;
-    padding-left: 5px !important;
-    padding-right: 5px !important;
-    font-size: 0.58rem !important;
-  }
-
-  header #commandPaletteBtn .icon,
-  header #mobileMenuBtn .icon,
-  header .burger-btn .icon {
-    width: 8px !important;
-    height: 8px !important;
-  }
-
-  header .cmd-palette-header-kbd {
-    font-size: 0.52rem !important;
-    line-height: 1 !important;
-  }
-
   header #titleLink {
     font-size: 0.75rem !important;
   }
@@ -426,17 +395,6 @@ html {
   .chat-toolbar #sessionActionsMount > div,
   .chat-toolbar #sessionActionsMount > div > div {
     flex-wrap: nowrap !important;
-  }
-
-  /* The 44px touch-target rule inflates Rename/Auto-title and breaks the row. */
-  .chat-toolbar button {
-    min-height: 0 !important;
-  }
-
-  .chat-toolbar .model-combo-btn {
-    font-size: 0.7rem;
-    padding: 2px 6px;
-    min-height: 0;
   }
 
   .chat-toolbar > * {

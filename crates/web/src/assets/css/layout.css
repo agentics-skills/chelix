@@ -65,25 +65,25 @@
   gap: 8px;
 }
 
-@media (min-width: 768px) {
-  body > header {
-    min-height: 0;
-    padding-top: 1px !important;
-    padding-bottom: 1px !important;
-  }
+body > header {
+  min-height: 0;
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
 }
 
 .header-link-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface2);
   color: var(--muted);
   text-decoration: none;
-  padding: 6px 10px;
-  font-size: 0.75rem;
+  min-height: 0;
+  height: 15px;
+  padding: 0 5px;
+  font-size: 0.58rem;
   line-height: 1;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s, background 0.15s;
@@ -102,8 +102,28 @@
 }
 
 .header-link-btn .icon {
-  width: 14px;
-  height: 14px;
+  width: 8px;
+  height: 8px;
+}
+
+header .burger-btn,
+header #commandPaletteBtn,
+header #logoutBtn {
+  min-height: 0;
+  height: 15px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+header #commandPaletteBtn .icon,
+header .burger-btn .icon {
+  width: 8px;
+  height: 8px;
+}
+
+header .cmd-palette-header-kbd {
+  font-size: 0.52rem;
+  line-height: 1;
 }
 
 .header-badge {
@@ -137,6 +157,10 @@
   padding-bottom: 1px !important;
 }
 
+.chat-toolbar button {
+  min-height: 0;
+}
+
 .chat-toolbar > * {
   min-width: 0;
 }
@@ -164,7 +188,7 @@
   border: 1px solid var(--border);
   color: var(--muted);
   border-radius: var(--radius-sm);
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-family: var(--font-body);
   cursor: pointer;
   white-space: nowrap;
@@ -172,7 +196,8 @@
   align-items: center;
   gap: 4px;
   max-width: 220px;
-  padding: 4px 8px;
+  min-height: 0;
+  padding: 2px 6px;
   transition: border-color 0.15s, color 0.15s;
   display: flex;
   overflow: hidden;
