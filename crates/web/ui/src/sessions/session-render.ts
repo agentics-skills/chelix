@@ -12,7 +12,7 @@ import {
 	updateCommandInputUI,
 	updateTokenBar,
 } from "../chat-ui";
-import { highlightCodeBlocks } from "../code-highlight";
+import { highlightCodeBlocks, renderExecCommand } from "../code-highlight";
 import * as gon from "../gon";
 import {
 	formatAssistantTokenUsage,
@@ -297,7 +297,7 @@ function renderHistoryToolResult(msg: ToolResultMsg): HTMLElement {
 	if (statusEl) statusEl.remove();
 
 	const cmd = toolCallSummary(msg.tool_name, msg.arguments as Parameters<typeof toolCallSummary>[1]);
-	(card.querySelector("[data-cmd]") as HTMLElement).textContent = ` ${cmd}`;
+	renderExecCommand(card.querySelector("[data-cmd]") as HTMLElement, cmd);
 
 	card.className = `msg exec-card ${msg.success ? "exec-ok" : "exec-err"}`;
 

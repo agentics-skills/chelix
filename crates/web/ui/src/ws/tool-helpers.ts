@@ -9,6 +9,7 @@ import {
 	smartScrollToBottom,
 	stripChannelPrefix,
 } from "../chat-ui";
+import { renderExecCommand } from "../code-highlight";
 import {
 	formatAssistantTokenUsage,
 	formatTokenSpeed,
@@ -209,7 +210,7 @@ export function handleToolCallStartDom(p: ChatPayload, eventSession: string): vo
 	card.id = cardId;
 	const cmd = toolCallSummary(p.toolName, p.arguments, p.executionMode);
 	const cmdEl = card.querySelector("[data-cmd]");
-	if (cmdEl) cmdEl.textContent = ` ${cmd}`;
+	if (cmdEl) renderExecCommand(cmdEl as HTMLElement, cmd);
 	// Preserve thinking text as a reasoning disclosure inside the tool card
 	if (thinkingText) appendReasoningDisclosure(card, thinkingText);
 	clearChatEmptyState();

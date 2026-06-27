@@ -61,7 +61,9 @@
   background: var(--assistant-bg);
   border: 1px solid var(--assistant-border);
   color: var(--text);
-  align-self: flex-start;
+  /* Agent markdown spans the full chat width on every viewport. */
+  align-self: stretch;
+  max-width: 100%;
   white-space: normal;
 }
 
@@ -326,9 +328,10 @@
   border-radius: var(--radius-sm);
   white-space: normal;
   flex-direction: column;
-  align-self: flex-start;
+  /* Shell tool cards span the full chat width on every viewport. */
+  align-self: stretch;
   gap: 4px;
-  max-width: 70%;
+  max-width: 100%;
   padding: 8px 12px;
   display: flex;
 }
@@ -337,10 +340,19 @@
 .msg.exec-card.exec-err { border-color: var(--error); }
 
 .exec-prompt {
+  /* Render the invoked command as a syntax-highlighted code block. */
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   font-family: var(--font-mono);
   color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
   font-size: 0.8rem;
-  line-height: 1.4;
+  line-height: 1.45;
+  overflow-x: auto;
 }
 
 .exec-prompt-char {
@@ -348,9 +360,37 @@
   -webkit-user-select: none;
   user-select: none;
   font-weight: 600;
+  flex-shrink: 0;
 }
 
 .exec-card.exec-err .exec-prompt-char { color: var(--error); }
+
+/* The command slot fills the remaining row width next to the prompt symbol. */
+.exec-prompt [data-cmd] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Command text rendered as code: preserve formatting + allow highlighting. */
+.exec-cmd {
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+}
+
+.exec-cmd .shiki,
+.exec-cmd .shiki span {
+  background: transparent !important;
+  font-family: inherit;
+}
 
 .exec-status {
   color: var(--muted);

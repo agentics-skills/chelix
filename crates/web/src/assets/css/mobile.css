@@ -336,8 +336,10 @@ html {
     align-self: stretch;
   }
 
+  /* Shell tool cards span the full width on mobile too. */
   .msg.exec-card {
-    max-width: 95%;
+    max-width: 100%;
+    align-self: stretch;
   }
 
   /* Chat input adjustments */
