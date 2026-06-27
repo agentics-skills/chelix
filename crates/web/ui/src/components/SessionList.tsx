@@ -6,6 +6,7 @@
 import type { VNode } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import {
+	makeArchiveIcon,
 	makeBranchIcon,
 	makeChatIcon,
 	makeCronIcon,
@@ -68,6 +69,7 @@ interface SessionIconProps {
 
 function SessionIcon({ session, isBranch }: SessionIconProps): VNode {
 	const iconRef = useRef<HTMLSpanElement>(null);
+	const archived = !!session.archived;
 	useEffect(() => {
 		if (!iconRef.current) return;
 		iconRef.current.textContent = "";
@@ -83,7 +85,14 @@ function SessionIcon({ session, isBranch }: SessionIconProps): VNode {
 		else if (channelType === ChannelType.Matrix) icon = makeMatrixIcon();
 		else icon = makeChatIcon();
 		iconRef.current.appendChild(icon);
-	}, [session.key, isBranch]);
+		// Overlay a tiny archive glyph in the icon corner for archived sessions.
+		// Absolutely positioned via CSS, so it adds no layout width to the row.
+		if (archived) {
+			const mark = makeArchiveIcon();
+			mark.classList.add("session-archived-mark");
+			iconRef.current.appendChild(mark);
+		}
+	}, [session.key, isBranch, archived]);
 
 	const channelType = channelSessionType(session);
 	const channelBound = Boolean(channelType);
@@ -104,11 +113,13 @@ function SessionIcon({ session, isBranch }: SessionIconProps): VNode {
 					: channelType === ChannelType.Matrix
 						? "Matrix"
 						: "Telegram";
-	const title = channelBound
+	const baseTitle = channelBound
 		? session.activeChannel
 			? `Active ${channelLabel} session`
 			: `${channelLabel} session (inactive)`
 		: "";
+	// Surface the archived state on hover without taking any row space.
+	const title = archived ? (baseTitle ? `${baseTitle} \u00b7 Archived` : "Archived session") : baseTitle;
 
 	// Read the reactive signal — auto-subscribes for badge updates.
 	const count = session.badgeCount.value;
@@ -198,6 +209,7 @@ function SessionItem({ session, activeKey, depth, keyMap, refreshing }: SessionI
 	if (unread) className += " unread";
 	if (replying) className += " replying";
 	if (refreshing) className += " loading";
+	if (session.archived) className += " archived";
 
 	const style = isBranch ? { paddingLeft: `${12 + depth * 16}px` } : {};
 

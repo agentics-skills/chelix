@@ -1288,6 +1288,26 @@
   .session-item.replying .session-spinner {
     display: inline;
   }
+  /* Archived sessions: pointwise, space-neutral marking. */
+  .session-item.archived {
+    opacity: 0.6;
+  }
+  .session-item.archived .session-label [data-label-text] {
+    font-style: italic;
+  }
+  /* Small archive glyph overlaid on the session icon corner — absolutely
+     positioned so it never consumes layout space in the row. */
+  .session-archived-mark {
+    position: absolute;
+    right: -5px;
+    bottom: -4px;
+    width: 9px;
+    height: 9px;
+    color: var(--muted);
+    /* Subtle halo so the glyph stays readable over the base icon. */
+    filter: drop-shadow(0 0 1px var(--bg)) drop-shadow(0 0 1px var(--bg));
+    pointer-events: none;
+  }
 
   /* Session header (Preact component in chat page header) */
   .chat-session-name {
@@ -1905,6 +1925,10 @@
   .icon-cron {
     -webkit-mask-image: url("./icons/masks/mask-47feaf85cf1fb335.svg");
     mask-image: url("./icons/masks/mask-47feaf85cf1fb335.svg");
+  }
+  .icon-archive {
+    -webkit-mask-image: url("./icons/masks/archive.svg");
+    mask-image: url("./icons/masks/archive.svg");
   }
   .icon-branch {
     -webkit-mask-image: url("./icons/masks/mask-8c75c1045c63955b.svg");

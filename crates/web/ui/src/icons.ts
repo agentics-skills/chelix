@@ -58,3 +58,9 @@ export function makeChatIcon(): HTMLSpanElement {
 	el.className = "icon icon-chat";
 	return el;
 }
+
+export function makeArchiveIcon(): HTMLSpanElement {
+	const el = document.createElement("span");
+	el.className = "icon icon-archive";
+	return el;
+}
