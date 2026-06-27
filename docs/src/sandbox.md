@@ -236,7 +236,7 @@ falls back to `restricted-host` with a warning.
 ## Restricted Host Sandbox
 
 The restricted-host sandbox provides lightweight isolation by running commands
-on the host via `sh -c` with environment clearing and `ulimit` resource
+on the host via `bash -c` with environment clearing and `ulimit` resource
 wrappers. This is the fallback when no container runtime is available.
 
 ### How It Works

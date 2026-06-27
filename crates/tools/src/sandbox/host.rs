@@ -216,7 +216,7 @@ pub async fn provision_host_packages(packages: &[String]) -> Result<Option<HostP
     };
 
     // Run apt-get update.
-    let update_out = tokio::process::Command::new("sh")
+    let update_out = tokio::process::Command::new("bash")
         .args(["-c", &apt_update])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
@@ -287,7 +287,7 @@ pub async fn provision_host_packages(packages: &[String]) -> Result<Option<HostP
     );
 
     // Run apt-get install.
-    let install_out = tokio::process::Command::new("sh")
+    let install_out = tokio::process::Command::new("bash")
         .args(["-c", &apt_install])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

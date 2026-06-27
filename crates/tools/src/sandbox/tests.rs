@@ -87,7 +87,7 @@ impl RuntimeContainerGuard {
 
     async fn exec(&self, command: &str) -> Result<String> {
         let output = tokio::process::Command::new(&self.cli)
-            .args(["exec", &self.name, "sh", "-c", command])
+            .args(["exec", &self.name, "bash", "-c", command])
             .output()
             .await?;
         if !output.status.success() {

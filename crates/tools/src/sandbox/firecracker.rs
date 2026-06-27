@@ -437,7 +437,7 @@ impl FirecrackerSandbox {
             Self::validate_env_key(key)?;
             words.push(format!("{key}={value}"));
         }
-        words.push("sh".to_string());
+        words.push("bash".to_string());
         words.push("-lc".to_string());
         words.push(inner);
         Ok(shell_words::join(words))
@@ -1102,7 +1102,7 @@ mod tests {
 
         assert_eq!(
             command,
-            "env 'API_TOKEN=secret'\\''value' 'SESSION_ID=abc 123' sh -lc 'cd '\\''/home/sandbox/project dir'\\'' && printf '\\''%s'\\'' \"$API_TOKEN\"'"
+            "env 'API_TOKEN=secret'\\''value' 'SESSION_ID=abc 123' bash -lc 'cd '\\''/home/sandbox/project dir'\\'' && printf '\\''%s'\\'' \"$API_TOKEN\"'"
         );
         Ok(())
     }
@@ -1111,7 +1111,7 @@ mod tests {
     fn test_remote_shell_command_without_env() -> Result<()> {
         let command = FirecrackerSandbox::remote_shell_command("/home/sandbox", "pwd", &[])?;
 
-        assert_eq!(command, "env sh -lc 'cd /home/sandbox && pwd'");
+        assert_eq!(command, "env bash -lc 'cd /home/sandbox && pwd'");
         Ok(())
     }
 

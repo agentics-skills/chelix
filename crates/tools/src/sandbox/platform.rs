@@ -93,7 +93,7 @@ impl Sandbox for CgroupSandbox {
             scope,
         ];
         args.extend(self.property_args());
-        args.extend(["sh".to_string(), "-c".to_string(), command.to_string()]);
+        args.extend(["bash".to_string(), "-c".to_string(), command.to_string()]);
 
         let mut cmd = tokio::process::Command::new("systemd-run");
         cmd.args(&args)
@@ -179,7 +179,7 @@ impl Sandbox for CgroupSandbox {
 
 /// Restricted host sandbox providing OS-level isolation (env clearing,
 /// restricted PATH, rlimits) without containers or WASM. Commands run on the
-/// host via `sh -c` with sanitised environment and ulimit wrappers.
+/// host via `bash -c` with sanitised environment and ulimit wrappers.
 pub struct RestrictedHostSandbox {
     config: SandboxConfig,
 }
@@ -259,7 +259,7 @@ impl Sandbox for RestrictedHostSandbox {
         // Wrap the command with shell ulimit calls for resource isolation.
         let wrapped = self.build_ulimit_wrapped_command(command);
 
-        let mut cmd = tokio::process::Command::new("sh");
+        let mut cmd = tokio::process::Command::new("bash");
         cmd.args(["-c", &wrapped]);
 
         // Scrub all inherited env vars for isolation.

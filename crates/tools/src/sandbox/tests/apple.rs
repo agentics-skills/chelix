@@ -186,7 +186,7 @@ fn test_apple_container_run_args_pin_workdir_and_bootstrap_home() {
         "-e",
         "TZ=UTC",
         "ubuntu:25.10",
-        "sh",
+        "bash",
         "-c",
         "mkdir -p /home/sandbox && if command -v gnusleep >/dev/null 2>&1; then exec gnusleep infinity; else exec sleep 2147483647; fi",
     ]
@@ -216,7 +216,7 @@ fn test_apple_container_run_args_with_home_volume() {
         "--volume",
         "/tmp/home:/home/sandbox",
         "ubuntu:25.10",
-        "sh",
+        "bash",
         "-c",
         "mkdir -p /home/sandbox && if command -v gnusleep >/dev/null 2>&1; then exec gnusleep infinity; else exec sleep 2147483647; fi",
     ]
@@ -234,7 +234,7 @@ fn test_apple_container_exec_args_pin_workdir_and_bootstrap_home() {
         "--workdir",
         "/tmp",
         "moltis-sandbox-test",
-        "sh",
+        "bash",
         "-c",
         "mkdir -p /home/sandbox && true",
     ]
@@ -252,7 +252,7 @@ fn test_container_exec_shell_args_apple_container_uses_safe_wrapper() {
         "--workdir",
         "/tmp",
         "moltis-sandbox-test",
-        "sh",
+        "bash",
         "-c",
         "mkdir -p /home/sandbox && echo hi",
     ]
@@ -265,7 +265,7 @@ fn test_container_exec_shell_args_apple_container_uses_safe_wrapper() {
 #[test]
 fn test_container_exec_shell_args_docker_keeps_standard_exec_shape() {
     let args = container_exec_shell_args("docker", "moltis-sandbox-test", "echo hi".into());
-    let expected = vec!["exec", "moltis-sandbox-test", "sh", "-c", "echo hi"]
+    let expected = vec!["exec", "moltis-sandbox-test", "bash", "-c", "echo hi"]
         .into_iter()
         .map(str::to_string)
         .collect::<Vec<_>>();

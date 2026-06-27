@@ -138,7 +138,7 @@ pub(crate) fn apple_container_run_args(
 
     args.push(image.to_string());
     args.extend([
-        "sh".to_string(),
+        "bash".to_string(),
         "-c".to_string(),
         apple_container_bootstrap_command(),
     ]);
@@ -152,7 +152,7 @@ pub(crate) fn apple_container_exec_args(name: &str, shell_command: String) -> Ve
         "--workdir".to_string(),
         APPLE_CONTAINER_SAFE_WORKDIR.to_string(),
         name.to_string(),
-        "sh".to_string(),
+        "bash".to_string(),
         "-c".to_string(),
         apple_container_wrap_shell_command(shell_command),
     ]
@@ -174,7 +174,7 @@ pub(crate) fn container_exec_shell_args(
     vec![
         "exec".to_string(),
         container_name.to_string(),
-        "sh".to_string(),
+        "bash".to_string(),
         "-c".to_string(),
         shell_command,
     ]

@@ -415,7 +415,7 @@ impl VercelSandbox {
     ) -> Result<ExecResult> {
         let cwd = Self::translate_working_dir(opts.working_dir.as_ref().and_then(|p| p.to_str()));
         let mut body = serde_json::json!({
-            "command": "sh",
+            "command": "bash",
             "args": ["-c", command],
             "cwd": cwd,
             "wait": true,

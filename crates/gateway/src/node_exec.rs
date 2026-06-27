@@ -301,7 +301,7 @@ async fn exec_over_ssh(
         ssh.arg("-p").arg(port.to_string());
     }
     let remote_command = format!(
-        "sh -lc {}",
+        "bash -lc {}",
         shell_single_quote(&build_remote_shell_script(command, cwd, env))
     );
     for arg in ssh_destination_args(target, remote_command) {
@@ -990,11 +990,11 @@ mod tests {
 
     #[test]
     fn ssh_destination_args_insert_end_of_options_separator() {
-        let args = ssh_destination_args("deploy@example.com", "sh -lc 'true'".to_string());
+        let args = ssh_destination_args("deploy@example.com", "bash -lc 'true'".to_string());
         assert_eq!(args, [
             "--".to_string(),
             "deploy@example.com".to_string(),
-            "sh -lc 'true'".to_string()
+            "bash -lc 'true'".to_string()
         ]);
     }
 

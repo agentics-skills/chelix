@@ -702,7 +702,7 @@ impl Sandbox for DockerSandbox {
         }
 
         args.push(name);
-        args.extend(["sh".to_string(), "-c".to_string(), command.to_string()]);
+        args.extend(["bash".to_string(), "-c".to_string(), command.to_string()]);
 
         let child = tokio::process::Command::new(self.cli)
             .args(&args)

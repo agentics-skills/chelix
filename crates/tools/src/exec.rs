@@ -129,7 +129,7 @@ pub async fn exec_command(command: &str, opts: &ExecOpts) -> Result<ExecResult> 
         "exec_command"
     );
 
-    let mut cmd = Command::new("sh");
+    let mut cmd = Command::new("bash");
     cmd.arg("-c").arg(command);
 
     if let Some(ref dir) = opts.working_dir {
@@ -152,7 +152,7 @@ pub async fn exec_command(command: &str, opts: &ExecOpts) -> Result<ExecResult> 
                     dir.display()
                 ))
             } else {
-                Error::message("failed to start command: shell 'sh' not found")
+                Error::message("failed to start command: shell 'bash' not found")
             }
         } else {
             Error::message(format!("failed to start command: {e}"))
