@@ -46,8 +46,11 @@ pub(crate) async fn init_memory_system(
                             .unwrap_or_else(
                                 moltis_memory::embeddings_local::LocalGgufEmbeddingProvider::default_cache_dir,
                             );
-                        match moltis_memory::embeddings_local::LocalGgufEmbeddingProvider::ensure_model(
+                        // `memory.model` selects the GGUF file (path or cached
+                        // filename); falls back to the bundled default when unset.
+                        match moltis_memory::embeddings_local::LocalGgufEmbeddingProvider::resolve_model(
                             cache_dir,
+                            mem_cfg.model.as_deref(),
                         )
                         .await
                         {
