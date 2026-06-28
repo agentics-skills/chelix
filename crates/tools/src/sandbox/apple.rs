@@ -1109,7 +1109,14 @@ impl Sandbox for AppleContainerSandbox {
     }
 
     async fn list_files(&self, id: &SandboxId, root: &str) -> Result<SandboxListFilesResult> {
-        if let Some(host_path) = self.mounted_host_path(id, root) {
+        // The translated host path is a valid fast-path only when it is actually
+        // reachable from this process. If the mount lives solely inside the
+        // container, a host walk would silently return nothing while the
+        // container still sees the files; in that case list inside the
+        // container, the authoritative view of the guest filesystem.
+        if let Some(host_path) = self.mounted_host_path(id, root)
+            && tokio::fs::try_exists(&host_path).await.unwrap_or(false)
+        {
             let host_files = native_host_list_files(
                 host_path
                     .to_str()

@@ -794,7 +794,18 @@ impl Sandbox for DockerSandbox {
     }
 
     async fn list_files(&self, id: &SandboxId, root: &str) -> Result<SandboxListFilesResult> {
-        if let Some(host_path) = self.mounted_host_path(id, root) {
+        // `mounted_host_path` is pure path arithmetic and does not verify that
+        // the translated host path is actually reachable from this process. The
+        // host fast-path is only valid when the mount is genuinely visible here
+        // (the same bytes are bind-mounted into the container). When Moltis
+        // itself runs inside a container, the persistence/workspace mount exists
+        // only inside the sandbox, so a host walk would report nothing while the
+        // container still sees the files. Probe the host path and use it only
+        // when present; otherwise defer to the container, which is the
+        // authoritative view of the guest filesystem.
+        if let Some(host_path) = self.mounted_host_path(id, root)
+            && tokio::fs::try_exists(&host_path).await.unwrap_or(false)
+        {
             let host_files = native_host_list_files(
                 host_path
                     .to_str()
