@@ -1,8 +1,9 @@
 // ── Helpers ──────────────────────────────────────────────────
 import { Marked, Renderer, type Token } from "marked";
+import { onEvent } from "./events";
 import { hasTranslation, t } from "./i18n";
 import * as S from "./state";
-import type { RpcResponse } from "./types";
+import { WsEventName, type OperationProgressPayload, type RpcResponse } from "./types";
 
 // Extend Window for webkitAudioContext (Safari)
 declare global {
@@ -269,10 +270,14 @@ mdRenderer.link = ({ href, text }) => {
 mdRenderer.html = ({ text }) => esc(text);
 
 const markedInstance = new Marked({ renderer: mdRenderer, breaks: true, gfm: true, async: false });
-const RPC_TIMEOUT_MS = 5_000;
+const DEFAULT_RPC_IDLE_TIMEOUT_MS = 30_000;
+const PROGRESS_RPC_IDLE_TIMEOUT_MS = 120_000;
+const PROGRESS_AWARE_METHODS = new Set(["sessions.reset", "sessions.compact", "chat.compact"]);
 
-function rpcTimeoutMs(): number {
-	return window.__moltisTestRpcTimeoutMs ?? RPC_TIMEOUT_MS;
+function rpcIdleTimeoutMs(method: string, progressSeen: boolean): number {
+	if (window.__moltisTestRpcTimeoutMs != null) return window.__moltisTestRpcTimeoutMs;
+	if (progressSeen || PROGRESS_AWARE_METHODS.has(method)) return PROGRESS_RPC_IDLE_TIMEOUT_MS;
+	return DEFAULT_RPC_IDLE_TIMEOUT_MS;
 }
 
 export function renderMarkdown(raw: string): string {
@@ -300,23 +305,43 @@ export function sendRpc<T = unknown>(method: string, params: unknown): Promise<R
 			return;
 		}
 		const id = nextId();
-		const timeoutMs = rpcTimeoutMs();
-		const timer = setTimeout(() => {
-			if (S.pending[id]) {
-				delete S.pending[id];
-				const message = `${localizedRpcErrorMessage({ code: "TIMEOUT", message: "RPC request timed out" })} (${method})`;
-				console.warn("RPC request timed out", { method, timeoutMs });
-				resolve({
-					ok: false,
-					error: {
-						code: "TIMEOUT",
-						message,
-					},
-				} as unknown as RpcResponse<T>);
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		let offProgress: (() => void) | null = null;
+		const cleanup = (): void => {
+			if (timer) {
+				clearTimeout(timer);
+				timer = null;
 			}
-		}, timeoutMs);
+			if (offProgress) {
+				offProgress();
+				offProgress = null;
+			}
+		};
+		const armTimeout = (progressSeen: boolean): void => {
+			if (timer) clearTimeout(timer);
+			const timeoutMs = rpcIdleTimeoutMs(method, progressSeen);
+			timer = setTimeout(() => {
+				cleanup();
+				if (S.pending[id]) {
+					delete S.pending[id];
+					const message = localizedRpcErrorMessage({ code: "TIMEOUT", message: "RPC request timed out" });
+					console.warn("RPC request timed out", { method, timeoutMs, progressSeen });
+					resolve({
+						ok: false,
+						error: {
+							code: "TIMEOUT",
+							message,
+						},
+					} as unknown as RpcResponse<T>);
+				}
+			}, timeoutMs);
+		};
+		offProgress = onEvent(WsEventName.OperationProgress, (payload: OperationProgressPayload) => {
+			if (payload.operationId === id) armTimeout(true);
+		});
+		armTimeout(false);
 		S.pending[id] = ((res: RpcResponse) => {
-			clearTimeout(timer);
+			cleanup();
 			resolve(res as RpcResponse<T>);
 		}) as (value: RpcResponse) => void;
 		S.ws.send(JSON.stringify({ type: "req", id: id, method: method, params: params }));

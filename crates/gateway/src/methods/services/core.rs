@@ -735,13 +735,61 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "chat.compact",
         Box::new(|ctx| {
             Box::pin(async move {
+                let session_key = active_session_key_for_ctx(&ctx).await;
+                let progress = crate::operation_progress::OperationProgressEmitter::new(
+                    ctx.state.clone(),
+                    ctx.client_conn_id.clone(),
+                    ctx.request_id.clone(),
+                    "chat.compact",
+                    "session_compact",
+                    session_key,
+                );
+                progress
+                    .emit(
+                        "started",
+                        "Preparing to compact the context window…",
+                        Some(0),
+                        Some(2),
+                        false,
+                    )
+                    .await;
                 let mut params = ctx.params.clone();
                 params["_conn_id"] = serde_json::json!(ctx.client_conn_id);
-                ctx.state
-                    .chat()
-                    .compact(params)
+                let result = progress
+                    .run_with_heartbeat(
+                        "compacting",
+                        "Compacting the context window…",
+                        Some(1),
+                        Some(2),
+                        ctx.state.chat().compact(params),
+                    )
                     .await
-                    .map_err(ErrorShape::from)
+                    .map_err(ErrorShape::from);
+                match &result {
+                    Ok(_) => {
+                        progress
+                            .emit(
+                                "completed",
+                                "Context window compaction complete",
+                                Some(2),
+                                Some(2),
+                                true,
+                            )
+                            .await;
+                    },
+                    Err(_) => {
+                        progress
+                            .emit(
+                                "failed",
+                                "Context window compaction failed",
+                                None,
+                                None,
+                                true,
+                            )
+                            .await;
+                    },
+                }
+                result
             })
         }),
     );

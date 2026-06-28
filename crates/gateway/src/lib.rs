@@ -42,6 +42,7 @@ pub mod network_audit;
 pub mod node_exec;
 pub mod nodes;
 pub mod onboarding;
+pub(crate) mod operation_progress;
 pub mod pairing;
 pub mod project;
 pub mod project_aware_tools;

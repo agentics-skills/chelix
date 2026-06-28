@@ -35,6 +35,7 @@ import {
 	handleNetworkAuditEntry,
 	handleWsError,
 } from "./ws/system-handlers";
+import { handleOperationProgress } from "./ws/operation-progress";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -69,6 +70,7 @@ const eventHandlers: Record<string, (payload: Record<string, unknown>, streamMet
 	"models.updated": handleModelsUpdated as (payload: Record<string, unknown>) => void,
 	"location.request": handleLocationRequest as (payload: Record<string, unknown>) => void,
 	"network.audit.entry": handleNetworkAuditEntry as (payload: Record<string, unknown>) => void,
+	"operation.progress": handleOperationProgress as (payload: Record<string, unknown>) => void,
 };
 
 function dispatchFrame(frame: WsFrame): void {

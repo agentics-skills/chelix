@@ -358,7 +358,6 @@ const slashHandlers: Record<SlashCommandName, SlashHandler> = {
 	clear: () => clearActiveSession(),
 
 	compact: () => {
-		chatAddMsg("system", "Compacting conversation\u2026");
 		sendRpc("chat.compact", {}).then((res) => {
 			if (res.ok) switchSession(S.activeSessionKey);
 			else chatAddMsg("error", res.error?.message || "Compact failed");
@@ -385,7 +384,6 @@ const slashHandlers: Record<SlashCommandName, SlashHandler> = {
 	new: () => switchSession(`session:${crypto.randomUUID()}`),
 
 	reset: () => {
-		chatAddMsg("system", "Resetting session\u2026");
 		sendRpc("sessions.reset", { key: S.activeSessionKey }).then((res) => {
 			if (res.ok) switchSession(S.activeSessionKey);
 			else chatAddMsg("error", res.error?.message || "Reset failed");

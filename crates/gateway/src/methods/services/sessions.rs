@@ -173,24 +173,100 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "sessions.reset",
         Box::new(|ctx| {
             Box::pin(async move {
+                let key = ctx
+                    .params
+                    .get("key")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let progress = crate::operation_progress::OperationProgressEmitter::new(
+                    ctx.state.clone(),
+                    ctx.client_conn_id.clone(),
+                    ctx.request_id.clone(),
+                    "sessions.reset",
+                    "session_reset",
+                    (!key.is_empty()).then(|| key.clone()),
+                );
+                let total_steps = if key.is_empty() {
+                    2
+                } else {
+                    4
+                };
+                progress
+                    .emit(
+                        "started",
+                        "Preparing to reset the session…",
+                        Some(0),
+                        Some(total_steps),
+                        false,
+                    )
+                    .await;
+
                 // Run session-end memory summary before clearing, if enabled.
-                let key = ctx.params.get("key").and_then(|v| v.as_str()).unwrap_or("");
                 if !key.is_empty() {
-                    crate::session::summary::run_session_summary_if_enabled(&ctx.state, key).await;
+                    progress
+                        .run_with_heartbeat(
+                            "summarizing",
+                            "Creating memory summary and embeddings before reset…",
+                            Some(1),
+                            Some(total_steps),
+                            crate::session::summary::run_session_summary_if_enabled(
+                                &ctx.state, &key,
+                            ),
+                        )
+                        .await;
 
                     // Export the session before the reset destroys its history.
                     let hooks = ctx.state.inner.read().await.hook_registry.clone();
                     if let Some(ref hooks) = hooks {
-                        crate::session::dispatch_command_hook(hooks, key, "reset", None).await;
+                        progress
+                            .run_with_heartbeat(
+                                "exporting",
+                                "Running session reset hooks…",
+                                Some(2),
+                                Some(total_steps),
+                                crate::session::dispatch_command_hook(hooks, &key, "reset", None),
+                            )
+                            .await;
                     }
                 }
 
-                ctx.state
+                progress
+                    .emit(
+                        "resetting",
+                        "Clearing session history…",
+                        Some(total_steps - 1),
+                        Some(total_steps),
+                        false,
+                    )
+                    .await;
+                let result = ctx
+                    .state
                     .services
                     .session
                     .reset(ctx.params.clone())
                     .await
-                    .map_err(ErrorShape::from)
+                    .map_err(ErrorShape::from);
+
+                match &result {
+                    Ok(_) => {
+                        progress
+                            .emit(
+                                "completed",
+                                "Session reset complete",
+                                Some(total_steps),
+                                Some(total_steps),
+                                true,
+                            )
+                            .await;
+                    },
+                    Err(_) => {
+                        progress
+                            .emit("failed", "Session reset failed", None, None, true)
+                            .await;
+                    },
+                }
+                result
             })
         }),
     );
@@ -247,12 +323,63 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "sessions.compact",
         Box::new(|ctx| {
             Box::pin(async move {
-                ctx.state
-                    .services
-                    .session
-                    .compact(ctx.params.clone())
+                let key = ctx
+                    .params
+                    .get("key")
+                    .and_then(|v| v.as_str())
+                    .map(ToString::to_string);
+                let progress = crate::operation_progress::OperationProgressEmitter::new(
+                    ctx.state.clone(),
+                    ctx.client_conn_id.clone(),
+                    ctx.request_id.clone(),
+                    "sessions.compact",
+                    "session_compact",
+                    key,
+                );
+                progress
+                    .emit(
+                        "started",
+                        "Preparing to compact the context window…",
+                        Some(0),
+                        Some(2),
+                        false,
+                    )
+                    .await;
+                let result = progress
+                    .run_with_heartbeat(
+                        "compacting",
+                        "Compacting the context window…",
+                        Some(1),
+                        Some(2),
+                        ctx.state.services.session.compact(ctx.params.clone()),
+                    )
                     .await
-                    .map_err(ErrorShape::from)
+                    .map_err(ErrorShape::from);
+                match &result {
+                    Ok(_) => {
+                        progress
+                            .emit(
+                                "completed",
+                                "Context window compaction complete",
+                                Some(2),
+                                Some(2),
+                                true,
+                            )
+                            .await;
+                    },
+                    Err(_) => {
+                        progress
+                            .emit(
+                                "failed",
+                                "Context window compaction failed",
+                                None,
+                                None,
+                                true,
+                            )
+                            .await;
+                    },
+                }
+                result
             })
         }),
     );

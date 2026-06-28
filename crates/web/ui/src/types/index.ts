@@ -55,6 +55,7 @@ export type {
 	MapLinks,
 	MapPoint,
 	ModelsUpdatedPayload,
+	OperationProgressPayload,
 	PartialMessage,
 	SandboxPhasePayload,
 	StreamMeta,

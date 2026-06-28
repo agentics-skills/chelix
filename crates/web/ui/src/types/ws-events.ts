@@ -17,6 +17,7 @@ export enum WsEventName {
 	ModelsUpdated = "models.updated",
 	LocationRequest = "location.request",
 	NetworkAuditEntry = "network.audit.entry",
+	OperationProgress = "operation.progress",
 	// Additional onEvent() events
 	Tick = "tick",
 	Session = "session",
@@ -204,6 +205,18 @@ export interface LocalLlmLifecyclePayload {
 	reason?: "idle" | "manual";
 }
 
+export interface OperationProgressPayload {
+	operationId?: string;
+	method?: string;
+	kind?: string;
+	sessionKey?: string | null;
+	phase?: string;
+	message?: string;
+	current?: number | null;
+	total?: number | null;
+	done?: boolean;
+}
+
 export interface ModelsUpdatedPayload {
 	phase?: string;
 	[key: string]: unknown;
@@ -261,6 +274,7 @@ export interface WsEventPayloadMap {
 	[WsEventName.ModelsUpdated]: ModelsUpdatedPayload;
 	[WsEventName.LocationRequest]: LocationRequestPayload;
 	[WsEventName.NetworkAuditEntry]: Record<string, unknown>;
+	[WsEventName.OperationProgress]: OperationProgressPayload;
 	[WsEventName.Tick]: Record<string, unknown>;
 	[WsEventName.Session]: Record<string, unknown>;
 	[WsEventName.Channel]: Record<string, unknown>;
