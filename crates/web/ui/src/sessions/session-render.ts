@@ -8,6 +8,7 @@ import {
 	highlightAndScroll,
 	removeThinking,
 	scrollChatToBottom,
+	syncChatFollowStateFromPosition,
 	stripChannelPrefix,
 	updateCommandInputUI,
 	updateTokenBar,
@@ -385,6 +386,8 @@ export function postHistoryLoadActions(
 		highlightAndScroll(msgEls, searchContext.messageIndex, searchContext.query);
 	} else if (!skipAutoScroll) {
 		scrollChatToBottom(true);
+	} else {
+		syncChatFollowStateFromPosition();
 	}
 
 	const session = sessionStore.getByKey(key);

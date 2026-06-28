@@ -35,20 +35,45 @@ function clearChatEmptyState(): void {
 
 // Scroll state for rAF-based auto-scroll — prevents re-entrancy during streaming
 let isAutoScrolling = false;
+let shouldFollowChat = true;
+let trackedChatMsgBox: HTMLElement | null = null;
+
+function handleChatScroll(): void {
+	if (!S.chatMsgBox || isAutoScrolling) return;
+	shouldFollowChat = isChatAtBottom();
+	if (shouldFollowChat) hideNewContentIndicator();
+}
+
+function ensureChatFollowTracking(): void {
+	if (!S.chatMsgBox || trackedChatMsgBox === S.chatMsgBox) return;
+	if (trackedChatMsgBox) trackedChatMsgBox.removeEventListener("scroll", handleChatScroll);
+	trackedChatMsgBox = S.chatMsgBox;
+	shouldFollowChat = true;
+	trackedChatMsgBox.addEventListener("scroll", handleChatScroll, { passive: true });
+}
+
+export function syncChatFollowStateFromPosition(): void {
+	ensureChatFollowTracking();
+	shouldFollowChat = isChatAtBottom();
+	if (shouldFollowChat) hideNewContentIndicator();
+}
 
 // Scroll chat to bottom using requestAnimationFrame to sync with browser paint cycle.
-// When force=false (default), checks isChatAtBottom() BEFORE scheduling to respect
-// user scroll intent. Pass force=true for imperative scrolls (indicator click,
+// When force=false (default), follows only while the user has not intentionally
+// scrolled up. Pass force=true for imperative scrolls (indicator click,
 // autoScrollMode "always", user-sent messages).
 export function scrollChatToBottom(force = false): void {
 	if (!S.chatMsgBox) return;
-	if (!force && (isAutoScrolling || !isChatAtBottom())) return;
+	ensureChatFollowTracking();
+	if (!force && (isAutoScrolling || !shouldFollowChat)) return;
+	if (force) shouldFollowChat = true;
 
 	isAutoScrolling = true;
 
 	requestAnimationFrame(() => {
 		if (S.chatMsgBox) {
 			S.chatMsgBox.scrollTop = S.chatMsgBox.scrollHeight;
+			shouldFollowChat = true;
 			hideNewContentIndicator();
 		}
 		isAutoScrolling = false;
@@ -71,11 +96,13 @@ export function isChatAtBottom(threshold = 60): boolean {
  * - else → show indicator, let user choose when to scroll
  */
 export function smartScrollToBottom(): void {
+	ensureChatFollowTracking();
 	if (S.autoScrollMode === "always") {
 		scrollChatToBottom(true);
 		return;
 	}
-	if (isChatAtBottom()) {
+	if (shouldFollowChat || isChatAtBottom()) {
+		shouldFollowChat = true;
 		scrollChatToBottom();
 	} else {
 		showNewContentIndicator();
