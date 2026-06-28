@@ -456,9 +456,6 @@
     font-style: italic;
   }
   .tool-call-header {
-    appearance: none;
-    border: 0;
-    background: transparent;
     color: inherit;
     display: flex;
     flex-direction: column;
@@ -467,10 +464,21 @@
     width: 100%;
     min-width: 0;
     padding: 2px 3px;
+    text-align: left;
+  }
+  .tool-call-toggle {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    padding: 0;
     cursor: pointer;
     text-align: left;
   }
-  .tool-call-header:hover {
+  .tool-call-toggle:hover {
     background: var(--bg-hover);
   }
   .tool-call-chevron {
@@ -514,6 +522,8 @@
     font-size: 0.72rem;
     line-height: 1.22;
     overflow: hidden;
+    cursor: text;
+    user-select: text;
   }
   .tool-call-summary code,
   .tool-call-summary .exec-cmd {

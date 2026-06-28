@@ -131,10 +131,13 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 	if (options.id) card.id = options.id;
 	card.setAttribute("data-tool-name", toolName);
 
-	const header = document.createElement("button");
-	header.type = "button";
+	const header = document.createElement("div");
 	header.className = "tool-call-header";
-	header.setAttribute("aria-expanded", String(expanded));
+
+	const toggle = document.createElement("button");
+	toggle.type = "button";
+	toggle.className = "tool-call-toggle";
+	toggle.setAttribute("aria-expanded", String(expanded));
 
 	const metaRow = document.createElement("span");
 	metaRow.className = "tool-call-meta-row";
@@ -161,7 +164,8 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 		metaRow.appendChild(modeEl);
 	}
 
-	header.appendChild(metaRow);
+	toggle.appendChild(metaRow);
+	header.appendChild(toggle);
 
 	const summaryEl = document.createElement("span");
 	summaryEl.className = "exec-prompt tool-call-summary";
@@ -175,7 +179,7 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 	details.hidden = !expanded;
 	if (options.id) {
 		details.id = `${options.id}-details`;
-		header.setAttribute("aria-controls", details.id);
+		toggle.setAttribute("aria-controls", details.id);
 	}
 
 	appendRawPayload(details, "Parameters", options.arguments, {
@@ -203,7 +207,7 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 
 	card.appendChild(details);
 
-	header.addEventListener("click", () => {
+	toggle.addEventListener("click", () => {
 		setToolCardExpanded(card, !isToolCardExpanded(card));
 	});
 
@@ -225,8 +229,8 @@ export function setToolCardExpanded(card: HTMLElement, expanded: boolean): void 
 	card.classList.toggle("is-collapsed", !expanded);
 	const details = card.querySelector(".tool-call-details") as HTMLElement | null;
 	if (details) details.hidden = !expanded;
-	const header = card.querySelector(".tool-call-header") as HTMLElement | null;
-	if (header) header.setAttribute("aria-expanded", String(expanded));
+	const toggle = card.querySelector(".tool-call-toggle") as HTMLElement | null;
+	if (toggle) toggle.setAttribute("aria-expanded", String(expanded));
 	const chevron = card.querySelector(".tool-call-chevron") as HTMLElement | null;
 	if (chevron) chevron.textContent = expanded ? "⌄" : "›";
 }
