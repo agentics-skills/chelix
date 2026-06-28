@@ -12,7 +12,7 @@ import {
 	updateCommandInputUI,
 	updateTokenBar,
 } from "../chat-ui";
-import { highlightCodeBlocks, renderExecCommand } from "../code-highlight";
+import { highlightCodeBlocks } from "../code-highlight";
 import * as gon from "../gon";
 import {
 	formatAssistantTokenUsage,
@@ -21,10 +21,8 @@ import {
 	renderAudioPlayer,
 	renderDocument,
 	renderMarkdown,
-	renderScreenshot,
 	sendRpc,
 	tokenSpeedTone,
-	toolCallSummary,
 } from "../helpers";
 import { appendMessageActions } from "../message-actions";
 import { upsertTtsProviderFooter } from "../message-voice";
@@ -33,7 +31,15 @@ import { settingsPath } from "../routes";
 import * as S from "../state";
 import { modelStore } from "../stores/model-store";
 import { sessionStore } from "../stores/session-store";
+import {
+	appendToolCardError,
+	createToolCallCard,
+	getToolCardDetailsContainer,
+	renderToolCardError,
+	renderToolCardResult,
+} from "../tool-call-card";
 import type { HistoryMessage } from "../types";
+import type { ToolResult } from "../types/ws-events";
 
 import { computeHistoryTailIndex, ensureHistoryScrollBinding, syncHistoryState } from "./session-history";
 
@@ -48,16 +54,7 @@ interface ToolResultMsg extends HistoryMessage {
 	tool_name?: string;
 	arguments?: unknown;
 	success?: boolean;
-	result?: {
-		stdout?: string;
-		stderr?: string;
-		exit_code?: number;
-		screenshot?: string;
-		document_ref?: string;
-		filename?: string;
-		mime_type?: string;
-		size_bytes?: number;
-	};
+	result?: ToolResult;
 	error?: string;
 	reasoning?: string;
 }
@@ -287,65 +284,32 @@ function renderHistoryAssistantMessage(msg: AssistantMsg): HTMLElement | null {
 	return el;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Sequential result field rendering
 function renderHistoryToolResult(msg: ToolResultMsg): HTMLElement {
-	const tpl = S.$<HTMLTemplateElement>("tpl-exec-card")!;
-	const frag = tpl.content.cloneNode(true) as DocumentFragment;
-	const card = frag.firstElementChild as HTMLElement;
-
-	const statusEl = card.querySelector(".exec-status");
-	if (statusEl) statusEl.remove();
-
-	const cmd = toolCallSummary(msg.tool_name, msg.arguments as Parameters<typeof toolCallSummary>[1]);
-	renderExecCommand(card.querySelector("[data-cmd]") as HTMLElement, cmd);
-
-	card.className = `msg exec-card ${msg.success ? "exec-ok" : "exec-err"}`;
+	const success = msg.success !== false;
+	const card = createToolCallCard({
+		toolName: msg.tool_name,
+		arguments: msg.arguments,
+		status: success ? "success" : "error",
+		expanded: msg.tool_name === "exec",
+	});
 
 	if (msg.result) {
-		const out = (msg.result.stdout || "").replace(/\n+$/, "");
-		if (out) {
-			const outEl = document.createElement("pre");
-			outEl.className = "exec-output";
-			outEl.textContent = out;
-			card.appendChild(outEl);
-		}
-		const stderrText = (msg.result.stderr || "").replace(/\n+$/, "");
-		if (stderrText) {
-			const errEl = document.createElement("pre");
-			errEl.className = "exec-output exec-stderr";
-			errEl.textContent = stderrText;
-			card.appendChild(errEl);
-		}
-		if (msg.result.exit_code !== undefined && msg.result.exit_code !== 0) {
-			const codeEl = document.createElement("div");
-			codeEl.className = "exec-exit";
-			codeEl.textContent = `exit ${msg.result.exit_code}`;
-			card.appendChild(codeEl);
-		}
-		if (msg.result.screenshot && !msg.result.screenshot.startsWith("data:")) {
-			const filename = msg.result.screenshot.split("/").pop() || "";
-			const sessionKey = S.activeSessionKey || "main";
-			const mediaSrc = `/api/sessions/${encodeURIComponent(sessionKey)}/media/${encodeURIComponent(filename)}`;
-			renderScreenshot(card, mediaSrc);
-		}
-		if (msg.result.document_ref) {
-			const docStoredName = msg.result.document_ref.split("/").pop() || "";
-			const docDisplayName = msg.result.filename || docStoredName;
-			const docSessionKey = S.activeSessionKey || "main";
-			const docMediaSrc = `/api/sessions/${encodeURIComponent(docSessionKey)}/media/${encodeURIComponent(docStoredName)}`;
-			renderDocument(card, docMediaSrc, docDisplayName, msg.result.mime_type, msg.result.size_bytes);
-		}
+		renderToolCardResult(card, msg.result, {
+			sessionKey: S.activeSessionKey || "main",
+			screenshotMode: "media",
+		});
 	}
 
 	if (!msg.success && msg.error) {
-		const errMsg = document.createElement("div");
-		errMsg.className = "exec-error-detail";
-		errMsg.textContent = msg.error;
-		card.appendChild(errMsg);
+		if (msg.result) {
+			appendToolCardError(card, msg.error);
+		} else {
+			renderToolCardError(card, msg.error);
+		}
 	}
 
 	if (msg.reasoning) {
-		appendReasoningDisclosure(card, msg.reasoning);
+		appendReasoningDisclosure(getToolCardDetailsContainer(card), msg.reasoning);
 	}
 
 	if (S.chatMsgBox) S.chatMsgBox.appendChild(card);

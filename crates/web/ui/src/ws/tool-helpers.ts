@@ -9,23 +9,26 @@ import {
 	smartScrollToBottom,
 	stripChannelPrefix,
 } from "../chat-ui";
-import { renderExecCommand } from "../code-highlight";
 import {
 	formatAssistantTokenUsage,
 	formatTokenSpeed,
 	renderAudioPlayer,
-	renderDocument,
-	renderMapLinks,
-	renderMapPointGroups,
 	renderMarkdown,
-	renderScreenshot,
 	tokenSpeedTone,
-	toolCallSummary,
 } from "../helpers";
 import { appendMessageActions } from "../message-actions";
 import { navigate } from "../router";
 import * as S from "../state";
 import { sessionStore } from "../stores/session-store";
+import {
+	appendToolCardError,
+	createToolCallCard,
+	getToolCardDetailsContainer,
+	renderToolCardError,
+	renderToolCardResult,
+	setToolCardExpanded,
+	setToolCardStatus,
+} from "../tool-call-card";
 import type { ChatPayload, ToolCallPayload, ToolResult } from "../types/ws-events";
 import { clearChatEmptyState, hasNonWhitespaceContent, isReasoningAlreadyShown, setSafeMarkdownHtml } from "./shared";
 
@@ -71,45 +74,7 @@ export function appendToolResult(toolCard: HTMLElement, result: ToolResult, even
 	if (toolSession) toolSession.lastToolOutput.value = out;
 	// Dual-write to global state for backward compat
 	S.setLastToolOutput(out);
-	if (out) {
-		const outEl = document.createElement("pre");
-		outEl.className = "exec-output";
-		outEl.textContent = out;
-		toolCard.appendChild(outEl);
-	}
-	const stderrText = (result.stderr || "").replace(/\n+$/, "");
-	if (stderrText) {
-		const errEl = document.createElement("pre");
-		errEl.className = "exec-output exec-stderr";
-		errEl.textContent = stderrText;
-		toolCard.appendChild(errEl);
-	}
-	if (result.exit_code !== undefined && result.exit_code !== 0) {
-		const codeEl = document.createElement("div");
-		codeEl.className = "exec-exit";
-		codeEl.textContent = `exit ${result.exit_code}`;
-		toolCard.appendChild(codeEl);
-	}
-	// Browser screenshot support - display as thumbnail with lightbox and download
-	if (result.screenshot) {
-		const imgSrc = result.screenshot.startsWith("data:")
-			? result.screenshot
-			: `data:image/png;base64,${result.screenshot}`;
-		renderScreenshot(toolCard, imgSrc, result.screenshot_scale || 1);
-	}
-	// Document card (send_document tool)
-	if (result.document_ref) {
-		const docStoredName = result.document_ref.split("/").pop() || "";
-		const docDisplayName = result.filename || docStoredName;
-		const docSessionKey = eventSession || S.activeSessionKey || "main";
-		const docMediaSrc = `/api/sessions/${encodeURIComponent(docSessionKey)}/media/${encodeURIComponent(docStoredName)}`;
-		renderDocument(toolCard, docMediaSrc, docDisplayName, result.mime_type, result.size_bytes);
-	}
-	// Map link buttons (show_map tool)
-	const renderedPointGroups = renderMapPointGroups(toolCard, result.points, result.label);
-	if (!renderedPointGroups && result.map_links) {
-		renderMapLinks(toolCard, result.map_links, result.label);
-	}
+	renderToolCardResult(toolCard, result, { sessionKey: eventSession || S.activeSessionKey || "main" });
 }
 
 // ── Tool card completion ──────────────────────────────────────
@@ -128,24 +93,23 @@ function isToolValidationErrorPayload(p: ChatPayload): boolean {
 export function completeToolCard(toolCard: HTMLElement, p: ChatPayload, eventSession: string): void {
 	// Use muted "retry" style for validation errors, normal styles otherwise.
 	if (isToolValidationErrorPayload(p)) {
-		toolCard.className = "msg exec-card exec-retry";
+		setToolCardStatus(toolCard, "retry");
 	} else {
-		toolCard.className = `msg exec-card ${p.success ? "exec-ok" : "exec-err"}`;
+		setToolCardStatus(toolCard, p.success ? "success" : "error");
 	}
-
-	const toolSpin = toolCard.querySelector(".exec-status");
-	if (toolSpin) toolSpin.remove();
 
 	if (p.success && p.result) {
 		appendToolResult(toolCard, p.result, eventSession);
-		return;
+	} else if (!p.success && p.result) {
+		appendToolResult(toolCard, p.result, eventSession);
+		if (p.error) appendToolCardError(toolCard, p.error, isToolValidationErrorPayload(p));
+	} else if (p.success) {
+		renderToolCardResult(toolCard, {}, { sessionKey: eventSession || S.activeSessionKey || "main" });
+	} else if (p.error) {
+		renderToolCardError(toolCard, p.error, isToolValidationErrorPayload(p));
 	}
-	if (!p.success && p.error && p.error.detail) {
-		const errMsg = document.createElement("div");
-		errMsg.className = isToolValidationErrorPayload(p) ? "exec-retry-detail" : "exec-error-detail";
-		errMsg.textContent = p.error.detail;
-		toolCard.appendChild(errMsg);
-	}
+	setToolCardExpanded(toolCard, p.toolName === "exec");
+
 	// Show a hint below the card when a skill is created or updated.
 	if (p.success && (p.toolName === "create_skill" || p.toolName === "update_skill")) {
 		const hint = document.createElement("div");
@@ -159,7 +123,7 @@ export function completeToolCard(toolCard: HTMLElement, p: ChatPayload, eventSes
 			navigate("/skills");
 		});
 		hint.append(`Skill ${verb} \u2014 available in your `, link);
-		toolCard.appendChild(hint);
+		getToolCardDetailsContainer(toolCard).appendChild(hint);
 	}
 }
 
@@ -168,8 +132,14 @@ export function clearStaleRunningToolCards(): void {
 	const statusEls = S.chatMsgBox.querySelectorAll(".msg.exec-card .exec-status");
 	for (const statusEl of statusEls) {
 		const card = statusEl.closest(".msg.exec-card") as HTMLElement | null;
-		statusEl.remove();
 		if (!card) continue;
+		if (!card.classList.contains("running")) continue;
+		if (card.classList.contains("tool-call-card")) {
+			setToolCardStatus(card, "success");
+			setToolCardExpanded(card, false);
+			continue;
+		}
+		statusEl.remove();
 		if (!(card.classList.contains("exec-ok") || card.classList.contains("exec-err"))) {
 			card.className = "msg exec-card exec-ok";
 		}
@@ -204,15 +174,16 @@ export function handleToolCallStartDom(p: ChatPayload, eventSession: string): vo
 	}
 	const cardId = toolCallCardId(p);
 	if (document.getElementById(cardId)) return;
-	const tpl = S.$<HTMLTemplateElement>("tpl-exec-card")!;
-	const frag = tpl.content.cloneNode(true) as DocumentFragment;
-	const card = frag.firstElementChild as HTMLElement;
-	card.id = cardId;
-	const cmd = toolCallSummary(p.toolName, p.arguments, p.executionMode);
-	const cmdEl = card.querySelector("[data-cmd]");
-	if (cmdEl) renderExecCommand(cmdEl as HTMLElement, cmd);
+	const card = createToolCallCard({
+		id: cardId,
+		toolName: p.toolName,
+		arguments: p.arguments,
+		executionMode: p.executionMode,
+		status: "running",
+		expanded: true,
+	});
 	// Preserve thinking text as a reasoning disclosure inside the tool card
-	if (thinkingText) appendReasoningDisclosure(card, thinkingText);
+	if (thinkingText) appendReasoningDisclosure(getToolCardDetailsContainer(card), thinkingText);
 	clearChatEmptyState();
 	S.chatMsgBox?.appendChild(card);
 	const endKey = toolCallEventKey(eventSession, p);

@@ -368,18 +368,24 @@
     color: var(--error);
   }
 
-  /* Exec card */
+  /* Tool / exec card */
   .msg.exec-card {
     align-self: flex-start;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    padding: 8px 12px;
-    max-width: 70%;
+    padding: 0;
+    max-width: 82%;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 0;
     white-space: normal;
+    overflow: visible;
+    box-shadow: var(--shadow-sm);
+    line-height: 1.2;
+  }
+  .msg.exec-card.running {
+    border-color: var(--accent-dim);
   }
   .msg.exec-card.exec-ok {
     border-color: var(--border);
@@ -402,9 +408,9 @@
     color: var(--error);
   }
   .exec-status {
-    font-size: 0.72rem;
+    font-size: 0.62rem;
     color: var(--muted);
-    font-style: italic;
+    white-space: nowrap;
   }
   .exec-output {
     font-family: var(--font-mono);
@@ -427,7 +433,13 @@
   .exec-exit {
     font-family: var(--font-mono);
     font-size: 0.72rem;
+    color: var(--muted);
+  }
+  .exec-exit-error {
     color: var(--error);
+  }
+  .exec-exit-ok {
+    color: var(--ok);
   }
   .exec-error-detail {
     font-size: 0.78rem;
@@ -442,6 +454,200 @@
     font-size: 0.72rem;
     color: var(--muted);
     font-style: italic;
+  }
+  .tool-call-header {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1px;
+    width: 100%;
+    min-width: 0;
+    padding: 2px 3px;
+    cursor: pointer;
+    text-align: left;
+  }
+  .tool-call-header:hover {
+    background: var(--bg-hover);
+  }
+  .tool-call-chevron {
+    color: var(--muted);
+    font-size: 0.7rem;
+    line-height: 1;
+    width: 8px;
+    text-align: center;
+  }
+  .tool-call-meta-row {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 2px;
+    line-height: 1;
+  }
+  .tool-call-name {
+    flex: 0 0 auto;
+    color: var(--accent);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface2);
+    padding: 0 4px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .tool-call-mode {
+    flex: 0 0 auto;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0 4px;
+    font-size: 0.6rem;
+    line-height: 1.2;
+  }
+  .tool-call-summary {
+    min-width: 0;
+    width: 100%;
+    color: var(--text);
+    font-size: 0.72rem;
+    line-height: 1.22;
+    overflow: hidden;
+  }
+  .tool-call-summary code,
+  .tool-call-summary .exec-cmd {
+    display: block;
+    background: none;
+    border-radius: 0;
+    padding: 0;
+    font-size: inherit;
+    line-height: inherit;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tool-call-status {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0 4px;
+    background: var(--surface2);
+    font-style: normal;
+    line-height: 1.2;
+  }
+  .tool-call-card.running .tool-call-status {
+    color: var(--accent);
+    border-color: var(--accent-dim);
+    background: var(--accent-subtle);
+  }
+  .tool-call-card.exec-ok .tool-call-status {
+    color: var(--ok);
+  }
+  .tool-call-card.exec-err .tool-call-status {
+    color: var(--error);
+    border-color: var(--error);
+  }
+  .tool-call-card.exec-retry .tool-call-status {
+    color: var(--muted);
+  }
+  .tool-call-details {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 3px;
+    border-top: 1px solid var(--border);
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+  .tool-call-details[hidden] {
+    display: none;
+  }
+  .tool-call-section {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .tool-call-section-title,
+  .tool-call-output-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .tool-call-json {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 5px;
+    margin: 0;
+    line-height: 1.45;
+    white-space: pre;
+    overflow: auto;
+    max-height: 160px;
+  }
+  .tool-call-result-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .tool-call-result-placeholder {
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-style: italic;
+  }
+  .tool-call-output-block {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .tool-call-output {
+    max-height: 260px;
+  }
+  .tool-call-raw {
+    margin-top: 0;
+  }
+  .tool-call-raw summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 0.65rem;
+    line-height: 1.15;
+    user-select: none;
+  }
+  .tool-call-raw-json {
+    margin-top: 3px;
+    max-height: 150px;
+  }
+  .tool-call-params-details {
+    color: var(--muted);
+  }
+  .tool-call-card[data-tool-name="exec"] .tool-call-summary code,
+  .tool-call-card[data-tool-name="exec"] .tool-call-summary .exec-cmd {
+    white-space: pre-wrap;
+    overflow: visible;
+    text-overflow: clip;
+    word-break: break-word;
+  }
+  .msg.exec-card .tool-call-summary code,
+  .msg.exec-card .tool-call-summary .exec-cmd {
+    background: none;
+    border-radius: 0;
+    padding: 0;
+    font-size: inherit;
+    line-height: inherit;
+  }
+  .msg.exec-card .tool-call-json,
+  .msg.exec-card .exec-output {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 5px;
+    margin: 0;
+    overflow: auto;
   }
   /* Browser screenshot thumbnail */
   .screenshot-container {
