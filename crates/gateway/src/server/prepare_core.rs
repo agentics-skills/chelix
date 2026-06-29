@@ -1196,6 +1196,17 @@ pub async fn prepare_gateway_core(
         None
     };
 
+    // ── Memory system initialization ─────────────────────────────────────
+    let memory_manager = init_memory::init_memory_system(
+        &config,
+        &data_dir,
+        &effective_providers,
+        &runtime_env_overrides,
+        config.server.db_pool_max_connections,
+    )
+    .await;
+    startup_mem_probe.checkpoint("memory_manager.initialized");
+
     // Wire live session service.
     {
         let mut session_svc =
@@ -1208,6 +1219,9 @@ pub async fn prepare_gateway_core(
                 .with_project_store(Arc::clone(&project_store))
                 .with_state_store(Arc::clone(&session_state_store))
                 .with_browser_service(Arc::clone(&services.browser));
+        if let Some(ref manager) = memory_manager {
+            session_svc = session_svc.with_memory_manager(Arc::clone(manager));
+        }
         #[cfg(feature = "fs-tools")]
         if let Some(ref fs_state) = shared_fs_state {
             session_svc = session_svc.with_fs_state(Arc::clone(fs_state));
@@ -1217,17 +1231,6 @@ pub async fn prepare_gateway_core(
         }
         services.session = Arc::new(session_svc);
     }
-
-    // ── Memory system initialization ─────────────────────────────────────
-    let memory_manager = init_memory::init_memory_system(
-        &config,
-        &data_dir,
-        &effective_providers,
-        &runtime_env_overrides,
-        config.server.db_pool_max_connections,
-    )
-    .await;
-    startup_mem_probe.checkpoint("memory_manager.initialized");
 
     // ── Code index initialization ──────────────────────────────────────
     let code_index = init_code_index::init_code_index(&data_dir, &config).await;

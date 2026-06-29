@@ -88,16 +88,21 @@ These fields drive the tree rendering in the sidebar. Sessions with a parent
 appear indented under it; deeply nested forks indent further.
 
 ```admonish warning title="Deleting a parent"
-Deleting a parent session does **not** cascade to its children. Child sessions
-become top-level sessions — they keep their messages and history but lose
-their visual nesting in the sidebar.
+Deleting a parent session cascades to all of its fork descendants. The delete
+operation removes each descendant before the parent, and also clears active
+channel mappings that pointed at any deleted session.
 ```
+
+Session deletion also removes session-specific memory export Markdown files and
+their indexed chunks/embedding blobs from memory search. The global embedding
+cache is content-hash based and is not treated as session-owned data.
 
 ## Navigation After Delete
 
 When you delete a forked session, the UI navigates back to its parent session.
-If the deleted session had no parent (or the parent no longer exists), it falls
-back to the next sibling or `main`.
+If the deleted session had no parent, the parent no longer exists, or the parent
+was part of the same cascaded deletion, it falls back to the next sibling or
+`main`.
 
 ## Archive in the UI
 

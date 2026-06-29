@@ -1375,6 +1375,236 @@ mod tests {
     #[path = "archive_search_tests.rs"]
     mod archive_search_tests;
 
+    #[tokio::test]
+    async fn delete_cascades_child_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlite_pool().await;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        metadata
+            .upsert("session:root", Some("Root".to_string()))
+            .await
+            .unwrap();
+        metadata
+            .upsert("session:child", Some("Child".to_string()))
+            .await
+            .unwrap();
+        metadata
+            .upsert("session:grandchild", Some("Grandchild".to_string()))
+            .await
+            .unwrap();
+        metadata
+            .set_parent("session:child", Some("session:root".to_string()), Some(1))
+            .await;
+        metadata
+            .set_parent(
+                "session:grandchild",
+                Some("session:child".to_string()),
+                Some(2),
+            )
+            .await;
+
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
+
+        svc.delete(serde_json::json!({ "key": "session:root" }))
+            .await
+            .unwrap();
+
+        assert!(metadata.get("session:root").await.is_none());
+        assert!(metadata.get("session:child").await.is_none());
+        assert!(metadata.get("session:grandchild").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn delete_clears_channel_session_mappings_for_cascade() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlite_pool().await;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        metadata
+            .upsert("session:root", Some("Root".to_string()))
+            .await
+            .unwrap();
+        metadata
+            .upsert("session:child", Some("Child".to_string()))
+            .await
+            .unwrap();
+        metadata
+            .set_parent("session:child", Some("session:root".to_string()), Some(1))
+            .await;
+        metadata
+            .set_active_session("telegram", "bot", "root-chat", None, "session:root")
+            .await;
+        metadata
+            .set_active_session("telegram", "bot", "child-chat", None, "session:child")
+            .await;
+
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
+
+        svc.delete(serde_json::json!({ "key": "session:root" }))
+            .await
+            .unwrap();
+
+        assert!(
+            metadata
+                .get_active_session("telegram", "bot", "root-chat", None)
+                .await
+                .is_none()
+        );
+        assert!(
+            metadata
+                .get_active_session("telegram", "bot", "child-chat", None)
+                .await
+                .is_none()
+        );
+    }
+
+    struct MockMemoryRuntime {
+        data_dir: PathBuf,
+        removed_paths: std::sync::Mutex<Vec<PathBuf>>,
+    }
+
+    impl MockMemoryRuntime {
+        fn new(data_dir: PathBuf) -> Self {
+            Self {
+                data_dir,
+                removed_paths: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        fn removed_paths(&self) -> Vec<PathBuf> {
+            self.removed_paths.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl moltis_agents::memory_writer::MemoryWriter for MockMemoryRuntime {
+        async fn write_memory(
+            &self,
+            _file: &str,
+            _content: &str,
+            _append: bool,
+        ) -> anyhow::Result<moltis_agents::memory_writer::MemoryWriteResult> {
+            Ok(moltis_agents::memory_writer::MemoryWriteResult {
+                location: String::new(),
+                bytes_written: 0,
+                checkpoint_id: None,
+            })
+        }
+    }
+
+    #[async_trait]
+    impl moltis_memory::runtime::MemoryRuntime for MockMemoryRuntime {
+        fn backend_name(&self) -> &'static str {
+            "mock"
+        }
+
+        fn data_dir(&self) -> Option<&Path> {
+            Some(&self.data_dir)
+        }
+
+        fn has_embeddings(&self) -> bool {
+            true
+        }
+
+        fn citation_mode(&self) -> moltis_memory::config::CitationMode {
+            moltis_memory::config::CitationMode::Auto
+        }
+
+        fn llm_reranking_enabled(&self) -> bool {
+            false
+        }
+
+        async fn sync(&self) -> moltis_memory::error::Result<moltis_memory::manager::SyncReport> {
+            Ok(moltis_memory::manager::SyncReport::default())
+        }
+
+        async fn sync_path(&self, _path: &Path) -> moltis_memory::error::Result<bool> {
+            Ok(false)
+        }
+
+        async fn remove_path(&self, path: &Path) -> moltis_memory::error::Result<bool> {
+            self.removed_paths.lock().unwrap().push(path.to_path_buf());
+            Ok(true)
+        }
+
+        async fn search(
+            &self,
+            _query: &str,
+            _limit: usize,
+        ) -> moltis_memory::error::Result<Vec<moltis_memory::search::SearchResult>> {
+            Ok(Vec::new())
+        }
+
+        async fn get_chunk(
+            &self,
+            _id: &str,
+        ) -> moltis_memory::error::Result<Option<moltis_memory::schema::ChunkRow>> {
+            Ok(None)
+        }
+
+        async fn status(
+            &self,
+        ) -> moltis_memory::error::Result<moltis_memory::manager::MemoryStatus> {
+            Ok(moltis_memory::manager::MemoryStatus {
+                total_files: 0,
+                total_chunks: 0,
+                embedding_model: "mock".to_string(),
+                db_size_bytes: 0,
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_removes_session_memory_exports_from_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().join("sessions")));
+        let pool = sqlite_pool().await;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        metadata
+            .upsert("session:memory", Some("Memory".to_string()))
+            .await
+            .unwrap();
+
+        let memory_dir = dir.path().join("memory");
+        let nested_memory_dir = memory_dir.join("sessions");
+        tokio::fs::create_dir_all(&nested_memory_dir).await.unwrap();
+        let hook_export = memory_dir.join("session-sessionmemory-2024-01-01.md");
+        let transcript_export = nested_memory_dir.join("session-2024-01-01-sessionmemory.md");
+        let unrelated_export = memory_dir.join("session-other-2024-01-01.md");
+        tokio::fs::write(
+            &hook_export,
+            "# Session Export\n\n- **Session**: session:memory\n",
+        )
+        .await
+        .unwrap();
+        tokio::fs::write(&transcript_export, "---\nsession_id: session:memory\n---\n")
+            .await
+            .unwrap();
+        tokio::fs::write(
+            &unrelated_export,
+            "# Session Export\n\n- **Session**: session:other\n",
+        )
+        .await
+        .unwrap();
+
+        let memory_runtime = Arc::new(MockMemoryRuntime::new(dir.path().to_path_buf()));
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
+            .with_memory_manager(Arc::clone(&memory_runtime) as DynMemoryRuntime);
+
+        svc.delete(serde_json::json!({ "key": "session:memory" }))
+            .await
+            .unwrap();
+
+        assert!(!hook_export.exists());
+        assert!(!transcript_export.exists());
+        assert!(unrelated_export.exists());
+        let removed_paths = memory_runtime.removed_paths();
+        assert!(removed_paths.contains(&hook_export));
+        assert!(removed_paths.contains(&transcript_export));
+        assert!(!removed_paths.contains(&unrelated_export));
+    }
+
     #[cfg(feature = "fs-tools")]
     #[tokio::test]
     async fn delete_clears_fs_state_for_session() {

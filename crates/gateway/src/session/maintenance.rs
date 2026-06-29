@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::*;
 
 impl LiveSessionService {
@@ -16,6 +18,34 @@ impl LiveSessionService {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
+        let delete_order = self.collect_session_delete_order(key).await;
+        for session_key in delete_order {
+            self.delete_single_session(&session_key, force).await?;
+        }
+
+        Ok(serde_json::json!({ "ok": true }))
+    }
+
+    async fn collect_session_delete_order(&self, root_key: &str) -> Vec<String> {
+        let mut order = Vec::new();
+        let mut seen = HashSet::new();
+        let mut stack = vec![root_key.to_string()];
+
+        while let Some(key) = stack.pop() {
+            if !seen.insert(key.clone()) {
+                continue;
+            }
+            order.push(key.clone());
+            for child in self.metadata.list_children(&key).await {
+                stack.push(child.key);
+            }
+        }
+
+        order.reverse();
+        order
+    }
+
+    async fn delete_single_session(&self, key: &str, force: bool) -> Result<(), ServiceError> {
         // Check for worktree cleanup before deleting metadata.
         if let Some(entry) = self.metadata.get(key).await
             && entry.worktree_branch.is_some()
@@ -68,6 +98,12 @@ impl LiveSessionService {
             tracing::warn!("session state cleanup for {key}: {e}");
         }
 
+        self.metadata.clear_active_session_mappings(key).await;
+
+        if let Err(e) = self.cleanup_session_memory_exports(key).await {
+            tracing::warn!(session = %key, error = %e, "session memory export cleanup failed");
+        }
+
         #[cfg(feature = "fs-tools")]
         if let Some(ref fs_state) = self.fs_state {
             let mut guard = fs_state
@@ -88,7 +124,74 @@ impl LiveSessionService {
             }
         }
 
-        Ok(serde_json::json!({ "ok": true }))
+        Ok(())
+    }
+
+    async fn cleanup_session_memory_exports(&self, key: &str) -> Result<(), anyhow::Error> {
+        let Some(manager) = self.memory_manager.as_ref() else {
+            return Ok(());
+        };
+        let Some(data_dir) = manager.data_dir().map(Path::to_path_buf) else {
+            return Ok(());
+        };
+
+        let memory_dir = data_dir.join("memory");
+        let markers = session_memory_markers(key);
+        let mut dirs = vec![memory_dir];
+
+        while let Some(dir) = dirs.pop() {
+            let mut entries = match tokio::fs::read_dir(&dir).await {
+                Ok(entries) => entries,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    tracing::warn!(path = %dir.display(), %error, "failed to scan memory directory");
+                    continue;
+                },
+            };
+
+            while let Some(entry) = entries.next_entry().await? {
+                let path = entry.path();
+                let file_type = match entry.file_type().await {
+                    Ok(file_type) => file_type,
+                    Err(error) => {
+                        tracing::warn!(path = %path.display(), %error, "failed to inspect memory entry");
+                        continue;
+                    },
+                };
+
+                if file_type.is_dir() {
+                    dirs.push(path);
+                    continue;
+                }
+                if !file_type.is_file() || !is_session_memory_export_candidate(&path) {
+                    continue;
+                }
+
+                let content = match tokio::fs::read_to_string(&path).await {
+                    Ok(content) => content,
+                    Err(error) => {
+                        tracing::warn!(path = %path.display(), %error, "failed to read memory export candidate");
+                        continue;
+                    },
+                };
+                if !markers.iter().any(|marker| content.contains(marker)) {
+                    continue;
+                }
+
+                if let Err(error) = manager.remove_path(&path).await {
+                    tracing::warn!(path = %path.display(), %error, "failed to remove memory export from index");
+                }
+                match tokio::fs::remove_file(&path).await {
+                    Ok(()) => {},
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+                    Err(error) => {
+                        tracing::warn!(path = %path.display(), %error, "failed to delete memory export file");
+                    },
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub(super) async fn fork_impl(&self, params: Value) -> ServiceResult {
@@ -299,6 +402,9 @@ impl LiveSessionService {
             {
                 continue;
             }
+            if self.metadata.get(&entry.key).await.is_none() {
+                continue;
+            }
 
             // Reuse delete logic via params.
             let params = serde_json::json!({ "key": entry.key, "force": true });
@@ -358,4 +464,19 @@ impl LiveSessionService {
             }
         }))
     }
+}
+
+fn session_memory_markers(key: &str) -> Vec<String> {
+    vec![
+        format!("- **Session**: {key}"),
+        format!("session_id: {key}"),
+    ]
+}
+
+fn is_session_memory_export_candidate(path: &Path) -> bool {
+    path.extension().and_then(|extension| extension.to_str()) == Some("md")
+        && path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("session-"))
 }

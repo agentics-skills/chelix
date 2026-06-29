@@ -119,7 +119,7 @@ watcher to re-index.
 | **Manual compaction** | `/compact` (uses [configured compaction strategy](compaction.md#the-four-modes)) | `/compact` command with optional instructions |
 | **Pre-compaction memory flush** | Silent turn via `MemoryWriter` trait | Silent turn via `write_file` tool |
 | **Flush visibility** | Completely hidden from user | Hidden via `NO_REPLY` convention |
-| **Session export to memory** | Markdown files in `memory/sessions/` | Optional (`sessionMemory` experimental flag) |
+| **Session export to memory** | Markdown files under `memory/` and `memory/sessions/` | Optional (`sessionMemory` experimental flag) |
 | **Session pruning** | Not yet | Cache-TTL based, trims old tool results |
 | **Session transcript indexing** | Via session export | Experimental, async delta-based |
 

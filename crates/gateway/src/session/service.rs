@@ -57,6 +57,7 @@ pub struct LiveSessionService {
     pub(super) hook_registry: Option<Arc<HookRegistry>>,
     pub(super) state_store: Option<Arc<SessionStateStore>>,
     pub(super) browser_service: Option<Arc<dyn crate::services::BrowserService>>,
+    pub(super) memory_manager: Option<DynMemoryRuntime>,
     #[cfg(feature = "fs-tools")]
     pub(super) fs_state: Option<FsState>,
 }
@@ -75,6 +76,7 @@ impl LiveSessionService {
             hook_registry: None,
             state_store: None,
             browser_service: None,
+            memory_manager: None,
             #[cfg(feature = "fs-tools")]
             fs_state: None,
         }
@@ -160,6 +162,11 @@ impl LiveSessionService {
         browser: Arc<dyn crate::services::BrowserService>,
     ) -> Self {
         self.browser_service = Some(browser);
+        self
+    }
+
+    pub fn with_memory_manager(mut self, manager: DynMemoryRuntime) -> Self {
+        self.memory_manager = Some(manager);
         self
     }
 
