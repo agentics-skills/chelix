@@ -40,7 +40,7 @@ pub(crate) fn tail_lines(text: &str, n: usize) -> String {
 }
 
 /// Default container image used when none is configured.
-pub const DEFAULT_SANDBOX_IMAGE: &str = "ubuntu:25.10";
+pub const DEFAULT_SANDBOX_IMAGE: &str = "ubuntu:26.04";
 
 /// Sandbox mode controlling when sandboxing is applied.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -48,7 +48,7 @@ export default {
 		branchPrefix: "分支字首",
 		branchPrefixPlaceholder: "預設：moltis",
 		sandboxImage: "沙盒映像檔",
-		sandboxImagePlaceholder: "預設（ubuntu:25.10）",
+		sandboxImagePlaceholder: "預設（ubuntu:26.04）",
 		autoWorktree: "每個工作階段自動建立 git 工作目錄",
 		codeIndex: "啟用程式碼索引（語意搜尋）",
 	},

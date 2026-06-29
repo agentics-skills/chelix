@@ -140,7 +140,6 @@ const CATEGORY_MAP: &[(&str, &[&str])] = &[
         "osm2pgsql",
         "osmium-tool",
         "osmctools",
-        "python3-mapnik",
     ]),
     ("CalDAV/CardDAV", &["vdirsyncer", "khal", "python3-caldav"]),
     ("Email", &[

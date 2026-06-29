@@ -378,7 +378,7 @@ test.describe("Sandboxes page – Container error handling", () => {
 						containers: [
 							{
 								name: "moltis-sandbox-ghost",
-								image: "ubuntu:25.10",
+								image: "ubuntu:26.04",
 								state: "stopped",
 								backend: "apple-container",
 								cpus: null,
@@ -436,7 +436,7 @@ test.describe("Sandboxes page – Container error handling", () => {
 							containers: [
 								{
 									name: "moltis-sandbox-ghost",
-									image: "ubuntu:25.10",
+									image: "ubuntu:26.04",
 									state: "stopped",
 									backend: "apple-container",
 									cpus: null,

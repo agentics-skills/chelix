@@ -18,7 +18,7 @@ export default {
 	// ── Default image selector ─────────────────────────────
 	defaultImage: {
 		title: "預設映像檔",
-		description: "除非另行指定，否則新的工作階段和專案會使用此基底映像檔。留空以使用內建預設值（ubuntu:25.10）。",
+		description: "除非另行指定，否則新的工作階段和專案會使用此基底映像檔。留空以使用內建預設值（ubuntu:26.04）。",
 	},
 
 	// ── Image row ──────────────────────────────────────────

@@ -187,7 +187,7 @@ fn container_backend_serializes_kebab_case() {
 fn running_container_serializes_to_json() {
     let c = RunningContainer {
         name: "moltis-sandbox-sess1".into(),
-        image: "ubuntu:25.10".into(),
+        image: "ubuntu:26.04".into(),
         state: ContainerRunState::Running,
         backend: ContainerBackend::Docker,
         cpus: Some(2),

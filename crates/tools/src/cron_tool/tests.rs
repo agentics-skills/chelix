@@ -239,7 +239,7 @@ async fn test_add_accepts_execution_target_and_image() {
                 },
                 "execution": {
                     "target": "sandbox",
-                    "image": "ubuntu:25.10"
+                    "image": "ubuntu:26.04"
                 }
             }
         }))
@@ -248,7 +248,7 @@ async fn test_add_accepts_execution_target_and_image() {
 
     assert_eq!(add_result["payload"]["model"], "gpt-5.2");
     assert_eq!(add_result["sandbox"]["enabled"], true);
-    assert_eq!(add_result["sandbox"]["image"], "ubuntu:25.10");
+    assert_eq!(add_result["sandbox"]["image"], "ubuntu:26.04");
 }
 
 #[tokio::test]
@@ -289,7 +289,7 @@ async fn test_update_accepts_host_execution_string() {
                 "name": "switch execution",
                 "schedule": { "kind": "every", "every_ms": 60000 },
                 "payload": { "kind": "agentTurn", "message": "run task" },
-                "sandbox": { "enabled": true, "image": "ubuntu:25.10" }
+                    "sandbox": { "enabled": true, "image": "ubuntu:26.04" }
             }
         }))
         .await

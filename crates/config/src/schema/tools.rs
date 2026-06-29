@@ -932,7 +932,6 @@ fn default_sandbox_packages() -> Vec<String> {
         "osm2pgsql",
         "osmium-tool",
         "osmctools",
-        "python3-mapnik",
         "libgdal-dev",
         // CalDAV / CardDAV
         "vdirsyncer",

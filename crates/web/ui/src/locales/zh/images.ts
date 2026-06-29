@@ -18,7 +18,7 @@ export default {
 	// ── Default image selector ─────────────────────────────
 	defaultImage: {
 		title: "默认镜像",
-		description: "用于新会话和项目的基础镜像，除非被覆盖。留空使用内置默认值 (ubuntu:25.10)。",
+		description: "用于新会话和项目的基础镜像，除非被覆盖。留空使用内置默认值 (ubuntu:26.04)。",
 	},
 
 	// ── Image row ──────────────────────────────────────────

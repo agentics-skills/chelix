@@ -592,8 +592,8 @@ async fn test_remove_image_override() {
 #[test]
 fn test_docker_image_tag_deterministic() {
     let packages = vec!["curl".into(), "git".into(), "wget".into()];
-    let tag1 = sandbox_image_tag("moltis-main-sandbox", "ubuntu:25.10", &packages);
-    let tag2 = sandbox_image_tag("moltis-main-sandbox", "ubuntu:25.10", &packages);
+    let tag1 = sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &packages);
+    let tag2 = sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &packages);
     assert_eq!(tag1, tag2);
     assert!(tag1.starts_with("moltis-main-sandbox:"));
 }
@@ -603,8 +603,8 @@ fn test_docker_image_tag_order_independent() {
     let p1 = vec!["curl".into(), "git".into()];
     let p2 = vec!["git".into(), "curl".into()];
     assert_eq!(
-        sandbox_image_tag("moltis-main-sandbox", "ubuntu:25.10", &p1),
-        sandbox_image_tag("moltis-main-sandbox", "ubuntu:25.10", &p2),
+        sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &p1),
+        sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &p2),
     );
 }
 
@@ -613,14 +613,14 @@ fn test_docker_image_tag_normalizes_whitespace_and_duplicates() {
     let p1 = vec!["curl".into(), "git".into(), "curl".into()];
     let p2 = vec![" git ".into(), "curl".into()];
     assert_eq!(
-        sandbox_image_tag("moltis-main-sandbox", "ubuntu:25.10", &p1),
-        sandbox_image_tag("moltis-main-sandbox", "ubuntu:25.10", &p2),
+        sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &p1),
+        sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &p2),
     );
 }
 
 #[test]
 fn test_sandbox_image_dockerfile_creates_home_in_install_layer() {
-    let dockerfile = sandbox_image_dockerfile("ubuntu:25.10", &["curl".into()]);
+    let dockerfile = sandbox_image_dockerfile("ubuntu:26.04", &["curl".into()]);
     assert!(dockerfile.contains(
         "RUN apt-get update -qq && apt-get install -y -qq curl && mkdir -p /home/sandbox"
     ));
@@ -629,14 +629,14 @@ fn test_sandbox_image_dockerfile_creates_home_in_install_layer() {
 
 #[test]
 fn test_sandbox_image_dockerfile_installs_gogcli() {
-    let dockerfile = sandbox_image_dockerfile("ubuntu:25.10", &["curl".into()]);
+    let dockerfile = sandbox_image_dockerfile("ubuntu:26.04", &["curl".into()]);
     assert!(dockerfile.contains(&format!("go install {GOGCLI_MODULE_PATH}@{GOGCLI_VERSION}")));
     assert!(dockerfile.contains("ln -sf /usr/local/bin/gog /usr/local/bin/gogcli"));
 }
 
 #[test]
 fn test_sandbox_image_dockerfile_installs_crawl_tools() {
-    let dockerfile = sandbox_image_dockerfile("ubuntu:25.10", &["curl".into()]);
+    let dockerfile = sandbox_image_dockerfile("ubuntu:26.04", &["curl".into()]);
     assert!(dockerfile.contains("go install github.com/openclaw/discrawl/cmd/discrawl@latest"));
     assert!(!dockerfile.contains("github.com/steipete/discrawl"));
     assert!(dockerfile.contains("go install github.com/openclaw/slacrawl/cmd/slacrawl@latest"));
@@ -651,7 +651,7 @@ fn test_sandbox_image_dockerfile_installs_crawl_tools() {
 
 #[test]
 fn test_sandbox_image_dockerfile_adds_nodesource_for_nodejs() {
-    let dockerfile = sandbox_image_dockerfile("ubuntu:25.10", &["curl".into(), "nodejs".into()]);
+    let dockerfile = sandbox_image_dockerfile("ubuntu:26.04", &["curl".into(), "nodejs".into()]);
     assert!(dockerfile.contains("nodesource.gpg"));
     assert!(dockerfile.contains("node_22.x"));
     // Bootstraps curl+gnupg before using them
@@ -659,7 +659,7 @@ fn test_sandbox_image_dockerfile_adds_nodesource_for_nodejs() {
     // nodejs should remain in the main apt-get install line
     assert!(dockerfile.contains("nodejs"));
     // npm is superseded by NodeSource nodejs and should be filtered out
-    let dockerfile_with_npm = sandbox_image_dockerfile("ubuntu:25.10", &[
+    let dockerfile_with_npm = sandbox_image_dockerfile("ubuntu:26.04", &[
         "curl".into(),
         "nodejs".into(),
         "npm".into(),
@@ -669,21 +669,21 @@ fn test_sandbox_image_dockerfile_adds_nodesource_for_nodejs() {
 
 #[test]
 fn test_sandbox_image_dockerfile_no_nodesource_without_nodejs() {
-    let dockerfile = sandbox_image_dockerfile("ubuntu:25.10", &["curl".into(), "git".into()]);
+    let dockerfile = sandbox_image_dockerfile("ubuntu:26.04", &["curl".into(), "git".into()]);
     assert!(!dockerfile.contains("nodesource"));
 }
 
 #[test]
 fn test_sandbox_image_dockerfile_npm_without_nodejs_kept() {
     // npm without nodejs is a valid config — should not be filtered
-    let dockerfile = sandbox_image_dockerfile("ubuntu:25.10", &["npm".into(), "curl".into()]);
+    let dockerfile = sandbox_image_dockerfile("ubuntu:26.04", &["npm".into(), "curl".into()]);
     assert!(dockerfile.contains("npm"));
     assert!(!dockerfile.contains("nodesource"));
 }
 
 #[test]
 fn test_sandbox_image_dockerfile_adds_gh_repo() {
-    let dockerfile = sandbox_image_dockerfile("ubuntu:25.10", &["curl".into(), "gh".into()]);
+    let dockerfile = sandbox_image_dockerfile("ubuntu:26.04", &["curl".into(), "gh".into()]);
     assert!(dockerfile.contains("githubcli-archive-keyring.gpg"));
     assert!(dockerfile.contains("cli.github.com/packages"));
     assert!(dockerfile.contains("apt-get install -y -qq gh"));
@@ -697,14 +697,14 @@ fn test_sandbox_image_dockerfile_adds_gh_repo() {
 
 #[test]
 fn test_sandbox_image_dockerfile_no_gh_repo_without_gh() {
-    let dockerfile = sandbox_image_dockerfile("ubuntu:25.10", &["curl".into(), "git".into()]);
+    let dockerfile = sandbox_image_dockerfile("ubuntu:26.04", &["curl".into(), "git".into()]);
     assert!(!dockerfile.contains("githubcli"));
 }
 
 #[test]
 fn test_docker_image_tag_changes_with_base() {
     let packages = vec!["curl".into()];
-    let t1 = sandbox_image_tag("moltis-main-sandbox", "ubuntu:25.10", &packages);
+    let t1 = sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &packages);
     let t2 = sandbox_image_tag("moltis-main-sandbox", "ubuntu:24.04", &packages);
     assert_ne!(t1, t2);
 }
@@ -713,8 +713,8 @@ fn test_docker_image_tag_changes_with_base() {
 fn test_docker_image_tag_changes_with_packages() {
     let p1 = vec!["curl".into()];
     let p2 = vec!["curl".into(), "git".into()];
-    let t1 = sandbox_image_tag("moltis-main-sandbox", "ubuntu:25.10", &p1);
-    let t2 = sandbox_image_tag("moltis-main-sandbox", "ubuntu:25.10", &p2);
+    let t1 = sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &p1);
+    let t2 = sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &p2);
     assert_ne!(t1, t2);
 }
 
@@ -723,7 +723,7 @@ fn test_rebuildable_sandbox_image_tag_requires_packages() {
     let tag = rebuildable_sandbox_image_tag(
         "moltis-main-sandbox:deadbeef",
         "moltis-main-sandbox",
-        "ubuntu:25.10",
+        "ubuntu:26.04",
         &[],
     );
     assert!(tag.is_none());
@@ -732,7 +732,7 @@ fn test_rebuildable_sandbox_image_tag_requires_packages() {
 #[test]
 fn test_rebuildable_sandbox_image_tag_requires_local_repo_prefix() {
     let tag =
-        rebuildable_sandbox_image_tag("ubuntu:25.10", "moltis-main-sandbox", "ubuntu:25.10", &[
+        rebuildable_sandbox_image_tag("ubuntu:26.04", "moltis-main-sandbox", "ubuntu:26.04", &[
             "curl".into(),
         ]);
     assert!(tag.is_none());
@@ -744,14 +744,14 @@ fn test_rebuildable_sandbox_image_tag_returns_deterministic_tag() {
     let tag = rebuildable_sandbox_image_tag(
         "moltis-main-sandbox:oldtag",
         "moltis-main-sandbox",
-        "ubuntu:25.10",
+        "ubuntu:26.04",
         &packages,
     );
     assert_eq!(
         tag,
         Some(sandbox_image_tag(
             "moltis-main-sandbox",
-            "ubuntu:25.10",
+            "ubuntu:26.04",
             &packages
         ))
     );
@@ -761,7 +761,7 @@ fn test_rebuildable_sandbox_image_tag_returns_deterministic_tag() {
 async fn test_no_sandbox_build_image_is_noop() {
     let sandbox = NoSandbox;
     let result = sandbox
-        .build_image("ubuntu:25.10", &["curl".into()])
+        .build_image("ubuntu:26.04", &["curl".into()])
         .await
         .unwrap();
     assert!(result.is_none());
@@ -1054,7 +1054,7 @@ async fn test_podman_build_image_exists_in_store() {
 
     let sandbox = DockerSandbox::podman(SandboxConfig::default());
     let packages = vec!["curl".into()];
-    let tag = sandbox_image_tag(sandbox.image_repo(), "ubuntu:25.10", &packages);
+    let tag = sandbox_image_tag(sandbox.image_repo(), "ubuntu:26.04", &packages);
 
     // Remove any pre-existing image so we exercise the full build path.
     let _ = tokio::process::Command::new("podman")
@@ -1063,7 +1063,7 @@ async fn test_podman_build_image_exists_in_store() {
         .await;
 
     let result = sandbox
-        .build_image("ubuntu:25.10", &packages)
+        .build_image("ubuntu:26.04", &packages)
         .await
         .expect("build_image should succeed");
     let result = result.expect("build_image should return Some for non-empty packages");

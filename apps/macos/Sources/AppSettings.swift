@@ -90,7 +90,7 @@ final class AppSettings: ObservableObject {
     @Published var sandboxError: String?
     @Published var sandboxRuntimeBackend = "none"
     @Published var sandboxRuntimeOS = "unknown"
-    @Published var sandboxRuntimeDefaultImage = "ubuntu:25.10"
+    @Published var sandboxRuntimeDefaultImage = "ubuntu:26.04"
     @Published var sandboxDefaultImageDraft = ""
     @Published var sandboxDefaultImageSaving = false
     @Published var sandboxDefaultImageError: String?
@@ -103,7 +103,7 @@ final class AppSettings: ObservableObject {
     @Published var sandboxImagesMessage: String?
 
     @Published var sandboxBuildName = ""
-    @Published var sandboxBuildBase = "ubuntu:25.10"
+    @Published var sandboxBuildBase = "ubuntu:26.04"
     @Published var sandboxBuildPackages = ""
     @Published var sandboxBuilding = false
     @Published var sandboxBuildStatus = ""

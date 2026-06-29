@@ -347,7 +347,7 @@ mod tests {
     #[test]
     fn test_image_tag_format() {
         let tag =
-            DockerImageBuilder::image_tag("my-skill", b"FROM ubuntu:25.10\nRUN apt-get update\n");
+            DockerImageBuilder::image_tag("my-skill", b"FROM ubuntu:26.04\nRUN apt-get update\n");
         assert!(tag.starts_with("moltis-cache/my-skill:"));
         // Hash portion is 12 hex chars
         let hash_part = tag.strip_prefix("moltis-cache/my-skill:").unwrap();

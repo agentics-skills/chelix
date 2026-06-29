@@ -48,7 +48,7 @@ export default {
 		branchPrefix: "分支前缀",
 		branchPrefixPlaceholder: "默认：moltis",
 		sandboxImage: "沙盒镜像",
-		sandboxImagePlaceholder: "默认 (ubuntu:25.10)",
+		sandboxImagePlaceholder: "默认 (ubuntu:26.04)",
 		autoWorktree: "每个会话自动创建 git 工作树",
 		codeIndex: "启用代码索引（语义搜索）",
 	},

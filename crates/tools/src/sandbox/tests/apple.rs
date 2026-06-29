@@ -175,7 +175,7 @@ fn test_apple_container_bootstrap_command_uses_portable_sleep() {
 
 #[test]
 fn test_apple_container_run_args_pin_workdir_and_bootstrap_home() {
-    let args = apple_container_run_args("moltis-sandbox-test", "ubuntu:25.10", Some("UTC"), None);
+    let args = apple_container_run_args("moltis-sandbox-test", "ubuntu:26.04", Some("UTC"), None);
     let expected = vec![
         "run",
         "-d",
@@ -185,7 +185,7 @@ fn test_apple_container_run_args_pin_workdir_and_bootstrap_home() {
         "/tmp",
         "-e",
         "TZ=UTC",
-        "ubuntu:25.10",
+        "ubuntu:26.04",
         "bash",
         "-c",
         "mkdir -p /home/sandbox && if command -v gnusleep >/dev/null 2>&1; then exec gnusleep infinity; else exec sleep 2147483647; fi",
@@ -200,7 +200,7 @@ fn test_apple_container_run_args_pin_workdir_and_bootstrap_home() {
 fn test_apple_container_run_args_with_home_volume() {
     let args = apple_container_run_args(
         "moltis-sandbox-test",
-        "ubuntu:25.10",
+        "ubuntu:26.04",
         Some("UTC"),
         Some("/tmp/home:/home/sandbox"),
     );
@@ -215,7 +215,7 @@ fn test_apple_container_run_args_with_home_volume() {
         "TZ=UTC",
         "--volume",
         "/tmp/home:/home/sandbox",
-        "ubuntu:25.10",
+        "ubuntu:26.04",
         "bash",
         "-c",
         "mkdir -p /home/sandbox && if command -v gnusleep >/dev/null 2>&1; then exec gnusleep infinity; else exec sleep 2147483647; fi",

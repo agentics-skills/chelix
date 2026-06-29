@@ -164,7 +164,7 @@ pub extern "C" fn moltis_sandbox_check_packages(request_json: *const c_char) -> 
             .as_deref()
             .map(str::trim)
             .filter(|s| !s.is_empty())
-            .unwrap_or("ubuntu:25.10")
+            .unwrap_or("ubuntu:26.04")
             .to_owned();
         let packages: Vec<String> = request
             .packages
@@ -278,7 +278,7 @@ pub extern "C" fn moltis_sandbox_build_image(request_json: *const c_char) -> *mu
             .as_deref()
             .map(str::trim)
             .filter(|s| !s.is_empty())
-            .unwrap_or("ubuntu:25.10")
+            .unwrap_or("ubuntu:26.04")
             .to_owned();
         let packages: Vec<String> = request
             .packages

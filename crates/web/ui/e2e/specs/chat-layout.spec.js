@@ -168,7 +168,7 @@ test.describe("Chat layout — no horizontal overflow (#945)", () => {
 			var modelLabel = document.getElementById("modelComboLabel");
 			if (modelLabel) modelLabel.textContent = "anthropic/claude-sonnet-with-a-very-long-display-name";
 			var sandboxImageLabel = document.getElementById("sandboxImageLabel");
-			if (sandboxImageLabel) sandboxImageLabel.textContent = "ubuntu:25.10-with-extra-packages";
+			if (sandboxImageLabel) sandboxImageLabel.textContent = "ubuntu:26.04-with-extra-packages";
 		});
 
 		for (const width of [1055, 1000, 900, 800]) {

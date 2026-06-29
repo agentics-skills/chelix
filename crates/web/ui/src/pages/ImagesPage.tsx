@@ -75,7 +75,7 @@ const savingDefault = signal(false);
 const images = signal<CachedImage[]>([]);
 const loading = signal(false);
 const buildName = signal("");
-const buildBase = signal("ubuntu:25.10");
+const buildBase = signal("ubuntu:26.04");
 const buildPackages = signal("");
 const building = signal(false);
 const buildStatus = signal("");
@@ -203,7 +203,7 @@ function doBuild(name: string, base: string, pkgs: string[]): void {
 function buildImage(): void {
 	const name = buildName.value.trim();
 	if (!name) return;
-	const base = buildBase.value.trim() || "ubuntu:25.10";
+	const base = buildBase.value.trim() || "ubuntu:26.04";
 	const pkgs = buildPackages.value
 		.trim()
 		.split(/[\s,]+/)
@@ -797,14 +797,14 @@ function DefaultImageSelector(): VNode {
 			</h3>
 			<p className="text-xs text-[var(--muted)]" style={{ margin: "0 0 8px" }}>
 				Base image used for new sessions and projects unless overridden. Leave empty to use the built-in default
-				(ubuntu:25.10).
+					(ubuntu:26.04).
 			</p>
 			<div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
 				<input
 					type="text"
 					className="provider-key-input"
 					list="default-image-list"
-					placeholder="ubuntu:25.10"
+					placeholder="ubuntu:26.04"
 					style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: ".8rem" }}
 					value={current}
 					onInput={(e) => {
@@ -1253,7 +1253,7 @@ function ContainersTabContent(): VNode {
 					<input
 						type="text"
 						className="provider-key-input"
-						placeholder="ubuntu:25.10"
+						placeholder="ubuntu:26.04"
 						style={{ width: "100%", fontFamily: "var(--font-mono)" }}
 						value={buildBase.value}
 						onInput={(e) => {

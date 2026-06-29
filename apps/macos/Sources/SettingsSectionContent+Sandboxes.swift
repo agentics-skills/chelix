@@ -51,12 +51,12 @@ struct SandboxesPane: View {
             Section("Default image") {
                 Text(
                     "Base image used for new sessions and projects unless overridden. "
-                        + "Leave empty to use the built-in default (ubuntu:25.10)."
+                        + "Leave empty to use the built-in default (ubuntu:26.04)."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-                TextField("ubuntu:25.10", text: $settings.sandboxDefaultImageDraft)
+                TextField("ubuntu:26.04", text: $settings.sandboxDefaultImageDraft)
                     .font(.system(.body, design: .monospaced))
 
                 HStack(spacing: 8) {
@@ -288,7 +288,7 @@ struct SandboxesPane: View {
 
             Section("Build custom image") {
                 TextField("Image name (e.g. my-tools)", text: $settings.sandboxBuildName)
-                TextField("Base image (e.g. ubuntu:25.10)", text: $settings.sandboxBuildBase)
+                TextField("Base image (e.g. ubuntu:26.04)", text: $settings.sandboxBuildBase)
                     .font(.system(.body, design: .monospaced))
                 TextEditor(text: $settings.sandboxBuildPackages)
                     .font(.system(.body, design: .monospaced))

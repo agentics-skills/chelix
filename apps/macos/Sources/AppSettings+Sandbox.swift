@@ -114,7 +114,7 @@ extension AppSettings {
         }
 
         let trimmedBase = sandboxBuildBase.trimmingCharacters(in: .whitespacesAndNewlines)
-        let base = trimmedBase.isEmpty ? "ubuntu:25.10" : trimmedBase
+        let base = trimmedBase.isEmpty ? "ubuntu:26.04" : trimmedBase
         let requestedPackages = parseSandboxPackages(sandboxBuildPackages)
         if requestedPackages.isEmpty {
             sandboxBuildStatus = "Please specify at least one package."

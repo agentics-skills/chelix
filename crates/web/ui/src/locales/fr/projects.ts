@@ -49,7 +49,7 @@ export default {
 		branchPrefix: "Branch prefix",
 		branchPrefixPlaceholder: "default: moltis",
 		sandboxImage: "Sandbox image",
-		sandboxImagePlaceholder: "Default (ubuntu:25.10)",
+		sandboxImagePlaceholder: "Default (ubuntu:26.04)",
 		autoWorktree: "Auto-create git worktree per session",
 		codeIndex: "Enable code indexing (semantic search)",
 	},

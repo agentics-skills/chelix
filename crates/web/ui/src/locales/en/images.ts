@@ -19,7 +19,7 @@ export default {
 	defaultImage: {
 		title: "Default image",
 		description:
-			"Base image used for new sessions and projects unless overridden. Leave empty to use the built-in default (ubuntu:25.10).",
+			"Base image used for new sessions and projects unless overridden. Leave empty to use the built-in default (ubuntu:26.04).",
 	},
 
 	// ── Image row ──────────────────────────────────────────

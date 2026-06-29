@@ -414,7 +414,7 @@ pub(crate) fn is_valid_package_name(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '+' | ':'))
 }
 
-/// Validates a container/base image reference (e.g. "ubuntu:25.10", "docker.io/library/ubuntu").
+/// Validates a container/base image reference (e.g. "ubuntu:26.04", "docker.io/library/ubuntu").
 /// Allows alphanumeric, hyphen, dot, colon, slash, underscore.
 pub(crate) fn is_valid_image_ref(name: &str) -> bool {
     !name.is_empty()

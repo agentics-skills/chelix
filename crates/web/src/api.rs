@@ -823,7 +823,7 @@ pub async fn api_check_packages_handler(Json(body): Json<serde_json::Value>) -> 
     let base = body
         .get("base")
         .and_then(|v| v.as_str())
-        .unwrap_or("ubuntu:25.10")
+        .unwrap_or("ubuntu:26.04")
         .trim()
         .to_string();
     let packages: Vec<String> = body
@@ -1149,7 +1149,7 @@ pub async fn api_build_image_handler(Json(body): Json<serde_json::Value>) -> imp
     let base = body
         .get("base")
         .and_then(|v| v.as_str())
-        .unwrap_or("ubuntu:25.10")
+        .unwrap_or("ubuntu:26.04")
         .trim();
     let packages: Vec<&str> = body
         .get("packages")
