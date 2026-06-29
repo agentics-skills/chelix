@@ -363,6 +363,14 @@ pub async fn asset_handler(Path(path): Path<String>) -> impl IntoResponse {
     serve_asset(&path, cache)
 }
 
+/// Canonical browser favicon: `/favicon.ico`.
+///
+/// Browsers still probe this path even when explicit `<link rel="icon">`
+/// tags are present, so keep a stable root-level entry point.
+pub async fn favicon_handler() -> impl IntoResponse {
+    serve_asset("icons/favicon-32.png", "no-cache")
+}
+
 /// PWA manifest: `/manifest.json` — served from assets root.
 pub async fn manifest_handler() -> impl IntoResponse {
     serve_asset("manifest.json", "no-cache")

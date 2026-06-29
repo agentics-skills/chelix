@@ -1,5 +1,7 @@
 import type { ResolvedIdentity } from "./types/gon";
 
+const DYNAMIC_FAVICON_SELECTOR = 'link[data-moltis-dynamic-favicon="true"]';
+
 function trimString(value: unknown): string {
 	return typeof value === "string" ? value.trim() : "";
 }
@@ -39,25 +41,37 @@ function emojiFaviconPng(emoji: string): string | null {
 	return canvas.toDataURL("image/png");
 }
 
+function findDynamicFaviconLink(): HTMLLinkElement | null {
+	return document.querySelector<HTMLLinkElement>(DYNAMIC_FAVICON_SELECTOR);
+}
+
+function ensureDynamicFaviconLink(): HTMLLinkElement {
+	const existing = findDynamicFaviconLink();
+	if (existing) return existing;
+
+	const link = document.createElement("link");
+	link.rel = "icon";
+	link.dataset.moltisDynamicFavicon = "true";
+	document.head.appendChild(link);
+	return link;
+}
+
 export function applyIdentityFavicon(identity: Partial<ResolvedIdentity> | null | undefined): boolean {
 	const emoji = identityEmoji(identity);
-	if (!emoji) return false;
-
-	let links = Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel="icon"]'));
-	if (links.length === 0) {
-		const fallback = document.createElement("link");
-		fallback.rel = "icon";
-		document.head.appendChild(fallback);
-		links = [fallback];
+	if (!emoji) {
+		findDynamicFaviconLink()?.remove();
+		return false;
 	}
 
 	const href = emojiFaviconPng(emoji);
-	if (!href) return false;
-
-	for (const link of links) {
-		link.type = "image/png";
-		link.removeAttribute("sizes");
-		link.href = href;
+	if (!href) {
+		findDynamicFaviconLink()?.remove();
+		return false;
 	}
+
+	const link = ensureDynamicFaviconLink();
+	link.type = "image/png";
+	link.sizes = "64x64";
+	link.href = href;
 	return true;
 }

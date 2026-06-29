@@ -51,6 +51,7 @@ pub fn web_routes() -> Router<AppState> {
             get(assets::versioned_asset_handler),
         )
         .route("/assets/{*path}", get(assets::asset_handler))
+        .route("/favicon.ico", get(assets::favicon_handler))
         .route("/manifest.json", get(assets::manifest_handler))
         .route("/sw.js", get(assets::service_worker_handler))
         .merge(api)
