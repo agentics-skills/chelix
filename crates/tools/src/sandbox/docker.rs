@@ -23,8 +23,8 @@ use {
         },
         types::{
             BuildImageResult, DEFAULT_SANDBOX_IMAGE, NetworkPolicy, SANDBOX_HOME_DIR, Sandbox,
-            SandboxConfig, SandboxId, WorkspaceMount, canonical_sandbox_packages, tail_lines,
-            truncate_output_for_display,
+            SandboxConfig, SandboxId, WorkspaceMount, WorkspaceSysmount,
+            canonical_sandbox_packages, tail_lines, truncate_output_for_display,
         },
     },
     crate::{
@@ -242,16 +242,16 @@ impl DockerSandbox {
 
     /// Security hardening flags for `docker run`.
     ///
-    /// `is_prebuilt` controls whether `--read-only` is applied: prebuilt images
-    /// already have packages baked in so the root FS can be read-only, while
-    /// non-prebuilt images need a writable root for `apt-get` provisioning.
-    pub(crate) fn hardening_args(is_prebuilt: bool, kind: BackendKind) -> Vec<String> {
+    /// `is_prebuilt` and `workspace_sysmount` control whether read-only rootfs
+    /// and privilege-hardening flags are applied. Prebuilt images already have
+    /// packages baked in, so the root filesystem may be read-only; non-prebuilt
+    /// images need a writable root for `apt-get` provisioning.
+    pub(crate) fn hardening_args(
+        is_prebuilt: bool,
+        kind: BackendKind,
+        workspace_sysmount: WorkspaceSysmount,
+    ) -> Vec<String> {
         let mut args = vec![
-            // --- Capability / privilege ---
-            "--cap-drop".to_string(),
-            "ALL".to_string(),
-            "--security-opt".to_string(),
-            "no-new-privileges".to_string(),
             // --- Writable tmpfs mounts ---
             "--tmpfs".to_string(),
             "/tmp:rw,nosuid,size=256m".to_string(),
@@ -263,6 +263,14 @@ impl DockerSandbox {
             "--hostname".to_string(),
             "sandbox".to_string(),
         ];
+        if workspace_sysmount == WorkspaceSysmount::Ro {
+            args.splice(0..0, [
+                "--cap-drop".to_string(),
+                "ALL".to_string(),
+                "--security-opt".to_string(),
+                "no-new-privileges".to_string(),
+            ]);
+        }
         // Mask /sys subtrees that expose host hardware identifiers
         // (serial numbers, BIOS/UEFI data, disk models, LUKS UUIDs).
         // Empty read-only tmpfs overlays hide the underlying sysfs entries.
@@ -278,7 +286,7 @@ impl DockerSandbox {
                 args.extend(["--tmpfs".to_string(), format!("{path}:ro,nosuid")]);
             }
         }
-        if is_prebuilt {
+        if is_prebuilt && workspace_sysmount == WorkspaceSysmount::Ro {
             args.push("--read-only".to_string());
         }
         args
@@ -484,7 +492,11 @@ impl DockerSandbox {
         }
 
         args.extend(self.resource_args());
-        args.extend(Self::hardening_args(is_prebuilt, self.kind));
+        args.extend(Self::hardening_args(
+            is_prebuilt,
+            self.kind,
+            self.config.workspace_sysmount,
+        ));
         args.extend(self.workspace_args());
         args.extend(self.home_persistence_args(id)?);
         args.extend(Self::moltis_ctl_mount_args());

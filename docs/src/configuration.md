@@ -161,6 +161,7 @@ Commands run inside isolated containers for security:
 mode = "all"                    # "off", "non-main", or "all"
 scope = "session"               # "command", "session", or "global"
 workspace_mount = "ro"          # "ro", "rw", or "none"
+workspace_sysmount = "ro"       # "ro" keeps rootfs/cap-drop hardening, "rw" relaxes both
 # host_data_dir = "/host/path/data"  # Optional override if auto-detection cannot resolve the host path
 home_persistence = "shared"     # "off", "session", or "shared" (default: "shared")
 # shared_home_dir = "/path/to/shared-home"  # Optional path for shared mode
@@ -493,6 +494,7 @@ offered = ["anthropic", "openai", "gemini"]
 mode = "all"
 scope = "session"
 workspace_mount = "ro"
+workspace_sysmount = "ro"
 home_persistence = "session"
 # shared_home_dir = "/path/to/shared-home"
 backend = "auto"

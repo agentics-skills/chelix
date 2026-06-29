@@ -17,7 +17,7 @@ fn test_sandbox_scope_display() {
 
 #[test]
 fn test_docker_hardening_args_prebuilt() {
-    let args = DockerSandbox::hardening_args(true, BackendKind::Docker);
+    let args = DockerSandbox::hardening_args(true, BackendKind::Docker, WorkspaceSysmount::Ro);
     assert!(args.contains(&"--cap-drop".to_string()));
     assert!(args.contains(&"ALL".to_string()));
     assert!(args.contains(&"--security-opt".to_string()));
@@ -50,7 +50,7 @@ fn test_docker_hardening_args_prebuilt() {
 
 #[test]
 fn test_docker_hardening_args_not_prebuilt() {
-    let args = DockerSandbox::hardening_args(false, BackendKind::Docker);
+    let args = DockerSandbox::hardening_args(false, BackendKind::Docker, WorkspaceSysmount::Ro);
     assert!(args.contains(&"--cap-drop".to_string()));
     assert!(args.contains(&"ALL".to_string()));
     assert!(args.contains(&"--security-opt".to_string()));
@@ -80,7 +80,7 @@ fn test_docker_hardening_args_not_prebuilt() {
 
 #[test]
 fn test_docker_hardening_args_podman() {
-    let args = DockerSandbox::hardening_args(true, BackendKind::Podman);
+    let args = DockerSandbox::hardening_args(true, BackendKind::Podman, WorkspaceSysmount::Ro);
     // Core hardening flags must still be present
     assert!(args.contains(&"--cap-drop".to_string()));
     assert!(args.contains(&"ALL".to_string()));
@@ -104,6 +104,16 @@ fn test_docker_hardening_args_podman() {
     assert!(!args.contains(&"/sys/class/dmi:ro,nosuid".to_string()));
     assert!(!args.contains(&"/sys/devices/virtual/dmi:ro,nosuid".to_string()));
     assert!(!args.contains(&"/sys/class/block:ro,nosuid".to_string()));
+}
+
+#[test]
+fn test_docker_hardening_args_prebuilt_rw_sysmount_skips_read_only() {
+    let args = DockerSandbox::hardening_args(true, BackendKind::Docker, WorkspaceSysmount::Rw);
+    assert!(!args.contains(&"--read-only".to_string()));
+    assert!(!args.contains(&"--cap-drop".to_string()));
+    assert!(!args.contains(&"ALL".to_string()));
+    assert!(!args.contains(&"--security-opt".to_string()));
+    assert!(!args.contains(&"no-new-privileges".to_string()));
 }
 
 #[test]
@@ -153,6 +163,12 @@ fn test_workspace_mount_display() {
 }
 
 #[test]
+fn test_workspace_sysmount_display() {
+    assert_eq!(WorkspaceSysmount::Ro.to_string(), "ro");
+    assert_eq!(WorkspaceSysmount::Rw.to_string(), "rw");
+}
+
+#[test]
 fn test_home_persistence_display() {
     assert_eq!(HomePersistence::Off.to_string(), "off");
     assert_eq!(HomePersistence::Session.to_string(), "session");
@@ -182,12 +198,14 @@ fn test_sandbox_config_serde() {
         "mode": "all",
         "scope": "session",
         "workspace_mount": "rw",
+        "workspace_sysmount": "rw",
         "no_network": true,
         "resource_limits": {"memory_limit": "1G"}
     }"#;
     let config: SandboxConfig = serde_json::from_str(json).unwrap();
     assert_eq!(config.mode, SandboxMode::All);
     assert_eq!(config.workspace_mount, WorkspaceMount::Rw);
+    assert_eq!(config.workspace_sysmount, WorkspaceSysmount::Rw);
     assert!(config.no_network);
     assert_eq!(config.resource_limits.memory_limit.as_deref(), Some("1G"));
 }
@@ -269,7 +287,7 @@ fn test_docker_workspace_args_uses_host_data_dir_override() {
 
 #[test]
 fn test_docker_hardening_args_enable_init_reaper() {
-    let args = DockerSandbox::hardening_args(true, BackendKind::Docker);
+    let args = DockerSandbox::hardening_args(true, BackendKind::Docker, WorkspaceSysmount::Ro);
     assert!(
         args.contains(&"--init".to_string()),
         "Docker sandboxes must run with an init process so orphaned children are reaped"
@@ -278,7 +296,7 @@ fn test_docker_hardening_args_enable_init_reaper() {
 
 #[test]
 fn test_podman_hardening_args_do_not_require_host_init_binary() {
-    let args = DockerSandbox::hardening_args(true, BackendKind::Podman);
+    let args = DockerSandbox::hardening_args(true, BackendKind::Podman, WorkspaceSysmount::Ro);
     assert!(!args.contains(&"--init".to_string()));
 }
 

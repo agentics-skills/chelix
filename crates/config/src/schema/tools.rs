@@ -670,6 +670,11 @@ pub struct SandboxConfig {
     pub mode: String,
     pub scope: String,
     pub workspace_mount: String,
+    /// Root filesystem and privilege-hardening mode for sandbox containers:
+    /// `"ro"` keeps Docker/Podman rootfs read-only for prebuilt images and
+    /// retains capability-drop / no-new-privileges hardening, while `"rw"`
+    /// leaves the rootfs writable and skips those flags.
+    pub workspace_sysmount: String,
     /// Optional host-visible path for Moltis `data_dir()` when creating
     /// sandbox containers from inside another container.
     pub host_data_dir: Option<String>,
@@ -962,6 +967,7 @@ impl Default for SandboxConfig {
             mode: "all".into(),
             scope: "session".into(),
             workspace_mount: "ro".into(),
+            workspace_sysmount: "ro".into(),
             host_data_dir: None,
             home_persistence: HomePersistenceConfig::default(),
             shared_home_dir: None,

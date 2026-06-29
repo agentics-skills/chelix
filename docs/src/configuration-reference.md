@@ -408,6 +408,7 @@ not create chat agents, change memory, or affect `spawn_agent` presets.
 | `mode` | string | `"all"` | When sandboxing is active (`"all"`, `"auto"`, `"off"`). |
 | `scope` | string | `"session"` | Container lifetime (`"session"` or `"per-command"`). |
 | `workspace_mount` | string | `"ro"` | Workspace mount mode (`"ro"`, `"rw"`, `"none"`). |
+| `workspace_sysmount` | string | `"ro"` | Sandbox hardening mode for rootfs/capabilities (`"ro"` keeps `--cap-drop ALL`, `--security-opt no-new-privileges`, and `--read-only` for prebuilt images; `"rw"` skips those flags). |
 | `host_data_dir` | optional string | `null` | Host-visible path for Moltis `data_dir()` when creating sandbox or browser containers from inside another container. |
 | `home_persistence` | enum: `"off"`, `"session"`, `"shared"` | `"shared"` | Persistence strategy for `/home/sandbox` in sandbox containers. |
 | `shared_home_dir` | optional string | `null` | Host directory for shared `/home/sandbox` persistence. Relative paths resolved against `data_dir()`. |

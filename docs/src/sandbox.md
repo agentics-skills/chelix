@@ -114,20 +114,29 @@ hardening flags by default:
 
 | Flag | Effect |
 |------|--------|
-| `--cap-drop ALL` | Drops all Linux capabilities |
-| `--security-opt no-new-privileges` | Prevents privilege escalation via setuid/setgid binaries |
+| `--cap-drop ALL` | Drops all Linux capabilities when `workspace_sysmount = "ro"` |
+| `--security-opt no-new-privileges` | Prevents privilege escalation via setuid/setgid binaries when `workspace_sysmount = "ro"` |
 | `--tmpfs /tmp:rw,nosuid,size=256m` | Writable tmpfs for temp files (noexec on real root) |
 | `--tmpfs /run:rw,nosuid,size=64m` | Writable tmpfs for runtime files |
-| `--read-only` | Read-only root filesystem (prebuilt images only) |
+| `--read-only` | Read-only root filesystem (prebuilt images with `workspace_sysmount = "ro"`) |
 | `--hostname sandbox` | Prevents host hostname leakage |
 | `--tmpfs /sys/firmware:ro,nosuid` | Masks BIOS/UEFI firmware data (Docker only) |
 | `--tmpfs /sys/class/dmi:ro,nosuid` | Masks system serial numbers and identifiers (Docker only) |
 | `--tmpfs /sys/devices/virtual/dmi:ro,nosuid` | Masks DMI attributes (Docker only) |
 | `--tmpfs /sys/class/block:ro,nosuid` | Masks block device info (Docker only) |
 
-The `--read-only` flag is applied only to prebuilt sandbox images (where
-packages are already baked in). Non-prebuilt images need a writable root
-filesystem for `apt-get` provisioning on first start.
+With `workspace_sysmount = "ro"` (the default), Docker/Podman sandbox
+containers keep `--cap-drop ALL` and `--security-opt no-new-privileges`, and
+prebuilt sandbox images also keep `--read-only`.
+
+With `workspace_sysmount = "rw"`, Moltis skips `--cap-drop ALL`,
+`--security-opt no-new-privileges`, and `--read-only` so package managers can
+work against a writable root filesystem.
+
+```toml
+[tools.exec.sandbox]
+workspace_sysmount = "rw"   # default: "ro"
+```
 
 The `/sys` tmpfs overlays prevent host hardware metadata (serial numbers, disk
 models, LUKS UUIDs) from being visible inside the container. Note that

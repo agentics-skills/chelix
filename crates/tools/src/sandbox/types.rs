@@ -143,6 +143,25 @@ impl std::fmt::Display for WorkspaceMount {
     }
 }
 
+/// Root filesystem and privilege-hardening mode for sandbox containers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[derive(Default)]
+pub enum WorkspaceSysmount {
+    #[default]
+    Ro,
+    Rw,
+}
+
+impl std::fmt::Display for WorkspaceSysmount {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ro => f.write_str("ro"),
+            Self::Rw => f.write_str("rw"),
+        }
+    }
+}
+
 /// Persistence mode for `/home/sandbox` in container backends.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -194,6 +213,8 @@ pub struct SandboxConfig {
     pub mode: SandboxMode,
     pub scope: SandboxScope,
     pub workspace_mount: WorkspaceMount,
+    /// Root filesystem and privilege-hardening mode for sandbox containers.
+    pub workspace_sysmount: WorkspaceSysmount,
     /// Host-visible path for Moltis `data_dir()` when running container-backed
     /// sandboxes from inside another container.
     pub host_data_dir: Option<PathBuf>,
@@ -275,6 +296,7 @@ impl Default for SandboxConfig {
             mode: SandboxMode::default(),
             scope: SandboxScope::default(),
             workspace_mount: WorkspaceMount::default(),
+            workspace_sysmount: WorkspaceSysmount::default(),
             host_data_dir: None,
             home_persistence: HomePersistence::default(),
             shared_home_dir: None,
@@ -329,6 +351,10 @@ impl From<&moltis_config::schema::SandboxConfig> for SandboxConfig {
                 "rw" => WorkspaceMount::Rw,
                 "none" => WorkspaceMount::None,
                 _ => WorkspaceMount::Ro,
+            },
+            workspace_sysmount: match cfg.workspace_sysmount.as_str() {
+                "rw" => WorkspaceSysmount::Rw,
+                _ => WorkspaceSysmount::Ro,
             },
             host_data_dir: cfg
                 .host_data_dir

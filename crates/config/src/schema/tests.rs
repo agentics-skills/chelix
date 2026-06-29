@@ -670,6 +670,7 @@ fn sandbox_defaults_include_go_runtime() {
     assert!(sandbox.packages.iter().any(|pkg| pkg == "golang-go"));
     assert_eq!(sandbox.home_persistence, HomePersistenceConfig::Shared);
     assert!(sandbox.host_data_dir.is_none());
+    assert_eq!(sandbox.workspace_sysmount, "ro");
     assert!(sandbox.wasm_tool_limits.is_none());
 }
 
@@ -732,6 +733,7 @@ fn sandbox_wasm_tool_limits_deserialize() {
 mode = "all"
 scope = "session"
 workspace_mount = "ro"
+workspace_sysmount = "rw"
 host_data_dir = "/host/moltis-data"
 
 [wasm_tool_limits]
@@ -746,6 +748,7 @@ memory = 300
     .unwrap();
 
     assert_eq!(config.host_data_dir.as_deref(), Some("/host/moltis-data"));
+    assert_eq!(config.workspace_sysmount, "rw");
     let limits = config.wasm_tool_limits.unwrap();
     assert_eq!(limits.default_memory, 2048);
     assert_eq!(limits.default_fuel, 5000);
