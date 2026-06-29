@@ -5,7 +5,10 @@ use std::sync::Arc;
 use {
     super::helpers::*,
     crate::{
-        model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent, ToolCall, Usage},
+        model::{
+            AgentToolControls, ChatMessage, CompletionResponse, LlmProvider, StreamEvent, ToolCall,
+            Usage,
+        },
         tool_parsing::new_synthetic_tool_call_id,
     },
     anyhow::Result,
@@ -133,6 +136,190 @@ async fn test_simple_text_response() {
     assert_eq!(result.text, "Hello!");
     assert_eq!(result.iterations, 1);
     assert_eq!(result.tool_calls_made, 0);
+}
+
+struct NoToolsRoutingProvider {
+    complete_calls: std::sync::atomic::AtomicUsize,
+    complete_with_options_calls: std::sync::atomic::AtomicUsize,
+}
+
+#[async_trait]
+impl LlmProvider for NoToolsRoutingProvider {
+    fn name(&self) -> &str {
+        "no-tools-routing"
+    }
+
+    fn id(&self) -> &str {
+        "no-tools-routing-model"
+    }
+
+    fn supports_tools(&self) -> bool {
+        true
+    }
+
+    async fn complete(
+        &self,
+        _messages: &[ChatMessage],
+        tools: &[serde_json::Value],
+    ) -> Result<CompletionResponse> {
+        self.complete_calls
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        assert!(tools.is_empty());
+        Ok(CompletionResponse {
+            text: Some("no tools".into()),
+            tool_calls: vec![],
+            usage: Usage::default(),
+        })
+    }
+
+    async fn complete_with_options(
+        &self,
+        _messages: &[ChatMessage],
+        _tools: &[serde_json::Value],
+        _options: &AgentToolControls,
+    ) -> Result<CompletionResponse> {
+        self.complete_with_options_calls
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        anyhow::bail!("with-tools path must not be used for empty schemas")
+    }
+
+    fn stream(
+        &self,
+        _messages: Vec<ChatMessage>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        Box::pin(tokio_stream::empty())
+    }
+}
+
+#[tokio::test]
+async fn test_non_streaming_runner_does_not_use_tools_path_for_empty_schema_list() {
+    let provider = Arc::new(NoToolsRoutingProvider {
+        complete_calls: std::sync::atomic::AtomicUsize::new(0),
+        complete_with_options_calls: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let tools = ToolRegistry::new();
+    let uc = UserContent::text("Hi");
+
+    let result = run_agent_loop(
+        provider.clone(),
+        &tools,
+        "You are a test bot.",
+        &uc,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.text, "no tools");
+    assert_eq!(
+        provider
+            .complete_calls
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    assert_eq!(
+        provider
+            .complete_with_options_calls
+            .load(std::sync::atomic::Ordering::SeqCst),
+        0
+    );
+}
+
+struct NoToolsStreamingRoutingProvider {
+    stream_calls: std::sync::atomic::AtomicUsize,
+    stream_with_options_calls: std::sync::atomic::AtomicUsize,
+}
+
+#[async_trait]
+impl LlmProvider for NoToolsStreamingRoutingProvider {
+    fn name(&self) -> &str {
+        "no-tools-streaming-routing"
+    }
+
+    fn id(&self) -> &str {
+        "no-tools-streaming-routing-model"
+    }
+
+    fn supports_tools(&self) -> bool {
+        true
+    }
+
+    async fn complete(
+        &self,
+        _messages: &[ChatMessage],
+        _tools: &[serde_json::Value],
+    ) -> Result<CompletionResponse> {
+        Ok(CompletionResponse {
+            text: Some("unused".into()),
+            tool_calls: vec![],
+            usage: Usage::default(),
+        })
+    }
+
+    fn stream(
+        &self,
+        _messages: Vec<ChatMessage>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        self.stream_calls
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Box::pin(tokio_stream::iter(vec![
+            StreamEvent::Delta("no tools".into()),
+            StreamEvent::Done(Usage::default()),
+        ]))
+    }
+
+    fn stream_with_tools_and_options(
+        &self,
+        _messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+        _options: AgentToolControls,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        self.stream_with_options_calls
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Box::pin(tokio_stream::iter(vec![StreamEvent::Error(
+            "with-tools path must not be used for empty schemas".into(),
+        )]))
+    }
+}
+
+#[tokio::test]
+async fn test_streaming_runner_does_not_use_tools_path_for_empty_schema_list() {
+    let provider = Arc::new(NoToolsStreamingRoutingProvider {
+        stream_calls: std::sync::atomic::AtomicUsize::new(0),
+        stream_with_options_calls: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let tools = ToolRegistry::new();
+    let uc = UserContent::text("Hi");
+
+    let result = run_agent_loop_streaming(
+        provider.clone(),
+        &tools,
+        "You are a test bot.",
+        &uc,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.text, "no tools");
+    assert_eq!(
+        provider
+            .stream_calls
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    assert_eq!(
+        provider
+            .stream_with_options_calls
+            .load(std::sync::atomic::Ordering::SeqCst),
+        0
+    );
 }
 
 #[tokio::test]
@@ -263,9 +450,13 @@ impl LlmProvider for RecordingMessagesProvider {
 
     fn stream(
         &self,
-        _messages: Vec<ChatMessage>,
+        messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
+        *self.messages.lock().unwrap() = messages;
+        Box::pin(tokio_stream::iter(vec![
+            StreamEvent::Delta("ok".into()),
+            StreamEvent::Done(Usage::default()),
+        ]))
     }
 
     fn stream_with_tools(
@@ -273,8 +464,7 @@ impl LlmProvider for RecordingMessagesProvider {
         messages: Vec<ChatMessage>,
         _tools: Vec<serde_json::Value>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        *self.messages.lock().unwrap() = messages;
-        Box::pin(tokio_stream::iter(vec![StreamEvent::Delta("ok".into())]))
+        self.stream(messages)
     }
 }
 
@@ -387,14 +577,6 @@ impl LlmProvider for StreamingUsageProvider {
         &self,
         _messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
-    }
-
-    fn stream_with_tools(
-        &self,
-        _messages: Vec<ChatMessage>,
-        _tools: Vec<serde_json::Value>,
-    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         Box::pin(tokio_stream::iter(vec![
             StreamEvent::Delta("cached reply".into()),
             StreamEvent::Done(Usage {
@@ -404,6 +586,14 @@ impl LlmProvider for StreamingUsageProvider {
                 cache_write_tokens: 64,
             }),
         ]))
+    }
+
+    fn stream_with_tools(
+        &self,
+        messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        self.stream(messages)
     }
 }
 
@@ -435,19 +625,19 @@ impl LlmProvider for StreamingChunksProvider {
         &self,
         _messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
-    }
-
-    fn stream_with_tools(
-        &self,
-        _messages: Vec<ChatMessage>,
-        _tools: Vec<serde_json::Value>,
-    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         Box::pin(tokio_stream::iter(vec![
             StreamEvent::Delta("cached ".into()),
             StreamEvent::Delta("reply".into()),
             StreamEvent::Done(Usage::default()),
         ]))
+    }
+
+    fn stream_with_tools(
+        &self,
+        messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        self.stream(messages)
     }
 }
 

@@ -1,62 +1,99 @@
-//! Lazy tool registry: model discovers tools via `tool_search` instead of
-//! receiving all schemas upfront.
+//! Lazy tool registry: model discovers tool schemas via `tool_search` instead
+//! of receiving all schemas upfront.
 //!
 //! When `registry_mode = "lazy"` is set in config, [`wrap_registry_lazy`]
-//! replaces the full registry with one containing only `tool_search`.
-//! The model calls `tool_search(query="…")` to find tools and
-//! `tool_search(name="tool_name")` to activate them (get the full schema).
-//! Activated tools appear in subsequent iterations via the runner's
-//! per-iteration `list_schemas()` call.
+//! keeps every allowed tool executable but hides their schemas from the prompt
+//! until the model discovers them via `tool_search`.
+//! The model calls `tool_search(query="…")` to find tool names and
+//! `tool_search(name="tool_name")` only when it needs that tool's full schema.
 
-use std::sync::Arc;
+use std::{
+    collections::HashSet,
+    sync::{Arc, Mutex},
+};
 
 use {anyhow::Result, async_trait::async_trait, tracing::debug};
 
-use crate::tool_registry::{ActivatedTools, AgentTool, ToolEntry, ToolRegistry, ToolSource};
+use crate::tool_registry::{AgentTool, LazyVisibleTools, ToolRegistry};
 
 /// Maximum number of results returned by a keyword search.
 const MAX_SEARCH_RESULTS: usize = 15;
 
-/// Meta-tool that lets the model discover and activate tools from the full registry.
+#[derive(Clone)]
+struct ToolSearchEntry {
+    name: String,
+    description: String,
+    parameters: serde_json::Value,
+    source: Option<String>,
+    mcp_server: Option<String>,
+}
+
+impl ToolSearchEntry {
+    fn from_schema(schema: serde_json::Value) -> Option<Self> {
+        Some(Self {
+            name: schema.get("name")?.as_str()?.to_string(),
+            description: schema.get("description")?.as_str()?.to_string(),
+            parameters: schema
+                .get("parameters")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({})),
+            source: schema
+                .get("source")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string),
+            mcp_server: schema
+                .get("mcpServer")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string),
+        })
+    }
+}
+
+/// Meta-tool that lets the model discover and inspect schemas for allowed tools.
 pub struct ToolSearchTool {
-    /// The original full registry (read-only).
-    full_registry: Arc<ToolRegistry>,
-    /// Shared activated set — same Arc as the wrapper registry's `activated` field.
-    activated: ActivatedTools,
+    /// Search-only snapshot of allowed tool schemas. Execution remains in the registry.
+    entries: Arc<Vec<ToolSearchEntry>>,
+    /// Shared visible-name set used by the wrapper registry's `list_schemas()`.
+    visible: LazyVisibleTools,
 }
 
 impl ToolSearchTool {
+    fn build_entries(registry: &ToolRegistry) -> Vec<ToolSearchEntry> {
+        registry
+            .list_schemas()
+            .into_iter()
+            .filter_map(ToolSearchEntry::from_schema)
+            .collect()
+    }
+
     fn keyword_search(&self, query: &str) -> Vec<(String, String, u32)> {
         let query_lower = query.to_lowercase();
         let query_words: Vec<&str> = query_lower.split_whitespace().collect();
 
         let mut results: Vec<(String, String, u32)> = Vec::new();
 
-        for name in self.full_registry.list_names() {
-            let name_lower = name.to_lowercase();
-            if let Some(tool) = self.full_registry.get(&name) {
-                let desc = tool.description().to_string();
-                let desc_lower = desc.to_lowercase();
+        for entry in self.entries.iter() {
+            let name_lower = entry.name.to_lowercase();
+            let desc_lower = entry.description.to_lowercase();
 
-                let score = if name_lower == query_lower {
-                    100
-                } else if name_lower.contains(&query_lower) {
-                    50
+            let score = if name_lower == query_lower {
+                100
+            } else if name_lower.contains(&query_lower) {
+                50
+            } else {
+                let word_matches = query_words
+                    .iter()
+                    .filter(|w| name_lower.contains(*w) || desc_lower.contains(*w))
+                    .count();
+                if word_matches > 0 {
+                    (word_matches as u32) * 10
                 } else {
-                    let word_matches = query_words
-                        .iter()
-                        .filter(|w| name_lower.contains(*w) || desc_lower.contains(*w))
-                        .count();
-                    if word_matches > 0 {
-                        (word_matches as u32) * 10
-                    } else {
-                        0
-                    }
-                };
-
-                if score > 0 {
-                    results.push((name, desc, score));
+                    0
                 }
+            };
+
+            if score > 0 {
+                results.push((entry.name.clone(), entry.description.clone(), score));
             }
         }
 
@@ -65,30 +102,22 @@ impl ToolSearchTool {
         results
     }
 
-    fn activate_tool(&self, name: &str) -> serde_json::Value {
-        let Some(tool) = self.full_registry.get(name) else {
+    fn reveal_tool_schema(&self, name: &str) -> serde_json::Value {
+        let Some(entry) = self.entries.iter().find(|entry| entry.name == name) else {
             return self.unknown_tool_response(name);
         };
-        let source = self
-            .full_registry
-            .get_source(name)
-            .unwrap_or(ToolSource::Builtin);
 
-        let schema = tool.parameters_schema();
-        let description = tool.description().to_string();
+        let mut visible = self.visible.lock().unwrap_or_else(|e| e.into_inner());
+        visible.insert(name.to_string());
 
-        // Insert into activated map, preserving the original source metadata.
-        let mut activated = self.activated.lock().unwrap_or_else(|e| e.into_inner());
-        activated.insert(name.to_string(), ToolEntry { tool, source });
-
-        debug!(tool = name, "tool activated via tool_search");
+        debug!(tool = name, "tool schema revealed via tool_search");
 
         serde_json::json!({
-            "activated": true,
+            "schema_visible": true,
             "name": name,
-            "description": description,
-            "parameters": schema,
-            "hint": format!("Tool `{name}` is now available. Call it directly on your next turn.")
+            "description": entry.description.clone(),
+            "parameters": entry.parameters.clone(),
+            "hint": format!("Schema for `{name}` is now visible. Do not call tool_search for `{name}` again; call `{name}` directly when needed.")
         })
     }
 
@@ -104,25 +133,21 @@ impl ToolSearchTool {
             })
             .collect();
         let mcp_servers: Vec<String> = self
-            .full_registry
-            .list_schemas()
-            .into_iter()
-            .filter_map(|schema| {
-                (schema.get("source").and_then(serde_json::Value::as_str) == Some("mcp"))
-                    .then(|| schema.get("mcpServer")?.as_str().map(str::to_string))
-                    .flatten()
-            })
+            .entries
+            .iter()
+            .filter(|entry| entry.source.as_deref() == Some("mcp"))
+            .filter_map(|entry| entry.mcp_server.clone())
             .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .collect();
 
         serde_json::json!({
-            "activated": false,
+            "schema_visible": false,
             "name": name,
             "error": format!("unknown tool: {name}"),
             "suggestions": suggestions,
             "mcpServers": mcp_servers,
-            "hint": "The `name` field must be an exact tool name from search results or Available Tools. Skills are not tools. For connected MCP servers, search with query set to the server or domain name, then activate the exact `mcp__<server>__<tool>` name."
+            "hint": "The `name` field must be an exact tool name from search results or Available Tools. Skills are not tools. For connected MCP servers, search with query set to the server or domain name, then use the exact `mcp__<server>__<tool>` name directly or inspect its schema once with tool_search(name=...)."
         })
     }
 }
@@ -134,9 +159,9 @@ impl AgentTool for ToolSearchTool {
     }
 
     fn description(&self) -> &str {
-        "Search for available tools by keyword, or activate a specific tool by exact name. \
+        "Search for available tools by keyword, or inspect a specific tool schema by exact name. \
          Use `query` to find tools (returns name + description, max 15 results). \
-         Use `name` to activate a tool and get its full parameter schema."
+            Use `name` only when you need the full parameter schema; if you already know the exact tool name and arguments, call that tool directly instead of calling tool_search again."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -145,11 +170,11 @@ impl AgentTool for ToolSearchTool {
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Keyword to search tool names and descriptions"
+                    "description": "Keyword to search tool names and descriptions. Omit this field when using `name`; do not send an empty string."
                 },
                 "name": {
                     "type": "string",
-                    "description": "Exact tool name to activate (returns full schema)"
+                    "description": "Exact non-empty tool name to inspect once when its full schema is needed. Omit this field for keyword search; do not send an empty string."
                 }
             },
             "additionalProperties": false
@@ -157,13 +182,21 @@ impl AgentTool for ToolSearchTool {
     }
 
     async fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value> {
-        let name = params.get("name").and_then(|v| v.as_str());
-        let query = params.get("query").and_then(|v| v.as_str());
+        let name = params
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let query = params
+            .get("query")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
 
         match (name, query) {
             (Some(name), _) => {
-                // Activate a specific tool by name.
-                Ok(self.activate_tool(name))
+                // Reveal a specific tool schema by name.
+                Ok(self.reveal_tool_schema(name))
             },
             (None, Some(query)) => {
                 // Keyword search.
@@ -179,11 +212,11 @@ impl AgentTool for ToolSearchTool {
                     .collect();
                 Ok(serde_json::json!({
                     "results": items,
-                    "hint": "To use a tool, call tool_search again with `name` set to the exact tool name."
+                    "hint": "If you already know the required arguments, call the selected tool directly. Use tool_search(name=...) only once when you need the full schema."
                 }))
             },
             (None, None) => Err(anyhow::anyhow!(
-                "Provide either `name` (to activate a tool) or `query` (to search)."
+                "Provide either `name` (to inspect a tool schema) or `query` (to search)."
             )),
         }
     }
@@ -191,22 +224,120 @@ impl AgentTool for ToolSearchTool {
 
 /// Wrap a full tool registry for lazy mode.
 ///
-/// Returns a new registry containing only `tool_search`. The model discovers
-/// and activates tools from `full` via that meta-tool. Activated tools
-/// appear in `list_schemas()` on the next runner iteration.
-pub fn wrap_registry_lazy(full: ToolRegistry) -> ToolRegistry {
-    let full = Arc::new(full);
-    let mut lazy_registry = ToolRegistry::new();
+/// Returns the same executable registry, but with schema visibility restricted
+/// to `tool_search` until individual schemas are revealed by exact name.
+pub fn wrap_registry_lazy(registry: ToolRegistry) -> ToolRegistry {
+    wrap_registry_lazy_with_visible(registry, std::iter::empty::<String>())
+}
 
-    // Share the lazy registry's activated set with ToolSearchTool.
-    let activated = Arc::clone(&lazy_registry.activated);
+/// Wrap a full tool registry for lazy mode and restore already visible schemas.
+pub fn wrap_registry_lazy_with_visible<I, S>(
+    mut registry: ToolRegistry,
+    visible_names: I,
+) -> ToolRegistry
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    let entries = Arc::new(ToolSearchTool::build_entries(&registry));
+    let mut visible_set = HashSet::from(["tool_search".to_string()]);
+    visible_set.extend(visible_names.into_iter().map(Into::into));
+    let visible = Arc::new(Mutex::new(visible_set));
 
-    let search_tool = ToolSearchTool {
-        full_registry: full,
-        activated,
+    registry.set_lazy_visible(Arc::clone(&visible));
+    registry.register(Box::new(ToolSearchTool { entries, visible }));
+    registry
+}
+
+/// Reconstruct lazy-visible tool schemas from persisted chat history.
+pub fn visible_tool_names_from_history(history: &[serde_json::Value]) -> HashSet<String> {
+    let mut visible = HashSet::new();
+
+    for message in history {
+        match message.get("role").and_then(serde_json::Value::as_str) {
+            Some("assistant") => collect_direct_tool_calls(message, &mut visible),
+            Some("tool_result") => collect_tool_search_reveal(message, &mut visible),
+            _ => {},
+        }
+    }
+
+    visible.remove("tool_search");
+    visible
+}
+
+fn collect_direct_tool_calls(message: &serde_json::Value, visible: &mut HashSet<String>) {
+    let Some(tool_calls) = message
+        .get("tool_calls")
+        .and_then(serde_json::Value::as_array)
+    else {
+        return;
     };
-    lazy_registry.register(Box::new(search_tool));
-    lazy_registry
+
+    for tool_call in tool_calls {
+        let Some(name) = tool_call
+            .get("function")
+            .and_then(|function| function.get("name"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|name| !name.is_empty() && *name != "tool_search")
+        else {
+            continue;
+        };
+        visible.insert(name.to_string());
+    }
+}
+
+fn collect_tool_search_reveal(message: &serde_json::Value, visible: &mut HashSet<String>) {
+    if message.get("tool_name").and_then(serde_json::Value::as_str) != Some("tool_search") {
+        return;
+    }
+    if message
+        .get("success")
+        .and_then(serde_json::Value::as_bool)
+        .is_some_and(|success| !success)
+    {
+        return;
+    }
+    let Some(result) = message.get("result") else {
+        return;
+    };
+    if let Some(name) = revealed_name_from_tool_search_result(result) {
+        visible.insert(name);
+    }
+}
+
+fn revealed_name_from_tool_search_result(result: &serde_json::Value) -> Option<String> {
+    if let Some(name) = revealed_name_from_tool_search_result_object(result) {
+        return Some(name);
+    }
+    if let Some(inner) = result.get("result")
+        && let Some(name) = revealed_name_from_tool_search_result_object(inner)
+    {
+        return Some(name);
+    }
+    if let Some(text) = result.as_str()
+        && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(text)
+    {
+        return revealed_name_from_tool_search_result(&parsed);
+    }
+    None
+}
+
+fn revealed_name_from_tool_search_result_object(result: &serde_json::Value) -> Option<String> {
+    let schema_visible = result
+        .get("schema_visible")
+        .or_else(|| result.get("activated"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    if !schema_visible {
+        return None;
+    }
+    result
+        .get("name")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -340,13 +471,44 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn activate_tool_adds_to_registry() {
+    async fn empty_name_with_query_performs_keyword_search() {
+        let full = build_full_registry();
+        let lazy = wrap_registry_lazy(full);
+        let search_tool = lazy.get("tool_search").unwrap();
+
+        let result = search_tool
+            .execute(serde_json::json!({ "name": "", "query": "shell" }))
+            .await
+            .unwrap();
+
+        assert!(result.get("error").is_none());
+        let results = result["results"].as_array().unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0]["name"], "exec");
+    }
+
+    #[tokio::test]
+    async fn blank_name_and_blank_query_return_error() {
+        let full = build_full_registry();
+        let lazy = wrap_registry_lazy(full);
+        let search_tool = lazy.get("tool_search").unwrap();
+
+        let result = search_tool
+            .execute(serde_json::json!({ "name": "  ", "query": "" }))
+            .await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Provide either"));
+    }
+
+    #[tokio::test]
+    async fn reveal_tool_schema_does_not_gate_execution() {
         let full = build_full_registry();
         let lazy = wrap_registry_lazy(full);
 
-        // Before activation, only tool_search is visible.
+        // Before schema reveal, only tool_search is visible, but allowed tools are executable.
         assert_eq!(lazy.list_schemas().len(), 1);
-        assert!(lazy.get("exec").is_none());
+        assert!(lazy.get("exec").is_some());
 
         let search_tool = lazy.get("tool_search").unwrap();
         let result = search_tool
@@ -354,17 +516,77 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(result["activated"], true);
+        assert_eq!(result["schema_visible"], true);
         assert_eq!(result["name"], "exec");
         assert!(result["parameters"].is_object());
 
-        // After activation, exec is visible.
+        // After schema reveal, exec's schema is visible.
         assert_eq!(lazy.list_schemas().len(), 2);
         assert!(lazy.get("exec").is_some());
     }
 
+    #[test]
+    fn wrap_registry_lazy_with_visible_restores_schema_visibility() {
+        let full = build_full_registry();
+        let lazy = wrap_registry_lazy_with_visible(full, ["exec".to_string()]);
+
+        let names = lazy.list_names();
+        assert_eq!(names, vec!["exec".to_string(), "tool_search".to_string()]);
+        assert!(lazy.get("memory_search").is_some());
+    }
+
+    #[test]
+    fn visible_tool_names_from_history_tracks_successful_schema_reveals() {
+        let history = vec![serde_json::json!({
+            "role": "tool_result",
+            "tool_name": "tool_search",
+            "success": true,
+            "result": {
+                "schema_visible": true,
+                "name": "Glob"
+            }
+        })];
+
+        let visible = visible_tool_names_from_history(&history);
+        assert!(visible.contains("Glob"));
+    }
+
+    #[test]
+    fn visible_tool_names_from_history_tracks_direct_tool_calls() {
+        let history = vec![serde_json::json!({
+            "role": "assistant",
+            "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": {
+                    "name": "Glob",
+                    "arguments": "{\"pattern\":\"**/*.rs\"}"
+                }
+            }]
+        })];
+
+        let visible = visible_tool_names_from_history(&history);
+        assert!(visible.contains("Glob"));
+    }
+
+    #[test]
+    fn visible_tool_names_from_history_ignores_failed_schema_reveals() {
+        let history = vec![serde_json::json!({
+            "role": "tool_result",
+            "tool_name": "tool_search",
+            "success": false,
+            "result": {
+                "schema_visible": true,
+                "name": "Glob"
+            }
+        })];
+
+        let visible = visible_tool_names_from_history(&history);
+        assert!(!visible.contains("Glob"));
+    }
+
     #[tokio::test]
-    async fn activate_unknown_tool_returns_recovery_response() {
+    async fn unknown_tool_schema_request_returns_recovery_response() {
         let full = build_full_registry();
         let lazy = wrap_registry_lazy(full);
         let search_tool = lazy.get("tool_search").unwrap();
@@ -374,7 +596,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(result["activated"], false);
+        assert_eq!(result["schema_visible"], false);
         assert_eq!(result["name"], "nonexistent");
         assert_eq!(result["error"], "unknown tool: nonexistent");
         assert!(
@@ -386,7 +608,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn activate_unknown_tool_returns_search_suggestions() {
+    async fn unknown_tool_schema_request_returns_search_suggestions() {
         let full = build_full_registry();
         let lazy = wrap_registry_lazy(full);
         let search_tool = lazy.get("tool_search").unwrap();
@@ -406,7 +628,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn activate_skill_name_gives_mcp_recovery_hint() {
+    async fn skill_name_schema_request_gives_mcp_recovery_hint() {
         let full = build_full_registry();
         let lazy = wrap_registry_lazy(full);
         let search_tool = lazy.get("tool_search").unwrap();
@@ -416,7 +638,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(result["activated"], false);
+        assert_eq!(result["schema_visible"], false);
         assert_eq!(result["error"], "unknown tool: mcporter");
         assert_eq!(result["mcpServers"], serde_json::json!(["vmcp-ha"]));
         assert!(
@@ -465,18 +687,18 @@ mod tests {
         let lazy = wrap_registry_lazy(full);
         let search_tool = lazy.get("tool_search").unwrap();
 
-        // When both name and query are provided, name (activation) takes priority.
+        // When both name and query are provided, name (schema lookup) takes priority.
         let result = search_tool
             .execute(serde_json::json!({ "name": "exec", "query": "memory" }))
             .await
             .unwrap();
 
-        assert_eq!(result["activated"], true);
+        assert_eq!(result["schema_visible"], true);
         assert_eq!(result["name"], "exec");
     }
 
-    #[test]
-    fn search_results_capped_at_max() {
+    #[tokio::test]
+    async fn search_results_capped_at_max() {
         let mut registry = ToolRegistry::new();
         for i in 0..20 {
             registry.register(Box::new(DummyTool::new(
@@ -486,26 +708,12 @@ mod tests {
         }
 
         let lazy = wrap_registry_lazy(registry);
-        let search = ToolSearchTool {
-            full_registry: Arc::clone(
-                // Access the full registry via the search tool.
-                // We need to create a new one for this test.
-                &{
-                    let mut r = ToolRegistry::new();
-                    for i in 0..20 {
-                        r.register(Box::new(DummyTool::new(
-                            &format!("tool_{i}"),
-                            "a matching description",
-                        )));
-                    }
-                    Arc::new(r)
-                },
-            ),
-            activated: lazy.activated.clone(),
-        };
-
-        let results = search.keyword_search("matching");
-        assert!(results.len() <= MAX_SEARCH_RESULTS);
+        let search_tool = lazy.get("tool_search").unwrap();
+        let result = search_tool
+            .execute(serde_json::json!({ "query": "matching" }))
+            .await
+            .unwrap();
+        assert!(result["results"].as_array().unwrap().len() <= MAX_SEARCH_RESULTS);
     }
 
     #[tokio::test]
@@ -524,18 +732,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn activated_tool_is_executable() {
+    async fn allowed_tool_is_executable_before_schema_reveal() {
         let full = build_full_registry();
         let lazy = wrap_registry_lazy(full);
-        let search_tool = lazy.get("tool_search").unwrap();
 
-        // Activate exec.
-        search_tool
-            .execute(serde_json::json!({ "name": "exec" }))
-            .await
-            .unwrap();
-
-        // Now get and execute it through the lazy registry.
+        // Tool execution is not gated by lazy schema visibility.
         let exec_tool = lazy.get("exec").unwrap();
         let result = exec_tool
             .execute(serde_json::json!({ "input": "hello" }))

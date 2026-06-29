@@ -1,6 +1,6 @@
 //! Per-skill usage telemetry.
 //!
-//! Tracks how often each skill is read (activated) and modified (created,
+//! Tracks how often each skill is read and modified (created,
 //! updated, patched). Data is persisted to `<data_dir>/skills-usage.json`
 //! with atomic writes, debounced to avoid excessive I/O.
 
@@ -22,7 +22,7 @@ const FLUSH_DEBOUNCE_SECS: u64 = 5;
 /// Per-skill usage counters and timestamps.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillUsageEntry {
-    /// Number of times the skill was activated via `read_skill`.
+    /// Number of times the skill was read via `read_skill`.
     pub read_count: u64,
     /// Number of times the skill was created or modified
     /// (create_skill + update_skill + patch_skill).
@@ -121,7 +121,7 @@ impl SkillUsageStore {
         });
     }
 
-    /// Record a read (activation) event for a skill.
+    /// Record a read event for a skill.
     pub async fn record_read(&self, name: &str) {
         let now = now_millis();
         {

@@ -302,7 +302,7 @@ pub enum ToolRegistryMode {
     /// All tool schemas are sent to the model on every turn (default).
     #[default]
     Full,
-    /// Only `tool_search` is sent; the model discovers and activates tools on demand.
+    /// Only `tool_search` is sent; the model discovers and inspects tool schemas on demand.
     Lazy,
 }
 

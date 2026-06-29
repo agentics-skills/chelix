@@ -192,9 +192,9 @@ pub async fn run_agent_loop_streaming_with_limits(
             )));
         }
 
-        // Re-compute schemas each iteration so activated tools appear immediately.
-        // When the loop detector has escalated to stage 2, pass an empty tool
-        // list for this single turn so the model is forced to respond in text
+        // Re-compute schemas each iteration so schemas revealed via tool_search appear immediately.
+        // When the loop detector has escalated to stage 2, do not send tools
+        // for this single turn so the model is forced to respond in text
         // (issue #658).
         let schemas_for_api = if native_tools && !strip_tools_next_iter {
             let schemas = if let Some(active) = active_tool_names.as_ref() {
@@ -289,11 +289,15 @@ pub async fn run_agent_loop_streaming_with_limits(
         // Use streaming API.
         #[cfg(feature = "metrics")]
         let iter_start = std::time::Instant::now();
-        let mut stream = provider.stream_with_tools_and_options(
-            messages.clone(),
-            schemas_for_api.clone(),
-            tool_controls.clone(),
-        );
+        let mut stream = if schemas_for_api.is_empty() {
+            provider.stream(messages.clone())
+        } else {
+            provider.stream_with_tools_and_options(
+                messages.clone(),
+                schemas_for_api.clone(),
+                tool_controls.clone(),
+            )
+        };
 
         // Accumulate answer text, reasoning text, and tool calls from the stream.
         let mut accumulated_text = String::new();

@@ -3,7 +3,7 @@ use {
     async_trait::async_trait,
     moltis_config::schema::McpServerId,
     std::{
-        collections::HashMap,
+        collections::{HashMap, HashSet},
         sync::{Arc, Mutex},
     },
     tracing::warn,
@@ -39,12 +39,12 @@ pub(crate) struct ToolEntry {
     pub(crate) source: ToolSource,
 }
 
-/// Shared set of tools activated at runtime by [`ToolSearchTool`](crate::lazy_tools::ToolSearchTool).
+/// Shared set of tool names whose schemas are visible in lazy registry mode.
 ///
 /// Uses `std::sync::Mutex` (not tokio) because the lock is held for
-/// microseconds — just a `HashMap` insert/lookup — and this keeps
+/// microseconds — just a `HashSet` insert/lookup — and this keeps
 /// `list_schemas()` usable from sync contexts.
-pub(crate) type ActivatedTools = Arc<Mutex<HashMap<String, ToolEntry>>>;
+pub(crate) type LazyVisibleTools = Arc<Mutex<HashSet<String>>>;
 
 /// Registry of available tools for an agent run.
 ///
@@ -52,9 +52,9 @@ pub(crate) type ActivatedTools = Arc<Mutex<HashMap<String, ToolEntry>>>;
 /// cloned (e.g. for sub-agents that need a filtered copy of the parent's tools).
 pub struct ToolRegistry {
     tools: HashMap<String, ToolEntry>,
-    /// Tools activated at runtime via lazy tool discovery (`tool_search`).
-    /// Always present (empty when lazy mode is not in use).
-    pub(crate) activated: ActivatedTools,
+    /// In lazy mode, only these tool schemas are exposed through `list_schemas()`.
+    /// Execution still uses the full `tools` map.
+    lazy_visible: Option<LazyVisibleTools>,
 }
 
 impl Default for ToolRegistry {
@@ -67,8 +67,12 @@ impl ToolRegistry {
     pub fn new() -> Self {
         Self {
             tools: HashMap::new(),
-            activated: Arc::new(Mutex::new(HashMap::new())),
+            lazy_visible: None,
         }
+    }
+
+    pub(crate) fn set_lazy_visible(&mut self, visible: LazyVisibleTools) {
+        self.lazy_visible = Some(visible);
     }
 
     /// Register a built-in tool. Warns (and overwrites) on name collision.
@@ -156,32 +160,25 @@ impl ToolRegistry {
     }
 
     pub fn get(&self, name: &str) -> Option<Arc<dyn AgentTool>> {
-        if let Some(e) = self.tools.get(name) {
-            return Some(Arc::clone(&e.tool));
-        }
-        let activated = self.activated.lock().unwrap_or_else(|e| e.into_inner());
-        activated.get(name).map(|e| Arc::clone(&e.tool))
-    }
-
-    /// Return the [`ToolSource`] for a tool by name.
-    pub(crate) fn get_source(&self, name: &str) -> Option<ToolSource> {
-        self.tools.get(name).map(|e| e.source.clone())
+        self.tools.get(name).map(|e| Arc::clone(&e.tool))
     }
 
     pub fn list_schemas(&self) -> Vec<serde_json::Value> {
+        let visible = self
+            .lazy_visible
+            .as_ref()
+            .map(|names| names.lock().unwrap_or_else(|e| e.into_inner()));
         let mut schemas: Vec<serde_json::Value> = self
             .tools
             .iter()
-            .filter(|(name, _)| is_public_tool_name(name))
+            .filter(|(name, _)| {
+                is_public_tool_name(name)
+                    && visible
+                        .as_ref()
+                        .is_none_or(|visible| visible.contains(name.as_str()))
+            })
             .map(|(_, entry)| entry_to_schema(entry))
             .collect();
-
-        let activated = self.activated.lock().unwrap_or_else(|e| e.into_inner());
-        for (name, entry) in activated.iter() {
-            if !self.tools.contains_key(name) && is_public_tool_name(name) {
-                schemas.push(entry_to_schema(entry));
-            }
-        }
         schemas.sort_by(|left, right| {
             let left_name = left
                 .get("name")
@@ -211,27 +208,28 @@ impl ToolRegistry {
             .collect()
     }
 
-    /// List registered tool names (static + activated).
+    /// List tool names currently visible through schema discovery.
     pub fn list_names(&self) -> Vec<String> {
+        let visible = self
+            .lazy_visible
+            .as_ref()
+            .map(|names| names.lock().unwrap_or_else(|e| e.into_inner()));
         let mut names: Vec<String> = self
             .tools
             .keys()
-            .filter(|name| is_public_tool_name(name))
+            .filter(|name| {
+                is_public_tool_name(name)
+                    && visible
+                        .as_ref()
+                        .is_none_or(|visible| visible.contains(name.as_str()))
+            })
             .cloned()
             .collect();
-        let activated = self.activated.lock().unwrap_or_else(|e| e.into_inner());
-        for name in activated.keys() {
-            if !self.tools.contains_key(name) && is_public_tool_name(name) {
-                names.push(name.clone());
-            }
-        }
         names.sort();
         names
     }
 
     /// Clone the registry, excluding tools whose names start with `prefix`.
-    ///
-    /// Sub-agent registries get a fresh (empty) activated set.
     pub fn clone_without_prefix(&self, prefix: &str) -> ToolRegistry {
         let tools = self
             .tools
@@ -246,7 +244,7 @@ impl ToolRegistry {
             .collect();
         ToolRegistry {
             tools,
-            activated: Arc::new(Mutex::new(HashMap::new())),
+            lazy_visible: self.lazy_visible.clone(),
         }
     }
 
@@ -265,7 +263,7 @@ impl ToolRegistry {
             .collect();
         ToolRegistry {
             tools,
-            activated: Arc::new(Mutex::new(HashMap::new())),
+            lazy_visible: self.lazy_visible.clone(),
         }
     }
 
@@ -284,7 +282,7 @@ impl ToolRegistry {
             .collect();
         ToolRegistry {
             tools,
-            activated: Arc::new(Mutex::new(HashMap::new())),
+            lazy_visible: self.lazy_visible.clone(),
         }
     }
 
@@ -314,7 +312,7 @@ impl ToolRegistry {
             .collect();
         ToolRegistry {
             tools,
-            activated: Arc::new(Mutex::new(HashMap::new())),
+            lazy_visible: self.lazy_visible.clone(),
         }
     }
 }
@@ -609,8 +607,15 @@ mod tests {
             McpServerId::from("filesystem"),
         );
         // Source should now be Mcp even though the builtin was registered first.
-        let src = registry.get_source("Read").unwrap();
-        assert!(matches!(src, ToolSource::Mcp { .. }));
+        let schema = registry
+            .list_schemas()
+            .into_iter()
+            .find(|schema| schema.get("name").and_then(serde_json::Value::as_str) == Some("Read"))
+            .unwrap();
+        assert_eq!(
+            schema.get("source").and_then(serde_json::Value::as_str),
+            Some("mcp")
+        );
     }
 
     #[test]

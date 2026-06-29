@@ -195,9 +195,9 @@ pub async fn run_agent_loop_with_context_and_limits(
             )));
         }
 
-        // Re-compute schemas each iteration so activated tools appear immediately.
-        // When the loop detector has escalated to stage 2, pass an empty tool
-        // list for this single turn so the model is forced to respond in text.
+        // Re-compute schemas each iteration so schemas revealed via tool_search appear immediately.
+        // When the loop detector has escalated to stage 2, do not send tools
+        // for this single turn so the model is forced to respond in text.
         let schemas_for_api = if native_tools && !strip_tools_next_iter {
             let schemas = if let Some(active) = active_tool_names.as_ref() {
                 tools.list_schemas_allowed_by(|name| active.contains(name))
@@ -288,10 +288,15 @@ pub async fn run_agent_loop_with_context_and_limits(
             cb(RunnerEvent::Thinking);
         }
 
-        let mut response = match provider
-            .complete_with_options(&messages, &schemas_for_api, &tool_controls)
-            .await
-        {
+        let completion_result = if schemas_for_api.is_empty() {
+            provider.complete(&messages, &[]).await
+        } else {
+            provider
+                .complete_with_options(&messages, &schemas_for_api, &tool_controls)
+                .await
+        };
+
+        let mut response = match completion_result {
             Ok(r) => r,
             Err(e) => {
                 let msg = e.to_string();

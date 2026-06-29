@@ -102,7 +102,7 @@ pub async fn run_agent_loop_streaming(
             )));
         }
 
-        // Re-compute schemas each iteration so activated tools appear immediately.
+        // Re-compute schemas each iteration so schemas revealed via tool_search appear immediately.
         // When the loop detector has escalated to stage 2, pass an empty tool
         // list for this single turn so the model is forced to respond in text
         // (issue #658).

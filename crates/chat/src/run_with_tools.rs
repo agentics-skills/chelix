@@ -136,7 +136,11 @@ pub(crate) async fn run_with_tools(
             moltis_config::ToolRegistryMode::Lazy
         )
     {
-        filtered_registry = moltis_agents::lazy_tools::wrap_registry_lazy(filtered_registry);
+        let visible_tools = moltis_agents::lazy_tools::visible_tool_names_from_history(history_raw);
+        filtered_registry = moltis_agents::lazy_tools::wrap_registry_lazy_with_visible(
+            filtered_registry,
+            visible_tools,
+        );
     }
 
     // ── Memory prefetch ────────────────────────────────────────────────

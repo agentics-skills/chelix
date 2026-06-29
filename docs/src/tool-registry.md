@@ -69,7 +69,7 @@ tools grouped by origin.
 By default every LLM turn includes full JSON schemas for all registered tools.
 With many MCP servers this can burn 15,000+ tokens per turn. **Lazy mode**
 replaces all tool schemas with a single `tool_search` meta-tool that the model
-uses to discover and activate tools on demand.
+uses to discover tool names and inspect schemas on demand.
 
 ### Configuration
 
@@ -82,12 +82,16 @@ registry_mode = "lazy"   # default: "full"
 
 1. The model receives only `tool_search` in its tool list.
 2. `tool_search(query="memory")` returns name + description pairs (max 15), no schemas.
-3. `tool_search(name="memory_search")` returns the full schema and **activates** the tool.
-4. On the next iteration the model calls `memory_search` directly — standard pipeline, hooks fire normally.
+3. `tool_search(name="memory_search")` returns the full schema and makes that schema visible.
+4. Once the model knows the exact tool name and parameters, it should call `memory_search` directly — standard pipeline, hooks fire normally. `tool_search` is not an execution permission step and should not be repeated for the same known tool.
 
-The runner re-computes schemas each iteration, so activated tools appear
-immediately. The iteration limit is tripled in lazy mode to account for the
-extra discovery round-trips.
+The runner re-computes schemas each iteration, so revealed schemas appear
+immediately. On later turns, lazy visibility is restored from structured session
+history: prior successful `tool_search(name=...)` schema reveals and prior
+assistant tool calls keep those schemas visible without re-running
+`tool_search`. The restoration is not inferred from user or assistant prose. The
+iteration limit is tripled in lazy mode to account for the extra discovery
+round-trips.
 
 ### When to use
 

@@ -296,7 +296,7 @@ where
 }
 
 /// Full skill content: metadata + markdown body.
-/// Loaded on demand when a skill is activated.
+/// Loaded on demand when a skill is read.
 #[derive(Debug, Clone)]
 pub struct SkillContent {
     pub metadata: SkillMetadata,

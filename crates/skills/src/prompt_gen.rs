@@ -3,7 +3,7 @@ use crate::{
     types::{SkillMetadata, SkillSource},
 };
 
-/// Name of the native read tool advertised in the activation instruction.
+/// Name of the native read tool advertised in the skill-loading instruction.
 /// Kept as a constant so the gateway can assert a parity invariant between
 /// this string and the registered tool's [`AgentTool::name`] at test time.
 pub const READ_SKILL_TOOL_NAME: &str = "read_skill";
@@ -34,20 +34,20 @@ pub fn generate_skills_prompt_with_budget(skills: &[SkillMetadata], max_chars: u
         return String::new();
     }
 
-    let activation = build_activation_instruction();
+    let loading = build_loading_instruction();
 
     // Try full format first.
     let full = build_skills_block(skills, Format::Full);
-    if full.len() + activation.len() <= max_chars {
-        return format!("## Available Skills\n\n{full}\n{activation}");
+    if full.len() + loading.len() <= max_chars {
+        return format!("## Available Skills\n\n{full}\n{loading}");
     }
 
     // Fall back to compact format (drop descriptions).
     let compact = build_skills_block(skills, Format::Compact);
-    if compact.len() + activation.len() <= max_chars {
+    if compact.len() + loading.len() <= max_chars {
         return format!(
             "## Available Skills (compact — call `{READ_SKILL_TOOL_NAME}` to see full descriptions)\n\n\
-             {compact}\n{activation}"
+             {compact}\n{loading}"
         );
     }
 
@@ -57,7 +57,7 @@ pub fn generate_skills_prompt_with_budget(skills: &[SkillMetadata], max_chars: u
     while lo < hi {
         let mid = (lo + hi).div_ceil(2);
         let block = build_skills_block(&skills[..mid], Format::Compact);
-        if block.len() + activation.len() <= max_chars {
+        if block.len() + loading.len() <= max_chars {
             lo = mid;
         } else {
             hi = mid - 1;
@@ -66,7 +66,7 @@ pub fn generate_skills_prompt_with_budget(skills: &[SkillMetadata], max_chars: u
     let truncated = build_skills_block(&skills[..lo], Format::Compact);
     format!(
         "## Available Skills (compact, showing {lo} of {} — call `{READ_SKILL_TOOL_NAME}` to browse all)\n\n\
-         {truncated}\n{activation}",
+         {truncated}\n{loading}",
         skills.len()
     )
 }
@@ -109,20 +109,20 @@ fn build_skills_block(skills: &[SkillMetadata], format: Format) -> String {
     out
 }
 
-fn build_activation_instruction() -> String {
+fn build_loading_instruction() -> String {
     let subdir_list = SIDECAR_SUBDIRS
         .iter()
         .map(|s| format!("{s}/"))
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "\nTo activate a skill, call the `{READ_SKILL_TOOL_NAME}` tool with its name \
+        "\nTo load a skill, call the `{READ_SKILL_TOOL_NAME}` tool with its name \
          (e.g. `{READ_SKILL_TOOL_NAME}(name=\"<skill-name>\")`). To load a sidecar \
          file inside a skill directory ({subdir_list}), pass the `file_path` \
          argument as well \
          (e.g. `{READ_SKILL_TOOL_NAME}(name=\"<skill-name>\", file_path=\"references/api.md\")`). \
-         If `{READ_SKILL_TOOL_NAME}` is not currently listed in Available Tools, activate it first with \
-         `tool_search(name=\"{READ_SKILL_TOOL_NAME}\")`.\n\n",
+         If `{READ_SKILL_TOOL_NAME}` is not currently listed in Available Tools and you need its schema, inspect it once with \
+         `tool_search(name=\"{READ_SKILL_TOOL_NAME}\")`. Do not repeat tool_search when you already know the call.\n\n",
     )
 }
 
@@ -168,19 +168,19 @@ mod tests {
     }
 
     #[test]
-    fn test_activation_instruction_mentions_all_sidecar_dirs() {
+    fn test_loading_instruction_mentions_all_sidecar_dirs() {
         let prompt = generate_skills_prompt(&[skill("demo", "demo")]);
         for sub in SIDECAR_SUBDIRS {
             let needle = format!("{sub}/");
             assert!(
                 prompt.contains(&needle),
-                "activation instruction should mention {needle}: {prompt}"
+                "loading instruction should mention {needle}: {prompt}"
             );
         }
     }
 
     #[test]
-    fn test_activation_instruction_uses_read_skill_tool_name_constant() {
+    fn test_loading_instruction_uses_read_skill_tool_name_constant() {
         let prompt = generate_skills_prompt(&[skill("demo", "demo")]);
         assert!(prompt.contains(READ_SKILL_TOOL_NAME));
         assert!(
@@ -189,7 +189,7 @@ mod tests {
         );
         assert!(
             prompt.contains(&format!("tool_search(name=\"{READ_SKILL_TOOL_NAME}\")")),
-            "lazy-mode instruction must explain how to activate read_skill: {prompt}"
+            "lazy-mode instruction must explain how to inspect read_skill schema: {prompt}"
         );
     }
 

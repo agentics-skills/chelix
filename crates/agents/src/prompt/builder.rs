@@ -615,9 +615,10 @@ fn append_memory_section(
         && !has_memory_delete
     {
         prompt.push_str(concat!(
-            "\nMemory tools (`memory_search`, `memory_save`, `memory_forget`, `memory_delete`) are available but must be ",
-            "activated first. Use `tool_search(query=\"memory\")` to discover them, ",
-            "then `tool_search(name=\"memory_search\")` to activate.\n",
+            "\nMemory tools (`memory_search`, `memory_save`, `memory_forget`, `memory_delete`) are available. ",
+            "Use `tool_search(query=\"memory\")` only if you need to discover their exact names, ",
+            "and `tool_search(name=\"memory_search\")` only if you need that schema. ",
+            "Once you know the exact tool name and arguments, call the memory tool directly; do not repeat `tool_search` for the same tool.\n",
         ));
     }
     prompt.push('\n');
