@@ -6,7 +6,6 @@
 
 One binary — sandboxed, secure, yours.
 
-[![CI](https://github.com/agentics-skills/chelix/actions/workflows/ci.yml/badge.svg)](https://github.com/agentics-skills/chelix/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/agentics-skills/chelix/graph/badge.svg)](https://codecov.io/gh/agentics-skills/chelix)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-1.91%2B-orange.svg)](https://www.rust-lang.org)

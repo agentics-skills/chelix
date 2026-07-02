@@ -2,7 +2,7 @@ name: Deploy Documentation
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - 'docs/**'
       - '.github/workflows/docs.yml'
@@ -15,22 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  zizmor:
-    name: Workflow Security
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          persist-credentials: false
-      - uses: zizmorcore/zizmor-action@135698455da5c3b3e55f73f4419e481ab68cdd95 # v0.4.1
-        with:
-          advanced-security: false
-          online-audits: false
-
   deploy:
-    needs: zizmor
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -71,12 +56,8 @@ jobs:
         working-directory: docs
         run: lychee --offline --root-dir "$PWD/dist" --no-progress dist
 
-      - name: Add CNAME for custom domain
-        run: echo "docs.moltis.org" > docs/dist/CNAME
-
       - name: Deploy to gh-pages branch
         uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e # v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./docs/dist
-          cname: docs.moltis.org
