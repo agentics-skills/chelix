@@ -1,0 +1,501 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Channels - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a class="active" href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Features</div>  <h1 id="channels">Channels</h1>
+<p>Moltis connects to messaging platforms through <strong>channels</strong>. Each channel type
+has a distinct inbound mode, determining how it receives messages, and a set of
+capabilities that control what features are available.</p>
+<h2 id="supported-channels">Supported Channels</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Channel</th><th>Inbound Mode</th><th>Public URL Required</th><th>Key Capabilities</th></tr></thead><tbody><tr><td>Telegram</td><td>Polling</td><td>No</td><td>Streaming, voice ingest, reactions, OTP, location</td></tr><tr><td>Discord</td><td>Gateway (WebSocket)</td><td>No</td><td>Streaming, interactive messages, threads, voice ingest, reactions</td></tr><tr><td>Matrix</td><td>Gateway (sync loop)</td><td>No</td><td>Streaming, voice ingest, interactive polls, threads, reactions, OTP, location, encrypted chats, device verification, ownership bootstrap</td></tr><tr><td>Microsoft Teams</td><td>Webhook</td><td>Yes</td><td>Streaming, interactive messages, threads, reactions</td></tr><tr><td>WhatsApp</td><td>Gateway (WebSocket)</td><td>No</td><td>Streaming, voice ingest, OTP, pairing, location</td></tr><tr><td>Slack</td><td>Socket Mode</td><td>No</td><td>Streaming, interactive messages, threads, reactions</td></tr><tr><td>Nostr</td><td>Gateway (relay subscription)</td><td>No</td><td>OTP, encrypted DMs (NIP-04)</td></tr><tr><td>Signal</td><td>Gateway (signal-cli SSE)</td><td>No</td><td>OTP, DMs, groups, outbound text</td></tr></tbody></table>
+<h2 id="inbound-modes">Inbound Modes</h2>
+<h3 id="polling">Polling</h3>
+<p>The bot periodically fetches new messages from the platform API. No public URL
+or open port is needed. Used by Telegram.</p>
+<h3 id="gateway--websocket">Gateway / WebSocket</h3>
+<p>The bot opens a persistent outbound WebSocket connection to the platform and
+receives events in real time, or uses a persistent sync loop over outbound HTTP.
+No public URL needed. Used by Discord, Matrix, and WhatsApp.</p>
+<h3 id="socket-mode">Socket Mode</h3>
+<p>Similar to a gateway connection, but uses the platform’s Socket Mode protocol.
+No public URL needed. Used by Slack.</p>
+<h3 id="webhook">Webhook</h3>
+<p>The platform sends HTTP POST requests to a publicly reachable endpoint on your
+server. You must configure the messaging endpoint URL in the platform’s
+settings. Used by Microsoft Teams.</p>
+<h3 id="none-send-only">None (Send-Only)</h3>
+<p>For channels that only send outbound messages and do not receive inbound
+traffic. No channels currently use this mode, but it is available for future
+integrations (e.g. email, SMS).</p>
+<h2 id="capabilities-reference">Capabilities Reference</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Capability</th><th>Description</th></tr></thead><tbody><tr><td><code>supports_outbound</code></td><td>Can send messages to users</td></tr><tr><td><code>supports_streaming</code></td><td>Can stream partial responses (typing/editing)</td></tr><tr><td><code>supports_interactive</code></td><td>Can send interactive components (buttons, menus)</td></tr><tr><td><code>supports_threads</code></td><td>Can reply in threads</td></tr><tr><td><code>supports_voice_ingest</code></td><td>Can receive and transcribe voice messages</td></tr><tr><td><code>supports_pairing</code></td><td>Requires device pairing (QR code)</td></tr><tr><td><code>supports_otp</code></td><td>Supports OTP-based sender approval</td></tr><tr><td><code>supports_reactions</code></td><td>Can add/remove emoji reactions</td></tr><tr><td><code>supports_location</code></td><td>Can receive and process location data</td></tr></tbody></table>
+<h2 id="setup">Setup</h2>
+<p>Channels can be configured in two places:</p>
+<ul>
+<li>In <code>moltis.toml</code> under <code>[channels]</code>, for file-managed setups</li>
+<li>In the web UI under <strong>Settings -> Channels</strong>, which stores channel accounts in the internal <code>channels</code> table inside <code>data_dir()/moltis.db</code></li>
+</ul>
+<p>The web UI does not write channel settings back into <code>moltis.toml</code>. It includes an advanced JSON config editor so channel-specific settings remain reachable even when a dedicated form field has not been added yet.</p>
+<p>The channel picker itself is controlled by <code>[channels].offered</code> in
+<code>moltis.toml</code>. If you edit that list by hand, reload the page so the web UI
+re-reads the current picker options.</p>
+<p>Channel configs stored through the web UI currently live as JSON records in the
+internal <code>channels</code> table in <code>data_dir()/moltis.db</code>. They are not currently
+wrapped by the Moltis vault, so treat local access to that database as access
+to the configured channel credentials.</p>
+<p>Some channel integrations also have platform-specific limits. For Matrix,
+encrypted chats require password auth. Access-token auth is only suitable for
+plain Matrix traffic because Moltis cannot import an existing device’s private
+E2EE keys from an access token alone. See <a href="/matrix.html">Matrix</a> for the full
+setup, ownership, verification, and troubleshooting flow.</p>
+<p><code>moltis.toml</code> and the web UI are both loaded at startup. If the same <code>(channel_type, account_id)</code> exists in both, the <code>moltis.toml</code> entry wins.</p>
+<p>Manual file configuration looks like this:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.telegram.my_bot]
+token = &#x22;123456:ABC-DEF...&#x22;
+dm_policy = &#x22;allowlist&#x22;
+allowlist = [&#x22;alice&#x22;, &#x22;bob&#x22;]
+
+[channels.msteams.my_teams_bot]
+app_id = &#x22;...&#x22;
+app_password = &#x22;...&#x22;
+
+[channels.discord.my_discord_bot]
+token = &#x22;...&#x22;
+
+[channels.slack.my_slack_bot]
+bot_token = &#x22;xoxb-...&#x22;
+app_token = &#x22;xapp-...&#x22;
+
+[channels.matrix.my_matrix_bot]
+homeserver = &#x22;https://matrix.example.com&#x22;
+access_token = &#x22;syt_...&#x22;
+user_id = &#x22;@bot:example.com&#x22;
+
+[channels.whatsapp.my_wa]
+dm_policy = &#x22;open&#x22;
+
+[channels.signal.my_signal]
+account = &#x22;+15551234567&#x22;
+http_url = &#x22;http://127.0.0.1:8080&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">telegram</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my_bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">token </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "123456:ABC-DEF..."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">dm_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "allowlist"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">allowlist </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"alice"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "bob"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">msteams</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my_teams_bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">app_id </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "..."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">app_password </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "..."</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">discord</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my_discord_bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">token </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "..."</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">slack</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my_slack_bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">bot_token </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "xoxb-..."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">app_token </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "xapp-..."</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">matrix</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my_matrix_bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">homeserver </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://matrix.example.com"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">access_token </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "syt_..."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">user_id </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "@bot:example.com"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">whatsapp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my_wa</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">dm_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "open"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">signal</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my_signal</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">account </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "+15551234567"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">http_url </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "http://127.0.0.1:8080"</span></span></code></pre>
+<p>For detailed configuration, see the per-channel pages:
+<a href="/telegram.html">Telegram</a>, <a href="/teams.html">Microsoft Teams</a>, <a href="/discord.html">Discord</a>,
+<a href="/slack.html">Slack</a>, <a href="/matrix.html">Matrix</a>, <a href="/whatsapp.html">WhatsApp</a>,
+<a href="/nostr.html">Nostr</a>, <a href="/signal.html">Signal</a>.</p>
+<p>You can also use the web UI’s <strong>Channels</strong> tab for guided setup with each platform. Web-added channels do not get written back into <code>moltis.toml</code>.</p>
+<p>For Matrix specifically, the web UI now supports the full normal setup flow:</p>
+<ul>
+<li>password auth is the default because it unlocks encrypted chats</li>
+<li>dedicated bot accounts default to <code>moltis_owned</code> so Moltis can bootstrap cross-signing and recovery</li>
+<li>older Matrix accounts that need one external approval expose that approval flow in the channel card instead of failing silently</li>
+</ul>
+<h2 id="proactive-outbound-messaging">Proactive Outbound Messaging</h2>
+<p>Agents are not limited to replying in the current chat. Moltis supports three
+main outbound patterns:</p>
+<ul>
+<li><strong><code>send_message</code> tool</strong> for direct proactive messages to any configured channel account/chat</li>
+<li><strong><code>update_channel_settings</code> tool</strong> for safe in-chat edits to channel access rules, allowlists, and model routing</li>
+<li><strong>Cron job delivery</strong> for background jobs that should post their final output to a channel</li>
+<li><strong>Heartbeat delivery</strong> for periodic heartbeat acknowledgements sent to a chosen chat</li>
+</ul>
+<p>Example <code>send_message</code> tool call:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;account_id&#x22;: &#x22;my-telegram-bot&#x22;,
+  &#x22;to&#x22;: &#x22;123456789&#x22;,
+  &#x22;text&#x22;: &#x22;Deployment finished successfully.&#x22;
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "account_id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "my-telegram-bot"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "to"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "123456789"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "text"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Deployment finished successfully."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><code>account_id</code> is the configured channel account name, either from <code>moltis.toml</code> or from a channel account stored through the web UI, and <code>to</code> is the destination chat, peer, or room identifier for that platform.</p>
+<p>Example <code>update_channel_settings</code> tool call:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;account_id&#x22;: &#x22;my-telegram-bot&#x22;,
+  &#x22;settings&#x22;: {
+    &#x22;dm_policy&#x22;: &#x22;allowlist&#x22;,
+    &#x22;allowlist_add&#x22;: [&#x22;alice&#x22;],
+    &#x22;model&#x22;: &#x22;openai/gpt-5&#x22;
+  }
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "account_id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "my-telegram-bot"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "settings"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "dm_policy"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "allowlist"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "allowlist_add"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"alice"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "model"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai/gpt-5"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><code>update_channel_settings</code> intentionally supports a narrow patch surface. It is
+for non-secret channel settings only, not raw <code>moltis.toml</code> editing, token
+rotation, or arbitrary config mutation.</p>
+<h2 id="access-control">Access Control</h2>
+<p>All channels share the same access control model with three settings:</p>
+<h3 id="dm-policy">DM Policy</h3>
+<p>Controls who can send direct messages to the bot.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Value</th><th>Behavior</th></tr></thead><tbody><tr><td><code>"allowlist"</code></td><td>Only users listed in <code>allowlist</code> can DM (<strong>default for all channels except WhatsApp</strong>)</td></tr><tr><td><code>"open"</code></td><td>Anyone can DM the bot</td></tr><tr><td><code>"disabled"</code></td><td>DMs are silently ignored</td></tr></tbody></table>
+<aside class="admonition admonition-warning"><div class="admonition-title">Empty allowlist blocks everyone</div><div class="admonition-body"><p>When <code>dm_policy = "allowlist"</code> with an empty <code>allowlist</code>, <strong>all DMs are blocked</strong>.<br>This is a security feature — removing all entries from an allowlist never silently<br>switches to open access. Add user IDs/usernames to <code>allowlist</code> or set<br><code>dm_policy = "open"</code>.</p></div></aside>
+<h3 id="group-policy">Group Policy</h3>
+<p>Controls who can interact with the bot in group chats / channels / guilds.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Value</th><th>Behavior</th></tr></thead><tbody><tr><td><code>"open"</code></td><td>Bot responds in all groups (default)</td></tr><tr><td><code>"allowlist"</code></td><td>Only groups on the allowlist are allowed</td></tr><tr><td><code>"disabled"</code></td><td>Group messages are silently ignored</td></tr></tbody></table>
+<p>The group allowlist field name varies by channel: <code>group_allowlist</code> (Telegram,
+WhatsApp, MS Teams), <code>guild_allowlist</code> (Discord), <code>channel_allowlist</code> (Slack),
+<code>room_allowlist</code> (Matrix).</p>
+<h3 id="mention-mode">Mention Mode</h3>
+<p>Controls when the bot responds in groups (does not apply to DMs).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Value</th><th>Behavior</th></tr></thead><tbody><tr><td><code>"mention"</code></td><td>Bot only responds when @mentioned (default)</td></tr><tr><td><code>"always"</code></td><td>Bot responds to every message</td></tr><tr><td><code>"none"</code></td><td>Bot never responds in groups (DM-only)</td></tr></tbody></table>
+<h3 id="allowlist-matching">Allowlist Matching</h3>
+<p>All allowlist fields across all channels share the same matching behavior:</p>
+<ul>
+<li><strong>Values are strings</strong> — even for numeric IDs, use <code>"123456789"</code> not <code>123456789</code></li>
+<li><strong>Case-insensitive</strong> — <code>"Alice"</code> matches <code>"alice"</code></li>
+<li><strong>Glob wildcards</strong> — <code>"admin_*"</code>, <code>"*@example.com"</code>, <code>"user_*_vip"</code></li>
+<li><strong>Multiple identifiers</strong> — both the user’s numeric ID and username are checked (where applicable)</li>
+</ul>
+<h3 id="otp-self-approval">OTP Self-Approval</h3>
+<p>Channels that support OTP (Telegram, Discord, Matrix, WhatsApp) allow non-allowlisted
+users to self-approve by entering a 6-digit code. The code appears in the web UI
+under <strong>Channels > Senders</strong>. See each channel’s page for details.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Field</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>otp_self_approval</code></td><td><code>true</code></td><td>Enable OTP challenges for non-allowlisted DM users</td></tr><tr><td><code>otp_cooldown_secs</code></td><td><code>300</code></td><td>Lockout duration after 3 failed attempts</td></tr></tbody></table>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/remote-access.html"><span>Previous</span>Remote Access</a> <a class="pager-link next" href="/telegram.html"><span>Next</span>Telegram</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

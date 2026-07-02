@@ -1,0 +1,967 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Metrics &amp; Tracing - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a class="active" href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Architecture</div>  <h1 id="metrics-and-tracing">Metrics and Tracing</h1>
+<p>Moltis includes comprehensive observability support through Prometheus metrics and
+tracing integration. This document explains how to enable, configure, and use
+these features.</p>
+<h2 id="overview">Overview</h2>
+<p>The metrics system is built on the <a href="https://docs.rs/metrics"><code>metrics</code></a> crate
+facade, which provides a unified interface similar to the <code>log</code> crate. When the
+<code>prometheus</code> feature is enabled, metrics are exported in Prometheus text format
+for scraping by Grafana, Prometheus, or other monitoring tools.</p>
+<p>All metrics are <strong>feature-gated</strong> — they add zero overhead when disabled.</p>
+<h2 id="feature-flags">Feature Flags</h2>
+<p>Metrics are controlled by two feature flags:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Feature</th><th>Description</th><th>Default</th></tr></thead><tbody><tr><td><code>metrics</code></td><td>Enables metrics collection and the <code>/api/metrics</code> JSON API</td><td>Enabled</td></tr><tr><td><code>prometheus</code></td><td>Enables the <code>/metrics</code> Prometheus endpoint (requires <code>metrics</code>)</td><td>Enabled</td></tr></tbody></table>
+<h3 id="compile-time-configuration">Compile-Time Configuration</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="# Enable only metrics collection (no Prometheus endpoint)
+moltis-gateway = { version = &#x22;0.1&#x22;, features = [&#x22;metrics&#x22;] }
+
+# Enable metrics with Prometheus export (default)
+moltis-gateway = { version = &#x22;0.1&#x22;, features = [&#x22;metrics&#x22;, &#x22;prometheus&#x22;] }
+
+# Enable metrics for specific crates
+moltis-agents = { version = &#x22;0.1&#x22;, features = [&#x22;metrics&#x22;] }
+moltis-cron = { version = &#x22;0.1&#x22;, features = [&#x22;metrics&#x22;] }"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Enable only metrics collection (no Prometheus endpoint)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">moltis-gateway </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { version </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "0.1"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> features </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"metrics"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">] }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Enable metrics with Prometheus export (default)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">moltis-gateway </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { version </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "0.1"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> features </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"metrics"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "prometheus"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">] }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Enable metrics for specific crates</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">moltis-agents </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { version </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "0.1"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> features </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"metrics"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">] }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">moltis-cron </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { version </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "0.1"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> features </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"metrics"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">] }</span></span></code></pre>
+<p>To build without metrics entirely:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="cargo build --release --no-default-features --features &#x22;file-watcher,tailscale,tls,web-ui&#x22;"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">cargo</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> build</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --release</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --no-default-features</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --features</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "file-watcher,tailscale,tls,web-ui"</span></span></code></pre>
+<h2 id="prometheus-endpoint">Prometheus Endpoint</h2>
+<p>When the <code>prometheus</code> feature is enabled, the gateway exposes a <code>/metrics</code> endpoint:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="GET http://localhost:18789/metrics"><code><span class="line"><span>GET http://localhost:18789/metrics</span></span></code></pre>
+<p>This endpoint is <strong>unauthenticated</strong> to allow Prometheus scrapers to access it.
+It returns metrics in Prometheus text format:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="# HELP moltis_http_requests_total Total number of HTTP requests handled
+# TYPE moltis_http_requests_total counter
+moltis_http_requests_total{method=&#x22;GET&#x22;,status=&#x22;200&#x22;,endpoint=&#x22;/api/chat&#x22;} 42
+
+# HELP moltis_llm_completion_duration_seconds Duration of LLM completion requests
+# TYPE moltis_llm_completion_duration_seconds histogram
+moltis_llm_completion_duration_seconds_bucket{provider=&#x22;anthropic&#x22;,model=&#x22;claude-3-opus&#x22;,le=&#x22;1.0&#x22;} 5"><code><span class="line"><span># HELP moltis_http_requests_total Total number of HTTP requests handled</span></span>
+<span class="line"><span># TYPE moltis_http_requests_total counter</span></span>
+<span class="line"><span>moltis_http_requests_total{method="GET",status="200",endpoint="/api/chat"} 42</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># HELP moltis_llm_completion_duration_seconds Duration of LLM completion requests</span></span>
+<span class="line"><span># TYPE moltis_llm_completion_duration_seconds histogram</span></span>
+<span class="line"><span>moltis_llm_completion_duration_seconds_bucket{provider="anthropic",model="claude-3-opus",le="1.0"} 5</span></span></code></pre>
+<h3 id="grafana-integration">Grafana Integration</h3>
+<p>To scrape metrics with Prometheus and visualize in Grafana:</p>
+<ol>
+<li>Add moltis to your <code>prometheus.yml</code>:</li>
+</ol>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="yaml" data-code="scrape_configs:
+  - job_name: &#x27;moltis&#x27;
+    static_configs:
+      - targets: [&#x27;localhost:18789&#x27;]
+    metrics_path: /metrics
+    scrape_interval: 15s"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">scrape_configs</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  - </span><span style="color:#D32F2F;--shiki-dark:#85E89D">job_name</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> 'moltis'</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">    static_configs</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">      - </span><span style="color:#D32F2F;--shiki-dark:#85E89D">targets</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">'localhost:18789'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">    metrics_path</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> /metrics</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">    scrape_interval</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> 15s</span></span></code></pre>
+<ol start="2">
+<li>Import or create Grafana dashboards using the <code>moltis_*</code> metrics.</li>
+</ol>
+<h2 id="json-api-endpoints">JSON API Endpoints</h2>
+<p>For the web UI dashboard and programmatic access, authenticated JSON endpoints
+are available:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Endpoint</th><th>Description</th></tr></thead><tbody><tr><td><code>GET /api/metrics</code></td><td>Full metrics snapshot with aggregates and per-provider breakdown</td></tr><tr><td><code>GET /api/metrics/summary</code></td><td>Lightweight counts for navigation badges</td></tr><tr><td><code>GET /api/metrics/history</code></td><td>Time-series data points for charts (last hour, 10s intervals)</td></tr></tbody></table>
+<h3 id="history-endpoint">History Endpoint</h3>
+<p>The <code>/api/metrics/history</code> endpoint returns historical metrics data for rendering
+time-series charts:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;enabled&#x22;: true,
+  &#x22;interval_seconds&#x22;: 10,
+  &#x22;max_points&#x22;: 60480,
+  &#x22;points&#x22;: [
+    {
+      &#x22;timestamp&#x22;: 1706832000000,
+      &#x22;llm_completions&#x22;: 42,
+      &#x22;llm_input_tokens&#x22;: 15000,
+      &#x22;llm_output_tokens&#x22;: 8000,
+      &#x22;http_requests&#x22;: 150,
+      &#x22;ws_active&#x22;: 3,
+      &#x22;tool_executions&#x22;: 25,
+      &#x22;mcp_calls&#x22;: 12,
+      &#x22;active_sessions&#x22;: 2
+    }
+  ]
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "enabled"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "interval_seconds"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 10</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "max_points"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 60480</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "points"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "timestamp"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1706832000000</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "llm_completions"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 42</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "llm_input_tokens"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 15000</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "llm_output_tokens"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 8000</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "http_requests"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 150</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "ws_active"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 3</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "tool_executions"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 25</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "mcp_calls"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 12</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "active_sessions"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 2</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  ]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h2 id="metrics-persistence">Metrics Persistence</h2>
+<p>Metrics history is persisted to SQLite, so historical data survives server
+restarts. The database is stored at <code>~/.moltis/metrics.db</code> (or the configured
+data directory).</p>
+<p>Key features:</p>
+<ul>
+<li><strong>7-day retention</strong>: History is kept for 7 days (60,480 data points at
+10-second intervals)</li>
+<li><strong>Automatic cleanup</strong>: Old data is automatically removed hourly</li>
+<li><strong>Startup recovery</strong>: History is loaded from the database when the server
+starts</li>
+</ul>
+<p>The storage backend uses a trait-based design (<code>MetricsStore</code>), allowing
+alternative implementations (e.g., TimescaleDB) for larger deployments.</p>
+<h3 id="storage-architecture">Storage Architecture</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="rust" data-code="// The MetricsStore trait defines the storage interface
+#[async_trait]
+pub trait MetricsStore: Send + Sync {
+    async fn save_point(&#x26;self, point: &#x26;MetricsHistoryPoint) -> Result<()>;
+    async fn load_history(&#x26;self, since: u64, limit: usize) -> Result<Vec<MetricsHistoryPoint>>;
+    async fn cleanup_before(&#x26;self, before: u64) -> Result<u64>;
+    async fn latest_point(&#x26;self) -> Result<Option<MetricsHistoryPoint>>;
+}"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">// The MetricsStore trait defines the storage interface</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">#[async_trait]</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">pub</span><span style="color:#D32F2F;--shiki-dark:#F97583"> trait</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> MetricsStore</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Send</span><span style="color:#D32F2F;--shiki-dark:#F97583"> +</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Sync</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    async</span><span style="color:#D32F2F;--shiki-dark:#F97583"> fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> save_point</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#79B8FF">self</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">, point</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#D32F2F;--shiki-dark:#F97583"> &#x26;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">MetricsHistoryPoint</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) </span><span style="color:#D32F2F;--shiki-dark:#F97583">-></span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Result</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;()>;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    async</span><span style="color:#D32F2F;--shiki-dark:#F97583"> fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> load_history</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#79B8FF">self</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">, since</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> u64</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">, limit</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> usize</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) </span><span style="color:#D32F2F;--shiki-dark:#F97583">-></span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Result</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">Vec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">MetricsHistoryPoint</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">>>;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    async</span><span style="color:#D32F2F;--shiki-dark:#F97583"> fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> cleanup_before</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#79B8FF">self</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">, before</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> u64</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) </span><span style="color:#D32F2F;--shiki-dark:#F97583">-></span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Result</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">u64</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">>;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    async</span><span style="color:#D32F2F;--shiki-dark:#F97583"> fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> latest_point</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#79B8FF">self</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) </span><span style="color:#D32F2F;--shiki-dark:#F97583">-></span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Result</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">Option</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">MetricsHistoryPoint</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">>>;</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>The default <code>SqliteMetricsStore</code> implementation stores data in a single table
+with an index on the timestamp column for efficient range queries.</p>
+<h2 id="web-ui-dashboard">Web UI Dashboard</h2>
+<p>The gateway includes a built-in metrics dashboard at <code>/monitoring</code> in the web UI.
+This page displays:</p>
+<p><strong>Overview Tab:</strong></p>
+<ul>
+<li>System metrics (uptime, connected clients, active sessions)</li>
+<li>LLM usage (completions, tokens, cache statistics)</li>
+<li>Tool execution statistics</li>
+<li>MCP server status</li>
+<li>Provider breakdown table</li>
+<li>Prometheus endpoint (with copy button)</li>
+</ul>
+<p><strong>Charts Tab:</strong></p>
+<ul>
+<li>Token usage over time (input/output)</li>
+<li>HTTP requests and LLM completions</li>
+<li>WebSocket connections and active sessions</li>
+<li>Tool executions and MCP calls</li>
+</ul>
+<p>The dashboard uses <a href="https://github.com/leeoniya/uPlot">uPlot</a> for lightweight,
+high-performance time-series charts. Data updates every 10 seconds for current
+metrics and every 30 seconds for history.</p>
+<h2 id="available-metrics">Available Metrics</h2>
+<h3 id="http-metrics">HTTP Metrics</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Metric</th><th>Type</th><th>Labels</th><th>Description</th></tr></thead><tbody><tr><td><code>moltis_http_requests_total</code></td><td>Counter</td><td>method, status, endpoint</td><td>Total HTTP requests</td></tr><tr><td><code>moltis_http_request_duration_seconds</code></td><td>Histogram</td><td>method, status, endpoint</td><td>Request latency</td></tr><tr><td><code>moltis_http_requests_in_flight</code></td><td>Gauge</td><td>—</td><td>Currently processing requests</td></tr></tbody></table>
+<h3 id="llmagent-metrics">LLM/Agent Metrics</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Metric</th><th>Type</th><th>Labels</th><th>Description</th></tr></thead><tbody><tr><td><code>moltis_llm_completions_total</code></td><td>Counter</td><td>provider, model</td><td>Total completions requested</td></tr><tr><td><code>moltis_llm_completion_duration_seconds</code></td><td>Histogram</td><td>provider, model</td><td>Completion latency</td></tr><tr><td><code>moltis_llm_input_tokens_total</code></td><td>Counter</td><td>provider, model</td><td>Input tokens processed</td></tr><tr><td><code>moltis_llm_output_tokens_total</code></td><td>Counter</td><td>provider, model</td><td>Output tokens generated</td></tr><tr><td><code>moltis_llm_completion_errors_total</code></td><td>Counter</td><td>provider, model, error_type</td><td>Completion failures</td></tr><tr><td><code>moltis_llm_time_to_first_token_seconds</code></td><td>Histogram</td><td>provider, model</td><td>Streaming TTFT</td></tr></tbody></table>
+<h4 id="provider-aliases">Provider Aliases</h4>
+<p>When you have multiple instances of the same provider type (e.g., separate API keys
+for work and personal use), you can use the <code>alias</code> configuration option to
+differentiate them in metrics:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[providers.anthropic]
+api_key = &#x22;sk-work-...&#x22;
+alias = &#x22;anthropic-work&#x22;
+
+# Note: You would need separate config sections for multiple instances
+# of the same provider. This is a placeholder for future functionality."><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">providers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">anthropic</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">api_key </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "sk-work-..."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">alias </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "anthropic-work"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Note: You would need separate config sections for multiple instances</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># of the same provider. This is a placeholder for future functionality.</span></span></code></pre>
+<p>The alias appears in the <code>provider</code> label of all LLM metrics:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="moltis_llm_input_tokens_total{provider=&#x22;anthropic-work&#x22;, model=&#x22;claude-3-opus&#x22;} 5000
+moltis_llm_input_tokens_total{provider=&#x22;anthropic-personal&#x22;, model=&#x22;claude-3-opus&#x22;} 3000"><code><span class="line"><span>moltis_llm_input_tokens_total{provider="anthropic-work", model="claude-3-opus"} 5000</span></span>
+<span class="line"><span>moltis_llm_input_tokens_total{provider="anthropic-personal", model="claude-3-opus"} 3000</span></span></code></pre>
+<p>This allows you to:</p>
+<ul>
+<li>Track token usage separately for billing purposes</li>
+<li>Create separate Grafana dashboards per provider instance</li>
+<li>Monitor rate limits and quotas independently</li>
+</ul>
+<h3 id="mcp-model-context-protocol-metrics">MCP (Model Context Protocol) Metrics</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Metric</th><th>Type</th><th>Labels</th><th>Description</th></tr></thead><tbody><tr><td><code>moltis_mcp_tool_calls_total</code></td><td>Counter</td><td>server, tool</td><td>Tool invocations</td></tr><tr><td><code>moltis_mcp_tool_call_duration_seconds</code></td><td>Histogram</td><td>server, tool</td><td>Tool call latency</td></tr><tr><td><code>moltis_mcp_tool_call_errors_total</code></td><td>Counter</td><td>server, tool, error_type</td><td>Tool call failures</td></tr><tr><td><code>moltis_mcp_servers_connected</code></td><td>Gauge</td><td>—</td><td>Active MCP server connections</td></tr></tbody></table>
+<h3 id="tool-execution-metrics">Tool Execution Metrics</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Metric</th><th>Type</th><th>Labels</th><th>Description</th></tr></thead><tbody><tr><td><code>moltis_tool_executions_total</code></td><td>Counter</td><td>tool</td><td>Tool executions</td></tr><tr><td><code>moltis_tool_execution_duration_seconds</code></td><td>Histogram</td><td>tool</td><td>Execution time</td></tr><tr><td><code>moltis_sandbox_command_executions_total</code></td><td>Counter</td><td>—</td><td>Sandbox commands run</td></tr></tbody></table>
+<h3 id="session-metrics">Session Metrics</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Metric</th><th>Type</th><th>Labels</th><th>Description</th></tr></thead><tbody><tr><td><code>moltis_sessions_created_total</code></td><td>Counter</td><td>—</td><td>Sessions created</td></tr><tr><td><code>moltis_sessions_active</code></td><td>Gauge</td><td>—</td><td>Currently active sessions</td></tr><tr><td><code>moltis_session_messages_total</code></td><td>Counter</td><td>role</td><td>Messages by role</td></tr></tbody></table>
+<h3 id="cron-job-metrics">Cron Job Metrics</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Metric</th><th>Type</th><th>Labels</th><th>Description</th></tr></thead><tbody><tr><td><code>moltis_cron_jobs_scheduled</code></td><td>Gauge</td><td>—</td><td>Number of scheduled jobs</td></tr><tr><td><code>moltis_cron_executions_total</code></td><td>Counter</td><td>—</td><td>Job executions</td></tr><tr><td><code>moltis_cron_execution_duration_seconds</code></td><td>Histogram</td><td>—</td><td>Job duration</td></tr><tr><td><code>moltis_cron_errors_total</code></td><td>Counter</td><td>—</td><td>Failed jobs</td></tr><tr><td><code>moltis_cron_stuck_jobs_cleared_total</code></td><td>Counter</td><td>—</td><td>Jobs exceeding 2h timeout</td></tr><tr><td><code>moltis_cron_input_tokens_total</code></td><td>Counter</td><td>—</td><td>Input tokens from cron runs</td></tr><tr><td><code>moltis_cron_output_tokens_total</code></td><td>Counter</td><td>—</td><td>Output tokens from cron runs</td></tr></tbody></table>
+<h3 id="memorysearch-metrics">Memory/Search Metrics</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Metric</th><th>Type</th><th>Labels</th><th>Description</th></tr></thead><tbody><tr><td><code>moltis_memory_searches_total</code></td><td>Counter</td><td>search_type</td><td>Searches performed</td></tr><tr><td><code>moltis_memory_search_duration_seconds</code></td><td>Histogram</td><td>search_type</td><td>Search latency</td></tr><tr><td><code>moltis_memory_embeddings_generated_total</code></td><td>Counter</td><td>provider</td><td>Embeddings created</td></tr></tbody></table>
+<h3 id="channel-metrics">Channel Metrics</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Metric</th><th>Type</th><th>Labels</th><th>Description</th></tr></thead><tbody><tr><td><code>moltis_channels_active</code></td><td>Gauge</td><td>—</td><td>Loaded channel plugins</td></tr><tr><td><code>moltis_channel_messages_received_total</code></td><td>Counter</td><td>channel</td><td>Inbound messages</td></tr><tr><td><code>moltis_channel_messages_sent_total</code></td><td>Counter</td><td>channel</td><td>Outbound messages</td></tr></tbody></table>
+<h3 id="telegram-specific-metrics">Telegram-Specific Metrics</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Metric</th><th>Type</th><th>Labels</th><th>Description</th></tr></thead><tbody><tr><td><code>moltis_telegram_messages_received_total</code></td><td>Counter</td><td>—</td><td>Messages from Telegram</td></tr><tr><td><code>moltis_telegram_access_control_denials_total</code></td><td>Counter</td><td>—</td><td>Access denied events</td></tr><tr><td><code>moltis_telegram_polling_duration_seconds</code></td><td>Histogram</td><td>—</td><td>Message handling time</td></tr></tbody></table>
+<h3 id="oauth-metrics">OAuth Metrics</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Metric</th><th>Type</th><th>Labels</th><th>Description</th></tr></thead><tbody><tr><td><code>moltis_oauth_flow_starts_total</code></td><td>Counter</td><td>—</td><td>OAuth flows initiated</td></tr><tr><td><code>moltis_oauth_flow_completions_total</code></td><td>Counter</td><td>—</td><td>Successful completions</td></tr><tr><td><code>moltis_oauth_token_refresh_total</code></td><td>Counter</td><td>—</td><td>Token refreshes</td></tr><tr><td><code>moltis_oauth_token_refresh_failures_total</code></td><td>Counter</td><td>—</td><td>Refresh failures</td></tr></tbody></table>
+<h3 id="skills-metrics">Skills Metrics</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Metric</th><th>Type</th><th>Labels</th><th>Description</th></tr></thead><tbody><tr><td><code>moltis_skills_installation_attempts_total</code></td><td>Counter</td><td>—</td><td>Installation attempts</td></tr><tr><td><code>moltis_skills_installation_duration_seconds</code></td><td>Histogram</td><td>—</td><td>Installation time</td></tr><tr><td><code>moltis_skills_git_clone_total</code></td><td>Counter</td><td>—</td><td>Successful git clones</td></tr><tr><td><code>moltis_skills_git_clone_fallback_total</code></td><td>Counter</td><td>—</td><td>Fallbacks to HTTP tarball</td></tr></tbody></table>
+<h2 id="tracing-integration">Tracing Integration</h2>
+<p>The <code>moltis-metrics</code> crate includes optional tracing integration via the
+<code>tracing</code> feature. This allows span context to propagate to metric labels.</p>
+<h3 id="enabling-tracing">Enabling Tracing</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="moltis-metrics = { version = &#x22;0.1&#x22;, features = [&#x22;prometheus&#x22;, &#x22;tracing&#x22;] }"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">moltis-metrics </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { version </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "0.1"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> features </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"prometheus"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "tracing"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">] }</span></span></code></pre>
+<h3 id="initialization">Initialization</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="rust" data-code="use moltis_metrics::tracing_integration::init_tracing;
+
+fn main() {
+    // Initialize tracing with metrics context propagation
+    init_tracing();
+
+    // Now spans will add labels to metrics
+}"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">use</span><span style="color:#24292EFF;--shiki-dark:#B392F0"> moltis_metrics</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tracing_integration</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">init_tracing;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    // Initialize tracing with metrics context propagation</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">    init_tracing</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    // Now spans will add labels to metrics</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="how-it-works">How It Works</h3>
+<p>When tracing is enabled, span fields are automatically added as metric labels:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="rust" data-code="use tracing::instrument;
+
+#[instrument(fields(operation = &#x22;fetch_user&#x22;, component = &#x22;api&#x22;))]
+async fn fetch_user(id: u64) -> User {
+    // Metrics recorded here will include:
+    // - operation=&#x22;fetch_user&#x22;
+    // - component=&#x22;api&#x22;
+    counter!(&#x22;api_calls_total&#x22;).increment(1);
+}"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">use</span><span style="color:#24292EFF;--shiki-dark:#B392F0"> tracing</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">instrument;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">#[instrument(fields(operation </span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "fetch_user"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">, component </span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "api"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">))]</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">async</span><span style="color:#D32F2F;--shiki-dark:#F97583"> fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> fetch_user</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(id</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> u64</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) </span><span style="color:#D32F2F;--shiki-dark:#F97583">-></span><span style="color:#6F42C1;--shiki-dark:#B392F0"> User</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    // Metrics recorded here will include:</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    // - operation="fetch_user"</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    // - component="api"</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">    counter!</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"api_calls_total"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">increment</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#1976D2;--shiki-dark:#79B8FF">1</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="span-labels">Span Labels</h3>
+<p>The following span fields are propagated to metrics:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Field</th><th>Description</th></tr></thead><tbody><tr><td><code>operation</code></td><td>The operation being performed</td></tr><tr><td><code>component</code></td><td>The component/module name</td></tr><tr><td><code>span.name</code></td><td>The span’s target/name</td></tr></tbody></table>
+<h2 id="adding-custom-metrics">Adding Custom Metrics</h2>
+<h3 id="in-your-code">In Your Code</h3>
+<p>Use the <code>metrics</code> macros re-exported from <code>moltis-metrics</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="rust" data-code="use moltis_metrics::{counter, gauge, histogram, labels};
+
+// Simple counter
+counter!(&#x22;my_custom_requests_total&#x22;).increment(1);
+
+// Counter with labels
+counter!(
+    &#x22;my_custom_requests_total&#x22;,
+    labels::ENDPOINT => &#x22;/api/users&#x22;,
+    labels::METHOD => &#x22;GET&#x22;
+).increment(1);
+
+// Gauge (current value)
+gauge!(&#x22;my_queue_size&#x22;).set(42.0);
+
+// Histogram (distribution)
+histogram!(&#x22;my_operation_duration_seconds&#x22;).record(0.123);"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">use</span><span style="color:#24292EFF;--shiki-dark:#B392F0"> moltis_metrics</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{counter, gauge, histogram, labels};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">// Simple counter</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">counter!</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"my_custom_requests_total"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">increment</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#1976D2;--shiki-dark:#79B8FF">1</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">// Counter with labels</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">counter!</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">    "my_custom_requests_total"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#B392F0">    labels</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#24292EFF;--shiki-dark:#79B8FF">ENDPOINT</span><span style="color:#D32F2F;--shiki-dark:#F97583"> =></span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "/api/users"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#B392F0">    labels</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#24292EFF;--shiki-dark:#79B8FF">METHOD</span><span style="color:#D32F2F;--shiki-dark:#F97583"> =></span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "GET"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">increment</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#1976D2;--shiki-dark:#79B8FF">1</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">// Gauge (current value)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">gauge!</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"my_queue_size"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">set</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#1976D2;--shiki-dark:#79B8FF">42</span><span style="color:#212121;--shiki-dark:#79B8FF">.</span><span style="color:#1976D2;--shiki-dark:#79B8FF">0</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">// Histogram (distribution)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">histogram!</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"my_operation_duration_seconds"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">record</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#1976D2;--shiki-dark:#79B8FF">0</span><span style="color:#212121;--shiki-dark:#79B8FF">.</span><span style="color:#1976D2;--shiki-dark:#79B8FF">123</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+<h3 id="feature-gating">Feature-Gating</h3>
+<p>Always gate metrics code to avoid overhead when disabled:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="rust" data-code="#[cfg(feature = &#x22;metrics&#x22;)]
+use moltis_metrics::{counter, histogram};
+
+pub async fn my_function() {
+    #[cfg(feature = &#x22;metrics&#x22;)]
+    let start = std::time::Instant::now();
+
+    // ... do work ...
+
+    #[cfg(feature = &#x22;metrics&#x22;)]
+    {
+        counter!(&#x22;my_operations_total&#x22;).increment(1);
+        histogram!(&#x22;my_operation_duration_seconds&#x22;)
+            .record(start.elapsed().as_secs_f64());
+    }
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">#[cfg(feature </span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "metrics"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)]</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">use</span><span style="color:#24292EFF;--shiki-dark:#B392F0"> moltis_metrics</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{counter, histogram};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">pub</span><span style="color:#D32F2F;--shiki-dark:#F97583"> async</span><span style="color:#D32F2F;--shiki-dark:#F97583"> fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> my_function</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    #[cfg(feature </span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "metrics"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)]</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    let</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> start </span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#B392F0"> std</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#24292EFF;--shiki-dark:#B392F0">time</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">Instant</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">now</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    // ... do work ...</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    #[cfg(feature </span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "metrics"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    {</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">        counter!</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"my_operations_total"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">increment</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#1976D2;--shiki-dark:#79B8FF">1</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">        histogram!</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"my_operation_duration_seconds"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">record</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(start</span><span style="color:#D32F2F;--shiki-dark:#F97583">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">elapsed</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">()</span><span style="color:#D32F2F;--shiki-dark:#F97583">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">as_secs_f64</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="adding-new-metric-definitions">Adding New Metric Definitions</h3>
+<p>For consistency, add metric name constants to <code>crates/metrics/src/definitions.rs</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="rust" data-code="/// My feature metrics
+pub mod my_feature {
+    /// Total operations performed
+    pub const OPERATIONS_TOTAL: &#x26;str = &#x22;moltis_my_feature_operations_total&#x22;;
+    /// Operation duration in seconds
+    pub const OPERATION_DURATION_SECONDS: &#x26;str = &#x22;moltis_my_feature_operation_duration_seconds&#x22;;
+}"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">/// My feature metrics</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">pub</span><span style="color:#D32F2F;--shiki-dark:#F97583"> mod</span><span style="color:#24292EFF;--shiki-dark:#B392F0"> my_feature</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    /// Total operations performed</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    pub</span><span style="color:#D32F2F;--shiki-dark:#F97583"> const</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> OPERATIONS_TOTAL</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#D32F2F;--shiki-dark:#F97583"> &#x26;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">str</span><span style="color:#D32F2F;--shiki-dark:#F97583"> =</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "moltis_my_feature_operations_total"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    /// Operation duration in seconds</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    pub</span><span style="color:#D32F2F;--shiki-dark:#F97583"> const</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> OPERATION_DURATION_SECONDS</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#D32F2F;--shiki-dark:#F97583"> &#x26;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">str</span><span style="color:#D32F2F;--shiki-dark:#F97583"> =</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "moltis_my_feature_operation_duration_seconds"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>Then use them:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="rust" data-code="use moltis_metrics::{counter, my_feature};
+
+counter!(my_feature::OPERATIONS_TOTAL).increment(1);"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">use</span><span style="color:#24292EFF;--shiki-dark:#B392F0"> moltis_metrics</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{counter, my_feature};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">counter!</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my_feature</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#24292EFF;--shiki-dark:#79B8FF">OPERATIONS_TOTAL</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">increment</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#1976D2;--shiki-dark:#79B8FF">1</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+<h2 id="configuration">Configuration</h2>
+<p>Metrics configuration in <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[metrics]
+enabled = true              # Enable metrics collection (default: true)
+prometheus_endpoint = true  # Expose /metrics endpoint (default: true)
+labels = { env = &#x22;prod&#x22; }   # Add custom labels to all metrics"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">metrics</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">              # Enable metrics collection (default: true)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">prometheus_endpoint </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # Expose /metrics endpoint (default: true)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">labels </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { env </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "prod"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }   </span><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Add custom labels to all metrics</span></span></code></pre>
+<p>Environment variables:</p>
+<ul>
+<li><code>RUST_LOG=moltis_metrics=debug</code> — Enable debug logging for metrics initialization</li>
+</ul>
+<h2 id="best-practices">Best Practices</h2>
+<ol>
+<li><strong>Use consistent naming</strong>: Follow the pattern <code>moltis_&#x3C;subsystem>_&#x3C;metric>_&#x3C;unit></code></li>
+<li><strong>Add units to names</strong>: <code>_total</code> for counters, <code>_seconds</code> for durations, <code>_bytes</code> for sizes</li>
+<li><strong>Keep cardinality low</strong>: Avoid high-cardinality labels (like user IDs or request IDs)</li>
+<li><strong>Feature-gate everything</strong>: Use <code>#[cfg(feature = "metrics")]</code> to ensure zero overhead when disabled</li>
+<li><strong>Use predefined buckets</strong>: The <code>buckets</code> module has standard histogram buckets for common metric types</li>
+</ol>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="metrics-not-appearing">Metrics not appearing</h3>
+<ol>
+<li>Verify the <code>metrics</code> feature is enabled at compile time</li>
+<li>Check that the metrics recorder is initialized (happens automatically in gateway)</li>
+<li>Ensure you’re hitting the correct <code>/metrics</code> endpoint</li>
+<li>Check <code>moltis.toml</code> has <code>[metrics] enabled = true</code></li>
+</ol>
+<h3 id="prometheus-endpoint-not-available">Prometheus endpoint not available</h3>
+<ol>
+<li>Ensure the <code>prometheus</code> feature is enabled (it’s separate from <code>metrics</code>)</li>
+<li>Check your build: <code>cargo build --features prometheus</code></li>
+</ol>
+<h3 id="high-memory-usage">High memory usage</h3>
+<ul>
+<li>Check for high-cardinality labels (many unique label combinations)</li>
+<li>Consider reducing histogram bucket counts</li>
+</ul>
+<h3 id="missing-labels">Missing labels</h3>
+<ul>
+<li>Ensure labels are passed consistently across all metric recordings</li>
+<li>Check that tracing spans include the expected fields</li>
+</ul>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/sqlite-migration.html"><span>Previous</span>SQLite Migrations</a> <a class="pager-link next" href="/tool-registry.html"><span>Next</span>Tool Registry</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

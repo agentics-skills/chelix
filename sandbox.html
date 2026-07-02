@@ -1,0 +1,667 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Sandbox - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a class="active" href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Features</div>  <h1 id="sandbox-backends">Sandbox Backends</h1>
+<p>Moltis runs LLM-generated commands inside containers to protect your host
+system. The sandbox backend controls which container technology is used.</p>
+<h2 id="backend-selection">Backend Selection</h2>
+<p>Configure in <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tools.exec.sandbox]
+backend = &#x22;auto&#x22;          # default — picks the best available
+# backend = &#x22;podman&#x22;      # force Podman (daemonless, rootless)
+# backend = &#x22;docker&#x22;      # force Docker
+# backend = &#x22;apple-container&#x22;  # force Apple Container (macOS only)
+# backend = &#x22;wasm&#x22;        # force WASM sandbox (Wasmtime + WASI)
+# backend = &#x22;restricted-host&#x22;  # env clearing + rlimits only"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">exec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">sandbox</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">backend </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "auto"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">          # default — picks the best available</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># backend = "podman"      # force Podman (daemonless, rootless)</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># backend = "docker"      # force Docker</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># backend = "apple-container"  # force Apple Container (macOS only)</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># backend = "wasm"        # force WASM sandbox (Wasmtime + WASI)</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># backend = "restricted-host"  # env clearing + rlimits only</span></span></code></pre>
+<p>With <code>"auto"</code> (the default), Moltis picks the strongest available backend:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Priority</th><th>Backend</th><th>Platform</th><th>Isolation</th></tr></thead><tbody><tr><td>1</td><td>Apple Container</td><td>macOS</td><td>VM (Virtualization.framework)</td></tr><tr><td>2</td><td>Podman</td><td>any</td><td>Linux namespaces / cgroups (daemonless)</td></tr><tr><td>3</td><td>Docker</td><td>any</td><td>Linux namespaces / cgroups</td></tr><tr><td>4</td><td>Restricted Host</td><td>any</td><td>env clearing, rlimits (no filesystem isolation)</td></tr><tr><td>5</td><td>none (host)</td><td>any</td><td>no isolation</td></tr></tbody></table>
+<p>The WASM backend (<code>backend = "wasm"</code>) is not in the auto-detect chain because
+it cannot execute arbitrary shell commands — use it explicitly when you want
+WASI-isolated execution.</p>
+<h2 id="apple-container-recommended-on-macos">Apple Container (recommended on macOS)</h2>
+<p><a href="https://github.com/apple/container">Apple Container</a> runs each sandbox in a
+lightweight virtual machine using Apple’s Virtualization.framework. Every
+container gets its own kernel, so a kernel exploit inside the sandbox cannot
+reach the host — unlike Docker, which shares the host kernel.</p>
+<h3 id="install">Install</h3>
+<p>Download the signed installer from GitHub:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Download the installer package
+gh release download --repo apple/container --pattern &#x22;container-installer-signed.pkg&#x22; --dir /tmp
+
+# Install (requires admin)
+sudo installer -pkg /tmp/container-installer-signed.pkg -target /
+
+# First-time setup — downloads a default Linux kernel
+container system start"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Download the installer package</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">gh</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> release</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> download</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --repo</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> apple/container</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --pattern</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "container-installer-signed.pkg"</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --dir</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /tmp</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Install (requires admin)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">sudo</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> installer</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -pkg</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /tmp/container-installer-signed.pkg</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -target</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># First-time setup — downloads a default Linux kernel</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">container</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> system</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> start</span></span></code></pre>
+<p>Alternatively, build from source with <code>brew install container</code> (requires
+Xcode 26+).</p>
+<h3 id="verify">Verify</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="container --version
+# Run a quick test
+container run --rm ubuntu echo &#x22;hello from VM&#x22;"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">container</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --version</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Run a quick test</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">container</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> run</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --rm</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ubuntu</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "hello from VM"</span></span></code></pre>
+<p>Once installed, restart <code>moltis gateway</code> — the startup banner will show
+<code>sandbox: apple-container backend</code>.</p>
+<h2 id="podman">Podman</h2>
+<p><a href="https://podman.io/">Podman</a> is a daemonless, rootless container engine that
+is CLI-compatible with Docker. It is preferred over Docker in auto-detection
+because it doesn’t require a background daemon process and runs rootless by
+default for better security.</p>
+<h3 id="install-1">Install</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# macOS
+brew install podman
+podman machine init &#x26;&#x26; podman machine start
+
+# Debian/Ubuntu
+sudo apt-get install -y podman
+
+# Fedora/RHEL
+sudo dnf install -y podman"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># macOS</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">brew</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> install</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> podman</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">podman</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> machine</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> init</span><span style="color:#212121;--shiki-dark:#E1E4E8"> &#x26;&#x26;</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> podman</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> machine</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> start</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Debian/Ubuntu</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">sudo</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> apt-get</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> install</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -y</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> podman</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Fedora/RHEL</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">sudo</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> dnf</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> install</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -y</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> podman</span></span></code></pre>
+<h3 id="verify-1">Verify</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="podman --version
+podman run --rm docker.io/library/ubuntu echo &#x22;hello from podman&#x22;"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">podman</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --version</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">podman</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> run</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --rm</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> docker.io/library/ubuntu</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "hello from podman"</span></span></code></pre>
+<p>Once installed, restart <code>moltis gateway</code> — the startup banner will show
+<code>sandbox: podman backend</code>. All Docker hardening flags (see below) apply
+identically to Podman containers.</p>
+<h2 id="docker">Docker</h2>
+<p>Docker is supported on macOS, Linux, and Windows. On macOS it runs inside a
+Linux VM managed by Docker Desktop, so it is reasonably isolated but adds more
+overhead than Apple Container.</p>
+<p>Install from <a href="https://docs.docker.com/get-docker/">https://docs.docker.com/get-docker/</a></p>
+<h3 id="dockerpodman-hardening">Docker/Podman Hardening</h3>
+<p>Docker and Podman containers launched by Moltis include the following security
+hardening flags by default:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Flag</th><th>Effect</th></tr></thead><tbody><tr><td><code>--cap-drop ALL</code></td><td>Drops all Linux capabilities when <code>workspace_sysmount = "ro"</code></td></tr><tr><td><code>--security-opt no-new-privileges</code></td><td>Prevents privilege escalation via setuid/setgid binaries when <code>workspace_sysmount = "ro"</code></td></tr><tr><td><code>--tmpfs /tmp:rw,nosuid,size=256m</code></td><td>Writable tmpfs for temp files (noexec on real root)</td></tr><tr><td><code>--tmpfs /run:rw,nosuid,size=64m</code></td><td>Writable tmpfs for runtime files</td></tr><tr><td><code>--read-only</code></td><td>Read-only root filesystem (prebuilt images with <code>workspace_sysmount = "ro"</code>)</td></tr><tr><td><code>--hostname sandbox</code></td><td>Prevents host hostname leakage</td></tr><tr><td><code>--tmpfs /sys/firmware:ro,nosuid</code></td><td>Masks BIOS/UEFI firmware data (Docker only)</td></tr><tr><td><code>--tmpfs /sys/class/dmi:ro,nosuid</code></td><td>Masks system serial numbers and identifiers (Docker only)</td></tr><tr><td><code>--tmpfs /sys/devices/virtual/dmi:ro,nosuid</code></td><td>Masks DMI attributes (Docker only)</td></tr><tr><td><code>--tmpfs /sys/class/block:ro,nosuid</code></td><td>Masks block device info (Docker only)</td></tr></tbody></table>
+<p>With <code>workspace_sysmount = "ro"</code> (the default), Docker/Podman sandbox
+containers keep <code>--cap-drop ALL</code> and <code>--security-opt no-new-privileges</code>, and
+prebuilt sandbox images also keep <code>--read-only</code>.</p>
+<p>With <code>workspace_sysmount = "rw"</code>, Moltis skips <code>--cap-drop ALL</code>,
+<code>--security-opt no-new-privileges</code>, and <code>--read-only</code> so package managers can
+work against a writable root filesystem.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tools.exec.sandbox]
+workspace_sysmount = &#x22;rw&#x22;   # default: &#x22;ro&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">exec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">sandbox</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">workspace_sysmount </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "rw"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">   # default: "ro"</span></span></code></pre>
+<p>The <code>/sys</code> tmpfs overlays prevent host hardware metadata (serial numbers, disk
+models, LUKS UUIDs) from being visible inside the container. Note that
+<code>tools.fs.deny_paths</code> only restricts Moltis file-access tools — these kernel
+filesystem masks prevent leakage via shell commands as well.</p>
+<blockquote>
+<p><strong>Podman note:</strong> The sysfs tmpfs overlays are applied on Docker only. Podman’s
+OCI runtime performs “tmpcopyup” when mounting tmpfs over sysfs paths, which
+fails under <code>--cap-drop ALL</code> because some sysfs files are permission-denied
+even for root. Podman masks <code>/sys/firmware</code> via its built-in OCI
+<code>MaskedPaths</code>; <code>/sys/class/dmi</code>, <code>/sys/devices/virtual/dmi</code>, and
+<code>/sys/class/block</code> remain readable inside the container on Podman.</p>
+</blockquote>
+<h2 id="wasm-sandbox-wasmtime--wasi">WASM Sandbox (Wasmtime + WASI)</h2>
+<p>The WASM sandbox provides real sandboxed execution using
+<a href="https://wasmtime.dev/">Wasmtime</a> with WASI. Commands execute in an isolated
+filesystem tree with fuel metering and epoch-based timeout enforcement.</p>
+<h3 id="how-it-works">How It Works</h3>
+<p>The WASM sandbox has two execution tiers:</p>
+<p><strong>Tier 1 — Built-in commands</strong> (~20 common coreutils implemented in Rust):
+<code>echo</code>, <code>cat</code>, <code>ls</code>, <code>mkdir</code>, <code>rm</code>, <code>cp</code>, <code>mv</code>, <code>pwd</code>, <code>env</code>, <code>head</code>, <code>tail</code>,
+<code>wc</code>, <code>sort</code>, <code>touch</code>, <code>which</code>, <code>true</code>, <code>false</code>, <code>test</code>/<code>[</code>, <code>basename</code>,
+<code>dirname</code>.</p>
+<p>These operate on a sandboxed directory tree, translating guest paths (e.g.
+<code>/home/sandbox/file.txt</code>) to host paths under <code>~/.moltis/sandbox/wasm/&#x3C;id>/</code>.
+Paths outside the sandbox root are rejected.</p>
+<p>Basic shell features are supported: <code>&#x26;&#x26;</code>, <code>||</code>, <code>;</code> sequences, <code>$VAR</code>
+expansion, quoting via <code>shell-words</code>, and <code>></code> / <code>>></code> output redirects.</p>
+<p><strong>Tier 2 — Real WASM module execution</strong>: When the command references a <code>.wasm</code>
+file, it is loaded and run via Wasmtime + WASI preview1 with full isolation:
+preopened directories, fuel metering, epoch interruption, and captured I/O.</p>
+<p><strong>Unknown commands</strong> return exit code 127: “command not found in WASM sandbox”.</p>
+<h3 id="filesystem-isolation">Filesystem Isolation</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="~/.moltis/sandbox/wasm/<session-key>/
+  home/        preopened as /home/sandbox (rw)
+  tmp/         preopened as /tmp (rw)"><code><span class="line"><span>~/.moltis/sandbox/wasm/&#x3C;session-key>/</span></span>
+<span class="line"><span>  home/        preopened as /home/sandbox (rw)</span></span>
+<span class="line"><span>  tmp/         preopened as /tmp (rw)</span></span></code></pre>
+<p>Home persistence is respected:</p>
+<ul>
+<li><code>shared</code>: uses <code>data_dir()/sandbox/home/shared/wasm/</code></li>
+<li><code>session</code>: uses <code>data_dir()/sandbox/wasm/&#x3C;session-id>/</code></li>
+<li><code>off</code>: per-session, cleaned up on <code>cleanup()</code></li>
+</ul>
+<h3 id="resource-limits">Resource Limits</h3>
+<ul>
+<li><strong>Fuel metering</strong>: <code>store.set_fuel(fuel_limit)</code> — limits WASM instruction
+count (Tier 2 only)</li>
+<li><strong>Epoch interruption</strong>: background thread ticks epochs, store traps on
+deadline (Tier 2 only)</li>
+<li><strong>Memory</strong>: <code>wasm_config.memory_reservation(bytes)</code> — Wasmtime memory limits
+(Tier 2 only)</li>
+</ul>
+<h3 id="configuration">Configuration</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tools.exec.sandbox]
+backend = &#x22;wasm&#x22;
+
+# WASM-specific settings
+wasm_fuel_limit = 1000000000       # instruction fuel (default: 1 billion)
+wasm_epoch_interval_ms = 100       # epoch interruption interval (default: 100ms)
+
+[tools.exec.sandbox.resource_limits]
+memory_limit = &#x22;512M&#x22;    # Wasmtime memory reservation"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">exec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">sandbox</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">backend </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "wasm"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># WASM-specific settings</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">wasm_fuel_limit </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1000000000</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">       # instruction fuel (default: 1 billion)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">wasm_epoch_interval_ms </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 100</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">       # epoch interruption interval (default: 100ms)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">exec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">sandbox</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">resource_limits</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">memory_limit </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "512M"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">    # Wasmtime memory reservation</span></span></code></pre>
+<h3 id="limitations">Limitations</h3>
+<ul>
+<li>Built-in commands cover common coreutils but not a full shell</li>
+<li>No pipe support yet (planned via busybox.wasm in future)</li>
+<li>No network access from WASM modules</li>
+<li><code>.wasm</code> modules must target WASI preview1</li>
+</ul>
+<h3 id="when-to-use">When to Use</h3>
+<p>The WASM sandbox is a good fit when:</p>
+<ul>
+<li>You want filesystem-isolated execution without container overhead</li>
+<li>You need a sandboxed environment on platforms without Docker or Apple
+Container</li>
+<li>You are running <code>.wasm</code> modules and want fuel-metered, time-bounded execution</li>
+</ul>
+<h3 id="compile-time-feature">Compile-Time Feature</h3>
+<p>The WASM sandbox is gated behind the <code>wasm</code> cargo feature, which is enabled by
+default. To build without Wasmtime (saves ~30 MB binary size):</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="cargo build --release --no-default-features --features lightweight"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">cargo</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> build</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --release</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --no-default-features</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --features</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> lightweight</span></span></code></pre>
+<p>When the feature is disabled and the config requests <code>backend = "wasm"</code>, Moltis
+falls back to <code>restricted-host</code> with a warning.</p>
+<h2 id="restricted-host-sandbox">Restricted Host Sandbox</h2>
+<p>The restricted-host sandbox provides lightweight isolation by running commands
+on the host via <code>bash -c</code> with environment clearing and <code>ulimit</code> resource
+wrappers. This is the fallback when no container runtime is available.</p>
+<h3 id="how-it-works-1">How It Works</h3>
+<p>When the restricted-host sandbox runs a command, it:</p>
+<ol>
+<li><strong>Clears the environment</strong> — all inherited environment variables are removed</li>
+<li><strong>Sets a restricted PATH</strong> — only <code>/usr/local/bin:/usr/bin:/bin</code></li>
+<li><strong>Sets HOME to <code>/tmp</code></strong> — prevents access to the user’s home directory</li>
+<li><strong>Applies resource limits</strong> via shell <code>ulimit</code>:
+<ul>
+<li><code>ulimit -u</code> (max processes) from <code>pids_max</code> config (default: 256)</li>
+<li><code>ulimit -n 1024</code> (max open files)</li>
+<li><code>ulimit -t</code> (CPU seconds) from <code>cpu_quota</code> config (default: 300s)</li>
+<li><code>ulimit -v</code> (virtual memory) from <code>memory_limit</code> config (default: 512M)</li>
+</ul>
+</li>
+<li><strong>Enforces a timeout</strong> via <code>tokio::time::timeout</code></li>
+</ol>
+<p>User-specified environment variables from <code>opts.env</code> are re-applied after the
+environment is cleared, so the LLM tool can still pass required variables.</p>
+<h3 id="limitations-1">Limitations</h3>
+<ul>
+<li>No filesystem isolation — commands run on the host filesystem</li>
+<li>No network isolation — commands can make network requests</li>
+<li><code>ulimit</code> enforcement is best-effort</li>
+<li>No image building — <code>moltis sandbox build</code> returns immediately</li>
+</ul>
+<p>For production use with untrusted workloads, prefer Apple Container or Docker.</p>
+<h2 id="no-sandbox">No sandbox</h2>
+<p>If no runtime is found (and the <code>wasm</code> feature is disabled), commands execute
+directly on the host. The startup banner will show a warning. This is <strong>not
+recommended</strong> for untrusted workloads.</p>
+<h2 id="failover-chain">Failover Chain</h2>
+<p>Moltis wraps the primary sandbox backend with automatic failover:</p>
+<ul>
+<li><strong>Apple Container → Docker → Restricted Host</strong>: if Apple Container enters a
+corrupted state (stale metadata, missing config, VM boot failure), Moltis
+fails over to Docker. If Docker is unavailable, it uses restricted-host.</li>
+<li><strong>Docker → Restricted Host</strong>: if Docker loses its daemon connection during a
+session, Moltis fails over to the restricted-host sandbox.</li>
+</ul>
+<p>Failover is sticky for the lifetime of the gateway process — once triggered,
+all subsequent commands use the fallback backend. Restart the gateway to retry
+the primary backend.</p>
+<p>Failover triggers:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Primary</th><th>Triggers</th></tr></thead><tbody><tr><td>Apple Container</td><td><code>config.json missing</code>, <code>VM never booted</code>, <code>NSPOSIXErrorDomain Code=22</code>, service errors</td></tr><tr><td>Docker</td><td><code>cannot connect to the docker daemon</code>, <code>connection refused</code>, <code>is the docker daemon running</code></td></tr></tbody></table>
+<h2 id="per-session-overrides">Per-session overrides</h2>
+<p>The web UI allows toggling sandboxing per session and selecting a custom
+container image. These overrides persist across gateway restarts.</p>
+<h2 id="home-persistence">Home persistence</h2>
+<p>By default, <code>/home/sandbox</code> is persisted in a shared host folder so that CLI
+auth/config files survive container recreation. You can change this with
+<code>home_persistence</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tools.exec.sandbox]
+home_persistence = &#x22;session&#x22;   # &#x22;off&#x22;, &#x22;session&#x22;, or &#x22;shared&#x22; (default)
+# shared_home_dir = &#x22;/path/to/shared-home&#x22;  # optional, used when mode is &#x22;shared&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">exec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">sandbox</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">home_persistence </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "session"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">   # "off", "session", or "shared" (default)</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># shared_home_dir = "/path/to/shared-home"  # optional, used when mode is "shared"</span></span></code></pre>
+<ul>
+<li><code>off</code>: no home mount, container home is ephemeral</li>
+<li><code>session</code>: mount a per-session host folder to <code>/home/sandbox</code></li>
+<li><code>shared</code>: mount one shared host folder to <code>/home/sandbox</code> for all sessions
+(defaults to <code>data_dir()/sandbox/home/shared</code>, or <code>shared_home_dir</code> if set)</li>
+</ul>
+<p>Moltis stores persisted homes under <code>data_dir()/sandbox/home/</code>.</p>
+<h2 id="docker-in-docker-workspace-mounts">Docker-in-Docker workspace mounts</h2>
+<p>When Moltis runs inside a container and launches Docker-backed sandboxes via a
+mounted container socket, the sandbox bind mount source must be a host-visible
+path. Moltis auto-detects this by inspecting the parent container’s mounts. If
+that lookup fails or you want to pin the value explicitly, set
+<code>host_data_dir</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tools.exec.sandbox]
+host_data_dir = &#x22;/srv/moltis/data&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">exec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">sandbox</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">host_data_dir </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "/srv/moltis/data"</span></span></code></pre>
+<p>This remaps sandbox workspace mounts and default sandbox persistence paths from
+the guest <code>data_dir()</code> to the host path you provide. It is mainly an override
+for Docker-in-Docker deployments where mount auto-detection is unavailable or
+ambiguous.</p>
+<h2 id="network-policy">Network policy</h2>
+<p>By default, sandbox containers have no network access (<code>no_network = true</code>).
+For tasks that need filtered internet access, use
+<a href="/trusted-network.html">trusted network mode</a> — a proxy-based allowlist that
+lets containers reach approved domains while blocking everything else.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tools.exec.sandbox]
+network = &#x22;trusted&#x22;
+trusted_domains = [&#x22;registry.npmjs.org&#x22;, &#x22;github.com&#x22;]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">exec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">sandbox</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">network </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "trusted"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">trusted_domains </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"registry.npmjs.org"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "github.com"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<p>See <a href="/trusted-network.html">Trusted Network</a> for full configuration and the
+network audit log.</p>
+<blockquote>
+<p><strong>Note</strong>: Home persistence applies to Docker, Apple Container, and WASM
+backends. The restricted-host backend uses <code>HOME=/tmp</code> and does not mount
+persistent storage.</p>
+</blockquote>
+<h2 id="resource-limits-1">Resource limits</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tools.exec.sandbox.resource_limits]
+memory_limit = &#x22;512M&#x22;
+cpu_quota = 1.0
+pids_max = 256"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">exec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">sandbox</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">resource_limits</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">memory_limit </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "512M"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">cpu_quota </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1.0</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">pids_max </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 256</span></span></code></pre>
+<p>How resource limits are applied depends on the backend:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Limit</th><th>Docker</th><th>Apple Container</th><th>WASM</th><th>Restricted Host</th><th>cgroup (Linux)</th></tr></thead><tbody><tr><td><code>memory_limit</code></td><td><code>--memory</code></td><td><code>--memory</code></td><td>Wasmtime reservation</td><td><code>ulimit -v</code></td><td><code>MemoryMax=</code></td></tr><tr><td><code>cpu_quota</code></td><td><code>--cpus</code></td><td><code>--cpus</code></td><td>epoch timeout</td><td><code>ulimit -t</code> (seconds)</td><td><code>CPUQuota=</code></td></tr><tr><td><code>pids_max</code></td><td><code>--pids-limit</code></td><td><code>--pids-limit</code></td><td>n/a</td><td><code>ulimit -u</code></td><td><code>TasksMax=</code></td></tr></tbody></table>
+<h2 id="comparison">Comparison</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Feature</th><th>Apple Container</th><th>Docker</th><th>WASM</th><th>Restricted Host</th><th>none</th></tr></thead><tbody><tr><td>Filesystem isolation</td><td>✅ VM boundary</td><td>✅ namespaces</td><td>✅ sandboxed tree</td><td>❌ host FS</td><td>❌</td></tr><tr><td>Network isolation</td><td>✅</td><td>✅</td><td>✅ (no network)</td><td>❌</td><td>❌</td></tr><tr><td>Kernel isolation</td><td>✅ separate kernel</td><td>❌ shared kernel</td><td>✅ WASM VM</td><td>❌</td><td>❌</td></tr><tr><td>Environment isolation</td><td>✅</td><td>✅</td><td>✅</td><td>✅ cleared + restricted</td><td>❌</td></tr><tr><td>Resource limits</td><td>✅</td><td>✅</td><td>✅ fuel + epoch</td><td>✅ ulimit</td><td>❌</td></tr><tr><td>Image building</td><td>✅ (via Docker)</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td></tr><tr><td>Shell commands</td><td>✅ full shell</td><td>✅ full shell</td><td>~20 built-ins</td><td>✅ full shell</td><td>✅ full shell</td></tr><tr><td>Platform</td><td>macOS 26+</td><td>any</td><td>any</td><td>any</td><td>any</td></tr><tr><td>Overhead</td><td>low</td><td>medium</td><td>minimal</td><td>minimal</td><td>none</td></tr></tbody></table>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/local-llm.html"><span>Previous</span>Local LLMs</a> <a class="pager-link next" href="/trusted-network.html"><span>Next</span>Trusted Network</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

@@ -1,0 +1,381 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Scheduling (Cron Jobs) - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a class="active" href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Features</div>  <h1 id="scheduling-cron-jobs">Scheduling (Cron Jobs)</h1>
+<p>Moltis includes a built-in cron system that lets the agent schedule and manage
+recurring tasks. Jobs can fire agent turns, send system events, or trigger
+other actions on a flexible schedule.</p>
+<h2 id="heartbeat">Heartbeat</h2>
+<p>The <strong>heartbeat</strong> is a special system cron job (<code>__heartbeat__</code>) that runs
+periodically (default: every 30 minutes). It gives the agent an opportunity to
+check reminders, run deferred tasks, and react to events that occurred while
+the user was away.</p>
+<p>The heartbeat prompt is assembled from <code>HEARTBEAT.md</code> in the workspace data
+directory. If the file is empty and no pending events exist, the heartbeat
+turn is skipped to save tokens.</p>
+<p>Heartbeat replies can also be delivered to a configured channel destination via
+<code>[heartbeat] deliver</code>, <code>channel</code>, and <code>to</code> in <code>moltis.toml</code>, or from the web UI
+under <strong>Settings -> Heartbeat</strong>.</p>
+<h2 id="event-driven-heartbeat-wake">Event-Driven Heartbeat Wake</h2>
+<p>Normally the heartbeat fires on its regular schedule. The <strong>wake</strong> system lets
+other parts of Moltis trigger an immediate heartbeat when something noteworthy
+happens, so the agent can react in near real-time.</p>
+<h3 id="wake-mode">Wake Mode</h3>
+<p>Every cron job has a <code>wakeMode</code> field that controls whether it triggers an
+immediate heartbeat after execution:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Value</th><th>Behaviour</th></tr></thead><tbody><tr><td><code>"nextHeartbeat"</code> (default)</td><td>No extra wake — events are picked up on the next scheduled heartbeat</td></tr><tr><td><code>"now"</code></td><td>Immediately reschedules the heartbeat to run as soon as possible</td></tr></tbody></table>
+<p>Set <code>wakeMode</code> when creating or updating a job through the <code>cron</code> tool:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;action&#x22;: &#x22;add&#x22;,
+  &#x22;job&#x22;: {
+    &#x22;name&#x22;: &#x22;check-deploy&#x22;,
+    &#x22;schedule&#x22;: { &#x22;kind&#x22;: &#x22;every&#x22;, &#x22;every_ms&#x22;: 300000 },
+    &#x22;payload&#x22;: { &#x22;kind&#x22;: &#x22;agentTurn&#x22;, &#x22;message&#x22;: &#x22;Check deploy status&#x22; },
+    &#x22;wakeMode&#x22;: &#x22;now&#x22;
+  }
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "action"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "add"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "job"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "name"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "check-deploy"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "schedule"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"kind"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "every"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "every_ms"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 300000</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "payload"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"kind"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "agentTurn"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "message"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Check deploy status"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "wakeMode"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "now"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>Aliases are accepted: <code>"immediate"</code>, <code>"immediately"</code> map to <code>"now"</code>;
+<code>"next"</code>, <code>"default"</code>, <code>"next_heartbeat"</code>, <code>"next-heartbeat"</code> map to
+<code>"nextHeartbeat"</code>.</p>
+<h3 id="system-events-queue">System Events Queue</h3>
+<p>Moltis maintains an in-memory bounded queue of <strong>system events</strong> — short text
+summaries of things that happened (command completions, cron triggers, etc.).
+When the heartbeat fires, any pending events are drained from the queue and
+prepended to the heartbeat prompt so the agent sees what occurred.</p>
+<p>The queue holds up to 20 events. Consecutive duplicate events are
+deduplicated. Events that arrive after the buffer is full are silently dropped
+(oldest events are preserved).</p>
+<h3 id="exec-completion-events">Exec Completion Events</h3>
+<p>When a background command finishes (via the <code>exec</code> tool), Moltis automatically
+enqueues a summary event with the command name, exit code, and a short preview
+of stdout/stderr. If the heartbeat is idle, it is woken immediately so the
+agent can react to the result.</p>
+<p>Exec-triggered wakes have a cooldown guard so a heartbeat turn that runs <code>exec</code>
+does not immediately re-wake itself in a loop. Configure it with
+<code>[heartbeat].wake_cooldown</code> in <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[heartbeat]
+wake_cooldown = &#x22;5m&#x22; # default; set &#x22;0&#x22; to disable"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">heartbeat</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">wake_cooldown </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "5m"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D"> # default; set "0" to disable</span></span></code></pre>
+<p>The value uses Moltis duration syntax such as <code>"30s"</code>, <code>"10m"</code>, or <code>"1h"</code>.
+The cooldown applies only to exec-completion wakes. Cron jobs with
+<code>wakeMode = "now"</code> still wake the heartbeat immediately.</p>
+<p>This means the agent learns about completed background tasks without polling
+— a long-running build or deployment that finishes while the user is away will
+surface in the next heartbeat turn.</p>
+<h2 id="schedule-types">Schedule Types</h2>
+<p>Jobs support several schedule kinds:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Kind</th><th>Fields</th><th>Description</th></tr></thead><tbody><tr><td><code>every</code></td><td><code>every_ms</code></td><td>Repeat at a fixed interval (milliseconds)</td></tr><tr><td><code>cron</code></td><td><code>expr</code>, optional <code>tz</code></td><td>Standard cron expression (e.g. <code>"0 */6 * * *"</code>)</td></tr><tr><td><code>at</code></td><td><code>at_ms</code></td><td>Run once at a specific Unix timestamp (ms)</td></tr></tbody></table>
+<h2 id="cron-tool">Cron Tool</h2>
+<p>The agent manages jobs through the built-in <code>cron</code> tool. Available actions:</p>
+<ul>
+<li><strong><code>add</code></strong> — Create a new job</li>
+<li><strong><code>list</code></strong> — List all jobs</li>
+<li><strong><code>run</code></strong> — Trigger a job immediately</li>
+<li><strong><code>update</code></strong> — Patch an existing job (name, schedule, enabled, wakeMode, etc.)</li>
+<li><strong><code>remove</code></strong> — Delete a job</li>
+<li><strong><code>runs</code></strong> — View recent execution history for a job</li>
+</ul>
+<h3 id="one-shot-jobs">One-Shot Jobs</h3>
+<p>Set <code>deleteAfterRun: true</code> to automatically remove a job after its first
+execution. Combined with the <code>at</code> schedule, this is useful for deferred
+one-time tasks (reminders, follow-ups).</p>
+<h2 id="channel-delivery">Channel Delivery</h2>
+<p>Background agent turns can deliver their final output to a configured channel
+account/chat after the run completes.</p>
+<p>Use all of the following together:</p>
+<ul>
+<li><code>sessionTarget: "isolated"</code></li>
+<li><code>payload.kind: "agentTurn"</code></li>
+<li><code>payload.deliver: true</code></li>
+<li><code>payload.channel: "&#x3C;account_id>"</code></li>
+<li><code>payload.to: "&#x3C;chat_or_peer_id>"</code></li>
+</ul>
+<p>Example:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;action&#x22;: &#x22;add&#x22;,
+  &#x22;job&#x22;: {
+    &#x22;name&#x22;: &#x22;daily summary&#x22;,
+    &#x22;schedule&#x22;: { &#x22;kind&#x22;: &#x22;cron&#x22;, &#x22;expr&#x22;: &#x22;0 9 * * *&#x22;, &#x22;tz&#x22;: &#x22;Europe/Paris&#x22; },
+    &#x22;sessionTarget&#x22;: &#x22;isolated&#x22;,
+    &#x22;payload&#x22;: {
+      &#x22;kind&#x22;: &#x22;agentTurn&#x22;,
+      &#x22;message&#x22;: &#x22;Summarize yesterday&#x27;s activity and send it to Telegram.&#x22;,
+      &#x22;deliver&#x22;: true,
+      &#x22;channel&#x22;: &#x22;my-telegram-bot&#x22;,
+      &#x22;to&#x22;: &#x22;123456789&#x22;
+    }
+  }
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "action"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "add"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "job"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "name"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "daily summary"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "schedule"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"kind"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "cron"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "expr"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "0 9 * * *"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "tz"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Europe/Paris"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "sessionTarget"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "isolated"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "payload"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "kind"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "agentTurn"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "message"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Summarize yesterday's activity and send it to Telegram."</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "deliver"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "channel"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "my-telegram-bot"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "to"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "123456789"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>Channel delivery is separate from session targeting. The cron job still runs in
+an isolated cron session, then Moltis forwards the finished output to the
+requested channel destination.</p>
+<h2 id="session-targeting">Session Targeting</h2>
+<p>Each job specifies where its agent turn runs:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Target</th><th>Description</th></tr></thead><tbody><tr><td><code>"main"</code></td><td>Inject a <code>systemEvent</code> into the main session. Use this for reminders that should continue the main conversation.</td></tr><tr><td><code>"isolated"</code></td><td>Run an <code>agentTurn</code> in a throwaway cron session. Use this for background jobs and channel delivery.</td></tr><tr><td><code>named("&#x3C;name>")</code></td><td>Internal/persistent cron session used by system jobs such as heartbeat. Not user-configurable through the <code>cron</code> tool.</td></tr></tbody></table>
+<h2 id="security">Security</h2>
+<p>See <a href="/security.html#cron-job-security">Cron Job Security</a> for rate limiting,
+sandbox isolation, and job notification details.</p>
+<h2 id="metrics">Metrics</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Metric</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>moltis_cron_jobs_scheduled</code></td><td>Gauge</td><td>Number of scheduled jobs</td></tr><tr><td><code>moltis_cron_executions_total</code></td><td>Counter</td><td>Job executions</td></tr><tr><td><code>moltis_cron_execution_duration_seconds</code></td><td>Histogram</td><td>Job duration</td></tr><tr><td><code>moltis_cron_errors_total</code></td><td>Counter</td><td>Failed jobs</td></tr><tr><td><code>moltis_cron_stuck_jobs_cleared_total</code></td><td>Counter</td><td>Jobs exceeding 2h timeout</td></tr><tr><td><code>moltis_cron_input_tokens_total</code></td><td>Counter</td><td>Input tokens from cron runs</td></tr><tr><td><code>moltis_cron_output_tokens_total</code></td><td>Counter</td><td>Output tokens from cron runs</td></tr></tbody></table>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/tools-fs.html"><span>Previous</span>Filesystem Tools</a> <a class="pager-link next" href="/webhooks.html"><span>Next</span>Webhooks</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

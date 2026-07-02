@@ -1,0 +1,448 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Multi-Node - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a class="active" href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Features</div>  <h1 id="multi-node">Multi-Node</h1>
+<p>Moltis can distribute work across multiple machines. A <strong>node</strong> is a remote
+device that connects to your gateway and executes commands on your behalf.
+This lets the AI agent run shell commands on a Linux server, query a Raspberry
+Pi, or leverage a GPU machine — all from a single chat session.</p>
+<h2 id="how-it-works">How It Works</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="┌──────────────┐    WebSocket     ┌─────────────────┐
+│  Your laptop │◄────────────────►│  Moltis gateway  │
+│  (browser)   │                  │  (moltis)        │
+└──────────────┘                  └────────┬─────────┘
+                                           │ WebSocket
+                                  ┌────────▼─────────┐
+                                  │  Remote machine   │
+                                  │  (moltis node)    │
+                                  └──────────────────┘"><code><span class="line"><span>┌──────────────┐    WebSocket     ┌─────────────────┐</span></span>
+<span class="line"><span>│  Your laptop │◄────────────────►│  Moltis gateway  │</span></span>
+<span class="line"><span>│  (browser)   │                  │  (moltis)        │</span></span>
+<span class="line"><span>└──────────────┘                  └────────┬─────────┘</span></span>
+<span class="line"><span>                                           │ WebSocket</span></span>
+<span class="line"><span>                                  ┌────────▼─────────┐</span></span>
+<span class="line"><span>                                  │  Remote machine   │</span></span>
+<span class="line"><span>                                  │  (moltis node)    │</span></span>
+<span class="line"><span>                                  └──────────────────┘</span></span></code></pre>
+<ol>
+<li>The gateway runs on your primary machine (or a server).</li>
+<li>On the gateway, briefly enable node pairing.</li>
+<li>On the remote machine, run <code>moltis node add</code> to register it with the gateway.</li>
+<li>The gateway authenticates the node using <strong>Ed25519 challenge-response</strong> (TOFU
+model).</li>
+<li>Once connected, the agent can execute commands on the node, query its
+telemetry, and discover its LLM providers.</li>
+</ol>
+<p>Nodes are <strong>stateless from the gateway’s perspective</strong> — they connect and
+disconnect freely. There is no start/stop lifecycle managed by the gateway;
+a node is available when its process is running and connected.</p>
+<h2 id="pairing-a-node">Pairing a Node</h2>
+<p>The node generates an Ed25519 keypair on first run and
+presents its public key to the gateway. The operator approves the key
+fingerprint (TOFU model, same as SSH).</p>
+<p>New pairing requests are disabled by default to prevent unauthenticated
+connection spam. Open the pairing window only while adding a node.</p>
+<ol>
+<li>
+<p>On the gateway, enable pairing:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="moltis node pairing enable"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> node</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> pairing</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> enable</span></span></code></pre>
+</li>
+<li>
+<p>On the remote machine:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="moltis node add --host ws://your-gateway:9090/ws --name &#x22;Build Server&#x22;"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> node</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> add</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --host</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ws://your-gateway:9090/ws</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --name</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Build Server"</span></span></code></pre>
+<p>The node prints its fingerprint and waits for approval.</p>
+</li>
+<li>
+<p>Approve the pairing:</p>
+<ul>
+<li><strong>Web UI</strong>: Open Settings → Nodes → Pending tab, verify the fingerprint,
+click <strong>Approve</strong>.</li>
+<li><strong>CLI</strong> (headless gateways):
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="moltis node pending                 # list pending requests
+moltis node approve <request-id>    # approve by ID"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> node</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> pending</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">                 # list pending requests</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> node</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> approve</span><span style="color:#D32F2F;--shiki-dark:#F97583"> &#x3C;</span><span style="color:#2B5581;--shiki-dark:#9ECBFF">request-i</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">d</span><span style="color:#D32F2F;--shiki-dark:#F97583">></span><span style="color:#C2C3C5;--shiki-dark:#6A737D">    # approve by ID</span></span></code></pre>
+</li>
+</ul>
+</li>
+<li>
+<p>The gateway sends a challenge nonce, the node signs it, and authentication
+completes. The public key is pinned to this device (TOFU).</p>
+</li>
+<li>
+<p>Disable new pairing requests:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="moltis node pairing disable"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> node</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> pairing</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> disable</span></span></code></pre>
+</li>
+</ol>
+<h2 id="adding-a-node">Adding a Node</h2>
+<p>On the remote machine, register it as a node:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="moltis node add --host ws://your-gateway:9090/ws --name &#x22;Build Server&#x22;"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> node</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> add</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --host</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ws://your-gateway:9090/ws</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --name</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Build Server"</span></span></code></pre>
+<p>This saves the connection parameters to <code>~/.moltis/node.json</code> and installs an
+OS service that starts on boot and reconnects on failure:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Platform</th><th>Service file</th></tr></thead><tbody><tr><td>macOS</td><td><code>~/Library/LaunchAgents/org.moltis.node.plist</code></td></tr><tr><td>Linux</td><td><code>~/.config/systemd/user/moltis-node.service</code></td></tr></tbody></table>
+<p>Options:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Flag</th><th>Description</th><th>Default</th></tr></thead><tbody><tr><td><code>--host</code></td><td>Gateway WebSocket URL</td><td>(required)</td></tr><tr><td><code>--name</code></td><td>Display name shown in the UI</td><td>none</td></tr><tr><td><code>--node-id</code></td><td>Custom node identifier</td><td>random UUID</td></tr><tr><td><code>--working-dir</code></td><td>Working directory for commands</td><td><code>$HOME</code></td></tr><tr><td><code>--timeout</code></td><td>Max command timeout in seconds</td><td><code>300</code></td></tr><tr><td><code>--foreground</code></td><td>Run in the terminal instead of installing a service</td><td>off</td></tr></tbody></table>
+<p>You can also set <code>MOLTIS_GATEWAY_URL</code> as an environment variable instead of
+passing <code>--host</code>.</p>
+<h3 id="foreground-mode">Foreground mode</h3>
+<p>For debugging or one-off use, pass <code>--foreground</code> to run the node in the
+current terminal session instead of installing a service:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="moltis node add --host ws://your-gateway:9090/ws --name &#x22;Build Server&#x22; --foreground"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> node</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> add</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --host</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ws://your-gateway:9090/ws</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --name</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Build Server"</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --foreground</span></span></code></pre>
+<p>Press <code>Ctrl+C</code> to disconnect.</p>
+<h2 id="removing-a-node">Removing a Node</h2>
+<p>To disconnect this machine and remove the background service:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="moltis node remove"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> node</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> remove</span></span></code></pre>
+<p>This stops the service, removes the service file, and deletes the saved
+configuration from <code>~/.moltis/node.json</code>.</p>
+<h2 id="checking-status">Checking Status</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="moltis node status"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> node</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> status</span></span></code></pre>
+<p>Shows the gateway URL, display name, and whether the background service is
+running.</p>
+<h2 id="node-fingerprint">Node Fingerprint</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="moltis node fingerprint"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> node</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> fingerprint</span></span></code></pre>
+<p>Prints the Ed25519 public key fingerprint (<code>SHA256:&#x3C;base64></code>) for this node.
+Use this to verify the key shown in the gateway UI during pairing.</p>
+<h2 id="logs">Logs</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="moltis node logs
+# Tail the log:
+tail -f $(moltis node logs)"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> node</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> logs</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Tail the log:</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">tail</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -f</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> $(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> node</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> logs</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+<h2 id="selecting-a-node-in-chat">Selecting a Node in Chat</h2>
+<p>Once a node is connected, you can target it from a chat session:</p>
+<ul>
+<li><strong>UI dropdown</strong>: The chat toolbar shows a node selector next to the model
+picker. Select a node to route all <code>exec</code> commands to it. Select “Local” to
+revert to local execution. When <code>tools.exec.host = "ssh"</code>, Moltis also shows
+either the legacy configured SSH target from <code>tools.exec.ssh_target</code> or any
+managed SSH targets you created in <strong>Settings → SSH</strong> as first-class
+execution options.</li>
+<li><strong>Agent tools</strong>: The agent can call <code>nodes_list</code>, <code>nodes_describe</code>, and
+<code>nodes_select</code> to programmatically pick a node based on capabilities or
+telemetry.</li>
+</ul>
+<p>The node assignment is per-session and persists across page reloads.</p>
+<h2 id="node-telemetry">Node Telemetry</h2>
+<p>Connected nodes report system telemetry every 30 seconds:</p>
+<ul>
+<li>CPU count and usage</li>
+<li>Memory total and available</li>
+<li>Disk total and available (root partition)</li>
+<li>System uptime</li>
+<li>Installed runtimes (Python, Node.js, Ruby, Go, Rust, Java)</li>
+<li>Available LLM providers (Ollama models, API key presence)</li>
+</ul>
+<p>This data is visible on the Nodes page and available to the agent via the
+<code>nodes_describe</code> tool.</p>
+<p>If you configure <code>tools.exec.host = "ssh"</code>, the Nodes page also shows SSH
+targets even though they are not WebSocket-paired nodes. This makes the active
+remote execution route visible instead of hiding it in config. The UI renders
+these separately from paired nodes so it is clear that SSH targets do not
+report telemetry or presence.</p>
+<p>Managed SSH targets now support:</p>
+<ul>
+<li>named labels, so session routing is readable instead of <code>deploy@box</code></li>
+<li>a default target, used when a chat session does not pin a specific route</li>
+<li>connectivity tests from the web UI</li>
+<li>either <strong>System OpenSSH</strong> auth or a <strong>managed deploy key</strong></li>
+<li>optional host-key pinning via a pasted <code>known_hosts</code> line</li>
+<li>one-click scan, refresh, and clear actions for saved host pins in Settings</li>
+<li>passphrase-protected private-key imports during setup</li>
+</ul>
+<p>The Nodes page also includes a <strong>Remote Exec Status</strong> panel that acts like a
+lightweight doctor:</p>
+<ul>
+<li>shows whether Moltis is currently configured for <code>local</code>, <code>node</code>, or <code>ssh</code></li>
+<li>reports paired-node inventory and managed SSH inventory</li>
+<li>flags obvious misconfigurations, such as <code>tools.exec.host = "ssh"</code> with no
+active target or a managed key that cannot be decrypted because the vault is
+locked</li>
+<li>warns when the active managed SSH route is not host-pinned</li>
+<li>lets you pin, refresh, or clear the active managed route directly from the
+doctor panel</li>
+<li>lets you test the active SSH route without leaving the page</li>
+</ul>
+<p>The CLI now mirrors the basic setup view with <code>moltis doctor</code>, including:</p>
+<ul>
+<li>active remote-exec backend (<code>local</code>, <code>node</code>, or <code>ssh</code>)</li>
+<li>SSH client discovery and version</li>
+<li>managed SSH key / target / host-pin inventory</li>
+<li>warnings for legacy <code>tools.exec.ssh_target</code> config and unpinned active routes</li>
+</ul>
+<h2 id="cli-reference">CLI Reference</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Command</th><th>Description</th></tr></thead><tbody><tr><td><code>moltis node add --host &#x3C;url></code></td><td>Join this machine to a gateway as a node</td></tr><tr><td><code>moltis node add ... --foreground</code></td><td>Run in the terminal instead of installing a service</td></tr><tr><td><code>moltis node fingerprint</code></td><td>Print this node’s Ed25519 fingerprint</td></tr><tr><td><code>moltis node list</code></td><td>List all connected nodes</td></tr><tr><td><code>moltis node pairing status</code></td><td>Show whether new node pairing requests are accepted</td></tr><tr><td><code>moltis node pairing enable</code></td><td>Enable new node pairing requests</td></tr><tr><td><code>moltis node pairing disable</code></td><td>Disable new node pairing requests</td></tr><tr><td><code>moltis node pending</code></td><td>List pending pairing requests</td></tr><tr><td><code>moltis node approve &#x3C;id></code></td><td>Approve a pending pairing request</td></tr><tr><td><code>moltis node reject &#x3C;id></code></td><td>Reject a pending pairing request</td></tr><tr><td><code>moltis node remove</code></td><td>Disconnect this machine and remove the service</td></tr><tr><td><code>moltis node status</code></td><td>Show connection info and service status</td></tr><tr><td><code>moltis node logs</code></td><td>Print log file path</td></tr></tbody></table>
+<h2 id="security">Security</h2>
+<h3 id="node-identity-tofu">Node Identity (TOFU)</h3>
+<p>Nodes authenticate using <strong>Ed25519 challenge-response</strong>, following the same
+Trust On First Use model as SSH:</p>
+<ul>
+<li><strong>First connection</strong>: The node presents its public key. The operator verifies
+the fingerprint and approves the pairing.</li>
+<li><strong>Subsequent connections</strong>: The gateway sends a random 32-byte nonce. The node
+signs it with its private key. The gateway verifies the signature against the
+pinned public key.</li>
+<li><strong>Key pinning</strong>: Once a public key is approved for a device, the gateway
+rejects any future connection from that device with a different key. This
+prevents impersonation.</li>
+<li><strong>Re-keying</strong>: If a node legitimately needs a new key (e.g., after a disk
+wipe), revoke the old device from the Nodes page, then re-pair.</li>
+</ul>
+<p>The private key (<code>~/.moltis/node_key</code>) is stored with mode 0600. The gateway
+only stores the public key. No shared secret crosses the wire.</p>
+<h3 id="general">General</h3>
+<ul>
+<li><strong>Environment filtering</strong>: When the gateway forwards commands to a node, only
+safe environment variables are forwarded (<code>TERM</code>, <code>LANG</code>, <code>LC_*</code>). Secrets
+like API keys, <code>DYLD_*</code>, and <code>LD_PRELOAD</code> are always blocked.</li>
+<li><strong>Key revocation</strong>: Revoke from the Nodes page at any time. The node
+will be disconnected on its next reconnect attempt.</li>
+</ul>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/openclaw-import.html"><span>Previous</span>OpenClaw Import</a> <a class="pager-link next" href="/service.html"><span>Next</span>Service Management</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

@@ -1,0 +1,528 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>LLM Providers - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a class="active" href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Features</div>  <h1 id="llm-providers">LLM Providers</h1>
+<p>Moltis supports multiple LLM providers through a trait-based architecture.
+Configure providers through the web UI or directly in configuration files.</p>
+<h2 id="available-providers">Available Providers</h2>
+<h3 id="api-key-providers">API Key Providers</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Provider</th><th>Config Name</th><th>Env Variable</th><th>Features</th></tr></thead><tbody><tr><td><strong>Anthropic</strong></td><td><code>anthropic</code></td><td><code>ANTHROPIC_API_KEY</code></td><td>Streaming, tools, vision</td></tr><tr><td><strong>OpenAI</strong></td><td><code>openai</code></td><td><code>OPENAI_API_KEY</code></td><td>Streaming, tools, vision, model discovery</td></tr><tr><td><strong>Google Gemini</strong></td><td><code>gemini</code></td><td><code>GEMINI_API_KEY</code></td><td>Streaming, tools, vision, model discovery</td></tr><tr><td><strong>DeepSeek</strong></td><td><code>deepseek</code></td><td><code>DEEPSEEK_API_KEY</code></td><td>Streaming, tools, model discovery</td></tr><tr><td><strong>Mistral</strong></td><td><code>mistral</code></td><td><code>MISTRAL_API_KEY</code></td><td>Streaming, tools, model discovery</td></tr><tr><td><strong>Groq</strong></td><td><code>groq</code></td><td><code>GROQ_API_KEY</code></td><td>Streaming</td></tr><tr><td><strong>xAI (Grok)</strong></td><td><code>xai</code></td><td><code>XAI_API_KEY</code></td><td>Streaming</td></tr><tr><td><strong>OpenRouter</strong></td><td><code>openrouter</code></td><td><code>OPENROUTER_API_KEY</code></td><td>Streaming, tools, model discovery</td></tr><tr><td><strong>Cerebras</strong></td><td><code>cerebras</code></td><td><code>CEREBRAS_API_KEY</code></td><td>Streaming, tools, model discovery</td></tr><tr><td><strong>MiniMax</strong></td><td><code>minimax</code></td><td><code>MINIMAX_API_KEY</code></td><td>Streaming, tools</td></tr><tr><td><strong>Moonshot (Kimi)</strong></td><td><code>moonshot</code></td><td><code>MOONSHOT_API_KEY</code></td><td>Streaming, tools, model discovery</td></tr><tr><td><strong>Venice</strong></td><td><code>venice</code></td><td><code>VENICE_API_KEY</code></td><td>Streaming, tools, model discovery</td></tr><tr><td><strong>NEAR AI Cloud</strong></td><td><code>nearai</code></td><td><code>NEARAI_API_KEY</code></td><td>Streaming, TEE-aware model discovery</td></tr><tr><td><strong>Z.AI (Zhipu)</strong></td><td><code>zai</code></td><td><code>Z_API_KEY</code></td><td>Streaming, tools, model discovery</td></tr><tr><td><strong>Z.AI Coding Plan</strong></td><td><code>zai-code</code></td><td><code>Z_CODE_API_KEY</code></td><td>Streaming, tools, model discovery (Coding plan billing endpoint)</td></tr></tbody></table>
+<h3 id="oauth-providers">OAuth Providers</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Provider</th><th>Config Name</th><th>Notes</th></tr></thead><tbody><tr><td><strong>OpenAI Codex</strong></td><td><code>openai-codex</code></td><td>OAuth flow via web UI</td></tr><tr><td><strong>GitHub Copilot</strong></td><td><code>github-copilot</code></td><td>Requires active Copilot subscription</td></tr></tbody></table>
+<h3 id="local">Local</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Provider</th><th>Config Name</th><th>Notes</th></tr></thead><tbody><tr><td><strong>Ollama</strong></td><td><code>ollama</code></td><td>Local or remote Ollama instance</td></tr><tr><td><strong>LM Studio</strong></td><td><code>lmstudio</code></td><td>Local LM Studio or any OpenAI-compatible server</td></tr><tr><td><strong>Local LLM</strong></td><td><code>local-llm</code></td><td>Runs GGUF models directly on your machine</td></tr></tbody></table>
+<h3 id="custom-openai-compatible">Custom OpenAI-Compatible</h3>
+<p>Any OpenAI-compatible endpoint can be added with a <code>custom-</code> prefix:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[providers.custom-myservice]
+enabled = true
+api_key = &#x22;...&#x22;
+base_url = &#x22;https://my-service.example.com/v1&#x22;
+fetch_models = true
+models = [&#x22;my-model&#x22;]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">providers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">custom-myservice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">api_key </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "..."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">base_url </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://my-service.example.com/v1"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">fetch_models </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">models </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"my-model"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<p>For <code>custom-*</code> providers, <code>models = [...]</code> is a whitelist when set: only those model IDs are registered. With <code>fetch_models = true</code>, Moltis still calls <code>/models</code> and uses returned metadata such as <code>capabilities</code> and <code>context_length</code> for the whitelisted models.</p>
+<h2 id="configuration">Configuration</h2>
+<h3 id="via-web-ui-recommended">Via Web UI (Recommended)</h3>
+<ol>
+<li>Open Moltis in your browser.</li>
+<li>Go to <strong>Settings</strong> → <strong>Providers</strong>.</li>
+<li>Choose a provider card.</li>
+<li>Complete OAuth or enter your API key.</li>
+<li>Select your preferred model.</li>
+</ol>
+<h3 id="via-configuration-files">Via Configuration Files</h3>
+<p>Configure providers in <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[providers]
+offered = [&#x22;anthropic&#x22;, &#x22;openai&#x22;, &#x22;gemini&#x22;]
+
+[providers.anthropic]
+enabled = true
+
+[providers.openai]
+enabled = true
+models = [&#x22;gpt-5.3&#x22;, &#x22;gpt-5.2&#x22;]
+stream_transport = &#x22;sse&#x22;              # &#x22;sse&#x22;, &#x22;websocket&#x22;, or &#x22;auto&#x22;
+
+[providers.gemini]
+enabled = true
+models = [&#x22;gemini-2.5-flash&#x22;, &#x22;gemini-2.5-pro&#x22;]
+# api_key = &#x22;...&#x22;                     # Or set GEMINI_API_KEY / GOOGLE_API_KEY env var
+# fetch_models = true                 # Discover models from the API
+# base_url = &#x22;https://generativelanguage.googleapis.com/v1beta/openai&#x22;
+
+[chat]
+priority_models = [&#x22;gpt-5.2&#x22;]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">providers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">offered </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"anthropic"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "gemini"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">providers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">anthropic</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">providers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">openai</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">models </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"gpt-5.3"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "gpt-5.2"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">stream_transport </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "sse"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">              # "sse", "websocket", or "auto"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">providers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">gemini</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">models </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"gemini-2.5-flash"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "gemini-2.5-pro"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># api_key = "..."                     # Or set GEMINI_API_KEY / GOOGLE_API_KEY env var</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># fetch_models = true                 # Discover models from the API</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># base_url = "https://generativelanguage.googleapis.com/v1beta/openai"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">chat</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">priority_models </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"gpt-5.2"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<h3 id="provider-entry-options">Provider Entry Options</h3>
+<p>Each provider supports these options:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Option</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>enabled</code></td><td><code>true</code></td><td>Enable or disable the provider</td></tr><tr><td><code>api_key</code></td><td>—</td><td>API key (overrides env var)</td></tr><tr><td><code>base_url</code></td><td>—</td><td>Override API endpoint URL</td></tr><tr><td><code>models</code></td><td><code>[]</code></td><td>Preferred models shown first in the picker</td></tr><tr><td><code>fetch_models</code></td><td><code>true</code></td><td>Discover available models from the API</td></tr><tr><td><code>stream_transport</code></td><td><code>"sse"</code></td><td><code>"sse"</code>, <code>"websocket"</code>, or <code>"auto"</code></td></tr><tr><td><code>alias</code></td><td>—</td><td>Custom label for metrics</td></tr><tr><td><code>tool_mode</code></td><td><code>"auto"</code></td><td><code>"auto"</code>, <code>"native"</code>, <code>"text"</code>, or <code>"off"</code></td></tr></tbody></table>
+<h2 id="provider-setup">Provider Setup</h2>
+<h3 id="google-gemini">Google Gemini</h3>
+<p>Google Gemini uses an API key from <a href="https://aistudio.google.com/">Google AI Studio</a>.</p>
+<ol>
+<li>Get an API key from Google AI Studio.</li>
+<li>Set <code>GEMINI_API_KEY</code> in your environment (or use <code>GOOGLE_API_KEY</code>).</li>
+<li>Gemini models appear automatically in the model picker.</li>
+</ol>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[providers.gemini]
+enabled = true
+models = [&#x22;gemini-2.5-flash&#x22;, &#x22;gemini-2.5-pro&#x22;]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">providers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">gemini</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">models </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"gemini-2.5-flash"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "gemini-2.5-pro"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<p>Gemini supports native tool calling, vision/multimodal inputs, streaming, and automatic model discovery.</p>
+<h3 id="anthropic">Anthropic</h3>
+<ol>
+<li>Get an API key from <a href="https://console.anthropic.com/">console.anthropic.com</a>.</li>
+<li>Set <code>ANTHROPIC_API_KEY</code> in your environment.</li>
+</ol>
+<h3 id="openai">OpenAI</h3>
+<ol>
+<li>Get an API key from <a href="https://platform.openai.com/">platform.openai.com</a>.</li>
+<li>Set <code>OPENAI_API_KEY</code> in your environment.</li>
+</ol>
+<h3 id="near-ai-cloud">NEAR AI Cloud</h3>
+<p>NEAR AI Cloud exposes an OpenAI-compatible chat completions API with a public
+model catalog that includes TEE and attestation metadata.
+The API accepts OpenAI-compatible tool schemas, but the public model catalog does
+not currently expose per-model tool capability metadata. Moltis therefore does
+not mark auto-discovered NEAR AI Cloud models as tool-capable.</p>
+<ol>
+<li>Get an API key from <a href="https://cloud.near.ai/">cloud.near.ai</a>.</li>
+<li>Set <code>NEARAI_API_KEY</code> in your environment.</li>
+<li>Models are discovered from <code>https://cloud-api.near.ai/v1/model/list</code>.</li>
+</ol>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[providers.nearai]
+enabled = true
+models = [&#x22;zai-org/GLM-5.1-FP8&#x22;]
+# api_key = &#x22;...&#x22;                    # Or set NEARAI_API_KEY
+# base_url = &#x22;https://cloud-api.near.ai/v1&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">providers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">nearai</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">models </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"zai-org/GLM-5.1-FP8"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># api_key = "..."                    # Or set NEARAI_API_KEY</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># base_url = "https://cloud-api.near.ai/v1"</span></span></code></pre>
+<h3 id="openai-codex">OpenAI Codex</h3>
+<p>OpenAI Codex uses OAuth-based access.</p>
+<ol>
+<li>Go to <strong>Settings</strong> → <strong>Providers</strong> → <strong>OpenAI Codex</strong>.</li>
+<li>Click <strong>Connect</strong> and complete the auth flow.</li>
+<li>Choose a Codex model.</li>
+</ol>
+<p>If the browser cannot reach <code>localhost:1455</code>, Moltis now supports a manual
+fallback in both <strong>Settings</strong> and <strong>Onboarding</strong>: paste the callback URL (or
+<code>code#state</code>) into the OAuth panel and submit it.</p>
+<aside class="admonition admonition-note"><div class="admonition-title">Docker and cloud deployments</div><div class="admonition-body"><p>The OAuth flow redirects your browser to <code>localhost:1455</code>. In Docker, make sure<br>port 1455 is published (<code>-p 1455:1455</code>). On cloud platforms where <code>localhost</code><br>cannot reach the server, authenticate via the CLI instead:</p>
+<p>~~~bash<br># Docker<br>docker exec -it moltis moltis auth login --provider openai-codex</p>
+<p># Fly.io<br>fly ssh console -C "moltis auth login --provider openai-codex"<br>~~~</p>
+<p>The CLI opens a browser on your machine and handles the callback locally. If<br>automatic callback capture fails, the CLI prompts you to paste the callback URL<br>(or <code>code#state</code>) directly in the terminal.<br>Tokens are saved to the config volume and picked up by the gateway automatically.</p></div></aside>
+<p>Once OpenAI Codex OAuth is connected, agents can use the built-in
+<code>generate_image</code> tool to create <code>gpt-image-2</code> images without an <code>OPENAI_API_KEY</code>.
+Generated images are delivered through the same channel media path as
+screenshots and <code>send_image</code>, so supported chat channels receive the image as a
+native attachment.</p>
+<h3 id="github-copilot">GitHub Copilot</h3>
+<p>GitHub Copilot uses OAuth authentication.</p>
+<ol>
+<li>Go to <strong>Settings</strong> → <strong>Providers</strong> → <strong>GitHub Copilot</strong>.</li>
+<li>Click <strong>Connect</strong>.</li>
+<li>Complete the GitHub OAuth flow.</li>
+</ol>
+<aside class="admonition admonition-note"><div class="admonition-title">Docker and cloud deployments</div><div class="admonition-body"><p>GitHub Copilot uses device-flow authentication (a code you enter on github.com),<br>so it works from the web UI without extra port configuration. If you prefer the<br>CLI:</p>
+<p>~~~bash<br>docker exec -it moltis moltis auth login --provider github-copilot<br>~~~</p></div></aside>
+<aside class="admonition admonition-info"><div class="admonition-title">Info</div><div class="admonition-body"><p>Requires an active GitHub Copilot subscription.</p></div></aside>
+<h3 id="ollama">Ollama</h3>
+<p>Ollama auto-detects when running at <code>http://127.0.0.1:11434</code>. No API key needed.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[providers.ollama]
+enabled = true
+# base_url = &#x22;http://127.0.0.1:11434/v1&#x22;  # Override for remote Ollama"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">providers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">ollama</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># base_url = "http://127.0.0.1:11434/v1"  # Override for remote Ollama</span></span></code></pre>
+<h3 id="lm-studio">LM Studio</h3>
+<p>LM Studio auto-detects when running at <code>http://127.0.0.1:1234</code>. No API key needed.
+Also works with llama.cpp or any OpenAI-compatible local server.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[providers.lmstudio]
+enabled = true
+# base_url = &#x22;http://127.0.0.1:1234/v1&#x22;  # Override for different port/host"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">providers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">lmstudio</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># base_url = "http://127.0.0.1:1234/v1"  # Override for different port/host</span></span></code></pre>
+<h3 id="local-llm">Local LLM</h3>
+<p>Local LLM runs GGUF models directly on your machine.</p>
+<ol>
+<li>Go to <strong>Settings</strong> → <strong>Providers</strong> → <strong>Local LLM</strong>.</li>
+<li>Choose a model from the local registry or download one.</li>
+<li>Save and select it as your active model.</li>
+</ol>
+<h2 id="switching-models">Switching Models</h2>
+<ul>
+<li><strong>Per session</strong>: Use the model selector in the chat UI.</li>
+<li><strong>Per message</strong>: Use <code>/model &#x3C;name></code> in chat.</li>
+<li><strong>Global defaults</strong>: Use <code>[providers].offered</code>, provider <code>models = [...]</code>, and
+<code>[chat].priority_models</code> in <code>moltis.toml</code>.</li>
+</ul>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="model-not-available">”Model not available”</h3>
+<ul>
+<li>Check provider auth is still valid.</li>
+<li>Check model ID spelling.</li>
+<li>Check account access for that model.</li>
+</ul>
+<h3 id="rate-limited">”Rate limited”</h3>
+<ul>
+<li>Retry after a short delay.</li>
+<li>Switch provider/model.</li>
+<li>Upgrade provider quota if needed.</li>
+</ul>
+<h3 id="invalid-api-key">”Invalid API key”</h3>
+<ul>
+<li>Verify the key has no extra spaces.</li>
+<li>Verify it is active and has required permissions.</li>
+</ul>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/e2e-testing.html"><span>Previous</span>End-to-End Testing</a> <a class="pager-link next" href="/choosing-a-provider.html"><span>Next</span>Choosing a Provider</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

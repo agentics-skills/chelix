@@ -1,0 +1,873 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Matrix - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a class="active" href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Features</div>  <h1 id="matrix">Matrix</h1>
+<p>Moltis can connect to Matrix as a bot account using a homeserver URL plus one
+of three authentication methods: OIDC, password, or access token. The
+integration runs as an outbound sync loop, so it does not require a public
+webhook URL, port forwarding, or TLS termination on your side.</p>
+<aside class="admonition admonition-warning"><div class="admonition-title">Warning</div><div class="admonition-body"><p>Matrix encrypted chats require password auth.</p>
+<p>Access-token auth can connect for plain Matrix traffic, but it reuses an<br>existing Matrix session without that device's local private encryption keys.<br>That means Moltis cannot reliably decrypt encrypted rooms when you connect with<br>an access token copied out of Element.</p>
+<p>Use password auth so Moltis logs in as its own Matrix device and persists its<br>own E2EE keys locally. After that:</p>
+<ul><li>If Element starts verification, Moltis accepts it automatically</li><li>Moltis posts emoji confirmation instructions in the Matrix chat</li><li>Reply <code>verify yes</code>, <code>verify no</code>, <code>verify show</code>, or <code>verify cancel</code> in Matrix</li><li>Older encrypted history may remain unreadable until keys are shared</li></ul>
+<p>For dedicated bot accounts, the web UI now defaults to **Let Moltis own this<br>Matrix account**. In that mode Moltis bootstraps cross-signing and recovery for<br>the bot account so its own device can be verified automatically. If you want to<br>open the same bot account in Element yourself, switch the channel to<br>user-managed mode instead.</p></div></aside>
+<h2 id="feature-set">Feature Set</h2>
+<p>Matrix is no longer a minimal transport. The current integration supports the
+full day-to-day bot flow, including encrypted chats when you connect with
+password auth.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Area</th><th>Status</th><th>Notes</th></tr></thead><tbody><tr><td>Web UI setup and editing</td><td>Supported</td><td>Add, edit, remove, and retry Matrix channels from <strong>Settings -> Channels</strong></td></tr><tr><td>Direct messages and rooms</td><td>Supported</td><td>DM policy, room policy, allowlists, mention gating, and auto-join</td></tr><tr><td>End-to-end encrypted chats</td><td>Supported with password auth</td><td>Moltis creates and persists its own Matrix device and crypto state</td></tr><tr><td>Device verification</td><td>Supported</td><td>Moltis accepts Element verification and you confirm with <code>verify yes</code>, <code>verify no</code>, <code>verify show</code>, or <code>verify cancel</code></td></tr><tr><td>Cross-signing / recovery ownership</td><td>Supported</td><td>Password auth defaults to <code>moltis_owned</code>; older accounts may require one browser approval before takeover</td></tr><tr><td>Streaming replies</td><td>Supported</td><td>Edit-in-place streaming for text responses</td></tr><tr><td>Thread-aware replies and context</td><td>Supported</td><td>Replies stay in threads and context fetch follows the thread root</td></tr><tr><td>Voice and audio messages</td><td>Supported</td><td>Matrix audio is downloaded and sent through the normal transcription pipeline</td></tr><tr><td>Interactive actions</td><td>Supported</td><td>Short action lists are sent as native Matrix polls</td></tr><tr><td>Reactions</td><td>Supported</td><td>Ack reactions and normal reaction flows work</td></tr><tr><td>Location</td><td>Supported</td><td>Inbound location shares update user location and outbound location sends are supported</td></tr><tr><td>OTP sender approval</td><td>Supported</td><td>Unknown DM senders can self-approve through the shared OTP flow</td></tr><tr><td>Model routing overrides</td><td>Supported</td><td>Per-room and per-user model/provider overrides</td></tr></tbody></table>
+<p>The main remaining Matrix-specific limitations are:</p>
+<ul>
+<li>access-token auth is still plain-traffic-only, encrypted chats need password auth</li>
+<li>existing Matrix accounts with old crypto state may require one browser approval before Moltis can take over ownership</li>
+<li>Matrix interactive actions are poll-based, not arbitrary button/select UIs</li>
+<li>older encrypted history may remain unreadable until the missing room keys are shared with the Moltis device</li>
+<li>arbitrary remote-media fetch and reupload for outbound URLs is still limited</li>
+</ul>
+<h2 id="how-it-works">How It Works</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="┌──────────────────────────────────────────────────────┐
+│                 Matrix homeserver                     │
+│          (/sync, send, relations, room APIs)         │
+└──────────────────┬───────────────────────────────────┘
+                   │  outbound HTTPS requests
+                   ▼
+┌──────────────────────────────────────────────────────┐
+│                moltis-matrix crate                    │
+│  ┌────────────┐  ┌────────────┐  ┌────────────────┐  │
+│  │  Handler   │  │  Outbound  │  │     Plugin     │  │
+│  │ (inbound)  │  │ (replies)  │  │  (lifecycle)   │  │
+│  └────────────┘  └────────────┘  └────────────────┘  │
+└──────────────────┬───────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────┐
+│                 Moltis Gateway                        │
+│         (chat dispatch, tools, memory)                │
+└──────────────────────────────────────────────────────┘"><code><span class="line"><span>┌──────────────────────────────────────────────────────┐</span></span>
+<span class="line"><span>│                 Matrix homeserver                     │</span></span>
+<span class="line"><span>│          (/sync, send, relations, room APIs)         │</span></span>
+<span class="line"><span>└──────────────────┬───────────────────────────────────┘</span></span>
+<span class="line"><span>                   │  outbound HTTPS requests</span></span>
+<span class="line"><span>                   ▼</span></span>
+<span class="line"><span>┌──────────────────────────────────────────────────────┐</span></span>
+<span class="line"><span>│                moltis-matrix crate                    │</span></span>
+<span class="line"><span>│  ┌────────────┐  ┌────────────┐  ┌────────────────┐  │</span></span>
+<span class="line"><span>│  │  Handler   │  │  Outbound  │  │     Plugin     │  │</span></span>
+<span class="line"><span>│  │ (inbound)  │  │ (replies)  │  │  (lifecycle)   │  │</span></span>
+<span class="line"><span>│  └────────────┘  └────────────┘  └────────────────┘  │</span></span>
+<span class="line"><span>└──────────────────┬───────────────────────────────────┘</span></span>
+<span class="line"><span>                   │</span></span>
+<span class="line"><span>                   ▼</span></span>
+<span class="line"><span>┌──────────────────────────────────────────────────────┐</span></span>
+<span class="line"><span>│                 Moltis Gateway                        │</span></span>
+<span class="line"><span>│         (chat dispatch, tools, memory)                │</span></span>
+<span class="line"><span>└──────────────────────────────────────────────────────┘</span></span></code></pre>
+<h2 id="authentication-modes">Authentication Modes</h2>
+<p>Moltis supports three ways to authenticate with a Matrix homeserver:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Mode</th><th>When to use</th><th>Encrypted chats?</th></tr></thead><tbody><tr><td><strong>OIDC</strong> (recommended)</td><td>Modern homeservers using Matrix Authentication Service (e.g. matrix.org since April 2025)</td><td>Yes</td></tr><tr><td><strong>Password</strong></td><td>Older homeservers without OIDC support</td><td>Yes</td></tr><tr><td><strong>Access token</strong></td><td>Quick testing or plain-traffic-only bots</td><td>No</td></tr></tbody></table>
+<h3 id="oidc-authentication">OIDC Authentication</h3>
+<p>OIDC is the recommended authentication mode for homeservers that support it.
+Moltis uses the matrix-sdk built-in OAuth 2.0 flow (MSC3861):</p>
+<ol>
+<li>In the web UI, select <strong>OIDC (recommended)</strong> as the authentication mode</li>
+<li>Enter the homeserver URL and click <strong>Authenticate with OIDC</strong></li>
+<li>A browser window opens for you to log in at the homeserver’s identity provider</li>
+<li>After successful authentication, the browser redirects back to Moltis</li>
+<li>Moltis automatically registers a device, exchanges tokens, and starts syncing</li>
+</ol>
+<p>OIDC sessions are refreshed automatically. Moltis persists the session tokens
+to disk so the bot reconnects after restarts without re-authentication.</p>
+<p>To configure OIDC via <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.matrix.my-bot]
+homeserver = &#x22;https://matrix.example.com&#x22;
+auth_mode = &#x22;oidc&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">matrix</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">homeserver </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://matrix.example.com"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">auth_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "oidc"</span></span></code></pre>
+<p>Note: OIDC initial setup requires the web UI (browser-based flow). After the
+first login, the saved session is reused for restarts.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<p>Before configuring Moltis, you need a Matrix bot account:</p>
+<ol>
+<li>Create or choose a Matrix account for the bot on your homeserver</li>
+<li>For OIDC: just the homeserver URL (credentials are entered in the browser)</li>
+<li>For password: keep the account password available</li>
+<li>For access token: obtain a token from Element (plain traffic only)</li>
+<li>Optionally pick a stable <code>device_id</code> for session restore</li>
+</ol>
+<aside class="admonition admonition-warning"><div class="admonition-title">Warning</div><div class="admonition-body"><p>Matrix credentials are secrets. Treat access tokens and passwords like<br>passwords, never commit them to version control. Moltis stores them with<br><code>secrecy::Secret</code> and redacts them from logs and API responses.</p></div></aside>
+<h2 id="getting-an-access-token">Getting an Access Token</h2>
+<p>If you want to use access-token auth, Element can show the token for the
+currently logged-in account:</p>
+<ol>
+<li>Sign into the dedicated Matrix bot account in Element</li>
+<li>Open <code>Settings</code></li>
+<li>Open <code>Help &#x26; About</code></li>
+<li>Expand <code>Advanced</code></li>
+<li>Click <code>Access Token</code></li>
+</ol>
+<p>Use that token as <code>access_token</code> in the Matrix channel config.</p>
+<aside class="admonition admonition-warning"><div class="admonition-title">Warning</div><div class="admonition-body"><p>Access-token auth does <strong>not</strong> support encrypted Matrix chats.</p>
+<p>Why: the token authenticates an already-existing Matrix device/session, but it<br>does not transfer that device's local private E2EE keys into Moltis. For<br>encrypted rooms, use <code>user_id</code> + <code>password</code> so Moltis creates and persists its<br>own Matrix device.</p></div></aside>
+<p>If you want encrypted Matrix chats, use password login instead. In that case,
+set <code>user_id</code> and <code>password</code>.</p>
+<h2 id="why-password-auth-is-required-for-encryption">Why Password Auth Is Required For Encryption</h2>
+<p>For encrypted Matrix chats, Moltis must behave like its own Matrix device with
+its own persistent crypto state.</p>
+<p>Password auth works for that flow because Moltis logs in as a fresh Matrix
+device, generates its own E2EE identity and one-time keys, stores that device
+state locally, and can then complete normal Element verification.</p>
+<p>Access-token auth is different. It authenticates an already-existing Matrix
+session, often one created by Element, but Moltis does not receive that
+existing device’s private encryption keys just by knowing the token. That is
+why access-token auth works for plain Matrix traffic but is not a reliable way
+to support encrypted rooms.</p>
+<p>Two related Matrix recovery tools often cause confusion:</p>
+<ul>
+<li>The Element recovery key helps a Matrix client unlock server-backed secret
+storage and backups.</li>
+<li>Exported room keys let another Matrix client import some historical Megolm
+room keys from a file.</li>
+</ul>
+<p>Moltis does not currently implement recovery-key entry or room-key import, and
+neither feature would make access-token auth equivalent to a proper dedicated
+Moltis device anyway. The supported path for encrypted Matrix chats is still:</p>
+<ol>
+<li>Add the Matrix account with <code>user_id</code> + <code>password</code></li>
+<li>Let Moltis create its own Matrix device</li>
+<li>Complete Element verification with that Moltis device</li>
+<li>Send new encrypted messages after verification</li>
+</ol>
+<h2 id="ownership-modes">Ownership Modes</h2>
+<p>When you add a password-based Matrix account, Moltis offers two ownership modes:</p>
+<h3 id="moltis_owned"><code>moltis_owned</code></h3>
+<p>This is the default for dedicated bot accounts. Moltis tries to become the
+owner of the account’s Matrix crypto state so the bot can verify its own device
+properly.</p>
+<p>In this mode Moltis will:</p>
+<ul>
+<li>create or restore its own Matrix device</li>
+<li>bootstrap or recover secret storage and cross-signing when possible</li>
+<li>self-sign the Moltis device after takeover succeeds</li>
+<li>show encryption ownership status directly in <strong>Settings -> Channels</strong></li>
+</ul>
+<p>For fresh bot accounts, this is usually automatic.</p>
+<p>For older accounts with pre-existing Matrix crypto state, Matrix may require one
+browser approval before Moltis is allowed to reset and take over cross-signing.
+When that happens, the Channels page shows:</p>
+<ul>
+<li>an <strong>Open approval page for @user:server</strong> button</li>
+<li>a retry button after you finish the reset in the browser</li>
+</ul>
+<h3 id="user_managed"><code>user_managed</code></h3>
+<p>Use this when you want to manage the same bot account yourself in Element or
+another Matrix client.</p>
+<p>In this mode Moltis still connects and can chat, but it does not try to take
+ownership of cross-signing or recovery. The Channels page shows the homeserver,
+user ID, device ID, and device name you need if you want to log into that bot
+account in your own Matrix app.</p>
+<h2 id="configuration">Configuration</h2>
+<p>Matrix can be configured either:</p>
+<ul>
+<li>manually in <code>moltis.toml</code></li>
+<li>through the web UI in <strong>Settings -> Channels</strong></li>
+</ul>
+<p>Web UI channel accounts are stored in the internal <code>channels</code> table in <code>data_dir()/moltis.db</code>. They are not written back into <code>moltis.toml</code>. If you need a Matrix setting that does not have a dedicated field yet, use the advanced JSON config editor in the channel form.</p>
+<aside class="admonition admonition-warning"><div class="admonition-title">Warning</div><div class="admonition-body"><p>Web-managed Matrix credentials are not currently wrapped by the Moltis vault.</p>
+<p>Today, channel configs are stored as JSON in the internal <code>channels</code> table in<br><code>data_dir()/moltis.db</code>. Matrix secrets are still handled as secrets in code,<br>redacted from logs, and redacted from API responses, but they are not yet<br>encrypted-at-rest by the vault layer.</p></div></aside>
+<p>Manual file configuration uses a <code>[channels.matrix.&#x3C;account-id>]</code> section in <code>moltis.toml</code>.
+If you want encrypted Matrix chats, use password auth:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.matrix.my-bot]
+homeserver = &#x22;https://matrix.example.com&#x22;
+user_id = &#x22;@bot:example.com&#x22;
+password = &#x22;correct horse battery staple&#x22;
+ownership_mode = &#x22;moltis_owned&#x22;
+device_display_name = &#x22;Moltis Matrix Bot&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">matrix</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">homeserver </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://matrix.example.com"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">user_id </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "@bot:example.com"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">password </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "correct horse battery staple"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">ownership_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "moltis_owned"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">device_display_name </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Moltis Matrix Bot"</span></span></code></pre>
+<p>If you only need plain, unencrypted Matrix traffic, access-token auth still
+works:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.matrix.my-bot]
+homeserver = &#x22;https://matrix.example.com&#x22;
+access_token = &#x22;syt_...&#x22;
+user_id = &#x22;@bot:example.com&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">matrix</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">homeserver </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://matrix.example.com"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">access_token </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "syt_..."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">user_id </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "@bot:example.com"</span></span></code></pre>
+<p>To show Matrix in the channel picker, include <code>"matrix"</code> in <code>channels.offered</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels]
+offered = [&#x22;telegram&#x22;, &#x22;discord&#x22;, &#x22;slack&#x22;, &#x22;matrix&#x22;]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">offered </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"telegram"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "discord"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "slack"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "matrix"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<p>After editing <code>channels.offered</code>, reload the web UI so it fetches the latest
+picker list from <code>moltis.toml</code>.</p>
+<h3 id="configuration-fields">Configuration Fields</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Field</th><th>Required</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>homeserver</code></td><td><strong>yes</strong></td><td>—</td><td>Base URL of the Matrix homeserver</td></tr><tr><td><code>access_token</code></td><td>no</td><td>—</td><td>Access token for the bot account, for plain and unencrypted Matrix traffic only</td></tr><tr><td><code>password</code></td><td>no</td><td>—</td><td>Password for the bot account, required for encrypted Matrix chats</td></tr><tr><td><code>user_id</code></td><td>no</td><td>—</td><td>Bot user ID, for example <code>@bot:example.com</code>, auto-detected via <code>whoami</code> when omitted</td></tr><tr><td><code>device_id</code></td><td>no</td><td>—</td><td>Optional device ID used for session restore</td></tr><tr><td><code>device_display_name</code></td><td>no</td><td>—</td><td>Optional device display name used for password-based logins</td></tr><tr><td><code>ownership_mode</code></td><td>no</td><td><code>"user_managed"</code></td><td>Who manages cross-signing and recovery: <code>"moltis_owned"</code> or <code>"user_managed"</code></td></tr><tr><td><code>dm_policy</code></td><td>no</td><td><code>"allowlist"</code></td><td>Who can DM the bot: <code>"open"</code>, <code>"allowlist"</code>, or <code>"disabled"</code></td></tr><tr><td><code>room_policy</code></td><td>no</td><td><code>"allowlist"</code></td><td>Which rooms can talk to the bot: <code>"open"</code>, <code>"allowlist"</code>, or <code>"disabled"</code></td></tr><tr><td><code>mention_mode</code></td><td>no</td><td><code>"mention"</code></td><td>When the bot responds in rooms: <code>"always"</code>, <code>"mention"</code>, or <code>"none"</code></td></tr><tr><td><code>room_allowlist</code></td><td>no</td><td><code>[]</code></td><td>Matrix room IDs or aliases allowed to interact with the bot</td></tr><tr><td><code>user_allowlist</code></td><td>no</td><td><code>[]</code></td><td>Matrix user IDs allowed to DM the bot</td></tr><tr><td><code>auto_join</code></td><td>no</td><td><code>"always"</code></td><td>Invite handling: <code>"always"</code>, <code>"allowlist"</code>, or <code>"off"</code></td></tr><tr><td><code>model</code></td><td>no</td><td>—</td><td>Override the default model for this account</td></tr><tr><td><code>model_provider</code></td><td>no</td><td>—</td><td>Provider for the overridden model</td></tr><tr><td><code>stream_mode</code></td><td>no</td><td><code>"edit_in_place"</code></td><td>How streaming replies are sent: <code>"edit_in_place"</code> or <code>"off"</code></td></tr><tr><td><code>edit_throttle_ms</code></td><td>no</td><td><code>500</code></td><td>Minimum milliseconds between edit-in-place streaming updates</td></tr><tr><td><code>stream_min_initial_chars</code></td><td>no</td><td><code>30</code></td><td>Minimum buffered characters before the first streamed send</td></tr><tr><td><code>channel_overrides</code></td><td>no</td><td><code>{}</code></td><td>Per-room model/provider overrides</td></tr><tr><td><code>user_overrides</code></td><td>no</td><td><code>{}</code></td><td>Per-user model/provider overrides</td></tr><tr><td><code>reply_to_message</code></td><td>no</td><td><code>true</code></td><td>Send threaded/rich replies when possible</td></tr><tr><td><code>ack_reaction</code></td><td>no</td><td><code>"👀"</code></td><td>Emoji reaction added while processing, omit to disable</td></tr><tr><td><code>otp_self_approval</code></td><td>no</td><td><code>true</code></td><td>Enable OTP self-approval for non-allowlisted DM users</td></tr><tr><td><code>otp_cooldown_secs</code></td><td>no</td><td><code>300</code></td><td>Cooldown in seconds after 3 failed OTP attempts</td></tr></tbody></table>
+<h3 id="web-ui-notes">Web UI Notes</h3>
+<p>When you add Matrix through the web UI:</p>
+<ul>
+<li>the homeserver field defaults to <code>https://matrix.org</code></li>
+<li>Moltis auto-generates the internal <code>account_id</code></li>
+<li>the saved account lives in <code>data_dir()/moltis.db</code>, not in <code>moltis.toml</code></li>
+<li>the web UI defaults to password auth because encrypted Matrix chats require it</li>
+<li>password-based channels default to <strong>Let Moltis own this Matrix account</strong></li>
+<li>Matrix channels can be added, edited, removed, and retried entirely from <strong>Settings -> Channels</strong></li>
+<li>access-token auth is for plain Matrix traffic only, because Moltis cannot import the existing device’s private E2EE keys from an access token</li>
+<li>if you switch a channel to user-managed mode, the Channels page shows the homeserver, user ID, device ID, and device name you need to open that bot account in Element</li>
+<li>if an older Matrix account needs one external approval before takeover, the channel card shows an approval link plus a retry action so you do not need to rebuild the channel config manually</li>
+<li>if Element starts device verification, Moltis accepts it and posts emoji confirmation instructions in the room</li>
+<li>send <code>verify yes</code>, <code>verify no</code>, <code>verify show</code>, or <code>verify cancel</code> as normal messages in that same Matrix chat to finish or inspect the verification flow</li>
+<li>older encrypted history may still be unreadable if this Moltis device joined after those keys were created</li>
+</ul>
+<p>If you want to inspect web-added channels directly, query the SQLite database:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="sqlite3 ~/.moltis/moltis.db &#x27;select channel_type, account_id, config from channels;&#x27;"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">sqlite3</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ~/.moltis/moltis.db</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> 'select channel_type, account_id, config from channels;'</span></span></code></pre>
+<p>If you use <code>MOLTIS_DATA_DIR</code> or <code>--data-dir</code>, check that directory instead of <code>~/.moltis</code>.</p>
+<h3 id="full-example">Full Example</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels]
+offered = [&#x22;matrix&#x22;]
+
+[channels.matrix.my-bot]
+homeserver = &#x22;https://matrix.example.com&#x22;
+user_id = &#x22;@bot:example.com&#x22;
+password = &#x22;correct horse battery staple&#x22;
+ownership_mode = &#x22;moltis_owned&#x22;
+device_id = &#x22;MOLTISBOT&#x22;
+device_display_name = &#x22;Moltis Matrix Bot&#x22;
+dm_policy = &#x22;allowlist&#x22;
+room_policy = &#x22;allowlist&#x22;
+mention_mode = &#x22;mention&#x22;
+room_allowlist = [&#x22;!ops:example.com&#x22;, &#x22;#support:example.com&#x22;]
+user_allowlist = [&#x22;@alice:example.com&#x22;, &#x22;@bob:example.com&#x22;]
+auto_join = &#x22;allowlist&#x22;
+model = &#x22;gpt-4.1&#x22;
+model_provider = &#x22;openai&#x22;
+stream_mode = &#x22;edit_in_place&#x22;
+edit_throttle_ms = 500
+stream_min_initial_chars = 30
+reply_to_message = true
+ack_reaction = &#x22;👀&#x22;
+otp_self_approval = true
+otp_cooldown_secs = 300
+
+[channels.matrix.my-bot.channel_overrides.&#x22;!ops:example.com&#x22;]
+model = &#x22;claude-sonnet-4-20250514&#x22;
+model_provider = &#x22;anthropic&#x22;
+
+[channels.matrix.my-bot.user_overrides.&#x22;@alice:example.com&#x22;]
+model = &#x22;o3&#x22;
+model_provider = &#x22;openai&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">offered </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"matrix"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">matrix</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">homeserver </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://matrix.example.com"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">user_id </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "@bot:example.com"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">password </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "correct horse battery staple"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">ownership_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "moltis_owned"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">device_id </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "MOLTISBOT"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">device_display_name </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Moltis Matrix Bot"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">dm_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "allowlist"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">room_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "allowlist"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">mention_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "mention"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">room_allowlist </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"!ops:example.com"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "#support:example.com"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">user_allowlist </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"@alice:example.com"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "@bob:example.com"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">auto_join </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "allowlist"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "gpt-4.1"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model_provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">stream_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "edit_in_place"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">edit_throttle_ms </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 500</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">stream_min_initial_chars </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 30</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">reply_to_message </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">ack_reaction </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "👀"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">otp_self_approval </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">otp_cooldown_secs </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 300</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">matrix</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channel_overrides</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">"!ops:example</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">com"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "claude-sonnet-4-20250514"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model_provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "anthropic"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">matrix</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">user_overrides</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">"@alice:example</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">com"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "o3"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model_provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai"</span></span></code></pre>
+<h2 id="access-control">Access Control</h2>
+<p>Matrix uses the same gating model as the other channel integrations.</p>
+<h3 id="dm-policy">DM Policy</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Value</th><th>Behavior</th></tr></thead><tbody><tr><td><code>"allowlist"</code></td><td>Only users in <code>user_allowlist</code> can DM the bot (default)</td></tr><tr><td><code>"open"</code></td><td>Anyone can DM the bot</td></tr><tr><td><code>"disabled"</code></td><td>DMs are silently ignored</td></tr></tbody></table>
+<h3 id="room-policy">Room Policy</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Value</th><th>Behavior</th></tr></thead><tbody><tr><td><code>"allowlist"</code></td><td>Only rooms in <code>room_allowlist</code> are allowed (default)</td></tr><tr><td><code>"open"</code></td><td>Any joined room can interact with the bot</td></tr><tr><td><code>"disabled"</code></td><td>Room messages are silently ignored</td></tr></tbody></table>
+<h3 id="mention-mode">Mention Mode</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Value</th><th>Behavior</th></tr></thead><tbody><tr><td><code>"mention"</code></td><td>Bot only responds when explicitly mentioned in a room (default)</td></tr><tr><td><code>"always"</code></td><td>Bot responds to every message in allowed rooms</td></tr><tr><td><code>"none"</code></td><td>Bot never responds in rooms</td></tr></tbody></table>
+<p>When <code>mention_mode = "mention"</code>, Moltis checks Matrix intentional mentions
+(<code>m.mentions</code>) and also falls back to a literal MXID mention in the plain body.</p>
+<h2 id="invite-handling">Invite Handling</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Value</th><th>Behavior</th></tr></thead><tbody><tr><td><code>"always"</code></td><td>Auto-join every invite (default)</td></tr><tr><td><code>"allowlist"</code></td><td>Auto-join only when the inviter is in <code>user_allowlist</code> or the room is already in <code>room_allowlist</code></td></tr><tr><td><code>"off"</code></td><td>Never auto-join invites</td></tr></tbody></table>
+<h2 id="threads-and-replies">Threads and Replies</h2>
+<p>Matrix replies now preserve thread context when the referenced event belongs to
+an existing thread. When <code>reply_to_message = true</code>, Moltis sends a rich reply
+and keeps the reply inside the thread when appropriate.</p>
+<p>For thread context injection, Moltis resolves the inbound event to the thread
+root and fetches prior <code>m.thread</code> relations so the LLM sees the room thread
+history instead of just the last message.</p>
+<h2 id="voice-and-location-messages">Voice and Location Messages</h2>
+<p>Matrix audio messages are downloaded through the homeserver media API and
+transcribed with the same voice pipeline used by the other voice-enabled
+channels. If voice transcription is not configured, Moltis replies with setup
+guidance instead of silently dropping the message.</p>
+<p>Inbound Matrix location shares now update the stored user location and also
+resolve pending tool-triggered location requests. If there is no pending
+location request, the coordinates are forwarded to the chat session so the LLM
+can acknowledge them naturally.</p>
+<h2 id="interactive-actions">Interactive Actions</h2>
+<p>When Moltis needs to ask the user to choose from a short list of actions, the
+Matrix integration sends a native poll instead of a plain text fallback. The
+selected poll answer is fed back into the same interaction callback path used by
+the other channel integrations.</p>
+<p>Matrix poll answers are single-choice and capped by the protocol at 20 options.
+If a generated interactive message exceeds that limit, Moltis falls back to a
+plain numbered text list.</p>
+<h2 id="otp-self-approval">OTP Self-Approval</h2>
+<p>When <code>dm_policy = "allowlist"</code> and <code>otp_self_approval = true</code>, unknown DM users
+can self-approve:</p>
+<ol>
+<li>User sends a DM to the bot</li>
+<li>Moltis generates a 6-digit OTP challenge</li>
+<li>The code appears in the web UI under <strong>Channels > Senders</strong></li>
+<li>The bot owner shares the code out-of-band</li>
+<li>User replies with the code in Matrix</li>
+<li>On success, the sender is approved</li>
+</ol>
+<p>After 3 failed attempts, the sender is locked out for <code>otp_cooldown_secs</code>
+seconds.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="bot-does-not-connect">Bot does not connect</h3>
+<ul>
+<li>Verify <code>homeserver</code> is correct and reachable</li>
+<li>Verify the access token or password is valid</li>
+<li>Set <code>user_id</code> explicitly if startup auto-detection is unreliable</li>
+<li>Look at logs: <code>RUST_LOG=moltis_matrix=debug moltis</code></li>
+</ul>
+<h3 id="element-shows-the-room-as-encrypted">Element shows the room as encrypted</h3>
+<ul>
+<li>That is fine, encrypted rooms are supported</li>
+<li>Make sure the Matrix account was added with password auth, not access-token auth</li>
+<li>If the Moltis device is new, start a fresh Element verification with the bot</li>
+<li>Moltis will accept the request and post emoji instructions in the chat</li>
+<li>Send <code>verify yes</code> as a normal chat message if the emojis match, <code>verify no</code> if they do not</li>
+<li>If older encrypted history still does not decrypt, resend the message after verification</li>
+</ul>
+<h3 id="access-token-auth-connects-but-encrypted-messages-do-not-decrypt">Access-token auth connects but encrypted messages do not decrypt</h3>
+<ul>
+<li>That is expected with the current implementation</li>
+<li>Access-token auth is for plain Matrix traffic only</li>
+<li>Remove the Matrix account from Moltis</li>
+<li>Re-add it with <code>user_id</code> + <code>password</code></li>
+<li>Verify the new Moltis device in Element</li>
+<li>Resend a brand new encrypted message after verification</li>
+</ul>
+<h3 id="element-says-it-is-waiting-for-moltis-to-accept-verification">Element says it is waiting for Moltis to accept verification</h3>
+<ul>
+<li>Moltis should accept Matrix verification requests automatically</li>
+<li>Watch the chat for the emoji confirmation prompt</li>
+<li>If the prompt scrolled away, send <code>verify show</code> as a normal message in that same Matrix chat</li>
+<li>If an older stale verification request was replayed from sync history, start a fresh verification in Element and then use the <code>verify ...</code> commands</li>
+<li>If nothing happens, check the Matrix logs for verification events and try starting verification again</li>
+</ul>
+<h3 id="channels-page-says-ownership-approval-required">Channels page says <code>Ownership approval required</code></h3>
+<ul>
+<li>This means Moltis connected, but Matrix wants one explicit browser approval before cross-signing can be reset for this older account</li>
+<li>Use the <strong>Open approval page for @user:server</strong> button in the Matrix channel card</li>
+<li>Make sure the browser page is signed into that exact Matrix account, not your personal one</li>
+<li>After approving the reset, use the retry button in the same channel card so Moltis can finish ownership bootstrap</li>
+<li>Until that finishes, the bot may still chat, but the device can remain <code>unverified</code></li>
+</ul>
+<h3 id="bot-can-chat-but-the-channels-page-still-says-device-not-yet-verified-by-owner">Bot can chat, but the Channels page still says <code>Device not yet verified by owner</code></h3>
+<ul>
+<li>Matrix encryption and Matrix cross-signing are related, but not identical</li>
+<li>A Matrix device can already send and receive messages before it is verified by the account owner</li>
+<li>If you are using <code>moltis_owned</code>, let Moltis finish ownership bootstrap or complete the approval flow above</li>
+<li>If you are using <code>user_managed</code>, verify the Moltis device from your own Matrix client instead</li>
+</ul>
+<h3 id="bot-does-not-respond-in-rooms">Bot does not respond in rooms</h3>
+<ul>
+<li>Check <code>room_policy</code></li>
+<li>Check <code>room_allowlist</code></li>
+<li>Check <code>mention_mode</code>, especially if it is <code>"mention"</code> or <code>"none"</code></li>
+<li>Make sure the bot has joined the room, or enable <code>auto_join</code></li>
+</ul>
+<h3 id="bot-does-not-respond-in-dms">Bot does not respond in DMs</h3>
+<ul>
+<li>Check <code>dm_policy</code></li>
+<li>Check <code>user_allowlist</code></li>
+<li>If OTP is enabled, look in <strong>Channels > Senders</strong> for a pending challenge</li>
+</ul>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/slack.html"><span>Previous</span>Slack</a> <a class="pager-link next" href="/whatsapp.html"><span>Next</span>WhatsApp</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

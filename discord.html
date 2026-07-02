@@ -1,0 +1,656 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Discord - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a class="active" href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Features</div>  <h1 id="discord">Discord</h1>
+<p>Moltis can connect to Discord as a bot, letting you chat with your agent from
+any Discord server or DM. The integration uses Discord’s
+<a href="https://discord.com/developers/docs/events/gateway">Gateway API</a> via a
+persistent WebSocket connection — no public URL or webhook endpoint is required.</p>
+<h2 id="how-it-works">How It Works</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="┌──────────────────────────────────────────────────────┐
+│                   Discord Gateway                     │
+│              (wss://gateway.discord.gg)               │
+└──────────────────┬───────────────────────────────────┘
+                   │  persistent WebSocket
+                   ▼
+┌──────────────────────────────────────────────────────┐
+│               moltis-discord crate                    │
+│  ┌────────────┐  ┌────────────┐  ┌────────────────┐  │
+│  │  Handler   │  │  Outbound  │  │     Plugin     │  │
+│  │ (inbound)  │  │ (replies)  │  │  (lifecycle)   │  │
+│  └────────────┘  └────────────┘  └────────────────┘  │
+└──────────────────┬───────────────────────────────────┘
+                   │
+                   ▼
+┌──────────────────────────────────────────────────────┐
+│                 Moltis Gateway                        │
+│         (chat dispatch, tools, memory)                │
+└──────────────────────────────────────────────────────┘"><code><span class="line"><span>┌──────────────────────────────────────────────────────┐</span></span>
+<span class="line"><span>│                   Discord Gateway                     │</span></span>
+<span class="line"><span>│              (wss://gateway.discord.gg)               │</span></span>
+<span class="line"><span>└──────────────────┬───────────────────────────────────┘</span></span>
+<span class="line"><span>                   │  persistent WebSocket</span></span>
+<span class="line"><span>                   ▼</span></span>
+<span class="line"><span>┌──────────────────────────────────────────────────────┐</span></span>
+<span class="line"><span>│               moltis-discord crate                    │</span></span>
+<span class="line"><span>│  ┌────────────┐  ┌────────────┐  ┌────────────────┐  │</span></span>
+<span class="line"><span>│  │  Handler   │  │  Outbound  │  │     Plugin     │  │</span></span>
+<span class="line"><span>│  │ (inbound)  │  │ (replies)  │  │  (lifecycle)   │  │</span></span>
+<span class="line"><span>│  └────────────┘  └────────────┘  └────────────────┘  │</span></span>
+<span class="line"><span>└──────────────────┬───────────────────────────────────┘</span></span>
+<span class="line"><span>                   │</span></span>
+<span class="line"><span>                   ▼</span></span>
+<span class="line"><span>┌──────────────────────────────────────────────────────┐</span></span>
+<span class="line"><span>│                 Moltis Gateway                        │</span></span>
+<span class="line"><span>│         (chat dispatch, tools, memory)                │</span></span>
+<span class="line"><span>└──────────────────────────────────────────────────────┘</span></span></code></pre>
+<p>The bot connects <strong>outward</strong> to Discord’s servers. Unlike Microsoft Teams
+(which requires an inbound webhook), Discord needs no port forwarding, no
+public domain, and no TLS certificate. This makes it especially easy to run
+on a home machine or behind a NAT.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<p>Before configuring Moltis, create a Discord bot:</p>
+<ol>
+<li>Go to the <a href="https://discord.com/developers/applications">Discord Developer Portal</a></li>
+<li>Click <strong>New Application</strong> and give it a name</li>
+<li>Navigate to <strong>Bot</strong> in the left sidebar</li>
+<li>Click <strong>Reset Token</strong> and copy the bot token</li>
+<li>Under <strong>Privileged Gateway Intents</strong>, enable <strong>Message Content Intent</strong></li>
+<li>Navigate to <strong>OAuth2 → URL Generator</strong>
+<ul>
+<li>Scopes: <code>bot</code></li>
+<li>Bot Permissions: <code>Send Messages</code>, <code>Attach Files</code>, <code>Read Message History</code>, <code>Add Reactions</code></li>
+</ul>
+</li>
+<li>Copy the generated URL and open it to invite the bot to your server</li>
+</ol>
+<aside class="admonition admonition-warning"><div class="admonition-title">Warning</div><div class="admonition-body"><p>The bot token is a secret — treat it like a password. Never commit it to<br>version control. Moltis stores it with <code>secrecy::Secret</code> and redacts it from<br>logs, but your <code>moltis.toml</code> file is plain text on disk. Consider using<br><a href="/vault.html">Vault</a> for encryption at rest.</p></div></aside>
+<h2 id="configuration">Configuration</h2>
+<p>Add a <code>[channels.discord.&#x3C;account-id>]</code> section to your <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.discord.my-bot]
+token = &#x22;MTIzNDU2Nzg5.example.bot-token&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">discord</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">token </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "MTIzNDU2Nzg5.example.bot-token"</span></span></code></pre>
+<p>Make sure <code>"discord"</code> is included in <code>channels.offered</code> so the Web UI shows
+the Discord option:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels]
+offered = [&#x22;telegram&#x22;, &#x22;discord&#x22;]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">offered </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"telegram"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "discord"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<h3 id="configuration-fields">Configuration Fields</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Field</th><th>Required</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>token</code></td><td><strong>yes</strong></td><td>—</td><td>Discord bot token from the Developer Portal</td></tr><tr><td><code>dm_policy</code></td><td>no</td><td><code>"allowlist"</code></td><td>Who can DM the bot: <code>"open"</code>, <code>"allowlist"</code>, or <code>"disabled"</code></td></tr><tr><td><code>group_policy</code></td><td>no</td><td><code>"open"</code></td><td>Who can talk to the bot in guild channels: <code>"open"</code>, <code>"allowlist"</code>, or <code>"disabled"</code></td></tr><tr><td><code>mention_mode</code></td><td>no</td><td><code>"mention"</code></td><td>When the bot responds in guilds: <code>"always"</code>, <code>"mention"</code> (only when @mentioned), or <code>"none"</code></td></tr><tr><td><code>allowlist</code></td><td>no</td><td><code>[]</code></td><td>Discord usernames allowed to DM the bot (when <code>dm_policy = "allowlist"</code>)</td></tr><tr><td><code>guild_allowlist</code></td><td>no</td><td><code>[]</code></td><td>Guild (server) IDs allowed to interact with the bot</td></tr><tr><td><code>model</code></td><td>no</td><td>—</td><td>Override the default model for this channel</td></tr><tr><td><code>model_provider</code></td><td>no</td><td>—</td><td>Provider for the overridden model</td></tr><tr><td><code>agent_id</code></td><td>no</td><td>—</td><td>Default agent ID for this Discord bot</td></tr><tr><td><code>reply_to_message</code></td><td>no</td><td><code>false</code></td><td>Send bot responses as Discord replies to the user’s message</td></tr><tr><td><code>ack_reaction</code></td><td>no</td><td>—</td><td>Emoji reaction added while processing (e.g. <code>"👀"</code>); omit to disable</td></tr><tr><td><code>activity</code></td><td>no</td><td>—</td><td>Bot activity status text (e.g. <code>"with AI"</code>)</td></tr><tr><td><code>activity_type</code></td><td>no</td><td><code>"custom"</code></td><td>Activity type: <code>"playing"</code>, <code>"listening"</code>, <code>"watching"</code>, <code>"competing"</code>, or <code>"custom"</code></td></tr><tr><td><code>status</code></td><td>no</td><td><code>"online"</code></td><td>Bot online status: <code>"online"</code>, <code>"idle"</code>, <code>"dnd"</code>, or <code>"invisible"</code></td></tr><tr><td><code>otp_self_approval</code></td><td>no</td><td><code>true</code></td><td>Enable OTP self-approval for non-allowlisted DM users</td></tr><tr><td><code>otp_cooldown_secs</code></td><td>no</td><td><code>300</code></td><td>Cooldown in seconds after 3 failed OTP attempts</td></tr></tbody></table>
+<h3 id="full-example">Full Example</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels]
+offered = [&#x22;telegram&#x22;, &#x22;discord&#x22;]
+
+[channels.discord.my-bot]
+token = &#x22;MTIzNDU2Nzg5.example.bot-token&#x22;
+dm_policy = &#x22;allowlist&#x22;
+group_policy = &#x22;open&#x22;
+mention_mode = &#x22;mention&#x22;
+allowlist = [&#x22;alice&#x22;, &#x22;bob&#x22;]
+guild_allowlist = [&#x22;123456789012345678&#x22;]
+reply_to_message = true
+ack_reaction = &#x22;👀&#x22;
+model = &#x22;gpt-4o&#x22;
+model_provider = &#x22;openai&#x22;
+agent_id = &#x22;research&#x22;
+activity = &#x22;with AI&#x22;
+activity_type = &#x22;custom&#x22;
+status = &#x22;online&#x22;
+otp_self_approval = true"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">offered </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"telegram"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "discord"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">discord</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">token </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "MTIzNDU2Nzg5.example.bot-token"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">dm_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "allowlist"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">group_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "open"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">mention_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "mention"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">allowlist </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"alice"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "bob"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">guild_allowlist </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"123456789012345678"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">reply_to_message </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">ack_reaction </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "👀"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "gpt-4o"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model_provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">agent_id </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "research"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">activity </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "with AI"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">activity_type </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "custom"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">status </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "online"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">otp_self_approval </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span></code></pre>
+<h2 id="access-control">Access Control</h2>
+<p>Discord uses the same gating system as Telegram and Microsoft Teams:</p>
+<h3 id="dm-policy">DM Policy</h3>
+<p>Controls who can send direct messages to the bot.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Value</th><th>Behavior</th></tr></thead><tbody><tr><td><code>"allowlist"</code></td><td>Only users listed in <code>allowlist</code> can DM (default)</td></tr><tr><td><code>"open"</code></td><td>Anyone who can reach the bot can DM it</td></tr><tr><td><code>"disabled"</code></td><td>DMs are silently ignored</td></tr></tbody></table>
+<h3 id="group-policy">Group Policy</h3>
+<p>Controls who can interact with the bot in guild (server) channels.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Value</th><th>Behavior</th></tr></thead><tbody><tr><td><code>"open"</code></td><td>Bot responds in any guild channel (default)</td></tr><tr><td><code>"allowlist"</code></td><td>Only guilds listed in <code>guild_allowlist</code> are allowed</td></tr><tr><td><code>"disabled"</code></td><td>Guild messages are silently ignored</td></tr></tbody></table>
+<h3 id="mention-mode">Mention Mode</h3>
+<p>Controls when the bot responds in guild channels (does not apply to DMs).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Value</th><th>Behavior</th></tr></thead><tbody><tr><td><code>"mention"</code></td><td>Bot only responds when @mentioned (default)</td></tr><tr><td><code>"always"</code></td><td>Bot responds to every message in allowed channels</td></tr><tr><td><code>"none"</code></td><td>Bot never responds in guilds (useful for DM-only bots)</td></tr></tbody></table>
+<h3 id="guild-allowlist">Guild Allowlist</h3>
+<p>If <code>guild_allowlist</code> is non-empty, messages from guilds <strong>not</strong> in the list are
+silently dropped — regardless of <code>group_policy</code>. This provides a server-level
+filter on top of the channel-level policy.</p>
+<h3 id="otp-self-approval">OTP Self-Approval</h3>
+<p>When <code>dm_policy = "allowlist"</code> and <code>otp_self_approval = true</code> (the default),
+unknown users who DM the bot receive a verification challenge. The flow:</p>
+<ol>
+<li>User sends a DM to the bot</li>
+<li>Bot responds with a challenge prompt (the 6-digit code is <strong>not</strong> shown to the user)</li>
+<li>The code appears in the Moltis web UI under <strong>Channels → Senders</strong></li>
+<li>The bot owner shares the code with the user out-of-band</li>
+<li>User replies with the 6-digit code</li>
+<li>On success, the user is automatically added to the allowlist</li>
+</ol>
+<p>After 3 failed attempts, the user is locked out for <code>otp_cooldown_secs</code> seconds
+(default: 300). Codes expire after 5 minutes.</p>
+<aside class="admonition admonition-tip"><div class="admonition-title">Tip</div><div class="admonition-body"><p>This is the same OTP mechanism used by the Telegram integration. It provides a<br>simple access control flow without requiring manual allowlist management.</p></div></aside>
+<h2 id="bot-presence">Bot Presence</h2>
+<p>Configure the bot’s Discord presence (the “Playing…” / “Listening to…” status)
+using the <code>activity</code>, <code>activity_type</code>, and <code>status</code> fields:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.discord.my-bot]
+token = &#x22;...&#x22;
+activity = &#x22;with AI&#x22;
+activity_type = &#x22;custom&#x22;  # or &#x22;playing&#x22;, &#x22;listening&#x22;, &#x22;watching&#x22;, &#x22;competing&#x22;
+status = &#x22;online&#x22;         # or &#x22;idle&#x22;, &#x22;dnd&#x22;, &#x22;invisible&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">discord</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">token </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "..."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">activity </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "with AI"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">activity_type </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "custom"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # or "playing", "listening", "watching", "competing"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">status </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "online"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">         # or "idle", "dnd", "invisible"</span></span></code></pre>
+<p>The presence is set when the bot connects to the Discord gateway. If no activity
+or status is configured, the bot uses Discord’s default (online, no activity).</p>
+<h2 id="slash-commands">Slash Commands</h2>
+<p>The bot automatically registers native Discord slash commands when it connects:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Command</th><th>Description</th></tr></thead><tbody><tr><td><code>/new</code></td><td>Start a new chat session</td></tr><tr><td><code>/clear</code></td><td>Clear the current session history</td></tr><tr><td><code>/compact</code></td><td>Summarize the current session</td></tr><tr><td><code>/context</code></td><td>Show session info (model, tokens, plugins)</td></tr><tr><td><code>/model</code></td><td>List or switch the AI model</td></tr><tr><td><code>/sessions</code></td><td>List or switch chat sessions</td></tr><tr><td><code>/agent</code></td><td>List or switch agents</td></tr><tr><td><code>/mode</code></td><td>List or switch temporary session modes</td></tr><tr><td><code>/help</code></td><td>Show available commands</td></tr></tbody></table>
+<p>Slash commands appear in Discord’s command palette (type <code>/</code> in any channel where
+the bot is present). Responses are ephemeral — only visible to the user who
+invoked the command.</p>
+<aside class="admonition admonition-note"><div class="admonition-title">Note</div><div class="admonition-body"><p>Text-based <code>/</code> commands (e.g. typing <code>/model</code> as a regular message) continue to<br>work alongside native slash commands. The native commands provide autocomplete and<br>a better Discord-native experience.</p></div></aside>
+<h2 id="web-ui-setup">Web UI Setup</h2>
+<p>You can also configure Discord through the web interface:</p>
+<ol>
+<li>Open <strong>Settings → Channels</strong></li>
+<li>Click <strong>Connect Discord</strong></li>
+<li>Enter an account ID (any alias) and your bot token</li>
+<li>Adjust DM policy, mention mode, and allowlist as needed</li>
+<li>Click <strong>Connect</strong></li>
+</ol>
+<p>The same form is available during onboarding when Discord is in <code>channels.offered</code>.</p>
+<h2 id="talking-to-your-bot">Talking to Your Bot</h2>
+<p>Once the bot is connected there are several ways to interact with it.</p>
+<h3 id="in-a-server">In a Server</h3>
+<p>To use the bot in a Discord server you need to invite it first:</p>
+<ol>
+<li>Go to the <a href="https://discord.com/developers/applications">Discord Developer Portal</a></li>
+<li>Select your application → <strong>OAuth2 → URL Generator</strong></li>
+<li>Scopes: check <strong>bot</strong></li>
+<li>Bot Permissions: check <strong>Send Messages</strong>, <strong>Read Message History</strong>, and <strong>Add Reactions</strong></li>
+<li>Copy the generated URL and open it in your browser</li>
+<li>Select the server you want to add the bot to and confirm</li>
+</ol>
+<aside class="admonition admonition-tip"><div class="admonition-title">Tip</div><div class="admonition-body"><p>The Moltis web UI generates this invite link automatically when you paste your<br>bot token. Look for the "Invite bot to a server" card in the Connect Discord<br>dialog.</p></div></aside>
+<p>Once the bot is in your server, <strong>@mention</strong> it in any channel to get a
+response (assuming <code>mention_mode = "mention"</code>, the default). If you set
+<code>mention_mode = "always"</code> the bot responds to every message in allowed channels.</p>
+<h3 id="via-direct-message">Via Direct Message</h3>
+<p>You can DM the bot directly from Discord — no shared server required:</p>
+<ol>
+<li>Open Discord and go to <strong>Direct Messages</strong></li>
+<li>Click the <strong>New Message</strong> icon (or <strong>Find or start a conversation</strong>)</li>
+<li>Search for the bot’s username and select it</li>
+<li>Send a message</li>
+</ol>
+<aside class="admonition admonition-note"><div class="admonition-title">Note</div><div class="admonition-body"><p>If <code>dm_policy</code> is set to <code>"allowlist"</code> (the default), make sure your Discord<br>username is listed in the <code>allowlist</code> array — otherwise the bot will ignore your<br>DMs. Set <code>dm_policy = "open"</code> to allow anyone to DM the bot.</p></div></aside>
+<h3 id="without-a-shared-server">Without a Shared Server</h3>
+<p>DMs work even if you and the bot don’t share a server. Discord bots are
+reachable by username from any account. This makes DMs the simplest way to
+start chatting — just connect the bot in Moltis and message it directly.</p>
+<h2 id="message-handling">Message Handling</h2>
+<h3 id="inbound-messages">Inbound Messages</h3>
+<p>When a message arrives from Discord:</p>
+<ol>
+<li>Bot’s own messages are ignored</li>
+<li>Guild allowlist is checked (if configured)</li>
+<li>DM/group policy is evaluated</li>
+<li>Mention mode is checked (guild messages only)</li>
+<li>Bot mention prefix (<code>@BotName</code>) is stripped from the message text</li>
+<li>The message is logged and dispatched to the chat engine</li>
+<li>Commands (messages starting with <code>/</code>) are dispatched to the command handler</li>
+</ol>
+<h3 id="outbound-messages">Outbound Messages</h3>
+<p>Discord enforces a <strong>2,000-character limit</strong> per message. Moltis automatically
+splits long responses into multiple messages, preferring to break at newline
+boundaries and avoiding splits inside fenced code blocks.</p>
+<p>Streaming uses <strong>edit-in-place</strong> — an initial message is sent after 30 characters
+and then updated every 500ms as tokens arrive. If the final text exceeds 2,000
+characters, the first message is edited to the limit and overflow is sent as
+follow-up messages.</p>
+<h3 id="reply-to-message">Reply-to-Message</h3>
+<p>Set <code>reply_to_message = true</code> to have the bot send responses as Discord replies
+(threaded to the user’s original message). The first chunk of a multi-chunk or
+streamed response carries the reply reference; follow-up chunks are sent as
+regular messages.</p>
+<h3 id="ack-reactions">Ack Reactions</h3>
+<p>Set <code>ack_reaction = "👀"</code> (or any Unicode emoji) to have the bot react to the
+user’s message when processing starts. The reaction is removed once the response
+is complete. This provides a visual indicator that the bot has seen the message
+and is working on a reply.</p>
+<h2 id="crate-structure">Crate Structure</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="crates/discord/
+├── Cargo.toml
+└── src/
+    ├── lib.rs         # Public exports
+    ├── commands.rs    # Native Discord slash command registration
+    ├── config.rs      # DiscordAccountConfig (token, policies, presence, OTP)
+    ├── error.rs       # Error enum (Config, Gateway, Send, Channel)
+    ├── handler.rs     # serenity EventHandler (inbound + OTP + interactions)
+    ├── outbound.rs    # ChannelOutbound + ChannelStreamOutbound impls
+    ├── plugin.rs      # ChannelPlugin + ChannelStatus impls
+    └── state.rs       # AccountState + AccountStateMap (includes OtpState)"><code><span class="line"><span>crates/discord/</span></span>
+<span class="line"><span>├── Cargo.toml</span></span>
+<span class="line"><span>└── src/</span></span>
+<span class="line"><span>    ├── lib.rs         # Public exports</span></span>
+<span class="line"><span>    ├── commands.rs    # Native Discord slash command registration</span></span>
+<span class="line"><span>    ├── config.rs      # DiscordAccountConfig (token, policies, presence, OTP)</span></span>
+<span class="line"><span>    ├── error.rs       # Error enum (Config, Gateway, Send, Channel)</span></span>
+<span class="line"><span>    ├── handler.rs     # serenity EventHandler (inbound + OTP + interactions)</span></span>
+<span class="line"><span>    ├── outbound.rs    # ChannelOutbound + ChannelStreamOutbound impls</span></span>
+<span class="line"><span>    ├── plugin.rs      # ChannelPlugin + ChannelStatus impls</span></span>
+<span class="line"><span>    └── state.rs       # AccountState + AccountStateMap (includes OtpState)</span></span></code></pre>
+<p>The crate implements the same trait set as <code>moltis-telegram</code> and <code>moltis-msteams</code>:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Trait</th><th>Purpose</th></tr></thead><tbody><tr><td><code>ChannelPlugin</code></td><td>Start/stop accounts, lifecycle management</td></tr><tr><td><code>ChannelOutbound</code></td><td>Send text, media, typing indicators</td></tr><tr><td><code>ChannelStreamOutbound</code></td><td>Handle streaming responses</td></tr><tr><td><code>ChannelStatus</code></td><td>Health probes (connected / disconnected)</td></tr></tbody></table>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="bot-doesnt-respond">Bot doesn’t respond</h3>
+<ul>
+<li>Verify <strong>Message Content Intent</strong> is enabled in the Developer Portal</li>
+<li>Check that the bot token is correct (reset it if unsure)</li>
+<li>Ensure the bot has been invited to the server with the right permissions</li>
+<li>Check <code>dm_policy</code> / <code>group_policy</code> — if set to <code>"allowlist"</code>, make sure
+your username or guild ID is listed</li>
+<li>Look at logs: <code>RUST_LOG=moltis_discord=debug moltis</code></li>
+</ul>
+<h3 id="gateway-connection-failed">”Gateway connection failed”</h3>
+<ul>
+<li>Check your network connection — the bot connects outward to
+<code>wss://gateway.discord.gg</code></li>
+<li>Firewalls or proxies that block outbound WebSocket connections will prevent
+the bot from connecting</li>
+<li>The token may have been revoked — regenerate it in the Developer Portal</li>
+</ul>
+<h3 id="bot-responds-in-dms-but-not-in-guilds">Bot responds in DMs but not in guilds</h3>
+<ul>
+<li>Check <code>mention_mode</code> — if set to <code>"mention"</code>, you must @mention the bot</li>
+<li>Check <code>group_policy</code> — if <code>"disabled"</code>, guild messages are ignored</li>
+<li>Check <code>guild_allowlist</code> — if non-empty, the guild must be listed</li>
+</ul>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/teams.html"><span>Previous</span>Microsoft Teams</a> <a class="pager-link next" href="/slack.html"><span>Next</span>Slack</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

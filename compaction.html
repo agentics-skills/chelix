@@ -1,0 +1,494 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Compaction - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a class="active" href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Features</div>  <h1 id="compaction">Compaction</h1>
+<p>When a chat session fills up the model’s context window, Moltis compacts the
+conversation so the agent can keep working. Compaction replaces (or rewrites)
+older messages with a summary so the retry fits inside the context budget.</p>
+<p>The <strong>compaction mode</strong> you choose controls the cost/fidelity trade-off:
+faster and free, or slower and higher quality. Moltis supports four modes
+out of the box.</p>
+<h2 id="why-compaction-matters">Why compaction matters</h2>
+<p>A long coding session can produce thousands of messages, tool calls, and
+tool results. Every turn has to re-send the full history, so eventually you
+hit the context window limit and the provider rejects the request. Without
+compaction the session is dead — you lose the thread of work. With
+compaction the agent keeps going.</p>
+<p>The trade-off: any compaction strategy loses <em>some</em> information. The
+different modes choose different things to preserve.</p>
+<h2 id="the-four-modes">The four modes</h2>
+<h3 id="deterministic-default"><code>deterministic</code> (default)</h3>
+<p><strong>Zero LLM calls, instant, offline.</strong> Inspects the message history directly
+and builds a structured summary: message counts, tool names, file-path
+mentions, recent user requests, keyword-matched pending work, and a
+head-3 + tail-5 timeline. Replaces the entire history with that one summary
+as a single user message.</p>
+<p><strong>Strengths</strong></p>
+<ul>
+<li>Free (no tokens, no network).</li>
+<li>Deterministic output — two runs on the same history produce the same
+summary, so debugging and testing is easy.</li>
+<li>Works offline and on air-gapped deployments.</li>
+<li>Zero prompt-injection surface (the LLM never sees the raw history).</li>
+</ul>
+<p><strong>Weaknesses</strong></p>
+<ul>
+<li>Can’t preserve decisions or reasoning chains — it’s a navigation index,
+not a narrative.</li>
+<li>“Pending work” relies on keyword matches (<code>todo</code>, <code>next</code>, <code>pending</code>…)
+which miss naturally-phrased follow-ups.</li>
+<li>Middle history is dropped entirely; only the head and tail show up in the
+timeline preview.</li>
+<li>Tail context is not preserved verbatim, so the LLM retry doesn’t see the
+most-recent turns word-for-word.</li>
+</ul>
+<p><strong>Pick this when</strong> the session is a short chat channel, you’re cost-sensitive,
+or you’re running without network access. This is the default so new
+installs don’t silently spend tokens on compaction.</p>
+<h3 id="recency_preserving"><code>recency_preserving</code></h3>
+<p><strong>Zero LLM calls, higher fidelity.</strong> Keeps the first few messages (system
+prompt + first exchange) and the most recent ~20 % of the context window
+verbatim. The middle region is collapsed into a short marker message
+(<code>"N earlier messages were elided… Recent messages are preserved verbatim below."</code>) and any bulky tool-result content in the retained slice is
+replaced with a placeholder so a single multi-KB tool output can’t blow
+through the context window on its own.</p>
+<p><strong>Strengths</strong></p>
+<ul>
+<li>No LLM cost, still offline-safe.</li>
+<li>Tail context is preserved verbatim, so the retry sees the most-recent
+turns exactly as they happened.</li>
+<li>Keeps reasoning chains from the middle that don’t depend on tool output.</li>
+<li>Repairs orphaned tool-call / tool-result pairs so strict providers
+(Anthropic, OpenAI strict mode) don’t reject the retry.</li>
+</ul>
+<p><strong>Weaknesses</strong></p>
+<ul>
+<li>Cannot merge redundant discussions (same topic raised five times
+survives five times).</li>
+<li>No semantic understanding of what’s important.</li>
+</ul>
+<p><strong>Pick this when</strong> you want a significant quality boost over <code>deterministic</code>
+without paying any tokens — the best free option for most agentic coding
+sessions.</p>
+<h3 id="structured"><code>structured</code></h3>
+<p><strong>Head + LLM structured summary + tail.</strong> The highest-fidelity mode. Same
+head and tail boundary logic as <code>recency_preserving</code>, but the middle is
+summarised with a single LLM call using a comprehensive structured
+template:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="## 1. Conversation Overview
+## 2. Technical Foundation
+## 3. Codebase Status
+## 4. Problem Resolution
+## 5. Progress Tracking
+## 6. Active Work State
+## 7. Recent Operations
+## 8. Continuation Plan"><code><span class="line"><span>## 1. Conversation Overview</span></span>
+<span class="line"><span>## 2. Technical Foundation</span></span>
+<span class="line"><span>## 3. Codebase Status</span></span>
+<span class="line"><span>## 4. Problem Resolution</span></span>
+<span class="line"><span>## 5. Progress Tracking</span></span>
+<span class="line"><span>## 6. Active Work State</span></span>
+<span class="line"><span>## 7. Recent Operations</span></span>
+<span class="line"><span>## 8. Continuation Plan</span></span></code></pre>
+<p>The prompt is modelled on GitHub Copilot’s agent conversation-history
+summarizer — <em>“a comprehensive, detailed summary … without any loss of
+context”</em> — and deliberately does <strong>not</strong> cap the summary length: the
+model is told to be exhaustive and preserve file paths, commands, tool
+output, error messages, and code snippets verbatim, rather than aiming
+for a small token target. (Earlier revisions targeted ~800–2000 tokens,
+which compressed long sessions into a lossy stub.) Iterative
+re-compaction preserves and updates prior summary sections (work moves
+from <em>In Progress</em> to <em>Done</em> as it completes).</p>
+<blockquote>
+<p><strong>Output-length ceilings.</strong> The summary length is bounded only by the
+provider’s output limit. Gemini and OpenAI-compatible providers set no
+<code>max_tokens</code> on the summary call, so the full detailed summary streams
+through. The Anthropic provider currently hardcodes <code>max_tokens: 4096</code>
+for streamed calls, which can truncate a very long summary on
+Claude models.</p>
+</blockquote>
+<p><strong>Strengths</strong></p>
+<ul>
+<li>Highest fidelity — preserves reasoning, decisions, and cross-session
+context.</li>
+<li>Supports a cheap auxiliary summary model via <code>summary_model</code>, so you can
+run a big frontier model for coding and a small fast model for
+compaction.</li>
+<li>Automatic fallback to <code>recency_preserving</code> on LLM failure, so compaction
+never silently drops information.</li>
+</ul>
+<p><strong>Weaknesses</strong></p>
+<ul>
+<li>Costs a summary LLM call per compaction.</li>
+<li>Quality depends on the summary model’s instruction-following.</li>
+</ul>
+<p><strong>Pick this when</strong> session quality matters more than per-compaction cost —
+e.g. long agentic coding sessions where losing a decision would mean
+re-doing hours of work.</p>
+<h3 id="llm_replace"><code>llm_replace</code></h3>
+<p><strong>Replace entire history with a single LLM-generated summary.</strong> The
+pre-PR-#653 behaviour: stream a plain-text summary from the session’s
+provider, replace the history with one user message containing the
+summary. No head/tail preservation.</p>
+<p><strong>Strengths</strong></p>
+<ul>
+<li>Maximum token reduction — the retry sees one message, period.</li>
+<li>Works with any provider that supports streaming.</li>
+</ul>
+<p><strong>Weaknesses</strong></p>
+<ul>
+<li>Loses recent turns verbatim (strictly worse than <code>structured</code> for the
+same cost).</li>
+<li>No structured template, so summary quality varies with the model.</li>
+<li>No automatic fallback — an LLM failure aborts compaction.</li>
+</ul>
+<p><strong>Pick this when</strong> you need the smallest possible post-compaction history
+and <code>structured</code> isn’t available yet (or you explicitly want the old
+behaviour).</p>
+<h2 id="comparison-at-a-glance">Comparison at a glance</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Feature</th><th><code>deterministic</code></th><th><code>recency_preserving</code></th><th><code>structured</code></th><th><code>llm_replace</code></th></tr></thead><tbody><tr><td>LLM calls</td><td>0</td><td>0</td><td>1</td><td>1</td></tr><tr><td>Token cost</td><td>none</td><td>none</td><td>medium</td><td>medium</td></tr><tr><td>Latency</td><td>~0 ms</td><td>~0 ms</td><td>1–10 s</td><td>1–10 s</td></tr><tr><td>Head preserved verbatim</td><td>✗</td><td>✓</td><td>✓</td><td>✗</td></tr><tr><td>Tail preserved verbatim</td><td>✗</td><td>✓ (token-budget)</td><td>✓ (token-budget)</td><td>✗</td></tr><tr><td>Middle strategy</td><td>drop</td><td>prune tool output</td><td>LLM summary</td><td>drop</td></tr><tr><td>Decisions / rationale</td><td>✗</td><td>partial</td><td>✓</td><td>partial</td></tr><tr><td>Iterative re-compaction</td><td>merge</td><td>N/A</td><td>template update</td><td>re-summarise</td></tr><tr><td>Tool-pair integrity</td><td>N/A</td><td>✓</td><td>✓</td><td>N/A</td></tr><tr><td>Fallback on LLM failure</td><td>N/A</td><td>N/A</td><td>→ <code>recency_preserving</code></td><td>abort</td></tr><tr><td>Works offline</td><td>✓</td><td>✓</td><td>✗</td><td>✗</td></tr><tr><td>Deterministic</td><td>✓</td><td>✓</td><td>✗</td><td>✗</td></tr><tr><td>Status</td><td>shipped</td><td>shipped</td><td>shipped</td><td>shipped</td></tr></tbody></table>
+<h2 id="configuration">Configuration</h2>
+<p>All compaction settings live under <code>[chat.compaction]</code> in <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[chat.compaction]
+mode = &#x22;deterministic&#x22;              # &#x22;deterministic&#x22; | &#x22;recency_preserving&#x22; | &#x22;structured&#x22; | &#x22;llm_replace&#x22;
+threshold_percent = 0.95            # Auto-compact trigger AND tail-budget multiplier. See below.
+protect_head = 3                    # Head messages kept verbatim (recency/structured).
+protect_tail_min = 20               # Minimum tail messages kept verbatim (recency/structured).
+tail_budget_ratio = 0.20            # Tail size as fraction of threshold_percent × context_window.
+tool_prune_char_threshold = 200     # Middle tool results longer than this get placeholder-replaced.
+summary_model = &#x22;openrouter/google/gemini-2.5-flash&#x22;   # RESERVED — see note below.
+max_summary_tokens = 8192           # RESERVED — see note below.
+show_settings_hint = true           # Show &#x22;Change chat.compaction.mode in moltis.toml…&#x22; footer."><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">chat</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">compaction</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "deterministic"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">              # "deterministic" | "recency_preserving" | "structured" | "llm_replace"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">threshold_percent </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0.95</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">            # Auto-compact trigger AND tail-budget multiplier. See below.</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">protect_head </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 3</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">                    # Head messages kept verbatim (recency/structured).</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">protect_tail_min </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 20</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">               # Minimum tail messages kept verbatim (recency/structured).</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">tail_budget_ratio </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0.20</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">            # Tail size as fraction of threshold_percent × context_window.</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">tool_prune_char_threshold </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 200</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">     # Middle tool results longer than this get placeholder-replaced.</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">summary_model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openrouter/google/gemini-2.5-flash"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">   # RESERVED — see note below.</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">max_summary_tokens </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 8192</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">           # RESERVED — see note below.</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">show_settings_hint </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">           # Show "Change chat.compaction.mode in moltis.toml…" footer.</span></span></code></pre>
+<h3 id="hiding-the-settings-hint">Hiding the settings hint</h3>
+<p>By default, every compaction notice (web UI compact card and channel
+messages) includes a short footer pointing at the config key:</p>
+<blockquote>
+<p><em>Change <code>chat.compaction.mode</code> in <code>moltis.toml</code> (or the web UI settings
+panel) to pick a different compaction strategy.</em></p>
+</blockquote>
+<p>Once you know the setting exists, this becomes noise. Set:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[chat.compaction]
+show_settings_hint = false"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">chat</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">compaction</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">show_settings_hint </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span></span></code></pre>
+<p>The mode and token counts still ship with every compaction notice — only
+the footer is stripped.</p>
+<p>All fields are optional. When a field is omitted the default shown above is
+used. <code>deterministic</code> mode ignores every field except <code>mode</code> and
+<code>threshold_percent</code>.</p>
+<h3 id="picking-a-threshold">Picking a threshold</h3>
+<p><code>threshold_percent</code> serves two related purposes:</p>
+<ol>
+<li><strong>Auto-compact trigger.</strong> When the estimated next request would
+exceed <code>threshold_percent × context_window</code> tokens, <code>send()</code> fires a
+compaction pre-emptively. On a 200 K model with the default <code>0.95</code>,
+compaction starts when the session reaches 190 K tokens. (The
+default matches the pre-PR-#653 hardcoded trigger so upgrades are
+behaviour-neutral.)</li>
+<li><strong>Tail-budget multiplier.</strong> For <code>recency_preserving</code> and <code>structured</code>
+modes, the size of the verbatim tail is
+<code>threshold_percent × tail_budget_ratio × context_window</code>. With the
+defaults that’s 200 K × 0.95 × 0.20 = 38 K tokens of tail preserved.</li>
+</ol>
+<p>Both uses move together: lowering <code>threshold_percent</code> compacts earlier
+<strong>and</strong> shrinks the preserved tail, which is usually what you want on a
+tight context window.</p>
+<ul>
+<li>Lower values (≈ 0.5) compact more aggressively and leave more headroom for
+a new burst of tool calls.</li>
+<li>Higher values (≈ 0.9) delay compaction as long as possible but risk
+blowing through the window on a single large tool result. The config
+validator clamps the effective value to <code>0.95</code> as an upper bound so
+auto-compact can’t be accidentally disabled.</li>
+</ul>
+<p>Manual <code>chat.compact</code> RPC calls ignore <code>threshold_percent</code> for the
+trigger check and compact whatever’s there, but still use it for the
+tail-budget math inside recency-preserving and structured modes.</p>
+<h3 id="picking-a-summary-model">Picking a summary model</h3>
+<blockquote>
+<p>⚠️ <strong><code>summary_model</code> / <code>max_summary_tokens</code> are reserved for a
+follow-up</strong> — beads issue <strong>moltis-8me</strong>. They’re present in the
+config schema so you can start setting them today, but the
+<code>structured</code> and <code>llm_replace</code> strategies currently <strong>ignore</strong> them
+and always use the session’s primary provider. Setting either field
+to a non-default value triggers a one-shot runtime WARN that names
+the fields and the tracking issue so you’re not billed for the wrong
+model without warning.</p>
+</blockquote>
+<p>When the auxiliary-model subsystem lands, <code>summary_model</code> will take
+a provider-qualified model identifier understood by the provider
+registry (e.g. <code>"openrouter/google/gemini-2.5-flash"</code>,
+<code>"anthropic/claude-3-5-haiku-20241022"</code>). Leave it unset to reuse the
+session’s primary model.</p>
+<p>Small fast models are usually the right choice for compaction: they’re
+cheap, respond in seconds, and are good at instruction-following on a
+structured template. Reserve the frontier model for the actual coding work.</p>
+<h2 id="migration-notes">Migration notes</h2>
+<p>Upgrading from a pre-PR-#653 install? The default changed from implicit
+LLM compaction to <code>deterministic</code>. If you want the old behaviour back,
+set:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[chat.compaction]
+mode = &#x22;llm_replace&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">chat</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">compaction</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "llm_replace"</span></span></code></pre>
+<p>No other changes needed — <code>llm_replace</code> uses the session’s primary model
+just like the pre-PR behaviour did.</p>
+<h2 id="tracking-issues">Tracking issues</h2>
+<ul>
+<li>Epic: <strong>moltis-dxw</strong> — pluggable compaction modes</li>
+<li><strong>moltis-g37</strong> — config scaffolding, docs, <code>llm_replace</code> mode ✓</li>
+<li><strong>moltis-h0c</strong> — <code>recency_preserving</code> mode ✓</li>
+<li><strong>moltis-aff</strong> — <code>structured</code> mode ✓</li>
+<li><strong>moltis-8me</strong> — auxiliary-model subsystem for cheap summary models <em>(follow-up, lets users route compaction to a cheap auxiliary model instead of the session’s primary model)</em></li>
+</ul>
+<h2 id="further-reading">Further reading</h2>
+<ul>
+<li><code>hermes-agent/agent/context_compressor.py</code> — reference implementation of
+the head + LLM summary + tail strategy that inspired <code>structured</code> mode.</li>
+<li><code>openclaw/src/agents/compaction.ts</code> + <code>pi-hooks/compaction-safeguard.ts</code>
+— LLM compaction with quality auditing and tool-pair repair.</li>
+<li><code>crates/chat/src/compaction.rs</code> — current <code>deterministic</code> mode
+implementation.</li>
+</ul>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/checkpoints.html"><span>Previous</span>Checkpoints</a> <a class="pager-link next" href="/tools-fs.html"><span>Next</span>Filesystem Tools</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

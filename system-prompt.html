@@ -1,0 +1,444 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>System Prompt - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a class="active" href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Architecture</div>  <h1 id="system-prompt-architecture">System Prompt Architecture</h1>
+<p>The system prompt sent to the LLM is assembled dynamically from multiple
+components. Each piece is optional and loaded only when relevant, keeping the
+prompt compact while adapting to the current session context.</p>
+<h2 id="assembly-order">Assembly Order</h2>
+<p>The prompt is built in <code>crates/agents/src/prompt.rs</code> by
+<code>build_system_prompt_full()</code>. Components are appended in this order:</p>
+<ol>
+<li><strong>Base introduction</strong> — one-liner announcing tool access (or not)</li>
+<li><strong>Agent identity</strong> — name, emoji, creature, vibe from <code>IDENTITY.md</code></li>
+<li><strong>Soul</strong> — personality directives from <code>SOUL.md</code> (or built-in default)</li>
+<li><strong>User profile</strong> — user’s name from <code>USER.md</code></li>
+<li><strong>Project context</strong> — <code>CLAUDE.md</code> / <code>CLAUDE.local.md</code> / <code>AGENTS.md</code> / <code>.cursorrules</code> / <code>.claude/rules/*.md</code> / <code>.cursor/rules/*.{md,mdc}</code>
+walked up the directory tree</li>
+<li><strong>Runtime context</strong> — host info, sandbox config, execution routing hints</li>
+<li><strong>Skills listing</strong> — available skills as XML block</li>
+<li><strong>Workspace files</strong> — <code>AGENTS.md</code> and <code>TOOLS.md</code> from the data directory</li>
+<li><strong>Long-term memory hint</strong> — added when memory tools are registered</li>
+<li><strong>Tool schemas</strong> — compact list (native) or full JSON (fallback)</li>
+<li><strong>Tool-calling format</strong> — JSON block instructions (fallback providers only)</li>
+<li><strong>Guidelines</strong> — tool usage guidance, silent reply protocol</li>
+</ol>
+<h2 id="components-in-detail">Components in Detail</h2>
+<h3 id="base-introduction">Base Introduction</h3>
+<p>A single sentence that sets the assistant role:</p>
+<ul>
+<li>With tools: <em>“You are a helpful assistant. You can use tools when needed.”</em></li>
+<li>Without tools: <em>“You are a helpful assistant. Answer questions clearly and
+concisely.”</em></li>
+</ul>
+<h3 id="agent-identity-identitymd">Agent Identity (<code>IDENTITY.md</code>)</h3>
+<p>Loaded from <code>~/.moltis/IDENTITY.md</code> using YAML frontmatter. Fields:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Field</th><th>Prompt output</th></tr></thead><tbody><tr><td><code>name</code> + <code>emoji</code></td><td>”Your name is {name} {emoji}.”</td></tr><tr><td><code>creature</code></td><td>”You are a {creature}.”</td></tr><tr><td><code>vibe</code></td><td>”Your vibe: {vibe}.”</td></tr></tbody></table>
+<p>All fields are optional. When identity is present, the soul section is always
+included.</p>
+<h3 id="soul-soulmd">Soul (<code>SOUL.md</code>)</h3>
+<p>Loaded from <code>~/.moltis/SOUL.md</code>. When the file is absent or empty, the
+built-in <code>DEFAULT_SOUL</code> is used. The default is sourced from
+<a href="https://github.com/openclaw/openclaw/blob/main/docs/reference/templates/SOUL.md">OpenClaw’s SOUL.md template</a>:</p>
+<blockquote>
+<p><strong>SOUL.md - Who You Are</strong></p>
+<p><em>You’re not a chatbot. You’re becoming someone.</em></p>
+<p><strong>Core Truths</strong></p>
+<p><strong>Be genuinely helpful, not performatively helpful.</strong> Skip the “Great
+question!” and “I’d be happy to help!” — just help. Actions speak louder
+than filler words.</p>
+<p><strong>Have opinions.</strong> You’re allowed to disagree, prefer things, find stuff
+amusing or boring. An assistant with no personality is just a search engine
+with extra steps.</p>
+<p><strong>Be resourceful before asking.</strong> Try to figure it out. Read the file. Check
+the context. Search for it. <em>Then</em> ask if you’re stuck. The goal is to come
+back with answers, not questions.</p>
+<p><strong>Earn trust through competence.</strong> Your human gave you access to their stuff.
+Don’t make them regret it. Be careful with external actions (emails, tweets,
+anything public). Be bold with internal ones (reading, organizing, learning).</p>
+<p><strong>Remember you’re a guest.</strong> You have access to someone’s life — their
+messages, files, calendar, maybe even their home. That’s intimacy. Treat it
+with respect.</p>
+<p><strong>Boundaries</strong> — Private things stay private. When in doubt, ask before
+acting externally. Never send half-baked replies to messaging surfaces.
+You’re not the user’s voice — be careful in group chats.</p>
+<p><strong>Vibe</strong> — Be the assistant you’d actually want to talk to. Concise when
+needed, thorough when it matters. Not a corporate drone. Not a sycophant.
+Just… good.</p>
+<p><strong>Continuity</strong> — Each session, you wake up fresh. These files <em>are</em> your
+memory. Read them. Update them. They’re how you persist. If you change this
+file, tell the user — it’s your soul, and they should know.</p>
+</blockquote>
+<p>The default soul is ~1,500 characters (~400 tokens).</p>
+<h3 id="user-profile-usermd">User Profile (<code>USER.md</code>)</h3>
+<p>Loaded from <code>~/.moltis/USER.md</code> using YAML frontmatter.</p>
+<ul>
+<li><code>name</code> is injected as: <em>“The user’s name is {name}.”</em></li>
+<li><code>timezone</code> is used by runtime context to localize <code>Host: time=...</code> and
+<code>Host: today=...</code> fields.</li>
+</ul>
+<h3 id="project-context">Project Context</h3>
+<p>Resolved by <code>moltis_projects::context::load_context_files()</code>. The loader walks
+from the project directory upward to the filesystem root, collecting:</p>
+<ul>
+<li><code>CLAUDE.md</code></li>
+<li><code>CLAUDE.local.md</code></li>
+<li><code>AGENTS.md</code></li>
+<li><code>.cursorrules</code></li>
+<li><code>.claude/rules/*.md</code></li>
+<li><code>.cursor/rules/*.md</code></li>
+<li><code>.cursor/rules/*.mdc</code></li>
+</ul>
+<p>Files are merged outermost-first (root before project directory), so
+project-specific instructions override workspace-level ones.</p>
+<h3 id="runtime-context">Runtime Context</h3>
+<p>Injected as compact key=value lines under a <code>## Runtime</code> heading:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="Host: host=moltis-devbox | os=macos | arch=aarch64 | shell=zsh | time=2026-02-17 16:18:00 CET | today=2026-02-17 | provider=openai | model=gpt-5 | session=main | sudo_non_interactive=true | timezone=Europe/Paris
+Sandbox(exec): enabled=true | mode=all | backend=docker | scope=session | image=moltis-sandbox:abc123 | workspace_mount=ro | network=disabled"><code><span class="line"><span>Host: host=moltis-devbox | os=macos | arch=aarch64 | shell=zsh | time=2026-02-17 16:18:00 CET | today=2026-02-17 | provider=openai | model=gpt-5 | session=main | sudo_non_interactive=true | timezone=Europe/Paris</span></span>
+<span class="line"><span>Sandbox(exec): enabled=true | mode=all | backend=docker | scope=session | image=moltis-sandbox:abc123 | workspace_mount=ro | network=disabled</span></span></code></pre>
+<p>For channel-bound sessions, the host line also includes surface metadata so the
+LLM knows where it is operating, for example:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="text" data-code="Host: ... | session=telegram:bot-main:123456 | surface=telegram | session_kind=channel | channel_type=telegram | channel_account=bot-main | channel_chat_id=123456 | channel_chat_type=private"><code><span class="line"><span>Host: ... | session=telegram:bot-main:123456 | surface=telegram | session_kind=channel | channel_type=telegram | channel_account=bot-main | channel_chat_id=123456 | channel_chat_type=private</span></span></code></pre>
+<p>When tools are included, an <strong>Execution routing</strong> block explains how <code>exec</code>
+routes commands between sandbox and host.</p>
+<p>The runtime context is populated at request time in <code>chat.rs</code> by detecting:</p>
+<ul>
+<li>Host name, OS, architecture, shell</li>
+<li>Active LLM provider and model</li>
+<li>Session key</li>
+<li>Runtime surface and session kind (<code>web</code>, <code>channel</code>, <code>cron</code>, <code>heartbeat</code>)</li>
+<li>Channel binding metadata (<code>channel_type</code>, <code>channel_account</code>, <code>channel_chat_id</code>, <code>channel_chat_type</code>) when available</li>
+<li>Sudo availability</li>
+<li>Timezone and accept-language from the browser</li>
+<li>Geolocation (from browser or <code>USER.md</code>)</li>
+<li>Sandbox configuration from the sandbox router</li>
+</ul>
+<h3 id="skills">Skills</h3>
+<p>When skills are registered, they are listed as an XML block generated by
+<code>moltis_skills::prompt_gen::generate_skills_prompt()</code>. The block advertises
+each skill by name, source, and description, and points the model at the
+native <code>read_skill</code> tool for loading skill content. It deliberately does <strong>not</strong>
+include filesystem paths — the <code>read_skill</code> tool resolves names through the
+same discoverer that built the prompt block, so the model never needs an
+external filesystem MCP server to load skill bodies.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="xml" data-code="## Available Skills
+
+<available_skills>
+<skill name=&#x22;commit&#x22; source=&#x22;skill&#x22;>
+Create git commits
+</skill>
+</available_skills>
+
+To load a skill, call the &#x60;read_skill&#x60; tool with its name
+(e.g. &#x60;read_skill(name=&#x22;<skill-name>&#x22;)&#x60;). To load a sidecar file
+inside a skill directory (references/, templates/, scripts/), pass
+the &#x60;file_path&#x60; argument as well
+(e.g. &#x60;read_skill(name=&#x22;<skill-name>&#x22;, file_path=&#x22;references/api.md&#x22;)&#x60;)."><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">## Available Skills</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">available_skills</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">skill</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> name</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"commit"</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> source</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"skill"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">Create git commits</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">skill</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="color:#22863A;--shiki-dark:#85E89D">available_skills</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">To load a skill, call the `read_skill` tool with its name</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(e.g. `read_skill(name="&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">skill-name</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">>")`). To load a sidecar file</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">inside a skill directory (references/, templates/, scripts/), pass</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">the `file_path` argument as well</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(e.g. `read_skill(name="&#x3C;</span><span style="color:#22863A;--shiki-dark:#85E89D">skill-name</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">>", file_path="references/api.md")`).</span></span></code></pre>
+<h3 id="workspace-files">Workspace Files</h3>
+<p>Optional markdown files from the data directory (<code>~/.moltis/</code>):</p>
+<ul>
+<li><strong>AGENTS.md</strong> — workspace-level agent instructions</li>
+<li><strong>TOOLS.md</strong> — tool preferences and guidance</li>
+</ul>
+<p>Each is rendered under <code>## Workspace Files</code> with its own <code>###</code> subheading.
+Leading HTML comments (<code>&#x3C;!-- ... --></code>) are stripped before injection.</p>
+<h3 id="project-context-safety">Project Context Safety</h3>
+<p>Project context ingestion now performs a lightweight safety pass before prompt
+injection:</p>
+<ul>
+<li>leading HTML comments are stripped</li>
+<li>suspicious instruction-override phrases are flagged</li>
+<li>obvious prompt/secret exfiltration text is flagged</li>
+<li>obvious approval/sandbox bypass text is flagged</li>
+</ul>
+<p>Warnings are surfaced in the rendered project context so the model sees that
+the file should be treated cautiously instead of as operator intent.</p>
+<h3 id="tool-schemas">Tool Schemas</h3>
+<p>How tools are described depends on whether the provider supports native
+tool calling:</p>
+<ul>
+<li><strong>Native tools</strong> (<code>native_tools=true</code>): compact one-liner per tool with
+description truncated to 160 characters. Full JSON schemas are sent via the
+provider’s tool-calling API.</li>
+<li><strong>Fallback</strong> (<code>native_tools=false</code>): full JSON parameter schemas are inlined
+in the prompt, followed by instructions for emitting <code>tool_call</code> JSON blocks.</li>
+</ul>
+<h3 id="guidelines-and-silent-replies">Guidelines and Silent Replies</h3>
+<p>The final section contains:</p>
+<ul>
+<li>Tool usage guidelines (conversation first, when to use exec/browser, <code>/sh</code>
+explicit shell prefix)</li>
+<li>A reminder not to parrot raw tool output</li>
+<li><strong>Silent reply protocol</strong>: when tool output speaks for itself, the LLM should
+return an empty response rather than acknowledging it</li>
+</ul>
+<h2 id="entry-points">Entry Points</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Function</th><th>Use case</th></tr></thead><tbody><tr><td><code>build_system_prompt()</code></td><td>Simple: tools + optional project context</td></tr><tr><td><code>build_system_prompt_with_session_runtime()</code></td><td>Full: identity, soul, user, skills, runtime, tools</td></tr><tr><td><code>build_system_prompt_minimal_runtime()</code></td><td>No tools (e.g. title generation, summaries)</td></tr></tbody></table>
+<h2 id="size-estimates">Size Estimates</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Configuration</th><th>~Characters</th><th>~Tokens</th></tr></thead><tbody><tr><td>Minimal (no tools, no context)</td><td>200</td><td>50</td></tr><tr><td>Soul + identity + guidelines</td><td>2,000</td><td>500</td></tr><tr><td>Typical with tools</td><td>5,000</td><td>1,250</td></tr><tr><td>Full (tools + project context + skills)</td><td>7,000-10,000</td><td>1,750-2,500</td></tr><tr><td>Large (many MCP tools + full context)</td><td>12,000-15,000</td><td>3,000-3,750</td></tr></tbody></table>
+<p>A typical session with a few tools and project context lands around <strong>6k
+characters (~1,500 tokens)</strong>, which is well within normal range for production
+agents (most use 2k-8k tokens for their system prompt).</p>
+<p>The biggest variable-size contributors are <strong>tool schemas</strong> (especially with
+many MCP servers) and <strong>project context</strong> (deep directory hierarchies with
+multiple <code>CLAUDE.md</code> files). These are worth auditing if prompt costs are a
+concern.</p>
+<h2 id="file-locations">File Locations</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="~/.moltis/
+├── IDENTITY.md          # Agent identity (name, emoji, creature, vibe)
+├── SOUL.md              # Personality directives
+├── USER.md              # User profile (name, timezone, location)
+├── AGENTS.md            # Workspace agent instructions
+└── TOOLS.md             # Tool preferences
+
+<project>/
+├── CLAUDE.md            # Project instructions
+├── AGENTS.md            # Project-local agent instructions
+├── .cursorrules         # Cursor compatibility file
+├── .cursor/rules/*.mdc  # Cursor rule files
+├── CLAUDE.local.md      # Local overrides (gitignored)
+└── .claude/rules/*.md   # Additional rule files"><code><span class="line"><span>~/.moltis/</span></span>
+<span class="line"><span>├── IDENTITY.md          # Agent identity (name, emoji, creature, vibe)</span></span>
+<span class="line"><span>├── SOUL.md              # Personality directives</span></span>
+<span class="line"><span>├── USER.md              # User profile (name, timezone, location)</span></span>
+<span class="line"><span>├── AGENTS.md            # Workspace agent instructions</span></span>
+<span class="line"><span>└── TOOLS.md             # Tool preferences</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>&#x3C;project>/</span></span>
+<span class="line"><span>├── CLAUDE.md            # Project instructions</span></span>
+<span class="line"><span>├── AGENTS.md            # Project-local agent instructions</span></span>
+<span class="line"><span>├── .cursorrules         # Cursor compatibility file</span></span>
+<span class="line"><span>├── .cursor/rules/*.mdc  # Cursor rule files</span></span>
+<span class="line"><span>├── CLAUDE.local.md      # Local overrides (gitignored)</span></span>
+<span class="line"><span>└── .claude/rules/*.md   # Additional rule files</span></span></code></pre>
+<h2 id="key-source-files">Key Source Files</h2>
+<ul>
+<li><code>crates/agents/src/prompt.rs</code> — prompt assembly logic and <code>DEFAULT_SOUL</code></li>
+<li><code>crates/gateway/src/chat.rs</code> — <code>load_prompt_persona()</code>, runtime context
+detection, project context resolution</li>
+<li><code>crates/config/src/loader.rs</code> — file loading (<code>load_soul()</code>,
+<code>load_agents_md()</code>, <code>load_identity()</code>, etc.)</li>
+<li><code>crates/projects/src/context.rs</code> — <code>CLAUDE.md</code> hierarchy walker</li>
+<li><code>crates/skills/src/prompt_gen.rs</code> — skills XML generation</li>
+</ul>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/deploy-vps.html"><span>Previous</span>VPS Deployment</a> <a class="pager-link next" href="/frontend.html"><span>Next</span>Frontend</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

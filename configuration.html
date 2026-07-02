@@ -1,0 +1,761 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Configuration - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a class="active" href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Getting Started</div>  <h1 id="configuration">Configuration</h1>
+<p>Moltis uses a <strong>layered config model</strong> with two files:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>File</th><th>Owner</th><th>Purpose</th></tr></thead><tbody><tr><td><code>defaults.toml</code></td><td><strong>Moltis</strong></td><td>Shipped defaults, regenerated on every startup</td></tr><tr><td><code>moltis.toml</code></td><td><strong>You</strong></td><td>Your overrides only</td></tr></tbody></table>
+<p>On first run, both files are created in <code>~/.config/moltis/</code>. Your <code>moltis.toml</code>
+starts nearly empty — only the installation-specific port is set. All other
+settings inherit from <code>defaults.toml</code> automatically.</p>
+<h2 id="merge-order">Merge Order</h2>
+<p>Settings are resolved in this order (later wins):</p>
+<ol>
+<li><strong>Built-in defaults</strong> — compiled into Moltis (<code>MoltisConfig::default()</code>)</li>
+<li><strong><code>defaults.toml</code></strong> — Moltis-managed, refreshed on every startup</li>
+<li><strong><code>moltis.toml</code></strong> — your overrides (additive deep merge)</li>
+<li><strong><code>MOLTIS_*</code> environment variables</strong> — highest precedence</li>
+</ol>
+<p>This means you only need to put values in <code>moltis.toml</code> that you intentionally
+want to differ from the shipped defaults. When Moltis upgrades and improves a
+default, your installation picks it up automatically — unless you’ve overridden
+that specific setting.</p>
+<aside class="admonition admonition-tip"><div class="admonition-title">Don</div><div class="admonition-body"><p>Copying a built-in default into <code>moltis.toml</code> "freezes" it — future built-in<br>improvements for that setting won't apply. The Settings UI shows <strong>Built-in</strong>,<br><strong>Overridden</strong>, and <strong>Custom</strong> badges so you can see which values are yours<br>and which are inherited.</p></div></aside>
+<h2 id="configuration-file-location">Configuration File Location</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Platform</th><th>Default Path</th></tr></thead><tbody><tr><td>macOS/Linux</td><td><code>~/.config/moltis/moltis.toml</code></td></tr><tr><td>Custom</td><td>Set via <code>--config-dir</code> or <code>MOLTIS_CONFIG_DIR</code></td></tr></tbody></table>
+<p>The <code>defaults.toml</code> file lives in the same directory. Do not edit it — your
+changes will be overwritten on the next startup.</p>
+<h2 id="checking-config">Checking Config</h2>
+<p><code>moltis config check</code> validates your override file (<code>moltis.toml</code>) against the
+known config schema. It also checks that Moltis-managed <code>defaults.toml</code> exists
+and can be parsed, but it does not treat <code>defaults.toml</code> as user-authored input.</p>
+<p>New config fields should be added to the Rust config schema and its <code>Default</code>
+implementation. Moltis regenerates <code>defaults.toml</code> from those built-in defaults
+on startup, while <code>moltis.toml</code> should contain only values you intentionally
+override.</p>
+<h2 id="agent-readable-docs">Agent-Readable Docs</h2>
+<p>Moltis packages the documentation as local markdown files when the install
+format supports external share files, such as <code>.deb</code>, <code>.rpm</code>, Homebrew, and
+similar system packages. Agents are pointed at those local files through the
+system prompt so they can read setup, configuration, channel, and
+troubleshooting docs without needing web access.</p>
+<p>Resolution order is <code>MOLTIS_DOCS_DIR</code>, the packaged share docs directory
+(<code>&#x3C;share>/docs</code>), the source checkout docs in development, then an embedded
+fallback copied to <code>~/.moltis/docs/moltis/</code>. Moltis also writes a generated
+<code>config-template.md</code> under <code>~/.moltis/docs/moltis/</code> for the current server port
+and points agents at it separately.</p>
+<h2 id="basic-settings">Basic Settings</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[server]
+port = 13131                    # HTTP/WebSocket port
+bind = &#x22;0.0.0.0&#x22;               # Listen address
+
+[identity]
+name = &#x22;Moltis&#x22;                 # Agent display name
+
+[tools]
+agent_timeout_secs = 600        # Agent run timeout (seconds, 0 = no timeout)
+agent_max_iterations = 25       # Max tool call iterations per run"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">server</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">port </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 13131</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">                    # HTTP/WebSocket port</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">bind </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "0.0.0.0"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">               # Listen address</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">identity</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">name </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Moltis"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">                 # Agent display name</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">agent_timeout_secs </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 600</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">        # Agent run timeout (seconds, 0 = no timeout)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">agent_max_iterations </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 25</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">       # Max tool call iterations per run</span></span></code></pre>
+<h2 id="llm-providers">LLM Providers</h2>
+<p>Configure providers through the web UI or directly in <code>moltis.toml</code>. API keys can be set
+via environment variables (e.g. <code>ANTHROPIC_API_KEY</code>, <code>OPENAI_API_KEY</code>, <code>GEMINI_API_KEY</code>) or
+in the config file.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[providers]
+offered = [&#x22;anthropic&#x22;, &#x22;openai&#x22;, &#x22;gemini&#x22;]
+
+[providers.anthropic]
+enabled = true
+
+[providers.openai]
+enabled = true
+models = [&#x22;gpt-5.3&#x22;, &#x22;gpt-5.2&#x22;]
+stream_transport = &#x22;sse&#x22;        # &#x22;sse&#x22;, &#x22;websocket&#x22;, or &#x22;auto&#x22;
+
+[providers.gemini]
+enabled = true
+models = [&#x22;gemini-2.5-flash&#x22;, &#x22;gemini-2.5-pro&#x22;]
+
+[providers.local-llm]
+enabled = true
+models = [&#x22;qwen2.5-coder-7b-q4_k_m&#x22;]
+
+[chat]
+priority_models = [&#x22;gpt-5.2&#x22;]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">providers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">offered </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"anthropic"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "gemini"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">providers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">anthropic</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">providers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">openai</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">models </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"gpt-5.3"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "gpt-5.2"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">stream_transport </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "sse"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">        # "sse", "websocket", or "auto"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">providers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">gemini</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">models </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"gemini-2.5-flash"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "gemini-2.5-pro"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">providers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">local-llm</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">models </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"qwen2.5-coder-7b-q4_k_m"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">chat</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">priority_models </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"gpt-5.2"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<p>See <a href="/providers.html">Providers</a> for the full list of supported providers and configuration options.</p>
+<h2 id="remote-execution">Remote Execution</h2>
+<p>Command execution can stay local, route to a paired node, or use SSH:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tools.exec]
+host = &#x22;local&#x22;                 # &#x22;local&#x22;, &#x22;node&#x22;, or &#x22;ssh&#x22;
+# node = &#x22;mac-mini&#x22;            # default paired node when host = &#x22;node&#x22;
+# ssh_target = &#x22;deploy@box&#x22;    # default SSH target when host = &#x22;ssh&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">exec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">host </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "local"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">                 # "local", "node", or "ssh"</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># node = "mac-mini"            # default paired node when host = "node"</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># ssh_target = "deploy@box"    # default SSH target when host = "ssh"</span></span></code></pre>
+<p>When <code>host = "ssh"</code>, Moltis can work in two modes:</p>
+<ul>
+<li><strong>System OpenSSH</strong>: reuse your existing host aliases, agent forwarding policy,
+and <code>~/.ssh/config</code>.</li>
+<li><strong>Managed targets</strong>: create or import a deploy key in <strong>Settings → SSH</strong>,
+then bind that key to a named target. Moltis stores the private key in its
+credential store and encrypts it with the vault whenever the vault is
+unsealed. Imported keys may be passphrase-protected, Moltis strips the
+passphrase during import so runtime execution can stay non-interactive.</li>
+</ul>
+<p>For stricter SSH verification, managed targets also accept a pasted
+<code>known_hosts</code> line from <code>ssh-keyscan -H host</code>. The SSH settings page can scan
+that for you, and saved targets can refresh or clear their stored pin later.
+When present, Moltis uses that pin instead of your global OpenSSH known-host
+policy for that target.</p>
+<p>Managed targets appear in the Nodes page and chat node picker, so users can see
+where <code>exec</code> will run without digging through config. If multiple managed
+targets exist, the default one is used when <code>tools.exec.host = "ssh"</code> and no
+session-specific route is selected. <code>moltis doctor</code> also reports remote-exec
+inventory, active backend mode, and obvious SSH setup problems from the CLI.</p>
+<p><code>Settings -> Tools</code> shows the effective tool inventory for the active session
+and model, including tool-calling support, MCP server state, skills/plugins,
+and available execution routes. It is session-aware by design, switching the
+model or disabling MCP for a session changes what appears there.</p>
+<h2 id="sandbox-configuration">Sandbox Configuration</h2>
+<p>Commands run inside isolated containers for security:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tools.exec.sandbox]
+mode = &#x22;all&#x22;                    # &#x22;off&#x22;, &#x22;non-main&#x22;, or &#x22;all&#x22;
+scope = &#x22;session&#x22;               # &#x22;command&#x22;, &#x22;session&#x22;, or &#x22;global&#x22;
+workspace_mount = &#x22;ro&#x22;          # &#x22;ro&#x22;, &#x22;rw&#x22;, or &#x22;none&#x22;
+workspace_sysmount = &#x22;ro&#x22;       # &#x22;ro&#x22; keeps rootfs/cap-drop hardening, &#x22;rw&#x22; relaxes both
+# host_data_dir = &#x22;/host/path/data&#x22;  # Optional override if auto-detection cannot resolve the host path
+home_persistence = &#x22;shared&#x22;     # &#x22;off&#x22;, &#x22;session&#x22;, or &#x22;shared&#x22; (default: &#x22;shared&#x22;)
+# shared_home_dir = &#x22;/path/to/shared-home&#x22;  # Optional path for shared mode
+backend = &#x22;auto&#x22;                # &#x22;auto&#x22;, &#x22;docker&#x22;, or &#x22;apple-container&#x22;
+no_network = true
+
+# Packages installed in the sandbox image
+packages = [
+    &#x22;curl&#x22;,
+    &#x22;git&#x22;,
+    &#x22;jq&#x22;,
+    &#x22;tmux&#x22;,
+    &#x22;python3&#x22;,
+    &#x22;python3-pip&#x22;,
+    &#x22;nodejs&#x22;,
+    &#x22;npm&#x22;,
+    &#x22;golang-go&#x22;,
+]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">exec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">sandbox</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "all"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">                    # "off", "non-main", or "all"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">scope </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "session"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">               # "command", "session", or "global"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">workspace_mount </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "ro"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">          # "ro", "rw", or "none"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">workspace_sysmount </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "ro"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">       # "ro" keeps rootfs/cap-drop hardening, "rw" relaxes both</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># host_data_dir = "/host/path/data"  # Optional override if auto-detection cannot resolve the host path</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">home_persistence </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "shared"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">     # "off", "session", or "shared" (default: "shared")</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># shared_home_dir = "/path/to/shared-home"  # Optional path for shared mode</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">backend </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "auto"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">                # "auto", "docker", or "apple-container"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">no_network </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Packages installed in the sandbox image</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">packages </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">    "curl"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">    "git"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">    "jq"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">    "tmux"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">    "python3"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">    "python3-pip"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">    "nodejs"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">    "npm"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">    "golang-go"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<p>If Moltis runs inside Docker and also mounts the host container socket
+(<code>/var/run/docker.sock</code>), Moltis now auto-detects the host path backing
+<code>/home/moltis/.moltis</code> from the parent container’s mount table. If that
+inspection cannot resolve the correct path, set <code>host_data_dir</code> explicitly.</p>
+<aside class="admonition admonition-info"><div class="admonition-title">Info</div><div class="admonition-body"><p>When you modify the packages list and restart, Moltis automatically rebuilds the sandbox image with a new tag.</p></div></aside>
+<h2 id="web-search">Web Search</h2>
+<p>Configure the built-in <code>web_search</code> tool:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tools.web.search]
+enabled = true
+provider = &#x22;brave&#x22;               # &#x22;brave&#x22; or &#x22;perplexity&#x22;
+max_results = 5                  # 1-10
+timeout_seconds = 30
+cache_ttl_minutes = 15
+duckduckgo_fallback = false      # Default: do not use DuckDuckGo fallback
+# api_key = &#x22;...&#x22;                # Brave key, or use BRAVE_API_KEY
+
+[tools.web.search.perplexity]
+# api_key = &#x22;...&#x22;                # Or use PERPLEXITY_API_KEY / OPENROUTER_API_KEY
+# base_url = &#x22;...&#x22;               # Optional override
+# model = &#x22;perplexity/sonar-pro&#x22; # Optional override"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">web</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">search</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "brave"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">               # "brave" or "perplexity"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">max_results </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 5</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">                  # 1-10</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">timeout_seconds </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 30</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">cache_ttl_minutes </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 15</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">duckduckgo_fallback </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">      # Default: do not use DuckDuckGo fallback</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># api_key = "..."                # Brave key, or use BRAVE_API_KEY</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">web</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">search</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">perplexity</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># api_key = "..."                # Or use PERPLEXITY_API_KEY / OPENROUTER_API_KEY</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># base_url = "..."               # Optional override</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># model = "perplexity/sonar-pro" # Optional override</span></span></code></pre>
+<p>If no search API key is configured:</p>
+<ul>
+<li>with <code>duckduckgo_fallback = false</code> (default), Moltis returns a clear hint to set <code>BRAVE_API_KEY</code> or <code>PERPLEXITY_API_KEY</code></li>
+<li>with <code>duckduckgo_fallback = true</code>, Moltis attempts DuckDuckGo HTML search, which may hit CAPTCHA/rate limits</li>
+</ul>
+<h2 id="skills">Skills</h2>
+<p>Configure skill discovery and agent-managed personal skills:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[skills]
+enabled = true
+auto_load = [&#x22;commit&#x22;]
+enable_agent_sidecar_files = false  # Opt-in: allow agents to write sidecar text files in personal skills
+enable_self_improvement = true     # System prompt guidance for autonomous skill creation/update"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">skills</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">auto_load </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"commit"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enable_agent_sidecar_files </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # Opt-in: allow agents to write sidecar text files in personal skills</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enable_self_improvement </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">     # System prompt guidance for autonomous skill creation/update</span></span></code></pre>
+<p><code>enable_agent_sidecar_files</code> is disabled by default. When enabled, Moltis
+registers the <code>write_skill_files</code> tool so agents can write supplementary files
+such as <code>script.sh</code>, <code>Dockerfile</code>, templates, or <code>_meta.json</code> inside
+<code>&#x3C;data_dir>/skills/&#x3C;name>/</code>. Writes stay confined to that personal skill
+directory, reject path traversal and symlink escapes, and are recorded in
+<code>~/.moltis/logs/security-audit.jsonl</code>.</p>
+<p><code>enable_self_improvement</code> (default: true) injects system prompt guidance that
+encourages the agent to proactively create and update skills after complex
+tasks (5+ tool calls), tricky error fixes, or non-obvious workflows. The
+<code>patch_skill</code> tool allows surgical find/replace updates without rewriting the
+entire skill body.</p>
+<h2 id="chat-message-queue">Chat Message Queue</h2>
+<p>When a new message arrives while an agent run is already active, Moltis can either
+replay queued messages one-by-one or merge them into a single follow-up message.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[chat]
+message_queue_mode = &#x22;followup&#x22;  # Default: one-by-one replay
+prompt_memory_mode = &#x22;live-reload&#x22;
+
+# Options:
+#   &#x22;followup&#x22; - Queue each message and run them sequentially
+#   &#x22;collect&#x22;  - Merge queued text and run once after the active run
+#   &#x22;live-reload&#x22; - Re-read MEMORY.md before each turn
+#   &#x22;frozen-at-session-start&#x22; - Keep the first MEMORY.md snapshot for the session"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">chat</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">message_queue_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "followup"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # Default: one-by-one replay</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">prompt_memory_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "live-reload"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Options:</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">#   "followup" - Queue each message and run them sequentially</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">#   "collect"  - Merge queued text and run once after the active run</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">#   "live-reload" - Re-read MEMORY.md before each turn</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">#   "frozen-at-session-start" - Keep the first MEMORY.md snapshot for the session</span></span></code></pre>
+<h2 id="memory-system">Memory System</h2>
+<p>Long-term memory uses embeddings for semantic search:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[memory]
+style = &#x22;hybrid&#x22;              # Or &#x22;prompt-only&#x22;, &#x22;search-only&#x22;, &#x22;off&#x22;
+agent_write_mode = &#x22;hybrid&#x22;   # Or &#x22;prompt-only&#x22;, &#x22;search-only&#x22;, &#x22;off&#x22;
+user_profile_write_mode = &#x22;explicit-and-auto&#x22; # Or &#x22;explicit-only&#x22;, &#x22;off&#x22;
+backend = &#x22;builtin&#x22;             # Or &#x22;qmd&#x22;
+provider = &#x22;openai&#x22;             # Or &#x22;local&#x22;, &#x22;ollama&#x22;, &#x22;custom&#x22;
+model = &#x22;text-embedding-3-small&#x22;
+citations = &#x22;auto&#x22;              # &#x22;on&#x22;, &#x22;off&#x22;, or &#x22;auto&#x22;
+llm_reranking = false
+search_merge_strategy = &#x22;rrf&#x22;   # Or &#x22;linear&#x22;
+session_export = &#x22;on-new-or-reset&#x22; # Or &#x22;off&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">memory</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">style </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "hybrid"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">              # Or "prompt-only", "search-only", "off"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">agent_write_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "hybrid"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">   # Or "prompt-only", "search-only", "off"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">user_profile_write_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "explicit-and-auto"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D"> # Or "explicit-only", "off"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">backend </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "builtin"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">             # Or "qmd"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">             # Or "local", "ollama", "custom"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "text-embedding-3-small"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">citations </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "auto"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">              # "on", "off", or "auto"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">llm_reranking </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">search_merge_strategy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "rrf"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">   # Or "linear"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">session_export </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "on-new-or-reset"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D"> # Or "off"</span></span></code></pre>
+<p>See <a href="/memory-surfaces.html">Memory Surfaces</a> for the boundary between
+<code>session_state</code>, prompt memory, searchable memory, and sandbox persistence.
+<code>memory.style</code> chooses the high-level behavior, while
+<code>chat.prompt_memory_mode</code> only affects prompt-visible <code>MEMORY.md</code>.
+<code>memory.agent_write_mode</code> controls where agent-authored writes are allowed to
+land. <code>memory.user_profile_write_mode</code> controls whether Moltis writes the
+managed <code>USER.md</code> surface, and whether browser/channel timezone or location
+signals may update it silently. <code>memory.session_export</code> controls whether
+session rollover exports are written at all.</p>
+<h2 id="authentication">Authentication</h2>
+<p>Authentication is <strong>only required when accessing Moltis from a non-localhost address</strong>. When running on <code>localhost</code> or <code>127.0.0.1</code>, no authentication is needed by default.</p>
+<p>When you access Moltis from a network address (e.g., <code>http://192.168.1.100:13131</code>), a one-time setup code is printed to the terminal. Use it to set up a password or passkey.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[auth]
+disabled = false                # Set true to disable auth entirely"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">auth</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">disabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">                # Set true to disable auth entirely</span></span></code></pre>
+<aside class="admonition admonition-warning"><div class="admonition-title">Warning</div><div class="admonition-body"><p>Only set <code>disabled = true</code> if Moltis is running on a trusted private network. Never expose an unauthenticated instance to the internet.</p></div></aside>
+<h2 id="hooks">Hooks</h2>
+<p>Configure lifecycle hooks:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[hooks]
+[[hooks.hooks]]
+name = &#x22;my-hook&#x22;
+command = &#x22;./hooks/my-hook.sh&#x22;
+events = [&#x22;BeforeToolCall&#x22;, &#x22;AfterToolCall&#x22;]
+timeout = 5                     # Timeout in seconds
+
+[hooks.hooks.env]
+MY_VAR = &#x22;value&#x22;               # Environment variables for the hook"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">hooks</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">hooks</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">hooks</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">name </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "my-hook"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "./hooks/my-hook.sh"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">events </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"BeforeToolCall"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "AfterToolCall"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">timeout </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 5</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">                     # Timeout in seconds</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">hooks</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">hooks</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">env</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">MY_VAR </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "value"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">               # Environment variables for the hook</span></span></code></pre>
+<p>See <a href="/hooks.html">Hooks</a> for the full hook system documentation.</p>
+<h2 id="mcp-servers">MCP Servers</h2>
+<p>Connect to Model Context Protocol servers:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[mcp]
+request_timeout_secs = 30
+                                    # Default timeout for MCP requests (seconds)
+
+[mcp.servers.filesystem]
+command = &#x22;npx&#x22;
+args = [&#x22;-y&#x22;, &#x22;@modelcontextprotocol/server-filesystem&#x22;, &#x22;/path/to/allowed&#x22;]
+request_timeout_secs = 90        # Optional override for this server
+
+[mcp.servers.github]
+command = &#x22;npx&#x22;
+args = [&#x22;-y&#x22;, &#x22;@modelcontextprotocol/server-github&#x22;]
+env = { GITHUB_TOKEN = &#x22;ghp_...&#x22; }
+
+[mcp.servers.remote_api]
+transport = &#x22;sse&#x22;
+url = &#x22;https://mcp.example.com/mcp?api_key=$REMOTE_MCP_KEY&#x22;
+headers = { Authorization = &#x22;Bearer ${REMOTE_MCP_TOKEN}&#x22; }
+
+[mcp.servers.remote_http]
+transport = &#x22;streamable-http&#x22;
+url = &#x22;https://mcp.example.com/mcp&#x22;
+headers = { Authorization = &#x22;Bearer ${API_KEY}&#x22; }"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">request_timeout_secs </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 30</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">                                    # Default timeout for MCP requests (seconds)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">servers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">filesystem</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "npx"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">args </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"-y"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "@modelcontextprotocol/server-filesystem"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "/path/to/allowed"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">request_timeout_secs </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 90</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">        # Optional override for this server</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">servers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">github</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "npx"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">args </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"-y"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "@modelcontextprotocol/server-github"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">env </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { GITHUB_TOKEN </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "ghp_..."</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">servers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">remote_api</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">transport </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "sse"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">url </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://mcp.example.com/mcp?api_key=$REMOTE_MCP_KEY"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">headers </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { Authorization </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Bearer ${REMOTE_MCP_TOKEN}"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">servers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">remote_http</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">transport </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "streamable-http"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">url </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://mcp.example.com/mcp"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">headers </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { Authorization </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Bearer ${API_KEY}"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span></code></pre>
+<p>Remote MCP URLs and headers support <code>$NAME</code> or <code>${NAME}</code> placeholders. For live remote servers, values resolve from Moltis-managed env overrides, either <code>[env]</code> in config or <strong>Settings</strong> → <strong>Environment Variables</strong>.</p>
+<h2 id="telegram-integration">Telegram Integration</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.telegram.my-bot]
+token = &#x22;123456:ABC...&#x22;
+dm_policy = &#x22;allowlist&#x22;
+allowlist = [&#x22;123456789&#x22;]       # Telegram user IDs or usernames (strings)"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">telegram</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">token </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "123456:ABC..."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">dm_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "allowlist"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">allowlist </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"123456789"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]       </span><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Telegram user IDs or usernames (strings)</span></span></code></pre>
+<p>See <a href="/telegram.html">Telegram</a> for full configuration reference and setup instructions.</p>
+<h2 id="discord-integration">Discord Integration</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels]
+offered = [&#x22;telegram&#x22;, &#x22;discord&#x22;]
+
+[channels.discord.my-bot]
+token = &#x22;MTIzNDU2Nzg5.example.bot-token&#x22;
+dm_policy = &#x22;allowlist&#x22;
+mention_mode = &#x22;mention&#x22;
+allowlist = [&#x22;your_username&#x22;]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">offered </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"telegram"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "discord"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">discord</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">token </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "MTIzNDU2Nzg5.example.bot-token"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">dm_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "allowlist"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">mention_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "mention"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">allowlist </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"your_username"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<p>See <a href="/discord.html">Discord</a> for full configuration reference and setup instructions.</p>
+<h2 id="slack-integration">Slack Integration</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels]
+offered = [&#x22;slack&#x22;]
+
+[channels.slack.my-bot]
+bot_token = &#x22;xoxb-...&#x22;
+app_token = &#x22;xapp-...&#x22;
+dm_policy = &#x22;allowlist&#x22;
+allowlist = [&#x22;U123456789&#x22;]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">offered </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"slack"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">slack</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">bot_token </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "xoxb-..."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">app_token </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "xapp-..."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">dm_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "allowlist"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">allowlist </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"U123456789"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<p>See <a href="/slack.html">Slack</a> for full configuration reference and setup instructions.</p>
+<h2 id="tls--https">TLS / HTTPS</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tls]
+enabled = true
+cert_path = &#x22;~/.config/moltis/cert.pem&#x22;
+key_path = &#x22;~/.config/moltis/key.pem&#x22;
+# If custom paths are not set and auto_generate is true, Moltis generates a
+# local CA and server certificate for localhost/private-network names. Public
+# VPS IP access should set public_ip; public domains should use a reverse proxy
+# or custom CA-issued certificates.
+# public_ip = &#x22;203.0.113.10&#x22;
+
+# Port for the plain-HTTP redirect / CA-download server.
+# Defaults to the server port + 1 when not set.
+# http_redirect_port = 13132"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tls</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">cert_path </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "~/.config/moltis/cert.pem"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">key_path </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "~/.config/moltis/key.pem"</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># If custom paths are not set and auto_generate is true, Moltis generates a</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># local CA and server certificate for localhost/private-network names. Public</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># VPS IP access should set public_ip; public domains should use a reverse proxy</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># or custom CA-issued certificates.</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># public_ip = "203.0.113.10"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Port for the plain-HTTP redirect / CA-download server.</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Defaults to the server port + 1 when not set.</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># http_redirect_port = 13132</span></span></code></pre>
+<p>Override via environment variable: <code>MOLTIS_TLS__HTTP_REDIRECT_PORT=8080</code>.</p>
+<h2 id="tailscale-integration">Tailscale Integration</h2>
+<p>Expose Moltis over your Tailscale network:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tailscale]
+mode = &#x22;serve&#x22;                  # &#x22;off&#x22;, &#x22;serve&#x22;, or &#x22;funnel&#x22;
+reset_on_exit = true"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tailscale</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "serve"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">                  # "off", "serve", or "funnel"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">reset_on_exit </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span></code></pre>
+<h2 id="observability">Observability</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[metrics]
+enabled = true
+prometheus_endpoint = true"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">metrics</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">prometheus_endpoint </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span></code></pre>
+<h2 id="process-environment-variables-env">Process Environment Variables (<code>[env]</code>)</h2>
+<p>The <code>[env]</code> section injects variables into the Moltis process at startup.
+This is useful in Docker deployments where passing individual <code>-e</code> flags is
+inconvenient, or when you want API keys stored in the config file rather
+than the host environment.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[env]
+BRAVE_API_KEY = &#x22;your-brave-key&#x22;
+OPENROUTER_API_KEY = &#x22;sk-or-...&#x22;
+ELEVENLABS_API_KEY = &#x22;...&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">env</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">BRAVE_API_KEY </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "your-brave-key"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">OPENROUTER_API_KEY </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "sk-or-..."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">ELEVENLABS_API_KEY </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "..."</span></span></code></pre>
+<p><strong>Precedence</strong>: existing process environment variables are never overwritten.
+If <code>BRAVE_API_KEY</code> is already set via <code>docker -e</code> or the host shell, the
+<code>[env]</code> value is skipped. This means <code>docker -e</code> always wins.</p>
+<aside class="admonition admonition-info"><div class="admonition-title">Settings UI vs [env]</div><div class="admonition-body"><p>Environment variables configured through the Settings UI (Settings ><br>Environment) are also injected into the Moltis process at startup.<br>Precedence: host/<code>docker -e</code> > config <code>[env]</code> > Settings UI.</p></div></aside>
+<h2 id="environment-variables">Environment Variables</h2>
+<p>All settings can be overridden via environment variables:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Variable</th><th>Description</th></tr></thead><tbody><tr><td><code>MOLTIS_CONFIG_DIR</code></td><td>Configuration directory</td></tr><tr><td><code>MOLTIS_DATA_DIR</code></td><td>Data directory</td></tr><tr><td><code>MOLTIS_SERVER__PORT</code></td><td>Server port override</td></tr><tr><td><code>MOLTIS_SERVER__BIND</code></td><td>Server bind address override</td></tr><tr><td><code>MOLTIS_TOOLS__AGENT_TIMEOUT_SECS</code></td><td>Agent run timeout override</td></tr><tr><td><code>MOLTIS_TOOLS__AGENT_MAX_ITERATIONS</code></td><td>Agent loop iteration cap override</td></tr></tbody></table>
+<h2 id="cli-flags">CLI Flags</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="moltis --config-dir /path/to/config --data-dir /path/to/data"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --config-dir</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /path/to/config</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --data-dir</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /path/to/data</span></span></code></pre>
+<h2 id="complete-example">Complete Example</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[server]
+port = 13131
+bind = &#x22;0.0.0.0&#x22;
+
+[identity]
+name = &#x22;Atlas&#x22;
+
+[tools]
+agent_timeout_secs = 600
+agent_max_iterations = 25
+
+[providers]
+offered = [&#x22;anthropic&#x22;, &#x22;openai&#x22;, &#x22;gemini&#x22;]
+
+[tools.exec.sandbox]
+mode = &#x22;all&#x22;
+scope = &#x22;session&#x22;
+workspace_mount = &#x22;ro&#x22;
+workspace_sysmount = &#x22;ro&#x22;
+home_persistence = &#x22;session&#x22;
+# shared_home_dir = &#x22;/path/to/shared-home&#x22;
+backend = &#x22;auto&#x22;
+no_network = true
+packages = [&#x22;curl&#x22;, &#x22;git&#x22;, &#x22;jq&#x22;, &#x22;python3&#x22;, &#x22;nodejs&#x22;, &#x22;golang-go&#x22;]
+
+[memory]
+backend = &#x22;builtin&#x22;
+provider = &#x22;openai&#x22;
+model = &#x22;text-embedding-3-small&#x22;
+
+[auth]
+disabled = false
+
+[hooks]
+[[hooks.hooks]]
+name = &#x22;audit-log&#x22;
+command = &#x22;./hooks/audit.sh&#x22;
+events = [&#x22;BeforeToolCall&#x22;]
+timeout = 5"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">server</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">port </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 13131</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">bind </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "0.0.0.0"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">identity</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">name </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Atlas"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">agent_timeout_secs </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 600</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">agent_max_iterations </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 25</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">providers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">offered </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"anthropic"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "gemini"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">exec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">sandbox</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "all"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">scope </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "session"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">workspace_mount </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "ro"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">workspace_sysmount </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "ro"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">home_persistence </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "session"</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># shared_home_dir = "/path/to/shared-home"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">backend </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "auto"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">no_network </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">packages </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"curl"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "git"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "jq"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "python3"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "nodejs"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "golang-go"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">memory</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">backend </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "builtin"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "text-embedding-3-small"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">auth</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">disabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">hooks</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">hooks</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">hooks</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">name </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "audit-log"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "./hooks/audit.sh"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">events </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"BeforeToolCall"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">timeout </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 5</span></span></code></pre>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/comparison.html"><span>Previous</span>Comparison</a> <a class="pager-link next" href="/upstream-proxy.html"><span>Next</span>Upstream Proxy</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

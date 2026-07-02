@@ -1,0 +1,1144 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Voice - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a class="active" href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Features</div>  <h1 id="voice-services">Voice Services</h1>
+<p>Moltis provides text-to-speech (TTS) and speech-to-text (STT) capabilities
+through the <code>moltis-voice</code> crate and gateway integration.</p>
+<h2 id="feature-flag">Feature Flag</h2>
+<p>Voice services are behind the <code>voice</code> cargo feature, enabled by default:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="# Cargo.toml (gateway crate)
+[features]
+default = [&#x22;voice&#x22;, ...]
+voice = [&#x22;dep:moltis-voice&#x22;]"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Cargo.toml (gateway crate)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">features</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">default </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"voice"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#24292EFF;--shiki-light-font-style:inherit;--shiki-dark:#FDAEB7;--shiki-dark-font-style:italic"> ...]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-light-font-style:inherit;--shiki-dark:#FDAEB7;--shiki-dark-font-style:italic">voice = </span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"dep:moltis-voice"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<p>To disable voice features at compile time:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="cargo build --no-default-features --features &#x22;file-watcher,tailscale,tls,web-ui&#x22;"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">cargo</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> build</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --no-default-features</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --features</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "file-watcher,tailscale,tls,web-ui"</span></span></code></pre>
+<p>When disabled:</p>
+<ul>
+<li>TTS/STT RPC methods are not registered</li>
+<li>Voice settings section is hidden in the UI</li>
+<li>Microphone button is hidden in the chat interface</li>
+<li><code>voice_enabled: false</code> is set in the gon data</li>
+</ul>
+<h2 id="architecture">Architecture</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="┌─────────────────────────────────────────────────────────────┐
+│                      Voice Crate                            │
+│                   (crates/voice/)                           │
+├─────────────────────────────────────────────────────────────┤
+│  TtsProvider trait         │  SttProvider trait             │
+│  ├─ ElevenLabsTts          │  ├─ WhisperStt (OpenAI)        │
+│  ├─ OpenAiTts              │  ├─ GroqStt (Groq)             │
+│  ├─ GoogleTts              │  ├─ DeepgramStt                │
+│  ├─ PiperTts (local)       │  ├─ GoogleStt                  │
+│  └─ CoquiTts (local)       │  ├─ MistralStt                 │
+│                            │  ├─ VoxtralLocalStt (local)    │
+│                            │  ├─ WhisperCliStt (local)      │
+│                            │  └─ SherpaOnnxStt (local)      │
+└─────────────────────────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Gateway Services                         │
+│                (crates/gateway/src/voice.rs)                │
+├─────────────────────────────────────────────────────────────┤
+│  LiveTtsService            │  LiveSttService                │
+│  (wraps TTS providers)     │  (wraps STT providers)         │
+└─────────────────────────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     RPC Methods                             │
+├─────────────────────────────────────────────────────────────┤
+│  tts.status, tts.providers, tts.enable, tts.disable,        │
+│  tts.convert, tts.setProvider                               │
+│  stt.status, stt.providers, stt.transcribe, stt.setProvider │
+└─────────────────────────────────────────────────────────────┘"><code><span class="line"><span>┌─────────────────────────────────────────────────────────────┐</span></span>
+<span class="line"><span>│                      Voice Crate                            │</span></span>
+<span class="line"><span>│                   (crates/voice/)                           │</span></span>
+<span class="line"><span>├─────────────────────────────────────────────────────────────┤</span></span>
+<span class="line"><span>│  TtsProvider trait         │  SttProvider trait             │</span></span>
+<span class="line"><span>│  ├─ ElevenLabsTts          │  ├─ WhisperStt (OpenAI)        │</span></span>
+<span class="line"><span>│  ├─ OpenAiTts              │  ├─ GroqStt (Groq)             │</span></span>
+<span class="line"><span>│  ├─ GoogleTts              │  ├─ DeepgramStt                │</span></span>
+<span class="line"><span>│  ├─ PiperTts (local)       │  ├─ GoogleStt                  │</span></span>
+<span class="line"><span>│  └─ CoquiTts (local)       │  ├─ MistralStt                 │</span></span>
+<span class="line"><span>│                            │  ├─ VoxtralLocalStt (local)    │</span></span>
+<span class="line"><span>│                            │  ├─ WhisperCliStt (local)      │</span></span>
+<span class="line"><span>│                            │  └─ SherpaOnnxStt (local)      │</span></span>
+<span class="line"><span>└─────────────────────────────────────────────────────────────┘</span></span>
+<span class="line"><span>                    │</span></span>
+<span class="line"><span>                    ▼</span></span>
+<span class="line"><span>┌─────────────────────────────────────────────────────────────┐</span></span>
+<span class="line"><span>│                    Gateway Services                         │</span></span>
+<span class="line"><span>│                (crates/gateway/src/voice.rs)                │</span></span>
+<span class="line"><span>├─────────────────────────────────────────────────────────────┤</span></span>
+<span class="line"><span>│  LiveTtsService            │  LiveSttService                │</span></span>
+<span class="line"><span>│  (wraps TTS providers)     │  (wraps STT providers)         │</span></span>
+<span class="line"><span>└─────────────────────────────────────────────────────────────┘</span></span>
+<span class="line"><span>                    │</span></span>
+<span class="line"><span>                    ▼</span></span>
+<span class="line"><span>┌─────────────────────────────────────────────────────────────┐</span></span>
+<span class="line"><span>│                     RPC Methods                             │</span></span>
+<span class="line"><span>├─────────────────────────────────────────────────────────────┤</span></span>
+<span class="line"><span>│  tts.status, tts.providers, tts.enable, tts.disable,        │</span></span>
+<span class="line"><span>│  tts.convert, tts.setProvider                               │</span></span>
+<span class="line"><span>│  stt.status, stt.providers, stt.transcribe, stt.setProvider │</span></span>
+<span class="line"><span>└─────────────────────────────────────────────────────────────┘</span></span></code></pre>
+<h2 id="text-to-speech-tts">Text-to-Speech (TTS)</h2>
+<h3 id="supported-providers">Supported Providers</h3>
+<p>Moltis supports multiple TTS providers across cloud and local backends.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Category</th><th>Notes</th></tr></thead><tbody><tr><td>Cloud TTS providers</td><td>Hosted neural voices with low-latency streaming</td></tr><tr><td>Local TTS providers</td><td>Offline/on-device synthesis for privacy-sensitive workflows</td></tr></tbody></table>
+<p><em>More voice providers are coming soon.</em></p>
+<h3 id="configuration">Configuration</h3>
+<p>Set API keys via environment variables:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="export ELEVENLABS_API_KEY=your-key-here
+export OPENAI_API_KEY=your-key-here"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">export</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> ELEVENLABS_API_KEY</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">your-key-here</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">export</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> OPENAI_API_KEY</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">your-key-here</span></span></code></pre>
+<p>Or configure in <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[voice.tts]
+enabled = true
+# provider = &#x22;openai&#x22;    # Omit to auto-select the first configured provider
+providers = []           # Optional UI allowlist, empty = show all TTS providers
+auto = &#x22;off&#x22;             # &#x22;always&#x22;, &#x22;off&#x22;, &#x22;inbound&#x22;, &#x22;tagged&#x22;
+max_text_length = 2000
+
+[voice.tts.elevenlabs]
+api_key = &#x22;sk-...&#x22;
+voice_id = &#x22;21m00Tcm4TlvDq8ikWAM&#x22;  # Rachel (default)
+model = &#x22;eleven_flash_v2_5&#x22;
+stability = 0.5
+similarity_boost = 0.75
+
+[voice.tts.openai]
+# No api_key needed if OpenAI is configured as an LLM provider or OPENAI_API_KEY is set.
+# api_key = &#x22;sk-...&#x22;
+# base_url = &#x22;http://10.1.2.30:8003&#x22;  # Override for OpenAI-compatible servers (e.g. Chatterbox)
+voice = &#x22;alloy&#x22;  # alloy, echo, fable, onyx, nova, shimmer
+model = &#x22;tts-1&#x22;
+speed = 1.0
+
+[voice.tts.google]
+api_key = &#x22;...&#x22;  # Google Cloud API key
+voice = &#x22;en-US-Neural2-D&#x22;  # See Google Cloud TTS voices
+language_code = &#x22;en-US&#x22;
+speaking_rate = 1.0
+
+# Local providers - no API key required
+
+[voice.tts.piper]
+# binary_path = &#x22;/usr/local/bin/piper&#x22;  # optional, searches PATH
+model_path = &#x22;~/.moltis/models/en_US-lessac-medium.onnx&#x22;  # required
+# config_path = &#x22;~/.moltis/models/en_US-lessac-medium.onnx.json&#x22;  # optional
+# speaker_id = 0  # for multi-speaker models
+# length_scale = 1.0  # speaking rate (lower = faster)
+
+[voice.tts.coqui]
+endpoint = &#x22;http://localhost:5002&#x22;  # Coqui TTS server
+# model = &#x22;tts_models/en/ljspeech/tacotron2-DDC&#x22;  # optional"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tts</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># provider = "openai"    # Omit to auto-select the first configured provider</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">providers </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> []           </span><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Optional UI allowlist, empty = show all TTS providers</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">auto </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "off"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">             # "always", "off", "inbound", "tagged"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">max_text_length </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 2000</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tts</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">elevenlabs</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">api_key </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "sk-..."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">voice_id </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "21m00Tcm4TlvDq8ikWAM"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # Rachel (default)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "eleven_flash_v2_5"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">stability </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0.5</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">similarity_boost </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0.75</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tts</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">openai</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># No api_key needed if OpenAI is configured as an LLM provider or OPENAI_API_KEY is set.</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># api_key = "sk-..."</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># base_url = "http://10.1.2.30:8003"  # Override for OpenAI-compatible servers (e.g. Chatterbox)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">voice </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "alloy"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # alloy, echo, fable, onyx, nova, shimmer</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "tts-1"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">speed </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1.0</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tts</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">google</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">api_key </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "..."</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # Google Cloud API key</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">voice </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "en-US-Neural2-D"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # See Google Cloud TTS voices</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">language_code </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "en-US"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">speaking_rate </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1.0</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Local providers - no API key required</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tts</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">piper</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># binary_path = "/usr/local/bin/piper"  # optional, searches PATH</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model_path </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "~/.moltis/models/en_US-lessac-medium.onnx"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # required</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># config_path = "~/.moltis/models/en_US-lessac-medium.onnx.json"  # optional</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># speaker_id = 0  # for multi-speaker models</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># length_scale = 1.0  # speaking rate (lower = faster)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tts</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">coqui</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">endpoint </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "http://localhost:5002"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # Coqui TTS server</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># model = "tts_models/en/ljspeech/tacotron2-DDC"  # optional</span></span></code></pre>
+<h3 id="local-tts-provider-setup">Local TTS Provider Setup</h3>
+<h4 id="piper-tts">Piper TTS</h4>
+<p>Piper is a fast, local neural text-to-speech system that runs entirely offline.</p>
+<ol>
+<li>
+<p>Install Piper:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Via pip
+pip install piper-tts
+
+# Or download pre-built binaries from:
+# https://github.com/OHF-Voice/piper1-gpl/releases"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Via pip</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">pip</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> install</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> piper-tts</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Or download pre-built binaries from:</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># https://github.com/OHF-Voice/piper1-gpl/releases</span></span></code></pre>
+</li>
+<li>
+<p>Download a voice model from <a href="https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/VOICES.md">Piper Voices</a>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="mkdir -p ~/.moltis/models
+curl -L -o ~/.moltis/models/en_US-lessac-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+curl -L -o ~/.moltis/models/en_US-lessac-medium.onnx.json \
+  https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">mkdir</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ~/.moltis/models</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -L</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -o</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ~/.moltis/models/en_US-lessac-medium.onnx</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#9ECBFF">  https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -L</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -o</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ~/.moltis/models/en_US-lessac-medium.onnx.json</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#9ECBFF">  https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json</span></span></code></pre>
+</li>
+<li>
+<p>Configure in <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[voice.tts]
+provider = &#x22;piper&#x22;
+
+[voice.tts.piper]
+model_path = &#x22;~/.moltis/models/en_US-lessac-medium.onnx&#x22;
+config_path = &#x22;~/.moltis/models/en_US-lessac-medium.onnx.json&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tts</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "piper"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tts</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">piper</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model_path </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "~/.moltis/models/en_US-lessac-medium.onnx"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">config_path </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "~/.moltis/models/en_US-lessac-medium.onnx.json"</span></span></code></pre>
+</li>
+</ol>
+<h4 id="coqui-tts">Coqui TTS</h4>
+<p>Coqui TTS is a high-quality neural TTS with voice cloning capabilities. Use the
+maintained <a href="https://github.com/idiap/coqui-ai-TTS">Coqui TTS fork</a>, published as
+the <a href="https://pypi.org/project/coqui-tts/"><code>coqui-tts</code> PyPI package</a>.</p>
+<ol>
+<li>
+<p>Install and start the server:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Via uv
+uv pip install torch torchaudio torchcodec --torch-backend=auto
+uv pip install &#x27;coqui-tts[server]&#x27;
+tts-server --model_name tts_models/en/ljspeech/tacotron2-DDC
+
+# Or via Docker
+docker run --rm -p 5002:5002 --entrypoint /bin/bash ghcr.io/idiap/coqui-tts-cpu \
+  -lc &#x27;python3 TTS/server/server.py --model_name tts_models/en/ljspeech/tacotron2-DDC&#x27;"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Via uv</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">uv</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> pip</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> install</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> torch</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> torchaudio</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> torchcodec</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --torch-backend=auto</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">uv</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> pip</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> install</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> 'coqui-tts[server]'</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">tts-server</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --model_name</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> tts_models/en/ljspeech/tacotron2-DDC</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Or via Docker</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">docker</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> run</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --rm</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 5002:5002</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --entrypoint</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /bin/bash</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ghcr.io/idiap/coqui-tts-cpu</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -lc</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> 'python3 TTS/server/server.py --model_name tts_models/en/ljspeech/tacotron2-DDC'</span></span></code></pre>
+</li>
+<li>
+<p>Configure in <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[voice.tts]
+provider = &#x22;coqui&#x22;
+
+[voice.tts.coqui]
+endpoint = &#x22;http://localhost:5002&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tts</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "coqui"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tts</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">coqui</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">endpoint </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "http://localhost:5002"</span></span></code></pre>
+</li>
+</ol>
+<p>Browse available models in the maintained fork’s <a href="https://github.com/idiap/coqui-ai-TTS/blob/dev/TTS/.models.json">standard model list</a>.</p>
+<h3 id="rpc-methods">RPC Methods</h3>
+<h4 id="ttsstatus"><code>tts.status</code></h4>
+<p>Get current TTS status.</p>
+<p><strong>Response:</strong></p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;enabled&#x22;: true,
+  &#x22;provider&#x22;: &#x22;elevenlabs&#x22;,
+  &#x22;auto&#x22;: &#x22;off&#x22;,
+  &#x22;maxTextLength&#x22;: 2000,
+  &#x22;configured&#x22;: true
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "enabled"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "provider"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "elevenlabs"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "auto"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "off"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "maxTextLength"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 2000</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "configured"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h4 id="ttsproviders"><code>tts.providers</code></h4>
+<p>List available TTS providers.</p>
+<p><strong>Response:</strong></p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="[
+  { &#x22;id&#x22;: &#x22;elevenlabs&#x22;, &#x22;name&#x22;: &#x22;ElevenLabs&#x22;, &#x22;configured&#x22;: true },
+  { &#x22;id&#x22;: &#x22;openai&#x22;, &#x22;name&#x22;: &#x22;OpenAI&#x22;, &#x22;configured&#x22;: false }
+]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "elevenlabs"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "name"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "ElevenLabs"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "configured"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "name"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "OpenAI"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "configured"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<h4 id="ttsenable"><code>tts.enable</code></h4>
+<p>Enable TTS with optional provider selection.</p>
+<p><strong>Request:</strong></p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{ &#x22;provider&#x22;: &#x22;elevenlabs&#x22; }"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{ </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"provider"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "elevenlabs"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span></code></pre>
+<p><strong>Response:</strong></p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{ &#x22;enabled&#x22;: true, &#x22;provider&#x22;: &#x22;elevenlabs&#x22; }"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{ </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"enabled"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "provider"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "elevenlabs"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span></code></pre>
+<h4 id="ttsdisable"><code>tts.disable</code></h4>
+<p>Disable TTS.</p>
+<p><strong>Response:</strong></p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{ &#x22;enabled&#x22;: false }"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{ </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"enabled"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span></code></pre>
+<h4 id="ttsconvert"><code>tts.convert</code></h4>
+<p>Convert text to speech.</p>
+<p><strong>Request:</strong></p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;text&#x22;: &#x22;Hello, how can I help you today?&#x22;,
+  &#x22;provider&#x22;: &#x22;elevenlabs&#x22;,
+  &#x22;voiceId&#x22;: &#x22;21m00Tcm4TlvDq8ikWAM&#x22;,
+  &#x22;model&#x22;: &#x22;eleven_flash_v2_5&#x22;,
+  &#x22;format&#x22;: &#x22;mp3&#x22;,
+  &#x22;speed&#x22;: 1.0,
+  &#x22;stability&#x22;: 0.5,
+  &#x22;similarityBoost&#x22;: 0.75
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "text"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Hello, how can I help you today?"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "provider"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "elevenlabs"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "voiceId"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "21m00Tcm4TlvDq8ikWAM"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "model"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "eleven_flash_v2_5"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "format"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "mp3"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "speed"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1.0</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "stability"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0.5</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "similarityBoost"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0.75</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><strong>Response:</strong></p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;audio&#x22;: &#x22;base64-encoded-audio-data&#x22;,
+  &#x22;format&#x22;: &#x22;mp3&#x22;,
+  &#x22;mimeType&#x22;: &#x22;audio/mpeg&#x22;,
+  &#x22;durationMs&#x22;: 2500,
+  &#x22;size&#x22;: 45000
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "audio"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "base64-encoded-audio-data"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "format"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "mp3"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "mimeType"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "audio/mpeg"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "durationMs"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 2500</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "size"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 45000</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><strong>Audio Formats:</strong></p>
+<ul>
+<li><code>mp3</code> (default) - Widely compatible</li>
+<li><code>opus</code> / <code>ogg</code> - Good for Telegram voice notes</li>
+<li><code>aac</code> - Apple devices</li>
+<li><code>pcm</code> - Raw audio</li>
+</ul>
+<h4 id="ttssetprovider"><code>tts.setProvider</code></h4>
+<p>Change the active TTS provider.</p>
+<p><strong>Request:</strong></p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{ &#x22;provider&#x22;: &#x22;openai&#x22; }"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{ </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"provider"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span></code></pre>
+<h3 id="voice-personas">Voice Personas</h3>
+<p>Voice personas are named, reusable voice identities that get injected
+deterministically into every TTS call. Instead of the agent improvising
+voice “flair” per-message, a persona defines a stable spoken character.</p>
+<p><strong>Key concepts:</strong></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Concept</th><th>Description</th></tr></thead><tbody><tr><td>Persona prompt</td><td>Provider-neutral fields: profile, style, accent, pacing, scene, constraints</td></tr><tr><td>Provider bindings</td><td>Per-provider overrides: voice_id, model, speed, stability</td></tr><tr><td>Fallback policy</td><td>What happens when the active provider has no binding: <code>preserve-persona</code>, <code>provider-defaults</code>, <code>fail</code></td></tr><tr><td>Active persona</td><td>One persona active at a time, applied to all TTS calls automatically</td></tr></tbody></table>
+<p><strong>Manage personas</strong> via the web UI (Settings > Voice > Voice Personas) or the RPC API.</p>
+<h4 id="rpc-methods-1">RPC Methods</h4>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Method</th><th>Description</th></tr></thead><tbody><tr><td><code>voice.personas.list</code></td><td>List all personas with active indicator</td></tr><tr><td><code>voice.personas.get</code></td><td>Get a single persona by ID</td></tr><tr><td><code>voice.personas.create</code></td><td>Create a new persona</td></tr><tr><td><code>voice.personas.update</code></td><td>Update persona fields/bindings</td></tr><tr><td><code>voice.personas.delete</code></td><td>Delete a persona</td></tr><tr><td><code>voice.personas.set_active</code></td><td>Set the active persona (or <code>"none"</code> to deactivate)</td></tr></tbody></table>
+<h4 id="voicepersonascreate"><code>voice.personas.create</code></h4>
+<p><strong>Request:</strong></p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;id&#x22;: &#x22;alfred&#x22;,
+  &#x22;label&#x22;: &#x22;Alfred&#x22;,
+  &#x22;description&#x22;: &#x22;A wise British butler&#x22;,
+  &#x22;provider&#x22;: &#x22;openai&#x22;,
+  &#x22;prompt&#x22;: {
+    &#x22;profile&#x22;: &#x22;A wise British butler with dry wit&#x22;,
+    &#x22;style&#x22;: &#x22;Measured, deliberate, slightly amused&#x22;,
+    &#x22;accent&#x22;: &#x22;Received Pronunciation&#x22;,
+    &#x22;pacing&#x22;: &#x22;Unhurried, with dramatic pauses&#x22;
+  },
+  &#x22;providerBindings&#x22;: [
+    {
+      &#x22;provider&#x22;: &#x22;openai&#x22;,
+      &#x22;voice_id&#x22;: &#x22;cedar&#x22;,
+      &#x22;model&#x22;: &#x22;gpt-4o-mini-tts&#x22;
+    },
+    {
+      &#x22;provider&#x22;: &#x22;elevenlabs&#x22;,
+      &#x22;voice_id&#x22;: &#x22;21m00Tcm4TlvDq8ikWAM&#x22;,
+      &#x22;stability&#x22;: 0.65,
+      &#x22;similarity_boost&#x22;: 0.8
+    }
+  ]
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "alfred"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "label"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Alfred"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "description"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "A wise British butler"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "provider"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "prompt"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "profile"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "A wise British butler with dry wit"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "style"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Measured, deliberate, slightly amused"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "accent"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Received Pronunciation"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "pacing"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Unhurried, with dramatic pauses"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "providerBindings"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "provider"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "voice_id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "cedar"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "model"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "gpt-4o-mini-tts"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "provider"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "elevenlabs"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "voice_id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "21m00Tcm4TlvDq8ikWAM"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "stability"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0.65</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">      "similarity_boost"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0.8</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  ]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h4 id="provider-support">Provider Support</h4>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Provider</th><th>Instructions support</th><th>Notes</th></tr></thead><tbody><tr><td>OpenAI (<code>gpt-4o-mini-tts</code>)</td><td>Full</td><td>Persona prompt rendered as <code>instructions</code> field</td></tr><tr><td>Google Gemini TTS (<code>gemini-*</code>)</td><td>Full</td><td>Persona prompt as <code>system_instruction</code>; set <code>model = "gemini-2.5-flash-preview-tts"</code></td></tr><tr><td>ElevenLabs</td><td>Partial</td><td>Uses provider binding overrides (voice_id, stability)</td></tr><tr><td>Google Cloud TTS v1</td><td>Partial</td><td>Uses provider binding overrides (voice, speaking_rate, pitch)</td></tr><tr><td>Piper / Coqui</td><td>None</td><td>Local providers ignore instructions</td></tr></tbody></table>
+<h4 id="agent-tool-integration">Agent Tool Integration</h4>
+<p>The <code>speak()</code> agent tool accepts an optional <code>persona</code> parameter:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;text&#x22;: &#x22;Good evening, sir.&#x22;,
+  &#x22;persona&#x22;: &#x22;alfred&#x22;
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "text"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Good evening, sir."</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "persona"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "alfred"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>When omitted, the active persona is used automatically.</p>
+<h4 id="agent--persona-link">Agent ↔ Persona Link</h4>
+<p>Each agent persona can optionally reference a voice persona via the
+<code>voice_persona_id</code> field. Set it when creating or updating an agent:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;id&#x22;: &#x22;butler&#x22;,
+  &#x22;name&#x22;: &#x22;Butler Agent&#x22;,
+  &#x22;voice_persona_id&#x22;: &#x22;alfred&#x22;
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "butler"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "name"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Butler Agent"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "voice_persona_id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "alfred"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>This links the agent’s identity to its voice — the UI can use this
+to auto-switch the active voice persona when switching agents.</p>
+<h3 id="auto-speak-modes">Auto-Speak Modes</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Mode</th><th>Description</th></tr></thead><tbody><tr><td><code>always</code></td><td>Speak all AI responses</td></tr><tr><td><code>off</code></td><td>Never auto-speak (default)</td></tr><tr><td><code>inbound</code></td><td>Only when user sent voice input</td></tr><tr><td><code>tagged</code></td><td>Only with explicit <code>[[tts]]</code> markup</td></tr></tbody></table>
+<h2 id="speech-to-text-stt">Speech-to-Text (STT)</h2>
+<h3 id="supported-providers-1">Supported Providers</h3>
+<p>Moltis supports multiple STT providers across cloud and local backends.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Category</th><th>Notes</th></tr></thead><tbody><tr><td>Cloud STT providers</td><td>Managed transcription APIs with language/model options</td></tr><tr><td>Local STT providers</td><td>Offline transcription through local binaries or services</td></tr></tbody></table>
+<p><em>More voice providers are coming soon.</em></p>
+<h3 id="configuration-1">Configuration</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[voice.stt]
+enabled = true
+# provider = &#x22;whisper&#x22;  # Omit to auto-select the first configured provider
+providers = []          # Optional UI allowlist, empty = show all STT providers
+
+# Cloud providers - API key required
+[voice.stt.whisper]
+# No api_key needed if OpenAI is configured as an LLM provider or OPENAI_API_KEY is set.
+# api_key = &#x22;sk-...&#x22;
+# base_url = &#x22;http://10.1.2.30:8001&#x22;  # Override for OpenAI-compatible servers (e.g. faster-whisper-server)
+model = &#x22;whisper-1&#x22;  # or &#x22;gpt-4o-transcribe&#x22;, &#x22;gpt-4o-mini-transcribe&#x22;
+language = &#x22;en&#x22;     # Optional ISO 639-1 hint
+
+[voice.stt.groq]
+api_key = &#x22;gsk_...&#x22;
+model = &#x22;whisper-large-v3-turbo&#x22;  # default
+language = &#x22;en&#x22;
+
+[voice.stt.deepgram]
+api_key = &#x22;...&#x22;
+model = &#x22;nova-3&#x22;  # default
+language = &#x22;en&#x22;
+smart_format = true
+
+[voice.stt.google]
+api_key = &#x22;...&#x22;
+language = &#x22;en-US&#x22;
+# model = &#x22;latest_long&#x22;  # optional
+
+[voice.stt.mistral]
+api_key = &#x22;...&#x22;
+model = &#x22;voxtral-mini-latest&#x22;  # default
+language = &#x22;en&#x22;
+
+# Local providers - no API key, requires server or binary
+
+# Voxtral local via vLLM server
+[voice.stt.voxtral_local]
+# endpoint = &#x22;http://localhost:8000&#x22;  # default vLLM endpoint
+# model = &#x22;mistralai/Voxtral-Mini-3B-2507&#x22;  # optional, server default
+# language = &#x22;en&#x22;  # optional
+
+[voice.stt.whisper_cli]
+# binary_path = &#x22;/usr/local/bin/whisper-cli&#x22;  # optional, searches PATH
+model_path = &#x22;~/.moltis/models/ggml-base.en.bin&#x22;  # required
+language = &#x22;en&#x22;
+
+[voice.stt.sherpa_onnx]
+# binary_path = &#x22;/usr/local/bin/sherpa-onnx-offline&#x22;  # optional
+model_dir = &#x22;~/.moltis/models/sherpa-onnx-whisper-tiny.en&#x22;  # required
+language = &#x22;en&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">stt</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># provider = "whisper"  # Omit to auto-select the first configured provider</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">providers </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> []          </span><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Optional UI allowlist, empty = show all STT providers</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Cloud providers - API key required</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">stt</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">whisper</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># No api_key needed if OpenAI is configured as an LLM provider or OPENAI_API_KEY is set.</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># api_key = "sk-..."</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># base_url = "http://10.1.2.30:8001"  # Override for OpenAI-compatible servers (e.g. faster-whisper-server)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "whisper-1"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # or "gpt-4o-transcribe", "gpt-4o-mini-transcribe"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">language </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "en"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">     # Optional ISO 639-1 hint</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">stt</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">groq</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">api_key </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "gsk_..."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "whisper-large-v3-turbo"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # default</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">language </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "en"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">stt</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">deepgram</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">api_key </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "..."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "nova-3"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # default</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">language </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "en"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">smart_format </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">stt</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">google</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">api_key </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "..."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">language </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "en-US"</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># model = "latest_long"  # optional</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">stt</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mistral</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">api_key </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "..."</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "voxtral-mini-latest"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # default</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">language </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "en"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Local providers - no API key, requires server or binary</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Voxtral local via vLLM server</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">stt</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voxtral_local</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># endpoint = "http://localhost:8000"  # default vLLM endpoint</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># model = "mistralai/Voxtral-Mini-3B-2507"  # optional, server default</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># language = "en"  # optional</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">stt</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">whisper_cli</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># binary_path = "/usr/local/bin/whisper-cli"  # optional, searches PATH</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model_path </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "~/.moltis/models/ggml-base.en.bin"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # required</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">language </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "en"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">stt</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">sherpa_onnx</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># binary_path = "/usr/local/bin/sherpa-onnx-offline"  # optional</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model_dir </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "~/.moltis/models/sherpa-onnx-whisper-tiny.en"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # required</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">language </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "en"</span></span></code></pre>
+<p>OpenAI’s <code>gpt-realtime-2</code>, <code>gpt-realtime-translate</code>, and <code>gpt-realtime-whisper</code>
+models are Realtime API models. The current Moltis OpenAI STT provider records a
+clip and sends it to <code>/audio/transcriptions</code>, so those Realtime model IDs are
+shown in voice settings as Realtime-only references rather than selectable clip
+transcription defaults.</p>
+<h3 id="local-provider-setup">Local Provider Setup</h3>
+<h4 id="voxtral-via-vllm">Voxtral via vLLM</h4>
+<p>Voxtral is an open-weights model from Mistral AI that can run locally using vLLM.
+It supports 13 languages with fast transcription.</p>
+<p><strong>Requirements:</strong></p>
+<ul>
+<li>Python 3.10+</li>
+<li>CUDA-capable GPU with ~9.5GB VRAM (or CPU with more memory)</li>
+<li>vLLM with audio support</li>
+</ul>
+<p><strong>Setup:</strong></p>
+<ol>
+<li>
+<p>Install vLLM with audio support:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="pip install &#x22;vllm[audio]&#x22;"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">pip</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> install</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "vllm[audio]"</span></span></code></pre>
+</li>
+<li>
+<p>Start the vLLM server:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="vllm serve mistralai/Voxtral-Mini-3B-2507 \
+  --tokenizer_mode mistral \
+  --config_format mistral \
+  --load_format mistral"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">vllm</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> serve</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> mistralai/Voxtral-Mini-3B-2507</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --tokenizer_mode</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> mistral</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --config_format</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> mistral</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --load_format</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> mistral</span></span></code></pre>
+<p>The server exposes an OpenAI-compatible endpoint at <code>http://localhost:8000</code>.</p>
+</li>
+<li>
+<p>Configure in <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[voice.stt]
+provider = &#x22;voxtral-local&#x22;
+
+[voice.stt.voxtral_local]
+# Default endpoint works if vLLM is running locally
+# endpoint = &#x22;http://localhost:8000&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">stt</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "voxtral-local"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">stt</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voxtral_local</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Default endpoint works if vLLM is running locally</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># endpoint = "http://localhost:8000"</span></span></code></pre>
+</li>
+</ol>
+<p><strong>Supported Languages:</strong>
+English, French, German, Spanish, Portuguese, Italian, Dutch, Polish, Swedish,
+Norwegian, Danish, Finnish, Arabic</p>
+<p><strong>Note:</strong> Unlike the embedded local providers (whisper.cpp, sherpa-onnx), this
+requires running vLLM as a separate server process. The model is downloaded
+automatically on first vLLM startup.</p>
+<h4 id="whispercpp">whisper.cpp</h4>
+<ol>
+<li>
+<p>Install the binary:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# macOS
+brew install whisper-cpp
+
+# From source: https://github.com/ggerganov/whisper.cpp"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># macOS</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">brew</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> install</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> whisper-cpp</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># From source: https://github.com/ggerganov/whisper.cpp</span></span></code></pre>
+</li>
+<li>
+<p>Download a model from <a href="https://huggingface.co/ggerganov/whisper.cpp">Hugging Face</a>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="mkdir -p ~/.moltis/models
+curl -L -o ~/.moltis/models/ggml-base.en.bin \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">mkdir</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ~/.moltis/models</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -L</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -o</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ~/.moltis/models/ggml-base.en.bin</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#9ECBFF">  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin</span></span></code></pre>
+</li>
+<li>
+<p>Configure in <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[voice.stt]
+provider = &#x22;whisper-cli&#x22;
+
+[voice.stt.whisper_cli]
+model_path = &#x22;~/.moltis/models/ggml-base.en.bin&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">stt</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "whisper-cli"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">stt</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">whisper_cli</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model_path </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "~/.moltis/models/ggml-base.en.bin"</span></span></code></pre>
+</li>
+</ol>
+<h4 id="sherpa-onnx">sherpa-onnx</h4>
+<ol>
+<li>
+<p>Install following the <a href="https://k2-fsa.github.io/sherpa/onnx/install.html">official docs</a></p>
+</li>
+<li>
+<p>Download a model from the <a href="https://k2-fsa.github.io/sherpa/onnx/pretrained_models/index.html">model list</a></p>
+</li>
+<li>
+<p>Configure in <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[voice.stt]
+provider = &#x22;sherpa-onnx&#x22;
+
+[voice.stt.sherpa_onnx]
+model_dir = &#x22;~/.moltis/models/sherpa-onnx-whisper-tiny.en&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">stt</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "sherpa-onnx"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">stt</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">sherpa_onnx</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model_dir </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "~/.moltis/models/sherpa-onnx-whisper-tiny.en"</span></span></code></pre>
+</li>
+</ol>
+<h3 id="rpc-methods-2">RPC Methods</h3>
+<h4 id="sttstatus"><code>stt.status</code></h4>
+<p>Get current STT status.</p>
+<p><strong>Response:</strong></p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;enabled&#x22;: true,
+  &#x22;provider&#x22;: &#x22;whisper&#x22;,
+  &#x22;configured&#x22;: true
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "enabled"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "provider"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "whisper"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "configured"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h4 id="sttproviders"><code>stt.providers</code></h4>
+<p>List available STT providers.</p>
+<p><strong>Response:</strong></p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="[
+  { &#x22;id&#x22;: &#x22;whisper&#x22;, &#x22;name&#x22;: &#x22;OpenAI Whisper&#x22;, &#x22;configured&#x22;: true },
+  { &#x22;id&#x22;: &#x22;groq&#x22;, &#x22;name&#x22;: &#x22;Groq&#x22;, &#x22;configured&#x22;: false },
+  { &#x22;id&#x22;: &#x22;deepgram&#x22;, &#x22;name&#x22;: &#x22;Deepgram&#x22;, &#x22;configured&#x22;: false },
+  { &#x22;id&#x22;: &#x22;google&#x22;, &#x22;name&#x22;: &#x22;Google Cloud&#x22;, &#x22;configured&#x22;: false },
+  { &#x22;id&#x22;: &#x22;mistral&#x22;, &#x22;name&#x22;: &#x22;Mistral AI&#x22;, &#x22;configured&#x22;: false },
+  { &#x22;id&#x22;: &#x22;voxtral-local&#x22;, &#x22;name&#x22;: &#x22;Voxtral (Local)&#x22;, &#x22;configured&#x22;: false },
+  { &#x22;id&#x22;: &#x22;whisper-cli&#x22;, &#x22;name&#x22;: &#x22;whisper.cpp&#x22;, &#x22;configured&#x22;: false },
+  { &#x22;id&#x22;: &#x22;sherpa-onnx&#x22;, &#x22;name&#x22;: &#x22;sherpa-onnx&#x22;, &#x22;configured&#x22;: false }
+]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "whisper"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "name"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "OpenAI Whisper"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "configured"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "groq"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "name"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Groq"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "configured"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "deepgram"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "name"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Deepgram"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "configured"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "google"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "name"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Google Cloud"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "configured"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "mistral"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "name"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Mistral AI"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "configured"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "voxtral-local"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "name"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Voxtral (Local)"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "configured"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "whisper-cli"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "name"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "whisper.cpp"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "configured"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "sherpa-onnx"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "name"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "sherpa-onnx"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "configured"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<h4 id="stttranscribe"><code>stt.transcribe</code></h4>
+<p>Transcribe audio to text.</p>
+<p><strong>Request:</strong></p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;audio&#x22;: &#x22;base64-encoded-audio-data&#x22;,
+  &#x22;format&#x22;: &#x22;mp3&#x22;,
+  &#x22;language&#x22;: &#x22;en&#x22;,
+  &#x22;prompt&#x22;: &#x22;Technical discussion about Rust programming&#x22;
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "audio"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "base64-encoded-audio-data"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "format"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "mp3"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "language"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "en"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "prompt"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Technical discussion about Rust programming"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><strong>Response:</strong></p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;text&#x22;: &#x22;Hello, how are you today?&#x22;,
+  &#x22;language&#x22;: &#x22;en&#x22;,
+  &#x22;confidence&#x22;: null,
+  &#x22;durationSeconds&#x22;: 2.5,
+  &#x22;words&#x22;: [
+    { &#x22;word&#x22;: &#x22;Hello&#x22;, &#x22;start&#x22;: 0.0, &#x22;end&#x22;: 0.5 },
+    { &#x22;word&#x22;: &#x22;how&#x22;, &#x22;start&#x22;: 0.6, &#x22;end&#x22;: 0.8 },
+    { &#x22;word&#x22;: &#x22;are&#x22;, &#x22;start&#x22;: 0.9, &#x22;end&#x22;: 1.0 },
+    { &#x22;word&#x22;: &#x22;you&#x22;, &#x22;start&#x22;: 1.1, &#x22;end&#x22;: 1.3 },
+    { &#x22;word&#x22;: &#x22;today&#x22;, &#x22;start&#x22;: 1.4, &#x22;end&#x22;: 1.8 }
+  ]
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "text"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Hello, how are you today?"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "language"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "en"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "confidence"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> null</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "durationSeconds"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 2.5</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "words"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"word"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Hello"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "start"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0.0</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "end"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0.5</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"word"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "how"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "start"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0.6</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "end"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0.8</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"word"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "are"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "start"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0.9</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "end"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1.0</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"word"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "you"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "start"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1.1</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "end"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1.3</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"word"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "today"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "start"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1.4</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "end"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1.8</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  ]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>audio</code> (required): Base64-encoded audio data</li>
+<li><code>format</code>: Audio format (<code>mp3</code>, <code>opus</code>, <code>ogg</code>, <code>aac</code>, <code>pcm</code>)</li>
+<li><code>language</code>: ISO 639-1 code to improve accuracy</li>
+<li><code>prompt</code>: Context hint (terminology, topic)</li>
+</ul>
+<h4 id="sttsetprovider"><code>stt.setProvider</code></h4>
+<p>Change the active STT provider.</p>
+<p><strong>Request:</strong></p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{ &#x22;provider&#x22;: &#x22;groq&#x22; }"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{ </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"provider"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "groq"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span></code></pre>
+<p>Valid provider IDs: <code>whisper</code>, <code>groq</code>, <code>deepgram</code>, <code>google</code>, <code>mistral</code>, <code>voxtral-local</code>, <code>whisper-cli</code>, <code>sherpa-onnx</code></p>
+<h2 id="code-structure">Code Structure</h2>
+<h3 id="voice-crate-cratesvoice">Voice Crate (<code>crates/voice/</code>)</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="src/
+├── lib.rs           # Crate entry, re-exports
+├── config.rs        # VoiceConfig, TtsConfig, SttConfig
+├── tts/
+│   ├── mod.rs       # TtsProvider trait, AudioFormat, types
+│   ├── elevenlabs.rs # ElevenLabs implementation
+│   ├── openai.rs    # OpenAI TTS implementation
+│   ├── google.rs    # Google Cloud TTS implementation
+│   ├── piper.rs     # Piper local TTS implementation
+│   └── coqui.rs     # Coqui TTS server implementation
+└── stt/
+    ├── mod.rs          # SttProvider trait, Transcript types
+    ├── whisper.rs      # OpenAI Whisper implementation
+    ├── groq.rs         # Groq Whisper implementation
+    ├── deepgram.rs     # Deepgram implementation
+    ├── google.rs       # Google Cloud Speech-to-Text
+    ├── mistral.rs      # Mistral AI Voxtral cloud implementation
+    ├── voxtral_local.rs # Voxtral via local vLLM server
+    ├── cli_utils.rs    # Shared utilities for CLI providers
+    ├── whisper_cli.rs  # whisper.cpp CLI wrapper
+    └── sherpa_onnx.rs  # sherpa-onnx CLI wrapper"><code><span class="line"><span>src/</span></span>
+<span class="line"><span>├── lib.rs           # Crate entry, re-exports</span></span>
+<span class="line"><span>├── config.rs        # VoiceConfig, TtsConfig, SttConfig</span></span>
+<span class="line"><span>├── tts/</span></span>
+<span class="line"><span>│   ├── mod.rs       # TtsProvider trait, AudioFormat, types</span></span>
+<span class="line"><span>│   ├── elevenlabs.rs # ElevenLabs implementation</span></span>
+<span class="line"><span>│   ├── openai.rs    # OpenAI TTS implementation</span></span>
+<span class="line"><span>│   ├── google.rs    # Google Cloud TTS implementation</span></span>
+<span class="line"><span>│   ├── piper.rs     # Piper local TTS implementation</span></span>
+<span class="line"><span>│   └── coqui.rs     # Coqui TTS server implementation</span></span>
+<span class="line"><span>└── stt/</span></span>
+<span class="line"><span>    ├── mod.rs          # SttProvider trait, Transcript types</span></span>
+<span class="line"><span>    ├── whisper.rs      # OpenAI Whisper implementation</span></span>
+<span class="line"><span>    ├── groq.rs         # Groq Whisper implementation</span></span>
+<span class="line"><span>    ├── deepgram.rs     # Deepgram implementation</span></span>
+<span class="line"><span>    ├── google.rs       # Google Cloud Speech-to-Text</span></span>
+<span class="line"><span>    ├── mistral.rs      # Mistral AI Voxtral cloud implementation</span></span>
+<span class="line"><span>    ├── voxtral_local.rs # Voxtral via local vLLM server</span></span>
+<span class="line"><span>    ├── cli_utils.rs    # Shared utilities for CLI providers</span></span>
+<span class="line"><span>    ├── whisper_cli.rs  # whisper.cpp CLI wrapper</span></span>
+<span class="line"><span>    └── sherpa_onnx.rs  # sherpa-onnx CLI wrapper</span></span></code></pre>
+<h3 id="key-traits">Key Traits</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="rust" data-code="/// Text-to-Speech provider trait
+#[async_trait]
+pub trait TtsProvider: Send + Sync {
+    fn id(&#x26;self) -> &#x26;&#x27;static str;
+    fn name(&#x26;self) -> &#x26;&#x27;static str;
+    fn is_configured(&#x26;self) -> bool;
+    async fn voices(&#x26;self) -> Result<Vec<Voice>>;
+    async fn synthesize(&#x26;self, request: SynthesizeRequest) -> Result<AudioOutput>;
+}
+
+/// Speech-to-Text provider trait
+#[async_trait]
+pub trait SttProvider: Send + Sync {
+    fn id(&#x26;self) -> &#x26;&#x27;static str;
+    fn name(&#x26;self) -> &#x26;&#x27;static str;
+    fn is_configured(&#x26;self) -> bool;
+    async fn transcribe(&#x26;self, request: TranscribeRequest) -> Result<Transcript>;
+}"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">/// Text-to-Speech provider trait</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">#[async_trait]</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">pub</span><span style="color:#D32F2F;--shiki-dark:#F97583"> trait</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> TtsProvider</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Send</span><span style="color:#D32F2F;--shiki-dark:#F97583"> +</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Sync</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> id</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#79B8FF">self</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) </span><span style="color:#D32F2F;--shiki-dark:#F97583">-></span><span style="color:#D32F2F;--shiki-dark:#F97583"> &#x26;</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">'</span><span style="color:#6F42C1;--shiki-dark:#B392F0">static</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> str</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> name</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#79B8FF">self</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) </span><span style="color:#D32F2F;--shiki-dark:#F97583">-></span><span style="color:#D32F2F;--shiki-dark:#F97583"> &#x26;</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">'</span><span style="color:#6F42C1;--shiki-dark:#B392F0">static</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> str</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> is_configured</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#79B8FF">self</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) </span><span style="color:#D32F2F;--shiki-dark:#F97583">-></span><span style="color:#6F42C1;--shiki-dark:#B392F0"> bool</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    async</span><span style="color:#D32F2F;--shiki-dark:#F97583"> fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> voices</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#79B8FF">self</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) </span><span style="color:#D32F2F;--shiki-dark:#F97583">-></span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Result</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">Vec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">Voice</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">>>;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    async</span><span style="color:#D32F2F;--shiki-dark:#F97583"> fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> synthesize</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#79B8FF">self</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">, request</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> SynthesizeRequest</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) </span><span style="color:#D32F2F;--shiki-dark:#F97583">-></span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Result</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">AudioOutput</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">>;</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">/// Speech-to-Text provider trait</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">#[async_trait]</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">pub</span><span style="color:#D32F2F;--shiki-dark:#F97583"> trait</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> SttProvider</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Send</span><span style="color:#D32F2F;--shiki-dark:#F97583"> +</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Sync</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> id</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#79B8FF">self</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) </span><span style="color:#D32F2F;--shiki-dark:#F97583">-></span><span style="color:#D32F2F;--shiki-dark:#F97583"> &#x26;</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">'</span><span style="color:#6F42C1;--shiki-dark:#B392F0">static</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> str</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> name</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#79B8FF">self</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) </span><span style="color:#D32F2F;--shiki-dark:#F97583">-></span><span style="color:#D32F2F;--shiki-dark:#F97583"> &#x26;</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">'</span><span style="color:#6F42C1;--shiki-dark:#B392F0">static</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> str</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> is_configured</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#79B8FF">self</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) </span><span style="color:#D32F2F;--shiki-dark:#F97583">-></span><span style="color:#6F42C1;--shiki-dark:#B392F0"> bool</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    async</span><span style="color:#D32F2F;--shiki-dark:#F97583"> fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> transcribe</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#79B8FF">self</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">, request</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> TranscribeRequest</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) </span><span style="color:#D32F2F;--shiki-dark:#F97583">-></span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Result</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">Transcript</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">>;</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="gateway-integration-cratesgatewaysrcvoicers">Gateway Integration (<code>crates/gateway/src/voice.rs</code>)</h3>
+<ul>
+<li><code>LiveTtsService</code>: Wraps TTS providers, implements <code>TtsService</code> trait</li>
+<li><code>LiveSttService</code>: Wraps STT providers, implements <code>SttService</code> trait</li>
+<li><code>NoopSttService</code>: No-op for when STT is not configured</li>
+</ul>
+<h3 id="voice-personas-cratesgatewaysrcvoice_personars">Voice Personas (<code>crates/gateway/src/voice_persona.rs</code>)</h3>
+<ul>
+<li><code>VoicePersonaStore</code>: SQLite-backed CRUD for named voice identities</li>
+<li><code>apply_persona_to_request()</code>: Merges persona bindings and instructions into <code>SynthesizeRequest</code></li>
+<li>Types: <code>VoicePersona</code>, <code>VoicePersonaPrompt</code>, <code>VoicePersonaProviderBinding</code>, <code>FallbackPolicy</code> (in <code>moltis-voice</code>)</li>
+</ul>
+<h2 id="security">Security</h2>
+<ul>
+<li>API keys are stored using <code>secrecy::Secret&#x3C;String></code> to prevent accidental logging</li>
+<li>Debug output redacts all secret values</li>
+<li>Keys can be set via environment variables or config file</li>
+</ul>
+<h2 id="adding-new-providers">Adding New Providers</h2>
+<h3 id="tts-provider">TTS Provider</h3>
+<ol>
+<li>Create <code>crates/voice/src/tts/newprovider.rs</code></li>
+<li>Implement <code>TtsProvider</code> trait</li>
+<li>Re-export from <code>crates/voice/src/tts/mod.rs</code></li>
+<li>Add to <code>LiveTtsService</code> in gateway</li>
+</ol>
+<h3 id="stt-provider">STT Provider</h3>
+<ol>
+<li>Create <code>crates/voice/src/stt/newprovider.rs</code></li>
+<li>Implement <code>SttProvider</code> trait</li>
+<li>Re-export from <code>crates/voice/src/stt/mod.rs</code></li>
+<li>Add to <code>LiveSttService</code> in gateway</li>
+</ol>
+<h2 id="web-ui-integration">Web UI Integration</h2>
+<p>The voice feature integrates with the web UI:</p>
+<ul>
+<li><strong>Microphone button</strong>: Record voice input in the chat interface</li>
+<li><strong>Settings page</strong>: Configure and enable/disable voice providers</li>
+<li><strong>Auto-detection</strong>: API keys are detected from environment variables and LLM provider configs</li>
+<li><strong>Toggle switches</strong>: Enable/disable providers without removing configuration</li>
+<li><strong>Setup instructions</strong>: Step-by-step guides for local provider installation</li>
+</ul>
+<h2 id="future-enhancements">Future Enhancements</h2>
+<ul>
+<li><strong>Streaming TTS</strong>: Chunked audio delivery for lower latency</li>
+<li><strong>VoiceWake</strong>: Wake word detection and continuous listening</li>
+<li><strong>Audio playback</strong>: Play TTS responses directly in the chat</li>
+<li><strong>Channel Integration</strong>: Auto-transcribe Telegram voice messages</li>
+<li><strong>Automatic Persona Switching</strong>: Auto-activate the linked voice persona when the active agent changes</li>
+</ul>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/trusted-network.html"><span>Previous</span>Trusted Network</a> <a class="pager-link next" href="/remote-access.html"><span>Next</span>Remote Access</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

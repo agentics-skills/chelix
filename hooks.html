@@ -1,0 +1,986 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Hooks - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a class="active" href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Features</div>  <h1 id="hooks">Hooks</h1>
+<p>Hooks let you observe, modify, or block actions at key points in the agent lifecycle. Use them for auditing, policy enforcement, prompt injection filtering, notifications, and custom integrations.</p>
+<h2 id="how-hooks-work">How Hooks Work</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="┌──────────────────────────────────────────────────────────────┐
+│                        Agent Loop                            │
+│                                                              │
+│  User Message ─→ BeforeLLMCall ─→ LLM Provider              │
+│                       │                 │                    │
+│                  modify/block      AfterLLMCall              │
+│                                         │                    │
+│                                    modify/block              │
+│                                         │                    │
+│                                         ▼                    │
+│                                  BeforeToolCall              │
+│                                         │                    │
+│                                    modify/block              │
+│                                         │                    │
+│                                    Tool Execution            │
+│                                         │                    │
+│                                    AfterToolCall             │
+│                                         │                    │
+│                                         ▼                    │
+│                              (loop continues or)             │
+│                             Response → MessageSent           │
+└──────────────────────────────────────────────────────────────┘"><code><span class="line"><span>┌──────────────────────────────────────────────────────────────┐</span></span>
+<span class="line"><span>│                        Agent Loop                            │</span></span>
+<span class="line"><span>│                                                              │</span></span>
+<span class="line"><span>│  User Message ─→ BeforeLLMCall ─→ LLM Provider              │</span></span>
+<span class="line"><span>│                       │                 │                    │</span></span>
+<span class="line"><span>│                  modify/block      AfterLLMCall              │</span></span>
+<span class="line"><span>│                                         │                    │</span></span>
+<span class="line"><span>│                                    modify/block              │</span></span>
+<span class="line"><span>│                                         │                    │</span></span>
+<span class="line"><span>│                                         ▼                    │</span></span>
+<span class="line"><span>│                                  BeforeToolCall              │</span></span>
+<span class="line"><span>│                                         │                    │</span></span>
+<span class="line"><span>│                                    modify/block              │</span></span>
+<span class="line"><span>│                                         │                    │</span></span>
+<span class="line"><span>│                                    Tool Execution            │</span></span>
+<span class="line"><span>│                                         │                    │</span></span>
+<span class="line"><span>│                                    AfterToolCall             │</span></span>
+<span class="line"><span>│                                         │                    │</span></span>
+<span class="line"><span>│                                         ▼                    │</span></span>
+<span class="line"><span>│                              (loop continues or)             │</span></span>
+<span class="line"><span>│                             Response → MessageSent           │</span></span>
+<span class="line"><span>└──────────────────────────────────────────────────────────────┘</span></span></code></pre>
+<h2 id="event-types">Event Types</h2>
+<h3 id="modifying-events-sequential">Modifying Events (Sequential)</h3>
+<p>These events run hooks sequentially. Hooks can modify the payload or block the action.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Event</th><th>Description</th><th>Can Modify</th><th>Can Block</th></tr></thead><tbody><tr><td><code>BeforeAgentStart</code></td><td>Before agent loop starts</td><td>yes</td><td>yes</td></tr><tr><td><code>BeforeLLMCall</code></td><td>Before prompt is sent to the LLM provider</td><td>yes</td><td>yes</td></tr><tr><td><code>AfterLLMCall</code></td><td>After LLM response, before tool execution</td><td>yes</td><td>yes</td></tr><tr><td><code>BeforeToolCall</code></td><td>Before a tool executes</td><td>yes</td><td>yes</td></tr><tr><td><code>BeforeCompaction</code></td><td>Before context compaction</td><td>yes</td><td>yes</td></tr><tr><td><code>MessageReceived</code></td><td>When an inbound channel/UI message arrives</td><td>yes</td><td>yes</td></tr><tr><td><code>MessageSending</code></td><td>Before sending a response</td><td>yes</td><td>yes</td></tr><tr><td><code>ToolResultPersist</code></td><td>When a tool result is persisted</td><td>yes</td><td>yes</td></tr></tbody></table>
+<p>For <code>MessageReceived</code>, <code>Block(reason)</code> aborts the turn — the user message is
+not persisted, no run starts, and the reason is delivered back to the sender
+via the originating channel (or broadcast as a <code>chat</code> rejection event for web
+clients). <code>ModifyPayload</code> must return an object of shape <code>{"content": "..."}</code>;
+the <code>content</code> string replaces the inbound text before it reaches the model or
+the session store.</p>
+<h3 id="read-only-events-parallel">Read-Only Events (Parallel)</h3>
+<p>These events run hooks in parallel for performance. They cannot modify or block.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Event</th><th>Description</th></tr></thead><tbody><tr><td><code>AfterToolCall</code></td><td>After a tool completes</td></tr><tr><td><code>AfterCompaction</code></td><td>After context is compacted</td></tr><tr><td><code>AgentEnd</code></td><td>When agent loop completes</td></tr><tr><td><code>MessageSent</code></td><td>After response is delivered</td></tr><tr><td><code>SessionStart</code></td><td>When a new session begins</td></tr><tr><td><code>SessionEnd</code></td><td>When a session ends</td></tr><tr><td><code>GatewayStart</code></td><td>When Moltis starts</td></tr><tr><td><code>GatewayStop</code></td><td>When Moltis shuts down</td></tr><tr><td><code>Command</code></td><td>When a slash command is used</td></tr></tbody></table>
+<h2 id="prompt-injection-filtering">Prompt Injection Filtering</h2>
+<p>The <code>BeforeLLMCall</code> and <code>AfterLLMCall</code> hooks provide filtering points for prompt injection defense.</p>
+<h3 id="beforellmcall">BeforeLLMCall</h3>
+<p>Fires before each LLM API call. The payload includes the full message array, provider name, model ID, and iteration count. Use it to:</p>
+<ul>
+<li>Scan prompts for injection patterns before they reach the LLM</li>
+<li>Redact PII or sensitive data from the conversation</li>
+<li>Add safety prefixes to system prompts</li>
+<li>Block requests that match known attack patterns</li>
+</ul>
+<p><strong>Payload fields:</strong></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>session_key</code></td><td>string</td><td>Session identifier</td></tr><tr><td><code>provider</code></td><td>string</td><td>Provider name (e.g. “openai”, “anthropic”)</td></tr><tr><td><code>model</code></td><td>string</td><td>Model ID (e.g. “gpt-5.2-codex”, “qwen2.5-coder-7b-q4_k_m”)</td></tr><tr><td><code>messages</code></td><td>array</td><td>Serialized message array (OpenAI format)</td></tr><tr><td><code>tool_count</code></td><td>number</td><td>Number of tool schemas sent to the LLM</td></tr><tr><td><code>iteration</code></td><td>number</td><td>1-based loop iteration</td></tr></tbody></table>
+<h3 id="afterllmcall">AfterLLMCall</h3>
+<p>Fires after the LLM response is received but before tool calls execute. For streaming responses, this fires after the full response is accumulated (text has already been streamed to the UI) but blocking still prevents tool execution.</p>
+<p><strong>Payload fields:</strong></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>session_key</code></td><td>string</td><td>Session identifier</td></tr><tr><td><code>provider</code></td><td>string</td><td>Provider name</td></tr><tr><td><code>model</code></td><td>string</td><td>Model ID</td></tr><tr><td><code>text</code></td><td>string/null</td><td>LLM response text</td></tr><tr><td><code>tool_calls</code></td><td>array</td><td>Tool calls requested by the LLM</td></tr><tr><td><code>input_tokens</code></td><td>number</td><td>Tokens consumed by the prompt</td></tr><tr><td><code>output_tokens</code></td><td>number</td><td>Tokens in the response</td></tr><tr><td><code>iteration</code></td><td>number</td><td>1-based loop iteration</td></tr></tbody></table>
+<h2 id="channel-provenance">Channel Provenance</h2>
+<p><code>BeforeToolCall</code>, <code>AfterToolCall</code>, <code>SessionStart</code>, and <code>MessageReceived</code> currently include channel provenance. The fields are optional so hooks keep working for sessions that do not originate from a channel integration.</p>
+<p><code>MessageReceived</code> keeps its legacy <code>channel</code> string field and adds the richer object as <code>channel_binding</code>. <code>BeforeToolCall</code>, <code>AfterToolCall</code>, and <code>SessionStart</code> expose the same richer object as <code>channel</code>. <code>ToolResultPersist</code> has a schema field reserved for the same shape, but that event is not currently dispatched.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>surface</code></td><td>string/null</td><td>Runtime surface, for example <code>telegram</code>, <code>discord</code>, <code>web</code>, <code>cron</code>, <code>heartbeat</code></td></tr><tr><td><code>session_kind</code></td><td>string/null</td><td>High-level source kind, usually <code>channel</code>, <code>web</code>, or <code>cron</code></td></tr><tr><td><code>channel_type</code></td><td>string/null</td><td>Channel plugin type when channel-bound</td></tr><tr><td><code>account_id</code></td><td>string/null</td><td>Channel account identifier</td></tr><tr><td><code>chat_id</code></td><td>string/null</td><td>Channel chat, room, or peer identifier</td></tr><tr><td><code>chat_type</code></td><td>string/null</td><td>Best-effort chat classification, currently most useful for Telegram</td></tr><tr><td><code>sender_id</code></td><td>string/null</td><td>Reserved for future sender provenance, currently omitted</td></tr></tbody></table>
+<p>Example <code>BeforeToolCall</code> payload excerpt:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;event&#x22;: &#x22;BeforeToolCall&#x22;,
+  &#x22;session_key&#x22;: &#x22;telegram:bot-main:-100123&#x22;,
+  &#x22;tool_name&#x22;: &#x22;exec&#x22;,
+  &#x22;arguments&#x22;: {
+    &#x22;command&#x22;: &#x22;pwd&#x22;
+  },
+  &#x22;channel&#x22;: {
+    &#x22;surface&#x22;: &#x22;telegram&#x22;,
+    &#x22;session_kind&#x22;: &#x22;channel&#x22;,
+    &#x22;channel_type&#x22;: &#x22;telegram&#x22;,
+    &#x22;account_id&#x22;: &#x22;bot-main&#x22;,
+    &#x22;chat_id&#x22;: &#x22;-100123&#x22;,
+    &#x22;chat_type&#x22;: &#x22;channel_or_supergroup&#x22;
+  }
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "event"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "BeforeToolCall"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "session_key"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "telegram:bot-main:-100123"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "tool_name"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "exec"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "arguments"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "command"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "pwd"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "channel"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "surface"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "telegram"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "session_kind"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "channel"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "channel_type"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "telegram"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "account_id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "bot-main"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "chat_id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "-100123"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "chat_type"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "channel_or_supergroup"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="example-block-suspicious-tool-calls">Example: Block Suspicious Tool Calls</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="#!/bin/bash
+# filter-injection.sh — subscribe to AfterLLMCall
+payload=$(cat)
+event=$(echo &#x22;$payload&#x22; | jq -r &#x27;.event&#x27;)
+
+if [ &#x22;$event&#x22; = &#x22;AfterLLMCall&#x22; ]; then
+    # Check if tool calls contain suspicious patterns
+    tool_names=$(echo &#x22;$payload&#x22; | jq -r &#x27;.tool_calls[].name&#x27;)
+
+    for name in $tool_names; do
+        # Block unexpected tool calls that might come from injection
+        case &#x22;$name&#x22; in
+            exec|bash|shell)
+                text=$(echo &#x22;$payload&#x22; | jq -r &#x27;.text // &#x22;&#x22;&#x27;)
+                if echo &#x22;$text&#x22; | grep -qi &#x22;ignore previous\|disregard\|new instructions&#x22;; then
+                    echo &#x22;Blocked suspicious tool call after potential injection&#x22; >&#x26;2
+                    exit 1
+                fi
+                ;;
+        esac
+    done
+fi
+
+exit 0"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">#!/bin/bash</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># filter-injection.sh — subscribe to AfterLLMCall</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">payload</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">cat</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">event</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$payload</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> jq</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -r</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '.event'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">if</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [ </span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$event</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> =</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "AfterLLMCall"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> ]; </span><span style="color:#D32F2F;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    # Check if tool calls contain suspicious patterns</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    tool_names</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$payload</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> jq</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -r</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '.tool_calls[].name'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    for</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> name </span><span style="color:#D32F2F;--shiki-dark:#F97583">in</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> $tool_names; </span><span style="color:#D32F2F;--shiki-dark:#F97583">do</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">        # Block unexpected tool calls that might come from injection</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">        case</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$name</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> in</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#DBEDFF">            exec</span><span style="color:#212121;--shiki-dark:#F97583">|</span><span style="color:#22863A;--shiki-dark:#DBEDFF">bash</span><span style="color:#212121;--shiki-dark:#F97583">|</span><span style="color:#22863A;--shiki-dark:#DBEDFF">shell</span><span style="color:#D32F2F;--shiki-dark:#F97583">)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">                text</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$payload</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> jq</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -r</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '.text // ""'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">                if</span><span style="color:#6F42C1;--shiki-dark:#79B8FF"> echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$text</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> grep</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -qi</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "ignore previous\|disregard\|new instructions"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">; </span><span style="color:#D32F2F;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">                    echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Blocked suspicious tool call after potential injection"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> >&#x26;2</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">                    exit</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">                fi</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">                ;;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">        esac</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    done</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">fi</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">exit</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0</span></span></code></pre>
+<h3 id="example-external-proxy-filter">Example: External Proxy Filter</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="#!/bin/bash
+# proxy-filter.sh — subscribe to BeforeLLMCall
+payload=$(cat)
+
+# Send to an external moderation API
+result=$(echo &#x22;$payload&#x22; | curl -s -X POST \
+  -H &#x22;Content-Type: application/json&#x22; \
+  -d @- \
+  &#x22;$MODERATION_API_URL/check&#x22;)
+
+# Block if the API flags it
+if echo &#x22;$result&#x22; | jq -e &#x27;.flagged&#x27; > /dev/null 2>&#x26;1; then
+    reason=$(echo &#x22;$result&#x22; | jq -r &#x27;.reason // &#x22;content policy violation&#x22;&#x27;)
+    echo &#x22;$reason&#x22; >&#x26;2
+    exit 1
+fi
+
+exit 0"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">#!/bin/bash</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># proxy-filter.sh — subscribe to BeforeLLMCall</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">payload</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">cat</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Send to an external moderation API</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">result</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$payload</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> curl</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -s</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -X</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> POST</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -H</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Content-Type: application/json"</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -d</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> @-</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">  "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$MODERATION_API_URL</span><span style="color:#22863A;--shiki-dark:#9ECBFF">/check"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Block if the API flags it</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">if</span><span style="color:#6F42C1;--shiki-dark:#79B8FF"> echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$result</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> jq</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -e</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '.flagged'</span><span style="color:#D32F2F;--shiki-dark:#F97583"> ></span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /dev/null</span><span style="color:#D32F2F;--shiki-dark:#F97583"> 2>&#x26;1</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">; </span><span style="color:#D32F2F;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    reason</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$result</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> jq</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -r</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '.reason // "content policy violation"'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">    echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$reason</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> >&#x26;2</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">    exit</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">fi</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">exit</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0</span></span></code></pre>
+<h2 id="creating-a-hook">Creating a Hook</h2>
+<h3 id="1-create-the-hook-directory">1. Create the Hook Directory</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="mkdir -p ~/.moltis/hooks/my-hook"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">mkdir</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ~/.moltis/hooks/my-hook</span></span></code></pre>
+<h3 id="2-create-hookmd">2. Create HOOK.md</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="markdown" data-code="+++
+name = &#x22;my-hook&#x22;
+description = &#x22;Logs all tool calls to a file&#x22;
+events = [&#x22;BeforeToolCall&#x22;, &#x22;AfterToolCall&#x22;]
+command = &#x22;./handler.sh&#x22;
+timeout = 5
+
+[requires]
+os = [&#x22;darwin&#x22;, &#x22;linux&#x22;]
+bins = [&#x22;jq&#x22;]
+env = [&#x22;LOG_FILE&#x22;]
++++
+
+# My Hook
+
+This hook logs all tool calls for auditing purposes."><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">+++</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">name = "my-hook"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">description = "Logs all tool calls to a file"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">events = ["BeforeToolCall", "AfterToolCall"]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command = "./handler.sh"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">timeout = 5</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#D32F2F;--shiki-light-text-decoration:inherit;--shiki-dark:#DBEDFF;--shiki-dark-text-decoration:underline">requires</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">os = ["darwin", "linux"]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">bins = [</span><span style="color:#D32F2F;--shiki-light-text-decoration:inherit;--shiki-dark:#DBEDFF;--shiki-dark-text-decoration:underline">"jq"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">env = [</span><span style="color:#D32F2F;--shiki-light-text-decoration:inherit;--shiki-dark:#DBEDFF;--shiki-dark-text-decoration:underline">"LOG_FILE"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">+++</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6F42C1;--shiki-light-font-weight:bold;--shiki-dark:#79B8FF;--shiki-dark-font-weight:bold"># My Hook</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">This hook logs all tool calls for auditing purposes.</span></span></code></pre>
+<h3 id="3-create-the-handler-script">3. Create the Handler Script</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="#!/bin/bash
+# handler.sh
+
+# Read event payload from stdin
+payload=$(cat)
+
+# Extract event type
+event=$(echo &#x22;$payload&#x22; | jq -r &#x27;.event&#x27;)
+
+# Log to file
+echo &#x22;$(date -Iseconds) $event: $payload&#x22; >> &#x22;$LOG_FILE&#x22;
+
+# Exit 0 to continue (don&#x27;t block)
+exit 0"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">#!/bin/bash</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># handler.sh</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Read event payload from stdin</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">payload</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">cat</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Extract event type</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">event</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$payload</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> jq</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -r</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '.event'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Log to file</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "$(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">date</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -Iseconds</span><span style="color:#22863A;--shiki-dark:#9ECBFF">) </span><span style="color:#22863A;--shiki-dark:#E1E4E8">$event</span><span style="color:#22863A;--shiki-dark:#9ECBFF">: </span><span style="color:#22863A;--shiki-dark:#E1E4E8">$payload</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> >></span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$LOG_FILE</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Exit 0 to continue (don't block)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">exit</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0</span></span></code></pre>
+<h3 id="4-make-it-executable">4. Make it Executable</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="chmod +x ~/.moltis/hooks/my-hook/handler.sh"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">chmod</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> +x</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ~/.moltis/hooks/my-hook/handler.sh</span></span></code></pre>
+<h2 id="shell-hook-protocol">Shell Hook Protocol</h2>
+<p>Hooks communicate via stdin/stdout and exit codes:</p>
+<h3 id="input">Input</h3>
+<p>The event payload is passed as JSON on stdin:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;event&#x22;: &#x22;BeforeToolCall&#x22;,
+  &#x22;session_key&#x22;: &#x22;abc123&#x22;,
+  &#x22;tool_name&#x22;: &#x22;exec&#x22;,
+  &#x22;arguments&#x22;: {
+    &#x22;command&#x22;: &#x22;ls -la&#x22;
+  },
+  &#x22;channel&#x22;: {
+    &#x22;surface&#x22;: &#x22;telegram&#x22;,
+    &#x22;session_kind&#x22;: &#x22;channel&#x22;,
+    &#x22;channel_type&#x22;: &#x22;telegram&#x22;,
+    &#x22;account_id&#x22;: &#x22;bot-main&#x22;,
+    &#x22;chat_id&#x22;: &#x22;-100123&#x22;,
+    &#x22;chat_type&#x22;: &#x22;channel_or_supergroup&#x22;
+  }
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "event"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "BeforeToolCall"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "session_key"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "abc123"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "tool_name"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "exec"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "arguments"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "command"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "ls -la"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "channel"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "surface"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "telegram"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "session_kind"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "channel"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "channel_type"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "telegram"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "account_id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "bot-main"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "chat_id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "-100123"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "chat_type"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "channel_or_supergroup"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>For modifying events, stdin is the full tagged <code>HookPayload</code>. If your hook returns
+<code>{"action":"modify","data":...}</code>, the <code>data</code> value replaces the event-specific
+mutable portion of the payload. For <code>BeforeToolCall</code>, that means the replacement
+value becomes the new <code>arguments</code> object.</p>
+<h3 id="output">Output</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Exit Code</th><th>Stdout</th><th>Result</th></tr></thead><tbody><tr><td><code>0</code></td><td>(empty)</td><td>Continue normally</td></tr><tr><td><code>0</code></td><td><code>{"action":"modify","data":{...}}</code></td><td>Replace payload data</td></tr><tr><td><code>1</code></td><td>—</td><td>Block (stderr = reason)</td></tr></tbody></table>
+<h3 id="example-modify-tool-arguments">Example: Modify Tool Arguments</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="#!/bin/bash
+payload=$(cat)
+tool=$(echo &#x22;$payload&#x22; | jq -r &#x27;.tool_name&#x27;)
+
+if [ &#x22;$tool&#x22; = &#x22;exec&#x22; ]; then
+    # Add safety flag to shell commands executed by the exec tool
+    modified_args=$(echo &#x22;$payload&#x22; | jq &#x27;.arguments.command = &#x22;set -e; &#x22; + .arguments.command | .arguments&#x27;)
+    echo &#x22;{\&#x22;action\&#x22;:\&#x22;modify\&#x22;,\&#x22;data\&#x22;:$modified_args}&#x22;
+fi
+
+exit 0"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">#!/bin/bash</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">payload</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">cat</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">tool</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$payload</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> jq</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -r</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '.tool_name'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">if</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [ </span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$tool</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> =</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "exec"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> ]; </span><span style="color:#D32F2F;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    # Add safety flag to shell commands executed by the exec tool</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    modified_args</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$payload</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> jq</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '.arguments.command = "set -e; " + .arguments.command | .arguments'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">    echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "{</span><span style="color:#22863A;--shiki-dark:#79B8FF">\"</span><span style="color:#22863A;--shiki-dark:#9ECBFF">action</span><span style="color:#22863A;--shiki-dark:#79B8FF">\"</span><span style="color:#22863A;--shiki-dark:#9ECBFF">:</span><span style="color:#22863A;--shiki-dark:#79B8FF">\"</span><span style="color:#22863A;--shiki-dark:#9ECBFF">modify</span><span style="color:#22863A;--shiki-dark:#79B8FF">\"</span><span style="color:#22863A;--shiki-dark:#9ECBFF">,</span><span style="color:#22863A;--shiki-dark:#79B8FF">\"</span><span style="color:#22863A;--shiki-dark:#9ECBFF">data</span><span style="color:#22863A;--shiki-dark:#79B8FF">\"</span><span style="color:#22863A;--shiki-dark:#9ECBFF">:</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$modified_args</span><span style="color:#22863A;--shiki-dark:#9ECBFF">}"</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">fi</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">exit</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0</span></span></code></pre>
+<h3 id="example-block-dangerous-commands">Example: Block Dangerous Commands</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="#!/bin/bash
+payload=$(cat)
+command=$(echo &#x22;$payload&#x22; | jq -r &#x27;.arguments.command // &#x22;&#x22;&#x27;)
+
+# Block rm -rf /
+if echo &#x22;$command&#x22; | grep -qE &#x27;rm\s+-rf\s+/&#x27;; then
+    echo &#x22;Blocked dangerous rm command&#x22; >&#x26;2
+    exit 1
+fi
+
+exit 0"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">#!/bin/bash</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">payload</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">cat</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$payload</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> jq</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -r</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '.arguments.command // ""'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Block rm -rf /</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">if</span><span style="color:#6F42C1;--shiki-dark:#79B8FF"> echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$command</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> grep</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -qE</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> 'rm\s+-rf\s+/'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">; </span><span style="color:#D32F2F;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">    echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Blocked dangerous rm command"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> >&#x26;2</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">    exit</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">fi</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">exit</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0</span></span></code></pre>
+<h2 id="hook-discovery">Hook Discovery</h2>
+<p>Hooks are discovered from <code>HOOK.md</code> files and <code>moltis.toml</code> config entries:</p>
+<ol>
+<li><strong>Project-local</strong>: <code>&#x3C;workspace>/.moltis/hooks/&#x3C;name>/HOOK.md</code></li>
+<li><strong>User-global</strong>: <code>~/.moltis/hooks/&#x3C;name>/HOOK.md</code></li>
+</ol>
+<p>Project-local hooks take precedence over global hooks with the same name. If a hook declared in
+<code>moltis.toml</code> has the same name as a filesystem hook, the filesystem hook takes precedence and the
+config hook is skipped to avoid running the same hook twice. Config hooks appear with source
+<code>config</code> in the hooks UI/status output.</p>
+<h2 id="configuration-in-moltistoml">Configuration in moltis.toml</h2>
+<p>You can also define hooks directly in the config file:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[hooks]
+[[hooks.hooks]]
+name = &#x22;audit-log&#x22;
+command = &#x22;./hooks/audit.sh&#x22;
+events = [&#x22;BeforeToolCall&#x22;, &#x22;AfterToolCall&#x22;]
+timeout = 5
+
+[[hooks.hooks]]
+name = &#x22;llm-filter&#x22;
+command = &#x22;./hooks/filter-injection.sh&#x22;
+events = [&#x22;BeforeLLMCall&#x22;, &#x22;AfterLLMCall&#x22;]
+timeout = 10
+
+[[hooks.hooks]]
+name = &#x22;notify-slack&#x22;
+command = &#x22;./hooks/slack-notify.sh&#x22;
+events = [&#x22;SessionEnd&#x22;]
+env = { SLACK_WEBHOOK_URL = &#x22;https://hooks.slack.com/...&#x22; }"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">hooks</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">hooks</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">hooks</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">name </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "audit-log"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "./hooks/audit.sh"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">events </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"BeforeToolCall"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "AfterToolCall"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">timeout </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 5</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">hooks</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">hooks</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">name </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "llm-filter"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "./hooks/filter-injection.sh"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">events </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"BeforeLLMCall"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "AfterLLMCall"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">timeout </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 10</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">hooks</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">hooks</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">name </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "notify-slack"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "./hooks/slack-notify.sh"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">events </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"SessionEnd"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">env </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { SLACK_WEBHOOK_URL </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://hooks.slack.com/..."</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span></code></pre>
+<h2 id="eligibility-requirements">Eligibility Requirements</h2>
+<p>Hooks can declare requirements that must be met:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[requires]
+os = [&#x22;darwin&#x22;, &#x22;linux&#x22;]       # Only run on these OSes
+bins = [&#x22;jq&#x22;, &#x22;curl&#x22;]          # Required binaries in PATH
+env = [&#x22;SLACK_WEBHOOK_URL&#x22;]    # Required environment variables"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">requires</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">os </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"darwin"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "linux"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]       </span><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Only run on these OSes</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">bins </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"jq"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "curl"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]          </span><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Required binaries in PATH</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">env </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"SLACK_WEBHOOK_URL"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]    </span><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Required environment variables</span></span></code></pre>
+<p>If requirements aren’t met, the hook is skipped (not an error).</p>
+<h2 id="circuit-breaker">Circuit Breaker</h2>
+<p>Hooks that fail repeatedly are automatically disabled:</p>
+<ul>
+<li><strong>Threshold</strong>: 3 consecutive failures</li>
+<li><strong>Cooldown</strong>: 60 seconds</li>
+<li><strong>Recovery</strong>: Auto-re-enabled after cooldown</li>
+</ul>
+<p>This prevents a broken hook from blocking all operations.</p>
+<h2 id="cli-commands">CLI Commands</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# List all discovered hooks
+moltis hooks list
+
+# List only eligible hooks (requirements met)
+moltis hooks list --eligible
+
+# Output as JSON
+moltis hooks list --json
+
+# Show details for a specific hook
+moltis hooks info my-hook"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># List all discovered hooks</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> hooks</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> list</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># List only eligible hooks (requirements met)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> hooks</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> list</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --eligible</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Output as JSON</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> hooks</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> list</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --json</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Show details for a specific hook</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> hooks</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> info</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> my-hook</span></span></code></pre>
+<h2 id="bundled-hooks">Bundled Hooks</h2>
+<p>Moltis includes several built-in hooks:</p>
+<h2 id="workspace-context-files">Workspace Context Files</h2>
+<p>Moltis supports several workspace markdown files in <code>data_dir</code>.</p>
+<h3 id="bootmd">BOOT.md</h3>
+<p><code>BOOT.md</code> is loaded per session and injected into the system prompt as startup context.</p>
+<p>Best use is for short, explicit startup tasks (health checks, reminders,
+“send one startup message”, etc.). If the file is missing or empty, nothing is injected.</p>
+<p>Agent-specific overrides are supported: place <code>BOOT.md</code> in <code>agents/&#x3C;id>/BOOT.md</code>.</p>
+<h3 id="toolsmd">TOOLS.md</h3>
+<p><code>TOOLS.md</code> is loaded as a workspace context file in the system prompt.</p>
+<p>Best use is to combine:</p>
+<ul>
+<li><strong>Local notes</strong>: environment-specific facts (hosts, device names, channel aliases)</li>
+<li><strong>Policy constraints</strong>: “prefer read-only tools first”, “never run X on startup”, etc.</li>
+</ul>
+<p>If <code>TOOLS.md</code> is empty or missing, it is not injected.</p>
+<h3 id="agentsmd-workspace">AGENTS.md (workspace)</h3>
+<p>Moltis also supports a workspace-level <code>AGENTS.md</code> in <code>data_dir</code>.</p>
+<p>This is separate from project <code>AGENTS.md</code>/<code>CLAUDE.md</code> discovery. Use workspace
+<code>AGENTS.md</code> for global instructions that should apply across projects in this workspace.</p>
+<h3 id="session-memory">session-memory</h3>
+<p>Saves session context when you use the <code>/new</code> command, preserving important information for future sessions.</p>
+<h3 id="command-logger">command-logger</h3>
+<p>Logs all <code>Command</code> events to a JSONL file for auditing.</p>
+<h2 id="example-hooks">Example Hooks</h2>
+<h3 id="recommended-destructive-command-guard-dcg">Recommended: Destructive Command Guard (dcg)</h3>
+<p><a href="https://github.com/Dicklesworthstone/destructive_command_guard">dcg</a> is an
+external tool that scans shell commands against 49+ destructive pattern
+categories, including heredoc/inline-script scanning, database, cloud, and
+infrastructure patterns.</p>
+<p><strong>Install:</strong></p>
+<p>Pin to a released tag and verify the script’s SHA-256 before executing it —
+never pipe an unpinned <code>curl | bash</code> from <code>main</code>. Check the project’s
+<a href="https://github.com/Dicklesworthstone/destructive_command_guard/releases">releases page</a>
+for the latest tag and expected checksum.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="DCG_VERSION=&#x22;v0.4.0&#x22;
+DCG_SHA256=&#x22;2cd1287c30cc7bfca3ec6e45a3a474e9bb8f8586dfe83d78db0d6c3a25f3b55c&#x22;
+curl -fsSL &#x22;https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/${DCG_VERSION}/install.sh&#x22; -o /tmp/dcg-install.sh
+echo &#x22;${DCG_SHA256}  /tmp/dcg-install.sh&#x22; | shasum -a 256 -c - &#x26;&#x26; bash /tmp/dcg-install.sh
+rm /tmp/dcg-install.sh"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">DCG_VERSION</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"v0.4.0"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">DCG_SHA256</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"2cd1287c30cc7bfca3ec6e45a3a474e9bb8f8586dfe83d78db0d6c3a25f3b55c"</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -fsSL</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/${</span><span style="color:#22863A;--shiki-dark:#E1E4E8">DCG_VERSION</span><span style="color:#22863A;--shiki-dark:#9ECBFF">}/install.sh"</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -o</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /tmp/dcg-install.sh</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "${</span><span style="color:#22863A;--shiki-dark:#E1E4E8">DCG_SHA256</span><span style="color:#22863A;--shiki-dark:#9ECBFF">}  /tmp/dcg-install.sh"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> shasum</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -a</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 256</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -c</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> -</span><span style="color:#212121;--shiki-dark:#E1E4E8"> &#x26;&#x26;</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> bash</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /tmp/dcg-install.sh</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">rm</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /tmp/dcg-install.sh</span></span></code></pre>
+<p>Alternatively, review the script first and only then execute it:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="curl -fsSL &#x22;https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/v0.4.0/install.sh&#x22; -o /tmp/dcg-install.sh
+less /tmp/dcg-install.sh   # review before running
+bash /tmp/dcg-install.sh &#x26;&#x26; rm /tmp/dcg-install.sh"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -fsSL</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/v0.4.0/install.sh"</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -o</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /tmp/dcg-install.sh</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">less</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /tmp/dcg-install.sh</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">   # review before running</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">bash</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /tmp/dcg-install.sh</span><span style="color:#212121;--shiki-dark:#E1E4E8"> &#x26;&#x26;</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> rm</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /tmp/dcg-install.sh</span></span></code></pre>
+<p><strong>Hook setup:</strong></p>
+<p>Copy the bundled hook example to your hooks directory:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="cp -r examples/hooks/dcg-guard ~/.moltis/hooks/dcg-guard
+chmod +x ~/.moltis/hooks/dcg-guard/handler.sh"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">cp</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -r</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> examples/hooks/dcg-guard</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ~/.moltis/hooks/dcg-guard</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">chmod</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> +x</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ~/.moltis/hooks/dcg-guard/handler.sh</span></span></code></pre>
+<p>The hook subscribes to <code>BeforeToolCall</code>, extracts exec commands, pipes them
+through dcg, and blocks any command that dcg flags as destructive. See
+<code>examples/hooks/dcg-guard/HOOK.md</code> for details.</p>
+<blockquote>
+<p><strong>Note:</strong> dcg complements but does not replace the built-in dangerous command
+blocklist, sandbox isolation, or the approval system. Use it as an additional
+defense layer with broader pattern coverage.</p>
+</blockquote>
+<h3 id="slack-notification-on-session-end">Slack Notification on Session End</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="#!/bin/bash
+# slack-notify.sh
+payload=$(cat)
+session_key=$(echo &#x22;$payload&#x22; | jq -r &#x27;.session_key&#x27;)
+
+curl -X POST &#x22;$SLACK_WEBHOOK_URL&#x22; \
+  -H &#x27;Content-Type: application/json&#x27; \
+  -d &#x22;{\&#x22;text\&#x22;:\&#x22;Session $session_key ended\&#x22;}&#x22;
+
+exit 0"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">#!/bin/bash</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># slack-notify.sh</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">payload</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">cat</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">session_key</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$payload</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> jq</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -r</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '.session_key'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -X</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> POST</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$SLACK_WEBHOOK_URL</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -H</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> 'Content-Type: application/json'</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -d</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "{</span><span style="color:#22863A;--shiki-dark:#79B8FF">\"</span><span style="color:#22863A;--shiki-dark:#9ECBFF">text</span><span style="color:#22863A;--shiki-dark:#79B8FF">\"</span><span style="color:#22863A;--shiki-dark:#9ECBFF">:</span><span style="color:#22863A;--shiki-dark:#79B8FF">\"</span><span style="color:#22863A;--shiki-dark:#9ECBFF">Session </span><span style="color:#22863A;--shiki-dark:#E1E4E8">$session_key</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> ended</span><span style="color:#22863A;--shiki-dark:#79B8FF">\"</span><span style="color:#22863A;--shiki-dark:#9ECBFF">}"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">exit</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0</span></span></code></pre>
+<h3 id="redact-secrets-from-tool-arguments">Redact Secrets from Tool Arguments</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="#!/bin/bash
+# redact-secrets.sh
+payload=$(cat)
+
+# Redact secrets from exec-tool command arguments before execution
+command=$(echo &#x22;$payload&#x22; | jq -r &#x27;.arguments.command // &#x22;&#x22;&#x27;)
+redacted=$(printf &#x27;%s&#x27; &#x22;$command&#x22; | sed -E &#x27;
+  s/sk-[a-zA-Z0-9]{32,}/[REDACTED]/g
+  s/ghp_[a-zA-Z0-9]{36}/[REDACTED]/g
+  s/password=[^&#x26;[:space:]]+/password=[REDACTED]/g
+&#x27;)
+
+modified_args=$(echo &#x22;$payload&#x22; | jq --arg command &#x22;$redacted&#x22; &#x27;.arguments.command = $command | .arguments&#x27;)
+echo &#x22;{\&#x22;action\&#x22;:\&#x22;modify\&#x22;,\&#x22;data\&#x22;:$modified_args}&#x22;
+exit 0"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">#!/bin/bash</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># redact-secrets.sh</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">payload</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">cat</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Redact secrets from exec-tool command arguments before execution</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$payload</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> jq</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -r</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '.arguments.command // ""'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">redacted</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#79B8FF">printf</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '%s'</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$command</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> sed</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -E</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">  s/sk-[a-zA-Z0-9]{32,}/[REDACTED]/g</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">  s/ghp_[a-zA-Z0-9]{36}/[REDACTED]/g</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">  s/password=[^&#x26;[:space:]]+/password=[REDACTED]/g</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">modified_args</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$payload</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> jq</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --arg</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> command</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$redacted</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '.arguments.command = $command | .arguments'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "{</span><span style="color:#22863A;--shiki-dark:#79B8FF">\"</span><span style="color:#22863A;--shiki-dark:#9ECBFF">action</span><span style="color:#22863A;--shiki-dark:#79B8FF">\"</span><span style="color:#22863A;--shiki-dark:#9ECBFF">:</span><span style="color:#22863A;--shiki-dark:#79B8FF">\"</span><span style="color:#22863A;--shiki-dark:#9ECBFF">modify</span><span style="color:#22863A;--shiki-dark:#79B8FF">\"</span><span style="color:#22863A;--shiki-dark:#9ECBFF">,</span><span style="color:#22863A;--shiki-dark:#79B8FF">\"</span><span style="color:#22863A;--shiki-dark:#9ECBFF">data</span><span style="color:#22863A;--shiki-dark:#79B8FF">\"</span><span style="color:#22863A;--shiki-dark:#9ECBFF">:</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$modified_args</span><span style="color:#22863A;--shiki-dark:#9ECBFF">}"</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">exit</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0</span></span></code></pre>
+<h3 id="block-file-writes-outside-project">Block File Writes Outside Project</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="#!/bin/bash
+# sandbox-writes.sh
+payload=$(cat)
+tool=$(echo &#x22;$payload&#x22; | jq -r &#x27;.tool_name&#x27;)
+
+if [ &#x22;$tool&#x22; = &#x22;write_file&#x22; ]; then
+    path=$(echo &#x22;$payload&#x22; | jq -r &#x27;.arguments.path&#x27;)
+
+    # Only allow writes under current project
+    if [[ ! &#x22;$path&#x22; =~ ^/workspace/ ]]; then
+        echo &#x22;File writes only allowed in /workspace&#x22; >&#x26;2
+        exit 1
+    fi
+fi
+
+exit 0"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">#!/bin/bash</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># sandbox-writes.sh</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">payload</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">cat</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">tool</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$payload</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> jq</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -r</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '.tool_name'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">if</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [ </span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$tool</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> =</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "write_file"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> ]; </span><span style="color:#D32F2F;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    path</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$payload</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> jq</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -r</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '.arguments.path'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    # Only allow writes under current project</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    if</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [[ </span><span style="color:#D32F2F;--shiki-dark:#F97583">!</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "</span><span style="color:#22863A;--shiki-dark:#E1E4E8">$path</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> =~</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> ^/workspace/ ]]; </span><span style="color:#D32F2F;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">        echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "File writes only allowed in /workspace"</span><span style="color:#D32F2F;--shiki-dark:#F97583"> >&#x26;2</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">        exit</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    fi</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">fi</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">exit</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0</span></span></code></pre>
+<h2 id="best-practices">Best Practices</h2>
+<ol>
+<li><strong>Keep hooks fast</strong> — Set appropriate timeouts (default: 5s)</li>
+<li><strong>Handle errors gracefully</strong> — Use <code>exit 0</code> unless you want to block</li>
+<li><strong>Log for debugging</strong> — Write to a log file, not stdout</li>
+<li><strong>Test locally first</strong> — Pipe sample JSON through your script</li>
+<li><strong>Use jq for JSON</strong> — It’s reliable and fast for parsing</li>
+<li><strong>Layer defenses</strong> — Use <code>BeforeLLMCall</code> for input filtering and <code>AfterLLMCall</code> for output filtering</li>
+</ol>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/memory-comparison.html"><span>Previous</span>Chelix vs OpenClaw</a> <a class="pager-link next" href="/local-llm.html"><span>Next</span>Local LLMs</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

@@ -1,0 +1,480 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>SQLite Migrations - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a class="active" href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Architecture</div>  <h1 id="sqlite-database-migrations">SQLite Database Migrations</h1>
+<p>Moltis uses <a href="https://github.com/launchbadge/sqlx">sqlx</a> for database access and its
+built-in migration system for schema management. Each crate owns its migrations,
+keeping schema definitions close to the code that uses them.</p>
+<h2 id="architecture">Architecture</h2>
+<p>Each crate that uses SQLite has its own <code>migrations/</code> directory and exposes a
+<code>run_migrations()</code> function. The gateway orchestrates running all migrations at
+startup in the correct dependency order.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="crates/
+├── projects/
+│   ├── migrations/
+│   │   └── 20240205100000_init.sql   # projects table
+│   └── src/lib.rs                     # run_migrations()
+├── sessions/
+│   ├── migrations/
+│   │   └── 20240205100001_init.sql   # sessions, channel_sessions, session_state
+│   └── src/lib.rs                     # run_migrations()
+├── cron/
+│   ├── migrations/
+│   │   └── 20240205100002_init.sql   # cron_jobs, cron_runs
+│   └── src/lib.rs                     # run_migrations()
+├── gateway/
+│   ├── migrations/
+│   │   └── 20240205100003_init.sql   # auth, message_log, channels, agents, ...
+│   └── src/server/
+│       └── prepare_core.rs            # orchestrates moltis.db migrations
+├── webhooks/
+│   ├── migrations/
+│   │   └── 20260407000000_initial.sql # webhooks, webhook_deliveries, ...
+│   └── src/lib.rs                     # run_migrations()
+├── vault/
+│   ├── migrations/
+│   │   └── 20260214000001_vault_metadata.sql  # vault_metadata
+│   └── src/lib.rs                     # run_migrations() (feature-gated)
+└── memory/
+    ├── migrations/
+    │   └── 20240205100004_init.sql   # files, chunks, embedding_cache, FTS
+    └── src/lib.rs                     # run_migrations() (separate memory.db)"><code><span class="line"><span>crates/</span></span>
+<span class="line"><span>├── projects/</span></span>
+<span class="line"><span>│   ├── migrations/</span></span>
+<span class="line"><span>│   │   └── 20240205100000_init.sql   # projects table</span></span>
+<span class="line"><span>│   └── src/lib.rs                     # run_migrations()</span></span>
+<span class="line"><span>├── sessions/</span></span>
+<span class="line"><span>│   ├── migrations/</span></span>
+<span class="line"><span>│   │   └── 20240205100001_init.sql   # sessions, channel_sessions, session_state</span></span>
+<span class="line"><span>│   └── src/lib.rs                     # run_migrations()</span></span>
+<span class="line"><span>├── cron/</span></span>
+<span class="line"><span>│   ├── migrations/</span></span>
+<span class="line"><span>│   │   └── 20240205100002_init.sql   # cron_jobs, cron_runs</span></span>
+<span class="line"><span>│   └── src/lib.rs                     # run_migrations()</span></span>
+<span class="line"><span>├── gateway/</span></span>
+<span class="line"><span>│   ├── migrations/</span></span>
+<span class="line"><span>│   │   └── 20240205100003_init.sql   # auth, message_log, channels, agents, ...</span></span>
+<span class="line"><span>│   └── src/server/</span></span>
+<span class="line"><span>│       └── prepare_core.rs            # orchestrates moltis.db migrations</span></span>
+<span class="line"><span>├── webhooks/</span></span>
+<span class="line"><span>│   ├── migrations/</span></span>
+<span class="line"><span>│   │   └── 20260407000000_initial.sql # webhooks, webhook_deliveries, ...</span></span>
+<span class="line"><span>│   └── src/lib.rs                     # run_migrations()</span></span>
+<span class="line"><span>├── vault/</span></span>
+<span class="line"><span>│   ├── migrations/</span></span>
+<span class="line"><span>│   │   └── 20260214000001_vault_metadata.sql  # vault_metadata</span></span>
+<span class="line"><span>│   └── src/lib.rs                     # run_migrations() (feature-gated)</span></span>
+<span class="line"><span>└── memory/</span></span>
+<span class="line"><span>    ├── migrations/</span></span>
+<span class="line"><span>    │   └── 20240205100004_init.sql   # files, chunks, embedding_cache, FTS</span></span>
+<span class="line"><span>    └── src/lib.rs                     # run_migrations() (separate memory.db)</span></span></code></pre>
+<h2 id="how-it-works">How It Works</h2>
+<h3 id="migration-ownership">Migration Ownership</h3>
+<p>Each crate is autonomous and owns its schema:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Crate</th><th>Database</th><th>Tables</th><th>Migration File</th></tr></thead><tbody><tr><td><code>moltis-projects</code></td><td><code>moltis.db</code></td><td><code>projects</code></td><td><code>20240205100000_init.sql</code></td></tr><tr><td><code>moltis-sessions</code></td><td><code>moltis.db</code></td><td><code>sessions</code>, <code>channel_sessions</code>, <code>session_state</code></td><td><code>20240205100001_init.sql</code> + 9 migrations</td></tr><tr><td><code>moltis-cron</code></td><td><code>moltis.db</code></td><td><code>cron_jobs</code>, <code>cron_runs</code></td><td><code>20240205100002_init.sql</code> + 1 migration</td></tr><tr><td><code>moltis-gateway</code></td><td><code>moltis.db</code></td><td><code>auth_*</code>, <code>passkeys</code>, <code>api_keys</code>, <code>env_variables</code>, <code>message_log</code>, <code>channels</code>, <code>agents</code>, <code>session_shares</code>, <code>device_pairing</code>, <code>ssh_keys</code>, <code>ssh_targets</code>, <code>auth_audit_log</code></td><td><code>20240205100003_init.sql</code> + 12 migrations</td></tr><tr><td><code>moltis-webhooks</code></td><td><code>moltis.db</code></td><td><code>webhooks</code>, <code>webhook_deliveries</code>, <code>webhook_response_actions</code></td><td><code>20260407000000_initial.sql</code> + 1 migration</td></tr><tr><td><code>moltis-vault</code></td><td><code>moltis.db</code></td><td><code>vault_metadata</code></td><td><code>20260214000001_vault_metadata.sql</code> (feature-gated)</td></tr><tr><td><code>moltis-memory</code></td><td><code>memory.db</code></td><td><code>files</code>, <code>chunks</code>, <code>embedding_cache</code>, <code>chunks_fts</code></td><td><code>20240205100004_init.sql</code></td></tr></tbody></table>
+<h3 id="startup-sequence">Startup Sequence</h3>
+<p>The gateway runs migrations in dependency order via
+<code>crates/gateway/src/server/prepare_core.rs</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="rust" data-code="moltis_projects::run_migrations(&#x26;db_pool).await?;    // 1. projects first
+moltis_sessions::run_migrations(&#x26;db_pool).await?;    // 2. sessions (FK → projects)
+moltis_cron::run_migrations(&#x26;db_pool).await?;        // 3. cron (independent)
+moltis_webhooks::run_migrations(&#x26;db_pool).await?;    // 4. webhooks (independent)
+crate::run_migrations(&#x26;db_pool).await?;              // 5. gateway tables
+#[cfg(feature = &#x22;vault&#x22;)]
+moltis_vault::run_migrations(&#x26;db_pool).await?;      // 6. vault (feature-gated)"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#B392F0">moltis_projects</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">run_migrations</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">db_pool)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.await?</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;    </span><span style="color:#C2C3C5;--shiki-dark:#6A737D">// 1. projects first</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#B392F0">moltis_sessions</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">run_migrations</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">db_pool)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.await?</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;    </span><span style="color:#C2C3C5;--shiki-dark:#6A737D">// 2. sessions (FK → projects)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#B392F0">moltis_cron</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">run_migrations</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">db_pool)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.await?</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;        </span><span style="color:#C2C3C5;--shiki-dark:#6A737D">// 3. cron (independent)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#B392F0">moltis_webhooks</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">run_migrations</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">db_pool)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.await?</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;    </span><span style="color:#C2C3C5;--shiki-dark:#6A737D">// 4. webhooks (independent)</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">crate::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">run_migrations</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">db_pool)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.await?</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;              </span><span style="color:#C2C3C5;--shiki-dark:#6A737D">// 5. gateway tables</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">#[cfg(feature </span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "vault"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#B392F0">moltis_vault</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">run_migrations</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">db_pool)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.await?</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;      </span><span style="color:#C2C3C5;--shiki-dark:#6A737D">// 6. vault (feature-gated)</span></span></code></pre>
+<p>Sessions depends on projects due to a foreign key (<code>sessions.project_id</code> references
+<code>projects.id</code>), so projects must migrate first. Memory runs separately against
+its own <code>memory.db</code> pool.</p>
+<h3 id="version-tracking">Version Tracking</h3>
+<p>sqlx tracks applied migrations in the <code>_sqlx_migrations</code> table:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="sql" data-code="SELECT version, description, installed_on, success FROM _sqlx_migrations;"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">SELECT</span><span style="color:#D32F2F;--shiki-dark:#F97583"> version</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">, </span><span style="color:#D32F2F;--shiki-dark:#F97583">description</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">, installed_on, success </span><span style="color:#D32F2F;--shiki-dark:#F97583">FROM</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> _sqlx_migrations;</span></span></code></pre>
+<p>Migrations are identified by their timestamp prefix (e.g., <code>20240205100000</code>), which
+must be globally unique across all crates.</p>
+<h2 id="database-files">Database Files</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Database</th><th>Location</th><th>Crates</th></tr></thead><tbody><tr><td><code>moltis.db</code></td><td><code>~/.moltis/moltis.db</code></td><td>projects, sessions, cron, gateway, webhooks, vault</td></tr><tr><td><code>memory.db</code></td><td><code>~/.moltis/memory.db</code></td><td>memory (separate, managed internally)</td></tr></tbody></table>
+<h2 id="adding-new-migrations">Adding New Migrations</h2>
+<h3 id="adding-a-column-to-an-existing-table">Adding a Column to an Existing Table</h3>
+<ol>
+<li>Create a new migration file in the owning crate:</li>
+</ol>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Example: adding tags to sessions
+touch crates/sessions/migrations/20240301120000_add_tags.sql"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Example: adding tags to sessions</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">touch</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> crates/sessions/migrations/20240301120000_add_tags.sql</span></span></code></pre>
+<ol start="2">
+<li>Write the migration SQL:</li>
+</ol>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="sql" data-code="-- 20240301120000_add_tags.sql
+ALTER TABLE sessions ADD COLUMN tags TEXT;
+CREATE INDEX IF NOT EXISTS idx_sessions_tags ON sessions(tags);"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">-- 20240301120000_add_tags.sql</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">ALTER</span><span style="color:#D32F2F;--shiki-dark:#F97583"> TABLE</span><span style="color:#D32F2F;--shiki-dark:#F97583"> sessions</span><span style="color:#D32F2F;--shiki-dark:#F97583"> ADD</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> COLUMN tags </span><span style="color:#D32F2F;--shiki-dark:#F97583">TEXT</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">CREATE</span><span style="color:#D32F2F;--shiki-dark:#F97583"> INDEX</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> IF</span><span style="color:#D32F2F;--shiki-dark:#F97583"> NOT</span><span style="color:#D32F2F;--shiki-dark:#F97583"> EXISTS</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> idx_sessions_tags </span><span style="color:#D32F2F;--shiki-dark:#F97583">ON</span><span style="color:#D32F2F;--shiki-dark:#F97583"> sessions</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(tags);</span></span></code></pre>
+<ol start="3">
+<li>Rebuild to embed the migration:</li>
+</ol>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="cargo build"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">cargo</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> build</span></span></code></pre>
+<h3 id="adding-a-new-table-to-an-existing-crate">Adding a New Table to an Existing Crate</h3>
+<ol>
+<li>Create the migration file with a new timestamp:</li>
+</ol>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="touch crates/sessions/migrations/20240302100000_session_bookmarks.sql"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">touch</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> crates/sessions/migrations/20240302100000_session_bookmarks.sql</span></span></code></pre>
+<ol start="2">
+<li>Write the CREATE TABLE statement:</li>
+</ol>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="sql" data-code="-- 20240302100000_session_bookmarks.sql
+CREATE TABLE IF NOT EXISTS session_bookmarks (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_key TEXT NOT NULL,
+    name       TEXT NOT NULL,
+    message_id INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">-- 20240302100000_session_bookmarks.sql</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">CREATE</span><span style="color:#D32F2F;--shiki-dark:#F97583"> TABLE</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> IF</span><span style="color:#D32F2F;--shiki-dark:#F97583"> NOT</span><span style="color:#D32F2F;--shiki-dark:#F97583"> EXISTS</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> session_bookmarks (</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    id         </span><span style="color:#D32F2F;--shiki-dark:#F97583">INTEGER</span><span style="color:#D32F2F;--shiki-dark:#F97583"> PRIMARY KEY</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> AUTOINCREMENT,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    session_key </span><span style="color:#D32F2F;--shiki-dark:#F97583">TEXT</span><span style="color:#D32F2F;--shiki-dark:#F97583"> NOT NULL</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    name</span><span style="color:#D32F2F;--shiki-dark:#F97583">       TEXT</span><span style="color:#D32F2F;--shiki-dark:#F97583"> NOT NULL</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    message_id </span><span style="color:#D32F2F;--shiki-dark:#F97583">INTEGER</span><span style="color:#D32F2F;--shiki-dark:#F97583"> NOT NULL</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    created_at </span><span style="color:#D32F2F;--shiki-dark:#F97583">INTEGER</span><span style="color:#D32F2F;--shiki-dark:#F97583"> NOT NULL</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+<h3 id="adding-tables-to-a-new-crate">Adding Tables to a New Crate</h3>
+<ol>
+<li>Create the migrations directory:</li>
+</ol>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="mkdir -p crates/new-feature/migrations"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">mkdir</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> crates/new-feature/migrations</span></span></code></pre>
+<ol start="2">
+<li>Create the migration file with a globally unique timestamp:</li>
+</ol>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="touch crates/new-feature/migrations/20240401100000_init.sql"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">touch</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> crates/new-feature/migrations/20240401100000_init.sql</span></span></code></pre>
+<ol start="3">
+<li>Add <code>run_migrations()</code> to the crate’s <code>lib.rs</code>:</li>
+</ol>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="rust" data-code="pub async fn run_migrations(pool: &#x26;sqlx::SqlitePool) -> anyhow::Result<()> {
+    sqlx::migrate!(&#x22;./migrations&#x22;).run(pool).await?;
+    Ok(())
+}"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">pub</span><span style="color:#D32F2F;--shiki-dark:#F97583"> async</span><span style="color:#D32F2F;--shiki-dark:#F97583"> fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> run_migrations</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(pool</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#D32F2F;--shiki-dark:#F97583"> &#x26;</span><span style="color:#24292EFF;--shiki-dark:#B392F0">sqlx</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">SqlitePool</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) </span><span style="color:#D32F2F;--shiki-dark:#F97583">-></span><span style="color:#24292EFF;--shiki-dark:#B392F0"> anyhow</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">Result</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;()> {</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#B392F0">    sqlx</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">migrate!</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"./migrations"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">run</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(pool)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.await?</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">    Ok</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(())</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<ol start="4">
+<li>Call it from <code>prepare_core.rs</code> in the appropriate order:</li>
+</ol>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="rust" data-code="moltis_new_feature::run_migrations(&#x26;db_pool).await?;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#B392F0">moltis_new_feature</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">run_migrations</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">db_pool)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.await?</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<h2 id="timestamp-convention">Timestamp Convention</h2>
+<p>Use <code>YYYYMMDDHHMMSS</code> format for migration filenames:</p>
+<ul>
+<li><code>YYYY</code> - 4-digit year</li>
+<li><code>MM</code> - 2-digit month</li>
+<li><code>DD</code> - 2-digit day</li>
+<li><code>HH</code> - 2-digit hour (24h)</li>
+<li><code>MM</code> - 2-digit minute</li>
+<li><code>SS</code> - 2-digit second</li>
+</ul>
+<p>This ensures global uniqueness across crates. When adding migrations, use the
+current timestamp to avoid collisions.</p>
+<h2 id="sqlite-limitations">SQLite Limitations</h2>
+<h3 id="alter-table">ALTER TABLE</h3>
+<p>SQLite has limited <code>ALTER TABLE</code> support:</p>
+<ul>
+<li><strong>ADD COLUMN</strong>: Supported ✓</li>
+<li><strong>DROP COLUMN</strong>: SQLite 3.35+ only</li>
+<li><strong>Rename column</strong>: Requires table recreation</li>
+<li><strong>Change column type</strong>: Requires table recreation</li>
+</ul>
+<p>For complex schema changes, use the table recreation pattern:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="sql" data-code="-- Create new table with desired schema
+CREATE TABLE sessions_new (
+    -- new schema
+);
+
+-- Copy data (map old columns to new)
+INSERT INTO sessions_new SELECT ... FROM sessions;
+
+-- Swap tables
+DROP TABLE sessions;
+ALTER TABLE sessions_new RENAME TO sessions;
+
+-- Recreate indexes
+CREATE INDEX idx_sessions_created_at ON sessions(created_at);"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">-- Create new table with desired schema</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">CREATE</span><span style="color:#D32F2F;--shiki-dark:#F97583"> TABLE</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> sessions_new</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    -- new schema</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">-- Copy data (map old columns to new)</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">INSERT INTO</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> sessions_new </span><span style="color:#D32F2F;--shiki-dark:#F97583">SELECT</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> ... </span><span style="color:#D32F2F;--shiki-dark:#F97583">FROM</span><span style="color:#D32F2F;--shiki-dark:#F97583"> sessions</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">-- Swap tables</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">DROP</span><span style="color:#D32F2F;--shiki-dark:#F97583"> TABLE</span><span style="color:#D32F2F;--shiki-dark:#F97583"> sessions</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">ALTER</span><span style="color:#D32F2F;--shiki-dark:#F97583"> TABLE</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> sessions_new RENAME </span><span style="color:#D32F2F;--shiki-dark:#F97583">TO</span><span style="color:#D32F2F;--shiki-dark:#F97583"> sessions</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">-- Recreate indexes</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">CREATE</span><span style="color:#D32F2F;--shiki-dark:#F97583"> INDEX</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> idx_sessions_created_at</span><span style="color:#D32F2F;--shiki-dark:#F97583"> ON</span><span style="color:#D32F2F;--shiki-dark:#F97583"> sessions</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(created_at);</span></span></code></pre>
+<h3 id="foreign-keys">Foreign Keys</h3>
+<p>SQLite foreign keys are checked at insert/update time, not migration time. Ensure
+migrations run in dependency order (parent table first).</p>
+<h2 id="testing">Testing</h2>
+<p>Unit tests use in-memory databases with the crate’s <code>init()</code> method:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="rust" data-code="#[tokio::test]
+async fn test_session_operations() {
+    let pool = SqlitePool::connect(&#x22;sqlite::memory:&#x22;).await.unwrap();
+
+    // Create schema for tests (init() retained for this purpose)
+    SqliteSessionMetadata::init(&#x26;pool).await.unwrap();
+
+    let meta = SqliteSessionMetadata::new(pool);
+    // ... test code
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">#[tokio</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">test]</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">async</span><span style="color:#D32F2F;--shiki-dark:#F97583"> fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> test_session_operations</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    let</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> pool </span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> SqlitePool</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">connect</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"sqlite::memory:"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.await.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">unwrap</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    // Create schema for tests (init() retained for this purpose)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">    SqliteSessionMetadata</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">init</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">pool)</span><span style="color:#D32F2F;--shiki-dark:#F97583">.await.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">unwrap</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    let</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> meta </span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> SqliteSessionMetadata</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">new</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(pool);</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    // ... test code</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>The <code>init()</code> methods are retained (marked <code>#[doc(hidden)]</code>) specifically for tests.
+In production, migrations handle schema creation.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="failed-to-run-migrations">”failed to run migrations”</h3>
+<ol>
+<li>Check file permissions on <code>~/.moltis/</code></li>
+<li>Ensure the database file isn’t locked by another process</li>
+<li>Check for syntax errors in migration SQL files</li>
+</ol>
+<h3 id="migration-order-issues">Migration Order Issues</h3>
+<p>If you see foreign key errors, verify the migration order in <code>prepare_core.rs</code>. Parent
+tables must be created before child tables with FK references.</p>
+<h3 id="checking-migration-status">Checking Migration Status</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="sqlite3 ~/.moltis/moltis.db &#x22;SELECT version, description, success FROM _sqlx_migrations ORDER BY version&#x22;"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">sqlite3</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ~/.moltis/moltis.db</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "SELECT version, description, success FROM _sqlx_migrations ORDER BY version"</span></span></code></pre>
+<h3 id="resetting-migrations-development-only">Resetting Migrations (Development Only)</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Backup first!
+rm ~/.moltis/moltis.db
+cargo run  # Creates fresh database with all migrations"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Backup first!</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">rm</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ~/.moltis/moltis.db</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">cargo</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> run</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # Creates fresh database with all migrations</span></span></code></pre>
+<h2 id="best-practices">Best Practices</h2>
+<h3 id="do">DO</h3>
+<ul>
+<li>Use timestamp-based version numbers for global uniqueness</li>
+<li>Keep each crate’s migrations in its own directory</li>
+<li>Use <code>IF NOT EXISTS</code> for idempotent initial migrations</li>
+<li>Test migrations on a copy of production data before deploying</li>
+<li>Keep migrations small and focused</li>
+</ul>
+<h3 id="dont">DON’T</h3>
+<ul>
+<li>Modify existing migration files after deployment</li>
+<li>Reuse timestamps across crates</li>
+<li>Put multiple crates’ tables in one migration file</li>
+<li>Skip the dependency order in <code>prepare_core.rs</code></li>
+</ul>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/streaming.html"><span>Previous</span>Streaming</a> <a class="pager-link next" href="/metrics-and-tracing.html"><span>Next</span>Metrics &amp; Tracing</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

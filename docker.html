@@ -1,0 +1,614 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Docker - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a class="active" href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Deployment</div>  <h1 id="running-chelix-in-docker">Running Chelix in Docker</h1>
+<p>Chelix is available as a multi-architecture Docker image supporting both
+<code>linux/amd64</code> and <code>linux/arm64</code>. The image is published to GitHub Container
+Registry on every release.</p>
+<h2 id="quick-start">Quick Start</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="docker run -d \
+  --name moltis \
+  -p 13131:13131 \
+  -p 13132:13132 \
+  -p 1455:1455 \
+  -v moltis-config:/home/moltis/.config/moltis \
+  -v moltis-data:/home/moltis/.moltis \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  ghcr.io/moltis-org/moltis:latest"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">docker</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> run</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -d</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --name</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 13131:13131</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 13132:13132</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 1455:1455</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-config:/home/moltis/.config/moltis</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-data:/home/moltis/.moltis</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /var/run/docker.sock:/var/run/docker.sock</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#9ECBFF">  ghcr.io/moltis-org/moltis:latest</span></span></code></pre>
+<p>Open <a href="https://localhost:13131">https://localhost:13131</a> in your browser and configure your LLM provider to start chatting.</p>
+<p>For unattended bootstraps, add <code>MOLTIS_TOKEN</code>, <code>MOLTIS_PROVIDER</code>, and
+<code>MOLTIS_API_KEY</code> before first start. That pre-configures auth plus one LLM
+provider so you can skip the browser setup wizard entirely.</p>
+<h3 id="ports">Ports</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Port</th><th>Purpose</th></tr></thead><tbody><tr><td>13131</td><td>Gateway (HTTPS by default, HTTP with <code>--no-tls</code>) — web UI, API, WebSocket</td></tr><tr><td>13132</td><td>HTTP — CA certificate download for local TLS trust</td></tr><tr><td>1455</td><td>OAuth callback — required for OpenAI Codex and other providers with pre-registered redirect URIs</td></tr></tbody></table>
+<h3 id="trusting-the-tls-certificate">Trusting the TLS certificate</h3>
+<p>Chelix generates a self-signed CA on first run. Browsers will show a security
+warning until you trust this CA. Port 13132 serves the certificate over plain
+HTTP so you can download it:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Download the CA certificate
+curl -o moltis-ca.pem http://localhost:13132/certs/ca.pem
+
+# macOS — add to system Keychain and trust it
+sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain moltis-ca.pem
+
+# Linux (Debian/Ubuntu)
+sudo cp moltis-ca.pem /usr/local/share/ca-certificates/moltis-ca.crt
+sudo update-ca-certificates"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Download the CA certificate</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -o</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-ca.pem</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> http://localhost:13132/certs/ca.pem</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># macOS — add to system Keychain and trust it</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">sudo</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> security</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> add-trusted-cert</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -d</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -r</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> trustRoot</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -k</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /Library/Keychains/System.keychain</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-ca.pem</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Linux (Debian/Ubuntu)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">sudo</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> cp</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-ca.pem</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /usr/local/share/ca-certificates/moltis-ca.crt</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">sudo</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> update-ca-certificates</span></span></code></pre>
+<p>After trusting the CA, restart your browser. The warning will not appear again
+(the CA persists in the mounted config volume).</p>
+<p>This local CA only solves certificate trust for names included in the generated
+server certificate, such as <code>localhost</code>, <code>moltis.localhost</code>, the container or
+host name, and sometimes an inferred non-loopback bind IP. It does not make a
+certificate valid for an arbitrary public VPS IP address or hosting-provider
+domain. Browsers still reject those targets with a certificate name mismatch if
+they are not present in the certificate SAN list. IP-address URLs require an IP
+SAN. For direct <code>https://&#x3C;public-ip>:13131</code> access, set <code>tls.public_ip</code> to that
+address before starting Chelix so the auto-generated certificate includes it:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tls]
+public_ip = &#x22;203.0.113.10&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tls</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">public_ip </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "203.0.113.10"</span></span></code></pre>
+<p>Regular public TLS deployments should use a domain name.</p>
+<p>For internet-facing Docker deployments, prefer a domain name plus a reverse
+proxy with public CA certificates. Run Chelix with <code>--no-tls</code>, set
+<code>MOLTIS_BEHIND_PROXY=true</code>, and point the proxy at <code>http://&#x3C;moltis-host>:13131</code>.
+If you want Chelix to serve HTTPS directly, mount a certificate and private key
+whose SANs cover the public hostname and set <code>tls.cert_path</code> and <code>tls.key_path</code>
+in <code>moltis.toml</code>.</p>
+<aside class="admonition admonition-note"><div class="admonition-title">Note</div><div class="admonition-body"><p>When accessing from localhost, no authentication is required. If you access Chelix from a different machine (e.g., over the network), a setup code is printed to the container logs for authentication setup:</p>
+<p>~~~bash<br>docker logs moltis<br>~~~</p></div></aside>
+<h2 id="volume-mounts">Volume Mounts</h2>
+<p>Chelix uses two directories that should be persisted:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Path</th><th>Contents</th></tr></thead><tbody><tr><td><code>/home/moltis/.config/moltis</code></td><td>Configuration files: <code>moltis.toml</code>, <code>credentials.json</code>, <code>mcp-servers.json</code></td></tr><tr><td><code>/home/moltis/.moltis</code></td><td>Runtime data: databases, sessions, memory files, logs</td></tr><tr><td><code>/home/moltis/.npm</code></td><td>npm cache (used by stdio-based MCP servers)</td></tr></tbody></table>
+<p>You can use named volumes (as shown above) or bind mounts to local directories
+for easier access to configuration files:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="docker run -d \
+  --name moltis \
+  -p 13131:13131 \
+  -p 13132:13132 \
+  -p 1455:1455 \
+  -v ./config:/home/moltis/.config/moltis \
+  -v ./data:/home/moltis/.moltis \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  ghcr.io/moltis-org/moltis:latest"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">docker</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> run</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -d</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --name</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 13131:13131</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 13132:13132</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 1455:1455</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ./config:/home/moltis/.config/moltis</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ./data:/home/moltis/.moltis</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /var/run/docker.sock:/var/run/docker.sock</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#9ECBFF">  ghcr.io/moltis-org/moltis:latest</span></span></code></pre>
+<p>With bind mounts, you can edit <code>config/moltis.toml</code> directly on the host.</p>
+<h2 id="docker-socket-sandbox-execution">Docker Socket (Sandbox Execution)</h2>
+<p>Chelix runs LLM-generated shell commands inside isolated containers for
+security. When Chelix itself runs in a container, it needs access to the host’s
+container runtime to create these sandbox containers.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Recommended for full container isolation
+-v /var/run/docker.sock:/var/run/docker.sock"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Recommended for full container isolation</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">-v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /var/run/docker.sock:/var/run/docker.sock</span></span></code></pre>
+<p><strong>Without the socket mount</strong>, Chelix automatically falls back to the
+<a href="/sandbox.html#restricted-host-sandbox">restricted-host sandbox</a>, which provides
+lightweight isolation by clearing environment variables, restricting <code>PATH</code>,
+and applying resource limits via <code>ulimit</code>. Commands will execute successfully
+inside the Chelix container but without filesystem or network isolation.</p>
+<p>For full container-level isolation (filesystem boundaries, network policies),
+mount the Docker socket.</p>
+<p>If Chelix is itself running in Docker and your <code>data_dir()</code> mount is backed by
+a different host path than <code>/home/moltis/.moltis</code>, Chelix tries to discover that
+host path automatically from <code>docker inspect</code>/<code>podman inspect</code>. It first checks
+the current container’s hostname/cgroup references, then scans running
+containers for an unambiguous mount of Chelix’s data directory. If that lookup
+still fails, add this to <code>/home/moltis/.config/moltis/moltis.toml</code> inside the
+container:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tools.exec.sandbox]
+host_data_dir = &#x22;/absolute/host/path/to/data&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">exec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">sandbox</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">host_data_dir </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "/absolute/host/path/to/data"</span></span></code></pre>
+<p>For a bind mount like <code>-v ./data:/home/moltis/.moltis</code>, use the resolved host
+path to <code>./data</code>. This setting is also used by sandboxed browser containers for
+their persistent Chrome profile directory. If browser startup logs show
+<code>/data/browser-profile/SingletonLock: Permission denied</code>, Chelix probably fell
+back to the in-container path (<code>/home/moltis/.moltis/...</code>) instead of the real
+host path. Set <code>host_data_dir</code> to the host-visible data directory and restart
+Chelix so new sandbox and browser containers pick up the corrected mount
+source.</p>
+<h3 id="security-consideration">Security Consideration</h3>
+<p>Mounting the Docker socket gives the container full access to the Docker
+daemon. This is equivalent to root access on the host for practical purposes.
+Only run Chelix containers from trusted sources (official images from
+<code>ghcr.io/moltis-org/moltis</code>).</p>
+<h2 id="docker-compose">Docker Compose</h2>
+<p>See <a href="https://github.com/agentics-skills/chelix/blob/master/examples/docker-compose.yml"><code>examples/docker-compose.yml</code></a> for a
+complete example:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="yaml" data-code="services:
+  moltis:
+    image: ghcr.io/moltis-org/moltis:latest
+    container_name: moltis
+    restart: unless-stopped
+    ports:
+      - &#x22;13131:13131&#x22;
+      - &#x22;13132:13132&#x22;
+      - &#x22;1455:1455&#x22;   # OAuth callback (OpenAI Codex, etc.)
+    volumes:
+      - ./config:/home/moltis/.config/moltis
+      - ./data:/home/moltis/.moltis
+      - /var/run/docker.sock:/var/run/docker.sock"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">services</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">  moltis</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">    image</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> ghcr.io/moltis-org/moltis:latest</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">    container_name</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> moltis</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">    restart</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> unless-stopped</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">    ports</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">      - </span><span style="color:#22863A;--shiki-dark:#9ECBFF">"13131:13131"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">      - </span><span style="color:#22863A;--shiki-dark:#9ECBFF">"13132:13132"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">      - </span><span style="color:#22863A;--shiki-dark:#9ECBFF">"1455:1455"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">   # OAuth callback (OpenAI Codex, etc.)</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">    volumes</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">      - </span><span style="color:#22863A;--shiki-dark:#9ECBFF">./config:/home/moltis/.config/moltis</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">      - </span><span style="color:#22863A;--shiki-dark:#9ECBFF">./data:/home/moltis/.moltis</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">      - </span><span style="color:#22863A;--shiki-dark:#9ECBFF">/var/run/docker.sock:/var/run/docker.sock</span></span></code></pre>
+<p>For unattended recovery after host reboots or in-place <code>/update</code>, store the
+vault recovery key as a Docker secret and point Chelix at the mounted file:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="yaml" data-code="services:
+  moltis:
+    image: ghcr.io/moltis-org/moltis:latest
+    environment:
+      MOLTIS_VAULT_AUTO_UNSEAL_KEY_FILE: /run/secrets/moltis_vault_recovery_key
+    secrets:
+      - moltis_vault_recovery_key
+
+secrets:
+  moltis_vault_recovery_key:
+    file: ./moltis-vault-recovery-key"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">services</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">  moltis</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">    image</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> ghcr.io/moltis-org/moltis:latest</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">    environment</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">      MOLTIS_VAULT_AUTO_UNSEAL_KEY_FILE</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> /run/secrets/moltis_vault_recovery_key</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">    secrets</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">      - </span><span style="color:#22863A;--shiki-dark:#9ECBFF">moltis_vault_recovery_key</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">secrets</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">  moltis_vault_recovery_key</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">    file</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> ./moltis-vault-recovery-key</span></span></code></pre>
+<p>This lets encrypted environment variables and channel credentials load during
+startup. Treat the secret file as sensitive as the vault recovery key itself.
+If you create the secret file before the vault is initialized, Docker will
+accept the mount but Chelix cannot auto-unseal from an empty file. After you
+initialize the vault in <strong>Settings > Encryption</strong>, copy the one-time recovery
+key into this file before relying on unattended auto-unseal.</p>
+<h3 id="coolify-hetznervps">Coolify (Hetzner/VPS)</h3>
+<p>For Coolify service stacks, use
+<a href="https://github.com/agentics-skills/chelix/blob/master/examples/docker-compose.coolify.yml"><code>examples/docker-compose.coolify.yml</code></a>.
+It is preconfigured for reverse-proxy deployments (<code>--no-tls</code>) and includes
+the Docker socket mount for sandboxed command execution.</p>
+<p>Key points:</p>
+<ul>
+<li>Set <code>MOLTIS_TOKEN</code> in the Coolify UI before first deploy.</li>
+<li>Set <code>SERVICE_FQDN_MOLTIS_13131</code> to your app domain.</li>
+<li>Keep Chelix in <code>--no-tls</code> mode behind Coolify’s reverse proxy. If requests
+are redirected to <code>:13131</code>, check that TLS is disabled in Chelix.</li>
+<li>Keep <code>/var/run/docker.sock:/var/run/docker.sock</code> mounted if you want sandbox
+isolation for exec tools.</li>
+</ul>
+<p>Start with:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="docker compose up -d
+docker compose logs -f moltis  # watch for startup messages"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">docker</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> compose</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> up</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -d</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">docker</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> compose</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> logs</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -f</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # watch for startup messages</span></span></code></pre>
+<h2 id="browser-sandbox-in-docker">Browser Sandbox in Docker</h2>
+<p>When Chelix runs inside Docker and launches a sandboxed browser, the browser
+container is a sibling container on the host. By default, Chelix connects to
+<code>127.0.0.1</code> which only reaches its own loopback, not the browser.</p>
+<p>The sibling browser also needs a host-visible mount for its Chrome profile. If
+your Chelix data directory is bind-mounted or stored somewhere that is not
+visible on the host as <code>/home/moltis/.moltis</code>, configure
+<code>[tools.exec.sandbox].host_data_dir</code> as described in
+<a href="#docker-socket-sandbox-execution">Docker Socket Sandbox Execution</a>. Without
+that override, Chrome may fail with <code>SingletonLock: Permission denied</code> when the
+browser container tries to write <code>/data/browser-profile</code>.</p>
+<p>Add <code>container_host</code> to your <code>moltis.toml</code> so Chelix can reach the browser
+container through the host’s port mapping:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tools.browser]
+container_host = &#x22;host.docker.internal&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">browser</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">container_host </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "host.docker.internal"</span></span></code></pre>
+<p>On Linux, add <code>--add-host</code> to the Chelix container so <code>host.docker.internal</code>
+resolves to the host:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="docker run -d \
+  --name moltis \
+  --add-host=host.docker.internal:host-gateway \
+  -p 13131:13131 \
+  -p 13132:13132 \
+  -p 1455:1455 \
+  -v moltis-config:/home/moltis/.config/moltis \
+  -v moltis-data:/home/moltis/.moltis \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  ghcr.io/moltis-org/moltis:latest"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">docker</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> run</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -d</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --name</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --add-host=host.docker.internal:host-gateway</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 13131:13131</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 13132:13132</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 1455:1455</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-config:/home/moltis/.config/moltis</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-data:/home/moltis/.moltis</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /var/run/docker.sock:/var/run/docker.sock</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#9ECBFF">  ghcr.io/moltis-org/moltis:latest</span></span></code></pre>
+<p>Alternatively, use the Docker bridge gateway IP directly
+(<code>container_host = "172.17.0.1"</code> on most Linux setups).</p>
+<h2 id="podman-support">Podman Support</h2>
+<p>Chelix works with Podman using its Docker-compatible API. Mount the Podman
+socket instead of the Docker socket:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Podman rootless
+podman run -d \
+  --name moltis \
+  -p 13131:13131 \
+  -p 13132:13132 \
+  -p 1455:1455 \
+  -v moltis-config:/home/moltis/.config/moltis \
+  -v moltis-data:/home/moltis/.moltis \
+  -v /run/user/$(id -u)/podman/podman.sock:/var/run/docker.sock \
+  ghcr.io/moltis-org/moltis:latest
+
+# Podman rootful
+podman run -d \
+  --name moltis \
+  -p 13131:13131 \
+  -p 13132:13132 \
+  -p 1455:1455 \
+  -v moltis-config:/home/moltis/.config/moltis \
+  -v moltis-data:/home/moltis/.moltis \
+  -v /run/podman/podman.sock:/var/run/docker.sock \
+  ghcr.io/moltis-org/moltis:latest"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Podman rootless</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">podman</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> run</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -d</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --name</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 13131:13131</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 13132:13132</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 1455:1455</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-config:/home/moltis/.config/moltis</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-data:/home/moltis/.moltis</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /run/user/</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">$(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">id</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -u</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span><span style="color:#2B5581;--shiki-dark:#9ECBFF">/podman/podman.sock:/var/run/docker.sock</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#9ECBFF">  ghcr.io/moltis-org/moltis:latest</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Podman rootful</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">podman</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> run</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -d</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --name</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 13131:13131</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 13132:13132</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 1455:1455</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-config:/home/moltis/.config/moltis</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-data:/home/moltis/.moltis</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /run/podman/podman.sock:/var/run/docker.sock</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#9ECBFF">  ghcr.io/moltis-org/moltis:latest</span></span></code></pre>
+<p>You may need to enable the Podman socket service first:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Rootless
+systemctl --user enable --now podman.socket
+
+# Rootful
+sudo systemctl enable --now podman.socket"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Rootless</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">systemctl</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --user</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> enable</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --now</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> podman.socket</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Rootful</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">sudo</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> systemctl</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> enable</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --now</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> podman.socket</span></span></code></pre>
+<h2 id="environment-variables">Environment Variables</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Variable</th><th>Description</th></tr></thead><tbody><tr><td><code>MOLTIS_CONFIG_DIR</code></td><td>Override config directory (default: <code>~/.config/moltis</code>)</td></tr><tr><td><code>MOLTIS_DATA_DIR</code></td><td>Override data directory (default: <code>~/.moltis</code>)</td></tr><tr><td><code>MOLTIS_NO_TLS</code></td><td>Disable TLS (serve plain HTTP) — equivalent to <code>--no-tls</code></td></tr></tbody></table>
+<p>Example:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="docker run -d \
+  --name moltis \
+  -p 13131:13131 \
+  -p 13132:13132 \
+  -p 1455:1455 \
+  -e MOLTIS_CONFIG_DIR=/config \
+  -e MOLTIS_DATA_DIR=/data \
+  -v ./config:/config \
+  -v ./data:/data \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  ghcr.io/moltis-org/moltis:latest"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">docker</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> run</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -d</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --name</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 13131:13131</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 13132:13132</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 1455:1455</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -e</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> MOLTIS_CONFIG_DIR=/config</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -e</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> MOLTIS_DATA_DIR=/data</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ./config:/config</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ./data:/data</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /var/run/docker.sock:/var/run/docker.sock</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#9ECBFF">  ghcr.io/moltis-org/moltis:latest</span></span></code></pre>
+<h3 id="api-keys-and-the-env-section">API Keys and the <code>[env]</code> Section</h3>
+<p>Features like web search (Brave), embeddings, and LLM provider API calls read
+keys from process environment variables (<code>std::env::var</code>). In Docker, there are
+three ways to provide these:</p>
+<p><strong>Option 1: Generic first-run LLM bootstrap</strong> (best for one provider)</p>
+<p>Use this when you want a minimal <code>docker compose</code> file with one chat provider
+and no manual setup:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="yaml" data-code="services:
+  moltis:
+    image: ghcr.io/moltis-org/moltis:latest
+    environment:
+      MOLTIS_TOKEN: &#x22;change-me&#x22;
+      MOLTIS_PROVIDER: &#x22;openai&#x22;
+      MOLTIS_API_KEY: &#x22;sk-...&#x22;"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">services</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">  moltis</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">    image</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> ghcr.io/moltis-org/moltis:latest</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">    environment</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">      MOLTIS_TOKEN</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "change-me"</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">      MOLTIS_PROVIDER</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai"</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#85E89D">      MOLTIS_API_KEY</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "sk-..."</span></span></code></pre>
+<p><code>MOLTIS_PROVIDER</code> must be a Chelix provider name such as <code>openai</code>,
+<code>anthropic</code>, <code>gemini</code>, <code>groq</code>, <code>openrouter</code>, or <code>mistral</code>. The shorter
+aliases <code>PROVIDER</code> and <code>API_KEY</code> also work, but the <code>MOLTIS_*</code> names are
+preferred because they are less likely to collide with other containers.</p>
+<p><strong>Option 2: Provider-specific <code>docker -e</code> flags</strong> (takes precedence for that provider)</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="docker run -d \
+  --name moltis \
+  -e BRAVE_API_KEY=your-key \
+  -e OPENROUTER_API_KEY=sk-or-... \
+  ...
+  ghcr.io/moltis-org/moltis:latest"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">docker</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> run</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -d</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --name</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -e</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> BRAVE_API_KEY=your-key</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -e</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> OPENROUTER_API_KEY=sk-or-...</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#9ECBFF">  ...</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">  ghcr.io/moltis-org/moltis:latest</span></span></code></pre>
+<p><strong>Option 3: <code>[env]</code> section in <code>moltis.toml</code></strong></p>
+<p>Add an <code>[env]</code> section to your config file. These variables are injected into
+the Chelix process at startup, making them available to all features:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[env]
+BRAVE_API_KEY = &#x22;your-brave-key&#x22;
+OPENROUTER_API_KEY = &#x22;sk-or-...&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">env</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">BRAVE_API_KEY </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "your-brave-key"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">OPENROUTER_API_KEY </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "sk-or-..."</span></span></code></pre>
+<p>If a variable is set both via <code>docker -e</code> and <code>[env]</code>, the Docker/host
+environment value wins — <code>[env]</code> never overwrites existing variables.</p>
+<aside class="admonition admonition-info"><div class="admonition-title">Settings UI env vars</div><div class="admonition-body"><p>Environment variables set through the Settings UI (Settings > Environment)<br>are stored in SQLite. At startup, Chelix injects them into the process<br>environment so they are available to all features (search, embeddings,<br>provider API calls), not just sandbox commands.</p>
+<p>Precedence order (highest wins):<br>1. Host / <code>docker -e</code> environment variables<br>2. Config file <code>[env]</code> section<br>3. Settings UI environment variables</p></div></aside>
+<h2 id="building-locally">Building Locally</h2>
+<p>To build the Docker image from source:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Single architecture (current platform)
+docker build -t moltis:local .
+
+# Multi-architecture (requires buildx)
+docker buildx build --platform linux/amd64,linux/arm64 -t moltis:local ."><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Single architecture (current platform)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">docker</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> build</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -t</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis:local</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> .</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Multi-architecture (requires buildx)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">docker</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> buildx</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> build</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --platform</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> linux/amd64,linux/arm64</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -t</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis:local</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> .</span></span></code></pre>
+<h2 id="orbstack">OrbStack</h2>
+<p>OrbStack on macOS works identically to Docker — use the same socket path
+(<code>/var/run/docker.sock</code>). OrbStack’s lightweight Linux VM provides good
+isolation with lower resource usage than Docker Desktop.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="cannot-connect-to-docker-daemon">”Cannot connect to Docker daemon”</h3>
+<p>The Docker socket is not mounted or the Chelix user doesn’t have permission
+to access it. Verify:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="docker exec moltis ls -la /var/run/docker.sock"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">docker</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> exec</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ls</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -la</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /var/run/docker.sock</span></span></code></pre>
+<h3 id="setup-code-not-appearing-in-logs-for-network-access">Setup code not appearing in logs (for network access)</h3>
+<p>The setup code only appears when accessing from a non-localhost address. If you’re accessing from the same machine via <code>localhost</code>, no setup code is needed. For network access, wait a few seconds for the gateway to start, then check logs:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="docker logs moltis 2>&#x26;1 | grep -i setup"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">docker</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> logs</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis</span><span style="color:#D32F2F;--shiki-dark:#F97583"> 2>&#x26;1</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> grep</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -i</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> setup</span></span></code></pre>
+<h3 id="oauth-authentication-error-openai-codex">OAuth authentication error (OpenAI Codex)</h3>
+<p>If clicking <strong>Connect</strong> for OpenAI Codex shows “unknown_error” on OpenAI’s
+page, port 1455 is not reachable from your browser. Make sure you published it:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="-p 1455:1455"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">-p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 1455:1455</span></span></code></pre>
+<p>If you’re running Chelix on a remote server (cloud VM, VPS) and accessing it
+over the network, <code>localhost:1455</code> on the browser side points to your local
+machine — not the server. In that case, authenticate via the CLI instead:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="docker exec -it moltis moltis auth login --provider openai-codex"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">docker</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> exec</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -it</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> auth</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> login</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --provider</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> openai-codex</span></span></code></pre>
+<p>The CLI opens a browser on the machine where you run the command and handles
+the OAuth callback locally. If automatic callback capture fails, Chelix prompts
+you to paste the callback URL (or <code>code#state</code>) into the terminal. Tokens are
+saved to the config volume and picked up by the running gateway automatically.</p>
+<h3 id="permission-denied-on-bind-mounts">Permission denied on bind mounts</h3>
+<p>When using bind mounts, ensure the directories exist and are writable:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="mkdir -p ./config ./data
+chmod 755 ./config ./data"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">mkdir</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -p</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ./config</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ./data</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">chmod</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 755</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ./config</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ./data</span></span></code></pre>
+<p>The container runs as user <code>moltis</code> (UID 1000). If you see permission errors,
+you may need to adjust ownership:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="sudo chown -R 1000:1000 ./config ./data"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">sudo</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> chown</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -R</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 1000:1000</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ./config</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ./data</span></span></code></pre>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/release-verification.html"><span>Previous</span>Release Verification</a> <a class="pager-link next" href="/cloud-deploy.html"><span>Next</span>Cloud Deploy</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

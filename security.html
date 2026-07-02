@@ -1,0 +1,747 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Security Architecture - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a class="active" href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Security</div>  <h1 id="security-architecture">Security Architecture</h1>
+<p>Chelix is designed with a defense-in-depth security model. This document
+explains the key security features and provides guidance for production
+deployments.</p>
+<h2 id="overview">Overview</h2>
+<p>Chelix runs AI agents that can execute code and interact with external systems.
+This power requires multiple layers of protection:</p>
+<ol>
+<li><strong>Human-in-the-loop approval</strong> for dangerous commands</li>
+<li><strong>Sandbox isolation</strong> for command execution</li>
+<li><strong>Channel authorization</strong> for external integrations</li>
+<li><strong>Rate limiting</strong> to prevent resource abuse</li>
+<li><strong>Scope-based access control</strong> for API authorization</li>
+</ol>
+<p>For marketplace-style skill/plugin hardening (trust gating, provenance pinning,
+drift re-trust, dependency install guards, kill switch, audit log), see
+<a href="/skills-security.html">Third-Party Skills Security</a>.</p>
+<h2 id="command-execution-approval">Command Execution Approval</h2>
+<p>By default, Chelix requires explicit user approval before executing potentially
+dangerous commands. This “human-in-the-loop” design ensures the AI cannot take
+destructive actions without consent.</p>
+<h3 id="how-it-works">How It Works</h3>
+<p>When the agent wants to run a command:</p>
+<ol>
+<li>The command is analyzed against approval policies</li>
+<li>If approval is required, the user sees a prompt in the UI. Channel-backed
+sessions also receive a notification in the originating channel so the run
+does not stall silently.</li>
+<li>The user can approve, deny, or modify the command</li>
+<li>Only approved commands execute</li>
+</ol>
+<p>For channel-backed sessions, operators can also use <code>/approvals</code> to list the
+pending requests for the current session, then <code>/approve N</code> or <code>/deny N</code>
+directly from Telegram or WhatsApp.</p>
+<h3 id="approval-policies">Approval Policies</h3>
+<p>Configure approval behavior in <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tools.exec]
+approval_mode = &#x22;always&#x22;  # always require approval
+# approval_mode = &#x22;smart&#x22; # auto-approve safe commands (default)
+# approval_mode = &#x22;never&#x22; # dangerous: never require approval"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">exec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">approval_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "always"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # always require approval</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># approval_mode = "smart" # auto-approve safe commands (default)</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># approval_mode = "never" # dangerous: never require approval</span></span></code></pre>
+<p><strong>Recommendation</strong>: Keep <code>approval_mode = "smart"</code> (the default) for most use
+cases. Only use <code>"never"</code> in fully automated, sandboxed environments.</p>
+<h3 id="built-in-dangerous-command-blocklist">Built-in Dangerous Command Blocklist</h3>
+<p>Even with <code>approval_mode = "never"</code> or <code>security_level = "full"</code>, Chelix
+maintains a safety floor: a hardcoded set of regex patterns for the most
+critical destructive commands (e.g. <code>rm -rf /</code>, <code>git reset --hard</code>,
+<code>DROP TABLE</code>, <code>mkfs</code>, <code>terraform destroy</code>). Matching commands always require
+approval regardless of configuration.</p>
+<p>Users can override specific patterns by adding matching entries to their
+<code>allowlist</code> in <code>moltis.toml</code>. The blocklist only applies to host execution;
+sandboxed commands are already isolated.</p>
+<h3 id="destructive-command-guard-dcg">Destructive Command Guard (dcg)</h3>
+<p>For broader coverage beyond the built-in blocklist, install the
+<a href="https://github.com/Dicklesworthstone/destructive_command_guard">Destructive Command Guard</a>
+(dcg) as a hook. dcg adds 49+ pattern categories including heredoc/inline-script
+scanning, database, cloud, and infrastructure patterns.</p>
+<p>See <a href="/hooks.html#recommended-destructive-command-guard-dcg">Hooks: Destructive Command Guard</a>
+for setup instructions.</p>
+<p>dcg complements (does not replace) sandbox isolation and the approval system.</p>
+<h2 id="sandbox-isolation">Sandbox Isolation</h2>
+<p>Commands execute inside isolated containers (Docker or Apple Container) by
+default. This protects your host system from:</p>
+<ul>
+<li>Accidental file deletion or modification</li>
+<li>Malicious code execution</li>
+<li>Resource exhaustion (memory, CPU, disk)</li>
+</ul>
+<p>See <a href="/sandbox.html">sandbox.md</a> for backend configuration.</p>
+<h3 id="resource-limits">Resource Limits</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tools.exec.sandbox.resource_limits]
+memory_limit = &#x22;512M&#x22;
+cpu_quota = 1.0
+pids_max = 256"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">exec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">sandbox</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">resource_limits</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">memory_limit </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "512M"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">cpu_quota </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1.0</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">pids_max </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 256</span></span></code></pre>
+<h3 id="network-isolation">Network Isolation</h3>
+<p>Sandbox containers have no network access by default (<code>no_network = true</code>).</p>
+<p>For tasks that need internet access, <a href="/trusted-network.html">trusted network mode</a>
+provides a proxy-filtered allowlist — only connections to explicitly approved
+domains are permitted. All requests (allowed and denied) are recorded in the
+network audit log for review.</p>
+<h2 id="channel-authorization">Channel Authorization</h2>
+<p>Channels (Telegram, Slack, etc.) allow external parties to interact with your
+Chelix agent. This requires careful access control.</p>
+<h3 id="sender-allowlisting">Sender Allowlisting</h3>
+<p>When a new sender contacts the agent through a channel, they are placed in a
+pending queue. You must explicitly approve or deny each sender before they can
+interact with the agent.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="UI: Settings > Channels > Pending Senders"><code><span class="line"><span>UI: Settings > Channels > Pending Senders</span></span></code></pre>
+<h3 id="per-channel-permissions">Per-Channel Permissions</h3>
+<p>Each channel can have different permission levels:</p>
+<ul>
+<li><strong>Read-only</strong>: Sender can ask questions, agent responds</li>
+<li><strong>Execute</strong>: Sender can trigger actions (with approval still required)</li>
+<li><strong>Admin</strong>: Full access including configuration changes</li>
+</ul>
+<h3 id="channel-isolation">Channel Isolation</h3>
+<p>Channels run in isolated sessions by default. A malicious message from one
+channel cannot affect another channel’s session or the main UI session.</p>
+<h2 id="cron-job-security">Cron Job Security</h2>
+<p>Scheduled tasks (cron jobs) can run agent turns automatically. Security
+considerations:</p>
+<h3 id="rate-limiting">Rate Limiting</h3>
+<p>To prevent prompt injection attacks from rapidly creating many cron jobs:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[cron]
+rate_limit_max = 10           # max jobs per window
+rate_limit_window_secs = 60   # window duration (1 minute)"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">cron</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">rate_limit_max </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 10</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">           # max jobs per window</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">rate_limit_window_secs </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 60</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">   # window duration (1 minute)</span></span></code></pre>
+<p>This limits job creation to 10 per minute by default. System jobs (like
+heartbeat) bypass this limit.</p>
+<h3 id="job-notifications">Job Notifications</h3>
+<p>When cron jobs are created, updated, or removed, Chelix broadcasts events:</p>
+<ul>
+<li><code>cron.job.created</code> - A new job was created</li>
+<li><code>cron.job.updated</code> - An existing job was modified</li>
+<li><code>cron.job.removed</code> - A job was deleted</li>
+</ul>
+<p>Monitor these events to detect suspicious automated job creation.</p>
+<h3 id="sandbox-for-cron-jobs">Sandbox for Cron Jobs</h3>
+<p>Cron job execution uses sandbox isolation by default:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="# Per-job configuration
+[cron.job.sandbox]
+enabled = true              # run in sandbox (default)
+# image = &#x22;custom:latest&#x22;   # optional custom image"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Per-job configuration</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">cron</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">job</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">sandbox</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">              # run in sandbox (default)</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># image = "custom:latest"   # optional custom image</span></span></code></pre>
+<h2 id="identity-protection">Identity Protection</h2>
+<p>The agent’s identity fields (name, emoji, creature, vibe) are stored in <code>IDENTITY.md</code>
+YAML frontmatter at the workspace root (<code>data_dir</code>).
+User profile fields are stored in <code>USER.md</code> YAML frontmatter at the same location.
+The personality text is stored separately in <code>SOUL.md</code> at the workspace root (<code>data_dir</code>).
+Tool guidance is stored in <code>TOOLS.md</code> at the workspace root (<code>data_dir</code>) and is injected
+as workspace context in the system prompt.
+Modifying identity requires the <code>operator.write</code> scope, not just <code>operator.read</code>.</p>
+<p>This prevents prompt injection attacks from subtly modifying the agent’s
+personality to make it more compliant with malicious requests.</p>
+<h2 id="api-authorization">API Authorization</h2>
+<p>The gateway API uses role-based access control with scopes:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Scope</th><th>Permissions</th></tr></thead><tbody><tr><td><code>operator.read</code></td><td>View status, list jobs, read history</td></tr><tr><td><code>operator.write</code></td><td>Send messages, create jobs, modify configuration</td></tr><tr><td><code>operator.admin</code></td><td>All permissions (includes all other scopes)</td></tr><tr><td><code>operator.approvals</code></td><td>Handle command approval requests</td></tr><tr><td><code>operator.pairing</code></td><td>Manage device/node pairing</td></tr></tbody></table>
+<h3 id="api-keys">API Keys</h3>
+<p>API keys authenticate external tools and scripts connecting to Chelix. Keys
+<strong>must specify at least one scope</strong> — keys without scopes are denied access
+(least-privilege by default).</p>
+<h4 id="creating-api-keys">Creating API Keys</h4>
+<p><strong>Web UI</strong>: Settings > Security > API Keys</p>
+<ol>
+<li>Enter a label describing the key’s purpose</li>
+<li>Select the required scopes</li>
+<li>Click “Generate key”</li>
+<li><strong>Copy the key immediately</strong> — it’s only shown once</li>
+</ol>
+<p><strong>CLI</strong>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Scoped key (comma-separated scopes)
+moltis auth create-api-key --label &#x22;Monitor&#x22; --scopes &#x22;operator.read&#x22;
+moltis auth create-api-key --label &#x22;Automation&#x22; --scopes &#x22;operator.read,operator.write&#x22;
+moltis auth create-api-key --label &#x22;CI pipeline&#x22; --scopes &#x22;operator.admin&#x22;"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Scoped key (comma-separated scopes)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> auth</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> create-api-key</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --label</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Monitor"</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --scopes</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "operator.read"</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> auth</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> create-api-key</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --label</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Automation"</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --scopes</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "operator.read,operator.write"</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> auth</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> create-api-key</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --label</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "CI pipeline"</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --scopes</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "operator.admin"</span></span></code></pre>
+<h4 id="using-api-keys">Using API Keys</h4>
+<p>Pass the key in the <code>connect</code> handshake over WebSocket:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;method&#x22;: &#x22;connect&#x22;,
+  &#x22;params&#x22;: {
+    &#x22;client&#x22;: { &#x22;id&#x22;: &#x22;my-tool&#x22;, &#x22;version&#x22;: &#x22;1.0.0&#x22; },
+    &#x22;auth&#x22;: { &#x22;api_key&#x22;: &#x22;mk_abc123...&#x22; }
+  }
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "method"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "connect"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "params"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "client"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "my-tool"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "version"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "1.0.0"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">    "auth"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { </span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"api_key"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "mk_abc123..."</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>Or use Bearer authentication for REST API calls:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="Authorization: Bearer mk_abc123..."><code><span class="line"><span>Authorization: Bearer mk_abc123...</span></span></code></pre>
+<h4 id="scope-recommendations">Scope Recommendations</h4>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Use Case</th><th>Recommended Scopes</th></tr></thead><tbody><tr><td>Read-only monitoring</td><td><code>operator.read</code></td></tr><tr><td>Automated workflows</td><td><code>operator.read</code>, <code>operator.write</code></td></tr><tr><td>Approval handling</td><td><code>operator.read</code>, <code>operator.approvals</code></td></tr><tr><td>Full automation</td><td><code>operator.admin</code></td></tr></tbody></table>
+<p><strong>Best practice</strong>: Use the minimum necessary scopes. If a key only needs to
+read status and logs, don’t grant <code>operator.write</code>.</p>
+<h4 id="backward-compatibility">Backward Compatibility</h4>
+<p>Existing API keys created without scopes will be <strong>denied access</strong> until
+scopes are added. Re-create keys with explicit scopes to restore access.</p>
+<h2 id="encryption-at-rest">Encryption at Rest</h2>
+<p>Sensitive data in the SQLite database (environment variables containing
+API keys, tokens, etc.) is encrypted at rest using XChaCha20-Poly1305.
+The encryption key is derived from the user’s password via Argon2id.</p>
+<p>The vault initializes when a first password is set (during setup or later
+in Settings > Authentication), unseals automatically on login, and
+re-seals on server restart. A recovery key is provided at initialization
+for emergency access.</p>
+<p>When the vault is sealed, a middleware layer blocks vault-protected API
+requests with <code>423 Locked</code>. Session history and bootstrap endpoints remain
+available because those payloads are not yet encrypted at rest.</p>
+<p>For full details on the key hierarchy, vault states, API endpoints, and
+cryptographic parameters, see <a href="/vault.html">Encryption at Rest (Vault)</a>.</p>
+<h2 id="network-security">Network Security</h2>
+<h3 id="tls-encryption">TLS Encryption</h3>
+<p>HTTPS is enabled by default with auto-generated certificates:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tls]
+enabled = true
+auto_generate = true"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tls</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">auto_generate </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span></code></pre>
+<p>For production, use certificates from a trusted CA or configure custom
+certificates. The auto-generated certificate is intended for localhost and
+private-network access; importing the generated CA does not make the certificate
+valid for public IP addresses or domains that are not listed in its SANs. IP
+address URLs require a certificate with that address as an IP SAN; set
+<code>tls.public_ip</code> to include a direct-access VPS IP in Chelix’s auto-generated
+certificate. Regular public TLS deployments should use a domain name. For VPS and other
+internet-facing deployments, terminate TLS at a reverse proxy or configure
+<code>tls.cert_path</code> and <code>tls.key_path</code> with a certificate issued for your public
+hostname.</p>
+<h3 id="origin-validation">Origin Validation</h3>
+<p>WebSocket connections validate the <code>Origin</code> header to prevent cross-site
+WebSocket hijacking (CSWSH). Connections from untrusted origins are rejected.</p>
+<h3 id="ssrf-protection">SSRF Protection</h3>
+<p>The <code>web_fetch</code> tool resolves DNS and blocks requests to private IP ranges
+(loopback, RFC 1918, link-local, CGNAT). This prevents server-side request
+forgery attacks.</p>
+<p>To allow access to trusted private networks (e.g. Docker sibling containers),
+add their CIDR ranges to <code>ssrf_allowlist</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tools.web.fetch]
+ssrf_allowlist = [&#x22;172.22.0.0/16&#x22;]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">web</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">fetch</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">ssrf_allowlist </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"172.22.0.0/16"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<p><strong>Warning:</strong> Only add networks you trust. The allowlist bypasses SSRF protection
+for the listed ranges. Never add cloud metadata ranges (<code>169.254.169.254/32</code>)
+unless you understand the risk.</p>
+<h2 id="authentication">Authentication</h2>
+<p>Chelix uses a unified auth gate that applies a single <code>check_auth()</code>
+function to every request. This prevents split-brain bugs where different
+code paths disagree on auth status.</p>
+<p>For full details — including the decision matrix, credential types, API
+key scopes, session management endpoints, and WebSocket auth — see the
+dedicated <a href="/authentication.html">Authentication</a> page.</p>
+<h3 id="three-tier-model-summary">Three-Tier Model (summary)</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Tier</th><th>Condition</th><th>Behaviour</th></tr></thead><tbody><tr><td><strong>1</strong></td><td>Password/passkey is configured</td><td>Auth <strong>always</strong> required (any IP)</td></tr><tr><td><strong>2</strong></td><td>No credentials + direct local connection</td><td>Full access (dev convenience)</td></tr><tr><td><strong>3</strong></td><td>No credentials + remote/proxied connection</td><td>Onboarding only (setup code required)</td></tr></tbody></table>
+<h3 id="node-identity-ed25519-tofu">Node Identity (Ed25519 TOFU)</h3>
+<p>Remote nodes authenticate using Ed25519 challenge-response, following the same
+Trust On First Use (TOFU) model as SSH:</p>
+<ol>
+<li><strong>First connection</strong>: The operator opens the pairing window from the Nodes UI
+or with <code>moltis node pairing enable</code>. The node generates an Ed25519 keypair
+and presents its public key to the gateway. The operator verifies the
+fingerprint and approves the pairing (via the web UI or <code>moltis node approve</code>).</li>
+<li><strong>Subsequent connections</strong>: The gateway sends a random 32-byte nonce. The node
+signs it with its private key. The gateway verifies the signature against the
+stored public key. No shared secret crosses the wire.</li>
+<li><strong>Key pinning</strong>: Once approved, the public key is pinned to the device ID. If
+the same device reconnects with a different key, the connection is rejected
+and a <code>node.security.key-mismatch</code> alert is broadcast to operators.</li>
+<li><strong>Revocation</strong>: Revoked keys are kept in the database so they cannot be
+re-paired without explicit operator action.</li>
+</ol>
+<p>The private key (<code>~/.moltis/node_key</code>) is stored with mode 0600 and never
+leaves the node. The gateway stores only public keys.</p>
+<p>Pairing is disabled by default. Keep it disabled except while onboarding a new
+node, then close the window with <code>moltis node pairing disable</code>.</p>
+<h2 id="http-endpoint-throttling">HTTP Endpoint Throttling</h2>
+<p>Chelix includes built-in per-IP endpoint throttling to reduce brute force
+attempts and traffic spikes, but only when auth is required for the current
+request.</p>
+<p>Throttling is bypassed when a request is already authenticated, when auth is
+explicitly disabled, or when setup is incomplete and local Tier-2 access is
+allowed.</p>
+<h3 id="default-limits">Default Limits</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Scope</th><th>Default</th></tr></thead><tbody><tr><td><code>POST /api/auth/login</code></td><td>5 requests per 60 seconds</td></tr><tr><td>Other <code>/api/auth/*</code></td><td>120 requests per 60 seconds</td></tr><tr><td>Other <code>/api/*</code></td><td>180 requests per 60 seconds</td></tr><tr><td><code>/ws/chat</code> upgrade</td><td>30 requests per 60 seconds</td></tr><tr><td><code>/ws</code> upgrade</td><td>30 requests per 60 seconds</td></tr></tbody></table>
+<h3 id="when-limits-are-hit">When Limits Are Hit</h3>
+<ul>
+<li>API endpoints return <code>429 Too Many Requests</code></li>
+<li>Responses include <code>Retry-After</code></li>
+<li>JSON responses include <code>retry_after_seconds</code></li>
+</ul>
+<h3 id="reverse-proxy-behavior">Reverse Proxy Behavior</h3>
+<p>When <code>MOLTIS_BEHIND_PROXY=true</code>, throttling is keyed by forwarded client IP
+headers (<code>X-Forwarded-For</code>, <code>X-Real-IP</code>, <code>CF-Connecting-IP</code>) instead of the
+direct socket address.</p>
+<h3 id="production-guidance">Production Guidance</h3>
+<p>Built-in throttling is the first layer. For internet-facing deployments, add
+edge rate limits at your reverse proxy or WAF as a second layer (IP reputation,
+burst controls, geo rules, bot filtering).</p>
+<h2 id="reverse-proxy-deployments">Reverse Proxy Deployments</h2>
+<p>Running Chelix behind a reverse proxy (Caddy, nginx, Traefik, etc.)
+requires understanding how authentication interacts with loopback
+connections.</p>
+<h3 id="the-problem">The problem</h3>
+<p>When Chelix binds to <code>127.0.0.1</code> and a proxy on the same machine
+forwards traffic to it, <strong>every</strong> incoming TCP connection appears to
+originate from <code>127.0.0.1</code> — including requests from the public
+internet.  A naive “trust all loopback connections” check would bypass
+authentication for all proxied traffic.</p>
+<p>This is the same class of vulnerability as
+<a href="https://github.com/openclaw/openclaw/security/advisories/GHSA-g8p2-7wf7-98mq">CVE-2026-25253</a>,
+which allowed one-click remote code execution on OpenClaw through
+authentication token exfiltration and cross-site WebSocket hijacking.</p>
+<h3 id="how-chelix-handles-it">How Chelix handles it</h3>
+<p>Chelix uses the per-request <code>is_local_connection()</code> check described
+above.  Most reverse proxies add forwarding headers or change the
+<code>Host</code> header, which automatically triggers the “remote” classification.</p>
+<p>For proxies that <strong>strip all signals</strong> (e.g. a bare nginx <code>proxy_pass</code>
+that rewrites <code>Host</code> to the upstream address and adds no <code>X-Forwarded-For</code>),
+use the <code>MOLTIS_BEHIND_PROXY</code> environment variable as a hard override:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="MOLTIS_BEHIND_PROXY=true moltis"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">MOLTIS_BEHIND_PROXY</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#2B5581;--shiki-dark:#9ECBFF">true</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> moltis</span></span></code></pre>
+<p>When this variable is set, <strong>all</strong> connections are treated as remote —
+no loopback bypass, no exceptions.</p>
+<h3 id="deploying-behind-a-proxy">Deploying behind a proxy</h3>
+<ol>
+<li>
+<p><strong>Set <code>MOLTIS_BEHIND_PROXY=true</code></strong> if your proxy does not add
+forwarding headers (safest option — eliminates any ambiguity).</p>
+</li>
+<li>
+<p><strong>Set a password or register a passkey</strong> during initial setup.
+Once a password is configured (Tier 1), authentication is required
+for all traffic regardless of <code>is_local_connection()</code>.</p>
+</li>
+<li>
+<p><strong>WebSocket proxying</strong> must preserve browser origin host info
+(<code>Host</code>, or <code>X-Forwarded-Host</code> if <code>Host</code> is rewritten). Chelix
+validates same-origin on WebSocket upgrades to prevent cross-site
+WebSocket hijacking (CSWSH).</p>
+</li>
+<li>
+<p><strong>TLS termination</strong> should happen at the proxy. Run Chelix with
+<code>--no-tls</code> (or <code>MOLTIS_NO_TLS=true</code>) in this mode.</p>
+<p>If your browser is being redirected to <code>https://&#x3C;domain>:13131</code>,
+Chelix TLS is still enabled while your proxy upstream is plain HTTP.</p>
+</li>
+<li>
+<p><strong>Advanced TLS upstream mode</strong> (optional): if your proxy connects to
+Chelix using HTTPS upstream (or TCP TLS passthrough), you may keep
+Chelix TLS enabled. Set <code>MOLTIS_ALLOW_TLS_BEHIND_PROXY=true</code> to
+acknowledge this non-default setup.</p>
+</li>
+</ol>
+<h3 id="nginx-direct-config-example">Nginx (direct config example)</h3>
+<p>If HTTP works but WebSockets fail, make sure your location block includes
+<code>proxy_http_version 1.1;</code> and upgrade headers.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="nginx" data-code="location / {
+    proxy_pass http://172.17.0.1:13131;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Host $http_host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Real-IP $remote_addr;
+
+    # WebSocket upgrade support
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+}"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">location</span><span style="color:#24292EFF;--shiki-dark:#B392F0"> / </span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    proxy_pass </span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">http://172.17.0.1:13131;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    proxy_set_header </span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">Host $http_host;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    proxy_set_header </span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">X-Forwarded-Host $http_host;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    proxy_set_header </span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">X-Forwarded-Proto $scheme;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    proxy_set_header </span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">X-Forwarded-For $proxy_add_x_forwarded_for;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    proxy_set_header </span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">X-Real-IP $remote_addr;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    # WebSocket upgrade support</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    proxy_http_version </span><span style="color:#1976D2;--shiki-dark:#79B8FF">1.1</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    proxy_set_header </span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">Upgrade $http_upgrade;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    proxy_set_header </span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">Connection $connection_upgrade;</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>If you use <code>$connection_upgrade</code>, define it once in the <code>http {}</code> block:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="nginx" data-code="map $http_upgrade $connection_upgrade {
+    default upgrade;
+    &#x27;&#x27;      close;
+}"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">map</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> $</span><span style="color:#24292EFF;--shiki-dark:#FFAB70">http_upgrade</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> $connection_upgrade {</span></span>
+<span class="line"><span style="color:#1976D2;--shiki-dark:#79B8FF">    default</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> upgrade;</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">    ''</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">      close;</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="nginx-proxy-manager-known-good-headers">Nginx Proxy Manager (known-good headers)</h3>
+<p>If WebSockets fail behind NPM while HTTP works, ensure:</p>
+<ul>
+<li>Chelix runs with <code>MOLTIS_BEHIND_PROXY=true</code></li>
+<li>For standard edge TLS termination, Chelix runs with <code>--no-tls</code></li>
+<li>NPM preserves browser host/origin context</li>
+</ul>
+<p>Use this in NPM’s <strong>Advanced</strong> field:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="nginx" data-code="proxy_set_header Host $http_host;
+proxy_set_header X-Forwarded-Host $http_host;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection &#x22;upgrade&#x22;;"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">proxy_set_header </span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">Host $http_host;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">proxy_set_header </span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">X-Forwarded-Host $http_host;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">proxy_set_header </span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">X-Forwarded-Proto $scheme;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">proxy_set_header </span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">X-Forwarded-For $proxy_add_x_forwarded_for;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">proxy_set_header </span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">Upgrade $http_upgrade;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">proxy_set_header </span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">Connection </span><span style="color:#22863A;--shiki-dark:#9ECBFF">"upgrade"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+<p><strong>Why <code>$http_host</code> instead of <code>$host</code>?</strong> Nginx’s <code>$host</code> strips the port,
+while <code>$http_host</code> preserves it. Chelix validates that the WebSocket <code>Origin</code>
+header matches the <code>Host</code> header (including port). On non-standard ports
+(e.g., <code>:444</code> instead of <code>:443</code>), using <code>$host</code> causes a mismatch and
+WebSocket connections are rejected with “cross-origin WebSocket upgrade”.</p>
+<p>Upstream scheme guidance:</p>
+<ul>
+<li><strong>Edge TLS termination (most setups)</strong>: proxy to <code>http://&#x3C;moltis-host>:13131</code>
+with Chelix started using <code>--no-tls</code></li>
+<li><strong>HTTPS upstream / TLS passthrough</strong>: proxy to <code>https://&#x3C;moltis-host>:13131</code>
+and set <code>MOLTIS_ALLOW_TLS_BEHIND_PROXY=true</code></li>
+</ul>
+<h3 id="passkeys-behind-proxies-host-changes">Passkeys Behind Proxies (Host Changes)</h3>
+<p>WebAuthn passkeys are bound to an RP ID (domain identity), not just the
+server process. In practice:</p>
+<ul>
+<li>If users move from one hostname to another, old passkeys for the old host
+will not authenticate on the new host.</li>
+<li>If a proxy rewrites <code>Host</code> and does not preserve browser host context,
+passkey routes can fail with “no passkey config for this hostname”.</li>
+</ul>
+<p>For stable proxy deployments, set your public URL in <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[server]
+external_url = &#x22;https://chat.example.com&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">server</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">external_url </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://chat.example.com"</span></span></code></pre>
+<p>Chelix derives the WebAuthn RP ID (domain) and origin from this URL
+automatically. The <code>MOLTIS_EXTERNAL_URL</code> environment variable takes
+precedence over the config field, which is useful for container
+deployments:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="MOLTIS_BEHIND_PROXY=true
+MOLTIS_NO_TLS=true
+MOLTIS_EXTERNAL_URL=https://chat.example.com"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">MOLTIS_BEHIND_PROXY</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#2B5581;--shiki-dark:#9ECBFF">true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">MOLTIS_NO_TLS</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#2B5581;--shiki-dark:#9ECBFF">true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">MOLTIS_EXTERNAL_URL</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#2B5581;--shiki-dark:#9ECBFF">https://chat.example.com</span></span></code></pre>
+<p>For fine-grained control (e.g. when the RP ID differs from the URL host),
+the existing env vars still work and take precedence after
+<code>external_url</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="MOLTIS_WEBAUTHN_RP_ID=chat.example.com
+MOLTIS_WEBAUTHN_ORIGIN=https://chat.example.com"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">MOLTIS_WEBAUTHN_RP_ID</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#2B5581;--shiki-dark:#9ECBFF">chat.example.com</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">MOLTIS_WEBAUTHN_ORIGIN</span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#2B5581;--shiki-dark:#9ECBFF">https://chat.example.com</span></span></code></pre>
+<p>Migration guidance when changing host/domain:</p>
+<ol>
+<li>Keep password login enabled during migration.</li>
+<li>Deploy with the new <code>server.external_url</code> (or env var equivalent).</li>
+<li>Ask users to register a new passkey on the new host.</li>
+<li>Remove old passkeys after new-host login is confirmed.</li>
+</ol>
+<h2 id="production-recommendations">Production Recommendations</h2>
+<h3 id="1-enable-authentication">1. Enable Authentication</h3>
+<p>By default, Chelix requires a password when accessed from non-localhost:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[auth]
+disabled = false  # keep this false in production"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">auth</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">disabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # keep this false in production</span></span></code></pre>
+<h3 id="2-use-sandbox-isolation">2. Use Sandbox Isolation</h3>
+<p>Always run with sandbox enabled in production:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[tools.exec.sandbox]
+enabled = true
+backend = &#x22;auto&#x22;  # uses strongest available"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">exec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">sandbox</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">enabled </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">backend </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "auto"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # uses strongest available</span></span></code></pre>
+<h3 id="3-limit-rate-limits">3. Limit Rate Limits</h3>
+<p>Tighten rate limits for untrusted environments:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[cron]
+rate_limit_max = 5
+rate_limit_window_secs = 300  # 5 per 5 minutes"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">cron</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">rate_limit_max </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 5</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">rate_limit_window_secs </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 300</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # 5 per 5 minutes</span></span></code></pre>
+<h3 id="4-review-channel-senders">4. Review Channel Senders</h3>
+<p>Regularly audit approved senders and revoke access for unknown parties.</p>
+<h3 id="5-monitor-events">5. Monitor Events</h3>
+<p>Watch for these suspicious patterns:</p>
+<ul>
+<li>Rapid cron job creation</li>
+<li>Identity modification attempts</li>
+<li>Unusual command patterns in approval requests</li>
+<li>New channel senders from unexpected sources</li>
+</ul>
+<h3 id="6-network-segmentation">6. Network Segmentation</h3>
+<p>Run Chelix on a private network or behind a reverse proxy with:</p>
+<ul>
+<li>IP allowlisting</li>
+<li>Rate limiting</li>
+<li>Web Application Firewall (WAF) rules</li>
+</ul>
+<h3 id="7-keep-software-updated">7. Keep Software Updated</h3>
+<p>Subscribe to security advisories and update promptly when vulnerabilities are
+disclosed.</p>
+<h2 id="release-signing-and-verification">Release Signing and Verification</h2>
+<p>All release artifacts are signed with three independent methods:</p>
+<ol>
+<li><strong><a href="https://github.com/agentics-skills/chelix/attestations">GitHub artifact attestations</a></strong>
+(automated in CI) — cryptographic provenance records tied to the repository,
+workflow, and commit SHA; provides SLSA v1.0 Build Level 2 guarantees;
+verifiable with <code>gh attestation verify</code></li>
+<li><strong>Sigstore keyless signing</strong> (automated in CI) — proves the artifact was
+built by the <code>agentics-skills/chelix</code> GitHub Actions pipeline; recorded in
+Sigstore’s Rekor transparency log</li>
+<li><strong>GPG signing</strong> (maintainer’s YubiKey hardware key) — proves a specific
+maintainer authorized the release</li>
+</ol>
+<p>Checksums (SHA-256 and SHA-512) are generated for every artifact.</p>
+<p>See <a href="/release-verification.html">Release Verification</a> for detailed verification
+instructions, artifact file extensions, and maintainer signing workflow.</p>
+<h2 id="reporting-security-issues">Reporting Security Issues</h2>
+<p>Report security vulnerabilities privately to the maintainers. Do not open
+public issues for security bugs.</p>
+<p>See the repository’s SECURITY.md for contact information.</p>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/vault.html"><span>Previous</span>Encryption at Rest (Vault)</a> <a class="pager-link next" href="/skills-security.html"><span>Next</span>Third-Party Skills Security</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

@@ -1,0 +1,818 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Memory - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a class="active" href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Features</div>  <h1 id="memory-system">Memory System</h1>
+<p>Moltis provides a powerful memory system that enables the agent to recall past conversations, notes, and context across sessions. This document explains the available backends, features, and configuration options.</p>
+<p>If you are trying to understand the difference between short-term session
+state, long-term memory files, and sandbox persistence, start with
+<a href="/memory-surfaces.html">Memory Surfaces</a>.</p>
+<h2 id="backends">Backends</h2>
+<p>Moltis supports two memory backends:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Feature</th><th>Built-in</th><th>QMD</th></tr></thead><tbody><tr><td><strong>Search Type</strong></td><td>Hybrid (vector + FTS5 keyword)</td><td>Hybrid (BM25 + vector + LLM reranking)</td></tr><tr><td><strong>Local Embeddings</strong></td><td>GGUF models via llama-cpp-2</td><td>GGUF models</td></tr><tr><td><strong>Remote Embeddings</strong></td><td>OpenAI, Ollama, custom endpoints</td><td>Built-in</td></tr><tr><td><strong>Embedding Cache</strong></td><td>SQLite with LRU eviction</td><td>Built-in</td></tr><tr><td><strong>Batch API</strong></td><td>OpenAI batch (50% cost saving)</td><td>No</td></tr><tr><td><strong>Circuit Breaker</strong></td><td>Fallback chain with auto-recovery</td><td>No</td></tr><tr><td><strong>LLM Reranking</strong></td><td>Optional (configurable)</td><td>Built-in with <code>query</code> command</td></tr><tr><td><strong>File Watching</strong></td><td>Real-time sync via notify</td><td>Built-in</td></tr><tr><td><strong>External Dependency</strong></td><td>None (pure Rust)</td><td>Requires QMD binary (Node.js/Bun)</td></tr><tr><td><strong>Offline Support</strong></td><td>Yes (with local embeddings)</td><td>Yes</td></tr></tbody></table>
+<h3 id="built-in-backend">Built-in Backend</h3>
+<p>The default backend uses SQLite for storage with FTS5 for keyword search and optional vector embeddings for semantic search. Key advantages:</p>
+<ul>
+<li><strong>Zero external dependencies</strong>: Everything is embedded in the moltis binary</li>
+<li><strong>Fallback chain</strong>: Automatically switches between embedding providers if one fails</li>
+<li><strong>Batch embedding</strong>: Reduces OpenAI API costs by 50% for large sync operations</li>
+<li><strong>Embedding cache</strong>: Avoids re-embedding unchanged content</li>
+</ul>
+<h3 id="qmd-backend">QMD Backend</h3>
+<p>QMD is an optional external sidecar that provides enhanced search capabilities:</p>
+<ul>
+<li><strong>BM25 keyword search</strong>: Fast, instant results (similar to Elasticsearch)</li>
+<li><strong>Vector search</strong>: Semantic similarity using local GGUF models</li>
+<li><strong>Hybrid search with LLM reranking</strong>: Combines both methods with an LLM pass for optimal relevance</li>
+</ul>
+<p>To use QMD:</p>
+<ol>
+<li>Install the QMD CLI from <a href="https://github.com/tobi/qmd">github.com/tobi/qmd</a>: <code>npm install -g @tobilu/qmd</code> or <code>bun install -g @tobilu/qmd</code></li>
+<li>Verify the binary is on your <code>PATH</code>: <code>qmd --version</code></li>
+<li>Enable it in Settings > Memory > Backend</li>
+</ol>
+<p>Moltis invokes the <code>qmd</code> CLI directly for indexing and search, so the memory
+backend does not require a separate background daemon.</p>
+<h2 id="features">Features</h2>
+<h3 id="citations">Citations</h3>
+<p>Citations append source file and line number information to search results:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="Some important content from your notes.
+
+Source: memory/notes.md#42"><code><span class="line"><span>Some important content from your notes.</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Source: memory/notes.md#42</span></span></code></pre>
+<p><strong>Configuration options:</strong></p>
+<ul>
+<li><code>auto</code> (default): Include citations when results come from multiple files</li>
+<li><code>on</code>: Always include citations</li>
+<li><code>off</code>: Never include citations</li>
+</ul>
+<h3 id="session-export">Session Export</h3>
+<p>Session transcripts can be exported into searchable memory on <code>/new</code> and
+<code>/reset</code>. This allows the agent to remember past conversations even after
+restarts.</p>
+<p>Exported sessions are:</p>
+<ul>
+<li>Stored in <code>memory/sessions/</code> as markdown files</li>
+<li>Sanitized to remove sensitive tool results and system messages</li>
+<li>Automatically cleaned up based on age/count limits</li>
+</ul>
+<h3 id="llm-reranking">LLM Reranking</h3>
+<p>LLM reranking uses the configured language model to re-score and reorder search results based on semantic relevance to the query. This provides better results than keyword or vector matching alone, at the cost of additional latency.</p>
+<p><strong>How it works:</strong></p>
+<ol>
+<li>Initial search returns candidate results</li>
+<li>LLM evaluates each result’s relevance (0.0-1.0 score)</li>
+<li>Results are reordered by combined score (70% LLM, 30% original)</li>
+</ol>
+<h2 id="configuration">Configuration</h2>
+<p>Memory settings can be configured in <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[memory]
+# Orchestration style: &#x22;hybrid&#x22;, &#x22;prompt-only&#x22;, &#x22;search-only&#x22;, or &#x22;off&#x22;
+style = &#x22;hybrid&#x22;
+
+# Agent-authored write target policy: &#x22;hybrid&#x22;, &#x22;prompt-only&#x22;, &#x22;search-only&#x22;, or &#x22;off&#x22;
+agent_write_mode = &#x22;hybrid&#x22;
+
+# Managed USER.md write policy: &#x22;explicit-and-auto&#x22;, &#x22;explicit-only&#x22;, or &#x22;off&#x22;
+user_profile_write_mode = &#x22;explicit-and-auto&#x22;
+
+# Backend: &#x22;builtin&#x22; (default) or &#x22;qmd&#x22;
+backend = &#x22;builtin&#x22;
+
+# Embedding provider for the built-in backend: &#x22;local&#x22;, &#x22;ollama&#x22;, &#x22;openai&#x22;, &#x22;custom&#x22;, or auto-detect
+# Ignored while backend = &#x22;qmd&#x22;, but preserved for switching back later
+# Omit this field for the real default, which is auto-detect
+provider = &#x22;auto&#x22;
+
+# Disable RAG embeddings and force keyword-only search
+disable_rag = false
+
+# Embedding API base URL (host, /v1, or full /embeddings endpoint)
+base_url = &#x22;http://localhost:11434/v1&#x22;
+
+# Citation mode: &#x22;on&#x22;, &#x22;off&#x22;, or &#x22;auto&#x22;
+citations = &#x22;auto&#x22;
+
+# Enable LLM reranking for hybrid search
+llm_reranking = false
+
+# Merge vector and keyword results with &#x22;rrf&#x22; or &#x22;linear&#x22;
+search_merge_strategy = &#x22;rrf&#x22;
+
+# Export sessions to memory for cross-run recall: &#x22;on-new-or-reset&#x22; or &#x22;off&#x22;
+session_export = &#x22;on-new-or-reset&#x22;
+
+# QMD-specific settings (only used when backend = &#x22;qmd&#x22;)
+[memory.qmd]
+command = &#x22;qmd&#x22;
+max_results = 10
+timeout_ms = 30000"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">memory</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Orchestration style: "hybrid", "prompt-only", "search-only", or "off"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">style </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "hybrid"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Agent-authored write target policy: "hybrid", "prompt-only", "search-only", or "off"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">agent_write_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "hybrid"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Managed USER.md write policy: "explicit-and-auto", "explicit-only", or "off"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">user_profile_write_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "explicit-and-auto"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Backend: "builtin" (default) or "qmd"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">backend </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "builtin"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Embedding provider for the built-in backend: "local", "ollama", "openai", "custom", or auto-detect</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Ignored while backend = "qmd", but preserved for switching back later</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Omit this field for the real default, which is auto-detect</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "auto"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Disable RAG embeddings and force keyword-only search</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">disable_rag </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Embedding API base URL (host, /v1, or full /embeddings endpoint)</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">base_url </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "http://localhost:11434/v1"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Citation mode: "on", "off", or "auto"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">citations </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "auto"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Enable LLM reranking for hybrid search</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">llm_reranking </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> false</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Merge vector and keyword results with "rrf" or "linear"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">search_merge_strategy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "rrf"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Export sessions to memory for cross-run recall: "on-new-or-reset" or "off"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">session_export </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "on-new-or-reset"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># QMD-specific settings (only used when backend = "qmd")</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">memory</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">qmd</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "qmd"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">max_results </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 10</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">timeout_ms </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 30000</span></span></code></pre>
+<p>Real defaults, if you leave the fields unset:</p>
+<ul>
+<li><code>style = "hybrid"</code></li>
+<li><code>agent_write_mode = "hybrid"</code></li>
+<li><code>user_profile_write_mode = "explicit-and-auto"</code></li>
+<li><code>backend = "builtin"</code></li>
+<li><code>provider = auto-detect</code> (unset, not hardcoded <code>local</code>)</li>
+<li><code>disable_rag = false</code></li>
+<li><code>citations = "auto"</code></li>
+<li><code>llm_reranking = false</code></li>
+<li><code>search_merge_strategy = "rrf"</code></li>
+<li><code>session_export = "on-new-or-reset"</code></li>
+<li><code>[chat].prompt_memory_mode = "live-reload"</code></li>
+</ul>
+<p><code>style</code> is separate from <code>[chat].prompt_memory_mode</code>. Style controls whether
+<code>MEMORY.md</code> is injected and whether memory tools are exposed. Prompt memory
+mode controls whether prompt-visible <code>MEMORY.md</code> is live-reloaded or frozen
+per session.</p>
+<p>The web settings page exposes both knobs in the Memory section so you can
+experiment without hand-editing <code>moltis.toml</code>.</p>
+<p><code>agent_write_mode</code> is a separate axis again. It controls where agent-authored
+memory writes may land:</p>
+<ul>
+<li><code>hybrid</code> allows both <code>MEMORY.md</code> and <code>memory/*.md</code></li>
+<li><code>prompt-only</code> allows only <code>MEMORY.md</code></li>
+<li><code>search-only</code> allows only <code>memory/*.md</code></li>
+<li><code>off</code> disables agent-authored memory mutations, including <code>memory_save</code>,
+<code>memory_forget</code>, <code>memory_delete</code>, and the silent pre-compaction memory flush</li>
+</ul>
+<p><code>user_profile_write_mode</code> is about the managed <code>USER.md</code> surface, not agent
+memory files:</p>
+<ul>
+<li><code>explicit-and-auto</code> mirrors explicit settings saves to <code>USER.md</code> and also
+allows silent browser/channel timezone or location capture</li>
+<li><code>explicit-only</code> mirrors explicit settings saves to <code>USER.md</code>, but disables
+silent browser/channel capture</li>
+<li><code>off</code> stops Moltis from writing <code>USER.md</code>; the canonical user profile remains
+in <code>moltis.toml [user]</code></li>
+</ul>
+<p><code>citations</code> and <code>search_merge_strategy</code> are typed config enums too:</p>
+<ul>
+<li><code>citations = "auto" | "on" | "off"</code></li>
+<li><code>search_merge_strategy = "rrf" | "linear"</code></li>
+</ul>
+<p>Interaction rules that matter in practice:</p>
+<ul>
+<li><code>provider</code>, <code>base_url</code>, <code>model</code>, and <code>api_key</code> only apply to
+<code>backend = "builtin"</code>. QMD ignores them.</li>
+<li><code>[chat].prompt_memory_mode</code> only matters when <code>style</code> still allows prompt
+memory, <code>hybrid</code> or <code>prompt-only</code>.</li>
+<li><code>llm_reranking</code> is only meaningful when RAG is enabled. If
+<code>disable_rag = true</code>, memory falls back to keyword search.</li>
+<li><code>session_export</code> exports transcripts into searchable memory files. It does
+not inject those transcripts into the prompt directly.</li>
+</ul>
+<p>Or via the web UI: <strong>Settings > Memory</strong></p>
+<h2 id="recipes">Recipes</h2>
+<p>Common combinations:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Goal</th><th>Settings</th></tr></thead><tbody><tr><td>Default everyday setup</td><td><code>style = "hybrid"</code>, <code>backend = "builtin"</code>, <code>prompt_memory_mode = "live-reload"</code></td></tr><tr><td>Deterministic prompt memory</td><td><code>style = "hybrid"</code>, <code>prompt_memory_mode = "frozen-at-session-start"</code></td></tr><tr><td>Search-only long-term memory</td><td><code>style = "search-only"</code></td></tr><tr><td>Prompt-only memory, no recall tools</td><td><code>style = "prompt-only"</code></td></tr><tr><td>Disable agent memory writes</td><td><code>agent_write_mode = "off"</code></td></tr><tr><td>Keep <code>USER.md</code> from silent enrichment</td><td><code>user_profile_write_mode = "explicit-only"</code></td></tr><tr><td>Keep user profile only in config</td><td><code>user_profile_write_mode = "off"</code></td></tr><tr><td>QMD backend experiment</td><td><code>backend = "qmd"</code></td></tr></tbody></table>
+<h2 id="embedding-providers">Embedding Providers</h2>
+<p>The built-in backend supports multiple embedding providers:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Provider</th><th>Model</th><th>Dimensions</th><th>Notes</th></tr></thead><tbody><tr><td>Local (GGUF)</td><td>EmbeddingGemma-300M</td><td>768</td><td>Offline, ~300MB download</td></tr><tr><td>Ollama</td><td>nomic-embed-text</td><td>768</td><td>Requires Ollama running</td></tr><tr><td>OpenAI</td><td>text-embedding-3-small</td><td>1536</td><td>Requires API key</td></tr><tr><td>Custom</td><td>Configurable</td><td>Varies</td><td>OpenAI-compatible endpoint</td></tr></tbody></table>
+<p>The system auto-detects available providers and creates a fallback chain:</p>
+<ol>
+<li>Try configured provider first</li>
+<li>Fall back to other available providers if it fails</li>
+<li>Use keyword-only search if no embedding provider is available</li>
+</ol>
+<h2 id="memory-directories">Memory Directories</h2>
+<p>By default, moltis indexes markdown files from:</p>
+<ul>
+<li><code>~/.moltis/MEMORY.md</code> - Main long-term memory file</li>
+<li><code>~/.moltis/memory/*.md</code> - Additional memory files</li>
+<li><code>~/.moltis/memory/sessions/*.md</code> - Exported session transcripts</li>
+</ul>
+<p>Prompt injection from <code>MEMORY.md</code> is controlled separately via
+<code>[chat].prompt_memory_mode</code>. Use <code>live-reload</code> to reread <code>MEMORY.md</code> before
+each turn, or <code>frozen-at-session-start</code> to keep a stable prompt-memory
+snapshot for the lifetime of a session.</p>
+<p>If sandboxing is enabled with the default <code>workspace_mount = "ro"</code>, sandboxed
+commands may still read mounted memory files, but they cannot modify them
+directly. Durable memory mutations should use <code>memory_save</code>,
+<code>memory_forget</code>, or <code>memory_delete</code> rather than shell redirection or direct
+file editing inside the sandbox.</p>
+<h2 id="tools">Tools</h2>
+<p>The memory system exposes five agent tools:</p>
+<h3 id="memory_search">memory_search</h3>
+<p>Search memory with a natural language query. Returns relevant chunks ranked
+by hybrid (vector + keyword) similarity.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;query&#x22;: &#x22;what did we discuss about the API design?&#x22;,
+  &#x22;limit&#x22;: 5
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "query"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "what did we discuss about the API design?"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "limit"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 5</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="memory_get">memory_get</h3>
+<p>Retrieve a specific memory chunk by ID. Useful for reading the full text of a
+result found via <code>memory_search</code>.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;chunk_id&#x22;: &#x22;memory/notes.md:42&#x22;
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "chunk_id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "memory/notes.md:42"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="memory_save">memory_save</h3>
+<p>Save content to long-term memory files. The agent uses this tool when you ask
+it to remember something (“remember that I prefer dark mode”) or when it
+decides certain information is worth persisting. This is the preferred
+long-term write path even when memory files are visible through a read-only
+sandbox mount.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;content&#x22;: &#x22;User prefers dark mode and Vim keybindings.&#x22;,
+  &#x22;file&#x22;: &#x22;MEMORY.md&#x22;,
+  &#x22;append&#x22;: true
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "content"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "User prefers dark mode and Vim keybindings."</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "file"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "MEMORY.md"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "append"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>Successful writes also return a <code>checkpointId</code>, so the change can be rolled
+back with <code>checkpoint_restore</code>.</p>
+<p><strong>Parameters:</strong></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>content</code></td><td>string</td><td><em>(required)</em></td><td>The content to save</td></tr><tr><td><code>file</code></td><td>string</td><td><code>MEMORY.md</code></td><td>Target file: <code>MEMORY.md</code>, <code>memory.md</code>, or <code>memory/&#x3C;name>.md</code></td></tr><tr><td><code>append</code></td><td>boolean</td><td><code>true</code></td><td>Append to existing file (<code>true</code>) or overwrite (<code>false</code>)</td></tr></tbody></table>
+<p>If <code>memory.agent_write_mode = "search-only"</code> and <code>file</code> is omitted,
+<code>memory_save</code> defaults to <code>memory/notes.md</code>. The write mode can also reject
+targets that are otherwise valid paths.</p>
+<p><strong>Path validation:</strong> The tool enforces a strict allowlist of write targets
+to prevent path traversal attacks. Only these patterns are accepted:</p>
+<ul>
+<li><code>MEMORY.md</code> or <code>memory.md</code> (root memory files)</li>
+<li><code>memory/&#x3C;name>.md</code> (files in the memory subdirectory, one level deep)</li>
+</ul>
+<p>Absolute paths, <code>..</code> traversal, non-<code>.md</code> extensions, spaces in filenames,
+and nested subdirectories (<code>memory/a/b.md</code>) are all rejected. Content is
+limited to 50 KB per write.</p>
+<p><strong>Auto-reindex:</strong> After writing, the memory system automatically re-indexes
+the affected file so the new content is immediately searchable via
+<code>memory_search</code>.</p>
+<h3 id="memory_forget">memory_forget</h3>
+<p>Forget saved memory using natural language. This tool searches memory, asks the
+configured LLM to choose which chunk or chunks match the forget request, then
+deletes the exact stored text through the same deterministic file mutation path
+used by <code>memory_delete</code>.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;request&#x22;: &#x22;Forget that I prefer dark mode&#x22;,
+  &#x22;dry_run&#x22;: true
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "request"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Forget that I prefer dark mode"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "dry_run"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>If the request is ambiguous, stale, or the exact text is not uniquely
+removable, <code>memory_forget</code> returns a preview with <code>needs_confirmation = true</code>
+instead of mutating files.</p>
+<p>Successful mutations return <code>checkpointIds</code>, because forgetting multiple chunks
+may touch more than one file.</p>
+<p><strong>Parameters:</strong></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>request</code></td><td>string</td><td><em>(required)</em></td><td>Natural-language description of what saved memory to forget</td></tr><tr><td><code>dry_run</code></td><td>boolean</td><td><code>false</code></td><td>Preview planned deletions without mutating files</td></tr><tr><td><code>limit</code></td><td>integer</td><td><code>6</code></td><td>Maximum number of candidate chunks inspected before planning</td></tr></tbody></table>
+<p>Use <code>memory_forget</code> for normal “forget X” requests. Use <code>memory_delete</code> only
+when you already know the exact file and exact snippet to remove.</p>
+<h3 id="memory_delete">memory_delete</h3>
+<p>Forget saved memory by removing an exact snippet from a memory file or deleting
+the whole file. This mutates the backing Markdown file, not just the index.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;file&#x22;: &#x22;MEMORY.md&#x22;,
+  &#x22;text&#x22;: &#x22;User prefers dark mode and Vim keybindings.\n&#x22;
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "file"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "MEMORY.md"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "text"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "User prefers dark mode and Vim keybindings.</span><span style="color:#22863A;--shiki-dark:#79B8FF">\n</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>To delete an entire memory note instead:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
+  &#x22;file&#x22;: &#x22;memory/obsolete-note.md&#x22;,
+  &#x22;delete_file&#x22;: true
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "file"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "memory/obsolete-note.md"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "delete_file"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>Successful deletes also return a <code>checkpointId</code>, so the previous file state can
+be restored with <code>checkpoint_restore</code>.</p>
+<p><strong>Parameters:</strong></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>file</code></td><td>string</td><td><em>(required)</em></td><td>Target file: <code>MEMORY.md</code>, <code>memory.md</code>, or <code>memory/&#x3C;name>.md</code></td></tr><tr><td><code>text</code></td><td>string</td><td><em>(none)</em></td><td>Exact text snippet to remove. Required unless <code>delete_file = true</code></td></tr><tr><td><code>delete_file</code></td><td>boolean</td><td><code>false</code></td><td>Delete the whole file instead of removing exact text</td></tr><tr><td><code>all_matches</code></td><td>boolean</td><td><code>false</code></td><td>Remove every exact match of <code>text</code> instead of only the first</td></tr><tr><td><code>delete_if_empty</code></td><td>boolean</td><td><code>true</code></td><td>Delete the file if removing <code>text</code> leaves only whitespace</td></tr></tbody></table>
+<p><code>memory_delete</code> uses the same path validation rules as <code>memory_save</code>, updates
+the search index immediately, and can clean up stale index entries when a file
+is removed. It is the low-level exact-delete primitive that powers
+<code>memory_forget</code>.</p>
+<h2 id="silent-memory-turn-pre-compaction-flush">Silent Memory Turn (Pre-Compaction Flush)</h2>
+<p>Before compacting a session (summarizing old messages to free context window
+space), Moltis runs a <strong>silent agentic turn</strong> that reviews the conversation
+and saves important information to memory files. This ensures durable memories
+survive compaction.</p>
+<p><strong>How it works:</strong></p>
+<ol>
+<li>When a session approaches the model’s context window limit, the gateway
+triggers compaction</li>
+<li>Before summarizing, a hidden LLM turn runs with a special system prompt
+asking the agent to save noteworthy information</li>
+<li>The agent writes to <code>MEMORY.md</code> and/or <code>memory/YYYY-MM-DD.md</code> using an
+internal <code>write_file</code> tool backed by the same <code>MemoryWriter</code> as
+<code>memory_save</code></li>
+<li>The LLM’s response text is discarded (the user sees nothing)</li>
+</ol>
+<p>This pre-compaction flush obeys <code>memory.agent_write_mode</code>. In <code>off</code> mode, the
+flush is skipped entirely.
+5. Written files are automatically re-indexed for future search</p>
+<p><strong>What gets saved:</strong></p>
+<ul>
+<li>User preferences and working style</li>
+<li>Key decisions and their reasoning</li>
+<li>Project context, architecture choices, and conventions</li>
+<li>Important facts, names, dates, and relationships</li>
+<li>Technical setup details (tools, languages, frameworks)</li>
+</ul>
+<p>This is the same approach used by OpenClaw. See the
+<a href="/memory-comparison.html">comparison page</a> for a detailed analysis of both
+systems.</p>
+<h2 id="architecture">Architecture</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="┌──────────────────────────────────────────────────────────────────┐
+│                       Memory Manager                             │
+│               (implements MemoryWriter trait)                     │
+├──────────────────────────────────────────────────────────────────┤
+│                         Read Path                                │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐      │
+│  │   Chunker   │  │   Search    │  │  Session Export     │      │
+│  │ (markdown)  │  │  (hybrid)   │  │  (transcripts)      │      │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘      │
+├──────────────────────────────────────────────────────────────────┤
+│                        Write Path                                │
+│  ┌─────────────────┐  ┌──────────────────┐  ┌────────────────┐  │
+│  │ memory_save /   │  │  Silent Turn     │  │  Path          │  │
+│  │ memory_delete   │  │  (pre-compact)   │  │  Validation    │  │
+│  │  (agent tools)  │  │                  │  │                │  │
+│  └─────────────────┘  └──────────────────┘  └────────────────┘  │
+├──────────────────────────────────────────────────────────────────┤
+│                      Storage Backend                             │
+│  ┌────────────────────────┐  ┌────────────────────────┐         │
+│  │   Built-in (SQLite)    │  │   QMD (sidecar)        │         │
+│  │  - FTS5 keyword        │  │  - BM25 keyword        │         │
+│  │  - Vector similarity   │  │  - Vector similarity   │         │
+│  │  - Embedding cache     │  │  - LLM reranking       │         │
+│  └────────────────────────┘  └────────────────────────┘         │
+├──────────────────────────────────────────────────────────────────┤
+│                    Embedding Providers                            │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌───────────────┐      │
+│  │  Local  │  │ Ollama  │  │ OpenAI  │  │ Batch/Fallback│      │
+│  │  (GGUF) │  │         │  │         │  │               │      │
+│  └─────────┘  └─────────┘  └─────────┘  └───────────────┘      │
+└──────────────────────────────────────────────────────────────────┘"><code><span class="line"><span>┌──────────────────────────────────────────────────────────────────┐</span></span>
+<span class="line"><span>│                       Memory Manager                             │</span></span>
+<span class="line"><span>│               (implements MemoryWriter trait)                     │</span></span>
+<span class="line"><span>├──────────────────────────────────────────────────────────────────┤</span></span>
+<span class="line"><span>│                         Read Path                                │</span></span>
+<span class="line"><span>│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐      │</span></span>
+<span class="line"><span>│  │   Chunker   │  │   Search    │  │  Session Export     │      │</span></span>
+<span class="line"><span>│  │ (markdown)  │  │  (hybrid)   │  │  (transcripts)      │      │</span></span>
+<span class="line"><span>│  └─────────────┘  └─────────────┘  └─────────────────────┘      │</span></span>
+<span class="line"><span>├──────────────────────────────────────────────────────────────────┤</span></span>
+<span class="line"><span>│                        Write Path                                │</span></span>
+<span class="line"><span>│  ┌─────────────────┐  ┌──────────────────┐  ┌────────────────┐  │</span></span>
+<span class="line"><span>│  │ memory_save /   │  │  Silent Turn     │  │  Path          │  │</span></span>
+<span class="line"><span>│  │ memory_delete   │  │  (pre-compact)   │  │  Validation    │  │</span></span>
+<span class="line"><span>│  │  (agent tools)  │  │                  │  │                │  │</span></span>
+<span class="line"><span>│  └─────────────────┘  └──────────────────┘  └────────────────┘  │</span></span>
+<span class="line"><span>├──────────────────────────────────────────────────────────────────┤</span></span>
+<span class="line"><span>│                      Storage Backend                             │</span></span>
+<span class="line"><span>│  ┌────────────────────────┐  ┌────────────────────────┐         │</span></span>
+<span class="line"><span>│  │   Built-in (SQLite)    │  │   QMD (sidecar)        │         │</span></span>
+<span class="line"><span>│  │  - FTS5 keyword        │  │  - BM25 keyword        │         │</span></span>
+<span class="line"><span>│  │  - Vector similarity   │  │  - Vector similarity   │         │</span></span>
+<span class="line"><span>│  │  - Embedding cache     │  │  - LLM reranking       │         │</span></span>
+<span class="line"><span>│  └────────────────────────┘  └────────────────────────┘         │</span></span>
+<span class="line"><span>├──────────────────────────────────────────────────────────────────┤</span></span>
+<span class="line"><span>│                    Embedding Providers                            │</span></span>
+<span class="line"><span>│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌───────────────┐      │</span></span>
+<span class="line"><span>│  │  Local  │  │ Ollama  │  │ OpenAI  │  │ Batch/Fallback│      │</span></span>
+<span class="line"><span>│  │  (GGUF) │  │         │  │         │  │               │      │</span></span>
+<span class="line"><span>│  └─────────┘  └─────────┘  └─────────┘  └───────────────┘      │</span></span>
+<span class="line"><span>└──────────────────────────────────────────────────────────────────┘</span></span></code></pre>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="memory-not-working">Memory not working</h3>
+<ol>
+<li>Check status in Settings > Memory</li>
+<li>Ensure at least one embedding provider is available:
+<ul>
+<li>Local: Requires <code>local-embeddings</code> feature enabled at build</li>
+<li>Ollama: Must be running at <code>localhost:11434</code></li>
+<li>OpenAI: Requires <code>OPENAI_API_KEY</code> environment variable</li>
+</ul>
+</li>
+</ol>
+<h3 id="search-returns-no-results">Search returns no results</h3>
+<ol>
+<li>Check that memory files exist in the expected directories</li>
+<li>Trigger a manual sync by restarting moltis</li>
+<li>Check logs for sync errors</li>
+</ol>
+<h3 id="qmd-not-available">QMD not available</h3>
+<ol>
+<li>Install QMD if needed: <code>npm install -g @tobilu/qmd</code> or <code>bun install -g @tobilu/qmd</code></li>
+<li>Verify QMD is installed: <code>qmd --version</code></li>
+<li>Check that the path is correct in settings</li>
+<li>Ensure QMD can see its index and collections: <code>qmd status</code></li>
+</ol>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/external-agents.html"><span>Previous</span>External Agents</a> <a class="pager-link next" href="/memory-surfaces.html"><span>Next</span>Memory Surfaces</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

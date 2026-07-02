@@ -1,0 +1,643 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Encryption at Rest (Vault) - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a class="active" href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Security</div>  <h1 id="encryption-at-rest-vault">Encryption at Rest (Vault)</h1>
+<p>Moltis includes an encryption-at-rest vault that protects sensitive data
+stored in the SQLite database. Environment variables (provider API keys,
+tokens, etc.) are encrypted with <strong>XChaCha20-Poly1305</strong> AEAD using keys
+derived from your password via <strong>Argon2id</strong>.</p>
+<p>The vault is enabled by default (the <code>vault</code> cargo feature) and requires
+no configuration. It initializes automatically when you set your first
+password (during setup or later in <strong>Settings > Authentication</strong>).</p>
+<p>Set <code>auth.vault_enabled = false</code> to keep password authentication without
+encrypting stored secrets at rest. Existing installs keep vault behavior on
+upgrade because the default is <code>true</code>.</p>
+<h2 id="key-hierarchy">Key Hierarchy</h2>
+<p>The vault uses a two-layer key hierarchy to separate the encryption key
+from the password:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="User password
+  │
+  ▼ Argon2id (salt from DB)
+  │
+  KEK (Key Encryption Key)
+  │
+  ▼ XChaCha20-Poly1305 unwrap
+  │
+  DEK (Data Encryption Key)
+  │
+  ▼ XChaCha20-Poly1305 encrypt/decrypt
+  │
+  Encrypted data (env variables, ...)"><code><span class="line"><span>User password</span></span>
+<span class="line"><span>  │</span></span>
+<span class="line"><span>  ▼ Argon2id (salt from DB)</span></span>
+<span class="line"><span>  │</span></span>
+<span class="line"><span>  KEK (Key Encryption Key)</span></span>
+<span class="line"><span>  │</span></span>
+<span class="line"><span>  ▼ XChaCha20-Poly1305 unwrap</span></span>
+<span class="line"><span>  │</span></span>
+<span class="line"><span>  DEK (Data Encryption Key)</span></span>
+<span class="line"><span>  │</span></span>
+<span class="line"><span>  ▼ XChaCha20-Poly1305 encrypt/decrypt</span></span>
+<span class="line"><span>  │</span></span>
+<span class="line"><span>  Encrypted data (env variables, ...)</span></span></code></pre>
+<ul>
+<li><strong>KEK</strong> — derived from the user’s password using Argon2id with a
+per-instance random salt. Never stored directly; recomputed on each unseal.</li>
+<li><strong>DEK</strong> — a random 256-bit key generated once at vault initialization.
+Stored encrypted (wrapped) by the KEK in the <code>vault_metadata</code> table.</li>
+<li><strong>Recovery KEK</strong> — an independent Argon2id-derived key from the recovery
+phrase with a fixed domain-separation salt, used to wrap a second copy of
+the DEK for emergency access. Uses lighter KDF parameters (16 MiB, 2
+iterations) since the recovery key already has 128 bits of entropy.</li>
+</ul>
+<p>This design means changing your password only re-wraps the DEK with a new
+KEK. The DEK itself (and all data encrypted by it) stays the same, so
+password changes are fast regardless of how much data is encrypted.</p>
+<h2 id="vault-states">Vault States</h2>
+<p>The vault has three states:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>State</th><th>Meaning</th></tr></thead><tbody><tr><td><strong>Uninitialized</strong></td><td>No vault metadata exists. The vault hasn’t been set up yet.</td></tr><tr><td><strong>Sealed</strong></td><td>Metadata exists but the DEK is not in memory. Data cannot be read or written.</td></tr><tr><td><strong>Unsealed</strong></td><td>The DEK is in memory. Encryption and decryption are active.</td></tr></tbody></table>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="                 set password
+Uninitialized ──────────────► Unsealed
+                                │  ▲
+                     restart    │  │  login / unlock
+                                ▼  │
+                              Sealed"><code><span class="line"><span>                 set password</span></span>
+<span class="line"><span>Uninitialized ──────────────► Unsealed</span></span>
+<span class="line"><span>                                │  ▲</span></span>
+<span class="line"><span>                     restart    │  │  login / unlock</span></span>
+<span class="line"><span>                                ▼  │</span></span>
+<span class="line"><span>                              Sealed</span></span></code></pre>
+<p>After a server restart, the vault is normally in the <strong>Sealed</strong> state until
+the user logs in (which provides the password needed to derive the KEK and
+unwrap the DEK). For unattended deployments, Moltis can also auto-unseal at
+startup from an explicitly configured recovery key.</p>
+<h2 id="lifecycle-integration">Lifecycle Integration</h2>
+<p>The vault integrates transparently with the authentication flow:</p>
+<h3 id="first-password-set-post-apiauthsetup-or-first-post-apiauthpasswordchange">First password set (<code>POST /api/auth/setup</code> or first <code>POST /api/auth/password/change</code>)</h3>
+<p>When the first password is set (during onboarding or later in Settings):</p>
+<ol>
+<li><code>vault.initialize(password)</code> generates a random DEK and recovery key</li>
+<li>The DEK is wrapped with a KEK derived from the password</li>
+<li>A second copy of the DEK is wrapped with the recovery KEK</li>
+<li>The response includes a <code>recovery_key</code> field (shown once, then not returned again)</li>
+<li>Any existing plaintext env vars are migrated to encrypted</li>
+</ol>
+<h3 id="login-post-apiauthlogin">Login (<code>POST /api/auth/login</code>)</h3>
+<p>After successful password verification:</p>
+<ol>
+<li><code>vault.unseal(password)</code> derives the KEK and unwraps the DEK into memory</li>
+<li>Unencrypted env vars are migrated to encrypted (if any remain)</li>
+</ol>
+<h3 id="password-change-after-initialization-post-apiauthpasswordchange">Password change after initialization (<code>POST /api/auth/password/change</code>)</h3>
+<p>When a password already exists and is rotated:</p>
+<ol>
+<li><code>vault.change_password(old, new)</code> re-wraps the DEK with a new KEK
+derived from the new password</li>
+</ol>
+<p>No new recovery key is generated during normal password rotation.</p>
+<h3 id="server-restart">Server restart</h3>
+<p>The vault starts in <strong>Sealed</strong> state unless unattended auto-unseal is
+configured. All encrypted data is unreadable until the user logs in or the
+configured auto-unseal recovery key is accepted.</p>
+<h3 id="unattended-auto-unseal">Unattended auto-unseal</h3>
+<p>For servers that need to recover fully after a reboot or <code>/update</code>, set one
+of these environment variables:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Variable</th><th>Purpose</th></tr></thead><tbody><tr><td><code>MOLTIS_VAULT_AUTO_UNSEAL_KEY_FILE</code></td><td>Path to a file containing the vault recovery key. Preferred for Docker/Kubernetes secrets.</td></tr><tr><td><code>MOLTIS_VAULT_AUTO_UNSEAL_KEY</code></td><td>Vault recovery key value directly in the process environment.</td></tr></tbody></table>
+<p>If both are set, Moltis logs a warning and uses
+<code>MOLTIS_VAULT_AUTO_UNSEAL_KEY_FILE</code>.</p>
+<p>Auto-unseal runs immediately after the vault is opened from SQLite and before
+Moltis loads persisted environment variables, MCP server configuration, cron
+runtime environment, and stored channel accounts. That means encrypted env vars
+and channel credentials are available during normal startup rather than only
+after a manual browser unlock.</p>
+<aside class="admonition admonition-warning"><div class="admonition-title">Warning</div><div class="admonition-body"><p>Auto-unseal trades manual recovery for unattended availability. If an attacker<br>can read both the Moltis database and the configured recovery-key env/file, they<br>can decrypt vault-protected secrets. Prefer a Docker/Kubernetes secret file over<br>a plain env var, restrict file permissions, and keep the recovery key out of<br><code>moltis.toml</code>.</p></div></aside>
+<h2 id="recovery-key">Recovery Key</h2>
+<p>At vault initialization, a human-readable recovery key is generated and
+returned in the API response that performed initialization. It looks like:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-2345-6789"><code><span class="line"><span>ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-2345-6789</span></span></code></pre>
+<p>The alphabet excludes ambiguous characters (<code>I</code>, <code>O</code>, <code>0</code>, <code>1</code>) to avoid
+transcription errors. The key is case-insensitive.</p>
+<aside class="admonition admonition-warning"><div class="admonition-title">Warning</div><div class="admonition-body"><p>The recovery key is shown <strong>exactly once</strong> when the vault is initialized.<br>Store it in a safe place (password manager, printed copy in a safe, etc.).<br>If you lose both your password and recovery key, encrypted data cannot be<br>recovered.</p></div></aside>
+<p>Use the recovery key to unseal the vault when you’ve forgotten your
+password:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="curl -X POST http://localhost:18789/api/auth/vault/recovery \
+  -H &#x22;Content-Type: application/json&#x22; \
+  -d &#x27;{&#x22;recovery_key&#x22;: &#x22;ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-2345-6789&#x22;}&#x27;"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -X</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> POST</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> http://localhost:18789/api/auth/vault/recovery</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -H</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Content-Type: application/json"</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -d</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '{"recovery_key": "ABCD-EFGH-JKLM-NPQR-STUV-WXYZ-2345-6789"}'</span></span></code></pre>
+<h2 id="what-gets-encrypted">What Gets Encrypted</h2>
+<p>Currently encrypted:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Data</th><th>Storage</th><th>AAD</th></tr></thead><tbody><tr><td>Environment variables (<code>env_variables</code> table)</td><td>SQLite</td><td><code>env:{key}</code></td></tr><tr><td>Managed SSH private keys (<code>ssh_keys</code> table)</td><td>SQLite</td><td><code>ssh-key:{name}</code></td></tr><tr><td>Channel account secrets, including Discord bot tokens</td><td>SQLite</td><td><code>channel:{type}:{account_id}:{field}</code></td></tr><tr><td>Webhook auth/source secrets</td><td>SQLite</td><td><code>webhook:config:{field}</code></td></tr><tr><td>Provider API keys (<code>provider_keys.json.enc</code>)</td><td>File</td><td><code>provider_keys</code></td></tr></tbody></table>
+<p>The <code>encrypted</code> column in <code>env_variables</code> and <code>ssh_keys</code> tracks whether each
+row is encrypted (1) or plaintext (0). When the vault is unsealed, new env vars
+and managed SSH private keys are written encrypted. Imported passphrase-protected
+SSH keys are decrypted during import and then stored under the vault-managed
+key hierarchy. When sealed or
+uninitialized, they are written as plaintext.</p>
+<p>On the first successful vault unseal after enabling the feature, Moltis also
+migrates any previously stored plaintext env vars and managed SSH private keys
+to encrypted storage in-place. Provider API keys (<code>provider_keys.json</code>) are
+encrypted to a <code>.enc</code> copy alongside the original; the plaintext file is kept
+for backward compatibility until all consumers use the vault-aware read path.
+Voice provider API keys are now stored in <code>provider_keys.json</code> (same as LLM
+keys), not in <code>moltis.toml</code>.</p>
+<aside class="admonition admonition-info"><div class="admonition-title">Planned</div><div class="admonition-body"><p>TokenStore (OAuth tokens in <code>credentials.json</code>) is currently sync/file-based<br>and cannot easily call async vault methods. Encryption for this store is<br>planned after an async refactor.</p></div></aside>
+<h2 id="vault-guard-middleware">Vault Guard Middleware</h2>
+<p>When the vault is in the <strong>Sealed</strong> state, a middleware layer blocks
+vault-protected API requests with <code>423 Locked</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{&#x22;error&#x22;: &#x22;vault is sealed&#x22;, &#x22;status&#x22;: &#x22;sealed&#x22;}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span><span style="color:#D32F2F;--shiki-dark:#79B8FF">"error"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "vault is sealed"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#79B8FF"> "status"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "sealed"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<p>This prevents the application from serving unreadable encrypted data while
+still allowing access to session history and bootstrap payloads that are not
+yet stored in the vault.</p>
+<p>The guard does <strong>not</strong> block when the vault is <strong>Uninitialized</strong> — there’s
+nothing to protect yet, and the application needs to function normally for
+initial setup.</p>
+<p>Allowed through regardless of vault state:</p>
+<ul>
+<li><code>/api/auth/*</code> — authentication endpoints (including vault unlock)</li>
+<li><code>/api/bootstrap</code> — UI bootstrap payload</li>
+<li><code>/api/sessions*</code> — session history and media endpoints</li>
+<li><code>/api/gon</code> — server-injected bootstrap data</li>
+<li>Non-API routes — static assets, HTML pages, health check</li>
+</ul>
+<h2 id="api-endpoints">API Endpoints</h2>
+<p>Vault unlock endpoints are under <code>/api/auth/vault/</code>. Unlock and recovery are
+available before login so a sealed vault can be opened during authentication.
+Disabling the vault requires an authenticated session.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Method</th><th>Path</th><th>Purpose</th></tr></thead><tbody><tr><td><code>GET</code></td><td><code>/api/auth/vault/status</code></td><td>Returns <code>{"status": "uninitialized"|"sealed"|"unsealed"|"disabled"}</code></td></tr><tr><td><code>POST</code></td><td><code>/api/auth/vault/unlock</code></td><td>Unseal with password: <code>{"password": "..."}</code></td></tr><tr><td><code>POST</code></td><td><code>/api/auth/vault/recovery</code></td><td>Unseal with recovery key: <code>{"recovery_key": "..."}</code></td></tr><tr><td><code>POST</code></td><td><code>/api/auth/vault/disable</code></td><td>Decrypt stored secrets and set <code>auth.vault_enabled = false</code>; accepts <code>{"password":"..."}</code> when sealed.</td></tr></tbody></table>
+<h2 id="disabling-the-vault">Disabling The Vault</h2>
+<p>Use <strong>Settings > Encryption > Disable encryption at rest</strong> to opt out of the
+vault while keeping password login. Moltis decrypts all known vault-backed data
+before writing <code>auth.vault_enabled = false</code>; if any decrypt step fails, the flag
+is not changed.</p>
+<p>After disabling, restart Moltis so startup no longer wires the vault into auth,
+channel, webhook, env-var, and SSH secret storage. The running process also
+stops encrypting new secret writes immediately after a successful disable, so
+secrets added before the restart remain readable in no-vault mode. Local secrets
+remain on disk as plaintext, so only use this mode on trusted machines with
+appropriate file and disk protections.</p>
+<p>Error responses:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Status</th><th>Meaning</th></tr></thead><tbody><tr><td><code>200</code></td><td>Success</td></tr><tr><td><code>423 Locked</code></td><td>Bad password or recovery key</td></tr><tr><td><code>404</code></td><td>Vault not available (feature disabled)</td></tr><tr><td><code>500</code></td><td>Internal error</td></tr></tbody></table>
+<h2 id="frontend-integration">Frontend Integration</h2>
+<p>The vault status is included in the gon data (<code>window.__MOLTIS__</code>) on
+every page load:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="js" data-code="import * as gon from &#x22;./gon.js&#x22;;
+const vaultStatus = gon.get(&#x22;vault_status&#x22;);
+// &#x22;uninitialized&#x22; | &#x22;sealed&#x22; | &#x22;unsealed&#x22; | &#x22;disabled&#x22;"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">import</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> *</span><span style="color:#D32F2F;--shiki-dark:#F97583"> as</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> gon </span><span style="color:#D32F2F;--shiki-dark:#F97583">from</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "./gon.js"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">const</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> vaultStatus</span><span style="color:#D32F2F;--shiki-dark:#F97583"> =</span><span style="color:#1976D2;--shiki-dark:#E1E4E8"> gon</span><span style="color:#6F42C1;--shiki-dark:#E1E4E8">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">get</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"vault_status"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">// "uninitialized" | "sealed" | "unsealed" | "disabled"</span></span></code></pre>
+<p>Live updates are available via <code>gon.onChange("vault_status", callback)</code>.</p>
+<h3 id="locked-vault-banners">Locked-vault banners</h3>
+<p>When <code>vault_status</code> is <code>sealed</code>, the UI shows an info banner:</p>
+<ul>
+<li>In the main app shell (<code>index.html</code>): a banner linking to
+<strong>Settings > Encryption</strong> for manual unlock.</li>
+<li>On the login page (<code>/login</code>): a banner that explains the vault is locked
+and will unlock after successful sign-in.</li>
+</ul>
+<p>The chat/session UI remains visible while sealed because chat history is not
+yet encrypted by the vault.</p>
+<h3 id="onboarding-and-localhost">Onboarding and localhost</h3>
+<p>The onboarding wizard’s Security step explains that setting a password
+also enables the encryption vault for stored secrets. The password
+selection card explicitly says: “Set a password and enable the encryption
+vault for stored secrets.”</p>
+<p>On localhost, where authentication is optional, the subtitle mentions
+that setting a password enables the vault — giving users a reason to
+set one even when network security is not a concern.</p>
+<p>When a password is set during first-time setup, the server returns a
+<code>recovery_key</code> field in the JSON response. The onboarding wizard shows an
+interstitial screen with:</p>
+<ul>
+<li>A success message (“Password set and vault initialized”)</li>
+<li>The recovery key in a monospace <code>&#x3C;code></code> block with <code>select-all</code> for
+easy selection</li>
+<li>A <strong>Copy</strong> button using the Clipboard API</li>
+<li>A warning that the key will not be shown again</li>
+<li>A <strong>Continue</strong> button to proceed to the next onboarding step</li>
+</ul>
+<p>In <strong>Settings > Authentication</strong>, setting a password for the first time
+also returns a <code>recovery_key</code>. The page keeps the user on Settings long
+enough to copy it, then shows a <strong>Continue to sign in</strong> action when the
+new password makes authentication mandatory.</p>
+<p>If password authentication already exists but the vault is still
+uninitialized, <strong>Settings > Encryption</strong> shows an <strong>Initialize vault</strong> form
+instead of sending the user back to Authentication. Submitting the current
+password initializes the vault, migrates plaintext secrets into encrypted
+storage, and returns the one-time recovery key.</p>
+<p>Passkey-only setup does not trigger vault initialization (no password to
+derive a KEK from), so the recovery key screen is never shown in that flow.</p>
+<h3 id="vault-status-in-settings--encryption">Vault status in Settings > Encryption</h3>
+<p>When the vault feature is compiled in, an <strong>Encryption</strong> tab appears in
+Settings (under the Security group). It tells the user their API keys
+and secrets are encrypted before being stored, and that the vault locks
+on restart and unlocks on login.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Vault state</th><th>Badge</th><th>What it means</th></tr></thead><tbody><tr><td><strong>Unsealed</strong></td><td>Green (“Unlocked”)</td><td>Your API keys and secrets are encrypted in the database. Everything is working.</td></tr><tr><td><strong>Sealed</strong></td><td>Amber (“Locked”)</td><td>Log in or unlock below to access your encrypted keys.</td></tr><tr><td><strong>Uninitialized</strong></td><td>Gray (“Off”)</td><td>Set a password, or initialize the vault if password authentication already exists.</td></tr></tbody></table>
+<p>When the vault is <strong>sealed</strong>, both unlock forms are shown in the same
+panel (password and recovery key, separated by an “or” divider). Submitting
+calls <code>POST /api/auth/vault/unlock</code> or <code>POST /api/auth/vault/recovery</code>,
+then refreshes gon data to update the status badge.</p>
+<h3 id="encrypted-badges-on-environment-variables">Encrypted badges on environment variables</h3>
+<p>Each environment variable in <strong>Settings > Environment</strong> shows a badge
+indicating its encryption status:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Badge</th><th>Style</th><th>Meaning</th></tr></thead><tbody><tr><td><strong>Encrypted</strong></td><td>Green (<code>.provider-item-badge.configured</code>)</td><td>Value is encrypted at rest by the vault</td></tr><tr><td><strong>Plaintext</strong></td><td>Gray (<code>.provider-item-badge.muted</code>)</td><td>Value is stored in cleartext</td></tr></tbody></table>
+<p>A status note at the top of the section explains the current vault state:</p>
+<ul>
+<li><strong>Unlocked</strong>: “Your keys are stored encrypted.”</li>
+<li><strong>Locked</strong>: “Encrypted keys can’t be read — sandbox commands won’t
+work.” Links to Encryption settings to unlock.</li>
+<li><strong>Not set up</strong>: “Set a password to encrypt your stored keys.” Links
+to Authentication settings.</li>
+</ul>
+<h2 id="disabling-the-vault-1">Disabling the Vault</h2>
+<p>To compile without vault support, disable the <code>vault</code> feature:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="cargo build --no-default-features --features &#x22;web-ui,tls&#x22;"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">cargo</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> build</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --no-default-features</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --features</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "web-ui,tls"</span></span></code></pre>
+<p>When the feature is disabled, all vault code is compiled out via
+<code>#[cfg(feature = "vault")]</code>. Environment variables are stored as plaintext,
+and the vault API endpoints return 404.</p>
+<h2 id="cryptographic-details">Cryptographic Details</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Parameter</th><th>Value</th></tr></thead><tbody><tr><td>AEAD cipher</td><td>XChaCha20-Poly1305 (192-bit nonce, 256-bit key)</td></tr><tr><td>KDF</td><td>Argon2id</td></tr><tr><td>Argon2id memory</td><td>64 MiB</td></tr><tr><td>Argon2id iterations</td><td>3</td></tr><tr><td>Argon2id parallelism</td><td>1</td></tr><tr><td>DEK size</td><td>256 bits</td></tr><tr><td>Nonce generation</td><td>Random per encryption (24 bytes)</td></tr><tr><td>AAD</td><td>Context string per data type (e.g. <code>env:MY_KEY</code>)</td></tr><tr><td>Key wrapping</td><td>XChaCha20-Poly1305 (KEK encrypts DEK)</td></tr><tr><td>Recovery key</td><td>128-bit random, 32-char alphanumeric encoding (8 groups of 4)</td></tr></tbody></table>
+<p>The nonce is prepended to the ciphertext and stored as base64. AAD
+(Additional Authenticated Data) binds each ciphertext to its context,
+preventing an attacker from swapping encrypted values between keys.</p>
+<h2 id="database-schema">Database Schema</h2>
+<p>The vault uses a single metadata table:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="sql" data-code="CREATE TABLE IF NOT EXISTS vault_metadata (
+    id                   INTEGER PRIMARY KEY CHECK (id = 1),
+    version              INTEGER NOT NULL DEFAULT 1,
+    kdf_salt             TEXT    NOT NULL,
+    kdf_params           TEXT    NOT NULL,
+    wrapped_dek          TEXT    NOT NULL,
+    recovery_wrapped_dek TEXT,
+    recovery_key_hash    TEXT,
+    created_at           TEXT    NOT NULL DEFAULT (datetime(&#x27;now&#x27;)),
+    updated_at           TEXT    NOT NULL DEFAULT (datetime(&#x27;now&#x27;))
+);"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">CREATE</span><span style="color:#D32F2F;--shiki-dark:#F97583"> TABLE</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> IF</span><span style="color:#D32F2F;--shiki-dark:#F97583"> NOT</span><span style="color:#D32F2F;--shiki-dark:#F97583"> EXISTS</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> vault_metadata (</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    id                   </span><span style="color:#D32F2F;--shiki-dark:#F97583">INTEGER</span><span style="color:#D32F2F;--shiki-dark:#F97583"> PRIMARY KEY</span><span style="color:#D32F2F;--shiki-dark:#F97583"> CHECK</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> (id </span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    version</span><span style="color:#D32F2F;--shiki-dark:#F97583">              INTEGER</span><span style="color:#D32F2F;--shiki-dark:#F97583"> NOT NULL</span><span style="color:#D32F2F;--shiki-dark:#F97583"> DEFAULT</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    kdf_salt             </span><span style="color:#D32F2F;--shiki-dark:#F97583">TEXT</span><span style="color:#D32F2F;--shiki-dark:#F97583">    NOT NULL</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    kdf_params           </span><span style="color:#D32F2F;--shiki-dark:#F97583">TEXT</span><span style="color:#D32F2F;--shiki-dark:#F97583">    NOT NULL</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    wrapped_dek          </span><span style="color:#D32F2F;--shiki-dark:#F97583">TEXT</span><span style="color:#D32F2F;--shiki-dark:#F97583">    NOT NULL</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    recovery_wrapped_dek </span><span style="color:#D32F2F;--shiki-dark:#F97583">TEXT</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    recovery_key_hash    </span><span style="color:#D32F2F;--shiki-dark:#F97583">TEXT</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    created_at           </span><span style="color:#D32F2F;--shiki-dark:#F97583">TEXT</span><span style="color:#D32F2F;--shiki-dark:#F97583">    NOT NULL</span><span style="color:#D32F2F;--shiki-dark:#F97583"> DEFAULT</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> (</span><span style="color:#D32F2F;--shiki-dark:#F97583">datetime</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#22863A;--shiki-dark:#9ECBFF">'now'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)),</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    updated_at           </span><span style="color:#D32F2F;--shiki-dark:#F97583">TEXT</span><span style="color:#D32F2F;--shiki-dark:#F97583">    NOT NULL</span><span style="color:#D32F2F;--shiki-dark:#F97583"> DEFAULT</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> (</span><span style="color:#D32F2F;--shiki-dark:#F97583">datetime</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#22863A;--shiki-dark:#9ECBFF">'now'</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+<p>The <code>CHECK (id = 1)</code> constraint ensures only one row exists — the vault
+is a singleton per database.</p>
+<p>The gateway migration adds the <code>encrypted</code> column to <code>env_variables</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="sql" data-code="ALTER TABLE env_variables ADD COLUMN encrypted INTEGER NOT NULL DEFAULT 0;"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">ALTER</span><span style="color:#D32F2F;--shiki-dark:#F97583"> TABLE</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> env_variables </span><span style="color:#D32F2F;--shiki-dark:#F97583">ADD</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> COLUMN </span><span style="color:#D32F2F;--shiki-dark:#F97583">encrypted</span><span style="color:#D32F2F;--shiki-dark:#F97583"> INTEGER</span><span style="color:#D32F2F;--shiki-dark:#F97583"> NOT NULL</span><span style="color:#D32F2F;--shiki-dark:#F97583"> DEFAULT</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span></code></pre>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/authentication.html"><span>Previous</span>Authentication</a> <a class="pager-link next" href="/security.html"><span>Next</span>Security Architecture</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

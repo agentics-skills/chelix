@@ -1,0 +1,3631 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Configuration Reference - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a class="active" href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Getting Started</div>  <h1 id="configuration-reference">Configuration Reference</h1>
+<blockquote>
+<p><strong>Manually authored from source:</strong> <code>crates/config/src/schema/</code> + <code>crates/config/src/validate/schema_map.rs</code></p>
+</blockquote>
+<blockquote>
+</blockquote>
+<blockquote>
+<p>Every valid <code>moltis.toml</code> option, organized by domain.</p>
+</blockquote>
+<blockquote>
+<p>Types: <code>string</code>, <code>bool</code>, <code>integer</code>, <code>float</code>, <code>array</code>, <code>map</code>, <code>optional</code>, <code>enum(...)</code>.</p>
+</blockquote>
+<blockquote>
+<p>Defaults shown as TOML values. <code>—</code> means the field has no explicit default (uses Rust <code>Default</code>).</p>
+</blockquote>
+<h2 id="contents">Contents</h2>
+<ul>
+<li><strong>Server &#x26; Networking</strong></li>
+<li><strong>Observability</strong></li>
+<li><strong>Identity &#x26; User</strong></li>
+<li><strong>Chat &#x26; Agents</strong></li>
+<li><strong>Tools — Execution</strong></li>
+<li><strong>Tools — Web &#x26; Data</strong></li>
+<li><strong>Tools — Policy &#x26; Agent Limits</strong></li>
+<li><strong>Channels &#x26; Integrations</strong></li>
+<li><strong>Memory</strong></li>
+<li><strong>Scheduling &#x26; Webhooks</strong></li>
+<li><strong>LLM Providers</strong></li>
+<li><strong>Voice — Text-to-Speech</strong></li>
+<li><strong>Voice — Speech-to-Text</strong></li>
+<li><strong>Environment</strong></li>
+<li><strong>Server &#x26; Networking</strong>
+<ul>
+<li><a href="#server"><code>server</code></a></li>
+<li><a href="#auth"><code>auth</code></a></li>
+<li><a href="#tls"><code>tls</code></a></li>
+<li><a href="#graphql"><code>graphql</code></a></li>
+<li><a href="#ngrok"><code>ngrok</code></a></li>
+<li><a href="#tailscale"><code>tailscale</code></a></li>
+<li><a href="#upstream-proxy"><code>upstream_proxy</code></a></li>
+<li><a href="#failover"><code>failover</code></a></li>
+</ul>
+</li>
+<li><strong>Observability</strong>
+<ul>
+<li><a href="#metrics"><code>metrics</code></a></li>
+</ul>
+</li>
+<li><strong>Identity &#x26; User</strong>
+<ul>
+<li><a href="#identity"><code>identity</code></a></li>
+<li><a href="#user"><code>user</code></a></li>
+</ul>
+</li>
+<li><strong>Chat &#x26; Agents</strong>
+<ul>
+<li><a href="#chat"><code>chat</code></a></li>
+<li><a href="#chatcompaction"><code>chat.compaction</code></a></li>
+<li><a href="#agents"><code>agents</code></a></li>
+<li><a href="#agentspresetsname"><code>agents.presets.&#x3C;name></code></a></li>
+<li><a href="#modes"><code>modes</code></a></li>
+<li><a href="#modespresetsname"><code>modes.presets.&#x3C;name></code></a></li>
+<li><a href="#skills"><code>skills</code></a></li>
+</ul>
+</li>
+<li><strong>Tools — Execution</strong>
+<ul>
+<li><a href="#toolsexec"><code>tools.exec</code></a></li>
+<li><a href="#toolsexecsandbox"><code>tools.exec.sandbox</code></a></li>
+<li><a href="#toolsexecsandboxresource-limits"><code>tools.exec.sandbox.resource_limits</code></a></li>
+<li><a href="#toolsexecsandboxtools-policy"><code>tools.exec.sandbox.tools_policy</code></a></li>
+<li><a href="#toolsexecsandboxwasm-tool-limits"><code>tools.exec.sandbox.wasm_tool_limits</code></a></li>
+<li><a href="#toolsbrowser"><code>tools.browser</code></a></li>
+</ul>
+</li>
+<li><strong>Tools — Web &#x26; Data</strong>
+<ul>
+<li><a href="#toolswebsearch"><code>tools.web.search</code></a></li>
+<li><a href="#toolswebsearchperplexity"><code>tools.web.search.perplexity</code></a></li>
+<li><a href="#toolswebfetch"><code>tools.web.fetch</code></a></li>
+<li><a href="#toolswebfirecrawl"><code>tools.web.firecrawl</code></a></li>
+<li><a href="#toolsfs"><code>tools.fs</code></a></li>
+<li><a href="#toolsmaps"><code>tools.maps</code></a></li>
+</ul>
+</li>
+<li><strong>Tools — Policy &#x26; Agent Limits</strong>
+<ul>
+<li><a href="#toolspolicy"><code>tools.policy</code></a></li>
+<li><a href="#tools-agent-level-scalars"><code>tools</code> (agent-level scalars)</a></li>
+</ul>
+</li>
+<li><strong>Channels &#x26; Integrations</strong>
+<ul>
+<li><a href="#channels"><code>channels</code></a></li>
+<li><a href="#channels*accounttools"><code>channels.*.&#x3C;account>.tools</code></a></li>
+<li><a href="#channels*accounttoolsgroupsgroup-id"><code>channels.*.&#x3C;account>.tools.groups.&#x3C;group_id></code></a></li>
+<li><a href="#channels*accounttoolsgroupsgroup-idby-sendersender-id"><code>channels.*.&#x3C;account>.tools.groups.&#x3C;group_id>.by_sender.&#x3C;sender_id></code></a></li>
+<li><a href="#hooks"><code>hooks</code></a></li>
+<li><a href="#hookshooks%5B%5D"><code>hooks.hooks[]</code></a></li>
+<li><a href="#mcp"><code>mcp</code></a></li>
+<li><a href="#mcpserversname"><code>mcp.servers.&#x3C;name></code></a></li>
+<li><a href="#mcpserversnameoauth"><code>mcp.servers.&#x3C;name>.oauth</code></a></li>
+</ul>
+</li>
+<li><strong>Memory</strong>
+<ul>
+<li><a href="#memory"><code>memory</code></a></li>
+<li><a href="#memoryqmd"><code>memory.qmd</code></a></li>
+<li><a href="#memoryqmdcollectionsname"><code>memory.qmd.collections.&#x3C;name></code></a></li>
+</ul>
+</li>
+<li><strong>Scheduling &#x26; Webhooks</strong>
+<ul>
+<li><a href="#heartbeat"><code>heartbeat</code></a></li>
+<li><a href="#heartbeatactive-hours"><code>heartbeat.active_hours</code></a></li>
+<li><a href="#cron"><code>cron</code></a></li>
+<li><a href="#caldav"><code>caldav</code></a></li>
+<li><a href="#caldavaccountsname"><code>caldav.accounts.&#x3C;name></code></a></li>
+<li><a href="#webhooks"><code>webhooks</code></a></li>
+<li><a href="#webhooksrate-limit"><code>webhooks.rate_limit</code></a></li>
+</ul>
+</li>
+<li><strong>LLM Providers</strong>
+<ul>
+<li><a href="#providers"><code>providers</code></a></li>
+<li><a href="#providersnamepolicy"><code>providers.&#x3C;name>.policy</code></a></li>
+</ul>
+</li>
+<li><strong>Voice — Text-to-Speech</strong>
+<ul>
+<li><a href="#voicetts"><code>voice.tts</code></a></li>
+<li><a href="#voicettselevenlabs"><code>voice.tts.elevenlabs</code></a></li>
+<li><a href="#voicettsopenai"><code>voice.tts.openai</code></a></li>
+<li><a href="#voicettsgoogle"><code>voice.tts.google</code></a></li>
+<li><a href="#voicettspiper"><code>voice.tts.piper</code></a></li>
+<li><a href="#voicettscoqui"><code>voice.tts.coqui</code></a></li>
+</ul>
+</li>
+<li><strong>Voice — Speech-to-Text</strong>
+<ul>
+<li><a href="#voicestt"><code>voice.stt</code></a></li>
+<li><a href="#voicesttwhisper"><code>voice.stt.whisper</code></a></li>
+<li><a href="#voicesttgroq"><code>voice.stt.groq</code></a></li>
+<li><a href="#voicesttdeepgram"><code>voice.stt.deepgram</code></a></li>
+<li><a href="#voicesttgoogle"><code>voice.stt.google</code></a></li>
+<li><a href="#voicesttmistral"><code>voice.stt.mistral</code></a></li>
+<li><a href="#voicesttelevenlabs"><code>voice.stt.elevenlabs</code></a></li>
+<li><a href="#voicesttvoxtral-local"><code>voice.stt.voxtral_local</code></a></li>
+<li><a href="#voicesttwhisper-cli"><code>voice.stt.whisper_cli</code></a></li>
+<li><a href="#voicesttsherpa-onnx"><code>voice.stt.sherpa_onnx</code></a></li>
+</ul>
+</li>
+<li><strong>Environment</strong>
+<ul>
+<li><a href="#env"><code>env</code></a></li>
+</ul>
+</li>
+</ul>
+<hr>
+<h2 id="server--networking">Server &#x26; Networking</h2>
+<h3 id="server--serverconfig"><code>server</code> — ServerConfig</h3>
+<p>Gateway server configuration.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>bind</code></td><td>string</td><td><code>"127.0.0.1"</code></td><td>Address to bind to.</td></tr><tr><td><code>port</code></td><td>integer</td><td><code>0</code></td><td>Port to listen on. <code>0</code> is replaced with a random available port when config is created.</td></tr><tr><td><code>http_request_logs</code></td><td>bool</td><td><code>false</code></td><td>Enable verbose Axum/Tower HTTP request logs (<code>http_request</code> spans). Useful for debugging redirects and request flow.</td></tr><tr><td><code>ws_request_logs</code></td><td>bool</td><td><code>false</code></td><td>Enable WebSocket request/response logs (<code>ws:</code> entries). Useful for debugging RPC calls from the web UI.</td></tr><tr><td><code>log_buffer_size</code></td><td>integer</td><td><code>1000</code></td><td>Maximum number of log entries kept in the in-memory ring buffer. Older entries are persisted to disk. Increase for busy servers, decrease for memory-constrained devices.</td></tr><tr><td><code>update_releases_url</code></td><td>optional string</td><td>—</td><td>URL of the releases manifest (<code>releases.json</code>) used by the update checker. Defaults to <code>https://www.moltis.org/releases.json</code> when unset.</td></tr><tr><td><code>db_pool_max_connections</code></td><td>integer</td><td><code>5</code></td><td>Maximum number of SQLite pool connections. Lower values reduce memory usage for personal gateways.</td></tr><tr><td><code>shiki_cdn_url</code></td><td>optional string</td><td>—</td><td>Base URL for the Shiki syntax-highlighting library loaded by the web UI. Defaults to <code>https://esm.sh/shiki@3.2.1?bundle</code> when unset.</td></tr><tr><td><code>terminal_enabled</code></td><td>bool</td><td><code>true</code></td><td>Enable or disable the host terminal in the web UI. Set to <code>false</code> to prevent an unsandboxed shell. The <code>MOLTIS_TERMINAL_DISABLED</code> env var (<code>1</code> or <code>true</code>) takes precedence.</td></tr></tbody></table>
+<h3 id="auth--authconfig"><code>auth</code> — AuthConfig</h3>
+<p>Authentication configuration.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>disabled</code></td><td>bool</td><td><code>false</code></td><td>When <code>true</code>, authentication is explicitly disabled (no login required).</td></tr><tr><td><code>vault_enabled</code></td><td>bool</td><td><code>true</code></td><td>When <code>true</code>, stored secrets are encrypted at rest using the password-backed vault. Set <code>false</code> to keep password auth without vault unlocks after restart.</td></tr></tbody></table>
+<h3 id="tls--tlsconfig"><code>tls</code> — TlsConfig</h3>
+<p>TLS configuration for the gateway HTTPS server.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>enabled</code></td><td>bool</td><td><code>true</code></td><td>Enable HTTPS. Auto-generated certificates are local/private-network certificates, not public CA certificates.</td></tr><tr><td><code>auto_generate</code></td><td>bool</td><td><code>true</code></td><td>Auto-generate a local CA and server certificate on first run. The generated certificate is only valid for names/IPs included in its SAN list.</td></tr><tr><td><code>cert_path</code></td><td>optional string</td><td>—</td><td>Path to a custom server certificate (PEM). Overrides auto-generation.</td></tr><tr><td><code>key_path</code></td><td>optional string</td><td>—</td><td>Path to a custom server private key (PEM). Overrides auto-generation.</td></tr><tr><td><code>ca_cert_path</code></td><td>optional string</td><td>—</td><td>Path to the CA certificate (PEM) used for trust instructions.</td></tr><tr><td><code>public_ip</code></td><td>optional string</td><td>—</td><td>Public IPv4 or IPv6 address to include as an IP SAN in auto-generated certificates. Use this for direct <code>https://&#x3C;public-ip></code> access after trusting Moltis’ local CA.</td></tr><tr><td><code>http_redirect_port</code></td><td>optional integer</td><td>—</td><td>Port for the plain-HTTP redirect/CA-download server. Defaults to the gateway port + 1 when not set.</td></tr></tbody></table>
+<h3 id="graphql--graphqlconfig"><code>graphql</code> — GraphqlConfig</h3>
+<p>Runtime GraphQL server configuration.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>enabled</code></td><td>bool</td><td><code>true</code></td><td>Whether GraphQL HTTP/WS handlers accept requests.</td></tr></tbody></table>
+<h3 id="ngrok--ngrokconfig"><code>ngrok</code> — NgrokConfig</h3>
+<p>ngrok public HTTPS tunnel configuration.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>enabled</code></td><td>bool</td><td><code>false</code></td><td>Whether the ngrok tunnel is enabled.</td></tr><tr><td><code>authtoken</code></td><td>optional secret string</td><td>—</td><td>ngrok authtoken. If unset, <code>NGROK_AUTHTOKEN</code> env var is used.</td></tr><tr><td><code>domain</code></td><td>optional string</td><td>—</td><td>Optional reserved/static domain to request from ngrok.</td></tr></tbody></table>
+<h3 id="cloudflare_tunnel--cloudflaretunnelconfig"><code>cloudflare_tunnel</code> — CloudflareTunnelConfig</h3>
+<p>Cloudflare Tunnel public HTTPS connector configuration.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>enabled</code></td><td>bool</td><td><code>false</code></td><td>Whether the Cloudflare Tunnel connector is enabled.</td></tr><tr><td><code>token</code></td><td>optional secret string</td><td>—</td><td>Cloudflare Tunnel token. If unset, <code>CLOUDFLARE_TUNNEL_TOKEN</code> env var is used.</td></tr><tr><td><code>hostname</code></td><td>optional string</td><td>—</td><td>Optional public hostname for status display and WebAuthn origin updates.</td></tr></tbody></table>
+<h3 id="tailscale--tailscaleconfig"><code>tailscale</code> — TailscaleConfig</h3>
+<p>Tailscale Serve/Funnel configuration.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>mode</code></td><td>string</td><td><code>"off"</code></td><td>Tailscale mode: <code>"off"</code>, <code>"serve"</code>, or <code>"funnel"</code>.</td></tr><tr><td><code>reset_on_exit</code></td><td>bool</td><td><code>true</code></td><td>Reset tailscale serve/funnel when the gateway shuts down.</td></tr></tbody></table>
+<h3 id="netbird--netbirdconfig"><code>netbird</code> — NetbirdConfig</h3>
+<p>NetBird private mesh access configuration.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>mode</code></td><td>string</td><td><code>"off"</code></td><td>NetBird mode: <code>"off"</code> or <code>"serve"</code>.</td></tr></tbody></table>
+<h3 id="upstream_proxy-top-level-scalar"><code>upstream_proxy</code> (top-level scalar)</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>upstream_proxy</code></td><td>optional secret string</td><td>—</td><td>Upstream HTTP/SOCKS proxy for all outbound requests. Supports <code>http://</code>, <code>https://</code>, <code>socks5://</code>, and <code>socks5h://</code> schemes. Proxy auth via URL: <code>http://user:pass@host:port</code>. Overrides <code>HTTP_PROXY</code>/<code>HTTPS_PROXY</code>/<code>ALL_PROXY</code> env vars. Localhost/loopback addresses are automatically excluded (<code>no_proxy</code>).</td></tr></tbody></table>
+<hr>
+<h3 id="failover--failoverconfig"><code>failover</code> — FailoverConfig</h3>
+<p>Automatic model/provider failover configuration.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>enabled</code></td><td>bool</td><td><code>true</code></td><td>Whether failover is enabled.</td></tr><tr><td><code>fallback_models</code></td><td>array</td><td><code>[]</code></td><td>Ordered list of fallback model IDs to try when the primary fails. If empty, the chain is built from all registered models.</td></tr></tbody></table>
+<hr>
+<h2 id="observability">Observability</h2>
+<h3 id="metrics--metricsconfig"><code>metrics</code> — MetricsConfig</h3>
+<p>Metrics and observability configuration.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>enabled</code></td><td>bool</td><td><code>true</code></td><td>Whether metrics collection is enabled.</td></tr><tr><td><code>prometheus_endpoint</code></td><td>bool</td><td><code>true</code></td><td>Whether to expose the <code>/metrics</code> Prometheus endpoint.</td></tr><tr><td><code>history_points</code></td><td>integer</td><td><code>360</code></td><td>Maximum number of in-memory history points for time-series charts (sampled every 30 s; 360 ≈ 3 hours). Historical data is persisted to SQLite regardless.</td></tr><tr><td><code>labels</code></td><td>map</td><td><code>{}</code></td><td>Additional labels to add to all metrics.</td></tr></tbody></table>
+<hr>
+<h2 id="identity--user">Identity &#x26; User</h2>
+<h3 id="identity--agentidentity"><code>identity</code> — AgentIdentity</h3>
+<p>Agent identity (name, emoji, theme).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>name</code></td><td>optional string</td><td>—</td><td>Agent display name. Falls back to <code>"moltis"</code> when unset.</td></tr><tr><td><code>emoji</code></td><td>optional string</td><td>—</td><td>Agent emoji icon.</td></tr><tr><td><code>theme</code></td><td>optional string</td><td>—</td><td>Agent theme identifier.</td></tr></tbody></table>
+<h3 id="user--userprofile"><code>user</code> — UserProfile</h3>
+<p>User profile collected during onboarding.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>name</code></td><td>optional string</td><td>—</td><td>User’s display name.</td></tr><tr><td><code>timezone</code></td><td>optional string</td><td>—</td><td>IANA timezone (e.g. <code>"Europe/Paris"</code>).</td></tr></tbody></table>
+<hr>
+<h2 id="chat--agents">Chat &#x26; Agents</h2>
+<h3 id="chat--chatconfig"><code>chat</code> — ChatConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>message_queue_mode</code></td><td>enum: <code>followup</code>, <code>collect</code></td><td><code>"followup"</code></td><td>How to handle messages that arrive while an agent run is active. <code>followup</code> queues each message and replays them one-by-one; <code>collect</code> concatenates and processes as a single message.</td></tr><tr><td><code>prompt_memory_mode</code></td><td>enum: <code>live-reload</code>, <code>frozen-at-session-start</code></td><td><code>"live-reload"</code></td><td>How <code>MEMORY.md</code> is loaded into the prompt for an ongoing session. <code>live-reload</code> reloads from disk before each turn; <code>frozen-at-session-start</code> freezes the initial content for the session lifetime.</td></tr><tr><td><code>workspace_file_max_chars</code></td><td>integer</td><td><code>32000</code></td><td>Maximum characters from each workspace prompt file (<code>AGENTS.md</code>, <code>TOOLS.md</code>).</td></tr><tr><td><code>priority_models</code></td><td>array</td><td><code>[]</code></td><td>Preferred model IDs to show first in selectors (full or raw model IDs).</td></tr><tr><td><code>allowed_models</code></td><td>array</td><td><code>[]</code></td><td>⚠️ <strong>Deprecated.</strong> Legacy model allowlist kept for backward compatibility; currently ignored (model visibility is provider-driven). Will be removed in a future release.</td></tr></tbody></table>
+<h3 id="chatcompaction--compactionconfig"><code>chat.compaction</code> — CompactionConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>mode</code></td><td>enum: <code>deterministic</code>, <code>recency-preserving</code>, <code>structured</code>, <code>llm-replace</code></td><td><code>"deterministic"</code></td><td>Compaction strategy. <code>deterministic</code> extracts a summary from message structure (zero LLM calls). <code>recency-preserving</code> keeps head + tail verbatim, collapses middle. <code>structured</code> keeps head + tail and LLM-summarises the middle. <code>llm-replace</code> replaces entire history with an LLM summary.</td></tr><tr><td><code>threshold_percent</code></td><td>float</td><td><code>0.95</code></td><td>Fraction of the session model’s context window at which automatic compaction fires. Clamped to <code>0.1</code>–<code>0.95</code>.</td></tr><tr><td><code>protect_head</code></td><td>integer</td><td><code>3</code></td><td>Number of head messages preserved verbatim by recency-preserving and structured modes.</td></tr><tr><td><code>protect_tail_min</code></td><td>integer</td><td><code>20</code></td><td>Minimum number of tail messages preserved verbatim (floor under token-budget cut).</td></tr><tr><td><code>tail_budget_ratio</code></td><td>float</td><td><code>0.20</code></td><td>Tail protection window as a fraction of <code>threshold_percent × context_window</code>.</td></tr><tr><td><code>tool_prune_char_threshold</code></td><td>integer</td><td><code>200</code></td><td>Tool-result content longer than this is replaced with a placeholder in the collapsed middle region.</td></tr><tr><td><code>summary_model</code></td><td>optional string</td><td><code>null</code></td><td>Provider-qualified model for LLM summary calls (e.g. <code>"openrouter/google/gemini-2.5-flash"</code>). ⚠️ <strong>Not yet implemented</strong> — setting this field triggers a warning.</td></tr><tr><td><code>max_summary_tokens</code></td><td>integer</td><td><code>8192</code></td><td>Maximum output tokens for LLM summary calls. <code>0</code> accepts provider default. ⚠️ <strong>Not yet implemented</strong> — has no effect.</td></tr><tr><td><code>show_settings_hint</code></td><td>bool</td><td><code>true</code></td><td>Whether the “Change <code>chat.compaction.mode</code> in moltis.toml…” hint is included in compaction notifications.</td></tr></tbody></table>
+<h3 id="agents--agentsconfig"><code>agents</code> — AgentsConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>default_preset</code></td><td>optional string</td><td><code>"research"</code></td><td>Default preset name used when <code>spawn_agent.preset</code> is omitted. Applies only to sub-agents.</td></tr><tr><td><code>presets</code></td><td>map of <code>AgentPreset</code></td><td>built-in presets</td><td>Named spawn presets, keyed by name. Built-ins: <code>research</code>, <code>coder</code>, <code>reviewer</code>, <code>qa</code>, <code>ux</code>, <code>docs</code>, <code>coordinator</code>.</td></tr></tbody></table>
+<h3 id="agentspresetsname--agentpreset"><code>agents.presets.&#x3C;name></code> — AgentPreset</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>model</code></td><td>optional string</td><td><code>null</code></td><td>Optional model override for this preset.</td></tr><tr><td><code>tools.allow</code></td><td>array</td><td><code>[]</code></td><td>Tools to allow (whitelist). If empty, all tools are allowed.</td></tr><tr><td><code>tools.deny</code></td><td>array</td><td><code>[]</code></td><td>Tools to deny (blacklist). Applied after <code>allow</code>.</td></tr><tr><td><code>delegate_only</code></td><td>bool</td><td><code>false</code></td><td>Restrict sub-agent to delegation/session/task tools only.</td></tr><tr><td><code>system_prompt_suffix</code></td><td>optional string</td><td><code>null</code></td><td>Extra instructions appended to the sub-agent system prompt.</td></tr><tr><td><code>max_iterations</code></td><td>optional integer</td><td><code>null</code></td><td>Maximum iterations for matching direct agent sessions and spawned sub-agents. Falls back to <code>tools.agent_max_iterations</code>.</td></tr><tr><td><code>timeout_secs</code></td><td>optional integer</td><td><code>null</code></td><td>Timeout in seconds for matching direct agent sessions and spawned sub-agents (<code>0</code> = no timeout). Direct sessions fall back to <code>tools.agent_timeout_secs</code>; spawned sub-agents preserve no-timeout behavior unless the preset sets <code>timeout_secs</code>.</td></tr><tr><td><code>reasoning_effort</code></td><td>optional enum: <code>low</code>, <code>medium</code>, <code>high</code></td><td><code>null</code></td><td>Reasoning/thinking effort level for models that support extended thinking (e.g. Claude Opus, OpenAI o-series).</td></tr><tr><td><code>sessions</code></td><td>optional <code>SessionAccessPolicyConfig</code></td><td><code>null</code></td><td>Session access policy for inter-agent communication.</td></tr><tr><td><code>memory</code></td><td>optional <code>PresetMemoryConfig</code></td><td><code>null</code></td><td>Persistent per-agent memory configuration.</td></tr></tbody></table>
+<h3 id="agentspresetsnameidentity-agentidentity"><code>agents.presets.&#x3C;name>.identity</code> (<code>AgentIdentity</code>)</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>name</code></td><td>optional string</td><td><code>null</code></td><td>Agent display name.</td></tr><tr><td><code>emoji</code></td><td>optional string</td><td><code>null</code></td><td>Agent emoji identifier.</td></tr><tr><td><code>theme</code></td><td>optional string</td><td><code>null</code></td><td>Agent theme identifier.</td></tr></tbody></table>
+<h3 id="agentspresetsnamesessions-sessionaccesspolicyconfig"><code>agents.presets.&#x3C;name>.sessions</code> (<code>SessionAccessPolicyConfig</code>)</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>key_prefix</code></td><td>optional string</td><td><code>null</code></td><td>Only see sessions with keys matching this prefix.</td></tr><tr><td><code>allowed_keys</code></td><td>array</td><td><code>[]</code></td><td>Explicit session keys the agent can access (in addition to prefix).</td></tr><tr><td><code>can_send</code></td><td>bool</td><td><code>true</code></td><td>Whether the agent can send messages to sessions.</td></tr><tr><td><code>cross_agent</code></td><td>bool</td><td><code>false</code></td><td>Whether the agent can access sessions from other agents.</td></tr></tbody></table>
+<h3 id="agentspresetsnamememory-presetmemoryconfig"><code>agents.presets.&#x3C;name>.memory</code> (<code>PresetMemoryConfig</code>)</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>scope</code></td><td>enum: <code>user</code>, <code>project</code>, <code>local</code></td><td><code>"user"</code></td><td>Memory scope: <code>user</code> stores in <code>~/.moltis/agent-memory/&#x3C;preset>/</code>, <code>project</code> in <code>.moltis/agent-memory/&#x3C;preset>/</code>, <code>local</code> in <code>.moltis/agent-memory-local/&#x3C;preset>/</code>.</td></tr><tr><td><code>max_lines</code></td><td>integer</td><td><code>200</code></td><td>Maximum lines to load from <code>MEMORY.md</code>.</td></tr></tbody></table>
+<h3 id="modes--modesconfig"><code>modes</code> — ModesConfig</h3>
+<p>Modes are temporary per-session prompt overlays selected with <code>/mode</code>. They do
+not create chat agents, change memory, or affect <code>spawn_agent</code> presets.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>presets</code></td><td>map of <code>ModePreset</code></td><td>built-in presets</td><td>Named mode presets. Built-ins: <code>concise</code>, <code>technical</code>, <code>creative</code>, <code>teacher</code>, <code>plan</code>, <code>build</code>, <code>review</code>, <code>research</code>, <code>elevated</code>.</td></tr></tbody></table>
+<h3 id="modespresetsname--modepreset"><code>modes.presets.&#x3C;name></code> — ModePreset</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>name</code></td><td>optional string</td><td><code>null</code></td><td>Display name shown in the UI and <code>/mode</code> list.</td></tr><tr><td><code>description</code></td><td>optional string</td><td><code>null</code></td><td>Short user-facing summary.</td></tr><tr><td><code>prompt</code></td><td>string</td><td><code>""</code></td><td>Prompt overlay injected into the active session while this mode is selected.</td></tr></tbody></table>
+<h3 id="skills--skillsconfig"><code>skills</code> — SkillsConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>enabled</code></td><td>bool</td><td><code>true</code></td><td>Whether the skills system is enabled.</td></tr><tr><td><code>search_paths</code></td><td>array</td><td><code>[]</code></td><td>Extra directories to search for skills.</td></tr><tr><td><code>auto_load</code></td><td>array</td><td><code>[]</code></td><td>Skills to always load (by name) without explicit activation.</td></tr><tr><td><code>enable_agent_sidecar_files</code></td><td>bool</td><td><code>false</code></td><td>Whether agents may write supplementary files inside personal skill directories.</td></tr><tr><td><code>enable_self_improvement</code></td><td>bool</td><td><code>true</code></td><td>Include system prompt guidance encouraging the agent to autonomously create and update skills after complex tasks.</td></tr></tbody></table>
+<hr>
+<hr>
+<h2 id="tools--execution">Tools — Execution</h2>
+<h3 id="toolsexec--execconfig"><code>tools.exec</code> — ExecConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>default_timeout_secs</code></td><td>integer</td><td><code>30</code></td><td>Default wall-clock timeout in seconds for command execution.</td></tr><tr><td><code>max_output_bytes</code></td><td>integer</td><td><code>204800</code></td><td>Maximum bytes of stdout/stderr captured per command.</td></tr><tr><td><code>approval_mode</code></td><td>string</td><td><code>"on-miss"</code></td><td>When operator approval is required (<code>"always"</code>, <code>"on-miss"</code>, <code>"never"</code>).</td></tr><tr><td><code>security_level</code></td><td>string</td><td><code>"allowlist"</code></td><td>Security enforcement level (<code>"allowlist"</code>, <code>"sandbox"</code>, etc.).</td></tr><tr><td><code>allowlist</code></td><td>array</td><td><code>[]</code></td><td>List of command globs permitted without sandboxing.</td></tr><tr><td><code>host</code></td><td>string</td><td><code>"local"</code></td><td>Where to run commands: <code>"local"</code>, <code>"node"</code>, or <code>"ssh"</code>.</td></tr><tr><td><code>node</code></td><td>optional string</td><td><code>null</code></td><td>Default node id or display name for remote execution (when <code>host = "node"</code>).</td></tr><tr><td><code>ssh_target</code></td><td>optional string</td><td><code>null</code></td><td>Default SSH target for remote execution (when <code>host = "ssh"</code>).</td></tr></tbody></table>
+<h3 id="toolsexecsandbox--sandboxconfig"><code>tools.exec.sandbox</code> — SandboxConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>mode</code></td><td>string</td><td><code>"all"</code></td><td>When sandboxing is active (<code>"all"</code>, <code>"auto"</code>, <code>"off"</code>).</td></tr><tr><td><code>scope</code></td><td>string</td><td><code>"session"</code></td><td>Container lifetime (<code>"session"</code> or <code>"per-command"</code>).</td></tr><tr><td><code>workspace_mount</code></td><td>string</td><td><code>"ro"</code></td><td>Workspace mount mode (<code>"ro"</code>, <code>"rw"</code>, <code>"none"</code>).</td></tr><tr><td><code>workspace_sysmount</code></td><td>string</td><td><code>"ro"</code></td><td>Sandbox hardening mode for rootfs/capabilities (<code>"ro"</code> keeps <code>--cap-drop ALL</code>, <code>--security-opt no-new-privileges</code>, and <code>--read-only</code> for prebuilt images; <code>"rw"</code> skips those flags).</td></tr><tr><td><code>host_data_dir</code></td><td>optional string</td><td><code>null</code></td><td>Host-visible path for Moltis <code>data_dir()</code> when creating sandbox or browser containers from inside another container.</td></tr><tr><td><code>home_persistence</code></td><td>enum: <code>"off"</code>, <code>"session"</code>, <code>"shared"</code></td><td><code>"shared"</code></td><td>Persistence strategy for <code>/home/sandbox</code> in sandbox containers.</td></tr><tr><td><code>shared_home_dir</code></td><td>optional string</td><td><code>null</code></td><td>Host directory for shared <code>/home/sandbox</code> persistence. Relative paths resolved against <code>data_dir()</code>.</td></tr><tr><td><code>image</code></td><td>optional string</td><td><code>null</code></td><td>Docker/Podman image for sandbox containers.</td></tr><tr><td><code>container_prefix</code></td><td>optional string</td><td><code>null</code></td><td>Name prefix for created containers.</td></tr><tr><td><code>no_network</code></td><td>bool</td><td><code>false</code></td><td>Disable all network access in sandbox containers.</td></tr><tr><td><code>network</code></td><td>string</td><td><code>"trusted"</code></td><td>Network policy: <code>"blocked"</code>, <code>"trusted"</code> (proxy-filtered), or <code>"bypass"</code> (unrestricted).</td></tr><tr><td><code>trusted_domains</code></td><td>array</td><td><code>[]</code></td><td>Domains allowed through the proxy in <code>"trusted"</code> network mode.</td></tr><tr><td><code>backend</code></td><td>string</td><td><code>"auto"</code></td><td>Sandbox backend: <code>"auto"</code>, <code>"docker"</code>, <code>"podman"</code>, <code>"apple-container"</code>, <code>"restricted-host"</code>, or <code>"wasm"</code>.</td></tr><tr><td><code>packages</code></td><td>array</td><td><em>(~130 packages)</em></td><td>Packages to install via <code>apt-get</code> in the sandbox image. Empty list to skip.</td></tr><tr><td><code>wasm_fuel_limit</code></td><td>optional integer</td><td><code>null</code></td><td>Fuel limit for WASM sandbox execution (instructions).</td></tr><tr><td><code>wasm_epoch_interval_ms</code></td><td>optional integer</td><td><code>null</code></td><td>Epoch interruption interval in milliseconds for WASM sandbox.</td></tr></tbody></table>
+<h3 id="toolsexecsandboxresource_limits--resourcelimitsconfig"><code>tools.exec.sandbox.resource_limits</code> — ResourceLimitsConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>memory_limit</code></td><td>optional string</td><td><code>null</code></td><td>Memory limit for sandbox containers (e.g. <code>"512M"</code>, <code>"1G"</code>).</td></tr><tr><td><code>cpu_quota</code></td><td>optional float</td><td><code>null</code></td><td>CPU quota as a fraction (e.g. <code>0.5</code> = half a core, <code>2.0</code> = two cores).</td></tr><tr><td><code>pids_max</code></td><td>optional integer</td><td><code>null</code></td><td>Maximum number of PIDs allowed in the sandbox.</td></tr></tbody></table>
+<h3 id="toolsexecsandboxtools_policy--toolpolicyconfig"><code>tools.exec.sandbox.tools_policy</code> — ToolPolicyConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>allow</code></td><td>array</td><td><code>[]</code></td><td>Tool names explicitly allowed inside the sandbox.</td></tr><tr><td><code>deny</code></td><td>array</td><td><code>[]</code></td><td>Tool names explicitly denied inside the sandbox.</td></tr><tr><td><code>profile</code></td><td>optional string</td><td><code>null</code></td><td>Named policy profile to apply (e.g. <code>"restricted"</code>).</td></tr></tbody></table>
+<h3 id="toolsexecsandboxwasm_tool_limits--wasmtoollimitsconfig"><code>tools.exec.sandbox.wasm_tool_limits</code> — WasmToolLimitsConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>default_memory</code></td><td>integer</td><td><code>16777216</code></td><td>Default WASM memory limit in bytes (16 MB).</td></tr><tr><td><code>default_fuel</code></td><td>integer</td><td><code>1000000</code></td><td>Default WASM fuel limit (instructions).</td></tr><tr><td><code>tool_overrides</code></td><td>map</td><td><em>(see below)</em></td><td>Per-tool overrides for WASM fuel and memory.</td></tr></tbody></table>
+<h3 id="toolsexecsandboxwasm_tool_limitstool_overrides-toollimitoverrideconfig">tools.exec.sandbox.wasm_tool_limits.tool_overrides.<name> (ToolLimitOverrideConfig)</name></h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>fuel</code></td><td>optional integer</td><td><code>null</code></td><td>Per-tool WASM fuel override (instructions).</td></tr><tr><td><code>memory</code></td><td>optional integer</td><td><code>null</code></td><td>Per-tool WASM memory override (bytes).</td></tr></tbody></table>
+<p>Default <code>tool_overrides</code> entries:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Tool</th><th>fuel</th><th>memory</th></tr></thead><tbody><tr><td><code>calc</code></td><td><code>100000</code></td><td><code>2097152</code> (2 MB)</td></tr><tr><td><code>web_fetch</code></td><td><code>10000000</code></td><td><code>33554432</code> (32 MB)</td></tr><tr><td><code>web_search</code></td><td><code>10000000</code></td><td><code>33554432</code> (32 MB)</td></tr><tr><td><code>show_map</code></td><td><code>10000000</code></td><td><code>67108864</code> (64 MB)</td></tr><tr><td><code>location</code></td><td><code>5000000</code></td><td><code>16777216</code> (16 MB)</td></tr></tbody></table>
+<h3 id="toolsbrowser--browserconfig"><code>tools.browser</code> — BrowserConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>enabled</code></td><td>bool</td><td><code>true</code></td><td>Whether browser support is enabled.</td></tr><tr><td><code>chrome_path</code></td><td>optional string</td><td><code>null</code></td><td>Path to Chrome/Chromium binary (auto-detected if not set).</td></tr><tr><td><code>obscura_path</code></td><td>optional string</td><td><code>null</code></td><td>Path to the Obscura binary for <code>browser = "obscura"</code> requests (auto-detected from <code>OBSCURA</code> or <code>PATH</code> if not set).</td></tr><tr><td><code>lightpanda_path</code></td><td>optional string</td><td><code>null</code></td><td>Path to the Lightpanda binary for <code>browser = "lightpanda"</code> requests (auto-detected from <code>LIGHTPANDA</code> or <code>PATH</code> if not set).</td></tr><tr><td><code>headless</code></td><td>bool</td><td><code>true</code></td><td>Whether to run in headless mode.</td></tr><tr><td><code>viewport_width</code></td><td>integer</td><td><code>2560</code></td><td>Default viewport width in pixels.</td></tr><tr><td><code>viewport_height</code></td><td>integer</td><td><code>1440</code></td><td>Default viewport height in pixels.</td></tr><tr><td><code>device_scale_factor</code></td><td>float</td><td><code>2.0</code></td><td>Device scale factor for HiDPI/Retina displays (1.0, 2.0, 3.0).</td></tr><tr><td><code>max_instances</code></td><td>integer</td><td><code>0</code></td><td>Maximum concurrent browser instances (0 = unlimited, limited by memory).</td></tr><tr><td><code>memory_limit_percent</code></td><td>integer</td><td><code>90</code></td><td>System memory usage threshold (0–100) above which new instances are blocked.</td></tr><tr><td><code>idle_timeout_secs</code></td><td>integer</td><td><code>300</code></td><td>Instance idle timeout in seconds before closing.</td></tr><tr><td><code>navigation_timeout_ms</code></td><td>integer</td><td><code>30000</code></td><td>Default navigation timeout in milliseconds.</td></tr><tr><td><code>user_agent</code></td><td>optional string</td><td><code>null</code></td><td>Custom user agent string (uses Chrome default if not set).</td></tr><tr><td><code>chrome_args</code></td><td>array</td><td><code>[]</code></td><td>Additional Chrome command-line arguments.</td></tr><tr><td><code>sandbox_image</code></td><td>string</td><td><code>"docker.io/browserless/chrome"</code></td><td>Docker image for sandboxed browser instances.</td></tr><tr><td><code>allowed_domains</code></td><td>array</td><td><code>[]</code></td><td>Allowed navigation domains (empty = all allowed). Supports wildcards (<code>"*.example.com"</code>).</td></tr><tr><td><code>low_memory_threshold_mb</code></td><td>integer</td><td><code>2048</code></td><td>System RAM threshold (MB) below which memory-saving Chrome flags are injected (0 to disable).</td></tr><tr><td><code>persist_profile</code></td><td>bool</td><td><code>true</code></td><td>Persist Chrome user profile (cookies, auth, local storage) across sessions.</td></tr><tr><td><code>profile_dir</code></td><td>optional string</td><td><code>null</code></td><td>Custom path for persistent Chrome profile directory. Implies <code>persist_profile = true</code>.</td></tr><tr><td><code>container_host</code></td><td>string</td><td><code>"127.0.0.1"</code></td><td>Hostname/IP to connect to the browser container from the host. Use <code>"host.docker.internal"</code> when Moltis runs inside Docker.</td></tr><tr><td><code>browserless_api_version</code></td><td>enum: <code>"v1"</code>, <code>"v2"</code></td><td><code>"v1"</code></td><td>Browserless API compatibility mode for websocket endpoints.</td></tr></tbody></table>
+<hr>
+<hr>
+<h2 id="tools--web--data">Tools — Web &#x26; Data</h2>
+<h3 id="toolswebsearch--websearchconfig"><code>tools.web.search</code> — WebSearchConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td>enabled</td><td>bool</td><td><code>true</code></td><td>Enable the web search tool.</td></tr><tr><td>provider</td><td>string (enum)</td><td><code>"brave"</code></td><td>Search provider. One of: <code>brave</code>, <code>perplexity</code>, <code>firecrawl</code>.</td></tr><tr><td>api_key</td><td>optional string</td><td>—</td><td>API key (overrides <code>BRAVE_API_KEY</code> env var).</td></tr><tr><td>max_results</td><td>integer</td><td><code>5</code></td><td>Maximum number of results to return (1–10).</td></tr><tr><td>timeout_seconds</td><td>integer</td><td><code>30</code></td><td>HTTP request timeout in seconds.</td></tr><tr><td>cache_ttl_minutes</td><td>integer</td><td><code>15</code></td><td>In-memory cache TTL in minutes (0 to disable).</td></tr><tr><td>duckduckgo_fallback</td><td>bool</td><td><code>false</code></td><td>Enable DuckDuckGo HTML fallback when no provider API key is configured. Disabled by default because it may trigger CAPTCHA challenges.</td></tr></tbody></table>
+<h3 id="toolswebsearchperplexity--perplexityconfig"><code>tools.web.search.perplexity</code> — PerplexityConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td>api_key</td><td>optional string</td><td>—</td><td>API key (overrides <code>PERPLEXITY_API_KEY</code> / <code>OPENROUTER_API_KEY</code> env vars).</td></tr><tr><td>base_url</td><td>optional string</td><td>—</td><td>Base URL override. Auto-detected from key prefix if empty.</td></tr><tr><td>model</td><td>optional string</td><td>—</td><td>Model to use.</td></tr></tbody></table>
+<h3 id="toolswebfetch--webfetchconfig"><code>tools.web.fetch</code> — WebFetchConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td>enabled</td><td>bool</td><td><code>true</code></td><td>Enable the web fetch tool.</td></tr><tr><td>max_chars</td><td>integer</td><td><code>50000</code></td><td>Maximum characters to return from fetched content.</td></tr><tr><td>timeout_seconds</td><td>integer</td><td><code>30</code></td><td>HTTP request timeout in seconds.</td></tr><tr><td>cache_ttl_minutes</td><td>integer</td><td><code>15</code></td><td>In-memory cache TTL in minutes (0 to disable).</td></tr><tr><td>max_redirects</td><td>integer</td><td><code>3</code></td><td>Maximum number of HTTP redirects to follow.</td></tr><tr><td>readability</td><td>bool</td><td><code>true</code></td><td>Use readability extraction for HTML pages.</td></tr><tr><td>ssrf_allowlist</td><td>array</td><td><code>[]</code></td><td>CIDR ranges exempt from SSRF blocking (e.g. <code>["172.22.0.0/16"]</code>). Default: empty (all private IPs blocked). ⚠️ <strong>Security</strong>: ranges added here bypass SSRF protection. Only add specific, trusted CIDR ranges (e.g. a known sidecar subnet), never broad private ranges like <code>10.0.0.0/8</code>.</td></tr></tbody></table>
+<h3 id="toolswebfirecrawl--firecrawlconfig"><code>tools.web.firecrawl</code> — FirecrawlConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td>enabled</td><td>bool</td><td><code>false</code></td><td>Enable Firecrawl integration.</td></tr><tr><td>api_key</td><td>optional string</td><td>—</td><td>Firecrawl API key (overrides <code>FIRECRAWL_API_KEY</code> env var).</td></tr><tr><td>base_url</td><td>string</td><td><code>"https://api.firecrawl.dev"</code></td><td>Firecrawl API base URL (for self-hosted instances).</td></tr><tr><td>only_main_content</td><td>bool</td><td><code>true</code></td><td>Only extract main content (skip navs, footers, etc.).</td></tr><tr><td>timeout_seconds</td><td>integer</td><td><code>30</code></td><td>HTTP request timeout in seconds.</td></tr><tr><td>cache_ttl_minutes</td><td>integer</td><td><code>15</code></td><td>In-memory cache TTL in minutes (0 to disable).</td></tr><tr><td>web_fetch_fallback</td><td>bool</td><td><code>true</code></td><td>Use Firecrawl as fallback in <code>web_fetch</code> when readability extraction produces poor results.</td></tr></tbody></table>
+<h3 id="toolsfs--fstoolsconfig"><code>tools.fs</code> — FsToolsConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td>workspace_root</td><td>optional string</td><td>—</td><td>Default search root used by <code>Glob</code> and <code>Grep</code> when the LLM call omits the <code>path</code> argument. Must be an absolute path. When unset, calls without an explicit <code>path</code> are rejected.</td></tr><tr><td>allow_paths</td><td>array</td><td><code>[]</code></td><td>Absolute path globs the tools are allowed to access. Empty list means all paths allowed. Evaluated after canonicalization.</td></tr><tr><td>deny_paths</td><td>array</td><td><code>[]</code></td><td>Absolute path globs the tools must refuse. Deny wins over allow. Evaluated after canonicalization.</td></tr><tr><td>track_reads</td><td>bool</td><td><code>false</code></td><td>Whether to track per-session read history (files read, re-read loop detection). Required for <code>must_read_before_write</code>.</td></tr><tr><td>must_read_before_write</td><td>bool</td><td><code>false</code></td><td>Reject Write/Edit/MultiEdit calls targeting files the session has not previously Read. Requires <code>track_reads = true</code>.</td></tr><tr><td>require_approval</td><td>bool</td><td><code>false</code></td><td>Whether Write/Edit/MultiEdit must pause for explicit operator approval before mutating a file.</td></tr><tr><td>max_read_bytes</td><td>integer</td><td><code>10485760</code> (10 MB)</td><td>Maximum bytes a single <code>Read</code> call can return before the file is rejected with a typed <code>too_large</code> payload.</td></tr><tr><td>binary_policy</td><td>string (enum)</td><td><code>"reject"</code></td><td>What to do with binary files encountered by <code>Read</code>. One of: <code>reject</code> (return typed marker without content), <code>base64</code> (return base64-encoded content).</td></tr><tr><td>respect_gitignore</td><td>bool</td><td><code>true</code></td><td>Whether <code>Glob</code> and <code>Grep</code> respect <code>.gitignore</code> / <code>.ignore</code> files and <code>.git/info/exclude</code> while walking.</td></tr><tr><td>checkpoint_before_mutation</td><td>bool</td><td><code>false</code></td><td>When true, Write/Edit/MultiEdit create a per-file backup before mutating, so the LLM can restore the pre-edit state via <code>checkpoint_restore</code>.</td></tr><tr><td>context_window_tokens</td><td>optional integer</td><td>—</td><td>Model context window in tokens. When set, <code>Read</code>’s per-call byte cap scales adaptively so a single Read call can’t consume more than ~20% of the model’s working set. Clamped to [50 KB, 512 KB]. When unset, Read uses a fixed 256 KB cap. Typical values: 200000 (Claude 3.5/4 Sonnet), 1000000 (Claude Opus 4.6), 128000 (GPT-4 Turbo).</td></tr></tbody></table>
+<h3 id="toolsmaps--mapsconfig"><code>tools.maps</code> — MapsConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td>provider</td><td>string (enum)</td><td><code>"google_maps"</code></td><td>Preferred map provider used by <code>show_map</code>. One of: <code>google_maps</code>, <code>apple_maps</code>, <code>openstreetmap</code>.</td></tr></tbody></table>
+<hr>
+<h2 id="tools--policy--agent-limits">Tools — Policy &#x26; Agent Limits</h2>
+<h3 id="toolspolicy--toolpolicyconfig"><code>tools.policy</code> — ToolPolicyConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td>allow</td><td>array</td><td><code>[]</code></td><td>Tool names or glob patterns that are explicitly allowed.</td></tr><tr><td>deny</td><td>array</td><td><code>[]</code></td><td>Tool names or glob patterns that are explicitly denied.</td></tr><tr><td>profile</td><td>optional string</td><td>—</td><td>Named policy profile to apply.</td></tr></tbody></table>
+<h3 id="tools--agent-level-scalars"><code>tools</code> — Agent-level scalars</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td>agent_timeout_secs</td><td>integer</td><td><code>600</code></td><td>Maximum wall-clock seconds for an agent run (0 = no timeout).</td></tr><tr><td>agent_max_iterations</td><td>integer</td><td><code>25</code></td><td>Maximum number of agent loop iterations before aborting.</td></tr><tr><td>agent_max_auto_continues</td><td>integer</td><td><code>2</code></td><td>Maximum auto-continue nudges when the model stops mid-task (0 = disabled).</td></tr><tr><td>agent_auto_continue_min_tool_calls</td><td>integer</td><td><code>3</code></td><td>Minimum tool calls in the current run before auto-continue can trigger.</td></tr><tr><td>max_tool_result_bytes</td><td>integer</td><td><code>50000</code> (50 KB)</td><td>Maximum bytes for a single tool result before truncation.</td></tr><tr><td>registry_mode</td><td>string (enum)</td><td><code>"full"</code></td><td>How tool schemas are presented to the model. One of: <code>full</code> (all schemas sent every turn), <code>lazy</code> (only <code>tool_search</code> sent; model discovers tools on demand).</td></tr><tr><td>agent_loop_detector_window</td><td>integer</td><td><code>2</code></td><td>Window size for the tool-call reflex-loop detector. When this many consecutive tool calls share the same tool + (args or error), the runner injects a directive intervention message. Set to 0 to disable.</td></tr><tr><td>agent_loop_detector_strip_tools_on_second_fire</td><td>bool</td><td><code>true</code></td><td>When the loop detector fires a second time (stage 2), strip the tool schema list for a single LLM turn so the model is forced to respond in text.</td></tr></tbody></table>
+<hr>
+<hr>
+<h2 id="channels--integrations">Channels &#x26; Integrations</h2>
+<h3 id="channels--channelsconfig"><code>channels</code> — ChannelsConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>offered</code></td><td>array of string</td><td><code>["telegram", "whatsapp", "msteams", "discord", "slack", "matrix", "nostr", "signal"]</code></td><td>Which channel types are offered in the web UI (onboarding + channels page).</td></tr><tr><td><code>&#x3C;channel_type></code></td><td>map of <code>serde_json::Value</code></td><td><code>{}</code></td><td>Account configs keyed by account name. Known types: <code>telegram</code>, <code>whatsapp</code>, <code>msteams</code>, <code>discord</code>, <code>slack</code>, <code>matrix</code>, <code>nostr</code>, <code>signal</code>. Additional types accepted via flatten.</td></tr></tbody></table>
+<p>Each channel account (<code>channels.&#x3C;channel_type>.&#x3C;account_name></code>) is an arbitrary JSON object that may contain provider-specific keys plus a <code>tools</code> sub-block (see below).</p>
+<h3 id="channelsaccounttools--channeltoolpolicyoverride"><code>channels.*.&#x3C;account>.tools</code> — ChannelToolPolicyOverride</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>groups</code></td><td>map of GroupToolPolicy</td><td><code>{}</code></td><td>Per-chat-type policies, keyed by chat type (<code>"private"</code>, <code>"group"</code>, etc.).</td></tr></tbody></table>
+<h3 id="channelsaccounttoolsgroupsgroup_id--grouptoolpolicy"><code>channels.*.&#x3C;account>.tools.groups.&#x3C;group_id></code> — GroupToolPolicy</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>allow</code></td><td>array of string</td><td><code>[]</code></td><td>Tool names/patterns to allow.</td></tr><tr><td><code>deny</code></td><td>array of string</td><td><code>[]</code></td><td>Tool names/patterns to deny.</td></tr><tr><td><code>by_sender</code></td><td>map of ToolPolicyConfig</td><td><code>{}</code></td><td>Per-sender overrides within this group, keyed by sender/peer ID.</td></tr></tbody></table>
+<h3 id="channelsaccounttoolsgroupsgroup_idby_sendersender_id--toolpolicyconfig"><code>channels.*.&#x3C;account>.tools.groups.&#x3C;group_id>.by_sender.&#x3C;sender_id></code> — ToolPolicyConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>allow</code></td><td>array of string</td><td><code>[]</code></td><td>Tool names/patterns to allow for this sender.</td></tr><tr><td><code>deny</code></td><td>array of string</td><td><code>[]</code></td><td>Tool names/patterns to deny for this sender.</td></tr><tr><td><code>profile</code></td><td>optional string</td><td><code>None</code></td><td>Agent profile to use for this sender.</td></tr></tbody></table>
+<hr>
+<h3 id="hooks--hooksconfig"><code>hooks</code> — HooksConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>hooks</code></td><td>array of ShellHookConfigEntry</td><td><code>[]</code></td><td>Shell hooks defined in the config file.</td></tr></tbody></table>
+<h3 id="hookshooks--shellhookconfigentry"><code>hooks.hooks[]</code> — ShellHookConfigEntry</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>name</code></td><td>string</td><td><em>(required)</em></td><td>Human-readable hook name.</td></tr><tr><td><code>command</code></td><td>string</td><td><em>(required)</em></td><td>Shell command to execute.</td></tr><tr><td><code>events</code></td><td>array of string</td><td><em>(required)</em></td><td>Event names that trigger this hook.</td></tr><tr><td><code>timeout</code></td><td>integer</td><td><code>10</code></td><td>Timeout in seconds for the hook process.</td></tr><tr><td><code>env</code></td><td>map of string</td><td><code>{}</code></td><td>Environment variables to set for the hook process.</td></tr></tbody></table>
+<hr>
+<h3 id="mcp--mcpconfig"><code>mcp</code> — McpConfig</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>request_timeout_secs</code></td><td>integer</td><td><code>30</code></td><td>Default timeout for MCP requests in seconds.</td></tr><tr><td><code>servers</code></td><td>map of McpServerEntry</td><td><code>{}</code></td><td>Configured MCP servers, keyed by server name.</td></tr></tbody></table>
+<h3 id="mcpserversname--mcpserverentry"><code>mcp.servers.&#x3C;name></code> — McpServerEntry</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>command</code></td><td>string</td><td><code>""</code></td><td>Command to spawn the server process (stdio transport).</td></tr><tr><td><code>args</code></td><td>array of string</td><td><code>[]</code></td><td>Arguments to the command.</td></tr><tr><td><code>env</code></td><td>map of string</td><td><code>{}</code></td><td>Environment variables to set for the process.</td></tr><tr><td><code>enabled</code></td><td>bool</td><td><code>true</code></td><td>Whether this server is enabled.</td></tr><tr><td><code>request_timeout_secs</code></td><td>optional integer</td><td><code>None</code></td><td>Optional per-server MCP request timeout override in seconds.</td></tr><tr><td><code>transport</code></td><td>string</td><td><code>""</code></td><td>Transport type: <code>"stdio"</code> (default), <code>"sse"</code>, or <code>"streamable-http"</code>.</td></tr><tr><td><code>url</code></td><td>optional string</td><td><code>None</code></td><td>URL for SSE/Streamable HTTP transport. Required when <code>transport</code> is <code>"sse"</code> or <code>"streamable-http"</code>.</td></tr><tr><td><code>headers</code></td><td>map of string</td><td><code>{}</code></td><td>Custom headers for remote HTTP/SSE transport.</td></tr><tr><td><code>oauth</code></td><td>optional McpOAuthOverrideEntry</td><td><code>None</code></td><td>Manual OAuth override for servers that don’t support standard discovery.</td></tr><tr><td><code>display_name</code></td><td>optional string</td><td><code>None</code></td><td>Custom display name for the server (shown in UI instead of technical ID).</td></tr></tbody></table>
+<h3 id="mcpserversnameoauth--mcpoauthoverrideentry"><code>mcp.servers.&#x3C;name>.oauth</code> — McpOAuthOverrideEntry</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>client_id</code></td><td>string</td><td><em>(required)</em></td><td>The OAuth client ID.</td></tr><tr><td><code>client_secret</code></td><td>optional string</td><td><code>None</code></td><td>Optional OAuth client secret sent to the token endpoint.</td></tr><tr><td><code>auth_url</code></td><td>string</td><td><em>(required)</em></td><td>The authorization endpoint URL.</td></tr><tr><td><code>token_url</code></td><td>string</td><td><em>(required)</em></td><td>The token endpoint URL.</td></tr><tr><td><code>scopes</code></td><td>array of string</td><td><code>[]</code></td><td>OAuth scopes to request.</td></tr></tbody></table>
+<hr>
+<hr>
+<h2 id="memory">Memory</h2>
+<h3 id="memory-1"><code>memory</code></h3>
+<p><strong>Struct:</strong> <code>MemoryEmbeddingConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>style</code></td><td>enum (<code>hybrid</code>, <code>prompt-only</code>, <code>search-only</code>, <code>off</code>)</td><td><code>"hybrid"</code></td><td>High-level memory orchestration style.</td></tr><tr><td><code>agent_write_mode</code></td><td>enum (<code>hybrid</code>, <code>prompt-only</code>, <code>search-only</code>, <code>off</code>)</td><td><code>"hybrid"</code></td><td>Where agent-authored memory writes are allowed to land.</td></tr><tr><td><code>user_profile_write_mode</code></td><td>enum (<code>explicit-and-auto</code>, <code>explicit-only</code>, <code>off</code>)</td><td><code>"explicit-and-auto"</code></td><td>How Moltis writes the managed <code>USER.md</code> profile surface.</td></tr><tr><td><code>backend</code></td><td>enum (<code>builtin</code>, <code>qmd</code>)</td><td><code>"builtin"</code></td><td>Memory backend used for search, retrieval, and indexing.</td></tr><tr><td><code>provider</code></td><td>optional enum (<code>local</code>, <code>ollama</code>, <code>openai</code>, <code>custom</code>)</td><td><em>auto-detect</em></td><td>Embedding provider. Alias: <code>embedding_provider</code>.</td></tr><tr><td><code>disable_rag</code></td><td>bool</td><td><code>false</code></td><td>Disable RAG embeddings and force keyword-only memory search.</td></tr><tr><td><code>base_url</code></td><td>optional string</td><td>—</td><td>Base URL for the embedding API. Alias: <code>embedding_base_url</code>.</td></tr><tr><td><code>model</code></td><td>optional string</td><td>—</td><td>Model name for embeddings. Alias: <code>embedding_model</code>.</td></tr><tr><td><code>api_key</code></td><td>optional string (secret)</td><td>—</td><td>API key for the embedding endpoint. Alias: <code>embedding_api_key</code>.</td></tr><tr><td><code>citations</code></td><td>enum (<code>on</code>, <code>off</code>, <code>auto</code>)</td><td><code>"auto"</code></td><td>Citation mode for memory search results.</td></tr><tr><td><code>llm_reranking</code></td><td>bool</td><td><code>false</code></td><td>Enable LLM reranking for hybrid search results.</td></tr><tr><td><code>search_merge_strategy</code></td><td>enum (<code>rrf</code>, <code>linear</code>)</td><td><code>"rrf"</code></td><td>Merge strategy for hybrid search results.</td></tr><tr><td><code>session_export</code></td><td>enum (<code>off</code>, <code>on-new-or-reset</code>)</td><td><code>"on-new-or-reset"</code></td><td>How session transcripts are exported into searchable memory.</td></tr><tr><td><code>qmd</code></td><td>map (see <code>memory.qmd</code>)</td><td><code>{}</code></td><td>QMD-specific configuration (only used when backend = <code>"qmd"</code>).</td></tr></tbody></table>
+<h3 id="memoryqmd"><code>memory.qmd</code></h3>
+<p><strong>Struct:</strong> <code>QmdConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>command</code></td><td>optional string</td><td><code>"qmd"</code></td><td>Path to the qmd binary.</td></tr><tr><td><code>collections</code></td><td>map of name → <code>QmdCollection</code></td><td><code>{}</code></td><td>Named collections with paths and glob patterns.</td></tr><tr><td><code>max_results</code></td><td>optional integer</td><td>—</td><td>Maximum results to retrieve.</td></tr><tr><td><code>timeout_ms</code></td><td>optional integer</td><td>—</td><td>Search timeout in milliseconds.</td></tr></tbody></table>
+<h3 id="memoryqmdcollectionsname"><code>memory.qmd.collections.&#x3C;name></code></h3>
+<p><strong>Struct:</strong> <code>QmdCollection</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>paths</code></td><td>array of string</td><td><code>[]</code></td><td>Paths to include in this collection.</td></tr><tr><td><code>globs</code></td><td>array of string</td><td><code>[]</code></td><td>Glob patterns to filter files.</td></tr></tbody></table>
+<hr>
+<h2 id="scheduling--webhooks">Scheduling &#x26; Webhooks</h2>
+<h3 id="heartbeat"><code>heartbeat</code></h3>
+<p><strong>Struct:</strong> <code>HeartbeatConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>enabled</code></td><td>bool</td><td><code>true</code></td><td>Whether the heartbeat is enabled.</td></tr><tr><td><code>every</code></td><td>string</td><td><code>"30m"</code></td><td>Interval between heartbeats (e.g. <code>"30m"</code>, <code>"1h"</code>).</td></tr><tr><td><code>model</code></td><td>optional string</td><td>—</td><td>Provider/model override for heartbeat turns.</td></tr><tr><td><code>prompt</code></td><td>optional string</td><td>—</td><td>Custom prompt override. Empty uses the built-in default.</td></tr><tr><td><code>ack_max_chars</code></td><td>integer</td><td><code>300</code></td><td>Max characters for an acknowledgment reply before truncation.</td></tr><tr><td><code>active_hours</code></td><td>map (see <code>heartbeat.active_hours</code>)</td><td>—</td><td>Active hours window — heartbeats only run during this window.</td></tr><tr><td><code>deliver</code></td><td>bool</td><td><code>false</code></td><td>Whether heartbeat replies should be delivered to a channel account.</td></tr><tr><td><code>channel</code></td><td>optional string</td><td>—</td><td>Channel account identifier for heartbeat delivery.</td></tr><tr><td><code>to</code></td><td>optional string</td><td>—</td><td>Destination chat/recipient id for heartbeat delivery.</td></tr><tr><td><code>sandbox_enabled</code></td><td>bool</td><td><code>true</code></td><td>Whether heartbeat runs inside a sandbox.</td></tr><tr><td><code>sandbox_image</code></td><td>optional string</td><td>—</td><td>Override sandbox image for heartbeat.</td></tr><tr><td><code>wake_cooldown</code></td><td>string</td><td><code>"5m"</code></td><td>Minimum duration between exec-triggered heartbeat wakes. Use <code>"0"</code> to disable the guard.</td></tr></tbody></table>
+<h3 id="heartbeatactive_hours"><code>heartbeat.active_hours</code></h3>
+<p><strong>Struct:</strong> <code>ActiveHoursConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>start</code></td><td>string</td><td><code>"08:00"</code></td><td>Start time in HH:MM format.</td></tr><tr><td><code>end</code></td><td>string</td><td><code>"24:00"</code></td><td>End time in HH:MM format.</td></tr><tr><td><code>timezone</code></td><td>string</td><td><code>"local"</code></td><td>IANA timezone (e.g. <code>"Europe/Paris"</code>) or <code>"local"</code>.</td></tr></tbody></table>
+<h3 id="cron"><code>cron</code></h3>
+<p><strong>Struct:</strong> <code>CronConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>rate_limit_max</code></td><td>integer</td><td><code>10</code></td><td>Maximum number of jobs within the rate limit window.</td></tr><tr><td><code>rate_limit_window_secs</code></td><td>integer</td><td><code>60</code></td><td>Rate limit window in seconds.</td></tr><tr><td><code>session_retention_days</code></td><td>optional integer</td><td><code>7</code></td><td>Days to retain cron session data before auto-cleanup. <code>None</code> disables pruning.</td></tr><tr><td><code>auto_prune_cron_containers</code></td><td>bool</td><td><code>true</code></td><td>Whether to auto-prune sandbox containers after cron job completion.</td></tr></tbody></table>
+<h3 id="caldav"><code>caldav</code></h3>
+<p><strong>Struct:</strong> <code>CalDavConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>enabled</code></td><td>bool</td><td><code>false</code></td><td>Whether CalDAV integration is enabled.</td></tr><tr><td><code>default_account</code></td><td>optional string</td><td>—</td><td>Default account name to use when none is specified.</td></tr><tr><td><code>accounts</code></td><td>map of name → <code>CalDavAccountConfig</code></td><td><code>{}</code></td><td>Named CalDAV accounts.</td></tr></tbody></table>
+<h3 id="caldavaccountsname"><code>caldav.accounts.&#x3C;name></code></h3>
+<p><strong>Struct:</strong> <code>CalDavAccountConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>url</code></td><td>optional string</td><td>—</td><td>CalDAV server URL.</td></tr><tr><td><code>username</code></td><td>optional string</td><td>—</td><td>Username for authentication.</td></tr><tr><td><code>password</code></td><td>optional string (secret)</td><td>—</td><td>Password or app-specific password.</td></tr><tr><td><code>provider</code></td><td>optional string</td><td>—</td><td>Provider hint: <code>"fastmail"</code>, <code>"icloud"</code>, or <code>"generic"</code>.</td></tr><tr><td><code>timeout_seconds</code></td><td>integer</td><td><code>30</code></td><td>HTTP request timeout in seconds.</td></tr></tbody></table>
+<h3 id="webhooks"><code>webhooks</code></h3>
+<p><strong>Struct:</strong> <code>WebhooksConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>rate_limit</code></td><td>map (see <code>webhooks.rate_limit</code>)</td><td>—</td><td>Per-account rate limiting settings.</td></tr></tbody></table>
+<h3 id="webhooksrate_limit"><code>webhooks.rate_limit</code></h3>
+<p><strong>Struct:</strong> <code>WebhookRateLimitConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>enabled</code></td><td>bool</td><td><code>true</code></td><td>Whether rate limiting is enabled.</td></tr><tr><td><code>requests_per_minute</code></td><td>optional integer</td><td>—</td><td>Max requests per minute per account. <code>None</code> uses per-channel defaults.</td></tr><tr><td><code>burst</code></td><td>optional integer</td><td>—</td><td>Burst allowance per account.</td></tr><tr><td><code>cleanup_interval_secs</code></td><td>integer</td><td><code>300</code></td><td>Interval in seconds between stale bucket cleanup.</td></tr></tbody></table>
+<hr>
+<h2 id="llm-providers">LLM Providers</h2>
+<h3 id="providers"><code>providers</code></h3>
+<p><strong>Struct:</strong> <code>ProvidersConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>offered</code></td><td>array of string</td><td><code>[]</code></td><td>Allowlist of enabled providers (also controls web UI pickers). Empty = all enabled.</td></tr><tr><td><code>show_legacy_models</code></td><td>bool</td><td><code>false</code></td><td>Show models older than one year in the chat model selector.</td></tr><tr><td><code>&#x3C;name></code></td><td><code>ProviderEntry</code> (see below)</td><td>—</td><td>Provider-specific settings keyed by provider name.</td></tr></tbody></table>
+<h3 id="providersname--providerentry"><code>providers.&#x3C;name></code> — ProviderEntry</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>enabled</code></td><td>bool</td><td><code>true</code></td><td>Whether this provider is enabled.</td></tr><tr><td><code>api_key</code></td><td>optional string (secret)</td><td>—</td><td>Override the API key. Env var takes precedence if set.</td></tr><tr><td><code>base_url</code></td><td>optional string</td><td>—</td><td>Override the base URL. Alias: <code>url</code>.</td></tr><tr><td><code>models</code></td><td>array of string</td><td><code>[]</code></td><td>Preferred model IDs shown first in model pickers.</td></tr><tr><td><code>fetch_models</code></td><td>bool</td><td><code>true</code></td><td>Whether to fetch provider model catalogs dynamically.</td></tr><tr><td><code>stream_transport</code></td><td>enum (<code>sse</code>, <code>websocket</code>, <code>auto</code>)</td><td><code>"sse"</code></td><td>Streaming transport for this provider.</td></tr><tr><td><code>wire_api</code></td><td>enum (<code>chat-completions</code>, <code>responses</code>)</td><td><code>"chat-completions"</code></td><td>Wire format for this provider’s HTTP API.</td></tr><tr><td><code>alias</code></td><td>optional string</td><td>—</td><td>Alias used in metrics labels instead of the provider name.</td></tr><tr><td><code>tool_mode</code></td><td>enum (<code>auto</code>, <code>native</code>, <code>text</code>, <code>off</code>)</td><td><code>"auto"</code></td><td>How tool calling is handled for this provider.</td></tr><tr><td><code>cache_retention</code></td><td>enum (<code>none</code>, <code>short</code>, <code>long</code>)</td><td><code>"short"</code></td><td>Prompt cache retention policy.</td></tr><tr><td><code>policy</code></td><td>optional <code>ToolPolicyConfig</code> (see below)</td><td>—</td><td>Tool policy override merged on top of global <code>[tools.policy]</code>.</td></tr><tr><td><code>model_overrides</code></td><td>map of <code>ModelOverride</code></td><td><code>{}</code></td><td>Per-model context window overrides. Keys are model IDs.</td></tr></tbody></table>
+<p>For <code>custom-*</code> providers, a non-empty <code>models</code> list is treated as a whitelist. If <code>fetch_models = true</code>, <code>/models</code> is still fetched and returned model metadata (for example <code>capabilities</code> and <code>context_length</code>) is applied to matching whitelisted models.</p>
+<h3 id="providersnamemodel_overridesmodel_id--modeloverride"><code>providers.&#x3C;name>.model_overrides.&#x3C;model_id></code> — ModelOverride</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>context_window</code></td><td>optional integer</td><td>—</td><td>Override the context window size (in tokens) for this model. Must be ≥ 1. Values > 10,000,000 produce a warning.</td></tr></tbody></table>
+<h3 id="models--global-model-overrides"><code>models</code> — Global Model Overrides</h3>
+<p><strong>Struct:</strong> <code>HashMap&#x3C;String, ModelOverride></code></p>
+<p>Per-model overrides that apply across all providers. Provider-scoped overrides (<code>providers.&#x3C;name>.model_overrides.&#x3C;id></code>) take precedence over these.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[models.claude-opus-4-6]
+context_window = 1_000_000"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">models</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">claude-opus-4-6</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">context_window </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1_000_000</span></span></code></pre>
+<h3 id="providersnamepolicy"><code>providers.&#x3C;name>.policy</code></h3>
+<p><strong>Struct:</strong> <code>ToolPolicyConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>allow</code></td><td>array of string</td><td><code>[]</code></td><td>Tool names to allow.</td></tr><tr><td><code>deny</code></td><td>array of string</td><td><code>[]</code></td><td>Tool names to deny.</td></tr><tr><td><code>profile</code></td><td>optional string</td><td>—</td><td>Named policy profile to apply.</td></tr></tbody></table>
+<hr>
+<h3 id="voice"><code>voice</code></h3>
+<p><strong>Struct:</strong> <code>VoiceConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>tts</code></td><td><code>VoiceTtsConfig</code></td><td>(see below)</td><td>Text-to-speech settings</td></tr><tr><td><code>stt</code></td><td><code>VoiceSttConfig</code></td><td>(see below)</td><td>Speech-to-text settings</td></tr></tbody></table>
+<hr>
+<h2 id="voice--text-to-speech">Voice — Text-to-Speech</h2>
+<h3 id="voicetts"><code>voice.tts</code></h3>
+<p><strong>Struct:</strong> <code>VoiceTtsConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>enabled</code></td><td>bool</td><td><code>true</code></td><td>Enable TTS globally</td></tr><tr><td><code>provider</code></td><td>string</td><td><code>""</code></td><td>Active provider (<code>"openai"</code>, <code>"elevenlabs"</code>, <code>"google"</code>, <code>"piper"</code>, <code>"coqui"</code>). Empty string auto-selects the first configured provider</td></tr><tr><td><code>providers</code></td><td>array of string</td><td><code>[]</code></td><td>Provider IDs to list in the UI. Empty means list all</td></tr><tr><td><code>elevenlabs</code></td><td><code>VoiceElevenLabsConfig</code></td><td>(see below)</td><td>ElevenLabs-specific settings</td></tr><tr><td><code>openai</code></td><td><code>VoiceOpenAiConfig</code></td><td>(see below)</td><td>OpenAI TTS settings</td></tr><tr><td><code>google</code></td><td><code>VoiceGoogleTtsConfig</code></td><td>(see below)</td><td>Google Cloud TTS settings</td></tr><tr><td><code>piper</code></td><td><code>VoicePiperTtsConfig</code></td><td>(see below)</td><td>Piper (local) settings</td></tr><tr><td><code>coqui</code></td><td><code>VoiceCoquiTtsConfig</code></td><td>(see below)</td><td>Coqui TTS (local server) settings</td></tr></tbody></table>
+<h3 id="voicettselevenlabs"><code>voice.tts.elevenlabs</code></h3>
+<p><strong>Struct:</strong> <code>VoiceElevenLabsConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>api_key</code></td><td>optional secret string</td><td><code>null</code></td><td>API key (from <code>ELEVENLABS_API_KEY</code> env or config)</td></tr><tr><td><code>voice_id</code></td><td>optional string</td><td><code>null</code></td><td>Default voice ID</td></tr><tr><td><code>model</code></td><td>optional string</td><td><code>null</code></td><td>Model to use (e.g. <code>"eleven_flash_v2_5"</code> for lowest latency)</td></tr></tbody></table>
+<h3 id="voicettsopenai"><code>voice.tts.openai</code></h3>
+<p><strong>Struct:</strong> <code>VoiceOpenAiConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>api_key</code></td><td>optional secret string</td><td><code>null</code></td><td>API key (from <code>OPENAI_API_KEY</code> env or config)</td></tr><tr><td><code>base_url</code></td><td>optional string</td><td><code>null</code></td><td>Override the OpenAI TTS endpoint for compatible local servers</td></tr><tr><td><code>voice</code></td><td>optional string</td><td><code>null</code></td><td>Voice to use for TTS (<code>alloy</code>, <code>echo</code>, <code>fable</code>, <code>onyx</code>, <code>nova</code>, <code>shimmer</code>)</td></tr><tr><td><code>model</code></td><td>optional string</td><td><code>null</code></td><td>Model to use for TTS (<code>tts-1</code>, <code>tts-1-hd</code>)</td></tr></tbody></table>
+<h3 id="voicettsgoogle"><code>voice.tts.google</code></h3>
+<p><strong>Struct:</strong> <code>VoiceGoogleTtsConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>api_key</code></td><td>optional secret string</td><td><code>null</code></td><td>API key for Google Cloud Text-to-Speech</td></tr><tr><td><code>voice</code></td><td>optional string</td><td><code>null</code></td><td>Voice name (e.g. <code>"en-US-Neural2-A"</code>, <code>"en-US-Wavenet-D"</code>)</td></tr><tr><td><code>language_code</code></td><td>optional string</td><td><code>null</code></td><td>Language code (e.g. <code>"en-US"</code>, <code>"fr-FR"</code>)</td></tr><tr><td><code>speaking_rate</code></td><td>optional float</td><td><code>null</code></td><td>Speaking rate (0.25–4.0, default 1.0)</td></tr><tr><td><code>pitch</code></td><td>optional float</td><td><code>null</code></td><td>Pitch (-20.0–20.0, default 0.0)</td></tr></tbody></table>
+<h3 id="voicettspiper"><code>voice.tts.piper</code></h3>
+<p><strong>Struct:</strong> <code>VoicePiperTtsConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>binary_path</code></td><td>optional string</td><td><code>null</code></td><td>Path to piper binary. If not set, looks in <code>PATH</code></td></tr><tr><td><code>model_path</code></td><td>optional string</td><td><code>null</code></td><td>Path to the voice model file (<code>.onnx</code>)</td></tr><tr><td><code>config_path</code></td><td>optional string</td><td><code>null</code></td><td>Path to the model config file (<code>.onnx.json</code>). Defaults to <code>model_path</code> + <code>".json"</code></td></tr><tr><td><code>speaker_id</code></td><td>optional integer</td><td><code>null</code></td><td>Speaker ID for multi-speaker models</td></tr><tr><td><code>length_scale</code></td><td>optional float</td><td><code>null</code></td><td>Speaking rate multiplier (default 1.0)</td></tr></tbody></table>
+<h3 id="voicettscoqui"><code>voice.tts.coqui</code></h3>
+<p><strong>Struct:</strong> <code>VoiceCoquiTtsConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>endpoint</code></td><td>string</td><td><code>"http://localhost:5002"</code></td><td>Coqui TTS server endpoint</td></tr><tr><td><code>model</code></td><td>optional string</td><td><code>null</code></td><td>Model name to use (if server supports multiple models)</td></tr><tr><td><code>speaker</code></td><td>optional string</td><td><code>null</code></td><td>Speaker name or ID for multi-speaker models</td></tr><tr><td><code>language</code></td><td>optional string</td><td><code>null</code></td><td>Language code for multilingual models</td></tr></tbody></table>
+<hr>
+<hr>
+<h2 id="voice--speech-to-text">Voice — Speech-to-Text</h2>
+<h3 id="voicestt"><code>voice.stt</code></h3>
+<p><strong>Struct:</strong> <code>VoiceSttConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>enabled</code></td><td>bool</td><td><code>true</code></td><td>Enable STT globally</td></tr><tr><td><code>provider</code></td><td>optional enum: <code>whisper</code>, <code>groq</code>, <code>deepgram</code>, <code>google</code>, <code>mistral</code>, <code>elevenlabs-stt</code>, <code>voxtral-local</code>, <code>whisper-cli</code>, <code>sherpa-onnx</code></td><td><code>null</code></td><td>Active provider. <code>null</code> auto-selects the first configured provider. Values: <code>"whisper"</code>, <code>"groq"</code>, <code>"deepgram"</code>, <code>"google"</code>, <code>"mistral"</code>, <code>"elevenlabs-stt"</code>, <code>"voxtral-local"</code>, <code>"whisper-cli"</code>, <code>"sherpa-onnx"</code></td></tr><tr><td><code>providers</code></td><td>array of string</td><td><code>[]</code></td><td>Provider IDs to list in the UI. Empty means list all</td></tr><tr><td><code>whisper</code></td><td><code>VoiceWhisperConfig</code></td><td>(see below)</td><td>OpenAI Whisper settings</td></tr><tr><td><code>groq</code></td><td><code>VoiceGroqSttConfig</code></td><td>(see below)</td><td>Groq (Whisper-compatible) settings</td></tr><tr><td><code>deepgram</code></td><td><code>VoiceDeepgramConfig</code></td><td>(see below)</td><td>Deepgram settings</td></tr><tr><td><code>google</code></td><td><code>VoiceGoogleSttConfig</code></td><td>(see below)</td><td>Google Cloud Speech-to-Text settings</td></tr><tr><td><code>mistral</code></td><td><code>VoiceMistralSttConfig</code></td><td>(see below)</td><td>Mistral AI (Voxtral Transcribe) settings</td></tr><tr><td><code>elevenlabs</code></td><td><code>VoiceElevenLabsSttConfig</code></td><td>(see below)</td><td>ElevenLabs Scribe settings</td></tr><tr><td><code>voxtral_local</code></td><td><code>VoiceVoxtralLocalConfig</code></td><td>(see below)</td><td>Voxtral local (vLLM server) settings</td></tr><tr><td><code>whisper_cli</code></td><td><code>VoiceWhisperCliConfig</code></td><td>(see below)</td><td>whisper-cli (whisper.cpp) settings</td></tr><tr><td><code>sherpa_onnx</code></td><td><code>VoiceSherpaOnnxConfig</code></td><td>(see below)</td><td>sherpa-onnx offline settings</td></tr></tbody></table>
+<h3 id="voicesttwhisper"><code>voice.stt.whisper</code></h3>
+<p><strong>Struct:</strong> <code>VoiceWhisperConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>api_key</code></td><td>optional secret string</td><td><code>null</code></td><td>API key (from <code>OPENAI_API_KEY</code> env or config)</td></tr><tr><td><code>base_url</code></td><td>optional string</td><td><code>null</code></td><td>Override the Whisper endpoint for compatible local servers</td></tr><tr><td><code>model</code></td><td>optional string</td><td><code>null</code></td><td>Model to use (<code>whisper-1</code>)</td></tr><tr><td><code>language</code></td><td>optional string</td><td><code>null</code></td><td>Language hint (ISO 639-1 code)</td></tr></tbody></table>
+<h3 id="voicesttgroq"><code>voice.stt.groq</code></h3>
+<p><strong>Struct:</strong> <code>VoiceGroqSttConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>api_key</code></td><td>optional secret string</td><td><code>null</code></td><td>API key (from <code>GROQ_API_KEY</code> env or config)</td></tr><tr><td><code>model</code></td><td>optional string</td><td><code>null</code></td><td>Model to use (e.g. <code>"whisper-large-v3-turbo"</code>)</td></tr><tr><td><code>language</code></td><td>optional string</td><td><code>null</code></td><td>Language hint (ISO 639-1 code)</td></tr></tbody></table>
+<h3 id="voicesttdeepgram"><code>voice.stt.deepgram</code></h3>
+<p><strong>Struct:</strong> <code>VoiceDeepgramConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>api_key</code></td><td>optional secret string</td><td><code>null</code></td><td>API key (from <code>DEEPGRAM_API_KEY</code> env or config)</td></tr><tr><td><code>model</code></td><td>optional string</td><td><code>null</code></td><td>Model to use (e.g. <code>"nova-3"</code>)</td></tr><tr><td><code>language</code></td><td>optional string</td><td><code>null</code></td><td>Language hint (e.g. <code>"en-US"</code>)</td></tr><tr><td><code>smart_format</code></td><td>bool</td><td><code>false</code></td><td>Enable smart formatting (punctuation, capitalization)</td></tr></tbody></table>
+<h3 id="voicesttgoogle"><code>voice.stt.google</code></h3>
+<p><strong>Struct:</strong> <code>VoiceGoogleSttConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>api_key</code></td><td>optional secret string</td><td><code>null</code></td><td>API key for Google Cloud Speech-to-Text</td></tr><tr><td><code>service_account_json</code></td><td>optional string</td><td><code>null</code></td><td>Path to service account JSON file (alternative to API key)</td></tr><tr><td><code>language</code></td><td>optional string</td><td><code>null</code></td><td>Language code (e.g. <code>"en-US"</code>)</td></tr><tr><td><code>model</code></td><td>optional string</td><td><code>null</code></td><td>Model variant (e.g. <code>"latest_long"</code>, <code>"latest_short"</code>)</td></tr></tbody></table>
+<h3 id="voicesttmistral"><code>voice.stt.mistral</code></h3>
+<p><strong>Struct:</strong> <code>VoiceMistralSttConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>api_key</code></td><td>optional secret string</td><td><code>null</code></td><td>API key (from <code>MISTRAL_API_KEY</code> env or config)</td></tr><tr><td><code>model</code></td><td>optional string</td><td><code>null</code></td><td>Model to use (e.g. <code>"voxtral-mini-latest"</code>)</td></tr><tr><td><code>language</code></td><td>optional string</td><td><code>null</code></td><td>Language hint (ISO 639-1 code)</td></tr></tbody></table>
+<h3 id="voicesttelevenlabs"><code>voice.stt.elevenlabs</code></h3>
+<p><strong>Struct:</strong> <code>VoiceElevenLabsSttConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>api_key</code></td><td>optional secret string</td><td><code>null</code></td><td>API key (from <code>ELEVENLABS_API_KEY</code> env or config). Shared with TTS if not specified separately</td></tr><tr><td><code>model</code></td><td>optional string</td><td><code>null</code></td><td>Model to use (<code>scribe_v1</code> or <code>scribe_v2</code>)</td></tr><tr><td><code>language</code></td><td>optional string</td><td><code>null</code></td><td>Language hint (ISO 639-1 code)</td></tr></tbody></table>
+<h3 id="voicesttvoxtral_local"><code>voice.stt.voxtral_local</code></h3>
+<p><strong>Struct:</strong> <code>VoiceVoxtralLocalConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>endpoint</code></td><td>string</td><td><code>"http://localhost:8000"</code></td><td>vLLM server endpoint</td></tr><tr><td><code>model</code></td><td>optional string</td><td><code>null</code></td><td>Model to use (optional, server default if not set)</td></tr><tr><td><code>language</code></td><td>optional string</td><td><code>null</code></td><td>Language hint (ISO 639-1 code)</td></tr></tbody></table>
+<h3 id="voicesttwhisper_cli"><code>voice.stt.whisper_cli</code></h3>
+<p><strong>Struct:</strong> <code>VoiceWhisperCliConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>binary_path</code></td><td>optional string</td><td><code>null</code></td><td>Path to whisper-cli binary. If not set, looks in <code>PATH</code></td></tr><tr><td><code>model_path</code></td><td>optional string</td><td><code>null</code></td><td>Path to the GGML model file (e.g. <code>"~/.moltis/models/ggml-base.en.bin"</code>)</td></tr><tr><td><code>language</code></td><td>optional string</td><td><code>null</code></td><td>Language hint (ISO 639-1 code)</td></tr></tbody></table>
+<h3 id="voicesttsherpa_onnx"><code>voice.stt.sherpa_onnx</code></h3>
+<p><strong>Struct:</strong> <code>VoiceSherpaOnnxConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>binary_path</code></td><td>optional string</td><td><code>null</code></td><td>Path to sherpa-onnx-offline binary. If not set, looks in <code>PATH</code></td></tr><tr><td><code>model_dir</code></td><td>optional string</td><td><code>null</code></td><td>Path to the ONNX model directory</td></tr><tr><td><code>language</code></td><td>optional string</td><td><code>null</code></td><td>Language hint (ISO 639-1 code)</td></tr></tbody></table>
+<hr>
+<h2 id="environment">Environment</h2>
+<h3 id="env"><code>env</code></h3>
+<p><strong>Struct:</strong> top-level <code>HashMap&#x3C;String, String></code> on <code>MoltisConfig</code></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>*</code></td><td>string</td><td>—</td><td>Dynamic map of environment variable names to values.</td></tr></tbody></table>
+<hr>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/upstream-proxy.html"><span>Previous</span>Upstream Proxy</a> <a class="pager-link next" href="/local-validation.html"><span>Next</span>Local Validation</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

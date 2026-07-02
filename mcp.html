@@ -1,0 +1,610 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>MCP Servers - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a class="active" href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Features</div>  <h1 id="mcp-servers">MCP Servers</h1>
+<p>Moltis supports the <a href="https://modelcontextprotocol.io">Model Context Protocol (MCP)</a> for connecting to external tool servers. MCP servers extend your agent’s capabilities without modifying Moltis itself.</p>
+<h2 id="what-is-mcp">What is MCP?</h2>
+<p>MCP is an open protocol that lets AI assistants connect to external tools and data sources. Think of MCP servers as plugins that provide:</p>
+<ul>
+<li><strong>Tools</strong> — Functions the agent can call (e.g., search, file operations, API calls)</li>
+<li><strong>Resources</strong> — Data the agent can read (e.g., files, database records)</li>
+<li><strong>Prompts</strong> — Pre-defined prompt templates</li>
+</ul>
+<h2 id="supported-transports">Supported Transports</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Transport</th><th>Description</th><th>Use Case</th></tr></thead><tbody><tr><td><strong>stdio</strong></td><td>Local process via stdin/stdout</td><td>npm packages, local scripts</td></tr><tr><td><strong>Streamable HTTP</strong></td><td>Remote server via HTTP</td><td>Cloud services, shared servers</td></tr></tbody></table>
+<h2 id="adding-an-mcp-server">Adding an MCP Server</h2>
+<h3 id="via-web-ui">Via Web UI</h3>
+<ol>
+<li>Go to <strong>Settings</strong> → <strong>MCP Servers</strong></li>
+<li>Click <strong>Add Server</strong></li>
+<li>For remote Streamable HTTP servers, enter the server URL and any optional request headers</li>
+<li>Click <strong>Save</strong></li>
+</ol>
+<p>After saving a remote server, Moltis only shows a sanitized URL plus header names/count in the UI and status views. Stored header values stay hidden.</p>
+<h3 id="via-configuration">Via Configuration</h3>
+<p>Add servers to <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[mcp]
+request_timeout_secs = 30
+
+[mcp.servers.filesystem]
+command = &#x22;npx&#x22;
+args = [&#x22;-y&#x22;, &#x22;@modelcontextprotocol/server-filesystem&#x22;, &#x22;/Users/me/projects&#x22;]
+
+[mcp.servers.github]
+command = &#x22;npx&#x22;
+args = [&#x22;-y&#x22;, &#x22;@modelcontextprotocol/server-github&#x22;]
+env = { GITHUB_TOKEN = &#x22;ghp_...&#x22; }
+request_timeout_secs = 90
+
+[mcp.servers.remote_api]
+transport = &#x22;sse&#x22;
+url = &#x22;https://mcp.example.com/mcp?api_key=$REMOTE_MCP_KEY&#x22;
+headers = { Authorization = &#x22;Bearer ${REMOTE_MCP_TOKEN}&#x22; }
+
+[mcp.servers.remote_http]
+transport = &#x22;streamable-http&#x22;
+url = &#x22;https://mcp.example.com/mcp&#x22;
+headers = { Authorization = &#x22;Bearer ${API_KEY}&#x22; }"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">request_timeout_secs </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 30</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">servers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">filesystem</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "npx"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">args </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"-y"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "@modelcontextprotocol/server-filesystem"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "/Users/me/projects"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">servers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">github</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "npx"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">args </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"-y"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "@modelcontextprotocol/server-github"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">env </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { GITHUB_TOKEN </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "ghp_..."</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">request_timeout_secs </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 90</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">servers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">remote_api</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">transport </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "sse"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">url </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://mcp.example.com/mcp?api_key=$REMOTE_MCP_KEY"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">headers </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { Authorization </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Bearer ${REMOTE_MCP_TOKEN}"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">servers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">remote_http</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">transport </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "streamable-http"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">url </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://mcp.example.com/mcp"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">headers </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { Authorization </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Bearer ${API_KEY}"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span></code></pre>
+<p>Remote URLs and headers support <code>$NAME</code> and <code>${NAME}</code> placeholders. For live remote servers, placeholder values resolve from Moltis-managed env overrides, either <code>[env]</code> in config or <strong>Settings</strong> → <strong>Environment Variables</strong>.</p>
+<h2 id="popular-mcp-servers">Popular MCP Servers</h2>
+<h3 id="official-servers">Official Servers</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Server</th><th>Description</th><th>Install</th></tr></thead><tbody><tr><td><strong>filesystem</strong></td><td>Read/write local files</td><td><code>npx @modelcontextprotocol/server-filesystem</code></td></tr><tr><td><strong>github</strong></td><td>GitHub API access</td><td><code>npx @modelcontextprotocol/server-github</code></td></tr><tr><td><strong>postgres</strong></td><td>PostgreSQL queries</td><td><code>npx @modelcontextprotocol/server-postgres</code></td></tr><tr><td><strong>sqlite</strong></td><td>SQLite database</td><td><code>npx @modelcontextprotocol/server-sqlite</code></td></tr><tr><td><strong>puppeteer</strong></td><td>Browser automation</td><td><code>npx @modelcontextprotocol/server-puppeteer</code></td></tr><tr><td><strong>brave-search</strong></td><td>Web search</td><td><code>npx @modelcontextprotocol/server-brave-search</code></td></tr></tbody></table>
+<h3 id="community-servers">Community Servers</h3>
+<p>Explore more at <a href="https://mcp.so">mcp.so</a> and <a href="https://github.com/modelcontextprotocol/servers">GitHub MCP Servers</a>.</p>
+<h2 id="configuration-options">Configuration Options</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[mcp]
+request_timeout_secs = 30       # Global default timeout for MCP requests
+
+[mcp.servers.my_server]
+command = &#x22;node&#x22;                # Required for stdio transport
+args = [&#x22;server.js&#x22;]            # Optional arguments
+
+# Optional environment variables
+env = { API_KEY = &#x22;secret&#x22;, DEBUG = &#x22;true&#x22; }
+
+# Optional: per-server timeout override
+request_timeout_secs = 90
+
+# Optional: remote transport
+transport = &#x22;sse&#x22;               # &#x22;stdio&#x22; (default), &#x22;sse&#x22;, or &#x22;streamable-http&#x22;
+url = &#x22;https://mcp.example.com/mcp&#x22;  # Required when transport = &#x22;sse&#x22; or &#x22;streamable-http&#x22;
+headers = { &#x22;x-api-key&#x22; = &#x22;$REMOTE_MCP_KEY&#x22; }  # Optional request headers"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">request_timeout_secs </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 30</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">       # Global default timeout for MCP requests</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">servers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my_server</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "node"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">                # Required for stdio transport</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">args </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"server.js"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]            </span><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Optional arguments</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Optional environment variables</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">env </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { API_KEY </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "secret"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> DEBUG </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "true"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Optional: per-server timeout override</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">request_timeout_secs </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 90</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Optional: remote transport</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">transport </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "sse"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">               # "stdio" (default), "sse", or "streamable-http"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">url </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://mcp.example.com/mcp"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # Required when transport = "sse" or "streamable-http"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">headers </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { "x-api-key" </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "$REMOTE_MCP_KEY"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }  </span><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Optional request headers</span></span></code></pre>
+<h2 id="request-timeouts">Request Timeouts</h2>
+<p>Moltis applies MCP request timeouts in two layers:</p>
+<ul>
+<li><code>mcp.request_timeout_secs</code> sets the global default for every MCP server</li>
+<li><code>mcp.servers.&#x3C;name>.request_timeout_secs</code> optionally overrides that default for a specific server</li>
+</ul>
+<p>This is useful when most local MCP servers respond quickly, but one remote server or one expensive tool server needs a longer timeout.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[mcp]
+request_timeout_secs = 30
+
+[mcp.servers.remote_api]
+transport = &#x22;sse&#x22;
+url = &#x22;https://mcp.example.com/mcp&#x22;
+request_timeout_secs = 120"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">request_timeout_secs </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 30</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">servers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">remote_api</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">transport </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "sse"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">url </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://mcp.example.com/mcp"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">request_timeout_secs </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 120</span></span></code></pre>
+<p>In the web UI, the MCP settings page lets you edit both the global default timeout and the optional timeout override for each configured server.</p>
+<h2 id="remote-server-secrets-and-placeholders">Remote Server Secrets and Placeholders</h2>
+<p>Remote MCP servers (SSE or Streamable HTTP) often expect API keys or bearer tokens in the URL query string or request headers. Moltis supports both patterns.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[mcp.servers.linear_remote]
+transport = &#x22;sse&#x22;
+url = &#x22;https://mcp.example.com/mcp?api_key=$REMOTE_MCP_KEY&#x22;
+headers = {
+  Authorization = &#x22;Bearer ${REMOTE_MCP_TOKEN}&#x22;,
+  &#x22;x-workspace&#x22; = &#x22;team-a&#x22;,
+}"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">servers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">linear_remote</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">transport </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "sse"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">url </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://mcp.example.com/mcp?api_key=$REMOTE_MCP_KEY"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">headers </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  Authorization </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Bearer ${REMOTE_MCP_TOKEN}"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  "x-workspace" </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "team-a"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<ul>
+<li>Use <code>$NAME</code> or <code>${NAME}</code> placeholders in remote <code>url</code> and <code>headers</code></li>
+<li>Placeholder values resolve from Moltis-managed env overrides, either <code>[env]</code> in config or <strong>Settings</strong> → <strong>Environment Variables</strong></li>
+<li>UI and API status payloads only expose sanitized URLs plus header names/count, not raw header values</li>
+<li>Query-string secrets are redacted when Moltis displays a remote URL after save</li>
+</ul>
+<h2 id="server-lifecycle">Server Lifecycle</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="┌─────────────────────────────────────────────────────┐
+│                   MCP Server                         │
+│                                                      │
+│  Start → Initialize → Ready → [Tool Calls] → Stop   │
+│            │                       │                 │
+│            ▼                       ▼                 │
+│     Health Check ◄─────────── Heartbeat             │
+│            │                       │                 │
+│            ▼                       ▼                 │
+│    Crash Detected ───────────► Restart              │
+│                                    │                 │
+│                              Backoff Wait            │
+└─────────────────────────────────────────────────────┘"><code><span class="line"><span>┌─────────────────────────────────────────────────────┐</span></span>
+<span class="line"><span>│                   MCP Server                         │</span></span>
+<span class="line"><span>│                                                      │</span></span>
+<span class="line"><span>│  Start → Initialize → Ready → [Tool Calls] → Stop   │</span></span>
+<span class="line"><span>│            │                       │                 │</span></span>
+<span class="line"><span>│            ▼                       ▼                 │</span></span>
+<span class="line"><span>│     Health Check ◄─────────── Heartbeat             │</span></span>
+<span class="line"><span>│            │                       │                 │</span></span>
+<span class="line"><span>│            ▼                       ▼                 │</span></span>
+<span class="line"><span>│    Crash Detected ───────────► Restart              │</span></span>
+<span class="line"><span>│                                    │                 │</span></span>
+<span class="line"><span>│                              Backoff Wait            │</span></span>
+<span class="line"><span>└─────────────────────────────────────────────────────┘</span></span></code></pre>
+<h3 id="health-monitoring">Health Monitoring</h3>
+<p>Moltis monitors MCP servers and automatically:</p>
+<ul>
+<li>Detects crashes via process exit</li>
+<li>Restarts with exponential backoff</li>
+<li>Disables after max restart attempts</li>
+<li>Re-enables after cooldown period</li>
+</ul>
+<h2 id="using-mcp-tools">Using MCP Tools</h2>
+<p>Once connected, MCP tools appear alongside built-in tools. The agent can use them naturally:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="User: Search GitHub for Rust async runtime projects
+
+Agent: I&#x27;ll search GitHub for you.
+[Calling github.search_repositories with query=&#x22;rust async runtime&#x22;]
+
+Found 15 repositories:
+1. tokio-rs/tokio - A runtime for writing reliable async applications
+2. async-std/async-std - Async version of the Rust standard library
+..."><code><span class="line"><span>User: Search GitHub for Rust async runtime projects</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Agent: I'll search GitHub for you.</span></span>
+<span class="line"><span>[Calling github.search_repositories with query="rust async runtime"]</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Found 15 repositories:</span></span>
+<span class="line"><span>1. tokio-rs/tokio - A runtime for writing reliable async applications</span></span>
+<span class="line"><span>2. async-std/async-std - Async version of the Rust standard library</span></span>
+<span class="line"><span>...</span></span></code></pre>
+<h2 id="creating-an-mcp-server">Creating an MCP Server</h2>
+<h3 id="simple-nodejs-server">Simple Node.js Server</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="javascript" data-code="// server.js
+import { Server } from &#x22;@modelcontextprotocol/sdk/server/index.js&#x22;;
+import { StdioServerTransport } from &#x22;@modelcontextprotocol/sdk/server/stdio.js&#x22;;
+
+const server = new Server(
+  { name: &#x22;my-server&#x22;, version: &#x22;1.0.0&#x22; },
+  { capabilities: { tools: {} } }
+);
+
+server.setRequestHandler(&#x22;tools/list&#x22;, async () => ({
+  tools: [{
+    name: &#x22;hello&#x22;,
+    description: &#x22;Says hello&#x22;,
+    inputSchema: {
+      type: &#x22;object&#x22;,
+      properties: {
+        name: { type: &#x22;string&#x22;, description: &#x22;Name to greet&#x22; }
+      },
+      required: [&#x22;name&#x22;]
+    }
+  }]
+}));
+
+server.setRequestHandler(&#x22;tools/call&#x22;, async (request) => {
+  if (request.params.name === &#x22;hello&#x22;) {
+    const name = request.params.arguments.name;
+    return { content: [{ type: &#x22;text&#x22;, text: &#x60;Hello, ${name}!&#x60; }] };
+  }
+});
+
+const transport = new StdioServerTransport();
+await server.connect(transport);"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">// server.js</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">import</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { Server } </span><span style="color:#D32F2F;--shiki-dark:#F97583">from</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "@modelcontextprotocol/sdk/server/index.js"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">import</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { StdioServerTransport } </span><span style="color:#D32F2F;--shiki-dark:#F97583">from</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "@modelcontextprotocol/sdk/server/stdio.js"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">const</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> server</span><span style="color:#D32F2F;--shiki-dark:#F97583"> =</span><span style="color:#D32F2F;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Server</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  { name</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "my-server"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> version</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "1.0.0"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  { capabilities</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { tools</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {} } }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#1976D2;--shiki-dark:#E1E4E8">server</span><span style="color:#6F42C1;--shiki-dark:#E1E4E8">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setRequestHandler</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"tools/list"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#F97583"> async</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> () </span><span style="color:#D32F2F;--shiki-dark:#F97583">=></span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> ({</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  tools</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [{</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    name</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "hello"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    description</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Says hello"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    inputSchema</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">      type</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "object"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">      properties</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">        name</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { type</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "string"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> description</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Name to greet"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">      }</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">      required</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"name"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  }]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}));</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#1976D2;--shiki-dark:#E1E4E8">server</span><span style="color:#6F42C1;--shiki-dark:#E1E4E8">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setRequestHandler</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"tools/call"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#D32F2F;--shiki-dark:#F97583"> async</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> (</span><span style="color:#24292EFF;--shiki-dark:#FFAB70">request</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) </span><span style="color:#D32F2F;--shiki-dark:#F97583">=></span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">  if</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> (</span><span style="color:#1976D2;--shiki-dark:#E1E4E8">request</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#1976D2;--shiki-dark:#E1E4E8">params</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.name </span><span style="color:#D32F2F;--shiki-dark:#F97583">===</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "hello"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    const</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> name</span><span style="color:#D32F2F;--shiki-dark:#F97583"> =</span><span style="color:#1976D2;--shiki-dark:#E1E4E8"> request</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#1976D2;--shiki-dark:#E1E4E8">params</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#1976D2;--shiki-dark:#E1E4E8">arguments</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.name;</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    return</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { content</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [{ type</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "text"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> text</span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> `Hello, </span><span style="color:#D32F2F;--shiki-dark:#9ECBFF">${</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">name</span><span style="color:#D32F2F;--shiki-dark:#9ECBFF">}</span><span style="color:#22863A;--shiki-dark:#9ECBFF">!`</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> }] };</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">const</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> transport</span><span style="color:#D32F2F;--shiki-dark:#F97583"> =</span><span style="color:#D32F2F;--shiki-dark:#F97583"> new</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> StdioServerTransport</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">await</span><span style="color:#1976D2;--shiki-dark:#E1E4E8"> server</span><span style="color:#6F42C1;--shiki-dark:#E1E4E8">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">connect</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(transport);</span></span></code></pre>
+<h3 id="configure-in-moltis">Configure in Moltis</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[mcp.servers.my_server]
+command = &#x22;node&#x22;
+args = [&#x22;server.js&#x22;]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">servers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my_server</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "node"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">args </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"server.js"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<h2 id="debugging">Debugging</h2>
+<h3 id="check-server-status">Check Server Status</h3>
+<p>In the web UI, go to <strong>Settings</strong> → <strong>MCP Servers</strong> to see:</p>
+<ul>
+<li>Connection status (connected/disconnected/error)</li>
+<li>Available tools</li>
+<li>Sanitized remote URL and configured header names</li>
+<li>Recent errors</li>
+</ul>
+<h3 id="view-logs">View Logs</h3>
+<p>MCP server stderr is captured in Moltis logs:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# View gateway logs
+tail -f ~/.moltis/logs.jsonl | grep -i mcp"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># View gateway logs</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">tail</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -f</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> ~/.moltis/logs.jsonl</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> grep</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -i</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> mcp</span></span></code></pre>
+<h3 id="test-locally">Test Locally</h3>
+<p>Run the server directly to debug:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="echo &#x27;{&#x22;jsonrpc&#x22;:&#x22;2.0&#x22;,&#x22;method&#x22;:&#x22;tools/list&#x22;,&#x22;id&#x22;:1}&#x27; | node server.js"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#79B8FF">echo</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> '{"jsonrpc":"2.0","method":"tools/list","id":1}'</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> node</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> server.js</span></span></code></pre>
+<h2 id="oauth-authentication">OAuth Authentication</h2>
+<p>Remote MCP servers can require OAuth 2.1 authentication. Moltis handles this automatically — when a server returns <code>401 Unauthorized</code>, the OAuth flow starts without any manual configuration.</p>
+<h3 id="how-it-works">How It Works</h3>
+<ol>
+<li>Moltis connects to the remote MCP server</li>
+<li>The server returns <code>401 Unauthorized</code> with a <code>WWW-Authenticate</code> header</li>
+<li>Moltis discovers the authorization server via <a href="https://www.rfc-editor.org/rfc/rfc9728">RFC 9728</a> (Protected Resource Metadata)</li>
+<li>Moltis performs <a href="https://www.rfc-editor.org/rfc/rfc7591">dynamic client registration</a> (RFC 7591)</li>
+<li>A PKCE authorization code flow opens your browser for login</li>
+<li>After login, tokens are stored and used for all subsequent requests</li>
+</ol>
+<p>Client registrations and tokens are cached locally, so you only need to log in once per server.</p>
+<h3 id="manual-oauth-configuration">Manual OAuth Configuration</h3>
+<p>If a server doesn’t support standard OAuth discovery, you can configure credentials manually:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[mcp.servers.private_api]
+url = &#x22;https://mcp.example.com/mcp&#x22;
+transport = &#x22;sse&#x22;
+
+[mcp.servers.private_api.oauth]
+client_id = &#x22;your-client-id&#x22;
+# Optional: required by some servers for token exchange even with PKCE.
+client_secret = &#x22;your-client-secret&#x22;
+auth_url = &#x22;https://auth.example.com/authorize&#x22;
+token_url = &#x22;https://auth.example.com/token&#x22;
+scopes = [&#x22;mcp:read&#x22;, &#x22;mcp:write&#x22;]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">servers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">private_api</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">url </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://mcp.example.com/mcp"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">transport </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "sse"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">servers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">private_api</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">oauth</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">client_id </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "your-client-id"</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Optional: required by some servers for token exchange even with PKCE.</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">client_secret </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "your-client-secret"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">auth_url </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://auth.example.com/authorize"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">token_url </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "https://auth.example.com/token"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">scopes </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"mcp:read"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "mcp:write"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<h3 id="re-authentication">Re-authentication</h3>
+<p>If your session expires or tokens are revoked, Moltis automatically re-authenticates on the next <code>401</code> response. You can also trigger re-authentication manually via the <code>mcp.reauth</code> RPC method.</p>
+<h2 id="running-mcp-servers-in-docker">Running MCP Servers in Docker</h2>
+<p>When running Moltis in Docker, you have two options for stdio-based MCP servers:</p>
+<h3 id="using-the-built-in-nodejs">Using the built-in Node.js</h3>
+<p>The Moltis Docker image includes Node.js and npm, so most MCP servers work out of the box:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[mcp.servers.filesystem]
+command = &#x22;npx&#x22;
+args = [&#x22;-y&#x22;, &#x22;@modelcontextprotocol/server-filesystem&#x22;, &#x22;/data&#x22;]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">servers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">filesystem</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "npx"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">args </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"-y"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "@modelcontextprotocol/server-filesystem"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "/data"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<blockquote>
+<p><strong>Tip:</strong> Mount <code>/home/moltis/.npm</code> as a named volume so packages are only
+downloaded once, and bind-mount any directories the MCP server needs to
+access:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="sh" data-code="docker run \
+  -v moltis-npm-cache:/home/moltis/.npm \
+  -v /host/path/to/data:/data \
+  ..."><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">docker</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> run</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-npm-cache:/home/moltis/.npm</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -v</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> /host/path/to/data:/data</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#9ECBFF">  ...</span></span></code></pre>
+</blockquote>
+<h3 id="using-docker-containers">Using Docker containers</h3>
+<p>Since the Moltis image ships the Docker CLI (<code>docker-ce-cli</code>), and given a Docker daemon is reachable via the mounted socket, you can also run MCP servers as isolated containers. This is useful when you need a specific Node version, want stronger isolation, or prefer official MCP Docker images:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="# Run an npm-based MCP server in a container
+[mcp.servers.filesystem]
+command = &#x22;docker&#x22;
+args = [
+  &#x22;run&#x22;, &#x22;--rm&#x22;, &#x22;-i&#x22;,
+  # NOTE: bind-mount paths resolve against the HOST filesystem, not the
+  # Moltis container. Use the same host path you mounted into Moltis.
+  &#x22;-v&#x22;, &#x22;/data:/data&#x22;,
+  # Cache npm downloads across container restarts
+  &#x22;-v&#x22;, &#x22;moltis-npx-cache:/root/.npm&#x22;,
+  &#x22;--entrypoint&#x22;, &#x22;npx&#x22;,
+  &#x22;node:22-alpine&#x22;,
+  &#x22;-y&#x22;, &#x22;@modelcontextprotocol/server-filesystem&#x22;, &#x22;/data&#x22;,
+]
+
+# Use an official MCP Docker image
+[mcp.servers.memory]
+command = &#x22;docker&#x22;
+args = [&#x22;run&#x22;, &#x22;--rm&#x22;, &#x22;-i&#x22;, &#x22;mcp/memory&#x22;]"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Run an npm-based MCP server in a container</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">servers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">filesystem</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "docker"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">args </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">  "run"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "--rm"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "-i"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # NOTE: bind-mount paths resolve against the HOST filesystem, not the</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # Moltis container. Use the same host path you mounted into Moltis.</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">  "-v"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "/data:/data"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">  # Cache npm downloads across container restarts</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">  "-v"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "moltis-npx-cache:/root/.npm"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">  "--entrypoint"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "npx"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">  "node:22-alpine"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#22863A;--shiki-dark:#9ECBFF">  "-y"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "@modelcontextprotocol/server-filesystem"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "/data"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Use an official MCP Docker image</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">mcp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">servers</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">memory</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">command </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "docker"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">args </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"run"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "--rm"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "-i"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "mcp/memory"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<p>The named volume <code>moltis-npx-cache</code> persists the npm cache across container restarts, avoiding re-downloads on every MCP server restart. For air-gapped environments, consider pre-building a custom image with the MCP package installed.</p>
+<p>When using containerized MCP servers, remember to mount any directories the server needs access to with <code>-v</code>. Because Moltis talks to the Docker daemon via the mounted socket, bind-mount paths (<code>-v</code>) always reference the <strong>host</strong> filesystem — not the Moltis container’s filesystem.</p>
+<h2 id="security-considerations">Security Considerations</h2>
+<aside class="admonition admonition-warning"><div class="admonition-title">Warning</div><div class="admonition-body"><p>MCP servers run with the same permissions as Moltis. Only use servers from trusted sources.</p></div></aside>
+<ul>
+<li><strong>Review server code</strong> before running</li>
+<li><strong>Limit file access</strong> — use specific paths, not <code>/</code></li>
+<li><strong>Use environment variables</strong> for secrets</li>
+<li><strong>Prefer placeholders</strong> in remote URLs and headers (<code>$NAME</code> / <code>${NAME}</code>) instead of hardcoding secrets repeatedly</li>
+<li><strong>Network isolation</strong> — run untrusted servers in containers</li>
+</ul>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="server-wont-start">Server won’t start</h3>
+<ul>
+<li>Check the command exists: <code>which npx</code></li>
+<li>Verify the package: <code>npx @modelcontextprotocol/server-filesystem --help</code></li>
+<li>Check for port conflicts</li>
+</ul>
+<h3 id="tools-not-appearing">Tools not appearing</h3>
+<ul>
+<li>Server may still be initializing (wait a few seconds)</li>
+<li>Check server logs for errors</li>
+<li>Verify the server implements <code>tools/list</code></li>
+</ul>
+<h3 id="server-keeps-restarting">Server keeps restarting</h3>
+<ul>
+<li>Check stderr for crash messages</li>
+<li>Increase <code>max_restart_attempts</code> for debugging</li>
+<li>Verify environment variables are set correctly</li>
+</ul>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/anthropic-oauth.html"><span>Previous</span>Anthropic OAuth (FAQ)</a> <a class="pager-link next" href="/external-agents.html"><span>Next</span>External Agents</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

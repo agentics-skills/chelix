@@ -1,0 +1,690 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>WhatsApp - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a class="active" href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Features</div>  <h1 id="whatsapp-channel">WhatsApp Channel</h1>
+<p>Moltis supports WhatsApp as a messaging channel using the WhatsApp Linked Devices
+protocol. Your WhatsApp account connects as a linked device (like WhatsApp Web),
+so no separate phone number or WhatsApp Business API is needed — you pair your
+existing personal or business WhatsApp by scanning a QR code.</p>
+<h2 id="how-it-works">How It Works</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="┌────────────────┐   QR pair   ┌─────────────────┐   Signal   ┌──────────────┐
+│  Your Phone    │ ──────────► │  Moltis Gateway  │ ◄────────► │  WhatsApp    │
+│  (WhatsApp)    │             │  (linked device)  │            │  Servers     │
+└────────────────┘             └─────────────────┘            └──────────────┘
+                                       │
+                                       ▼
+                               ┌─────────────────┐
+                               │  LLM Provider    │
+                               │  (Claude, GPT…)  │
+                               └─────────────────┘"><code><span class="line"><span>┌────────────────┐   QR pair   ┌─────────────────┐   Signal   ┌──────────────┐</span></span>
+<span class="line"><span>│  Your Phone    │ ──────────► │  Moltis Gateway  │ ◄────────► │  WhatsApp    │</span></span>
+<span class="line"><span>│  (WhatsApp)    │             │  (linked device)  │            │  Servers     │</span></span>
+<span class="line"><span>└────────────────┘             └─────────────────┘            └──────────────┘</span></span>
+<span class="line"><span>                                       │</span></span>
+<span class="line"><span>                                       ▼</span></span>
+<span class="line"><span>                               ┌─────────────────┐</span></span>
+<span class="line"><span>                               │  LLM Provider    │</span></span>
+<span class="line"><span>                               │  (Claude, GPT…)  │</span></span>
+<span class="line"><span>                               └─────────────────┘</span></span></code></pre>
+<ol>
+<li>Moltis registers as a <strong>linked device</strong> on your WhatsApp account</li>
+<li>Messages sent to your WhatsApp number arrive at both your phone and Moltis</li>
+<li>Moltis processes inbound messages through the configured LLM</li>
+<li>The LLM reply is sent back through your WhatsApp account</li>
+</ol>
+<aside class="admonition admonition-info"><div class="admonition-title">Dedicated vs Personal Number</div><div class="admonition-body"><p><strong>Dedicated number (recommended):</strong> Use a separate phone with its own WhatsApp<br>account. All messages to that number go to the bot. Clean separation, no<br>accidental replies to personal contacts.</p>
+<p><strong>Personal number (self-chat):</strong> Use your own WhatsApp account and message<br>yourself via WhatsApp's "Message Yourself" feature. Moltis automatically<br>detects self-chat and prevents reply loops. Convenient for personal use.<br>Note that Moltis (as a linked device) sees all your incoming messages —<br>whether it *responds* is governed by access control (see below).</p></div></aside>
+<h2 id="feature-flag">Feature Flag</h2>
+<p>WhatsApp is behind the <code>whatsapp</code> cargo feature, enabled by default:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="# crates/cli/Cargo.toml
+[features]
+default = [&#x22;whatsapp&#x22;, ...]
+whatsapp = [&#x22;moltis-gateway/whatsapp&#x22;]"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># crates/cli/Cargo.toml</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">features</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">default </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"whatsapp"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#24292EFF;--shiki-light-font-style:inherit;--shiki-dark:#FDAEB7;--shiki-dark-font-style:italic"> ...]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-light-font-style:inherit;--shiki-dark:#FDAEB7;--shiki-dark-font-style:italic">whatsapp = </span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"moltis-gateway/whatsapp"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<p>When disabled, all WhatsApp code is compiled out — no QR code library, no
+Signal Protocol store, no WhatsApp event handlers.</p>
+<aside class="admonition admonition-important"><div class="admonition-title">Enable in Channel List</div><div class="admonition-body"><p>WhatsApp is not shown in the web UI by default. Add it to the offered<br>channels list in <code>moltis.toml</code>:</p>
+<p>\<code>\</code>\`toml<br>[channels]<br>offered = ["telegram", "discord", "slack", "whatsapp"]<br>\<code>\</code>\`</p>
+<p>Restart Moltis after changing this setting. The <strong>+ Add Channel</strong> menu<br>will then include the WhatsApp option.</p></div></aside>
+<h2 id="quick-start-web-ui">Quick Start (Web UI)</h2>
+<p>The fastest way to connect WhatsApp:</p>
+<ol>
+<li>Start Moltis: <code>moltis serve</code></li>
+<li>Open the web UI and navigate to <strong>Settings > Channels</strong></li>
+<li>Click <strong>+ Add Channel</strong> > <strong>WhatsApp</strong></li>
+<li>Enter an <strong>Account ID</strong> (any name you like, e.g. <code>my-whatsapp</code>)</li>
+<li>Choose a <strong>DM Policy</strong> (Open, Allowlist, or Disabled)</li>
+<li>Optionally select a default <strong>Model</strong></li>
+<li>Click <strong>Start Pairing</strong> — a QR code appears</li>
+<li>On your phone: <strong>WhatsApp > Settings > Linked Devices > Link a Device</strong></li>
+<li>Scan the QR code</li>
+<li>The modal shows “Connected” with your phone’s display name</li>
+</ol>
+<p>That’s it — messages to your WhatsApp account are now processed by Moltis.</p>
+<aside class="admonition admonition-tip"><div class="admonition-title">Tip</div><div class="admonition-body"><p>The QR code refreshes automatically every ~20 seconds. If it expires before<br>you scan it, a new one appears without any action needed.</p></div></aside>
+<h2 id="quick-start-config-file">Quick Start (Config File)</h2>
+<p>You can also configure WhatsApp accounts in <code>moltis.toml</code>. This is useful for
+automated deployments or when you want to pre-configure settings before pairing.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="# ~/.moltis/moltis.toml
+
+[channels.whatsapp.&#x22;my-whatsapp&#x22;]
+dm_policy = &#x22;open&#x22;
+model = &#x22;anthropic/claude-sonnet-4-20250514&#x22;
+model_provider = &#x22;anthropic&#x22;"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># ~/.moltis/moltis.toml</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">whatsapp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">"my-whatsapp"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">dm_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "open"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "anthropic/claude-sonnet-4-20250514"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model_provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "anthropic"</span></span></code></pre>
+<p>Start Moltis and the account will begin the pairing process. The QR code is
+printed to the terminal and also available via the web UI. Once paired, the
+config file is updated with:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.whatsapp.&#x22;my-whatsapp&#x22;]
+paired = true
+display_name = &#x22;John&#x27;s iPhone&#x22;
+phone_number = &#x22;+15551234567&#x22;
+dm_policy = &#x22;open&#x22;
+model = &#x22;anthropic/claude-sonnet-4-20250514&#x22;
+model_provider = &#x22;anthropic&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">whatsapp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">"my-whatsapp"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">paired </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">display_name </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "John's iPhone"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">phone_number </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "+15551234567"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">dm_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "open"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "anthropic/claude-sonnet-4-20250514"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model_provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "anthropic"</span></span></code></pre>
+<h2 id="configuration-reference">Configuration Reference</h2>
+<p>Each WhatsApp account is a named entry under <code>[channels.whatsapp]</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.whatsapp.&#x22;<account-id>&#x22;]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">whatsapp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">"&#x3C;account-id>"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>paired</code></td><td>bool</td><td><code>false</code></td><td>Whether QR code pairing is complete (auto-set)</td></tr><tr><td><code>display_name</code></td><td>string</td><td>—</td><td>Phone name after pairing (auto-populated)</td></tr><tr><td><code>phone_number</code></td><td>string</td><td>—</td><td>Phone number after pairing (auto-populated)</td></tr><tr><td><code>store_path</code></td><td>string</td><td>—</td><td>Custom path to sled store; defaults to <code>~/.moltis/whatsapp/&#x3C;account_id>/</code></td></tr><tr><td><code>model</code></td><td>string</td><td>—</td><td>Default LLM model ID for this account</td></tr><tr><td><code>model_provider</code></td><td>string</td><td>—</td><td>Provider name for the model</td></tr><tr><td><code>agent_id</code></td><td>string</td><td>—</td><td>Default agent ID for this account</td></tr><tr><td><code>dm_policy</code></td><td>string</td><td><code>"open"</code></td><td>DM access policy: <code>"open"</code>, <code>"allowlist"</code>, or <code>"disabled"</code></td></tr><tr><td><code>group_policy</code></td><td>string</td><td><code>"open"</code></td><td>Group access policy: <code>"open"</code>, <code>"allowlist"</code>, or <code>"disabled"</code></td></tr><tr><td><code>mention_mode</code></td><td>string</td><td><code>"always"</code></td><td>Group reply mode: <code>"always"</code>, <code>"mention"</code>, or <code>"none"</code></td></tr><tr><td><code>allowlist</code></td><td>array</td><td><code>[]</code></td><td>Users allowed to DM (usernames or phone numbers)</td></tr><tr><td><code>group_allowlist</code></td><td>array</td><td><code>[]</code></td><td>Group JIDs allowed for bot responses</td></tr><tr><td><code>otp_self_approval</code></td><td>bool</td><td><code>true</code></td><td>Allow non-allowlisted users to self-approve via OTP</td></tr><tr><td><code>otp_cooldown_secs</code></td><td>int</td><td><code>300</code></td><td>Cooldown seconds after 3 failed OTP attempts</td></tr></tbody></table>
+<h3 id="full-example">Full Example</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.whatsapp.&#x22;personal&#x22;]
+paired = true
+display_name = &#x22;John&#x27;s iPhone&#x22;
+phone_number = &#x22;+15551234567&#x22;
+model = &#x22;anthropic/claude-sonnet-4-20250514&#x22;
+model_provider = &#x22;anthropic&#x22;
+agent_id = &#x22;personal&#x22;
+dm_policy = &#x22;allowlist&#x22;
+allowlist = [&#x22;alice&#x22;, &#x22;bob&#x22;, &#x22;+15559876543&#x22;]
+group_policy = &#x22;disabled&#x22;
+otp_self_approval = true
+otp_cooldown_secs = 300
+
+[channels.whatsapp.&#x22;work-bot&#x22;]
+paired = true
+dm_policy = &#x22;open&#x22;
+group_policy = &#x22;allowlist&#x22;
+group_allowlist = [&#x22;120363456789@g.us&#x22;]
+model = &#x22;openai/gpt-4.1&#x22;
+model_provider = &#x22;openai&#x22;
+mention_mode = &#x22;mention&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">whatsapp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">"personal"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">paired </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">display_name </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "John's iPhone"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">phone_number </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "+15551234567"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "anthropic/claude-sonnet-4-20250514"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model_provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "anthropic"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">agent_id </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "personal"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">dm_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "allowlist"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">allowlist </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"alice"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "bob"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "+15559876543"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">group_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "disabled"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">otp_self_approval </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">otp_cooldown_secs </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 300</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">whatsapp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">"work-bot"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">paired </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">dm_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "open"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">group_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "allowlist"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">group_allowlist </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"120363456789@g.us"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai/gpt-4.1"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model_provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">mention_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "mention"</span></span></code></pre>
+<h3 id="per-chat-and-per-user-overrides">Per-Chat and Per-User Overrides</h3>
+<p>WhatsApp also supports optional per-chat and per-user overrides for models and
+agents:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.whatsapp.&#x22;work-bot&#x22;]
+paired = true
+model = &#x22;openai/gpt-4.1&#x22;
+agent_id = &#x22;support&#x22;
+
+[channels.whatsapp.&#x22;work-bot.channel_overrides&#x22;.&#x22;120363456789@g.us&#x22;]
+agent_id = &#x22;triage&#x22;
+
+[channels.whatsapp.&#x22;work-bot.user_overrides&#x22;.&#x22;15551234567@s.whatsapp.net&#x22;]
+model = &#x22;anthropic/claude-sonnet-4-20250514&#x22;
+agent_id = &#x22;research&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">whatsapp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">"work-bot"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">paired </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai/gpt-4.1"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">agent_id </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "support"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">whatsapp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">"work-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channel_overrides"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">"120363456789@g</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">us"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">agent_id </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "triage"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">whatsapp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">"work-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">user_overrides"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">"15551234567@s</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">whatsapp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">net"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "anthropic/claude-sonnet-4-20250514"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">agent_id </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "research"</span></span></code></pre>
+<h2 id="access-control">Access Control</h2>
+<p>WhatsApp uses the same access control model as Telegram channels.</p>
+<h3 id="dm-policies">DM Policies</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Policy</th><th>Behavior</th></tr></thead><tbody><tr><td><code>open</code></td><td>Anyone who messages your WhatsApp can chat with the bot</td></tr><tr><td><code>allowlist</code></td><td>Only users on the allowlist get responses; others get an OTP challenge</td></tr><tr><td><code>disabled</code></td><td>All DMs are silently ignored</td></tr></tbody></table>
+<h3 id="group-policies">Group Policies</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Policy</th><th>Behavior</th></tr></thead><tbody><tr><td><code>open</code></td><td>Bot responds in all groups it’s part of, subject to <code>mention_mode</code></td></tr><tr><td><code>allowlist</code></td><td>Bot only responds in groups on the <code>group_allowlist</code>, subject to <code>mention_mode</code></td></tr><tr><td><code>disabled</code></td><td>Bot ignores all group messages</td></tr></tbody></table>
+<h3 id="mention-mode">Mention Mode</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Mode</th><th>Behavior</th></tr></thead><tbody><tr><td><code>always</code></td><td>Bot may respond to allowed group messages without an @mention</td></tr><tr><td><code>mention</code></td><td>Bot only responds in allowed groups when the account is @mentioned</td></tr><tr><td><code>none</code></td><td>Bot never responds in groups</td></tr></tbody></table>
+<h3 id="otp-self-approval">OTP Self-Approval</h3>
+<p>When <code>dm_policy = "allowlist"</code> and <code>otp_self_approval = true</code> (the default),
+users not on the allowlist can request access:</p>
+<ol>
+<li>User sends any message to the bot</li>
+<li>Bot replies: <em>“Please reply with the 6-digit code to verify access”</em></li>
+<li>The OTP code appears in the <strong>Senders</strong> tab of the web UI</li>
+<li>User replies with the code</li>
+<li>If correct, user is permanently added to the allowlist</li>
+</ol>
+<p>After 3 wrong attempts, a cooldown period kicks in (default 5 minutes).
+You can also approve or deny users directly from the Senders tab without
+waiting for OTP verification.</p>
+<aside class="admonition admonition-tip"><div class="admonition-title">Tip</div><div class="admonition-body"><p>Set <code>otp_self_approval = false</code> if you want to manually approve every new<br>user from the web UI instead of letting them self-approve.</p></div></aside>
+<h3 id="using-your-personal-number-safely">Using Your Personal Number Safely</h3>
+<p>When Moltis is linked to your personal WhatsApp, it sees <strong>every</strong> incoming
+message — from friends, family, groups, everyone. The key question is: who
+does the bot <em>respond</em> to?</p>
+<p><strong>Self-chat always works.</strong> Messages you send to yourself (via “Message
+Yourself”) bypass access control entirely. You are the account owner, so
+you’re always authorized regardless of <code>dm_policy</code> settings.</p>
+<p><strong>Other people’s messages follow <code>dm_policy</code>.</strong> If you want Moltis to only
+respond to your self-chat and ignore everyone else:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.whatsapp.&#x22;personal&#x22;]
+dm_policy = &#x22;disabled&#x22;    # Ignore all DMs from other people
+group_policy = &#x22;disabled&#x22; # Ignore all group messages"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">whatsapp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">"personal"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">dm_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "disabled"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D">    # Ignore all DMs from other people</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">group_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "disabled"</span><span style="color:#C2C3C5;--shiki-dark:#6A737D"> # Ignore all group messages</span></span></code></pre>
+<p>This is the safest configuration for personal use — the bot only responds
+when you message yourself.</p>
+<p>If you want to selectively allow certain contacts:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.whatsapp.&#x22;personal&#x22;]
+dm_policy = &#x22;allowlist&#x22;
+allowlist = [&#x22;alice&#x22;, &#x22;bob&#x22;]  # Only these people get bot responses
+group_policy = &#x22;disabled&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">whatsapp</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">"personal"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">dm_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "allowlist"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">allowlist </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"alice"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "bob"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]  </span><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Only these people get bot responses</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">group_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "disabled"</span></span></code></pre>
+<aside class="admonition admonition-warning"><div class="admonition-title">Default is Open</div><div class="admonition-body"><p>The default <code>dm_policy</code> is <code>"open"</code>, which means <strong>everyone</strong> who messages<br>your WhatsApp will get a bot response. If you're using your personal number,<br>change this to <code>"disabled"</code> or <code>"allowlist"</code> before pairing.</p></div></aside>
+<h2 id="session-persistence">Session Persistence</h2>
+<p>WhatsApp uses the Signal Protocol for end-to-end encryption. The encryption
+keys and session state are stored in a <strong>sled database</strong> at:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="~/.moltis/whatsapp/<account_id>/"><code><span class="line"><span>~/.moltis/whatsapp/&#x3C;account_id>/</span></span></code></pre>
+<p>This means:</p>
+<ul>
+<li><strong>No re-pairing after restart</strong> — the linked device session survives process
+restarts, server reboots, and upgrades</li>
+<li><strong>One store per account</strong> — multiple WhatsApp accounts each get their own
+isolated database</li>
+<li><strong>Custom path</strong> — set <code>store_path</code> in config to use a different location
+(useful for Docker volumes or shared storage)</li>
+</ul>
+<aside class="admonition admonition-warning"><div class="admonition-title">Warning</div><div class="admonition-body"><p>Do not delete the sled store directory while Moltis is running. If you need<br>to re-pair, stop Moltis first, then delete the directory and restart.</p></div></aside>
+<h2 id="self-chat">Self-Chat</h2>
+<p>Moltis automatically supports WhatsApp’s “Message Yourself” feature. When you
+send a message to yourself, the bot processes it as a regular inbound message
+and replies in the same chat.</p>
+<p>This is useful for:</p>
+<ul>
+<li><strong>Personal assistant</strong> — chat with your AI without a dedicated phone number</li>
+<li><strong>Testing</strong> — verify the bot works before sharing with others</li>
+<li><strong>Quick notes</strong> — send yourself reminders that the AI processes</li>
+</ul>
+<h3 id="loop-prevention">Loop Prevention</h3>
+<p>When the bot replies to your self-chat, WhatsApp delivers that reply back as
+an incoming message (since it’s your own chat). Moltis uses two mechanisms to
+prevent infinite reply loops:</p>
+<ol>
+<li>
+<p><strong>Message ID tracking</strong>: Every message the bot sends is recorded in a
+bounded ring buffer (256 entries). Incoming <code>is_from_me</code> messages whose
+ID matches a tracked send are recognized as bot echoes and skipped.</p>
+</li>
+<li>
+<p><strong>Invisible watermark</strong>: An invisible Unicode sequence (zero-width joiners)
+is appended to every bot-sent text message. If an incoming message contains
+this watermark, it’s recognized as a bot echo even if the message ID wasn’t
+tracked (e.g. after a restart).</p>
+</li>
+</ol>
+<p>Both checks are automatic — no configuration needed.</p>
+<h2 id="media-handling">Media Handling</h2>
+<p>WhatsApp supports rich media messages. Moltis handles each type:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Message Type</th><th>Handling</th></tr></thead><tbody><tr><td><strong>Text</strong></td><td>Dispatched directly to the LLM</td></tr><tr><td><strong>Image</strong></td><td>Downloaded, optimized for LLM consumption (resized if needed), sent as attachment</td></tr><tr><td><strong>Voice</strong></td><td>Downloaded and transcribed via STT (if configured); falls back to text guidance</td></tr><tr><td><strong>Audio</strong></td><td>Same as voice, but classified separately (non-PTT audio files)</td></tr><tr><td><strong>Video</strong></td><td>Thumbnail extracted and sent as image attachment with caption</td></tr><tr><td><strong>Document</strong></td><td>Caption and filename/MIME metadata dispatched as text</td></tr><tr><td><strong>Location</strong></td><td>Resolves pending location tool requests, or dispatches coordinates to LLM</td></tr></tbody></table>
+<aside class="admonition admonition-info"><div class="admonition-title">Voice Transcription</div><div class="admonition-body"><p>Voice message transcription requires an STT provider to be configured.<br>See <a href="/voice.html">Voice Services</a> for setup instructions. Without STT,<br>the bot replies asking the user to send a text message instead.</p></div></aside>
+<h2 id="managing-channels-in-the-web-ui">Managing Channels in the Web UI</h2>
+<h3 id="channels-tab">Channels Tab</h3>
+<p>The Channels page shows all connected accounts across all channel types
+(Telegram, WhatsApp). Each card displays:</p>
+<ul>
+<li><strong>Status badge</strong>: <code>connected</code>, <code>pairing</code>, or <code>disconnected</code></li>
+<li><strong>Display name</strong>: Phone name from WhatsApp (after pairing)</li>
+<li><strong>Sender summary</strong>: List of recent senders with message counts</li>
+<li><strong>Edit / Remove</strong> buttons</li>
+</ul>
+<h3 id="adding-a-whatsapp-channel">Adding a WhatsApp Channel</h3>
+<ol>
+<li>Click <strong>+ Add Channel</strong> > <strong>WhatsApp</strong></li>
+<li>Fill in the account ID, DM policy, and optional model</li>
+<li>Click <strong>Start Pairing</strong></li>
+<li>Scan the QR code on your phone</li>
+<li>Wait for the “Connected” confirmation</li>
+</ol>
+<h3 id="editing-a-channel">Editing a Channel</h3>
+<p>Click <strong>Edit</strong> on a channel card to modify:</p>
+<ul>
+<li>DM and group policies</li>
+<li>Allowlist entries</li>
+<li>Default model</li>
+</ul>
+<p>Changes take effect immediately — no restart needed.</p>
+<h3 id="senders-tab">Senders Tab</h3>
+<p>Switch to the <strong>Senders</strong> tab to see everyone who has messaged the bot:</p>
+<ul>
+<li>Filter by account using the dropdown</li>
+<li>See message counts, last activity, and access status</li>
+<li><strong>Approve</strong> or <strong>Deny</strong> users directly</li>
+<li>View pending OTP challenges with the code displayed</li>
+</ul>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="whatsapp-not-in-add-channel-menu">WhatsApp Not in Add Channel Menu</h3>
+<ul>
+<li>WhatsApp is not offered by default. Add <code>"whatsapp"</code> to the <code>offered</code> list in <code>moltis.toml</code>:
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels]
+offered = [&#x22;telegram&#x22;, &#x22;discord&#x22;, &#x22;slack&#x22;, &#x22;whatsapp&#x22;]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">offered </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"telegram"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "discord"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "slack"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "whatsapp"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+</li>
+<li>Restart Moltis after changing this setting</li>
+</ul>
+<h3 id="cant-understand-that-message-type">”Can’t Understand That Message Type”</h3>
+<ul>
+<li>This means the bot received a message type it doesn’t handle (e.g. stickers, reactions, polls)</li>
+<li>Check the server logs for an <code>info</code> entry that lists which message fields were present</li>
+<li>Supported types: text, images, audio, voice notes, video, documents, and locations</li>
+</ul>
+<h3 id="qr-code-not-appearing">QR Code Not Appearing</h3>
+<ul>
+<li>Ensure the <code>whatsapp</code> feature is enabled (it is by default)</li>
+<li>Check terminal output for errors — the QR code is also printed to stdout</li>
+<li>Verify the sled store directory is writable: <code>~/.moltis/whatsapp/</code></li>
+</ul>
+<h3 id="logged-out-after-restart">”Logged Out” After Restart</h3>
+<ul>
+<li>This usually means the sled store was corrupted or deleted</li>
+<li>Check that <code>~/.moltis/whatsapp/&#x3C;account_id>/</code> exists and has data files</li>
+<li>Re-pair by removing the directory and restarting: the pairing flow starts again</li>
+</ul>
+<h3 id="bot-not-responding-to-messages">Bot Not Responding to Messages</h3>
+<ul>
+<li>Check <code>dm_policy</code> — if set to <code>allowlist</code>, only listed users get responses</li>
+<li>Check <code>group_policy</code> — if set to <code>disabled</code>, group messages are ignored</li>
+<li>Look at the <strong>Senders</strong> tab to see if the user is denied or pending OTP</li>
+<li>Check terminal logs for access control decisions</li>
+</ul>
+<h3 id="self-chat-not-working">Self-Chat Not Working</h3>
+<ul>
+<li>WhatsApp’s “Message Yourself” chat must be used (not a group with only yourself)</li>
+<li>The bot needs to be connected and the account paired</li>
+<li>If you just restarted, the watermark-based detection handles messages that
+arrive before the message ID buffer is rebuilt</li>
+</ul>
+<h2 id="code-structure">Code Structure</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="crates/whatsapp/
+├── src/
+│   ├── lib.rs           # Crate entry, WhatsAppPlugin
+│   ├── config.rs        # WhatsAppAccountConfig
+│   ├── connection.rs    # Bot startup, sled store, event loop
+│   ├── error.rs         # Error types
+│   ├── handlers.rs      # Event routing, message handling, media
+│   ├── outbound.rs      # WhatsAppOutbound (ChannelOutbound impl)
+│   ├── state.rs         # AccountState, loop detection, watermark
+│   ├── access.rs        # DM/group access control
+│   ├── otp.rs           # OTP challenge/verification
+│   ├── plugin.rs        # ChannelPlugin trait impl
+│   ├── sled_store.rs    # Persistent Signal Protocol store
+│   └── memory_store.rs  # In-memory store (tests/fallback)"><code><span class="line"><span>crates/whatsapp/</span></span>
+<span class="line"><span>├── src/</span></span>
+<span class="line"><span>│   ├── lib.rs           # Crate entry, WhatsAppPlugin</span></span>
+<span class="line"><span>│   ├── config.rs        # WhatsAppAccountConfig</span></span>
+<span class="line"><span>│   ├── connection.rs    # Bot startup, sled store, event loop</span></span>
+<span class="line"><span>│   ├── error.rs         # Error types</span></span>
+<span class="line"><span>│   ├── handlers.rs      # Event routing, message handling, media</span></span>
+<span class="line"><span>│   ├── outbound.rs      # WhatsAppOutbound (ChannelOutbound impl)</span></span>
+<span class="line"><span>│   ├── state.rs         # AccountState, loop detection, watermark</span></span>
+<span class="line"><span>│   ├── access.rs        # DM/group access control</span></span>
+<span class="line"><span>│   ├── otp.rs           # OTP challenge/verification</span></span>
+<span class="line"><span>│   ├── plugin.rs        # ChannelPlugin trait impl</span></span>
+<span class="line"><span>│   ├── sled_store.rs    # Persistent Signal Protocol store</span></span>
+<span class="line"><span>│   └── memory_store.rs  # In-memory store (tests/fallback)</span></span></code></pre>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/matrix.html"><span>Previous</span>Matrix</a> <a class="pager-link next" href="/nostr.html"><span>Next</span>Nostr</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

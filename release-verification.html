@@ -1,0 +1,396 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Release Verification - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a class="active" href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Security</div>  <h1 id="release-verification">Release Verification</h1>
+<p>Chelix releases use <strong>multiple signing layers</strong> to provide strong supply chain guarantees:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Method</th><th>Proves</th><th>Verification</th></tr></thead><tbody><tr><td><strong>GitHub Artifact Attestations</strong> (CI-generated)</td><td>Artifact was built by this repo’s GitHub Actions workflow</td><td><code>gh attestation verify</code></td></tr><tr><td><strong>Sigstore</strong> (keyless, CI-generated)</td><td>Artifact was built by GitHub Actions from this repo</td><td><code>cosign verify-blob</code></td></tr><tr><td><strong>GPG</strong> (YubiKey-resident key, maintainer-signed)</td><td>A specific maintainer authorized the release</td><td><code>gpg --verify</code></td></tr><tr><td><strong>SHA256/SHA512 checksums</strong></td><td>File integrity (no corruption/tampering in transit)</td><td><code>sha256sum --check</code></td></tr></tbody></table>
+<p>All attestations are publicly visible on the
+<a href="https://github.com/agentics-skills/chelix/attestations">repository attestations page</a>.</p>
+<h2 id="quick-verification">Quick Verification</h2>
+<p>The easiest way to verify a release is with the included script:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Verify all artifacts for a release (fetches GPG key automatically)
+./scripts/verify-release.sh --version VERSION
+
+# Also check SHA256 checksums
+./scripts/verify-release.sh --checksums --version VERSION
+
+# Verify specific local files
+./scripts/verify-release.sh moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Verify all artifacts for a release (fetches GPG key automatically)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">./scripts/verify-release.sh</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --version</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> VERSION</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Also check SHA256 checksums</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">./scripts/verify-release.sh</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --checksums</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --version</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> VERSION</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Verify specific local files</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">./scripts/verify-release.sh</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz</span></span></code></pre>
+<h3 id="github-artifact-attestations">GitHub Artifact Attestations</h3>
+<p>GitHub artifact attestations provide cryptographic proof that release artifacts
+were built inside this repository’s GitHub Actions workflow. Verification uses
+the <a href="https://cli.github.com/">GitHub CLI</a>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Verify a downloaded binary
+gh attestation verify moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz \
+  -R agentics-skills/chelix
+
+# Verify a Docker image
+gh attestation verify oci://ghcr.io/moltis-org/moltis:VERSION \
+  -R agentics-skills/chelix
+
+# Verify an SBOM
+gh attestation verify moltis-sbom.spdx.json \
+  -R agentics-skills/chelix"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Verify a downloaded binary</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">gh</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> attestation</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> verify</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -R</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> agentics-skills/chelix</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Verify a Docker image</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">gh</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> attestation</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> verify</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> oci://ghcr.io/moltis-org/moltis:VERSION</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -R</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> agentics-skills/chelix</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Verify an SBOM</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">gh</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> attestation</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> verify</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-sbom.spdx.json</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  -R</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> agentics-skills/chelix</span></span></code></pre>
+<p>Browse all attestations at
+<a href="https://github.com/agentics-skills/chelix/attestations">https://github.com/agentics-skills/chelix/attestations</a>.</p>
+<h3 id="manual-verification">Manual Verification</h3>
+<h4 id="1-verify-checksums">1. Verify checksums</h4>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Download the artifact and its checksum
+curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz
+curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sha256
+
+sha256sum --check moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sha256"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Download the artifact and its checksum</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -LO</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -LO</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sha256</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">sha256sum</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --check</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sha256</span></span></code></pre>
+<h4 id="2-verify-gpg-signature">2. Verify GPG signature</h4>
+<p>The maintainer’s GPG key fingerprint is:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="3103 20A8 CC1C 5BA8 6AD0  9040 C045 1BAD F764 9BBF"><code><span class="line"><span>3103 20A8 CC1C 5BA8 6AD0  9040 C045 1BAD F764 9BBF</span></span></code></pre>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Import the maintainer&#x27;s public key (one-time)
+curl -fsSL https://pen.so/gpg.asc | gpg --import
+
+# Confirm the fingerprint matches
+gpg --fingerprint F7649BBF
+
+# Download the detached signature
+curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.asc
+
+# Verify
+gpg --verify \
+  moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.asc \
+  moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Import the maintainer's public key (one-time)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -fsSL</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> https://pen.so/gpg.asc</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> gpg</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --import</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Confirm the fingerprint matches</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">gpg</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --fingerprint</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> F7649BBF</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Download the detached signature</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -LO</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.asc</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Verify</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">gpg</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --verify</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#9ECBFF">  moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.asc</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#9ECBFF">  moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz</span></span></code></pre>
+<p>You should see <code>Good signature from ...</code> with the maintainer’s identity.</p>
+<h4 id="3-verify-sigstore-signature">3. Verify Sigstore signature</h4>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Install cosign: https://docs.sigstore.dev/cosign/system_config/installation/
+
+# Download signature and certificate
+curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sig
+curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.crt
+
+cosign verify-blob \
+  --signature moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sig \
+  --certificate moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.crt \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp &#x27;https://github\.com/agentics-skills/chelix/&#x27; \
+  moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Install cosign: https://docs.sigstore.dev/cosign/system_config/installation/</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Download signature and certificate</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -LO</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sig</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -LO</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.crt</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">cosign</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> verify-blob</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --signature</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sig</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --certificate</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.crt</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --certificate-oidc-issuer</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> https://token.actions.githubusercontent.com</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --certificate-identity-regexp</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> 'https://github\.com/agentics-skills/chelix/'</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#9ECBFF">  moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz</span></span></code></pre>
+<h4 id="4-verify-docker-images">4. Verify Docker images</h4>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="cosign verify \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp &#x27;https://github\.com/agentics-skills/chelix/&#x27; \
+  ghcr.io/moltis-org/moltis:VERSION"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">cosign</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> verify</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --certificate-oidc-issuer</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> https://token.actions.githubusercontent.com</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --certificate-identity-regexp</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> 'https://github\.com/agentics-skills/chelix/'</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#9ECBFF">  ghcr.io/moltis-org/moltis:VERSION</span></span></code></pre>
+<h2 id="what-each-layer-proves">What Each Layer Proves</h2>
+<p><strong>Checksums</strong> detect download corruption or CDN tampering. They do not prove
+who created the file.</p>
+<p><strong>GitHub artifact attestations</strong> create unfalsifiable provenance records tied
+to the repository, workflow, commit SHA, and triggering event. They are stored
+in GitHub’s attestation ledger and verifiable with <code>gh attestation verify</code>.
+This provides SLSA v1.0 Build Level 2 guarantees.</p>
+<p><strong>Sigstore signatures</strong> prove the artifact was built inside the
+<code>agentics-skills/chelix</code> GitHub Actions workflow using OIDC-based keyless signing.
+This guards against a compromised maintainer laptop — even if someone steals
+credentials, they cannot reproduce a valid Sigstore certificate from the CI
+environment. Signatures are recorded in Sigstore’s Rekor transparency log.</p>
+<p><strong>GPG signatures</strong> prove the release was reviewed and authorized by a specific
+maintainer holding the corresponding private key. Because the key lives on a
+YubiKey hardware token, compromise requires physical access to the device plus
+the PIN.</p>
+<p>Together, these layers create a strong chain: GitHub attestations and Sigstore
+prove <em>where</em> the artifact was built (CI), and GPG proves <em>who</em> authorized it
+(maintainer with hardware key).</p>
+<h2 id="release-artifacts-per-file">Release Artifacts Per File</h2>
+<p>Each release artifact (<code>.deb</code>, <code>.rpm</code>, <code>.tar.gz</code>, <code>.exe</code>, etc.) may have:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Extension</th><th>Source</th><th>Description</th></tr></thead><tbody><tr><td><code>.sha256</code></td><td>CI</td><td>SHA-256 checksum</td></tr><tr><td><code>.sha512</code></td><td>CI</td><td>SHA-512 checksum</td></tr><tr><td><code>.sig</code></td><td>CI</td><td>Sigstore detached signature</td></tr><tr><td><code>.crt</code></td><td>CI</td><td>Sigstore signing certificate</td></tr><tr><td><code>.asc</code></td><td>Maintainer</td><td>GPG detached armored signature</td></tr></tbody></table>
+<h2 id="for-maintainers-signing-a-release">For Maintainers: Signing a Release</h2>
+<p>After CI publishes a release, sign the artifacts locally using your
+YubiKey-resident GPG key:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Sign the latest release (prompts for YubiKey PIN/touch)
+./scripts/gpg-sign-release.sh
+
+# Sign a specific version
+./scripts/gpg-sign-release.sh 20260331.01
+
+# Use a specific key
+./scripts/gpg-sign-release.sh --key 0xABCD1234 20260331.01
+
+# Dry run (sign locally, don&#x27;t upload)
+./scripts/gpg-sign-release.sh --dry-run 20260331.01"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Sign the latest release (prompts for YubiKey PIN/touch)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">./scripts/gpg-sign-release.sh</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Sign a specific version</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">./scripts/gpg-sign-release.sh</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 20260331.01</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Use a specific key</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">./scripts/gpg-sign-release.sh</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --key</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 0xABCD1234</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 20260331.01</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Dry run (sign locally, don't upload)</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">./scripts/gpg-sign-release.sh</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --dry-run</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 20260331.01</span></span></code></pre>
+<p>The script:</p>
+<ol>
+<li>Downloads all release packages from GitHub</li>
+<li>Verifies their SHA256 checksums against CI-generated values</li>
+<li>Creates <code>.asc</code> detached GPG signatures for each artifact</li>
+<li>Uploads the <code>.asc</code> files to the GitHub release</li>
+</ol>
+<h3 id="prerequisites">Prerequisites</h3>
+<ul>
+<li><a href="https://cli.github.com/">GitHub CLI</a> (<code>gh</code>) authenticated</li>
+<li>GPG with your signing key available (YubiKey inserted)</li>
+<li>The <code>GPG_KEY_ID</code> environment variable or <code>--key</code> flag if you have
+multiple secret keys</li>
+</ul>
+<h3 id="publish-your-public-key">Publish Your Public Key</h3>
+<p>Upload your public GPG key so users can verify signatures:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="# Export and upload to a keyserver
+gpg --export --armor YOUR_KEY_ID | \
+  curl -T - https://keys.openpgp.org
+
+# Also add to your GitHub profile:
+# Settings > SSH and GPG keys > New GPG key
+gpg --export --armor YOUR_KEY_ID"><code><span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Export and upload to a keyserver</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">gpg</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --export</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --armor</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> YOUR_KEY_ID</span><span style="color:#D32F2F;--shiki-dark:#F97583"> |</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">  curl</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> -T</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> -</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> https://keys.openpgp.org</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Also add to your GitHub profile:</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D"># Settings > SSH and GPG keys > New GPG key</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">gpg</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --export</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --armor</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> YOUR_KEY_ID</span></span></code></pre>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/skills-security.html"><span>Previous</span>Third-Party Skills Security</a> <a class="pager-link next" href="/docker.html"><span>Next</span>Docker</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

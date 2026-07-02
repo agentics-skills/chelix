@@ -1,0 +1,518 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Streaming - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a class="active" href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Architecture</div>  <h1 id="streaming-architecture">Streaming Architecture</h1>
+<p>This document explains how streaming responses work in Moltis, from the LLM
+provider through to the web UI.</p>
+<h2 id="overview">Overview</h2>
+<p>Moltis supports real-time token streaming for LLM responses, providing a much
+better user experience than waiting for the complete response. Streaming works
+even when tools are enabled, allowing users to see text as it arrives while
+tool calls are accumulated and executed.</p>
+<h2 id="components">Components</h2>
+<h3 id="1-streamevent-enum-cratesagentssrcmodelrs">1. StreamEvent Enum (<code>crates/agents/src/model.rs</code>)</h3>
+<p>The <code>StreamEvent</code> enum defines all events that can occur during a streaming
+LLM response:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="rust" data-code="pub enum StreamEvent {
+    /// Text content delta.
+    Delta(String),
+
+    /// Raw provider event payload (for debugging API responses).
+    ProviderRaw(serde_json::Value),
+
+    /// Reasoning/planning text delta (not user-visible final answer text).
+    ReasoningDelta(String),
+
+    /// A tool call has started (content_block_start with tool_use).
+    ToolCallStart { id: String, name: String, index: usize },
+
+    /// Streaming delta for tool call arguments (JSON fragment).
+    ToolCallArgumentsDelta { index: usize, delta: String },
+
+    /// A tool call&#x27;s arguments are complete.
+    ToolCallComplete { index: usize },
+
+    /// Stream completed successfully.
+    Done(Usage),
+
+    /// An error occurred.
+    Error(String),
+}"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">pub</span><span style="color:#D32F2F;--shiki-dark:#F97583"> enum</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> StreamEvent</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    /// Text content delta.</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">    Delta</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">String</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    /// Raw provider event payload (for debugging API responses).</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">    ProviderRaw</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#24292EFF;--shiki-dark:#B392F0">serde_json</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">Value</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    /// Reasoning/planning text delta (not user-visible final answer text).</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">    ReasoningDelta</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">String</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    /// A tool call has started (content_block_start with tool_use).</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">    ToolCallStart</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { id</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> String</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">, name</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> String</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">, index</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> usize</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> },</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    /// Streaming delta for tool call arguments (JSON fragment).</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">    ToolCallArgumentsDelta</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { index</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> usize</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">, delta</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> String</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> },</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    /// A tool call's arguments are complete.</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">    ToolCallComplete</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { index</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> usize</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> },</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    /// Stream completed successfully.</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">    Done</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">Usage</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">    /// An error occurred.</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">    Error</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#6F42C1;--shiki-dark:#B392F0">String</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h3 id="2-llmprovider-trait-cratesagentssrcmodelrs">2. LlmProvider Trait (<code>crates/agents/src/model.rs</code>)</h3>
+<p>The <code>LlmProvider</code> trait defines two streaming methods:</p>
+<ul>
+<li><code>stream()</code> — Basic streaming without tool support</li>
+<li><code>stream_with_tools()</code> — Streaming with tool schemas passed to the API</li>
+</ul>
+<p>Both accept <code>Vec&#x3C;ChatMessage></code> (not raw JSON). Providers that support
+streaming with tools override <code>stream_with_tools()</code>. Others fall back to
+<code>stream()</code> via the default implementation, which ignores the tools parameter.</p>
+<p>The trait also exposes <code>supports_tools()</code>, <code>reasoning_effort()</code>, and
+<code>with_reasoning_effort()</code> for provider capability discovery.</p>
+<h3 id="3-anthropic-provider-cratesagentssrcprovidersanthropicrs">3. Anthropic Provider (<code>crates/agents/src/providers/anthropic.rs</code>)</h3>
+<p>The Anthropic provider implements streaming by:</p>
+<ol>
+<li>Making a POST request to <code>/v1/messages</code> with <code>"stream": true</code></li>
+<li>Reading Server-Sent Events (SSE) from the response</li>
+<li>Parsing events and yielding appropriate <code>StreamEvent</code> variants:</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>SSE Event Type</th><th>StreamEvent</th></tr></thead><tbody><tr><td><code>content_block_start</code> (text)</td><td>(none, just tracking)</td></tr><tr><td><code>content_block_start</code> (tool_use)</td><td><code>ToolCallStart</code></td></tr><tr><td><code>content_block_delta</code> (text_delta)</td><td><code>Delta</code></td></tr><tr><td><code>content_block_delta</code> (input_json_delta)</td><td><code>ToolCallArgumentsDelta</code></td></tr><tr><td><code>content_block_stop</code></td><td><code>ToolCallComplete</code> (for tool blocks)</td></tr><tr><td><code>message_delta</code></td><td>(usage tracking)</td></tr><tr><td><code>message_stop</code></td><td><code>Done</code></td></tr><tr><td><code>error</code></td><td><code>Error</code></td></tr></tbody></table>
+<h3 id="4-agent-runner-cratesagentssrcrunnerstreamingrs">4. Agent Runner (<code>crates/agents/src/runner/streaming.rs</code>)</h3>
+<p>The <code>run_agent_loop_streaming()</code> function orchestrates the streaming agent
+loop:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="┌─────────────────────────────────────────────────────────┐
+│                    Agent Loop                           │
+│                                                         │
+│  1. Call provider.stream_with_tools()                   │
+│                                                         │
+│  2. While stream has events:                            │
+│     ├─ Delta(text) → emit RunnerEvent::TextDelta        │
+│     ├─ ToolCallStart → accumulate tool call             │
+│     ├─ ToolCallArgumentsDelta → accumulate args         │
+│     ├─ ToolCallComplete → finalize args                 │
+│     ├─ Done → record usage                              │
+│     └─ Error → return error                             │
+│                                                         │
+│  3. If no tool calls → return accumulated text          │
+│                                                         │
+│  4. Execute tool calls concurrently                     │
+│     ├─ Emit ToolCallStart events                        │
+│     ├─ Run tools in parallel                            │
+│     └─ Emit ToolCallEnd events                          │
+│                                                         │
+│  5. Append tool results to messages                     │
+│                                                         │
+│  6. Loop back to step 1                                 │
+└─────────────────────────────────────────────────────────┘"><code><span class="line"><span>┌─────────────────────────────────────────────────────────┐</span></span>
+<span class="line"><span>│                    Agent Loop                           │</span></span>
+<span class="line"><span>│                                                         │</span></span>
+<span class="line"><span>│  1. Call provider.stream_with_tools()                   │</span></span>
+<span class="line"><span>│                                                         │</span></span>
+<span class="line"><span>│  2. While stream has events:                            │</span></span>
+<span class="line"><span>│     ├─ Delta(text) → emit RunnerEvent::TextDelta        │</span></span>
+<span class="line"><span>│     ├─ ToolCallStart → accumulate tool call             │</span></span>
+<span class="line"><span>│     ├─ ToolCallArgumentsDelta → accumulate args         │</span></span>
+<span class="line"><span>│     ├─ ToolCallComplete → finalize args                 │</span></span>
+<span class="line"><span>│     ├─ Done → record usage                              │</span></span>
+<span class="line"><span>│     └─ Error → return error                             │</span></span>
+<span class="line"><span>│                                                         │</span></span>
+<span class="line"><span>│  3. If no tool calls → return accumulated text          │</span></span>
+<span class="line"><span>│                                                         │</span></span>
+<span class="line"><span>│  4. Execute tool calls concurrently                     │</span></span>
+<span class="line"><span>│     ├─ Emit ToolCallStart events                        │</span></span>
+<span class="line"><span>│     ├─ Run tools in parallel                            │</span></span>
+<span class="line"><span>│     └─ Emit ToolCallEnd events                          │</span></span>
+<span class="line"><span>│                                                         │</span></span>
+<span class="line"><span>│  5. Append tool results to messages                     │</span></span>
+<span class="line"><span>│                                                         │</span></span>
+<span class="line"><span>│  6. Loop back to step 1                                 │</span></span>
+<span class="line"><span>└─────────────────────────────────────────────────────────┘</span></span></code></pre>
+<h3 id="5-chat-service-crateschatsrcrun_with_toolsrs">5. Chat Service (<code>crates/chat/src/run_with_tools.rs</code>)</h3>
+<p>The chat service’s <code>run_with_tools()</code> function:</p>
+<ol>
+<li>Sets up an event callback that broadcasts <code>RunnerEvent</code>s via WebSocket</li>
+<li>Calls <code>run_agent_loop_streaming()</code> from <code>crates/agents/src/runner/streaming.rs</code></li>
+<li>Broadcasts events to connected clients as JSON frames</li>
+</ol>
+<p>Event types broadcast to the UI:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>RunnerEvent</th><th>WebSocket State</th></tr></thead><tbody><tr><td><code>Thinking</code></td><td><code>thinking</code></td></tr><tr><td><code>ThinkingDone</code></td><td><code>thinking_done</code></td></tr><tr><td><code>ThinkingText(text)</code></td><td><code>thinking_text</code></td></tr><tr><td><code>TextDelta(text)</code></td><td><code>delta</code> with <code>text</code> field</td></tr><tr><td><code>ToolCallStart</code></td><td><code>tool_call_start</code></td></tr><tr><td><code>ToolCallEnd</code></td><td><code>tool_call_end</code></td></tr><tr><td><code>ToolCallRejected</code></td><td><code>tool_call_end</code> with <code>rejected: true</code></td></tr><tr><td><code>Iteration(n)</code></td><td><code>iteration</code></td></tr><tr><td><code>SubAgentStart</code></td><td><code>sub_agent_start</code></td></tr><tr><td><code>SubAgentEnd</code></td><td><code>sub_agent_end</code></td></tr><tr><td><code>AutoContinue</code></td><td><code>notice</code> (“Auto-continue”)</td></tr><tr><td><code>RetryingAfterError</code></td><td><code>retrying</code></td></tr><tr><td><code>LoopInterventionFired</code></td><td><code>notice</code> (“Loop detected”)</td></tr></tbody></table>
+<h3 id="6-web-crate-cratesweb">6. Web Crate (<code>crates/web/</code>)</h3>
+<p>The <code>moltis-web</code> crate owns the browser-facing layer: HTML templates, static
+assets (JS, CSS, icons), and the axum routes that serve them. It injects its
+routes into the gateway via the <code>RouteEnhancer</code> composition pattern, keeping
+web UI concerns separate from API and agent logic in the gateway.</p>
+<h3 id="7-frontend-crateswebuisrc">7. Frontend (<code>crates/web/ui/src/</code>)</h3>
+<p>The TypeScript frontend handles streaming via WebSocket:</p>
+<ol>
+<li><strong>websocket.ts</strong> - Receives WebSocket frames and dispatches to handlers</li>
+<li><strong>events.ts</strong> - Event bus for distributing events to components</li>
+<li><strong>state.js</strong> - Manages streaming state (<code>streamText</code>, <code>streamEl</code>)</li>
+</ol>
+<p>When a <code>delta</code> event arrives:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="javascript" data-code="function handleChatDelta(p, isActive, isChatPage) {
+  if (!(p.text &#x26;&#x26; isActive &#x26;&#x26; isChatPage)) return;
+  removeThinking();
+  if (!S.streamEl) {
+    S.setStreamText(&#x22;&#x22;);
+    S.setStreamEl(document.createElement(&#x22;div&#x22;));
+    S.streamEl.className = &#x22;msg assistant&#x22;;
+    S.chatMsgBox.appendChild(S.streamEl);
+  }
+  S.setStreamText(S.streamText + p.text);
+  setSafeMarkdownHtml(S.streamEl, S.streamText);
+  S.chatMsgBox.scrollTop = S.chatMsgBox.scrollHeight;
+}"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">function</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> handleChatDelta</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#24292EFF;--shiki-dark:#FFAB70">p</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#24292EFF;--shiki-dark:#FFAB70"> isActive</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#24292EFF;--shiki-dark:#FFAB70"> isChatPage</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">  if</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> (</span><span style="color:#D32F2F;--shiki-dark:#F97583">!</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#1976D2;--shiki-dark:#E1E4E8">p</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.text </span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;&#x26;</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> isActive </span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;&#x26;</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> isChatPage)) </span><span style="color:#D32F2F;--shiki-dark:#F97583">return</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">  removeThinking</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">  if</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> (</span><span style="color:#D32F2F;--shiki-dark:#F97583">!</span><span style="color:#1976D2;--shiki-dark:#79B8FF">S</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.streamEl) {</span></span>
+<span class="line"><span style="color:#1976D2;--shiki-dark:#79B8FF">    S</span><span style="color:#6F42C1;--shiki-dark:#E1E4E8">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setStreamText</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#22863A;--shiki-dark:#9ECBFF">""</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#1976D2;--shiki-dark:#79B8FF">    S</span><span style="color:#6F42C1;--shiki-dark:#E1E4E8">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setStreamEl</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#1976D2;--shiki-dark:#E1E4E8">document</span><span style="color:#6F42C1;--shiki-dark:#E1E4E8">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">createElement</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"div"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#1976D2;--shiki-dark:#79B8FF">    S</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#1976D2;--shiki-dark:#E1E4E8">streamEl</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.className </span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "msg assistant"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#1976D2;--shiki-dark:#79B8FF">    S</span><span style="color:#6F42C1;--shiki-dark:#E1E4E8">.</span><span style="color:#1976D2;--shiki-dark:#E1E4E8">chatMsgBox</span><span style="color:#6F42C1;--shiki-dark:#E1E4E8">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">appendChild</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#1976D2;--shiki-dark:#79B8FF">S</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.streamEl);</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#1976D2;--shiki-dark:#79B8FF">  S</span><span style="color:#6F42C1;--shiki-dark:#E1E4E8">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">setStreamText</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#1976D2;--shiki-dark:#79B8FF">S</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.streamText </span><span style="color:#D32F2F;--shiki-dark:#F97583">+</span><span style="color:#1976D2;--shiki-dark:#E1E4E8"> p</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.text);</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">  setSafeMarkdownHtml</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#1976D2;--shiki-dark:#79B8FF">S</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.streamEl</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> S</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.streamText);</span></span>
+<span class="line"><span style="color:#1976D2;--shiki-dark:#79B8FF">  S</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#1976D2;--shiki-dark:#E1E4E8">chatMsgBox</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.scrollTop </span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> S</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#1976D2;--shiki-dark:#E1E4E8">chatMsgBox</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.scrollHeight;</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h2 id="data-flow">Data Flow</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="┌──────────────┐     SSE      ┌──────────────┐   StreamEvent   ┌──────────────┐
+│   Anthropic  │─────────────▶│   Provider   │────────────────▶│    Runner    │
+│     API      │              │              │                 │              │
+└──────────────┘              └──────────────┘                 └──────┬───────┘
+                                                                      │
+                                                               RunnerEvent
+                                                                      │
+                                                                      ▼
+┌──────────────┐   WebSocket  ┌──────────────┐   Routes/WS   ┌──────────────┐    Callback     ┌──────────────┐
+│   Browser    │◀─────────────│  Web Crate   │◀──────────────│ Chat Service │◀────────────────│   Callback   │
+│              │              │  (moltis-web)│               │              │                 │   (on_event) │
+└──────────────┘              └──────────────┘               └──────────────┘                 └──────────────┘"><code><span class="line"><span>┌──────────────┐     SSE      ┌──────────────┐   StreamEvent   ┌──────────────┐</span></span>
+<span class="line"><span>│   Anthropic  │─────────────▶│   Provider   │────────────────▶│    Runner    │</span></span>
+<span class="line"><span>│     API      │              │              │                 │              │</span></span>
+<span class="line"><span>└──────────────┘              └──────────────┘                 └──────┬───────┘</span></span>
+<span class="line"><span>                                                                      │</span></span>
+<span class="line"><span>                                                               RunnerEvent</span></span>
+<span class="line"><span>                                                                      │</span></span>
+<span class="line"><span>                                                                      ▼</span></span>
+<span class="line"><span>┌──────────────┐   WebSocket  ┌──────────────┐   Routes/WS   ┌──────────────┐    Callback     ┌──────────────┐</span></span>
+<span class="line"><span>│   Browser    │◀─────────────│  Web Crate   │◀──────────────│ Chat Service │◀────────────────│   Callback   │</span></span>
+<span class="line"><span>│              │              │  (moltis-web)│               │              │                 │   (on_event) │</span></span>
+<span class="line"><span>└──────────────┘              └──────────────┘               └──────────────┘                 └──────────────┘</span></span></code></pre>
+<h2 id="adding-streaming-to-new-providers">Adding Streaming to New Providers</h2>
+<p>To add streaming support for a new LLM provider:</p>
+<ol>
+<li>Implement the <code>stream()</code> method (basic streaming)</li>
+<li>If the provider supports tools in streaming mode, override
+<code>stream_with_tools()</code></li>
+<li>Parse the provider’s streaming format and yield appropriate <code>StreamEvent</code>
+variants</li>
+<li>Handle errors gracefully with <code>StreamEvent::Error</code></li>
+<li>Always emit <code>StreamEvent::Done</code> with usage statistics when complete</li>
+</ol>
+<p>Example skeleton:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="rust" data-code="fn stream_with_tools(
+    &#x26;self,
+    messages: Vec<ChatMessage>,
+    _tools: Vec<serde_json::Value>,
+) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + &#x27;_>> {
+    Box::pin(async_stream::stream! {
+        // Make streaming request to provider API
+        let resp = self.client.post(...)
+            .json(&#x26;body)
+            .send()
+            .await?;
+
+        // Read SSE or streaming response
+        let mut byte_stream = resp.bytes_stream();
+
+        while let Some(chunk) = byte_stream.next().await {
+            // Parse chunk and yield events
+            match parse_event(&#x26;chunk) {
+                TextDelta(text) => yield StreamEvent::Delta(text),
+                ToolStart { id, name, idx } => {
+                    yield StreamEvent::ToolCallStart { id, name, index: idx }
+                }
+                // ... handle other event types
+            }
+        }
+
+        yield StreamEvent::Done(usage);
+    })
+}"><code><span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">fn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> stream_with_tools</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">    &#x26;</span><span style="color:#24292EFF;--shiki-dark:#79B8FF">self</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    messages</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Vec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">ChatMessage</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">>,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    _tools</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Vec</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;serde_json</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">Value</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">>,</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">) </span><span style="color:#D32F2F;--shiki-dark:#F97583">-></span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Pin</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">Box</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#D32F2F;--shiki-dark:#F97583">dyn</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Stream</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">&#x3C;</span><span style="color:#6F42C1;--shiki-dark:#B392F0">Item</span><span style="color:#D32F2F;--shiki-dark:#F97583"> =</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> StreamEvent</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">> </span><span style="color:#D32F2F;--shiki-dark:#F97583">+</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Send</span><span style="color:#D32F2F;--shiki-dark:#F97583"> +</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> '</span><span style="color:#6F42C1;--shiki-dark:#B392F0">_</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">>> {</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">    Box</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">pin</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#24292EFF;--shiki-dark:#B392F0">async_stream</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">stream!</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">        // Make streaming request to provider API</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">        let</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> resp </span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> self</span><span style="color:#D32F2F;--shiki-dark:#F97583">.</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">client</span><span style="color:#D32F2F;--shiki-dark:#F97583">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">post</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">...</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">json</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">body)</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">            .</span><span style="color:#6F42C1;--shiki-dark:#B392F0">send</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">            .await?</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">        // Read SSE or streaming response</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">        let</span><span style="color:#D32F2F;--shiki-dark:#F97583"> mut</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> byte_stream </span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> resp</span><span style="color:#D32F2F;--shiki-dark:#F97583">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">bytes_stream</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">        while</span><span style="color:#D32F2F;--shiki-dark:#F97583"> let</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> Some</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(chunk) </span><span style="color:#D32F2F;--shiki-dark:#F97583">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> byte_stream</span><span style="color:#D32F2F;--shiki-dark:#F97583">.</span><span style="color:#6F42C1;--shiki-dark:#B392F0">next</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">()</span><span style="color:#D32F2F;--shiki-dark:#F97583">.await</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">            // Parse chunk and yield events</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">            match</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> parse_event</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(</span><span style="color:#D32F2F;--shiki-dark:#F97583">&#x26;</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">chunk) {</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">                TextDelta</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(text) </span><span style="color:#D32F2F;--shiki-dark:#F97583">=></span><span style="color:#D32F2F;--shiki-dark:#F97583"> yield</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> StreamEvent</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">Delta</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(text),</span></span>
+<span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">                ToolStart</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { id, name, idx } </span><span style="color:#D32F2F;--shiki-dark:#F97583">=></span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">                    yield</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> StreamEvent</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">ToolCallStart</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> { id, name, index</span><span style="color:#D32F2F;--shiki-dark:#F97583">:</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> idx }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">                }</span></span>
+<span class="line"><span style="color:#C2C3C5;--shiki-dark:#6A737D">                // ... handle other event types</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">            }</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#D32F2F;--shiki-dark:#F97583">        yield</span><span style="color:#6F42C1;--shiki-dark:#B392F0"> StreamEvent</span><span style="color:#D32F2F;--shiki-dark:#F97583">::</span><span style="color:#6F42C1;--shiki-dark:#B392F0">Done</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">(usage);</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">    })</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+<h2 id="performance-considerations">Performance Considerations</h2>
+<ul>
+<li><strong>Unbounded channels</strong>: WebSocket send channels are unbounded, so slow
+clients can accumulate messages in memory</li>
+<li><strong>Markdown re-rendering</strong>: The frontend re-renders full markdown on each
+delta, which is O(n) work per delta. For very long responses, this can
+cause UI lag</li>
+<li><strong>Concurrent tool execution</strong>: Multiple tool calls are executed in parallel
+using <code>futures::join_all()</code>, improving throughput when the LLM requests
+several tools at once</li>
+</ul>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/frontend.html"><span>Previous</span>Frontend</a> <a class="pager-link next" href="/sqlite-migration.html"><span>Next</span>SQLite Migrations</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

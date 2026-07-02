@@ -1,0 +1,1105 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Webhooks - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a class="active" href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Features</div>  <h1 id="webhooks">Webhooks</h1>
+<p>Chelix can receive inbound HTTP webhooks from external services and run AI
+agents in response. Each webhook delivery becomes a persistent chat session
+that can be inspected and continued from the web UI.</p>
+<p>Use webhooks to trigger agents from GitHub PRs, GitLab merge requests, Stripe
+payments, PagerDuty incidents, or any service that can POST JSON to a URL.</p>
+<h2 id="how-it-works">How It Works</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="External Service (GitHub, Stripe, …)
+        │
+        ▼  POST /api/webhooks/ingest/{public_id}
+┌──────────────────────────────────┐
+│         Ingress Handler          │
+│  verify → filter → dedup → 202  │
+└──────────────┬───────────────────┘
+               │  delivery_id
+               ▼
+┌──────────────────────────────────┐
+│       Background Worker          │
+│  normalize → create session      │
+│  → inject message → chat.send   │
+└──────────────┬───────────────────┘
+               │
+               ▼
+┌──────────────────────────────────┐
+│       Persistent Session         │
+│  Agent processes event,          │
+│  optionally acts back via tools  │
+└──────────────────────────────────┘"><code><span class="line"><span>External Service (GitHub, Stripe, …)</span></span>
+<span class="line"><span>        │</span></span>
+<span class="line"><span>        ▼  POST /api/webhooks/ingest/{public_id}</span></span>
+<span class="line"><span>┌──────────────────────────────────┐</span></span>
+<span class="line"><span>│         Ingress Handler          │</span></span>
+<span class="line"><span>│  verify → filter → dedup → 202  │</span></span>
+<span class="line"><span>└──────────────┬───────────────────┘</span></span>
+<span class="line"><span>               │  delivery_id</span></span>
+<span class="line"><span>               ▼</span></span>
+<span class="line"><span>┌──────────────────────────────────┐</span></span>
+<span class="line"><span>│       Background Worker          │</span></span>
+<span class="line"><span>│  normalize → create session      │</span></span>
+<span class="line"><span>│  → inject message → chat.send   │</span></span>
+<span class="line"><span>└──────────────┬───────────────────┘</span></span>
+<span class="line"><span>               │</span></span>
+<span class="line"><span>               ▼</span></span>
+<span class="line"><span>┌──────────────────────────────────┐</span></span>
+<span class="line"><span>│       Persistent Session         │</span></span>
+<span class="line"><span>│  Agent processes event,          │</span></span>
+<span class="line"><span>│  optionally acts back via tools  │</span></span>
+<span class="line"><span>└──────────────────────────────────┘</span></span></code></pre>
+<ol>
+<li>The external service POSTs to the webhook’s public endpoint.</li>
+<li>Chelix verifies authentication, checks the event filter, and deduplicates.</li>
+<li>The request is acknowledged with <code>202 Accepted</code> immediately.</li>
+<li>A background worker normalizes the payload, creates a chat session, and runs
+the bound agent.</li>
+<li>The resulting session is visible in the web UI like any other conversation.</li>
+</ol>
+<h2 id="setup">Setup</h2>
+<p>Webhooks can be created from the <strong>web UI</strong>, the <strong>CLI</strong>, or by the <strong>agent</strong> itself
+using the <code>webhook</code> tool. They are not part of the onboarding flow.</p>
+<h3 id="creating-a-webhook-web-ui">Creating a Webhook (Web UI)</h3>
+<ol>
+<li>Navigate to <strong>Settings → Webhooks</strong> and click <strong>Create webhook</strong>.</li>
+<li>Choose a <strong>source profile</strong> (GitHub, GitLab, Stripe, or Generic).</li>
+<li>Configure <strong>authentication</strong> — the profile pre-selects a recommended mode.</li>
+<li>Optionally filter which <strong>event types</strong> to process.</li>
+<li>Select a <strong>target agent</strong> and optional model override.</li>
+<li>Click <strong>Create</strong> — the endpoint URL is displayed with a copy button.</li>
+<li>Register this URL in the external service’s webhook settings.</li>
+</ol>
+<h3 id="creating-a-webhook-cli">Creating a Webhook (CLI)</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="moltis webhooks create \
+  --name github-pr-review \
+  --source-profile github \
+  --auth-mode github_hmac_sha256 \
+  --events &#x22;pull_request.opened,pull_request.synchronize&#x22; \
+  --system-prompt &#x22;Review this PR for security issues&#x22;"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> webhooks</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> create</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --name</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> github-pr-review</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --source-profile</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> github</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --auth-mode</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> github_hmac_sha256</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --events</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "pull_request.opened,pull_request.synchronize"</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --system-prompt</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Review this PR for security issues"</span></span></code></pre>
+<p>For a zero-cost event forwarder (no LLM tokens):</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="moltis webhooks create \
+  --name stripe-payments \
+  --source-profile stripe \
+  --auth-mode stripe_webhook_signature \
+  --deliver-only \
+  --prompt-template &#x22;Payment: {data.object.amount} {data.object.currency} from {data.object.customer_email}&#x22; \
+  --deliver-to telegram \
+  --events &#x22;payment_intent.succeeded&#x22;"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> webhooks</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> create</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --name</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> stripe-payments</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --source-profile</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> stripe</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --auth-mode</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> stripe_webhook_signature</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --deliver-only</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --prompt-template</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Payment: {data.object.amount} {data.object.currency} from {data.object.customer_email}"</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --deliver-to</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> telegram</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --events</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "payment_intent.succeeded"</span></span></code></pre>
+<h3 id="creating-a-webhook-agent-tool">Creating a Webhook (Agent Tool)</h3>
+<p>The agent can create webhooks programmatically using the <code>webhook</code> tool:</p>
+<blockquote>
+<p>“Set up a webhook for GitHub issues on my repo and forward them to my Slack channel”</p>
+</blockquote>
+<p>The agent will use the <code>webhook</code> tool with <code>action: "create"</code> to set up the endpoint,
+then tell you the URL to register in GitHub’s settings.</p>
+<h3 id="endpoint-url">Endpoint URL</h3>
+<p>Each webhook gets a stable, high-entropy public URL:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="https://your-moltis-host/api/webhooks/ingest/wh_a1b2c3d4e5f6..."><code><span class="line"><span>https://your-moltis-host/api/webhooks/ingest/wh_a1b2c3d4e5f6...</span></span></code></pre>
+<p>The <code>wh_</code> prefix followed by 36 random hex characters serves as a routing
+identifier — it is <strong>not</strong> authentication. Authentication is handled by the
+configured auth mode.</p>
+<h2 id="source-profiles">Source Profiles</h2>
+<p>Source profiles define how to authenticate, parse, and normalize events from a
+specific provider. Selecting a profile pre-fills the recommended auth mode and
+provides an event catalog for filtering.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Profile</th><th>Auth Mode</th><th>Event Parsing</th><th>Entity Grouping</th></tr></thead><tbody><tr><td>Generic</td><td>Static header</td><td>Configurable header</td><td>None</td></tr><tr><td>GitHub</td><td>HMAC-SHA256 (<code>X-Hub-Signature-256</code>)</td><td><code>X-GitHub-Event</code> + action</td><td>PR number, issue number</td></tr><tr><td>GitLab</td><td>Token (<code>X-Gitlab-Token</code>)</td><td><code>X-Gitlab-Event</code> + action</td><td>MR iid, issue iid</td></tr><tr><td>Stripe</td><td>Webhook signature (<code>Stripe-Signature</code>)</td><td><code>$.type</code> in body</td><td>Subscription ID</td></tr></tbody></table>
+<h3 id="github">GitHub</h3>
+<p>GitHub webhooks use HMAC-SHA256 signature verification. When you create a
+webhook with the GitHub profile:</p>
+<ol>
+<li>Chelix generates a random secret (or you provide one).</li>
+<li>In your GitHub repo, go to <strong>Settings → Webhooks → Add webhook</strong>.</li>
+<li>Set the payload URL to your Chelix webhook endpoint.</li>
+<li>Set content type to <code>application/json</code>.</li>
+<li>Paste the secret.</li>
+<li>Select the events you want to trigger (or choose “Send me everything” and
+filter in Chelix).</li>
+</ol>
+<p><strong>Event types:</strong></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Event</th><th>Description</th><th>Use case</th></tr></thead><tbody><tr><td><code>pull_request.opened</code></td><td>New PR</td><td>Code review, labeling</td></tr><tr><td><code>pull_request.synchronize</code></td><td>PR updated</td><td>Re-review</td></tr><tr><td><code>pull_request.closed</code></td><td>PR closed/merged</td><td>Cleanup, changelog</td></tr><tr><td><code>push</code></td><td>Commits pushed</td><td>CI trigger, deploy check</td></tr><tr><td><code>issues.opened</code></td><td>New issue</td><td>Triage, auto-respond</td></tr><tr><td><code>issue_comment.created</code></td><td>Comment on issue/PR</td><td>Answer questions</td></tr><tr><td><code>pull_request_review.submitted</code></td><td>PR review posted</td><td>Respond to feedback</td></tr><tr><td><code>release.published</code></td><td>New release</td><td>Announce, post-release tasks</td></tr><tr><td><code>workflow_run.completed</code></td><td>Actions workflow done</td><td>Post-CI analysis</td></tr></tbody></table>
+<p><strong>Payload normalization</strong> extracts key fields (repo, PR number, author, branch,
+description, changed files) instead of dumping the full payload into the agent
+prompt — keeping token usage reasonable.</p>
+<h3 id="gitlab">GitLab</h3>
+<p>GitLab webhooks use a static token in the <code>X-Gitlab-Token</code> header.</p>
+<ol>
+<li>In your GitLab project, go to <strong>Settings → Webhooks</strong>.</li>
+<li>Set the URL to your Chelix webhook endpoint.</li>
+<li>Paste the secret token.</li>
+<li>Select trigger events.</li>
+</ol>
+<p><strong>Event types:</strong></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Event</th><th>Description</th></tr></thead><tbody><tr><td><code>merge_request.open</code></td><td>New merge request</td></tr><tr><td><code>merge_request.update</code></td><td>MR updated</td></tr><tr><td><code>merge_request.merge</code></td><td>MR merged</td></tr><tr><td><code>push</code></td><td>Commits pushed</td></tr><tr><td><code>note</code></td><td>Comment on MR or issue</td></tr><tr><td><code>issue.open</code></td><td>New issue</td></tr><tr><td><code>pipeline</code></td><td>Pipeline status change</td></tr></tbody></table>
+<h3 id="stripe">Stripe</h3>
+<p>Stripe webhooks use a composite signature in the <code>Stripe-Signature</code> header
+with timestamp validation (5-minute tolerance).</p>
+<ol>
+<li>In the Stripe Dashboard, go to <strong>Developers → Webhooks → Add endpoint</strong>.</li>
+<li>Set the endpoint URL to your Chelix webhook endpoint.</li>
+<li>Select events to listen to.</li>
+<li>Copy the signing secret (<code>whsec_...</code>) into Chelix.</li>
+</ol>
+<p><strong>Event types:</strong></p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Event</th><th>Description</th></tr></thead><tbody><tr><td><code>checkout.session.completed</code></td><td>Successful checkout</td></tr><tr><td><code>payment_intent.succeeded</code></td><td>Payment captured</td></tr><tr><td><code>payment_intent.payment_failed</code></td><td>Payment failed</td></tr><tr><td><code>invoice.paid</code></td><td>Invoice paid</td></tr><tr><td><code>customer.subscription.created</code></td><td>New subscription</td></tr><tr><td><code>customer.subscription.deleted</code></td><td>Subscription canceled</td></tr><tr><td><code>charge.dispute.created</code></td><td>Chargeback opened</td></tr></tbody></table>
+<h3 id="generic">Generic</h3>
+<p>The generic profile works with any service that can POST JSON. Configure a
+static header or bearer token for authentication. Event type is extracted from
+common headers (<code>X-Event-Type</code>, <code>X-Webhook-Event</code>) if present.</p>
+<h2 id="authentication">Authentication</h2>
+<p>Each webhook is configured with an auth mode that verifies inbound requests.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Mode</th><th>Header</th><th>Verification</th></tr></thead><tbody><tr><td><code>none</code></td><td>—</td><td>No verification (testing only)</td></tr><tr><td><code>static_header</code></td><td>Configurable</td><td>Constant-time comparison of header value</td></tr><tr><td><code>bearer</code></td><td><code>Authorization</code></td><td><code>Bearer &#x3C;token></code> comparison</td></tr><tr><td><code>github_hmac_sha256</code></td><td><code>X-Hub-Signature-256</code></td><td>HMAC-SHA256 of body against shared secret</td></tr><tr><td><code>gitlab_token</code></td><td><code>X-Gitlab-Token</code></td><td>Constant-time token comparison</td></tr><tr><td><code>stripe_webhook_signature</code></td><td><code>Stripe-Signature</code></td><td>HMAC-SHA256 with timestamp tolerance</td></tr><tr><td><code>linear_webhook_signature</code></td><td><code>Linear-Signature</code></td><td>HMAC-SHA256</td></tr><tr><td><code>pagerduty_v2_signature</code></td><td><code>X-PagerDuty-Signature</code></td><td>HMAC-SHA256</td></tr><tr><td><code>sentry_webhook_signature</code></td><td><code>Sentry-Hook-Signature</code></td><td>HMAC-SHA256</td></tr></tbody></table>
+<aside class="admonition admonition-warning"><div class="admonition-title">Auth Mode: None</div><div class="admonition-body"><p>The <code>none</code> auth mode accepts all requests without verification. Use it only for<br>local testing. The UI displays a warning when this mode is selected.</p></div></aside>
+<p>All secret comparisons use constant-time operations to prevent timing attacks.</p>
+<h2 id="event-filtering">Event Filtering</h2>
+<p>Each webhook can filter which event types to process using allow and deny lists.</p>
+<ul>
+<li><strong>Allow list empty, deny list empty</strong> — accept all events.</li>
+<li><strong>Allow list non-empty</strong> — only accept events in the list.</li>
+<li><strong>Deny list</strong> — always applied last, explicitly skips matching events.</li>
+</ul>
+<p>Filtered events are logged with status <code>filtered</code> but not processed. They do
+not count against rate limits.</p>
+<p>When using a source profile, the UI shows the event catalog as checkboxes
+instead of requiring free-form text.</p>
+<h2 id="session-modes">Session Modes</h2>
+<p>Each delivery creates a chat session. The session mode controls how sessions
+are organized.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Mode</th><th>Behaviour</th></tr></thead><tbody><tr><td><code>per_delivery</code> (default)</td><td>One new session per delivery. Best for debugging and clean history.</td></tr><tr><td><code>per_entity</code></td><td>Group deliveries by entity key (e.g., all events for PR #567 in one session). Useful for maintaining context across an entity’s lifecycle.</td></tr><tr><td><code>named_session</code></td><td>All deliveries go to one named session. Use sparingly — can become noisy.</td></tr></tbody></table>
+<h3 id="entity-keys">Entity Keys</h3>
+<p>In <code>per_entity</code> mode, the source profile extracts a grouping key from the
+payload:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Profile</th><th>Entity Key Format</th></tr></thead><tbody><tr><td>GitHub</td><td><code>github:{repo}:pr:{number}</code> or <code>github:{repo}:issue:{number}</code></td></tr><tr><td>GitLab</td><td><code>gitlab:{project}:mr:{iid}</code> or <code>gitlab:{project}:issue:{iid}</code></td></tr><tr><td>Stripe</td><td><code>stripe:{subscription_id}</code> or <code>stripe:dispute:{charge_id}</code></td></tr><tr><td>Generic</td><td>None (falls back to <code>per_delivery</code>)</td></tr></tbody></table>
+<h3 id="session-labels">Session Labels</h3>
+<p>Sessions are labeled for easy identification in the sidebar:</p>
+<ul>
+<li><strong>per_delivery</strong>: <code>webhook:{public_id}:{delivery_id}</code></li>
+<li><strong>per_entity</strong>: <code>webhook:{public_id}:{entity_key}</code></li>
+<li><strong>named_session</strong>: configured key or <code>webhook:{public_id}</code></li>
+</ul>
+<h2 id="agent-execution">Agent Execution</h2>
+<p>Each webhook is bound to an agent preset. When a delivery is processed:</p>
+<ol>
+<li>The worker creates a session with the webhook’s session key.</li>
+<li>The configured agent is assigned to the session.</li>
+<li>A normalized message describing the event is injected.</li>
+<li><code>chat.send_sync</code> runs the agent turn.</li>
+<li>The delivery record is updated with status, duration, and token counts.</li>
+</ol>
+<h3 id="execution-overrides">Execution Overrides</h3>
+<p>Webhooks can override specific agent settings without changing the base preset:</p>
+<ul>
+<li><strong>Model</strong> — use a different LLM for webhook processing.</li>
+<li><strong>System prompt suffix</strong> — append extra instructions (e.g., “Focus on security
+issues” for a code review webhook).</li>
+<li><strong>Tool policy</strong> — restrict which tools the agent can use.</li>
+</ul>
+<h3 id="delivery-message-format">Delivery Message Format</h3>
+<p>The agent receives a structured message with three layers:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="Webhook delivery received.
+
+Webhook: GitHub PR Hook (wh_xxxxx)
+Source: github
+Event: pull_request.opened
+Delivery: abc-123-def
+Received: 2026-04-07T12:34:56Z
+
+---
+
+GitHub event: pull_request.opened
+
+Repository: agentics-skills/chelix
+PR #567: &#x22;Add webhook support&#x22;
+  Author: @penso
+  Branch: feature/webhooks → main
+  URL: https://github.com/agentics-skills/chelix/pull/567
+  Draft: false
+
+Description:
+  This PR adds generic webhook support...
+
+Changed files: 42 (+1,203 / -156)
+
+---
+
+Full payload available via webhook_get_full_payload tool."><code><span class="line"><span>Webhook delivery received.</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Webhook: GitHub PR Hook (wh_xxxxx)</span></span>
+<span class="line"><span>Source: github</span></span>
+<span class="line"><span>Event: pull_request.opened</span></span>
+<span class="line"><span>Delivery: abc-123-def</span></span>
+<span class="line"><span>Received: 2026-04-07T12:34:56Z</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>---</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>GitHub event: pull_request.opened</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Repository: agentics-skills/chelix</span></span>
+<span class="line"><span>PR #567: "Add webhook support"</span></span>
+<span class="line"><span>  Author: @penso</span></span>
+<span class="line"><span>  Branch: feature/webhooks → main</span></span>
+<span class="line"><span>  URL: https://github.com/agentics-skills/chelix/pull/567</span></span>
+<span class="line"><span>  Draft: false</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Description:</span></span>
+<span class="line"><span>  This PR adds generic webhook support...</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Changed files: 42 (+1,203 / -156)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>---</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Full payload available via webhook_get_full_payload tool.</span></span></code></pre>
+<p>The full raw payload is stored on the delivery record and available to the
+agent via the <code>webhook_get_full_payload</code> tool, keeping prompt token usage
+manageable for large payloads.</p>
+<h2 id="delivery-lifecycle">Delivery Lifecycle</h2>
+<p>Each delivery goes through a status progression:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Status</th><th>Description</th></tr></thead><tbody><tr><td><code>received</code></td><td>Persisted, not yet queued</td></tr><tr><td><code>filtered</code></td><td>Event type not in allow list</td></tr><tr><td><code>deduplicated</code></td><td>Duplicate delivery key</td></tr><tr><td><code>rejected</code></td><td>Auth failure or policy violation</td></tr><tr><td><code>queued</code></td><td>Waiting for worker</td></tr><tr><td><code>processing</code></td><td>Agent running</td></tr><tr><td><code>completed</code></td><td>Agent finished successfully</td></tr><tr><td><code>failed</code></td><td>Agent errored</td></tr></tbody></table>
+<h3 id="deduplication">Deduplication</h3>
+<p>Deliveries are deduplicated by a provider-specific key:</p>
+<ul>
+<li><strong>GitHub</strong>: <code>X-GitHub-Delivery</code> header</li>
+<li><strong>GitLab</strong>: <code>Idempotency-Key</code> header (falls back to body hash)</li>
+<li><strong>Stripe</strong>: <code>$.id</code> field in body</li>
+<li><strong>Generic</strong>: <code>X-Delivery-Id</code> or <code>X-Request-Id</code> header (falls back to body
+SHA-256 hash)</li>
+</ul>
+<p>Duplicate deliveries are logged with status <code>deduplicated</code> and return <code>200 OK</code>.</p>
+<h2 id="rate-limiting">Rate Limiting</h2>
+<p>Two levels of rate limiting protect against abuse:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Level</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td>Per-webhook</td><td>60/minute</td><td>Configurable per webhook</td></tr><tr><td>Global</td><td>300/minute</td><td>Across all webhooks</td></tr></tbody></table>
+<p>Rate-limited requests receive <code>429 Too Many Requests</code>. Filtered and
+deduplicated events do not count against rate limits.</p>
+<h2 id="security">Security</h2>
+<ul>
+<li><strong>Public IDs are routing identifiers, not secrets.</strong> Authentication is
+handled by the configured auth mode.</li>
+<li><strong>Secrets use constant-time comparison</strong> to prevent timing attacks.</li>
+<li><strong>Request body size is limited</strong> (default: 1 MB, configurable per webhook).</li>
+<li><strong>Auth headers are never logged.</strong> Only safe headers (event type, delivery
+ID, content type) are persisted.</li>
+<li><strong>Webhook secrets and source API credentials</strong> are encrypted at rest when
+Vault is enabled.</li>
+</ul>
+<aside class="admonition admonition-warning"><div class="admonition-title">Secret Management</div><div class="admonition-body"><p>Without Vault, webhook secrets and API tokens remain plaintext in the SQLite<br>database. Enable Chelix <a href="/vault.html">Vault</a> if these secrets are going to live on<br>disk. Rotate secrets periodically.</p></div></aside>
+<h2 id="delivery-inspector">Delivery Inspector</h2>
+<p>The web UI provides a delivery inspector for each webhook:</p>
+<ul>
+<li><strong>Deliveries list</strong> with status, event type, timestamp, and duration.</li>
+<li><strong>Per-delivery detail</strong> with normalized metadata, headers, body preview, and
+session link.</li>
+<li><strong>Response actions</strong> (when using profiles with response tools) showing what
+the agent did.</li>
+<li>Click a delivery’s session link to open the full chat conversation.</li>
+</ul>
+<h2 id="editing-and-deleting">Editing and Deleting</h2>
+<h3 id="editing">Editing</h3>
+<p>Click <strong>Edit</strong> on a webhook card to modify its settings. Changes take effect
+immediately for new deliveries. In-progress deliveries use the configuration
+that was active when they were received.</p>
+<h3 id="disabling">Disabling</h3>
+<p>The toggle on each webhook card pauses it — the endpoint returns <code>404</code> but
+configuration and delivery history are preserved.</p>
+<h3 id="deleting">Deleting</h3>
+<p>Deleting a webhook permanently removes it and all delivery records. Chat
+sessions created by deliveries are <strong>not</strong> deleted — they persist independently
+as normal sessions.</p>
+<h2 id="crash-recovery">Crash Recovery</h2>
+<p>On startup, Chelix scans for deliveries with status <code>received</code> or <code>queued</code> and
+re-queues them for processing. Accepted deliveries are not silently dropped on
+restart.</p>
+<h2 id="testing-webhooks">Testing Webhooks</h2>
+<p>Use <a href="https://hoppscotch.io">Hoppscotch</a> (free, open source, no signup) to test
+your webhooks. Set the method to POST, paste your webhook endpoint URL, add a
+JSON body, and set any required auth headers.</p>
+<p>Alternatively, use the included test script:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="./scripts/test-webhook.sh <webhook-url> --profile github --secret <your-secret>"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">./scripts/test-webhook.sh</span><span style="color:#D32F2F;--shiki-dark:#F97583"> &#x3C;</span><span style="color:#2B5581;--shiki-dark:#9ECBFF">webhook-ur</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">l</span><span style="color:#D32F2F;--shiki-dark:#F97583">></span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --profile</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> github</span><span style="color:#2B5581;--shiki-dark:#79B8FF"> --secret</span><span style="color:#D32F2F;--shiki-dark:#F97583"> &#x3C;</span><span style="color:#2B5581;--shiki-dark:#9ECBFF">your-secre</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">t</span><span style="color:#D32F2F;--shiki-dark:#F97583">></span></span></code></pre>
+<p>Available profiles: <code>generic</code>, <code>github</code>, <code>gitlab</code>, <code>stripe</code>. Each sends a
+realistic sample payload with the correct headers and signature.</p>
+<h2 id="example-github-pr-reviewer">Example: GitHub PR Reviewer</h2>
+<p>A complete example of setting up a webhook that reviews pull requests:</p>
+<ol>
+<li>
+<p><strong>Create webhook</strong> in Settings → Webhooks:</p>
+<ul>
+<li>
+<p>Source: <strong>GitHub</strong></p>
+</li>
+<li>
+<p>Auth: <strong>GitHub HMAC-SHA256</strong> (auto-selected)</p>
+</li>
+<li>
+<p>Events: check <code>pull_request.opened</code> and <code>pull_request.synchronize</code></p>
+</li>
+<li>
+<p>Agent: <code>code-reviewer</code> (or your default agent)</p>
+</li>
+<li>
+<p>Session mode: <strong>Per entity</strong> (groups all events for the same PR)</p>
+</li>
+<li>
+<p>System prompt suffix:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="You are reviewing a GitHub pull request. Analyze the PR description and
+changed files. Focus on correctness, security, and maintainability.
+Provide specific, actionable feedback."><code><span class="line"><span>You are reviewing a GitHub pull request. Analyze the PR description and</span></span>
+<span class="line"><span>changed files. Focus on correctness, security, and maintainability.</span></span>
+<span class="line"><span>Provide specific, actionable feedback.</span></span></code></pre>
+</li>
+</ul>
+</li>
+<li>
+<p><strong>Register in GitHub</strong>:</p>
+<ul>
+<li>Repo → Settings → Webhooks → Add webhook</li>
+</ul>
+</li>
+</ol>
+<ul>
+<li>Payload URL: copy from Chelix</li>
+<li>Content type: <code>application/json</code></li>
+<li>Secret: copy from Chelix</li>
+<li>Events: “Pull requests”</li>
+</ul>
+<ol start="3">
+<li><strong>Test it</strong>: open a PR — a new session appears in Chelix with the agent’s
+review.</li>
+</ol>
+<h2 id="example-stripe-payment-handler">Example: Stripe Payment Handler</h2>
+<ol>
+<li>
+<p><strong>Create webhook</strong> in Settings → Webhooks:</p>
+<ul>
+<li>
+<p>Source: <strong>Stripe</strong></p>
+</li>
+<li>
+<p>Auth: <strong>Stripe Signature</strong> (auto-selected)</p>
+</li>
+<li>
+<p>Events: check <code>checkout.session.completed</code>, <code>payment_intent.payment_failed</code></p>
+</li>
+<li>
+<p>Session mode: <strong>Per delivery</strong></p>
+</li>
+<li>
+<p>System prompt suffix:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="Process this Stripe payment event. For successful payments, log the
+details and confirm fulfillment. For failures, summarize the issue
+and suggest next steps."><code><span class="line"><span>Process this Stripe payment event. For successful payments, log the</span></span>
+<span class="line"><span>details and confirm fulfillment. For failures, summarize the issue</span></span>
+<span class="line"><span>and suggest next steps.</span></span></code></pre>
+</li>
+</ul>
+</li>
+<li>
+<p><strong>Register in Stripe</strong>:</p>
+<ul>
+<li>Dashboard → Developers → Webhooks → Add endpoint</li>
+</ul>
+</li>
+</ol>
+<ul>
+<li>Endpoint URL: copy from Chelix</li>
+<li>Events: select the matching events</li>
+<li>Copy signing secret (<code>whsec_...</code>) into Chelix</li>
+</ul>
+<h2 id="metrics">Metrics</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Metric</th><th>Type</th><th>Description</th></tr></thead><tbody><tr><td><code>webhooks_deliveries_total</code></td><td>Counter</td><td>Total deliveries by webhook, status, event type</td></tr><tr><td><code>webhooks_deliveries_rejected_total</code></td><td>Counter</td><td>Rejected deliveries by reason</td></tr><tr><td><code>webhooks_deliveries_filtered_total</code></td><td>Counter</td><td>Filtered deliveries</td></tr><tr><td><code>webhooks_processing_duration_seconds</code></td><td>Histogram</td><td>Agent execution time</td></tr><tr><td><code>webhooks_response_actions_total</code></td><td>Counter</td><td>Response actions by tool and status</td></tr><tr><td><code>webhooks_rate_limited_total</code></td><td>Counter</td><td>Rate-limited requests</td></tr><tr><td><code>webhooks_worker_queue_depth</code></td><td>Gauge</td><td>Pending deliveries in worker queue</td></tr></tbody></table>
+<h2 id="deliver-only-mode-webhook-proxy">Deliver-Only Mode (Webhook Proxy)</h2>
+<p>By default, each webhook delivery triggers an agent run — the LLM processes the
+event, reasons about it, and optionally acts using tools. This costs tokens and
+takes seconds.</p>
+<p><strong>Deliver-only mode</strong> skips the agent entirely. The webhook payload is rendered
+through a template and forwarded directly to a channel. Zero LLM tokens,
+sub-second delivery.</p>
+<p>This turns Chelix into a <strong>webhook proxy</strong>: external services POST events, and
+formatted messages appear in your Telegram, Discord, Slack, or any other
+configured channel.</p>
+<h3 id="when-to-use-deliver-only">When to Use Deliver-Only</h3>
+<ul>
+<li><strong>Monitoring alerts</strong>: Datadog/Grafana/Sentry → Discord</li>
+<li><strong>Payment notifications</strong>: Stripe → Telegram</li>
+<li><strong>CI/CD status</strong>: GitHub Actions → Slack</li>
+<li><strong>Inter-service notifications</strong>: any HTTP POST → any channel</li>
+<li><strong>High-volume events</strong>: where per-event LLM calls would be wasteful</li>
+</ul>
+<h3 id="configuration">Configuration</h3>
+<p>Set <code>deliver_only: true</code> and provide a <code>prompt_template</code> with <code>{dot.notation}</code>
+variables, plus a <code>deliver_to</code> channel target.</p>
+<p><strong>Web UI</strong>: Toggle “Deliver only” in the webhook settings, fill in the template
+and target channel.</p>
+<p><strong>CLI</strong>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="moltis webhooks create \
+  --name deploy-status \
+  --source-profile generic \
+  --auth-mode static_header \
+  --deliver-only \
+  --prompt-template &#x22;Deploy {status}: {environment} ({commit_sha})&#x22; \
+  --deliver-to slack"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> webhooks</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> create</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --name</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> deploy-status</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --source-profile</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> generic</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --auth-mode</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> static_header</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --deliver-only</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --prompt-template</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Deploy {status}: {environment} ({commit_sha})"</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --deliver-to</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> slack</span></span></code></pre>
+<p><strong>Agent</strong>: The agent can also create deliver-only webhooks using the <code>webhook</code> tool.</p>
+<h3 id="how-it-works-1">How It Works</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="External Service POSTs event
+        │
+        ▼
+┌──────────────────────────────────┐
+│         Ingress Handler          │
+│  verify → filter → dedup → 202  │
+└──────────────┬───────────────────┘
+               │
+               ▼
+┌──────────────────────────────────┐
+│       Background Worker          │
+│  render template → deliver to    │
+│  channel → mark completed        │
+│  (no agent, no LLM tokens)       │
+└──────────────────────────────────┘"><code><span class="line"><span>External Service POSTs event</span></span>
+<span class="line"><span>        │</span></span>
+<span class="line"><span>        ▼</span></span>
+<span class="line"><span>┌──────────────────────────────────┐</span></span>
+<span class="line"><span>│         Ingress Handler          │</span></span>
+<span class="line"><span>│  verify → filter → dedup → 202  │</span></span>
+<span class="line"><span>└──────────────┬───────────────────┘</span></span>
+<span class="line"><span>               │</span></span>
+<span class="line"><span>               ▼</span></span>
+<span class="line"><span>┌──────────────────────────────────┐</span></span>
+<span class="line"><span>│       Background Worker          │</span></span>
+<span class="line"><span>│  render template → deliver to    │</span></span>
+<span class="line"><span>│  channel → mark completed        │</span></span>
+<span class="line"><span>│  (no agent, no LLM tokens)       │</span></span>
+<span class="line"><span>└──────────────────────────────────┘</span></span></code></pre>
+<h2 id="template-rendering">Template Rendering</h2>
+<p>Templates use <code>{dot.notation}</code> to interpolate values from the webhook JSON payload.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Syntax</th><th>Resolves to</th></tr></thead><tbody><tr><td><code>{action}</code></td><td>Top-level field: <code>payload["action"]</code></td></tr><tr><td><code>{pull_request.title}</code></td><td>Nested: <code>payload["pull_request"]["title"]</code></td></tr><tr><td><code>{pull_request.user.login}</code></td><td>Deep nested: <code>payload["pull_request"]["user"]["login"]</code></td></tr><tr><td><code>{__raw__}</code></td><td>Full payload as indented JSON (truncated at 4000 chars)</td></tr></tbody></table>
+<ul>
+<li><strong>Missing keys</strong> are left as literal <code>{key}</code> in the output (no error).</li>
+<li><strong>Objects and arrays</strong> are JSON-serialized (truncated at 2000 chars).</li>
+<li><strong>Strings and numbers</strong> are inserted directly.</li>
+</ul>
+<p>Templates work in both <code>prompt_template</code> (the message body) and <code>deliver_extra</code>
+values (channel-specific metadata like chat IDs).</p>
+<h3 id="example-github-issue--telegram">Example: GitHub Issue → Telegram</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="moltis webhooks create \
+  --name github-issues \
+  --source-profile github \
+  --auth-mode github_hmac_sha256 \
+  --deliver-only \
+  --prompt-template &#x22;#{issue.number} {issue.title} ({action} by {sender.login})&#x22; \
+  --deliver-to telegram \
+  --events &#x22;issues.opened,issues.closed&#x22;"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> webhooks</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> create</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --name</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> github-issues</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --source-profile</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> github</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --auth-mode</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> github_hmac_sha256</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --deliver-only</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --prompt-template</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "#{issue.number} {issue.title} ({action} by {sender.login})"</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --deliver-to</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> telegram</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --events</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "issues.opened,issues.closed"</span></span></code></pre>
+<p>When someone opens issue #42 “Fix auth bug”, Telegram receives:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="#42 Fix auth bug (opened by alice)"><code><span class="line"><span>#42 Fix auth bug (opened by alice)</span></span></code></pre>
+<h3 id="example-stripe-payment--discord">Example: Stripe Payment → Discord</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="moltis webhooks create \
+  --name stripe-notify \
+  --source-profile stripe \
+  --auth-mode stripe_webhook_signature \
+  --deliver-only \
+  --prompt-template &#x22;Payment {data.object.status}: {data.object.amount} cents ({data.object.currency})&#x22; \
+  --deliver-to discord \
+  --events &#x22;payment_intent.succeeded,payment_intent.payment_failed&#x22;"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> webhooks</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> create</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --name</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> stripe-notify</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --source-profile</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> stripe</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --auth-mode</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> stripe_webhook_signature</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --deliver-only</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --prompt-template</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Payment {data.object.status}: {data.object.amount} cents ({data.object.currency})"</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --deliver-to</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> discord</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --events</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "payment_intent.succeeded,payment_intent.payment_failed"</span></span></code></pre>
+<h2 id="comparison-with-channels-and-cron">Comparison with Channels and Cron</h2>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th></th><th>Channels</th><th>Webhooks</th><th>Cron</th></tr></thead><tbody><tr><td><strong>Purpose</strong></td><td>Human messaging</td><td>Machine event ingress</td><td>Scheduled tasks</td></tr><tr><td><strong>Trigger</strong></td><td>User sends message</td><td>External HTTP POST</td><td>Time-based schedule</td></tr><tr><td><strong>Reply</strong></td><td>Back to the channel</td><td>Via response tools (optional)</td><td>Optional channel delivery</td></tr><tr><td><strong>Session</strong></td><td>Per conversation</td><td>Per delivery / entity</td><td>Per job run</td></tr><tr><td><strong>Auth</strong></td><td>Platform account</td><td>Per-webhook (HMAC, token, etc.)</td><td>Internal only</td></tr></tbody></table>
+<p>Webhooks are <strong>not channels</strong>. They do not support reply routing, streaming, or
+platform presence semantics. Use channels for human messaging and webhooks for
+machine event ingress.</p>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/scheduling.html"><span>Previous</span>Scheduling (Cron Jobs)</a> <a class="pager-link next" href="/skill-tools.html"><span>Next</span>Skill Self-Extension</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>

@@ -1,0 +1,740 @@
+<!DOCTYPE html><html lang="en" data-theme="light" data-theme-choice="auto"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Documentation for Moltis, a secure persistent personal agent server."><meta name="theme-color" content="#f7f7f5"><title>Microsoft Teams - Moltis Docs</title><script>
+      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
+      document.documentElement.dataset.theme = resolvedTheme
+      document.documentElement.dataset.themeChoice = storedTheme
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#111214' : '#f7f7f5')
+    </script><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:opsz,wght@14..32,400;500;600;700;800;900&display=swap" rel="stylesheet"><link rel="stylesheet" href="/_astro/Docs.Bz4jgX_X.css"></head> <body>  <div class="site-shell"> <header class="topbar"> <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false"> <span></span> <span></span> <span></span> </button> <a class="brand" href="/index.html" aria-label="Moltis documentation home"> <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true"> <span>Moltis</span> </a> <nav class="topnav" aria-label="Primary"> <a href="/quickstart.html">Quickstart</a> <a href="/providers.html">Providers</a> <a href="/security.html">Security</a> <a href="https://github.com/moltis-org/moltis">GitHub</a> </nav> <div class="theme-toggle" role="group" aria-label="Theme"> <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button> <button type="button" data-theme-option="light" aria-label="Use light theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg> </button> <button type="button" data-theme-option="dark" aria-label="Use dark theme"> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z"></path></svg> </button> </div> </header> <div class="mobile-scrim"></div> <aside class="sidebar" aria-label="Documentation navigation"> <div class="sidebar-search"> <label class="search-label" for="docs-search">Search docs</label> <input id="docs-search" type="search" placeholder="Search pages..." autocomplete="off"> <div id="search-results" class="search-results" hidden></div> </div> <section class="sidebar-section"> <h2>Start</h2> <ol> <li class="depth-0"> <a href="/index.html">Introduction</a> </li> </ol> </section><section class="sidebar-section"> <h2>Getting Started</h2> <ol> <li class="depth-0"> <a href="/quickstart.html">Quickstart</a> </li><li class="depth-0"> <a href="/installation.html">Installation</a> </li><li class="depth-0"> <a href="/comparison.html">Comparison</a> </li><li class="depth-0"> <a href="/configuration.html">Configuration</a> </li><li class="depth-1"> <a href="/upstream-proxy.html">Upstream Proxy</a> </li><li class="depth-1"> <a href="/configuration-reference.html">Configuration Reference</a> </li><li class="depth-0"> <a href="/local-validation.html">Local Validation</a> </li><li class="depth-0"> <a href="/e2e-testing.html">End-to-End Testing</a> </li> </ol> </section><section class="sidebar-section"> <h2>Features</h2> <ol> <li class="depth-0"> <a href="/providers.html">LLM Providers</a> </li><li class="depth-1"> <a href="/choosing-a-provider.html">Choosing a Provider</a> </li><li class="depth-1"> <a href="/anthropic-oauth.html">Anthropic OAuth (FAQ)</a> </li><li class="depth-0"> <a href="/mcp.html">MCP Servers</a> </li><li class="depth-0"> <a href="/external-agents.html">External Agents</a> </li><li class="depth-0"> <a href="/memory.html">Memory</a> </li><li class="depth-1"> <a href="/memory-surfaces.html">Memory Surfaces</a> </li><li class="depth-1"> <a href="/memory-comparison.html">Chelix vs OpenClaw</a> </li><li class="depth-0"> <a href="/hooks.html">Hooks</a> </li><li class="depth-0"> <a href="/local-llm.html">Local LLMs</a> </li><li class="depth-0"> <a href="/sandbox.html">Sandbox</a> </li><li class="depth-1"> <a href="/trusted-network.html">Trusted Network</a> </li><li class="depth-0"> <a href="/voice.html">Voice</a> </li><li class="depth-0"> <a href="/remote-access.html">Remote Access</a> </li><li class="depth-0"> <a href="/channels.html">Channels</a> </li><li class="depth-1"> <a href="/telegram.html">Telegram</a> </li><li class="depth-1"> <a class="active" href="/teams.html">Microsoft Teams</a> </li><li class="depth-1"> <a href="/discord.html">Discord</a> </li><li class="depth-1"> <a href="/slack.html">Slack</a> </li><li class="depth-1"> <a href="/matrix.html">Matrix</a> </li><li class="depth-1"> <a href="/whatsapp.html">WhatsApp</a> </li><li class="depth-1"> <a href="/nostr.html">Nostr</a> </li><li class="depth-1"> <a href="/signal.html">Signal</a> </li><li class="depth-1"> <a href="/channels/telephony.html">Telephony (Phone Calls)</a> </li><li class="depth-0"> <a href="/browser-automation.html">Browser Automation</a> </li><li class="depth-0"> <a href="/caldav.html">CalDAV (Calendars)</a> </li><li class="depth-0"> <a href="/graphql.html">GraphQL API</a> </li><li class="depth-0"> <a href="/session-state.html">Session State</a> </li><li class="depth-0"> <a href="/commands.html">Slash Commands</a> </li><li class="depth-0"> <a href="/modes.html">Modes</a> </li><li class="depth-0"> <a href="/session-branching.html">Session Branching</a> </li><li class="depth-0"> <a href="/checkpoints.html">Checkpoints</a> </li><li class="depth-0"> <a href="/compaction.html">Compaction</a> </li><li class="depth-0"> <a href="/tools-fs.html">Filesystem Tools</a> </li><li class="depth-0"> <a href="/scheduling.html">Scheduling (Cron Jobs)</a> </li><li class="depth-0"> <a href="/webhooks.html">Webhooks</a> </li><li class="depth-0"> <a href="/skill-tools.html">Skill Self-Extension</a> </li><li class="depth-0"> <a href="/mobile-pwa.html">Mobile PWA</a> </li><li class="depth-0"> <a href="/native-swift-embedding.html">Native Swift Embedding (POC)</a> </li><li class="depth-0"> <a href="/macos-app-ffi-bridge.html">macOS App FFI Bridge (WIP)</a> </li><li class="depth-0"> <a href="/openclaw-import.html">OpenClaw Import</a> </li><li class="depth-0"> <a href="/nodes.html">Multi-Node</a> </li><li class="depth-0"> <a href="/service.html">Service Management</a> </li> </ol> </section><section class="sidebar-section"> <h2>Security</h2> <ol> <li class="depth-0"> <a href="/authentication.html">Authentication</a> </li><li class="depth-0"> <a href="/vault.html">Encryption at Rest (Vault)</a> </li><li class="depth-0"> <a href="/security.html">Security Architecture</a> </li><li class="depth-0"> <a href="/skills-security.html">Third-Party Skills Security</a> </li><li class="depth-0"> <a href="/release-verification.html">Release Verification</a> </li> </ol> </section><section class="sidebar-section"> <h2>Deployment</h2> <ol> <li class="depth-0"> <a href="/docker.html">Docker</a> </li><li class="depth-0"> <a href="/cloud-deploy.html">Cloud Deploy</a> </li><li class="depth-0"> <a href="/sandbox-remote.html">Remote Sandboxes</a> </li><li class="depth-0"> <a href="/deploy-vps.html">VPS Deployment</a> </li> </ol> </section><section class="sidebar-section"> <h2>Architecture</h2> <ol> <li class="depth-0"> <a href="/system-prompt.html">System Prompt</a> </li><li class="depth-0"> <a href="/frontend.html">Frontend</a> </li><li class="depth-0"> <a href="/streaming.html">Streaming</a> </li><li class="depth-0"> <a href="/sqlite-migration.html">SQLite Migrations</a> </li><li class="depth-0"> <a href="/metrics-and-tracing.html">Metrics &amp; Tracing</a> </li><li class="depth-0"> <a href="/tool-registry.html">Tool Registry</a> </li><li class="depth-0"> <a href="/tool-policy.html">Tool Policy</a> </li><li class="depth-0"> <a href="/agent-presets.html">Agent Presets</a> </li><li class="depth-0"> <a href="/session-tools.html">Session Tools</a> </li> </ol> </section><section class="sidebar-section"> <h2>Reference</h2> <ol> <li class="depth-0"> <a href="/changelog.html">Changelog</a> </li> </ol> </section> </aside> <main class="page-grid"> <article class="content-card"> <div class="eyebrow">Features</div>  <h1 id="microsoft-teams">Microsoft Teams</h1>
+<p>Moltis can connect to Microsoft Teams as a bot, letting you chat with your
+agent from any Teams workspace, group chat, or direct message. The integration
+uses the <a href="https://learn.microsoft.com/en-us/azure/bot-service/">Bot Framework</a>
+with an inbound webhook — your Moltis instance must be reachable from the
+internet over HTTPS.</p>
+<h2 id="how-it-works">How It Works</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="                          Microsoft Bot Service
+                      (bot.botframework.com / Teams)
+                                    │
+                          HTTP POST (webhook)
+                                    ▼
+┌──────────────────────────────────────────────────────────────┐
+│                      moltis-msteams crate                     │
+│  ┌──────────────┐  ┌────────────┐  ┌──────────────────────┐  │
+│  │  JWT + Secret │  │  Outbound  │  │      Plugin          │  │
+│  │  Verification │  │ (replies,  │  │  (lifecycle, cards,  │  │
+│  │  (auth)       │  │  streaming)│  │   attachments)       │  │
+│  └──────────────┘  └────────────┘  └──────────────────────┘  │
+└──────────────────────────┬───────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────────┐
+│                     Moltis Gateway                            │
+│           (chat dispatch, tools, memory)                      │
+└──────────────────────────────────────────────────────────────┘"><code><span class="line"><span>                          Microsoft Bot Service</span></span>
+<span class="line"><span>                      (bot.botframework.com / Teams)</span></span>
+<span class="line"><span>                                    │</span></span>
+<span class="line"><span>                          HTTP POST (webhook)</span></span>
+<span class="line"><span>                                    ▼</span></span>
+<span class="line"><span>┌──────────────────────────────────────────────────────────────┐</span></span>
+<span class="line"><span>│                      moltis-msteams crate                     │</span></span>
+<span class="line"><span>│  ┌──────────────┐  ┌────────────┐  ┌──────────────────────┐  │</span></span>
+<span class="line"><span>│  │  JWT + Secret │  │  Outbound  │  │      Plugin          │  │</span></span>
+<span class="line"><span>│  │  Verification │  │ (replies,  │  │  (lifecycle, cards,  │  │</span></span>
+<span class="line"><span>│  │  (auth)       │  │  streaming)│  │   attachments)       │  │</span></span>
+<span class="line"><span>│  └──────────────┘  └────────────┘  └──────────────────────┘  │</span></span>
+<span class="line"><span>└──────────────────────────┬───────────────────────────────────┘</span></span>
+<span class="line"><span>                           │</span></span>
+<span class="line"><span>                           ▼</span></span>
+<span class="line"><span>┌──────────────────────────────────────────────────────────────┐</span></span>
+<span class="line"><span>│                     Moltis Gateway                            │</span></span>
+<span class="line"><span>│           (chat dispatch, tools, memory)                      │</span></span>
+<span class="line"><span>└──────────────────────────────────────────────────────────────┘</span></span></code></pre>
+<p>Teams sends each user message as an HTTP POST to your webhook endpoint.
+Moltis verifies the request (JWT signature and/or shared secret), processes
+it, and replies via the Bot Framework REST API.</p>
+<p>Streaming uses <strong>edit-in-place</strong> — an initial message is posted once enough
+tokens arrive, then updated at a throttled interval until the response is
+complete.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<p>Before configuring Moltis you need to register a bot in Azure. There are two
+approaches; the <strong>Teams Developer Portal</strong> route is quickest for most users.</p>
+<h3 id="option-a-teams-developer-portal-recommended">Option A: Teams Developer Portal (recommended)</h3>
+<ol>
+<li>Open the <a href="https://dev.teams.microsoft.com/bots">Teams Developer Portal — Tools — Bot Management</a></li>
+<li>Click <strong>+ New Bot</strong></li>
+<li>Give the bot a name and click <strong>Add</strong></li>
+<li>On the bot’s page, go to <strong>Configure</strong> and note the <strong>Bot ID</strong> (this is your <code>app_id</code>)</li>
+<li>Under <strong>Client secrets</strong>, click <strong>Add a client secret for your bot</strong> and copy the generated value (this is your <code>app_password</code>)</li>
+<li>Set the <strong>Endpoint address</strong> to your Moltis webhook URL (see <a href="#webhook-endpoint">Webhook Endpoint</a> below)</li>
+</ol>
+<h3 id="option-b-azure-portal">Option B: Azure Portal</h3>
+<ol>
+<li>Go to the <a href="https://portal.azure.com/#create/Microsoft.AzureBot">Azure Portal — Create a resource</a></li>
+<li>Search for <strong>Azure Bot</strong> and click <strong>Create</strong></li>
+<li>Fill in a bot handle, subscription, and resource group</li>
+<li>Under <strong>Microsoft App ID</strong>, select <strong>Create new</strong> (single-tenant is fine)</li>
+<li>Click <strong>Create</strong> and wait for deployment</li>
+<li>Go to the new bot resource, then <strong>Configuration</strong>:
+<ul>
+<li>Copy the <strong>Microsoft App ID</strong> (<code>app_id</code>)</li>
+<li>Click <strong>Manage Password</strong> to go to <strong>Certificates &#x26; secrets</strong></li>
+<li>Click <strong>+ New client secret</strong>, copy the value (<code>app_password</code>)</li>
+</ul>
+</li>
+<li>Still in <strong>Configuration</strong>, set the <strong>Messaging endpoint</strong> to your Moltis webhook URL</li>
+</ol>
+<h3 id="install-the-bot-in-teams">Install the bot in Teams</h3>
+<p>After creating the bot, you need to install it in your Teams organization:</p>
+<ol>
+<li>In the <a href="https://dev.teams.microsoft.com/">Teams Developer Portal</a>, go to <strong>Apps</strong></li>
+<li>Click <strong>+ New app</strong>, give it a name, and fill in the required fields</li>
+<li>Under <strong>App features</strong>, click <strong>Bot</strong> and select your existing bot</li>
+<li>Choose the scopes: <strong>Personal</strong> (DMs), <strong>Team</strong> (channels), <strong>Group Chat</strong></li>
+<li>Click <strong>Publish</strong> → <strong>Publish to your org</strong> (or use <strong>Preview in Teams</strong> for testing)</li>
+<li>In Teams, go to <strong>Apps → Built for your org</strong> and install the app</li>
+</ol>
+<aside class="admonition admonition-warning"><div class="admonition-title">Warning</div><div class="admonition-body"><p>The App Password is a secret — treat it like a password. Never commit it to<br>version control. Moltis stores it with <code>secrecy::Secret</code> and redacts it from<br>logs, but your <code>moltis.toml</code> file is plain text on disk. Consider using<br><a href="/vault.html">Vault</a> for encryption at rest.</p></div></aside>
+<h2 id="webhook-endpoint">Webhook Endpoint</h2>
+<p>Teams sends messages to a webhook URL on your server. The URL pattern is:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="https://<your-domain>/api/channels/msteams/<account-id>/webhook?secret=<webhook-secret>"><code><span class="line"><span>https://&#x3C;your-domain>/api/channels/msteams/&#x3C;account-id>/webhook?secret=&#x3C;webhook-secret></span></span></code></pre>
+<ul>
+<li><strong><code>&#x3C;your-domain></code></strong> — your public HTTPS domain (e.g. <code>bot.example.com</code>)</li>
+<li><strong><code>&#x3C;account-id></code></strong> — the account identifier in your <code>moltis.toml</code> (e.g. <code>my-bot</code>)</li>
+<li><strong><code>&#x3C;webhook-secret></code></strong> — an optional shared secret for additional verification</li>
+</ul>
+<p>The Moltis web UI and CLI both generate this URL for you. Paste it into your
+bot’s <strong>Messaging endpoint</strong> field in the Azure Portal or Teams Developer Portal.</p>
+<aside class="admonition admonition-info"><div class="admonition-title">HTTPS required</div><div class="admonition-body"><p>Teams requires HTTPS. For local development, use a tunnel like<br><a href="https://ngrok.com/">ngrok</a> (<code>ngrok http 8080</code>) or<br><a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/">Cloudflare Tunnel</a>.</p></div></aside>
+<h2 id="configuration">Configuration</h2>
+<p>Add a <code>[channels.msteams.&#x3C;account-id>]</code> section to your <code>moltis.toml</code>:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.msteams.my-bot]
+app_id = &#x22;12345678-abcd-efgh-ijkl-000000000000&#x22;
+app_password = &#x22;your-client-secret-here&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">msteams</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">app_id </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "12345678-abcd-efgh-ijkl-000000000000"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">app_password </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "your-client-secret-here"</span></span></code></pre>
+<h3 id="configuration-fields">Configuration Fields</h3>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Field</th><th>Required</th><th>Default</th><th>Description</th></tr></thead><tbody><tr><td><code>app_id</code></td><td><strong>yes</strong></td><td>—</td><td>Azure App ID (Bot ID) from the bot registration</td></tr><tr><td><code>app_password</code></td><td><strong>yes</strong></td><td>—</td><td>Azure client secret for the bot</td></tr><tr><td><code>tenant_id</code></td><td>no</td><td><code>"botframework.com"</code></td><td>Azure AD tenant for JWT validation. Set to your tenant ID for single-tenant bots</td></tr><tr><td><code>webhook_secret</code></td><td>no</td><td>—</td><td>Shared secret appended as <code>?secret=...</code> to the webhook URL</td></tr><tr><td><code>dm_policy</code></td><td>no</td><td><code>"allowlist"</code></td><td>Who can DM the bot: <code>"open"</code>, <code>"allowlist"</code>, or <code>"disabled"</code></td></tr><tr><td><code>group_policy</code></td><td>no</td><td><code>"open"</code></td><td>Who can talk to the bot in group chats / channels: <code>"open"</code>, <code>"allowlist"</code>, or <code>"disabled"</code></td></tr><tr><td><code>mention_mode</code></td><td>no</td><td><code>"mention"</code></td><td>When the bot responds in groups: <code>"always"</code>, <code>"mention"</code>, or <code>"none"</code></td></tr><tr><td><code>allowlist</code></td><td>no</td><td><code>[]</code></td><td>AAD object IDs or user IDs allowed to DM the bot</td></tr><tr><td><code>group_allowlist</code></td><td>no</td><td><code>[]</code></td><td>Conversation/team IDs allowed for group messages</td></tr><tr><td><code>model</code></td><td>no</td><td>—</td><td>Override the default model for this channel</td></tr><tr><td><code>model_provider</code></td><td>no</td><td>—</td><td>Provider for the overridden model</td></tr><tr><td><code>stream_mode</code></td><td>no</td><td><code>"edit_in_place"</code></td><td><code>"edit_in_place"</code> (live updates) or <code>"off"</code> (send once complete)</td></tr><tr><td><code>edit_throttle_ms</code></td><td>no</td><td><code>1500</code></td><td>Minimum milliseconds between streaming edits</td></tr><tr><td><code>text_chunk_limit</code></td><td>no</td><td><code>4000</code></td><td>Maximum characters per message before splitting</td></tr><tr><td><code>reply_style</code></td><td>no</td><td><code>"top_level"</code></td><td><code>"top_level"</code> or <code>"thread"</code> (reply in thread)</td></tr><tr><td><code>welcome_card</code></td><td>no</td><td><code>true</code></td><td>Send an Adaptive Card welcome message in DMs</td></tr><tr><td><code>group_welcome_card</code></td><td>no</td><td><code>false</code></td><td>Send a welcome message when the bot is added to a group</td></tr><tr><td><code>bot_name</code></td><td>no</td><td><code>"Moltis"</code></td><td>Display name shown on welcome cards</td></tr><tr><td><code>prompt_starters</code></td><td>no</td><td><code>[]</code></td><td>Prompt starter buttons on the welcome card</td></tr><tr><td><code>max_retries</code></td><td>no</td><td><code>3</code></td><td>Max retry attempts for failed sends</td></tr><tr><td><code>retry_base_delay_ms</code></td><td>no</td><td><code>250</code></td><td>Base delay (ms) for exponential backoff</td></tr><tr><td><code>retry_max_delay_ms</code></td><td>no</td><td><code>10000</code></td><td>Maximum retry delay (ms)</td></tr><tr><td><code>history_limit</code></td><td>no</td><td><code>50</code></td><td>Max messages fetched for thread context (requires Graph API permissions)</td></tr><tr><td><code>graph_tenant_id</code></td><td>no</td><td>—</td><td>Tenant ID for Graph API operations (thread history, reactions, search)</td></tr></tbody></table>
+<h3 id="full-example">Full Example</h3>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels]
+offered = [&#x22;telegram&#x22;, &#x22;msteams&#x22;, &#x22;discord&#x22;, &#x22;slack&#x22;]
+
+[channels.msteams.my-bot]
+app_id = &#x22;12345678-abcd-efgh-ijkl-000000000000&#x22;
+app_password = &#x22;your-client-secret-here&#x22;
+tenant_id = &#x22;your-azure-tenant-id&#x22;
+webhook_secret = &#x22;a-long-random-secret&#x22;
+dm_policy = &#x22;allowlist&#x22;
+group_policy = &#x22;open&#x22;
+mention_mode = &#x22;mention&#x22;
+allowlist = [&#x22;00000000-0000-0000-0000-000000000001&#x22;]
+stream_mode = &#x22;edit_in_place&#x22;
+edit_throttle_ms = 1500
+welcome_card = true
+bot_name = &#x22;My Assistant&#x22;
+prompt_starters = [&#x22;What can you do?&#x22;, &#x22;Help me write an email&#x22;]
+reply_style = &#x22;top_level&#x22;
+model = &#x22;claude-sonnet-4-20250514&#x22;
+model_provider = &#x22;anthropic&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">offered </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"telegram"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "msteams"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "discord"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "slack"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">msteams</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">app_id </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "12345678-abcd-efgh-ijkl-000000000000"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">app_password </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "your-client-secret-here"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">tenant_id </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "your-azure-tenant-id"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">webhook_secret </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "a-long-random-secret"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">dm_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "allowlist"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">group_policy </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "open"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">mention_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "mention"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">allowlist </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"00000000-0000-0000-0000-000000000001"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">stream_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "edit_in_place"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">edit_throttle_ms </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1500</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">welcome_card </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">bot_name </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "My Assistant"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">prompt_starters </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"What can you do?"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Help me write an email"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">reply_style </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "top_level"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "claude-sonnet-4-20250514"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model_provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "anthropic"</span></span></code></pre>
+<h3 id="per-team--per-channel-overrides">Per-Team / Per-Channel Overrides</h3>
+<p>You can override settings for specific Teams teams or channels:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.msteams.my-bot.teams.team-id-here]
+reply_style = &#x22;thread&#x22;
+mention_mode = &#x22;always&#x22;
+
+[channels.msteams.my-bot.teams.team-id-here.channels.general-channel-id]
+model = &#x22;gpt-4o&#x22;
+model_provider = &#x22;openai&#x22;
+mention_mode = &#x22;mention&#x22;"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">msteams</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">teams</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">team-id-here</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">reply_style </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "thread"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">mention_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "always"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">msteams</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">teams</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">team-id-here</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">general-channel-id</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "gpt-4o"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">model_provider </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "openai"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">mention_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "mention"</span></span></code></pre>
+<h2 id="access-control">Access Control</h2>
+<p>Teams uses the same gating system as other channels:</p>
+<h3 id="dm-policy">DM Policy</h3>
+<p>Controls who can send direct messages to the bot.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Value</th><th>Behavior</th></tr></thead><tbody><tr><td><code>"allowlist"</code></td><td>Only users listed in <code>allowlist</code> can DM (default)</td></tr><tr><td><code>"open"</code></td><td>Anyone who can reach the bot can DM it</td></tr><tr><td><code>"disabled"</code></td><td>DMs are silently ignored</td></tr></tbody></table>
+<h3 id="group-policy">Group Policy</h3>
+<p>Controls who can interact with the bot in group chats and team channels.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Value</th><th>Behavior</th></tr></thead><tbody><tr><td><code>"open"</code></td><td>Bot responds in any group chat (default)</td></tr><tr><td><code>"allowlist"</code></td><td>Only conversations listed in <code>group_allowlist</code> are allowed</td></tr><tr><td><code>"disabled"</code></td><td>Group messages are silently ignored</td></tr></tbody></table>
+<h3 id="mention-mode">Mention Mode</h3>
+<p>Controls when the bot responds in group chats (does not apply to DMs).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Value</th><th>Behavior</th></tr></thead><tbody><tr><td><code>"mention"</code></td><td>Bot only responds when @mentioned (default)</td></tr><tr><td><code>"always"</code></td><td>Bot responds to every message in allowed groups</td></tr><tr><td><code>"none"</code></td><td>Bot never responds in groups (DM-only)</td></tr></tbody></table>
+<h3 id="finding-user-ids">Finding User IDs</h3>
+<p>To add users to the allowlist, you need their <strong>AAD Object ID</strong>. You can find
+this in:</p>
+<ul>
+<li><strong>Azure Portal</strong> → Azure Active Directory → Users → select user → Object ID</li>
+<li><strong>Microsoft 365 Admin Center</strong> → Users → Active users → select user → Properties</li>
+<li><strong>Teams Admin Center</strong> → Users → select user</li>
+</ul>
+<p>Alternatively, set <code>dm_policy = "open"</code> initially and check the Moltis web UI
+under <strong>Channels → Senders</strong> to see user IDs as messages arrive.</p>
+<h2 id="streaming">Streaming</h2>
+<p>By default, Teams uses <strong>edit-in-place</strong> streaming:</p>
+<ol>
+<li>After ~20 characters accumulate, an initial message is posted with ”…”</li>
+<li>Every 1.5 seconds (configurable via <code>edit_throttle_ms</code>), the message is
+edited with the latest accumulated text</li>
+<li>When the response is complete, a final edit removes the ”…” suffix</li>
+</ol>
+<p>Set <code>stream_mode = "off"</code> to disable streaming and send the complete response
+as a single message.</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.msteams.my-bot]
+stream_mode = &#x22;edit_in_place&#x22;
+edit_throttle_ms = 1500"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">msteams</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">stream_mode </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "edit_in_place"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">edit_throttle_ms </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 1500</span></span></code></pre>
+<h2 id="welcome-cards">Welcome Cards</h2>
+<p>When a user first messages the bot in a DM, Moltis sends an
+<a href="https://learn.microsoft.com/en-us/adaptive-cards/">Adaptive Card</a> with a
+greeting and optional prompt starter buttons:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.msteams.my-bot]
+welcome_card = true
+bot_name = &#x22;My Assistant&#x22;
+prompt_starters = [&#x22;What can you do?&#x22;, &#x22;Help me write an email&#x22;, &#x22;Summarize this document&#x22;]"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">msteams</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">welcome_card </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> true</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">bot_name </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "My Assistant"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">prompt_starters </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8"> [</span><span style="color:#22863A;--shiki-dark:#9ECBFF">"What can you do?"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Help me write an email"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "Summarize this document"</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+<p>Set <code>welcome_card = false</code> to disable. Set <code>group_welcome_card = true</code> to also
+send a text welcome when the bot is added to a group chat.</p>
+<aside class="admonition admonition-note"><div class="admonition-title">Note</div><div class="admonition-body"><p>Welcome card tracking is in-memory and resets when the gateway restarts. After<br>a restart, the bot may re-send welcome cards to conversations that already<br>received one. This is a known limitation.</p></div></aside>
+<h2 id="interactive-messages">Interactive Messages</h2>
+<p>The bot supports Adaptive Cards for interactive button menus. When an agent
+returns an interactive message (buttons), Moltis renders it as an Adaptive
+Card with <code>Action.Submit</code> buttons. Clicking a button sends the callback data
+back to the bot as a regular message.</p>
+<h2 id="attachments">Attachments</h2>
+<h3 id="inbound">Inbound</h3>
+<p>When users send images or files in Teams, Moltis downloads the attachments
+using the bot’s access token and passes them to the LLM as multimodal content
+(if the model supports it).</p>
+<h3 id="outbound">Outbound</h3>
+<ul>
+<li><strong>Images in DMs</strong>: sent inline as base64 data URLs</li>
+<li><strong>External URLs</strong>: sent as Bot Framework URL attachments</li>
+<li><strong>Large files</strong>: currently not supported (requires SharePoint/OneDrive integration)</li>
+</ul>
+<h2 id="thread-context-graph-api">Thread Context (Graph API)</h2>
+<p>With Graph API permissions, the bot can read conversation history for
+multi-turn context in group chats. This requires:</p>
+<ol>
+<li>An <strong>app registration</strong> with <code>Chat.Read.All</code> or <code>ChannelMessage.Read.All</code>
+permissions (application-level, not delegated)</li>
+<li><strong>Admin consent</strong> for these permissions in your Azure AD tenant</li>
+<li>Set <code>graph_tenant_id</code> in the config</li>
+</ol>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="toml" data-code="[channels.msteams.my-bot]
+graph_tenant_id = &#x22;your-azure-tenant-id&#x22;
+history_limit = 50"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">[</span><span style="color:#24292EFF;--shiki-dark:#B392F0">channels</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">msteams</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">.</span><span style="color:#24292EFF;--shiki-dark:#B392F0">my-bot</span><span style="color:#24292EFF;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">graph_tenant_id </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "your-azure-tenant-id"</span></span>
+<span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">history_limit </span><span style="color:#D32F2F;--shiki-dark:#E1E4E8">=</span><span style="color:#1976D2;--shiki-dark:#79B8FF"> 50</span></span></code></pre>
+<h2 id="reactions">Reactions</h2>
+<p>The bot supports adding and removing reactions (like, heart, laugh, surprised,
+sad, angry) via the Graph API beta endpoints. This requires the same Graph API
+permissions as thread context.</p>
+<h2 id="web-ui-setup">Web UI Setup</h2>
+<p>You can configure Teams through the web interface:</p>
+<ol>
+<li>Open <strong>Settings → Channels</strong></li>
+<li>Click <strong>Connect Microsoft Teams</strong></li>
+<li>Enter your <strong>App ID</strong> and <strong>App Password</strong> from the Azure bot registration</li>
+<li>Optionally enter a <strong>Webhook Secret</strong> (one is generated if left blank)</li>
+<li>Set the <strong>Public Base URL</strong> to your Moltis server’s HTTPS URL</li>
+<li>Click <strong>Bootstrap Teams</strong> to generate the messaging endpoint</li>
+<li>Click <strong>Copy Endpoint</strong> and paste it into your bot’s Messaging Endpoint in the Azure Portal or Teams Developer Portal</li>
+<li>Adjust DM policy, mention mode, and allowlist as needed</li>
+<li>Click <strong>Connect Microsoft Teams</strong></li>
+</ol>
+<p>The same form is available during onboarding when <code>"msteams"</code> is in
+<code>channels.offered</code>.</p>
+<h2 id="cli-setup">CLI Setup</h2>
+<p>Use the CLI bootstrap command for a quick setup:</p>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="bash" data-code="moltis channels teams bootstrap \
+  --account-id my-bot \
+  --app-id 12345678-abcd-efgh-ijkl-000000000000 \
+  --app-password your-client-secret \
+  --base-url https://bot.example.com"><code><span class="line"><span style="color:#6F42C1;--shiki-dark:#B392F0">moltis</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> channels</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> teams</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> bootstrap</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --account-id</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> my-bot</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --app-id</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> 12345678-abcd-efgh-ijkl-000000000000</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --app-password</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> your-client-secret</span><span style="color:#24292EFF;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="color:#2B5581;--shiki-dark:#79B8FF">  --base-url</span><span style="color:#2B5581;--shiki-dark:#9ECBFF"> https://bot.example.com</span></span></code></pre>
+<p>This generates the webhook endpoint URL and writes the configuration to
+<code>moltis.toml</code>. Add <code>--dry-run</code> to preview without saving, or <code>--open</code> to
+launch the Azure documentation in your browser.</p>
+<h2 id="crate-structure">Crate Structure</h2>
+<pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="plaintext" data-code="crates/msteams/
+├── Cargo.toml
+└── src/
+    ├── lib.rs                       # Public exports
+    ├── activity.rs                  # Teams activity model &#x26; parsing
+    ├── attachments.rs               # Inbound download + outbound media
+    ├── auth.rs                      # OAuth2 token acquisition + caching
+    ├── cards.rs                     # Adaptive Card builders (welcome, polls)
+    ├── channel_webhook_verifier.rs  # Shared-secret webhook verification
+    ├── chunking.rs                  # Message text chunking
+    ├── config.rs                    # MsTeamsAccountConfig + per-team overrides
+    ├── errors.rs                    # Error classification + retry logic
+    ├── graph.rs                     # Graph API (history, reactions, search, pins)
+    ├── jwt.rs                       # Bot Framework JWT validation (JWKS)
+    ├── outbound.rs                  # ChannelOutbound + streaming + reactions
+    ├── plugin.rs                    # ChannelPlugin + ChannelThreadContext
+    ├── state.rs                     # AccountState + JWT validator
+    └── streaming.rs                 # Edit-in-place streaming session"><code><span class="line"><span>crates/msteams/</span></span>
+<span class="line"><span>├── Cargo.toml</span></span>
+<span class="line"><span>└── src/</span></span>
+<span class="line"><span>    ├── lib.rs                       # Public exports</span></span>
+<span class="line"><span>    ├── activity.rs                  # Teams activity model &#x26; parsing</span></span>
+<span class="line"><span>    ├── attachments.rs               # Inbound download + outbound media</span></span>
+<span class="line"><span>    ├── auth.rs                      # OAuth2 token acquisition + caching</span></span>
+<span class="line"><span>    ├── cards.rs                     # Adaptive Card builders (welcome, polls)</span></span>
+<span class="line"><span>    ├── channel_webhook_verifier.rs  # Shared-secret webhook verification</span></span>
+<span class="line"><span>    ├── chunking.rs                  # Message text chunking</span></span>
+<span class="line"><span>    ├── config.rs                    # MsTeamsAccountConfig + per-team overrides</span></span>
+<span class="line"><span>    ├── errors.rs                    # Error classification + retry logic</span></span>
+<span class="line"><span>    ├── graph.rs                     # Graph API (history, reactions, search, pins)</span></span>
+<span class="line"><span>    ├── jwt.rs                       # Bot Framework JWT validation (JWKS)</span></span>
+<span class="line"><span>    ├── outbound.rs                  # ChannelOutbound + streaming + reactions</span></span>
+<span class="line"><span>    ├── plugin.rs                    # ChannelPlugin + ChannelThreadContext</span></span>
+<span class="line"><span>    ├── state.rs                     # AccountState + JWT validator</span></span>
+<span class="line"><span>    └── streaming.rs                 # Edit-in-place streaming session</span></span></code></pre>
+<p>The crate implements the same trait set as other channel crates:</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Trait</th><th>Purpose</th></tr></thead><tbody><tr><td><code>ChannelPlugin</code></td><td>Start/stop accounts, lifecycle management</td></tr><tr><td><code>ChannelOutbound</code></td><td>Send text, media, cards, typing indicators, reactions</td></tr><tr><td><code>ChannelStreamOutbound</code></td><td>Handle streaming responses (edit-in-place)</td></tr><tr><td><code>ChannelStatus</code></td><td>Health probes (connected / waiting for first activity)</td></tr><tr><td><code>ChannelThreadContext</code></td><td>Fetch conversation history via Graph API</td></tr></tbody></table>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<h3 id="bot-doesnt-respond">Bot doesn’t respond</h3>
+<ul>
+<li>Verify the <strong>Messaging endpoint</strong> in the Azure Portal matches your Moltis webhook URL</li>
+<li>Check that <code>app_id</code> and <code>app_password</code> are correct</li>
+<li>Ensure your server is reachable from the internet over HTTPS</li>
+<li>Check <code>dm_policy</code> — if set to <code>"allowlist"</code>, make sure your user ID is listed</li>
+<li>Check <code>mention_mode</code> — in group chats, you may need to @mention the bot</li>
+<li>Look at logs: <code>RUST_LOG=moltis_msteams=debug moltis</code></li>
+</ul>
+<h3 id="teams-token-acquisition-failed">”Teams token acquisition failed”</h3>
+<ul>
+<li>The <code>app_password</code> may have expired — rotate the client secret in the Azure Portal</li>
+<li>Check that <code>oauth_tenant</code> and <code>oauth_scope</code> are correct (defaults should work for most setups)</li>
+<li>Network issues: Moltis must be able to reach <code>login.microsoftonline.com</code></li>
+</ul>
+<h3 id="webhook-returns-401--403">Webhook returns 401 / 403</h3>
+<ul>
+<li>If using JWT validation: check that <code>tenant_id</code> matches your Azure AD tenant</li>
+<li>If using shared secret: check that the <code>?secret=...</code> in the webhook URL matches <code>webhook_secret</code> in the config</li>
+<li>The JWKS endpoint (<code>login.botframework.com</code>) must be reachable for JWT validation</li>
+</ul>
+<h3 id="bot-responds-in-dms-but-not-in-groups">Bot responds in DMs but not in groups</h3>
+<ul>
+<li>Check <code>mention_mode</code> — if set to <code>"mention"</code>, you must @mention the bot</li>
+<li>Check <code>group_policy</code> — if <code>"disabled"</code>, group messages are ignored</li>
+<li>Check <code>group_allowlist</code> — if non-empty, the group/team must be listed</li>
+</ul>
+<h3 id="messages-are-duplicated">Messages are duplicated</h3>
+<ul>
+<li>Moltis returns <code>202 Accepted</code> immediately to prevent Teams retry timeouts.
+If you see duplicates, check for multiple Moltis instances pointing at the
+same webhook URL, or verify the deduplication middleware is working
+(duplicate activity IDs are filtered automatically)</li>
+</ul>
+<h3 id="streaming-doesnt-work">Streaming doesn’t work</h3>
+<ul>
+<li>Set <code>stream_mode = "edit_in_place"</code> (the default)</li>
+<li>Streaming requires the bot to have permission to update activities</li>
+<li>Some Teams clients (older mobile versions) may not render edits in real time</li>
+</ul>  <nav class="pager" aria-label="Page navigation"> <a class="pager-link" href="/telegram.html"><span>Previous</span>Telegram</a> <a class="pager-link next" href="/discord.html"><span>Next</span>Discord</a> </nav> </article> <aside class="toc-panel" aria-label="On this page"> <div class="toc-title">On this page</div> <nav id="page-toc"></nav> </aside> </main> </div> <script>(function(){const searchPages = [{"title":"Introduction","slug":"index","sourcePath":"index.md","url":"/index.html","section":"Start","depth":0},{"title":"Quickstart","slug":"quickstart","sourcePath":"quickstart.md","url":"/quickstart.html","section":"Getting Started","depth":0},{"title":"Installation","slug":"installation","sourcePath":"installation.md","url":"/installation.html","section":"Getting Started","depth":0},{"title":"Comparison","slug":"comparison","sourcePath":"comparison.md","url":"/comparison.html","section":"Getting Started","depth":0},{"title":"Configuration","slug":"configuration","sourcePath":"configuration.md","url":"/configuration.html","section":"Getting Started","depth":0},{"title":"Upstream Proxy","slug":"upstream-proxy","sourcePath":"upstream-proxy.md","url":"/upstream-proxy.html","section":"Getting Started","depth":1},{"title":"Configuration Reference","slug":"configuration-reference","sourcePath":"configuration-reference.md","url":"/configuration-reference.html","section":"Getting Started","depth":1},{"title":"Local Validation","slug":"local-validation","sourcePath":"local-validation.md","url":"/local-validation.html","section":"Getting Started","depth":0},{"title":"End-to-End Testing","slug":"e2e-testing","sourcePath":"e2e-testing.md","url":"/e2e-testing.html","section":"Getting Started","depth":0},{"title":"LLM Providers","slug":"providers","sourcePath":"providers.md","url":"/providers.html","section":"Features","depth":0},{"title":"Choosing a Provider","slug":"choosing-a-provider","sourcePath":"choosing-a-provider.md","url":"/choosing-a-provider.html","section":"Features","depth":1},{"title":"Anthropic OAuth (FAQ)","slug":"anthropic-oauth","sourcePath":"anthropic-oauth.md","url":"/anthropic-oauth.html","section":"Features","depth":1},{"title":"MCP Servers","slug":"mcp","sourcePath":"mcp.md","url":"/mcp.html","section":"Features","depth":0},{"title":"External Agents","slug":"external-agents","sourcePath":"external-agents.md","url":"/external-agents.html","section":"Features","depth":0},{"title":"Memory","slug":"memory","sourcePath":"memory.md","url":"/memory.html","section":"Features","depth":0},{"title":"Memory Surfaces","slug":"memory-surfaces","sourcePath":"memory-surfaces.md","url":"/memory-surfaces.html","section":"Features","depth":1},{"title":"Chelix vs OpenClaw","slug":"memory-comparison","sourcePath":"memory-comparison.md","url":"/memory-comparison.html","section":"Features","depth":1},{"title":"Hooks","slug":"hooks","sourcePath":"hooks.md","url":"/hooks.html","section":"Features","depth":0},{"title":"Local LLMs","slug":"local-llm","sourcePath":"local-llm.md","url":"/local-llm.html","section":"Features","depth":0},{"title":"Sandbox","slug":"sandbox","sourcePath":"sandbox.md","url":"/sandbox.html","section":"Features","depth":0},{"title":"Trusted Network","slug":"trusted-network","sourcePath":"trusted-network.md","url":"/trusted-network.html","section":"Features","depth":1},{"title":"Voice","slug":"voice","sourcePath":"voice.md","url":"/voice.html","section":"Features","depth":0},{"title":"Remote Access","slug":"remote-access","sourcePath":"remote-access.md","url":"/remote-access.html","section":"Features","depth":0},{"title":"Channels","slug":"channels","sourcePath":"channels.md","url":"/channels.html","section":"Features","depth":0},{"title":"Telegram","slug":"telegram","sourcePath":"telegram.md","url":"/telegram.html","section":"Features","depth":1},{"title":"Microsoft Teams","slug":"teams","sourcePath":"teams.md","url":"/teams.html","section":"Features","depth":1},{"title":"Discord","slug":"discord","sourcePath":"discord.md","url":"/discord.html","section":"Features","depth":1},{"title":"Slack","slug":"slack","sourcePath":"slack.md","url":"/slack.html","section":"Features","depth":1},{"title":"Matrix","slug":"matrix","sourcePath":"matrix.md","url":"/matrix.html","section":"Features","depth":1},{"title":"WhatsApp","slug":"whatsapp","sourcePath":"whatsapp.md","url":"/whatsapp.html","section":"Features","depth":1},{"title":"Nostr","slug":"nostr","sourcePath":"nostr.md","url":"/nostr.html","section":"Features","depth":1},{"title":"Signal","slug":"signal","sourcePath":"signal.md","url":"/signal.html","section":"Features","depth":1},{"title":"Telephony (Phone Calls)","slug":"channels/telephony","sourcePath":"channels/telephony.md","url":"/channels/telephony.html","section":"Features","depth":1},{"title":"Browser Automation","slug":"browser-automation","sourcePath":"browser-automation.md","url":"/browser-automation.html","section":"Features","depth":0},{"title":"CalDAV (Calendars)","slug":"caldav","sourcePath":"caldav.md","url":"/caldav.html","section":"Features","depth":0},{"title":"GraphQL API","slug":"graphql","sourcePath":"graphql.md","url":"/graphql.html","section":"Features","depth":0},{"title":"Session State","slug":"session-state","sourcePath":"session-state.md","url":"/session-state.html","section":"Features","depth":0},{"title":"Slash Commands","slug":"commands","sourcePath":"commands.md","url":"/commands.html","section":"Features","depth":0},{"title":"Modes","slug":"modes","sourcePath":"modes.md","url":"/modes.html","section":"Features","depth":0},{"title":"Session Branching","slug":"session-branching","sourcePath":"session-branching.md","url":"/session-branching.html","section":"Features","depth":0},{"title":"Checkpoints","slug":"checkpoints","sourcePath":"checkpoints.md","url":"/checkpoints.html","section":"Features","depth":0},{"title":"Compaction","slug":"compaction","sourcePath":"compaction.md","url":"/compaction.html","section":"Features","depth":0},{"title":"Filesystem Tools","slug":"tools-fs","sourcePath":"tools-fs.md","url":"/tools-fs.html","section":"Features","depth":0},{"title":"Scheduling (Cron Jobs)","slug":"scheduling","sourcePath":"scheduling.md","url":"/scheduling.html","section":"Features","depth":0},{"title":"Webhooks","slug":"webhooks","sourcePath":"webhooks.md","url":"/webhooks.html","section":"Features","depth":0},{"title":"Skill Self-Extension","slug":"skill-tools","sourcePath":"skill-tools.md","url":"/skill-tools.html","section":"Features","depth":0},{"title":"Mobile PWA","slug":"mobile-pwa","sourcePath":"mobile-pwa.md","url":"/mobile-pwa.html","section":"Features","depth":0},{"title":"Native Swift Embedding (POC)","slug":"native-swift-embedding","sourcePath":"native-swift-embedding.md","url":"/native-swift-embedding.html","section":"Features","depth":0},{"title":"macOS App FFI Bridge (WIP)","slug":"macos-app-ffi-bridge","sourcePath":"macos-app-ffi-bridge.md","url":"/macos-app-ffi-bridge.html","section":"Features","depth":0},{"title":"OpenClaw Import","slug":"openclaw-import","sourcePath":"openclaw-import.md","url":"/openclaw-import.html","section":"Features","depth":0},{"title":"Multi-Node","slug":"nodes","sourcePath":"nodes.md","url":"/nodes.html","section":"Features","depth":0},{"title":"Service Management","slug":"service","sourcePath":"service.md","url":"/service.html","section":"Features","depth":0},{"title":"Authentication","slug":"authentication","sourcePath":"authentication.md","url":"/authentication.html","section":"Security","depth":0},{"title":"Encryption at Rest (Vault)","slug":"vault","sourcePath":"vault.md","url":"/vault.html","section":"Security","depth":0},{"title":"Security Architecture","slug":"security","sourcePath":"security.md","url":"/security.html","section":"Security","depth":0},{"title":"Third-Party Skills Security","slug":"skills-security","sourcePath":"skills-security.md","url":"/skills-security.html","section":"Security","depth":0},{"title":"Release Verification","slug":"release-verification","sourcePath":"release-verification.md","url":"/release-verification.html","section":"Security","depth":0},{"title":"Docker","slug":"docker","sourcePath":"docker.md","url":"/docker.html","section":"Deployment","depth":0},{"title":"Cloud Deploy","slug":"cloud-deploy","sourcePath":"cloud-deploy.md","url":"/cloud-deploy.html","section":"Deployment","depth":0},{"title":"Remote Sandboxes","slug":"sandbox-remote","sourcePath":"sandbox-remote.md","url":"/sandbox-remote.html","section":"Deployment","depth":0},{"title":"VPS Deployment","slug":"deploy-vps","sourcePath":"deploy-vps.md","url":"/deploy-vps.html","section":"Deployment","depth":0},{"title":"System Prompt","slug":"system-prompt","sourcePath":"system-prompt.md","url":"/system-prompt.html","section":"Architecture","depth":0},{"title":"Frontend","slug":"frontend","sourcePath":"frontend.md","url":"/frontend.html","section":"Architecture","depth":0},{"title":"Streaming","slug":"streaming","sourcePath":"streaming.md","url":"/streaming.html","section":"Architecture","depth":0},{"title":"SQLite Migrations","slug":"sqlite-migration","sourcePath":"sqlite-migration.md","url":"/sqlite-migration.html","section":"Architecture","depth":0},{"title":"Metrics & Tracing","slug":"metrics-and-tracing","sourcePath":"metrics-and-tracing.md","url":"/metrics-and-tracing.html","section":"Architecture","depth":0},{"title":"Tool Registry","slug":"tool-registry","sourcePath":"tool-registry.md","url":"/tool-registry.html","section":"Architecture","depth":0},{"title":"Tool Policy","slug":"tool-policy","sourcePath":"tool-policy.md","url":"/tool-policy.html","section":"Architecture","depth":0},{"title":"Agent Presets","slug":"agent-presets","sourcePath":"agent-presets.md","url":"/agent-presets.html","section":"Architecture","depth":0},{"title":"Session Tools","slug":"session-tools","sourcePath":"session-tools.md","url":"/session-tools.html","section":"Architecture","depth":0},{"title":"Changelog","slug":"changelog","sourcePath":"changelog.md","url":"/changelog.html","section":"Reference","depth":0}];
+
+    const navToggle = document.querySelector('.nav-toggle')
+    const scrim = document.querySelector('.mobile-scrim')
+    const sidebar = document.querySelector('.sidebar')
+    const activeSidebarLink = sidebar?.querySelector('a.active')
+    const themeButtons = Array.from(document.querySelectorAll('[data-theme-option]'))
+    const themeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+
+    function applyTheme(choice) {
+      const resolved = choice === 'auto' ? (themeMedia.matches ? 'dark' : 'light') : choice
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.dataset.themeChoice = choice
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#111214' : '#f7f7f5')
+      themeButtons.forEach((button) => {
+        const active = button.dataset.themeOption === choice
+        button.classList.toggle('active', active)
+        button.setAttribute('aria-pressed', String(active))
+      })
+    }
+
+    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    applyTheme(storedTheme)
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.themeOption || 'auto'
+        localStorage.setItem('moltis-docs-theme', choice)
+        applyTheme(choice)
+      })
+    })
+    themeMedia.addEventListener('change', () => {
+      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+        applyTheme('auto')
+      }
+    })
+
+    function closeNav() {
+      document.body.classList.remove('nav-open')
+      navToggle?.setAttribute('aria-expanded', 'false')
+    }
+
+    navToggle?.addEventListener('click', () => {
+      const open = document.body.classList.toggle('nav-open')
+      navToggle.setAttribute('aria-expanded', String(open))
+    })
+    scrim?.addEventListener('click', closeNav)
+    sidebar?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeNav))
+    if (sidebar && activeSidebarLink) {
+      const linkTop = activeSidebarLink.offsetTop
+      const targetTop = linkTop - sidebar.clientHeight / 2 + activeSidebarLink.clientHeight / 2
+      sidebar.scrollTop = Math.max(0, targetTop)
+    }
+
+    const toc = document.getElementById('page-toc')
+    const tocPanel = document.querySelector('.toc-panel')
+    const headings = Array.from(document.querySelectorAll('.content-card h2, .content-card h3'))
+    if (toc && headings.length > 1) {
+      headings.forEach((heading) => {
+        const link = document.createElement('a')
+        link.href = `#${heading.id}`
+        link.textContent = heading.textContent || ''
+        link.className = heading.tagName === 'H3' ? 'toc-h3' : 'toc-h2'
+        toc.appendChild(link)
+      })
+    } else {
+      tocPanel?.classList.add('empty')
+    }
+
+    document.querySelectorAll('pre[data-code]').forEach((pre) => {
+      const button = document.createElement('button')
+      button.className = 'copy-code'
+      button.type = 'button'
+      button.textContent = 'Copy'
+      pre.appendChild(button)
+      button.addEventListener('click', async () => {
+        const code = pre.dataset.code || ''
+        let copied = false
+
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(code)
+            copied = true
+          }
+        } catch {
+          copied = false
+        }
+
+        if (!copied) {
+          const textarea = document.createElement('textarea')
+          textarea.value = code
+          textarea.setAttribute('readonly', '')
+          textarea.style.position = 'fixed'
+          textarea.style.left = '-9999px'
+          document.body.appendChild(textarea)
+          textarea.select()
+          copied = document.execCommand('copy')
+          textarea.remove()
+        }
+
+        button.textContent = copied ? 'Copied' : 'Failed'
+        window.setTimeout(() => { button.textContent = 'Copy' }, 1200)
+      })
+    })
+
+    const search = document.getElementById('docs-search')
+    const results = document.getElementById('search-results')
+    search?.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase()
+      if (!query || !results) {
+        results.hidden = true
+        return
+      }
+      const matches = searchPages
+        .filter((page) => `${page.title} ${page.section}`.toLowerCase().includes(query))
+        .slice(0, 8)
+
+      results.replaceChildren()
+      matches.forEach((page) => {
+        const link = document.createElement('a')
+        const section = document.createElement('span')
+        link.href = page.url
+        section.textContent = page.section
+        link.appendChild(section)
+        link.appendChild(document.createTextNode(page.title))
+        results.appendChild(link)
+      })
+      results.hidden = matches.length === 0
+    })
+  })();</script>  </body></html>
