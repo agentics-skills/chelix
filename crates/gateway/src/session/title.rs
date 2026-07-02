@@ -18,6 +18,11 @@ use crate::{
 
 /// Minimum number of messages before title generation fires (1 user + 1 assistant).
 const MIN_MESSAGES_FOR_TITLE: usize = 2;
+const MAIN_SESSION_KEY: &str = "main";
+
+fn is_reserved_main_session(session_key: &str) -> bool {
+    session_key == MAIN_SESSION_KEY
+}
 
 /// Generate and persist a session title if the session has no label yet.
 ///
@@ -62,6 +67,11 @@ pub(crate) async fn generate_title_for_session(
     state: &Arc<GatewayState>,
     session_key: &str,
 ) -> Result<Option<String>> {
+    if is_reserved_main_session(session_key) {
+        debug!(session = %session_key, "auto-title: reserved main session, skipping");
+        return Ok(None);
+    }
+
     let Some(session_store) = state.services.session_store.as_ref() else {
         return Ok(None);
     };
@@ -286,6 +296,38 @@ mod tests {
             .unwrap_err();
 
         assert!(err.to_string().contains("provider unavailable"));
+    }
+
+    #[tokio::test]
+    async fn generate_title_for_session_skips_main_session() {
+        let (state, _dir) = test_state(Arc::new(MockTitleProvider {
+            result: Ok("Should Not Be Used"),
+        }))
+        .await;
+        let metadata = state.services.session_metadata.as_ref().unwrap();
+        let store = state.services.session_store.as_ref().unwrap();
+
+        metadata.upsert("main", None).await.unwrap();
+        store
+            .append(
+                "main",
+                &serde_json::json!({"role": "user", "content": "How do I configure Moltis?"}),
+            )
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &serde_json::json!({"role": "assistant", "content": "Open the settings page."}),
+            )
+            .await
+            .unwrap();
+
+        let title = generate_title_for_session(&state, "main").await.unwrap();
+
+        assert_eq!(title, None);
+        let label = metadata.get("main").await.and_then(|entry| entry.label);
+        assert_eq!(label, None);
     }
 
     #[tokio::test]
