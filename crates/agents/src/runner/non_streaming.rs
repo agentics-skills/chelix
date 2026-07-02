@@ -28,7 +28,7 @@ use super::{
     dispatch_before_agent_start_hook, empty_tool_name_retry_prompt,
     explicit_shell_command_from_user_content, find_empty_tool_name_call, finish_agent_run,
     has_named_tool_call, is_substantive_answer_text, log_tool_argument_diagnostic,
-    record_answer_text, resolve_tool_lookup,
+    public_tool_arguments, record_answer_text, resolve_tool_lookup,
     retry::{
         RATE_LIMIT_MAX_RETRIES, is_context_window_error, next_retry_delay_ms,
         resolve_agent_max_iterations,
@@ -617,10 +617,13 @@ pub async fn run_agent_loop_with_context_and_limits(
                 // the concurrent batch completes (handled in the result loop).
                 if validation_error.is_none() {
                     if let Some(cb) = on_event {
+                        // Emit only the caller-visible arguments: `args` is
+                        // enriched with the internal `_`-prefixed execution
+                        // context, which must never surface in the UI event.
                         cb(RunnerEvent::ToolCallStart {
                             id: tc.id.clone(),
                             name: tc.name.clone(),
-                            arguments: args.clone(),
+                            arguments: public_tool_arguments(&args),
                             metadata: tc.metadata.clone(),
                         });
                     }

@@ -212,6 +212,32 @@ pub(crate) fn sanitize_tool_name(name: &str) -> Cow<'_, str> {
     }
 }
 
+/// Produce the tool arguments that are safe to surface to observers (UI event
+/// stream, transcripts).
+///
+/// The runner enriches each tool call's arguments with an internal execution
+/// context (session key, channel binding, connection id, accept-language)
+/// before dispatch. Those keys are all `_`-prefixed by convention (mirroring
+/// the MCP bridge contract in `moltis-mcp`'s `tool_bridge`) and are meant only
+/// for tool implementations, never for humans. Emitting them in
+/// `RunnerEvent::ToolCallStart` leaks browser/session metadata into the UI
+/// tool-call bubble title, so strip every `_`-prefixed key here.
+///
+/// Non-object values are returned unchanged (a defensive no-op).
+pub(crate) fn public_tool_arguments(args: &serde_json::Value) -> serde_json::Value {
+    match args.as_object() {
+        Some(obj) => {
+            let cleaned: serde_json::Map<String, serde_json::Value> = obj
+                .iter()
+                .filter(|(key, _)| !key.starts_with('_'))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect();
+            serde_json::Value::Object(cleaned)
+        },
+        None => args.clone(),
+    }
+}
+
 fn build_after_llm_call_payload(
     session_key: &str,
     provider: &str,
@@ -712,5 +738,43 @@ pub(crate) fn apply_loop_detector_intervention(
             messages.push(ChatMessage::user(format_strip_tools_message()));
             *strip_tools_next_iter = true;
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::public_tool_arguments, serde_json::json};
+
+    #[test]
+    fn public_tool_arguments_strips_internal_context_keys() {
+        let enriched = json!({
+            "query": "exec",
+            "name": "exec",
+            "_session_key": "session:abc",
+            "_channel": { "session_kind": "web", "surface": "web" },
+            "_conn_id": "c3a84311",
+            "_accept_language": "en-US,en;q=0.9",
+        });
+
+        let cleaned = public_tool_arguments(&enriched);
+        let Some(obj) = cleaned.as_object() else {
+            panic!("cleaned args stay an object");
+        };
+
+        // Internal execution context must not surface to observers.
+        assert!(obj.keys().all(|k| !k.starts_with('_')));
+        // Genuine LLM-provided arguments are preserved verbatim.
+        assert_eq!(obj.get("query"), Some(&json!("exec")));
+        assert_eq!(obj.get("name"), Some(&json!("exec")));
+        assert_eq!(obj.len(), 2);
+    }
+
+    #[test]
+    fn public_tool_arguments_passes_through_non_objects() {
+        let scalar = json!("just a string");
+        assert_eq!(public_tool_arguments(&scalar), scalar);
+
+        let array = json!([1, 2, 3]);
+        assert_eq!(public_tool_arguments(&array), array);
     }
 }

@@ -40,8 +40,8 @@ pub(crate) use helpers::{
     dispatch_before_agent_start_hook, empty_tool_name_retry_prompt,
     enforce_tool_result_context_budget, explicit_shell_command_from_user_content,
     find_empty_tool_name_call, finish_agent_run, has_named_tool_call, is_substantive_answer_text,
-    log_tool_argument_diagnostic, record_answer_text, resolve_tool_lookup, sanitize_tool_name,
-    streaming_tool_call_message_content,
+    log_tool_argument_diagnostic, public_tool_arguments, record_answer_text, resolve_tool_lookup,
+    sanitize_tool_name, streaming_tool_call_message_content,
 };
 
 // Items only consumed by test submodules (`tests`, `tests_legacy`).
