@@ -1,13 +1,13 @@
 # Installation
 
-Moltis is distributed as a single self-contained binary. Choose the installation method that works best for your setup.
+Chelix is distributed as a single self-contained binary. Choose the installation method that works best for your setup.
 
 ## Quick Install (Recommended)
 
 The fastest way to get started on macOS or Linux:
 
 ```bash
-curl -fsSL https://www.moltis.org/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/install.sh | sh
 ```
 
 This downloads the latest release for your platform and installs it to `~/.local/bin`.
@@ -66,7 +66,7 @@ Multi-architecture images (amd64/arm64) are published to GitHub Container Regist
 docker pull ghcr.io/moltis-org/moltis:latest
 ```
 
-See [Docker Deployment](docker.md) for full instructions on running Moltis in a container.
+See [Docker Deployment](docker.md) for full instructions on running Chelix in a container.
 
 ## Build from Source
 
@@ -80,8 +80,8 @@ See [Docker Deployment](docker.md) for full instructions on running Moltis in a 
 ### Clone and Build
 
 ```bash
-git clone https://github.com/moltis-org/moltis.git
-cd moltis
+git clone https://github.com/agentics-skills/chelix.git
+cd chelix
 just build-css           # Build Tailwind CSS for the web UI
 just build-release       # Build in release mode
 ```
@@ -97,12 +97,12 @@ The binary will be at `target/release/moltis`.
 ### Install via Cargo
 
 ```bash
-cargo install moltis --git https://github.com/moltis-org/moltis
+cargo install moltis --git https://github.com/agentics-skills/chelix
 ```
 
 ## First Run
 
-After installation, start Moltis:
+After installation, start Chelix:
 
 ```bash
 moltis
@@ -115,11 +115,11 @@ On first launch:
 3. Start chatting!
 
 ```admonish tip
-Moltis picks a random available port on first install to avoid conflicts. The port is saved in your config and reused on subsequent runs.
+Chelix picks a random available port on first install to avoid conflicts. The port is saved in your config and reused on subsequent runs.
 ```
 
 ```admonish note
-Authentication is only required when accessing Moltis from a non-localhost address (e.g., over the network). When this happens, a one-time setup code is printed to the terminal for initial authentication setup.
+Authentication is only required when accessing Chelix from a non-localhost address (e.g., over the network). When this happens, a one-time setup code is printed to the terminal for initial authentication setup.
 ```
 
 ## Verify Installation
@@ -155,7 +155,7 @@ brew uninstall moltis
 
 ### Remove Data
 
-Moltis stores data in two directories:
+Chelix stores data in two directories:
 
 ```bash
 # Configuration

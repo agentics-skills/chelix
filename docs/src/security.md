@@ -1,12 +1,12 @@
 # Security Architecture
 
-Moltis is designed with a defense-in-depth security model. This document
+Chelix is designed with a defense-in-depth security model. This document
 explains the key security features and provides guidance for production
 deployments.
 
 ## Overview
 
-Moltis runs AI agents that can execute code and interact with external systems.
+Chelix runs AI agents that can execute code and interact with external systems.
 This power requires multiple layers of protection:
 
 1. **Human-in-the-loop approval** for dangerous commands
@@ -21,7 +21,7 @@ drift re-trust, dependency install guards, kill switch, audit log), see
 
 ## Command Execution Approval
 
-By default, Moltis requires explicit user approval before executing potentially
+By default, Chelix requires explicit user approval before executing potentially
 dangerous commands. This "human-in-the-loop" design ensures the AI cannot take
 destructive actions without consent.
 
@@ -56,7 +56,7 @@ cases. Only use `"never"` in fully automated, sandboxed environments.
 
 ### Built-in Dangerous Command Blocklist
 
-Even with `approval_mode = "never"` or `security_level = "full"`, Moltis
+Even with `approval_mode = "never"` or `security_level = "full"`, Chelix
 maintains a safety floor: a hardcoded set of regex patterns for the most
 critical destructive commands (e.g. `rm -rf /`, `git reset --hard`,
 `DROP TABLE`, `mkfs`, `terraform destroy`). Matching commands always require
@@ -110,7 +110,7 @@ network audit log for review.
 ## Channel Authorization
 
 Channels (Telegram, Slack, etc.) allow external parties to interact with your
-Moltis agent. This requires careful access control.
+Chelix agent. This requires careful access control.
 
 ### Sender Allowlisting
 
@@ -155,7 +155,7 @@ heartbeat) bypass this limit.
 
 ### Job Notifications
 
-When cron jobs are created, updated, or removed, Moltis broadcasts events:
+When cron jobs are created, updated, or removed, Chelix broadcasts events:
 
 - `cron.job.created` - A new job was created
 - `cron.job.updated` - An existing job was modified
@@ -201,7 +201,7 @@ The gateway API uses role-based access control with scopes:
 
 ### API Keys
 
-API keys authenticate external tools and scripts connecting to Moltis. Keys
+API keys authenticate external tools and scripts connecting to Chelix. Keys
 **must specify at least one scope** — keys without scopes are denied access
 (least-privilege by default).
 
@@ -295,7 +295,7 @@ certificates. The auto-generated certificate is intended for localhost and
 private-network access; importing the generated CA does not make the certificate
 valid for public IP addresses or domains that are not listed in its SANs. IP
 address URLs require a certificate with that address as an IP SAN; set
-`tls.public_ip` to include a direct-access VPS IP in Moltis' auto-generated
+`tls.public_ip` to include a direct-access VPS IP in Chelix's auto-generated
 certificate. Regular public TLS deployments should use a domain name. For VPS and other
 internet-facing deployments, terminate TLS at a reverse proxy or configure
 `tls.cert_path` and `tls.key_path` with a certificate issued for your public
@@ -326,7 +326,7 @@ unless you understand the risk.
 
 ## Authentication
 
-Moltis uses a unified auth gate that applies a single `check_auth()`
+Chelix uses a unified auth gate that applies a single `check_auth()`
 function to every request. This prevents split-brain bugs where different
 code paths disagree on auth status.
 
@@ -368,7 +368,7 @@ node, then close the window with `moltis node pairing disable`.
 
 ## HTTP Endpoint Throttling
 
-Moltis includes built-in per-IP endpoint throttling to reduce brute force
+Chelix includes built-in per-IP endpoint throttling to reduce brute force
 attempts and traffic spikes, but only when auth is required for the current
 request.
 
@@ -406,13 +406,13 @@ burst controls, geo rules, bot filtering).
 
 ## Reverse Proxy Deployments
 
-Running Moltis behind a reverse proxy (Caddy, nginx, Traefik, etc.)
+Running Chelix behind a reverse proxy (Caddy, nginx, Traefik, etc.)
 requires understanding how authentication interacts with loopback
 connections.
 
 ### The problem
 
-When Moltis binds to `127.0.0.1` and a proxy on the same machine
+When Chelix binds to `127.0.0.1` and a proxy on the same machine
 forwards traffic to it, **every** incoming TCP connection appears to
 originate from `127.0.0.1` — including requests from the public
 internet.  A naive "trust all loopback connections" check would bypass
@@ -423,9 +423,9 @@ This is the same class of vulnerability as
 which allowed one-click remote code execution on OpenClaw through
 authentication token exfiltration and cross-site WebSocket hijacking.
 
-### How Moltis handles it
+### How Chelix handles it
 
-Moltis uses the per-request `is_local_connection()` check described
+Chelix uses the per-request `is_local_connection()` check described
 above.  Most reverse proxies add forwarding headers or change the
 `Host` header, which automatically triggers the "remote" classification.
 
@@ -450,19 +450,19 @@ no loopback bypass, no exceptions.
    for all traffic regardless of `is_local_connection()`.
 
 3. **WebSocket proxying** must preserve browser origin host info
-   (`Host`, or `X-Forwarded-Host` if `Host` is rewritten). Moltis
+   (`Host`, or `X-Forwarded-Host` if `Host` is rewritten). Chelix
    validates same-origin on WebSocket upgrades to prevent cross-site
    WebSocket hijacking (CSWSH).
 
-4. **TLS termination** should happen at the proxy. Run Moltis with
+4. **TLS termination** should happen at the proxy. Run Chelix with
    `--no-tls` (or `MOLTIS_NO_TLS=true`) in this mode.
 
    If your browser is being redirected to `https://<domain>:13131`,
-   Moltis TLS is still enabled while your proxy upstream is plain HTTP.
+   Chelix TLS is still enabled while your proxy upstream is plain HTTP.
 
 5. **Advanced TLS upstream mode** (optional): if your proxy connects to
-   Moltis using HTTPS upstream (or TCP TLS passthrough), you may keep
-   Moltis TLS enabled. Set `MOLTIS_ALLOW_TLS_BEHIND_PROXY=true` to
+   Chelix using HTTPS upstream (or TCP TLS passthrough), you may keep
+   Chelix TLS enabled. Set `MOLTIS_ALLOW_TLS_BEHIND_PROXY=true` to
    acknowledge this non-default setup.
 
 ### Nginx (direct config example)
@@ -499,8 +499,8 @@ map $http_upgrade $connection_upgrade {
 
 If WebSockets fail behind NPM while HTTP works, ensure:
 
-- Moltis runs with `MOLTIS_BEHIND_PROXY=true`
-- For standard edge TLS termination, Moltis runs with `--no-tls`
+- Chelix runs with `MOLTIS_BEHIND_PROXY=true`
+- For standard edge TLS termination, Chelix runs with `--no-tls`
 - NPM preserves browser host/origin context
 
 Use this in NPM's **Advanced** field:
@@ -515,7 +515,7 @@ proxy_set_header Connection "upgrade";
 ```
 
 **Why `$http_host` instead of `$host`?** Nginx's `$host` strips the port,
-while `$http_host` preserves it. Moltis validates that the WebSocket `Origin`
+while `$http_host` preserves it. Chelix validates that the WebSocket `Origin`
 header matches the `Host` header (including port). On non-standard ports
 (e.g., `:444` instead of `:443`), using `$host` causes a mismatch and
 WebSocket connections are rejected with "cross-origin WebSocket upgrade".
@@ -523,7 +523,7 @@ WebSocket connections are rejected with "cross-origin WebSocket upgrade".
 Upstream scheme guidance:
 
 - **Edge TLS termination (most setups)**: proxy to `http://<moltis-host>:13131`
-  with Moltis started using `--no-tls`
+   with Chelix started using `--no-tls`
 - **HTTPS upstream / TLS passthrough**: proxy to `https://<moltis-host>:13131`
   and set `MOLTIS_ALLOW_TLS_BEHIND_PROXY=true`
 
@@ -544,7 +544,7 @@ For stable proxy deployments, set your public URL in `moltis.toml`:
 external_url = "https://chat.example.com"
 ```
 
-Moltis derives the WebAuthn RP ID (domain) and origin from this URL
+Chelix derives the WebAuthn RP ID (domain) and origin from this URL
 automatically. The `MOLTIS_EXTERNAL_URL` environment variable takes
 precedence over the config field, which is useful for container
 deployments:
@@ -575,7 +575,7 @@ Migration guidance when changing host/domain:
 
 ### 1. Enable Authentication
 
-By default, Moltis requires a password when accessed from non-localhost:
+By default, Chelix requires a password when accessed from non-localhost:
 
 ```toml
 [auth]
@@ -617,7 +617,7 @@ Watch for these suspicious patterns:
 
 ### 6. Network Segmentation
 
-Run Moltis on a private network or behind a reverse proxy with:
+Run Chelix on a private network or behind a reverse proxy with:
 
 - IP allowlisting
 - Rate limiting
@@ -632,12 +632,12 @@ disclosed.
 
 All release artifacts are signed with three independent methods:
 
-1. **[GitHub artifact attestations](https://github.com/moltis-org/moltis/attestations)**
+1. **[GitHub artifact attestations](https://github.com/agentics-skills/chelix/attestations)**
    (automated in CI) — cryptographic provenance records tied to the repository,
    workflow, and commit SHA; provides SLSA v1.0 Build Level 2 guarantees;
    verifiable with `gh attestation verify`
 2. **Sigstore keyless signing** (automated in CI) — proves the artifact was
-   built by the `moltis-org/moltis` GitHub Actions pipeline; recorded in
+   built by the `agentics-skills/chelix` GitHub Actions pipeline; recorded in
    Sigstore's Rekor transparency log
 3. **GPG signing** (maintainer's YubiKey hardware key) — proves a specific
    maintainer authorized the release

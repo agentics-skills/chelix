@@ -1,12 +1,12 @@
 # Cloud Deploy
 
-Moltis publishes a multi-arch Docker image (`linux/amd64` and `linux/arm64`)
+Chelix publishes a multi-arch Docker image (`linux/amd64` and `linux/arm64`)
 to `ghcr.io/moltis-org/moltis`. You can deploy it to any cloud provider that
 supports container images.
 
 ## Common configuration
 
-All cloud providers terminate TLS at the edge, so Moltis must run in plain
+All cloud providers terminate TLS at the edge, so Chelix must run in plain
 HTTP mode. The key settings are:
 
 | Setting | Value | Purpose |
@@ -20,11 +20,11 @@ HTTP mode. The key settings are:
 | `MOLTIS_PASSWORD` | Initial password | Set auth password via environment variable |
 
 ```admonish tip
-If requests to your domain are redirected to `:13131`, Moltis TLS is still
+If requests to your domain are redirected to `:13131`, Chelix TLS is still
 enabled behind a TLS-terminating proxy. Use `--no-tls` (or
 `MOLTIS_NO_TLS=true`).
 
-Only keep Moltis TLS enabled when your proxy talks HTTPS to Moltis (or uses
+Only keep Chelix TLS enabled when your proxy talks HTTPS to Chelix (or uses
 TCP TLS passthrough). In that case, set `MOLTIS_ALLOW_TLS_BEHIND_PROXY=true`.
 ```
 
@@ -33,21 +33,21 @@ TCP TLS passthrough). In that case, set `MOLTIS_ALLOW_TLS_BEHIND_PROXY=true`.
 Docker-in-Docker. To enable sandboxed command execution, configure a
 [remote sandbox backend](sandbox-remote.md) — set `VERCEL_TOKEN` for Vercel
 Firecracker microVMs, or `DAYTONA_API_KEY` for Daytona cloud sandboxes
-(including self-hosted). Moltis auto-detects these when no local Docker is
+(including self-hosted). Chelix auto-detects these when no local Docker is
 available.
 ```
 
 ### `MOLTIS_DEPLOY_PLATFORM`
 
 Set this to the name of your cloud provider (e.g. `flyio`, `digitalocean`,
-`render`). When set, Moltis hides local-only LLM providers
+`render`). When set, Chelix hides local-only LLM providers
 (local-llm and Ollama) from the provider setup page since they cannot run
 on cloud VMs. The included deploy templates for Fly.io, DigitalOcean, and
 Render already set this variable.
 
 ## ngrok
 
-Moltis can also expose a public HTTPS endpoint through ngrok without running
+Chelix can also expose a public HTTPS endpoint through ngrok without running
 an external `ngrok` binary. This is useful when you want a public callback
 URL or temporary team access from a local machine or private host.
 
@@ -79,7 +79,7 @@ Notes:
 
 ## Cloudflare Tunnel
 
-Moltis can start `cloudflared` and expose the gateway through a Cloudflare
+Chelix can start `cloudflared` and expose the gateway through a Cloudflare
 Tunnel. This is useful when your public DNS is already managed by Cloudflare or
 you want a stable HTTPS callback URL without opening inbound firewall ports.
 
@@ -99,12 +99,12 @@ Notes:
   opt out of `cloudflare-tunnel`.
 - Keep authentication enabled. A public tunnel with `auth.disabled = true`
   exposes the setup-required page until authentication is configured.
-- Set `hostname` when you know the public route so Moltis can update WebAuthn
+- Set `hostname` when you know the public route so Chelix can update WebAuthn
   passkey origins consistently.
 
 ## NetBird
 
-NetBird provides private mesh access similar to Tailscale Serve. Moltis detects
+NetBird provides private mesh access similar to Tailscale Serve. Chelix detects
 the local NetBird peer address and displays the private URL from Settings ->
 Remote Access.
 
@@ -120,12 +120,12 @@ ngrok, or Tailscale Funnel when you need a public HTTPS endpoint.
 
 ## Coolify (self-hosted, e.g. Hetzner)
 
-Coolify deployments can run Moltis with sandboxed exec tools, as long as the
+Coolify deployments can run Chelix with sandboxed exec tools, as long as the
 service mounts the host Docker socket.
 
-- Use [`examples/docker-compose.coolify.yml`](https://github.com/moltis-org/moltis/blob/main/examples/docker-compose.coolify.yml)
+- Use [`examples/docker-compose.coolify.yml`](https://github.com/agentics-skills/chelix/blob/master/examples/docker-compose.coolify.yml)
   as a starting point.
-- Run Moltis with `--no-tls` (Coolify terminates HTTPS at the proxy).
+- Run Chelix with `--no-tls` (Coolify terminates HTTPS at the proxy).
 - Set `MOLTIS_BEHIND_PROXY=true` so client IP/auth behavior is correct behind
   reverse proxying.
 - Mount `/var/run/docker.sock:/var/run/docker.sock` to enable container-backed
@@ -169,7 +169,7 @@ Then point a CNAME to `your-app.fly.dev`.
 
 ## DigitalOcean App Platform
 
-[![Deploy to DO](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/moltis-org/moltis/tree/main)
+[![Deploy to DO](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/agentics-skills/chelix/tree/master)
 
 Click the button above or create an app manually:
 
@@ -190,12 +190,12 @@ persistent storage, consider using a DigitalOcean Droplet with Docker instead.
 
 ## Render
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/moltis-org/moltis)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/agentics-skills/chelix)
 
 The repository includes a `render.yaml` blueprint. Click the button above or:
 
 1. Go to **Dashboard** > **New** > **Blueprint**
-2. Connect your fork of the Moltis repository
+2. Connect your fork of the Chelix repository
 3. Render will detect `render.yaml` and configure the service
 
 ### Configuration details
@@ -228,7 +228,7 @@ it at `/data`.
 ## OAuth Providers (OpenAI Codex, GitHub Copilot)
 
 OAuth providers that redirect to `localhost` (like OpenAI Codex) cannot
-complete the browser flow when Moltis runs on a remote server — `localhost`
+complete the browser flow when Chelix runs on a remote server — `localhost`
 on the user's browser points to their own machine, not the cloud instance.
 
 **Use the CLI to authenticate instead:**
@@ -245,7 +245,7 @@ docker exec -it <container> moltis auth login --provider openai-codex
 ```
 
 The CLI opens a browser on the machine where you run the command. If automatic
-callback capture fails, Moltis prompts you to paste the callback URL (or
+callback capture fails, Chelix prompts you to paste the callback URL (or
 `code#state`) directly in the terminal. After you log in, tokens are saved to
 the config volume and the running gateway picks them up automatically — no
 restart needed.
@@ -257,7 +257,7 @@ github.com), so it works from the web UI without this workaround.
 
 ## Authentication
 
-On first launch, Moltis requires a password or passkey to be set. In cloud
+On first launch, Chelix requires a password or passkey to be set. In cloud
 deployments the easiest approach is to set the `MOLTIS_PASSWORD` environment
 variable (or secret) before deploying. This pre-configures the password so the
 setup code flow is skipped.

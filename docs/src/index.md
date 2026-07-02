@@ -1,23 +1,25 @@
-# Moltis
+# Chelix
 
 ```admonish warning title="Alpha software: use with care"
-Running an AI assistant on your own machine or server is still new territory. Treat Moltis as alpha software: run it in isolated environments, review enabled tools/providers, keep secrets scoped and rotated, and avoid exposing it publicly without strong authentication and network controls.
+Running an AI assistant on your own machine or server is still new territory. Treat Chelix as alpha software: run it in isolated environments, review enabled tools/providers, keep secrets scoped and rotated, and avoid exposing it publicly without strong authentication and network controls.
 ```
 
 <div style="text-align: center; margin: 2em 0;">
 <strong style="font-size: 1.2em;">A secure persistent personal agent server written in Rust.<br>One binary, no runtime, no npm.</strong>
 </div>
 
-Moltis compiles your entire AI gateway — web UI, LLM providers, tools, and all assets — into a single self-contained executable. There's no Node.js to babysit, no `node_modules` to sync, no V8 garbage collector introducing latency spikes.
+> Chelix is a fork of [Moltis](https://github.com/moltis-org/moltis).
+
+Chelix compiles your entire AI gateway — web UI, LLM providers, tools, and all assets — into a single self-contained executable. There's no Node.js to babysit, no `node_modules` to sync, no V8 garbage collector introducing latency spikes.
 
 ```bash
 # Quick install (macOS / Linux)
-curl -fsSL https://www.moltis.org/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/install.sh | sh
 ```
 
-## Why Moltis?
+## Why Chelix?
 
-| Feature | Moltis | Other Solutions |
+| Feature | Chelix | Other Solutions |
 |---------|--------|-----------------|
 | **Deployment** | Single binary | Node.js + dependencies |
 | **Memory Safety** | Rust ownership | Garbage collection |
@@ -47,7 +49,7 @@ See the full list of [supported providers](providers.md).
 
 ```bash
 # Install
-curl -fsSL https://www.moltis.org/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/install.sh | sh
 
 # Run
 moltis
@@ -59,7 +61,7 @@ On first launch:
 3. Start chatting!
 
 ```admonish note
-Authentication is only required when accessing Moltis from a non-localhost address. On localhost, you can start using it immediately.
+Authentication is only required when accessing Chelix from a non-localhost address. On localhost, you can start using it immediately.
 ```
 
 → [Full Quickstart Guide](quickstart.md)
@@ -75,7 +77,7 @@ Authentication is only required when accessing Moltis from a non-localhost addre
                              │
                              ▼
         ┌───────────────────────────────┐
-        │       Moltis Gateway          │
+        │       Chelix Gateway          │
         │   ┌─────────┐ ┌───────────┐   │
         │   │  Agent  │ │   Tools   │   │
         │   │  Loop   │◄┤  Registry │   │
@@ -116,7 +118,7 @@ Authentication is only required when accessing Moltis from a non-localhost addre
 
 ## Security
 
-Moltis applies defense in depth:
+Chelix applies defense in depth:
 
 - **Authentication** — Password or passkey (WebAuthn) required for non-localhost access
 - **SSRF Protection** — Blocks requests to internal networks
@@ -127,9 +129,9 @@ Moltis applies defense in depth:
 
 ## Community
 
-- **GitHub**: [github.com/moltis-org/moltis](https://github.com/moltis-org/moltis)
-- **Issues**: [Report bugs](https://github.com/moltis-org/moltis/issues)
-- **Discussions**: [Ask questions](https://github.com/moltis-org/moltis/discussions)
+- **GitHub**: [github.com/agentics-skills/chelix](https://github.com/agentics-skills/chelix)
+- **Issues**: [Report bugs](https://github.com/agentics-skills/chelix/issues)
+- **Discussions**: [Ask questions](https://github.com/agentics-skills/chelix/discussions)
 
 ## License
 

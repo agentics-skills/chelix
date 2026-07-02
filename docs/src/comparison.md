@@ -1,20 +1,20 @@
 # Comparison
 
-How Moltis compares to the larger open-source personal agent projects: OpenClaw
+How Chelix compares to the larger open-source personal agent projects: OpenClaw
 and Hermes Agent.
 
 > **Disclaimer:** This page is based on source snapshots captured while writing:
 > OpenClaw [`90eb5b0`](https://github.com/openclaw/openclaw/commit/90eb5b073fd2d7d8e94b19708e3baceeb8811ca8)
 > from 2026-04-01, Hermes Agent
 > [`9f22977`](https://github.com/NousResearch/hermes-agent/commit/9f22977fc0d2d6de5ff4d0a1a8e4d4ae3a00ea52)
-> from 2026-04-20, and Moltis
-> [`5d044c6`](https://github.com/moltis-org/moltis/commit/5d044c62fd9d19264db0fc5705065f633d10a657)
-> from 2026-04-22. Projects move quickly, so check each repository for current
+> from 2026-04-20, and Chelix
+> [`919c4ce`](https://github.com/agentics-skills/chelix/commit/919c4ce287fc7911c34cda9620232e6102aec669)
+> from 2026-07-02. Projects move quickly, so check each repository for current
 > behavior before making a deployment decision.
 
 ## At a Glance
 
-| | [OpenClaw](https://github.com/openclaw/openclaw) | [Hermes Agent](https://github.com/NousResearch/hermes-agent) | **Moltis** |
+| | [OpenClaw](https://github.com/openclaw/openclaw) | [Hermes Agent](https://github.com/NousResearch/hermes-agent) | **Chelix** |
 |---|---|---|---|
 | Primary stack | TypeScript, with Swift/Kotlin companion apps | Python, with TypeScript TUI/web surfaces | **Rust** |
 | Main runtime | Node.js 22.16+/24 + npm/pnpm/bun | Python + uv/pip, optional Node UI pieces | **Single Rust binary** |
@@ -46,14 +46,14 @@ extensions, onboarding, and managed/workspace skills.
 Hermes Agent is Python-first. Its README centers the agent around a terminal
 interface, a messaging gateway, a closed learning loop, self-improving skills,
 agent-curated memory, session search, user modeling, cron scheduling, and
-cloud/serverless execution backends. Moltis has autonomous skill improvement
+cloud/serverless execution backends. Chelix has autonomous skill improvement
 too, so Hermes' sharper distinction is its CLI/research loop and broad terminal
 backend set. It also carries research-oriented pieces such as trajectory
 generation and RL environments.
 
-### Moltis, Rust-native persistent agent server
+### Chelix, Rust-native persistent agent server
 
-Moltis prioritizes a smaller trusted runtime, durable agent workflows, and
+Chelix prioritizes a smaller trusted runtime, durable agent workflows, and
 defense in depth. The Rust workspace is currently ~270K lines across 59 crates.
 The agent runner and model interface are ~7.5K lines, with provider
 implementations in ~19K more.
@@ -73,14 +73,14 @@ Key differences:
 - **Read-only OpenClaw import** for identity, providers, skills, memory,
   sessions, channels, and MCP config
 
-Moltis intentionally has a small unsafe surface, not a zero-unsafe entire
+Chelix intentionally has a small unsafe surface, not a zero-unsafe entire
 workspace. Unsafe code is isolated to Swift FFI, local model wrappers, and
 precompiled WASM/runtime boundaries. The core agent and gateway paths stay in
 safe Rust.
 
 ## Security Model
 
-| Aspect | OpenClaw | Hermes Agent | **Moltis** |
+| Aspect | OpenClaw | Hermes Agent | **Chelix** |
 |--------|----------|--------------|------------|
 | Code sandbox | App-level permissions and tool controls | Local/Docker/SSH/cloud terminal backends | Docker/Podman + Apple Container + WASM + Vercel + Daytona + remote sandboxes |
 | Secret handling | Environment/config/plugin paths | Config and provider credentials | `secrecy::Secret`, encrypted vault, redaction |
@@ -93,7 +93,7 @@ safe Rust.
 
 ## Local Checkout Snapshot
 
-| Metric | OpenClaw | Hermes Agent | **Moltis** |
+| Metric | OpenClaw | Hermes Agent | **Chelix** |
 |--------|----------|--------------|------------|
 | Main implementation LoC\* | ~1.0M TypeScript, ~89K Swift, ~25K Kotlin | ~144K Python, ~8K TypeScript | **~270K Rust** |
 | Main install path | `npm install -g openclaw` | `curl .../install.sh \| bash`, then `hermes` | **Install script, Homebrew, Docker, or Cargo** |
@@ -109,4 +109,4 @@ ranking projects.
 
 - [OpenClaw](https://github.com/openclaw/openclaw) and [OpenClaw docs](https://docs.openclaw.ai)
 - [Hermes Agent](https://github.com/NousResearch/hermes-agent) and [Hermes docs](https://hermes-agent.nousresearch.com/docs/)
-- [Moltis](https://github.com/moltis-org/moltis) and [Moltis docs](https://docs.moltis.org)
+- [Chelix](https://github.com/agentics-skills/chelix) and [Chelix docs](index.md)

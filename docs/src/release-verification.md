@@ -1,6 +1,6 @@
 # Release Verification
 
-Moltis releases use **multiple signing layers** to provide strong supply chain guarantees:
+Chelix releases use **multiple signing layers** to provide strong supply chain guarantees:
 
 | Method | Proves | Verification |
 |--------|--------|-------------|
@@ -10,7 +10,7 @@ Moltis releases use **multiple signing layers** to provide strong supply chain g
 | **SHA256/SHA512 checksums** | File integrity (no corruption/tampering in transit) | `sha256sum --check` |
 
 All attestations are publicly visible on the
-[repository attestations page](https://github.com/moltis-org/moltis/attestations).
+[repository attestations page](https://github.com/agentics-skills/chelix/attestations).
 
 ## Quick Verification
 
@@ -36,19 +36,19 @@ the [GitHub CLI](https://cli.github.com/):
 ```bash
 # Verify a downloaded binary
 gh attestation verify moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz \
-  -R moltis-org/moltis
+  -R agentics-skills/chelix
 
 # Verify a Docker image
 gh attestation verify oci://ghcr.io/moltis-org/moltis:VERSION \
-  -R moltis-org/moltis
+  -R agentics-skills/chelix
 
 # Verify an SBOM
 gh attestation verify moltis-sbom.spdx.json \
-  -R moltis-org/moltis
+  -R agentics-skills/chelix
 ```
 
 Browse all attestations at
-<https://github.com/moltis-org/moltis/attestations>.
+<https://github.com/agentics-skills/chelix/attestations>.
 
 ### Manual Verification
 
@@ -56,8 +56,8 @@ Browse all attestations at
 
 ```bash
 # Download the artifact and its checksum
-curl -LO https://github.com/moltis-org/moltis/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz
-curl -LO https://github.com/moltis-org/moltis/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sha256
+curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz
+curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sha256
 
 sha256sum --check moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sha256
 ```
@@ -78,7 +78,7 @@ curl -fsSL https://pen.so/gpg.asc | gpg --import
 gpg --fingerprint F7649BBF
 
 # Download the detached signature
-curl -LO https://github.com/moltis-org/moltis/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.asc
+curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.asc
 
 # Verify
 gpg --verify \
@@ -94,14 +94,14 @@ You should see `Good signature from ...` with the maintainer's identity.
 # Install cosign: https://docs.sigstore.dev/cosign/system_config/installation/
 
 # Download signature and certificate
-curl -LO https://github.com/moltis-org/moltis/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sig
-curl -LO https://github.com/moltis-org/moltis/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.crt
+curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sig
+curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.crt
 
 cosign verify-blob \
   --signature moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sig \
   --certificate moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.crt \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp 'https://github\.com/moltis-org/moltis/' \
+  --certificate-identity-regexp 'https://github\.com/agentics-skills/chelix/' \
   moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz
 ```
 
@@ -110,7 +110,7 @@ cosign verify-blob \
 ```bash
 cosign verify \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp 'https://github\.com/moltis-org/moltis/' \
+  --certificate-identity-regexp 'https://github\.com/agentics-skills/chelix/' \
   ghcr.io/moltis-org/moltis:VERSION
 ```
 
@@ -125,7 +125,7 @@ in GitHub's attestation ledger and verifiable with `gh attestation verify`.
 This provides SLSA v1.0 Build Level 2 guarantees.
 
 **Sigstore signatures** prove the artifact was built inside the
-`moltis-org/moltis` GitHub Actions workflow using OIDC-based keyless signing.
+`agentics-skills/chelix` GitHub Actions workflow using OIDC-based keyless signing.
 This guards against a compromised maintainer laptop — even if someone steals
 credentials, they cannot reproduce a valid Sigstore certificate from the CI
 environment. Signatures are recorded in Sigstore's Rekor transparency log.

@@ -1,9 +1,9 @@
 # Filesystem Tools
 
-Moltis ships six native filesystem tools that agents use for structured,
+Chelix ships six native filesystem tools that agents use for structured,
 typed file I/O: `Read`, `Write`, `Edit`, `MultiEdit`, `Glob`, and `Grep`.
 Their schemas match Claude Code exactly so LLMs trained on those tools
-work without adaptation. See [GitHub #657](https://github.com/moltis-org/moltis/issues/657)
+work without adaptation. See [GitHub #657](https://github.com/agentics-skills/chelix/issues/657)
 for background.
 
 Prefer these over shelling out via the `exec` tool running `cat` / `sed` /
@@ -242,5 +242,5 @@ the second big win (alongside model-quality improvements) that motivated
   structured payloads for each fs tool call, so policy hooks can inspect
   typed parameters instead of parsing shell strings.
 - [Sandbox](sandbox.md) — fs tools route through the sandbox when the
-  session is sandboxed. If no real sandbox backend is available, Moltis
+  session is sandboxed. If no real sandbox backend is available, Chelix
   warns at startup and the tools operate on the gateway host.

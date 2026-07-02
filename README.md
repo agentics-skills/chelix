@@ -1,17 +1,15 @@
 <div align="center">
 
-<a href="https://moltis.org"><img src="https://raw.githubusercontent.com/moltis-org/moltis/main/website/favicon.svg" alt="Moltis" width="64"></a>
+<a href="https://github.com/agentics-skills/chelix"><img src="https://raw.githubusercontent.com/moltis-org/moltis/main/website/favicon.svg" alt="Chelix" width="64"></a>
 
-# Moltis — A secure persistent personal agent server in Rust
+# Chelix — A secure persistent personal agent server in Rust
 
 One binary — sandboxed, secure, yours.
 
-[![CI](https://github.com/moltis-org/moltis/actions/workflows/ci.yml/badge.svg)](https://github.com/moltis-org/moltis/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/moltis-org/moltis/graph/badge.svg)](https://codecov.io/gh/moltis-org/moltis)
-[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json&style=flat&label=CodSpeed)](https://codspeed.io/moltis-org/moltis)
+[![CI](https://github.com/agentics-skills/chelix/actions/workflows/ci.yml/badge.svg)](https://github.com/agentics-skills/chelix/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/agentics-skills/chelix/graph/badge.svg)](https://codecov.io/gh/agentics-skills/chelix)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-1.91%2B-orange.svg)](https://www.rust-lang.org)
-[![Discord](https://img.shields.io/discord/1469505370169933837?color=5865F2&label=Discord&logo=discord&logoColor=white)](https://discord.gg/XnmrepsXp5)
 
 [Installation](#installation) • [Comparison](#comparison) • [Architecture](#architecture--crate-map) • [Security](#security) • [Features](#features) • [How It Works](#how-it-works) • [Contributing](CONTRIBUTING.md)
 
@@ -19,7 +17,9 @@ One binary — sandboxed, secure, yours.
 
 ---
 
-Moltis recently hit [the front page of Hacker News](https://news.ycombinator.com/item?id=46993587). Please [open an issue](https://github.com/moltis-org/moltis/issues) for any friction at all. I'm focused on making Moltis excellent.
+> Chelix is a fork of [Moltis](https://github.com/moltis-org/moltis).
+
+Please [open an issue](https://github.com/agentics-skills/chelix/issues) for any friction at all. I'm focused on making Chelix excellent.
 
 **Secure by design** — Your keys never leave your machine. Every command runs in a sandboxed container, never on your host.
 
@@ -33,7 +33,7 @@ Moltis recently hit [the front page of Hacker News](https://news.ycombinator.com
 
 ```bash
 # One-liner install script (macOS / Linux)
-curl -fsSL https://www.moltis.org/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/install.sh | sh
 
 # macOS / Linux via Homebrew
 brew install moltis-org/tap/moltis
@@ -42,12 +42,12 @@ brew install moltis-org/tap/moltis
 docker pull ghcr.io/moltis-org/moltis:latest
 
 # Or build from source
-cargo install moltis --git https://github.com/moltis-org/moltis
+cargo install moltis --git https://github.com/agentics-skills/chelix
 ```
 
 ## Comparison
 
-| | OpenClaw | Hermes Agent | **Moltis** |
+| | OpenClaw | Hermes Agent | **Chelix** |
 |---|---|---|---|
 | Primary stack | TypeScript + Swift/Kotlin companion apps | Python + TypeScript TUI/web surfaces | **Rust** |
 | Runtime | Node.js + npm/pnpm/bun | Python + uv/pip, optional Node UI pieces | **Single Rust binary** |
@@ -63,7 +63,7 @@ cargo install moltis --git https://github.com/moltis-org/moltis
 
 \* LoC measured with `tokei`, excluding `node_modules`, generated build output, `dist`, and `target`.
 
-> [Full comparison in the docs →](https://docs.moltis.org/comparison.html)
+> [Full comparison in the docs →](docs/src/comparison.md)
 
 ## Architecture — Crate Map
 
@@ -113,10 +113,10 @@ Use `--no-default-features --features lightweight` for constrained devices (Rasp
 - **SSRF protection** — DNS-resolved, blocks loopback/private/link-local
 - **Origin validation** — rejects cross-origin WebSocket upgrades
 - **Hook gating** — `BeforeToolCall` hooks can inspect/block any tool invocation
-- **Supply chain integrity** — [artifact attestations](https://github.com/moltis-org/moltis/attestations), Sigstore keyless signing, GPG signing (YubiKey), SHA-256/SHA-512 checksums
+- **Supply chain integrity** — [artifact attestations](https://github.com/agentics-skills/chelix/attestations), Sigstore keyless signing, GPG signing (YubiKey), SHA-256/SHA-512 checksums
 
-See [Security Architecture](https://docs.moltis.org/security.html) for details.
-Verify releases with `gh attestation verify <artifact> -R moltis-org/moltis` or see [Release Verification](https://docs.moltis.org/release-verification.html).
+See [Security Architecture](docs/src/security.md) for details.
+Verify releases with `gh attestation verify <artifact> -R agentics-skills/chelix` or see [Release Verification](docs/src/release-verification.md).
 
 ## Features
 
@@ -130,7 +130,7 @@ Verify releases with `gh attestation verify <artifact> -R moltis-org/moltis` or 
 
 ## How It Works
 
-Moltis is a **local-first persistent agent server** — a single Rust binary that
+Chelix is a **local-first persistent agent server** — a single Rust binary that
 sits between you and multiple LLM providers, keeps durable session state, and
 can meet you across channels without handing your data to a cloud relay.
 
@@ -169,7 +169,7 @@ can meet you across channels without handing your data to a cloud relay.
                └───────────────┘
 ```
 
-See [Quickstart](https://docs.moltis.org/quickstart.html) for gateway startup, message flow, sessions, and memory details.
+See [Quickstart](docs/src/quickstart.md) for gateway startup, message flow, sessions, and memory details.
 
 ## Getting Started
 
@@ -178,8 +178,8 @@ See [Quickstart](https://docs.moltis.org/quickstart.html) for gateway startup, m
 Requires [just](https://github.com/casey/just) (command runner) and Node.js (for Tailwind CSS).
 
 ```bash
-git clone https://github.com/moltis-org/moltis.git
-cd moltis
+git clone https://github.com/agentics-skills/chelix.git
+cd chelix
 just build-css                  # Build Tailwind CSS for the web UI
 just build-release              # Build in release mode
 cargo run --release --bin moltis
@@ -214,14 +214,14 @@ docker run -d \
 
 Open `https://localhost:13131` and complete the setup. For unattended Docker
 deployments, set `MOLTIS_PASSWORD`, `MOLTIS_PROVIDER`, and `MOLTIS_API_KEY`
-before first boot to skip the setup wizard. See [Docker docs](https://docs.moltis.org/docker.html)
+before first boot to skip the setup wizard. See [Docker docs](docs/src/docker.md)
 for Podman, OrbStack, TLS trust, and persistence details.
 
 ### Cloud Deployment
 
 | Provider | Deploy |
 |----------|--------|
-| DigitalOcean | [![Deploy to DO](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/moltis-org/moltis/tree/main) |
+| DigitalOcean | [![Deploy to DO](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/agentics-skills/chelix/tree/master) |
 
 **Fly.io** (CLI):
 
@@ -231,12 +231,12 @@ fly secrets set MOLTIS_PASSWORD="your-password"
 ```
 
 All cloud configs use `--no-tls` because the provider handles TLS termination.
-See [Cloud Deploy docs](https://docs.moltis.org/cloud-deploy.html) for details.
+See [Cloud Deploy docs](docs/src/cloud-deploy.md) for details.
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=moltis-org/moltis&type=date&legend=top-left)](https://www.star-history.com/#moltis-org/moltis&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/svg?repos=agentics-skills/chelix&type=date&legend=top-left)](https://www.star-history.com/#agentics-skills/chelix&type=date&legend=top-left)
 
 ## License
 
-MIT
+MIT — see [LICENSE.md](LICENSE.md).

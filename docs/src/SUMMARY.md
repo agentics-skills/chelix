@@ -26,7 +26,7 @@
 - [External Agents](external-agents.md)
 - [Memory](memory.md)
   - [Memory Surfaces](memory-surfaces.md)
-  - [Moltis vs OpenClaw](memory-comparison.md)
+  - [Chelix vs OpenClaw](memory-comparison.md)
 - [Hooks](hooks.md)
 - [Local LLMs](local-llm.md)
 - [Sandbox](sandbox.md)

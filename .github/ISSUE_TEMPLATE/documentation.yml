@@ -36,7 +36,7 @@ body:
     attributes:
       label: Where did you find this?
       description: A URL or file path, if applicable.
-      placeholder: "e.g., https://docs.moltis.org/configuration.html"
+      placeholder: "e.g., https://github.com/agentics-skills/chelix/blob/master/docs/src/configuration.md"
 
   - type: textarea
     id: issue

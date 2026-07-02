@@ -1,6 +1,6 @@
 # Webhooks
 
-Moltis can receive inbound HTTP webhooks from external services and run AI
+Chelix can receive inbound HTTP webhooks from external services and run AI
 agents in response. Each webhook delivery becomes a persistent chat session
 that can be inspected and continued from the web UI.
 
@@ -34,7 +34,7 @@ External Service (GitHub, Stripe, …)
 ```
 
 1. The external service POSTs to the webhook's public endpoint.
-2. Moltis verifies authentication, checks the event filter, and deduplicates.
+2. Chelix verifies authentication, checks the event filter, and deduplicates.
 3. The request is acknowledged with `202 Accepted` immediately.
 4. A background worker normalizes the payload, creates a chat session, and runs
    the bound agent.
@@ -118,13 +118,13 @@ provides an event catalog for filtering.
 GitHub webhooks use HMAC-SHA256 signature verification. When you create a
 webhook with the GitHub profile:
 
-1. Moltis generates a random secret (or you provide one).
+1. Chelix generates a random secret (or you provide one).
 2. In your GitHub repo, go to **Settings → Webhooks → Add webhook**.
-3. Set the payload URL to your Moltis webhook endpoint.
+3. Set the payload URL to your Chelix webhook endpoint.
 4. Set content type to `application/json`.
 5. Paste the secret.
 6. Select the events you want to trigger (or choose "Send me everything" and
-   filter in Moltis).
+  filter in Chelix).
 
 **Event types:**
 
@@ -149,7 +149,7 @@ prompt — keeping token usage reasonable.
 GitLab webhooks use a static token in the `X-Gitlab-Token` header.
 
 1. In your GitLab project, go to **Settings → Webhooks**.
-2. Set the URL to your Moltis webhook endpoint.
+2. Set the URL to your Chelix webhook endpoint.
 3. Paste the secret token.
 4. Select trigger events.
 
@@ -171,9 +171,9 @@ Stripe webhooks use a composite signature in the `Stripe-Signature` header
 with timestamp validation (5-minute tolerance).
 
 1. In the Stripe Dashboard, go to **Developers → Webhooks → Add endpoint**.
-2. Set the endpoint URL to your Moltis webhook endpoint.
+2. Set the endpoint URL to your Chelix webhook endpoint.
 3. Select events to listen to.
-4. Copy the signing secret (`whsec_...`) into Moltis.
+4. Copy the signing secret (`whsec_...`) into Chelix.
 
 **Event types:**
 
@@ -297,11 +297,11 @@ Received: 2026-04-07T12:34:56Z
 
 GitHub event: pull_request.opened
 
-Repository: moltis-org/moltis
+Repository: agentics-skills/chelix
 PR #567: "Add webhook support"
   Author: @penso
   Branch: feature/webhooks → main
-  URL: https://github.com/moltis-org/moltis/pull/567
+  URL: https://github.com/agentics-skills/chelix/pull/567
   Draft: false
 
 Description:
@@ -370,7 +370,7 @@ deduplicated events do not count against rate limits.
 
 ```admonish warning title="Secret Management"
 Without Vault, webhook secrets and API tokens remain plaintext in the SQLite
-database. Enable Moltis [Vault](vault.md) if these secrets are going to live on
+database. Enable Chelix [Vault](vault.md) if these secrets are going to live on
 disk. Rotate secrets periodically.
 ```
 
@@ -406,7 +406,7 @@ as normal sessions.
 
 ## Crash Recovery
 
-On startup, Moltis scans for deliveries with status `received` or `queued` and
+On startup, Chelix scans for deliveries with status `received` or `queued` and
 re-queues them for processing. Accepted deliveries are not silently dropped on
 restart.
 
@@ -445,12 +445,12 @@ A complete example of setting up a webhook that reviews pull requests:
 
 2. **Register in GitHub**:
    - Repo → Settings → Webhooks → Add webhook
-   - Payload URL: copy from Moltis
+  - Payload URL: copy from Chelix
    - Content type: `application/json`
-   - Secret: copy from Moltis
+  - Secret: copy from Chelix
    - Events: "Pull requests"
 
-3. **Test it**: open a PR — a new session appears in Moltis with the agent's
+3. **Test it**: open a PR — a new session appears in Chelix with the agent's
    review.
 
 ## Example: Stripe Payment Handler
@@ -470,9 +470,9 @@ A complete example of setting up a webhook that reviews pull requests:
 
 2. **Register in Stripe**:
    - Dashboard → Developers → Webhooks → Add endpoint
-   - Endpoint URL: copy from Moltis
+  - Endpoint URL: copy from Chelix
    - Events: select the matching events
-   - Copy signing secret (`whsec_...`) into Moltis
+  - Copy signing secret (`whsec_...`) into Chelix
 
 ## Metrics
 
@@ -496,7 +496,7 @@ takes seconds.
 through a template and forwarded directly to a channel. Zero LLM tokens,
 sub-second delivery.
 
-This turns Moltis into a **webhook proxy**: external services POST events, and
+This turns Chelix into a **webhook proxy**: external services POST events, and
 formatted messages appear in your Telegram, Discord, Slack, or any other
 configured channel.
 

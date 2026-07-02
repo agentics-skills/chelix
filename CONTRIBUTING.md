@@ -1,4 +1,4 @@
-# Contributing to Moltis
+# Contributing to Chelix
 
 Thanks for contributing. This project is a local-first AI gateway written in Rust, and we welcome fixes, features, docs improvements, and test coverage.
 
@@ -26,15 +26,15 @@ Prerequisites:
 Quick start:
 
 ```bash
-git clone https://github.com/moltis-org/moltis.git
-cd moltis
+git clone https://github.com/agentics-skills/chelix.git
+cd chelix
 cargo build
 cargo run
 ```
 
 ## Development Workflow
 
-1. Create a branch from `main`.
+1. Create a branch from `master`.
 2. Make your change, keeping commits scoped and readable.
 3. Add/update tests.
 4. Run validation locally.
@@ -76,7 +76,7 @@ just changelog-unreleased
 Optional local guard check (matches CI behavior):
 
 ```bash
-bash ./scripts/check-changelog-guard.sh origin/main HEAD
+bash ./scripts/check-changelog-guard.sh origin/master HEAD
 ```
 
 For web UI changes, run e2e tests:

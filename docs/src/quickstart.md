@@ -1,11 +1,11 @@
 # Quickstart
 
-Get Moltis running in under 5 minutes.
+Get Chelix running in under 5 minutes.
 
 ## 1. Install
 
 ```bash
-curl -fsSL https://www.moltis.org/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/install.sh | sh
 ```
 
 Or via Homebrew:
@@ -23,7 +23,7 @@ moltis
 You'll see output like:
 
 ```
-🚀 Moltis gateway starting...
+🚀 Chelix gateway starting...
 🌐 Open http://localhost:13131 in your browser
 ```
 
@@ -33,7 +33,7 @@ You need an LLM provider configured to chat. The fastest options:
 
 ### Option A: API Key (Anthropic, OpenAI, Gemini, etc.)
 
-1. Set an API key as an environment variable and restart Moltis:
+1. Set an API key as an environment variable and restart Chelix:
    ```bash
    export ANTHROPIC_API_KEY="sk-ant-..."   # Anthropic
    export OPENAI_API_KEY="sk-..."          # OpenAI
@@ -45,13 +45,13 @@ Or configure via the web UI: **Settings** → **Providers** → enter your API k
 
 ### Option B: OAuth (Codex / Copilot)
 
-1. In Moltis, go to **Settings** → **Providers**
+1. In Chelix, go to **Settings** → **Providers**
 2. Click **OpenAI Codex** or **GitHub Copilot** → **Connect**
 3. Complete the OAuth flow
 
 ### Option C: Local LLM (Offline)
 
-1. In Moltis, go to **Settings** → **Providers**
+1. In Chelix, go to **Settings** → **Providers**
 2. Click **Local LLM**
 3. Choose a model and save
 
@@ -79,7 +79,7 @@ def is_prime(n):
 
 ### Enable Tool Use
 
-Moltis can execute code, browse the web, and more. Tools are enabled by default with sandbox protection.
+Chelix can execute code, browse the web, and more. Tools are enabled by default with sandbox protection.
 
 Try:
 
@@ -93,14 +93,14 @@ Chat with your agent from anywhere:
 
 1. Create a bot via [@BotFather](https://t.me/BotFather)
 2. Copy the bot token
-3. In Moltis: **Settings** → **Telegram** → Enter token → **Save**
+3. In Chelix: **Settings** → **Telegram** → Enter token → **Save**
 4. Message your bot!
 
 ### Connect Discord
 
 1. Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications)
 2. Enable **Message Content Intent** and copy the bot token
-3. In Moltis: **Settings** → **Channels** → **Connect Discord** → Enter token → **Connect**
+3. In Chelix: **Settings** → **Channels** → **Connect Discord** → Enter token → **Connect**
 4. Invite the bot to your server and @mention it!
 
 → [Full Discord setup guide](discord.md)
@@ -152,6 +152,6 @@ Add knowledge by placing Markdown files in `~/.moltis/memory/`.
 
 ## Getting Help
 
-- **Documentation**: [docs.moltis.org](https://docs.moltis.org)
-- **GitHub Issues**: [github.com/moltis-org/moltis/issues](https://github.com/moltis-org/moltis/issues)
-- **Discussions**: [github.com/moltis-org/moltis/discussions](https://github.com/moltis-org/moltis/discussions)
+- **Documentation**: [Chelix docs](index.md)
+- **GitHub Issues**: [github.com/agentics-skills/chelix/issues](https://github.com/agentics-skills/chelix/issues)
+- **Discussions**: [github.com/agentics-skills/chelix/discussions](https://github.com/agentics-skills/chelix/discussions)
