@@ -137,7 +137,6 @@ export interface RpcMethodMap {
 	// ── Providers ───────────────────────────────────────────────
 	"providers.add_custom": unknown;
 	"providers.available": unknown;
-	"providers.local.configure": unknown;
 	"providers.oauth.complete": unknown;
 	"providers.oauth.start": unknown;
 	"providers.oauth.status": unknown;

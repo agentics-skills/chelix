@@ -105,7 +105,7 @@ Use `--no-default-features --features lightweight` for constrained devices (Rasp
 
 ## Security
 
-- **Small unsafe surface** — core agent/gateway code stays safe Rust; unsafe is isolated to Swift FFI, local model wrappers, and precompiled WASM boundaries
+- **Small unsafe surface** — core agent/gateway code stays safe Rust; unsafe is isolated to Swift FFI and precompiled WASM boundaries
 - **Sandboxed execution** — Docker + Apple Container, per-session isolation
 - **Secret handling** — `secrecy::Secret`, zeroed on drop, redacted from tool output
 - **Authentication** — password + passkey (WebAuthn), rate-limited, per-IP throttle

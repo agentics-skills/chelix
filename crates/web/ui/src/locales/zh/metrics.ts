@@ -80,7 +80,6 @@ export default {
 		wsActive: "活跃 WebSocket",
 		activeSessions: "活跃会话",
 		processMemory: "进程内存",
-		localLlamaCpp: "本地 llama.cpp",
 		toolExecutions: "工具执行",
 		mcpCalls: "MCP 调用",
 	},

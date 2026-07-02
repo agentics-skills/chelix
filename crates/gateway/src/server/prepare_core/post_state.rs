@@ -37,7 +37,7 @@ use crate::{
 use crate::tailscale::{TailscaleMode, validate_tailscale_config};
 
 use crate::server::{
-    helpers::{StartupMemProbe, env_flag_enabled, instance_slug, restore_saved_local_llm_models},
+    helpers::{StartupMemProbe, env_flag_enabled, instance_slug},
     prepared::PreparedGatewayCore,
     startup::deferred_openclaw_status,
 };
@@ -98,8 +98,6 @@ pub(super) struct PostStateInputs {
     pub slack_webhook_plugin: Arc<tokio::sync::RwLock<moltis_slack::SlackPlugin>>,
     #[cfg(feature = "telephony")]
     pub telephony_webhook_plugin: Arc<tokio::sync::RwLock<moltis_telephony::TelephonyPlugin>>,
-    #[cfg(feature = "local-llm")]
-    pub local_llm_service: Option<Arc<crate::local_llm_setup::LiveLocalLlmService>>,
     #[cfg(feature = "vault")]
     pub vault: Option<Arc<moltis_vault::Vault>>,
     #[cfg(feature = "trusted-network")]
@@ -285,8 +283,6 @@ pub(super) async fn complete_startup(
         slack_webhook_plugin,
         #[cfg(feature = "telephony")]
         telephony_webhook_plugin,
-        #[cfg(feature = "local-llm")]
-        local_llm_service,
         #[cfg(feature = "vault")]
         vault,
         #[cfg(feature = "trusted-network")]
@@ -480,20 +476,6 @@ pub(super) async fn complete_startup(
 
     let _ = deferred_state.set(Arc::clone(&state));
 
-    #[cfg(feature = "local-llm")]
-    if let Some(svc) = &local_llm_service {
-        svc.set_state(Arc::clone(&state));
-
-        // Register existing local models with the lifecycle manager and start idle checker.
-        let global_timeout = config
-            .providers
-            .get("local")
-            .or_else(|| config.providers.get("local-llm"))
-            .and_then(|e| e.idle_timeout_secs);
-        svc.populate_lifecycle(global_timeout).await;
-        svc.lifecycle().spawn_idle_checker();
-    }
-
     provider_setup_service.set_broadcaster(Arc::new(crate::provider_setup::GatewayBroadcaster {
         state: Arc::clone(&state),
     }));
@@ -557,14 +539,6 @@ pub(super) async fn complete_startup(
         let provider_config_for_registry_rebuild = provider_config_for_startup_discovery.clone();
         let global_cw_overrides = moltis_providers::extract_cw_overrides(&config.models);
         let env_overrides_for_startup_discovery = config_env_overrides.clone();
-        #[cfg(feature = "local-llm")]
-        let local_llm_svc_for_discovery = local_llm_service.clone();
-        #[cfg(feature = "local-llm")]
-        let global_timeout_for_discovery = config
-            .providers
-            .get("local")
-            .or_else(|| config.providers.get("local-llm"))
-            .and_then(|e| e.idle_timeout_secs);
         tokio::spawn(async move {
             let startup_discovery_started = std::time::Instant::now();
             let prefetched = match tokio::task::spawn_blocking(move || {
@@ -583,7 +557,7 @@ pub(super) async fn complete_startup(
             };
 
             let prefetched_models: usize = prefetched.values().map(Vec::len).sum();
-            let mut new_registry = match tokio::task::spawn_blocking(move || {
+            let new_registry = match tokio::task::spawn_blocking(move || {
                 ProviderRegistry::from_config_with_prefetched(
                     &provider_config_for_registry_rebuild,
                     &env_overrides_for_startup_discovery,
@@ -603,23 +577,11 @@ pub(super) async fn complete_startup(
                 },
             };
 
-            restore_saved_local_llm_models(
-                &mut new_registry,
-                &provider_config_for_startup_discovery,
-            );
             let provider_summary = new_registry.provider_summary();
             let model_count = new_registry.list_models().len();
             {
                 let mut reg = registry_for_startup_discovery.write().await;
                 *reg = new_registry;
-            }
-
-            // Re-populate the lifecycle manager so it tracks the same
-            // Arcs the rebuilt registry uses for inference.
-            #[cfg(feature = "local-llm")]
-            if let Some(svc) = &local_llm_svc_for_discovery {
-                svc.lifecycle().clear().await;
-                svc.populate_lifecycle(global_timeout_for_discovery).await;
             }
 
             info!(

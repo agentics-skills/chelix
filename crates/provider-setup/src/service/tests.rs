@@ -784,10 +784,6 @@ async fn available_hides_local_providers_on_cloud() {
         .collect();
 
     assert!(
-        !names.contains(&"local-llm"),
-        "local-llm should be hidden on cloud: {names:?}"
-    );
-    assert!(
         !names.contains(&"ollama"),
         "ollama should be hidden on cloud: {names:?}"
     );

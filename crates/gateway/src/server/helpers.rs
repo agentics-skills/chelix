@@ -620,24 +620,3 @@ pub(crate) async fn start_skill_hot_reload_watcher() -> anyhow::Result<(
 
     Ok(moltis_skills::watcher::SkillWatcher::start(watch_specs)?)
 }
-
-// ── Local-LLM model restoration ─────────────────────────────────────────────
-
-pub(crate) fn restore_saved_local_llm_models(
-    registry: &mut ProviderRegistry,
-    providers_config: &moltis_config::schema::ProvidersConfig,
-) {
-    #[cfg(feature = "local-llm")]
-    {
-        if !providers_config.is_enabled("local") {
-            return;
-        }
-
-        crate::local_llm_setup::register_saved_local_models(registry, providers_config);
-    }
-
-    #[cfg(not(feature = "local-llm"))]
-    {
-        let _ = (registry, providers_config);
-    }
-}

@@ -54,62 +54,8 @@ export interface AddCustomPayload {
 	displayName: string;
 }
 
-export interface SystemInfo {
-	totalRamGb: number;
-	memoryTier: string;
-	hasGpu: boolean;
-	isAppleSilicon: boolean;
-	recommendedBackend: string;
-	availableBackends: BackendInfo[];
-	backendNote?: string;
-}
-
-export interface BackendInfo {
-	id: string;
-	name: string;
-	description: string;
-	available: boolean;
-	installCommands?: string[];
-}
-
 export interface ModelsData {
-	recommended: LocalModelInfo[];
-}
-
-export interface LocalModelInfo {
-	id: string;
-	displayName: string;
-	backend: string;
-	minRamGb: number;
-	contextWindow: number;
-	suggested?: boolean;
-}
-
-export interface HfSearchResult {
-	id: string;
-	displayName: string;
-	downloads?: number;
-	likes?: number;
-	backend: string;
-}
-
-export interface LocalLlmDownloadPayload {
-	modelId?: string;
-	error?: string;
-	complete?: boolean;
-	progress?: number;
-	downloaded?: number;
-	total?: number;
-}
-
-export type { LocalLlmLifecyclePayload } from "../types/ws-events";
-
-export interface ModelStateEntry {
-	model_id: string;
-	is_loaded: boolean;
-	memory_bytes: number;
-	last_activity: number;
-	idle_timeout_secs: number | null;
+	models?: ModelEntry[];
 }
 
 export interface ProbeResult {

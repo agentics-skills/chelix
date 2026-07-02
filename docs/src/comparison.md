@@ -74,8 +74,8 @@ Key differences:
   sessions, channels, and MCP config
 
 Chelix intentionally has a small unsafe surface, not a zero-unsafe entire
-workspace. Unsafe code is isolated to Swift FFI, local model wrappers, and
-precompiled WASM/runtime boundaries. The core agent and gateway paths stay in
+workspace. Unsafe code is isolated to Swift FFI and precompiled WASM/runtime
+boundaries. The core agent and gateway paths stay in
 safe Rust.
 
 ## Security Model

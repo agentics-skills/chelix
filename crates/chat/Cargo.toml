@@ -42,7 +42,6 @@ uuid                  = { workspace = true }
 # error; the `deterministic` and `recency_preserving` modes remain available.
 bundled-skills     = ["moltis-skills/bundled-skills"]
 llm-compaction     = []
-local-llm          = []
 metrics            = ["dep:moltis-metrics", "moltis-metrics/sqlite"]
 push-notifications = ["dep:chrono"]
 web-ui             = ["dep:chrono"]

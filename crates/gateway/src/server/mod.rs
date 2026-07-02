@@ -44,9 +44,3 @@ pub use {
     },
     workspace::sync_persona_into_preset,
 };
-
-#[cfg(feature = "local-llm")]
-pub use startup::local_llama_cpp_bytes_for_ui;
-
-#[cfg(not(feature = "local-llm"))]
-pub use startup::local_llama_cpp_bytes_for_ui;

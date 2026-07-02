@@ -29,7 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/insta
 
 ## Key Features
 
-- **Multiple LLM Providers** — Anthropic, OpenAI, Google Gemini, DeepSeek, Mistral, Groq, xAI, OpenRouter, Ollama, Local LLM, and more
+- **Multiple LLM Providers** — Anthropic, OpenAI, Google Gemini, DeepSeek, Mistral, Groq, xAI, OpenRouter, Ollama, and more
 - **Streaming-First** — Responses appear as tokens arrive, not after completion
 - **Sandboxed Execution** — Commands run in isolated containers (Docker or Apple Container)
 - **MCP Support** — Connect to Model Context Protocol servers for extended capabilities
@@ -107,7 +107,6 @@ Authentication is only required when accessing Chelix from a non-localhost addre
 - **[Providers](providers.md)** — Configure LLM providers
 - **[MCP Servers](mcp.md)** — Extend with Model Context Protocol
 - **[Hooks](hooks.md)** — Lifecycle hooks for customization
-- **[Local LLMs](local-llm.md)** — Run models on your machine
 
 ### Deployment
 - **[Docker](docker.md)** — Container deployment

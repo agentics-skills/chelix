@@ -170,7 +170,6 @@ sudo systemctl start moltis
 |----------|-----|-----|------|
 | Chat only (no sandbox) | 512 MB | 1 vCPU | 5 GB |
 | Chat + sandbox | 1 GB | 1 vCPU | 10 GB |
-| Chat + sandbox + local LLM | 4+ GB | 2+ vCPU | 20+ GB |
 
 LLM inference happens on the provider's API servers, so even a $5 VPS handles
 chat workloads with external providers.

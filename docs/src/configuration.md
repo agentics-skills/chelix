@@ -104,10 +104,6 @@ stream_transport = "sse"        # "sse", "websocket", or "auto"
 enabled = true
 models = ["gemini-2.5-flash", "gemini-2.5-pro"]
 
-[providers.local-llm]
-enabled = true
-models = ["qwen2.5-coder-7b-q4_k_m"]
-
 [chat]
 priority_models = ["gpt-5.2"]
 ```

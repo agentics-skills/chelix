@@ -3,8 +3,7 @@ use {
         helpers::{
             StartupMemProbe, approval_manager_from_config, env_flag_enabled,
             log_startup_config_storage_diagnostics, log_startup_model_inventory,
-            maybe_deliver_cron_output, restore_saved_local_llm_models,
-            validate_proxy_tls_configuration,
+            maybe_deliver_cron_output, validate_proxy_tls_configuration,
         },
         init_channels, init_code_index, init_memory,
         prepared::PreparedGatewayCore,
@@ -71,7 +70,7 @@ pub async fn prepare_gateway_core(
     let token = std::env::var("MOLTIS_TOKEN").ok();
     let password = std::env::var("MOLTIS_PASSWORD").ok();
 
-    // Cloud deploy platform — hides local-only providers (local-llm, ollama).
+    // Cloud deploy platform — hides local-only providers.
     let deploy_platform = std::env::var("MOLTIS_DEPLOY_PLATFORM").ok();
     let resolved_auth = auth::resolve_auth(token, password.clone());
 
@@ -123,18 +122,8 @@ pub async fn prepare_gateway_core(
     // Merge any previously saved API keys into the provider config so they
     // survive gateway restarts without requiring env vars.
     let key_store = crate::provider_setup::KeyStore::new();
-    #[cfg(feature = "local-llm")]
-    let local_model_ids: Vec<String> = crate::local_llm_setup::LocalLlmConfig::load()
-        .map(|c| c.models.iter().map(|m| m.model_id.clone()).collect())
-        .unwrap_or_default();
-    #[cfg(not(feature = "local-llm"))]
-    let local_model_ids: Vec<String> = Vec::new();
-
-    let effective_providers = crate::provider_setup::config_with_saved_keys(
-        &base_provider_config,
-        &key_store,
-        &local_model_ids,
-    );
+    let effective_providers =
+        crate::provider_setup::config_with_saved_keys(&base_provider_config, &key_store);
 
     let has_explicit_provider_settings =
         crate::provider_setup::has_explicit_provider_settings(&config.providers);
@@ -159,10 +148,6 @@ pub async fn prepare_gateway_core(
             moltis_providers::extract_cw_overrides(&config.models),
         ),
     ));
-    {
-        let mut reg = registry.write().await;
-        restore_saved_local_llm_models(&mut reg, &effective_providers);
-    }
     let (provider_summary, providers_available_at_startup) = {
         let reg = registry.read().await;
         log_startup_model_inventory(&reg);
@@ -256,15 +241,6 @@ pub async fn prepare_gateway_core(
     let onboarding_config_path = moltis_config::find_or_default_config_path();
     let live_onboarding =
         moltis_onboarding::service::LiveOnboardingService::new(onboarding_config_path);
-    #[cfg(feature = "local-llm")]
-    let local_llm_service: Option<Arc<crate::local_llm_setup::LiveLocalLlmService>> = {
-        let svc = Arc::new(crate::local_llm_setup::LiveLocalLlmService::new(
-            Arc::clone(&registry),
-        ));
-        services =
-            services.with_local_llm(Arc::clone(&svc) as Arc<dyn crate::services::LocalLlmService>);
-        Some(svc)
-    };
 
     // Wire live voice services when the feature is enabled.
     #[cfg(feature = "voice")]
@@ -1280,8 +1256,6 @@ pub async fn prepare_gateway_core(
         slack_webhook_plugin,
         #[cfg(feature = "telephony")]
         telephony_webhook_plugin,
-        #[cfg(feature = "local-llm")]
-        local_llm_service,
         #[cfg(feature = "vault")]
         vault,
         #[cfg(feature = "trusted-network")]

@@ -80,7 +80,6 @@ export default {
 		wsActive: "WebSocket 使用中",
 		activeSessions: "使用中的工作階段",
 		processMemory: "Moltis 使用的記憶體",
-		localLlamaCpp: "本機 llama.cpp",
 		toolExecutions: "工具執行次數",
 		mcpCalls: "MCP 呼叫",
 	},

@@ -108,19 +108,6 @@ export default {
 		oauthWaiting: "Waiting for authentication\u2026",
 		failedToStartOAuth: "Failed to start OAuth",
 		oauthTimedOut: "OAuth timed out. Please try again.",
-		// Local model
-		ram: "RAM: {{totalRamGb}}GB",
-		tier: "Tier: {{memoryTier}}",
-		gpuAvailable: "GPU available",
-		backend: "Backend",
-		notInstalled: "Not installed",
-		selectAModel: "Select a model",
-		noModelsForBackend: "No models available for {{backend}}",
-		contextTokens: "Context: {{tokens}}k tokens",
-		configuring: "Configuring\u2026",
-		loadingSystemInfo: "Loading system info\u2026",
-		failedSystemInfo: "Failed to get system info",
-		failedConfigureModel: "Failed to configure model",
 	},
 
 	// ── Voice step ───────────────────────────────────────────

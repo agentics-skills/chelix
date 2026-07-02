@@ -197,29 +197,6 @@ impl ChatRuntime for GatewayChatRuntime {
         Ok(0)
     }
 
-    // ── Local LLM ───────────────────────────────────────────────────────────
-
-    async fn ensure_local_model_cached(&self, model_id: &str) -> error::Result<bool> {
-        #[cfg(feature = "local-llm")]
-        {
-            return crate::local_llm_setup::ensure_local_model_cached(model_id, &self.state)
-                .await
-                .map_err(error::Error::message);
-        }
-        #[cfg(not(feature = "local-llm"))]
-        {
-            let _ = model_id;
-            Ok(false)
-        }
-    }
-
-    async fn ensure_local_model_loaded(&self, model_id: &str) -> error::Result<()> {
-        let params = serde_json::json!({ "modelId": model_id });
-        // load_model is a no-op if already loaded; broadcasts lifecycle events otherwise.
-        let _ = self.state.services.local_llm.load_model(params).await;
-        Ok(())
-    }
-
     // ── Remote nodes ────────────────────────────────────────────────────────
 
     async fn connected_nodes(&self) -> Vec<runtime::ConnectedNodeSummary> {

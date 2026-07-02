@@ -41,7 +41,7 @@ available.
 
 Set this to the name of your cloud provider (e.g. `flyio`, `digitalocean`,
 `render`). When set, Chelix hides local-only LLM providers
-(local-llm and Ollama) from the provider setup page since they cannot run
+such as Ollama from the provider setup page since they cannot run
 on cloud VMs. The included deploy templates for Fly.io, DigitalOcean, and
 Render already set this variable.
 

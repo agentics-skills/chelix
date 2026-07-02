@@ -39,7 +39,6 @@ export interface NavCounts {
 /** Serialised with camelCase via `#[serde(rename_all = "camelCase")]`. */
 export interface MemSnapshot {
 	process: number;
-	localLlamaCpp?: number;
 	available: number;
 	total: number;
 }

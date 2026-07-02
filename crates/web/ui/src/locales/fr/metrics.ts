@@ -82,7 +82,6 @@ export default {
 		wsActive: "WebSocket Active",
 		activeSessions: "Active Sessions",
 		processMemory: "Process Memory",
-		localLlamaCpp: "Local llama.cpp",
 		toolExecutions: "Tool Executions",
 		mcpCalls: "MCP Calls",
 	},

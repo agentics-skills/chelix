@@ -83,7 +83,6 @@ mock_svc_struct!(MockVoicewake);
 mock_svc_struct!(MockLogs);
 mock_svc_struct!(MockProviderSetup);
 mock_svc_struct!(MockProject);
-mock_svc_struct!(MockLocalLlm);
 mock_svc_struct!(MockSystemInfo);
 
 #[async_trait::async_trait]
@@ -816,49 +815,6 @@ impl moltis_service_traits::ProjectService for MockProject {
 }
 
 #[async_trait::async_trait]
-impl moltis_service_traits::LocalLlmService for MockLocalLlm {
-    async fn system_info(&self) -> ServiceResult {
-        self.0.call("providers.local.system_info", json!({}))
-    }
-
-    async fn models(&self) -> ServiceResult {
-        self.0.call("providers.local.models", json!({}))
-    }
-
-    async fn configure(&self, p: Value) -> ServiceResult {
-        self.0.call("providers.local.configure", p)
-    }
-
-    async fn status(&self) -> ServiceResult {
-        self.0.call("providers.local.status", json!({}))
-    }
-
-    async fn search_hf(&self, p: Value) -> ServiceResult {
-        self.0.call("providers.local.search_hf", p)
-    }
-
-    async fn configure_custom(&self, p: Value) -> ServiceResult {
-        self.0.call("providers.local.configure_custom", p)
-    }
-
-    async fn remove_model(&self, p: Value) -> ServiceResult {
-        self.0.call("providers.local.remove_model", p)
-    }
-
-    async fn load_model(&self, p: Value) -> ServiceResult {
-        self.0.call("providers.local.load_model", p)
-    }
-
-    async fn unload_model(&self, p: Value) -> ServiceResult {
-        self.0.call("providers.local.unload_model", p)
-    }
-
-    async fn model_states(&self) -> ServiceResult {
-        self.0.call("providers.local.model_states", json!({}))
-    }
-}
-
-#[async_trait::async_trait]
 impl moltis_service_traits::SystemInfoService for MockSystemInfo {
     async fn health(&self) -> ServiceResult {
         self.0.call("health", json!({}))
@@ -916,7 +872,6 @@ fn build_mock_services(mock: &Arc<MockDispatch>) -> Arc<Services> {
         logs: Arc::new(MockLogs(mock.clone())),
         provider_setup: Arc::new(MockProviderSetup(mock.clone())),
         project: Arc::new(MockProject(mock.clone())),
-        local_llm: Arc::new(MockLocalLlm(mock.clone())),
         system_info: Arc::new(MockSystemInfo(mock.clone())),
         external_agent: Arc::new(moltis_service_traits::NoopExternalAgentService),
     })

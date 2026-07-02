@@ -22,7 +22,6 @@ import * as _channelsPage from "./pages/ChannelsPage";
 import { renderSessionProjectSelect } from "./project-combo";
 import { fetchProjects, renderProjectSelect } from "./projects";
 import * as _providers from "./providers";
-import { initModelLifecycleTracking } from "./providers";
 import { initPWA } from "./pwa";
 import { initInstallBanner } from "./pwa-install";
 import { mount, navigate, registerPage, sessionPath } from "./router";
@@ -87,8 +86,6 @@ interface MemInfo {
 	process: number;
 	available: number;
 	total: number;
-	localLlamaCpp?: number;
-	local_llama_cpp?: number;
 }
 
 interface IdentityInfo {
@@ -249,15 +246,7 @@ function applyMemory(mem: MemInfo | null): void {
 	const el = document.getElementById("memoryInfo");
 	if (!el) return;
 	const fmt = (b: number): string => prettyBytes(b, { maximumFractionDigits: 0, space: false });
-	let localLlamaCpp = 0;
-	if (typeof mem.localLlamaCpp === "number") {
-		localLlamaCpp = mem.localLlamaCpp;
-	} else if (typeof mem.local_llama_cpp === "number") {
-		// Backward compatibility with older payload casing.
-		localLlamaCpp = mem.local_llama_cpp;
-	}
-	const localLlamaPart = localLlamaCpp > 0 ? ` (llama.cpp ${fmt(localLlamaCpp)})` : "";
-	el.textContent = `${fmt(mem.process)}${localLlamaPart} \u00b7 ${fmt(mem.available)} free / ${fmt(mem.total)}`;
+	el.textContent = `${fmt(mem.process)} \u00b7 ${fmt(mem.available)} free / ${fmt(mem.total)}`;
 }
 
 applyMemory(gon.get("mem") as MemInfo | null);
@@ -715,7 +704,6 @@ function startApp(): void {
 	}
 	mount(path);
 	connect();
-	initModelLifecycleTracking();
 	fetchBootstrap();
 	initInstallBanner();
 }

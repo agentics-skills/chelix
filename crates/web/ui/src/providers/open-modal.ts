@@ -8,7 +8,6 @@ import { sendRpc } from "../helpers";
 import type { RpcResponse } from "../types";
 import { showApiKeyForm, showOAuthFlow } from "./auth-flow";
 import { showCustomProviderForm } from "./custom-provider";
-import { showLocalModelFlow } from "./local-models";
 import { els } from "./shared";
 import type { ProviderInfo } from "./types";
 
@@ -61,8 +60,6 @@ export function openProviderModalImpl(): void {
 				badge.className = `provider-item-badge ${p.authType}`;
 				if (p.authType === "oauth") {
 					badge.textContent = "OAuth";
-				} else if (p.authType === "local") {
-					badge.textContent = "Local";
 				} else {
 					badge.textContent = "API Key";
 				}
@@ -73,7 +70,6 @@ export function openProviderModalImpl(): void {
 			item.addEventListener("click", () => {
 				if (p.authType === "api-key") showApiKeyForm(p);
 				else if (p.authType === "oauth") showOAuthFlow(p);
-				else if (p.authType === "local") showLocalModelFlow(p);
 			});
 			m.body.appendChild(item);
 		});

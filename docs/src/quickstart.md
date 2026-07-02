@@ -49,12 +49,6 @@ Or configure via the web UI: **Settings** → **Providers** → enter your API k
 2. Click **OpenAI Codex** or **GitHub Copilot** → **Connect**
 3. Complete the OAuth flow
 
-### Option C: Local LLM (Offline)
-
-1. In Chelix, go to **Settings** → **Providers**
-2. Click **Local LLM**
-3. Choose a model and save
-
 See [Providers](providers.md) for the full list of supported providers.
 
 ## 4. Chat!

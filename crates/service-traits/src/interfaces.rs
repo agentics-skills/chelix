@@ -1163,65 +1163,6 @@ impl ProjectService for NoopProjectService {
 }
 
 #[async_trait]
-pub trait LocalLlmService: Send + Sync {
-    async fn system_info(&self) -> ServiceResult;
-    async fn models(&self) -> ServiceResult;
-    async fn configure(&self, params: Value) -> ServiceResult;
-    async fn status(&self) -> ServiceResult;
-    async fn search_hf(&self, params: Value) -> ServiceResult;
-    async fn configure_custom(&self, params: Value) -> ServiceResult;
-    async fn remove_model(&self, params: Value) -> ServiceResult;
-    async fn load_model(&self, params: Value) -> ServiceResult;
-    async fn unload_model(&self, params: Value) -> ServiceResult;
-    async fn model_states(&self) -> ServiceResult;
-}
-
-pub struct NoopLocalLlmService;
-
-#[async_trait]
-impl LocalLlmService for NoopLocalLlmService {
-    async fn system_info(&self) -> ServiceResult {
-        Err("local-llm feature not enabled".into())
-    }
-
-    async fn models(&self) -> ServiceResult {
-        Err("local-llm feature not enabled".into())
-    }
-
-    async fn configure(&self, _params: Value) -> ServiceResult {
-        Err("local-llm feature not enabled".into())
-    }
-
-    async fn status(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "status": "unavailable" }))
-    }
-
-    async fn search_hf(&self, _params: Value) -> ServiceResult {
-        Err("local-llm feature not enabled".into())
-    }
-
-    async fn configure_custom(&self, _params: Value) -> ServiceResult {
-        Err("local-llm feature not enabled".into())
-    }
-
-    async fn remove_model(&self, _params: Value) -> ServiceResult {
-        Err("local-llm feature not enabled".into())
-    }
-
-    async fn load_model(&self, _params: Value) -> ServiceResult {
-        Err("local-llm feature not enabled".into())
-    }
-
-    async fn unload_model(&self, _params: Value) -> ServiceResult {
-        Err("local-llm feature not enabled".into())
-    }
-
-    async fn model_states(&self) -> ServiceResult {
-        Err("local-llm feature not enabled".into())
-    }
-}
-
-#[async_trait]
 pub trait ExternalAgentService: Send + Sync {
     async fn list(&self) -> ServiceResult;
     async fn bind(&self, params: Value) -> ServiceResult;

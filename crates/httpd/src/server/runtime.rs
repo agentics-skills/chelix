@@ -226,15 +226,7 @@ pub(super) async fn finalize_prepared_gateway(
                 0 => total.saturating_sub(sys.used_memory()),
                 v => v,
             };
-            let local_llama_cpp_bytes = moltis_gateway::server::local_llama_cpp_bytes_for_ui();
-            broadcast_tick(
-                &tick_state,
-                process_mem,
-                local_llama_cpp_bytes,
-                available,
-                total,
-            )
-            .await;
+            broadcast_tick(&tick_state, process_mem, available, total).await;
         }
     });
 
@@ -481,8 +473,6 @@ pub(super) async fn finalize_prepared_gateway(
                         .and_then(|p| sys.process(p))
                         .map(|p| p.memory())
                         .unwrap_or(0);
-                    let local_llama_cpp_bytes =
-                        moltis_gateway::server::local_llama_cpp_bytes_for_ui();
                     // Convert per-provider metrics to history format.
                     let by_provider = snapshot
                         .categories
@@ -518,7 +508,6 @@ pub(super) async fn finalize_prepared_gateway(
                         mcp_calls: snapshot.categories.mcp.total,
                         active_sessions: snapshot.categories.system.active_sessions,
                         process_memory_bytes,
-                        local_llama_cpp_bytes,
                     };
 
                     // Push to in-memory history.

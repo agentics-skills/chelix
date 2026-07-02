@@ -108,19 +108,6 @@ export default {
 		oauthWaiting: "等待驗證中\u2026",
 		failedToStartOAuth: "無法啟動 OAuth",
 		oauthTimedOut: "OAuth 逾時，請重試。",
-		// Local model
-		ram: "RAM:{{totalRamGb}}GB",
-		tier: "等級：{{memoryTier}}",
-		gpuAvailable: "已偵測到 GPU",
-		backend: "後端",
-		notInstalled: "未安裝",
-		selectAModel: "請選擇模型",
-		noModelsForBackend: "{{backend}} 沒有模型可以選擇",
-		contextTokens: "上下文：{{tokens}}k tokens",
-		configuring: "設定中\u2026",
-		loadingSystemInfo: "載入系統資訊中\u2026",
-		failedSystemInfo: "無法取得系統資訊",
-		failedConfigureModel: "模型設定失敗",
 	},
 
 	// ── Voice step ───────────────────────────────────────────

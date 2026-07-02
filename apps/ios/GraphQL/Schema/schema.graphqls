@@ -375,53 +375,6 @@ type HooksQuery {
 
 scalar JSON
 
-type LocalBackendInfo {
-	id: String
-	name: String
-	description: String
-	available: Boolean
-	installCommands: [String!]
-}
-
-type LocalLlmMutation {
-	configure(input: JSON!): BoolResult!
-	configureCustom(input: JSON!): BoolResult!
-	removeModel(input: JSON!): BoolResult!
-}
-
-type LocalLlmQuery {
-	"""
-	Get system information for local LLM.
-	"""
-	systemInfo: LocalSystemInfo!
-	"""
-	List available local models.
-	"""
-	models: [ModelInfo!]!
-	"""
-	Get local LLM status.
-	"""
-	status: BoolResult!
-	"""
-	Search HuggingFace models.
-	"""
-	searchHf(query: String!): JSON!
-}
-
-type LocalSystemInfo {
-	totalRamGb: Float
-	availableRamGb: Float
-	hasMetal: Boolean
-	hasCuda: Boolean
-	hasGpu: Boolean
-	isAppleSilicon: Boolean
-	memoryTier: String
-	recommendedBackend: String
-	availableBackends: [LocalBackendInfo!]
-	backendNote: String
-	mlxAvailable: Boolean
-}
-
 type LogEnabledLevels {
 	debug: Boolean
 	trace: Boolean
@@ -561,10 +514,6 @@ type MemoryStats {
 	Process RSS in bytes.
 	"""
 	process: Int!
-	"""
-	Approximate bytes held by loaded local llama.cpp model tensors.
-	"""
-	localLlamaCpp: Int!
 	"""
 	System available memory in bytes.
 	"""
@@ -771,10 +720,6 @@ type ProviderMutation {
 	addCustom(input: JSON!): BoolResult!
 	oauthStart(provider: String!): ProviderOAuthStartResult!
 	oauthComplete(input: JSON!): BoolResult!
-	"""
-	Local LLM mutations.
-	"""
-	local: LocalLlmMutation!
 }
 
 type ProviderOAuthStartResult {
@@ -795,10 +740,6 @@ type ProviderQuery {
 	Get OAuth status.
 	"""
 	oauthStatus: BoolResult!
-	"""
-	Local LLM queries.
-	"""
-	local: LocalLlmQuery!
 }
 
 type QueryRoot {

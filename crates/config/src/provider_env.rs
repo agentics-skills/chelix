@@ -89,7 +89,6 @@ pub fn normalize_provider_name(value: &str) -> Option<String> {
         "claude" => "anthropic",
         "google" | "google-gemini" => "gemini",
         "grok" => "xai",
-        "local" => "local-llm",
         "z-ai" | "z.ai" | "zhipu" | "zhipu-ai" => "zai",
         "zai-code" | "zai-coding" | "zhipu-code" => "zai-code",
         "alibaba" | "alibaba-coding" | "dashscope-coding" => "alibaba-coding",

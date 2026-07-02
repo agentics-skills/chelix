@@ -797,7 +797,7 @@ function DefaultImageSelector(): VNode {
 			</h3>
 			<p className="text-xs text-[var(--muted)]" style={{ margin: "0 0 8px" }}>
 				Base image used for new sessions and projects unless overridden. Leave empty to use the built-in default
-					(ubuntu:26.04).
+				(ubuntu:26.04).
 			</p>
 			<div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
 				<input

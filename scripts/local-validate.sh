@@ -211,25 +211,25 @@ if [[ "$(uname -s)" == "Darwin" ]] && ! command -v nvcc >/dev/null 2>&1; then
     if command -v just >/dev/null 2>&1 && [[ -f justfile ]]; then
       lint_cmd="just lint"
     else
-      lint_cmd="cargo +${nightly_toolchain} clippy -Z unstable-options --workspace --all-targets --exclude moltis-providers --exclude moltis-gateway --timings -- -D warnings && cargo +${nightly_toolchain} clippy -Z unstable-options -p moltis-providers --all-targets --features local-llm-metal --timings -- -D warnings && cargo +${nightly_toolchain} clippy -Z unstable-options -p moltis-gateway --all-targets --features local-llm-metal --timings -- -D warnings"
+      lint_cmd="cargo +${nightly_toolchain} clippy -Z unstable-options --workspace --all-targets --timings -- -D warnings"
     fi
   fi
   if [[ -z "${LOCAL_VALIDATE_TEST_CMD:-}" ]]; then
     if command -v just >/dev/null 2>&1 && [[ -f justfile ]]; then
       test_cmd="just test"
     else
-      test_cmd="cargo +${nightly_toolchain} nextest run --workspace --all-features --exclude moltis-providers --exclude moltis-gateway && cargo +${nightly_toolchain} nextest run -p moltis-providers --features local-llm-metal && cargo +${nightly_toolchain} nextest run -p moltis-gateway --features local-llm-metal"
+      test_cmd="cargo +${nightly_toolchain} nextest run --workspace"
     fi
   fi
   if [[ -z "${LOCAL_VALIDATE_BUILD_CMD:-}" ]]; then
-    build_cmd="cargo +${nightly_toolchain} build --workspace --all-targets --exclude moltis-providers --exclude moltis-gateway && cargo +${nightly_toolchain} build -p moltis-providers --all-targets --features local-llm-metal && cargo +${nightly_toolchain} build -p moltis-gateway --all-targets --features local-llm-metal"
+    build_cmd="cargo +${nightly_toolchain} build --workspace --all-targets"
   fi
   if [[ -z "${LOCAL_VALIDATE_COVERAGE_CMD:-}" ]]; then
     coverage_cmd="cargo +${nightly_toolchain} llvm-cov --workspace --html"
   fi
   build_cmd="$(strip_all_features_flag "$build_cmd")"
   coverage_cmd="$(strip_all_features_flag "$coverage_cmd")"
-  echo "Detected macOS without nvcc; using Darwin-native validation commands (metal for provider/gateway, no Linux CUDA path)." >&2
+  echo "Detected macOS without nvcc; using Darwin-native validation commands without Linux CUDA features." >&2
   echo "CI still covers the Linux/CUDA all-features path. Override with LOCAL_VALIDATE_* if you need a different split." >&2
 fi
 

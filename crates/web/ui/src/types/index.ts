@@ -49,7 +49,6 @@ export type {
 	ChatError,
 	ChatPayload,
 	CompactPayload,
-	LocalLlmDownloadPayload,
 	LocationRequestPayload,
 	LogEntryPayload,
 	MapLinks,

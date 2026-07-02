@@ -121,8 +121,8 @@ home-assistant    = ["moltis-gateway/home-assistant"]
 #
 # `full` is the portable production feature set used by release, packaging, and
 # container builds. It intentionally excludes build-mode toggles (`embedded-*`)
-# and accelerator-specific features (`local-llm-cuda`, `local-llm-vulkan`) that
-# require host SDKs/toolchains not present on every target.
+# and accelerator-specific features that require host SDKs/toolchains not
+# present on every target.
 bundled-skills = ["moltis-gateway/bundled-skills", "moltis-web?/bundled-skills"]
 default = ["full"]
 full = [
@@ -159,8 +159,6 @@ full = [
   "lang-typescript",
   "llm-compaction",
   "local-embeddings",
-  "local-llm",
-  "local-llm-metal",
   "matrix",
   "mdns",
   "metrics",
@@ -222,10 +220,6 @@ codex-import          = ["dep:moltis-codex-import", "moltis-gateway/codex-import
 hermes-import         = ["dep:moltis-hermes-import", "moltis-gateway/hermes-import"]
 lightweight           = ["jemalloc", "tls", "web-ui"]
 local-embeddings      = ["moltis-gateway/local-embeddings"]
-local-llm             = ["moltis-gateway/local-llm"]
-local-llm-cuda        = ["local-llm", "moltis-gateway/local-llm-cuda"]
-local-llm-metal       = ["local-llm", "moltis-gateway/local-llm-metal"]
-local-llm-vulkan      = ["local-llm", "moltis-gateway/local-llm-vulkan"]
 matrix                = ["moltis-httpd/matrix"]
 mdns                  = ["moltis-gateway/mdns"]
 metrics               = ["moltis-httpd/metrics", "moltis-web?/metrics"]

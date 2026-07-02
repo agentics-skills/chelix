@@ -72,7 +72,7 @@ function operationDetail(payload: OperationProgressPayload): string {
 function progressFraction(payload: OperationProgressPayload): number | null {
 	const current = Number(payload.current);
 	const total = Number(payload.total);
-	if (!Number.isFinite(current) || !Number.isFinite(total) || total <= 0) return null;
+	if (!(Number.isFinite(current) && Number.isFinite(total)) || total <= 0) return null;
 	return Math.max(0, Math.min(1, current / total));
 }
 

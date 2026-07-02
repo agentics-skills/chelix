@@ -33,9 +33,7 @@ lint: lockfile-check
     #!/usr/bin/env bash
     set -euo pipefail
     if [ "$(uname -s)" = "Darwin" ]; then
-        cargo +{{nightly_toolchain}} clippy -Z unstable-options --workspace --all-targets --exclude moltis-providers --exclude moltis-gateway --exclude moltis-matrix --timings -- -D warnings
-        cargo +{{nightly_toolchain}} clippy -Z unstable-options -p moltis-providers --all-targets --features local-llm-metal --timings -- -D warnings
-        cargo +{{nightly_toolchain}} clippy -Z unstable-options -p moltis-gateway --all-targets --features local-llm-metal --timings -- -D warnings
+        cargo +{{nightly_toolchain}} clippy -Z unstable-options --workspace --all-targets --exclude moltis-matrix --timings -- -D warnings
     else
         cargo +{{nightly_toolchain}} clippy -Z unstable-options --workspace --all-features --all-targets --timings -- -D warnings
     fi

@@ -307,15 +307,3 @@ pub fn hermes_detected_for_ui() -> bool {
 pub fn hermes_detected_for_ui() -> bool {
     false
 }
-
-#[cfg(feature = "local-llm")]
-#[must_use]
-pub fn local_llama_cpp_bytes_for_ui() -> u64 {
-    moltis_providers::local_llm::loaded_llama_model_bytes()
-}
-
-#[cfg(not(feature = "local-llm"))]
-#[must_use]
-pub const fn local_llama_cpp_bytes_for_ui() -> u64 {
-    0
-}

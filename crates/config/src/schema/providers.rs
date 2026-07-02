@@ -13,8 +13,7 @@ use {
 ///
 /// The list includes both canonical provider names (used in registration)
 /// and config-key aliases that users may write in `[providers.<name>]`
-/// sections (e.g. `"local"` is an alias for `"local-llm"`, mapped at
-/// runtime by `ProvidersConfig::provider_entry`).
+/// sections.
 ///
 /// When adding a new provider, add its config name here.  A compile-time
 /// test in `moltis-providers` will fail if a registered provider is
@@ -43,8 +42,6 @@ pub const KNOWN_PROVIDER_NAMES: &[&str] = &[
     // Feature-gated providers
     "github-copilot",
     "kimi-code",
-    "local", // alias for local-llm
-    "local-llm",
     "openai-codex",
     // Providers registered via genai/async-openai backends
     "groq",
@@ -104,11 +101,6 @@ pub struct ProvidersConfig {
     /// See [`KNOWN_PROVIDER_NAMES`] for the full list of recognised names.
     #[serde(flatten)]
     pub providers: HashMap<String, ProviderEntry>,
-
-    /// Additional local model IDs to register (from local-llm.json).
-    /// This is populated at runtime by the gateway and not persisted.
-    #[serde(skip)]
-    pub local_models: Vec<String>,
 }
 
 /// How tool calling is handled for a provider.
@@ -279,14 +271,6 @@ pub struct ProviderEntry {
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub model_overrides: HashMap<String, ModelOverride>,
 
-    /// Seconds of inactivity before auto-unloading local models.
-    ///
-    /// Only meaningful for `[providers.local-llm]`. Per-model values in
-    /// `local-llm.json` override this global default. `0` = never unload.
-    /// `None` (default) = models stay loaded indefinitely.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub idle_timeout_secs: Option<u64>,
-
     /// Timeout in seconds for completion-based model probes.
     ///
     /// When the lightweight catalog check (`GET /v1/models`) is unavailable,
@@ -294,7 +278,7 @@ pub struct ProviderEntry {
     /// controls how long to wait for that fallback.
     ///
     /// Increase this for local LLM servers that need time to load large
-    /// models on first request (e.g. llama.cpp with 100B+ models).
+    /// models on first request (e.g. Ollama or LM Studio with large models).
     ///
     /// `None` (default) uses the built-in 30-second timeout.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -338,7 +322,6 @@ impl Default for ProviderEntry {
             strict_tools: None,
             policy: None,
             model_overrides: HashMap::new(),
-            idle_timeout_secs: None,
             probe_timeout_secs: None,
         }
     }
@@ -349,16 +332,6 @@ impl ProvidersConfig {
         value.trim().to_ascii_lowercase()
     }
 
-    fn provider_name_matches(left: &str, right: &str) -> bool {
-        if left == right {
-            return true;
-        }
-        matches!(
-            (left, right),
-            ("local", "local-llm") | ("local-llm", "local")
-        )
-    }
-
     fn is_offered(&self, name: &str) -> bool {
         if self.offered.is_empty() {
             return true;
@@ -366,22 +339,12 @@ impl ProvidersConfig {
         let normalized = Self::normalize_provider_name(name);
         self.offered.iter().any(|entry| {
             let offered = Self::normalize_provider_name(entry);
-            Self::provider_name_matches(&offered, &normalized)
+            offered == normalized
         })
     }
 
     fn provider_entry(&self, name: &str) -> Option<&ProviderEntry> {
-        match name {
-            "local" => self
-                .providers
-                .get("local")
-                .or_else(|| self.providers.get("local-llm")),
-            "local-llm" => self
-                .providers
-                .get("local-llm")
-                .or_else(|| self.providers.get("local")),
-            _ => self.providers.get(name),
-        }
+        self.providers.get(name)
     }
 
     /// Check if a provider is enabled (defaults to true if not configured).

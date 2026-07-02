@@ -1716,7 +1716,7 @@
     color: var(--text);
   }
 
-  /* Local model selection */
+  /* Selection cards */
   .model-card {
     display: flex;
     flex-direction: column;

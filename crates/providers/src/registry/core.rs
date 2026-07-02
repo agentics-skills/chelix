@@ -933,12 +933,6 @@ impl ProviderRegistry {
 
         reg.register_opencode_zen_providers(config, env_overrides, prefetched);
 
-        // Local GGUF providers (no API key needed, model runs locally)
-        #[cfg(feature = "local-llm")]
-        {
-            reg.register_local_gguf_providers(config);
-        }
-
         reg
     }
 

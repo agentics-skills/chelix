@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use crate::{
     AgentService, BrowserService, ChannelService, ChatService, ConfigService, CronService,
-    ExecApprovalService, ExternalAgentService, LocalLlmService, LogsService, McpService,
-    ModelService, NoopAgentService, NoopBrowserService, NoopChannelService, NoopChatService,
-    NoopConfigService, NoopCronService, NoopExecApprovalService, NoopExternalAgentService,
-    NoopLocalLlmService, NoopLogsService, NoopMcpService, NoopModelService, NoopOnboardingService,
-    NoopProjectService, NoopProviderSetupService, NoopSessionService, NoopSkillsStub,
-    NoopSttService, NoopSystemInfoService, NoopTtsService, NoopUpdateService, NoopUsageService,
+    ExecApprovalService, ExternalAgentService, LogsService, McpService, ModelService,
+    NoopAgentService, NoopBrowserService, NoopChannelService, NoopChatService, NoopConfigService,
+    NoopCronService, NoopExecApprovalService, NoopExternalAgentService, NoopLogsService,
+    NoopMcpService, NoopModelService, NoopOnboardingService, NoopProjectService,
+    NoopProviderSetupService, NoopSessionService, NoopSkillsStub, NoopSttService,
+    NoopSystemInfoService, NoopTtsService, NoopUpdateService, NoopUsageService,
     NoopVoicewakeService, NoopWebLoginService, OnboardingService, ProjectService,
     ProviderSetupService, SessionService, SkillsService, SttService, SystemInfoService, TtsService,
     UpdateService, UsageService, VoicewakeService, WebLoginService,
@@ -39,7 +39,6 @@ pub struct Services {
     pub logs: Arc<dyn LogsService>,
     pub provider_setup: Arc<dyn ProviderSetupService>,
     pub project: Arc<dyn ProjectService>,
-    pub local_llm: Arc<dyn LocalLlmService>,
     pub system_info: Arc<dyn SystemInfoService>,
     pub external_agent: Arc<dyn ExternalAgentService>,
 }
@@ -68,7 +67,6 @@ impl Default for Services {
             logs: Arc::new(NoopLogsService),
             provider_setup: Arc::new(NoopProviderSetupService),
             project: Arc::new(NoopProjectService),
-            local_llm: Arc::new(NoopLocalLlmService),
             system_info: Arc::new(NoopSystemInfoService),
             external_agent: Arc::new(NoopExternalAgentService),
         }

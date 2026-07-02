@@ -463,48 +463,6 @@ pub struct ModelInfo {
 
 #[derive(Debug, SimpleObject, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LocalSystemInfo {
-    #[serde(default)]
-    pub total_ram_gb: Option<f64>,
-    #[serde(default)]
-    pub available_ram_gb: Option<f64>,
-    #[serde(default)]
-    pub has_metal: Option<bool>,
-    #[serde(default)]
-    pub has_cuda: Option<bool>,
-    #[serde(default)]
-    pub has_gpu: Option<bool>,
-    #[serde(default)]
-    pub is_apple_silicon: Option<bool>,
-    #[serde(default)]
-    pub memory_tier: Option<String>,
-    #[serde(default)]
-    pub recommended_backend: Option<String>,
-    #[serde(default)]
-    pub available_backends: Option<Vec<LocalBackendInfo>>,
-    #[serde(default)]
-    pub backend_note: Option<String>,
-    #[serde(default)]
-    pub mlx_available: Option<bool>,
-}
-
-#[derive(Debug, SimpleObject, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LocalBackendInfo {
-    #[serde(default)]
-    pub id: Option<String>,
-    #[serde(default)]
-    pub name: Option<String>,
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default)]
-    pub available: Option<bool>,
-    #[serde(default)]
-    pub install_commands: Option<Vec<String>>,
-}
-
-#[derive(Debug, SimpleObject, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ProviderOAuthStartResult {
     #[serde(default)]
     pub auth_url: Option<String>,
@@ -1048,9 +1006,6 @@ pub struct TickEvent {
 pub struct MemoryStats {
     /// Process RSS in bytes.
     pub process: u64,
-    /// Approximate bytes held by loaded local llama.cpp model tensors.
-    #[serde(default)]
-    pub local_llama_cpp: u64,
     /// System available memory in bytes.
     pub available: u64,
     /// System total memory in bytes.

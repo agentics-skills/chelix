@@ -21,10 +21,6 @@ use moltis_agents::model::{ChatMessage, LlmProvider, StreamEvent};
 use crate::github_copilot;
 #[cfg(feature = "provider-kimi-code")]
 use crate::kimi_code;
-#[cfg(feature = "local-llm")]
-use crate::local_gguf;
-#[cfg(feature = "local-llm")]
-use crate::local_llm;
 #[cfg(feature = "provider-openai-codex")]
 use crate::openai_codex;
 #[allow(unused_imports)]
@@ -688,89 +684,6 @@ impl ProviderRegistry {
                     created_at,
                     recommended,
                     capabilities: caps,
-                },
-                provider,
-            );
-        }
-    }
-
-    #[cfg(feature = "local-llm")]
-    pub(super) fn register_local_gguf_providers(&mut self, config: &ProvidersConfig) {
-        use std::path::PathBuf;
-
-        use crate::{local_gguf, local_llm};
-
-        if !config.is_enabled("local") {
-            return;
-        }
-
-        // Collect all model IDs to register:
-        // 1. From local_models (multi-model config from local-llm.json)
-        // 2. From provider models in config (preferred pins)
-        let mut model_ids: Vec<String> = config.local_models.clone();
-        model_ids.extend(configured_models_for_provider(config, "local"));
-        model_ids = normalize_unique_models(model_ids);
-
-        if model_ids.is_empty() {
-            tracing::info!(
-                "local-llm enabled but no models configured. Add [providers.local] models = [\"...\"] to config."
-            );
-            return;
-        }
-
-        // Only probe local hardware/backends when at least one local model is
-        // configured. On macOS this avoids loading Metal/MLX runtime state
-        // during startup when local inference is not in use.
-        local_gguf::log_system_info_and_suggestions();
-
-        // Build config from provider entry for user overrides
-        let entry = config.get("local");
-        let user_model_path = entry
-            .and_then(|e| e.base_url.as_deref()) // Reuse base_url for model_path
-            .map(PathBuf::from);
-
-        // Register each model
-        for model_id in model_ids {
-            if self.has_provider_model("local-llm", &model_id) {
-                continue;
-            }
-
-            // Look up model in registries to get display name
-            let display_name = if let Some(def) = local_llm::models::find_model(&model_id) {
-                def.display_name.to_string()
-            } else if let Some(def) = local_gguf::models::find_model(&model_id) {
-                def.display_name.to_string()
-            } else {
-                format!("{} (local)", model_id)
-            };
-
-            // Use LocalLlmProvider which auto-detects backend based on model type
-            let llm_config = local_llm::LocalLlmConfig {
-                model_id: model_id.clone(),
-                model_path: user_model_path.clone(),
-                backend: None, // Auto-detect based on model type
-                context_size: None,
-                gpu_layers: 0,
-                temperature: 0.7,
-                cache_dir: local_llm::models::default_models_dir(),
-            };
-
-            tracing::info!(
-                model = %model_id,
-                display_name = %display_name,
-                "local-llm model configured (will load on first use)"
-            );
-
-            // Use LocalLlmProvider which properly routes to GGUF or MLX backend
-            let provider = Arc::new(local_llm::LocalLlmProvider::new(llm_config));
-            self.register(
-                ModelInfo {
-                    id: model_id.clone(),
-                    provider: "local-llm".into(),
-                    display_name,
-                    created_at: None,
-                    recommended: false,
-                    capabilities: ModelCapabilities::infer(&model_id),
                 },
                 provider,
             );

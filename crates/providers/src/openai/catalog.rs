@@ -379,10 +379,7 @@ mod tests {
 
         let model = parse_model_entry(&entry).expect("model parses");
         assert_eq!(model.context_window, Some(400_000));
-        assert_eq!(
-            model.capabilities.expect("capabilities parsed").reasoning,
-            true
-        );
+        assert!(model.capabilities.expect("capabilities parsed").reasoning);
     }
 
     #[test]

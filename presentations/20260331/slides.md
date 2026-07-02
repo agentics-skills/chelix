@@ -241,7 +241,6 @@ software, not a toy prototype built over a long weekend.
     <div class="mt-4">
       <ul>
         <li>single binary</li>
-        <li>local LLM support</li>
         <li>streaming-first responses</li>
       </ul>
     </div>
@@ -527,7 +526,7 @@ This is not a vanity slide. The point is product velocity and real usage.
     <div class="mt-2 text-sm">
       <ul>
         <li><code>web-ui</code>, <code>voice</code>, <code>vault</code></li>
-        <li><code>graphql</code>, <code>local-llm</code>, <code>tailscale</code></li>
+        <li><code>graphql</code>, <code>tailscale</code></li>
         <li><code>lightweight</code> for smaller builds</li>
       </ul>
     </div>

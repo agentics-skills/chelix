@@ -34,31 +34,6 @@ export interface OAuthInfo {
 	code?: string;
 }
 
-export interface SysInfo {
-	totalRamGb: number;
-	memoryTier: string;
-	hasGpu: boolean;
-	isAppleSilicon: boolean;
-	recommendedBackend: string;
-	availableBackends?: BackendInfo[];
-}
-
-export interface BackendInfo {
-	id: string;
-	name: string;
-	description: string;
-	available: boolean;
-}
-
-export interface LocalModel {
-	id: string;
-	displayName: string;
-	backend: string;
-	minRamGb: number;
-	contextWindow: number;
-	suggested?: boolean;
-}
-
 export interface IdentityInfo {
 	user_name?: string;
 	name?: string;

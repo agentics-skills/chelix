@@ -50,7 +50,7 @@ pub struct LiveProviderSetupService {
     pub(crate) token_store: TokenStore,
     pub(crate) key_store: KeyStore,
     pub(crate) pending_oauth: Arc<RwLock<HashMap<String, PendingOAuthFlow>>>,
-    /// When set, local-only providers (local-llm, ollama) are hidden from
+    /// When set, local-only providers are hidden from
     /// the available list because they cannot run on cloud VMs.
     pub(crate) deploy_platform: Option<String>,
     /// Shared priority models list from `LiveModelService`. Updated by
@@ -179,7 +179,7 @@ impl LiveProviderSetupService {
 
             let effective = {
                 let base = config.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                config_with_saved_keys(&base, &key_store, &[])
+                config_with_saved_keys(&base, &key_store)
             };
 
             let new_registry = match tokio::task::spawn_blocking(move || {
@@ -331,22 +331,13 @@ impl LiveProviderSetupService {
             }
             return false;
         }
-        // For local providers, check if model is configured in local_llm config
-        #[cfg(feature = "local-llm")]
-        if provider.auth_type == AuthType::Local && provider.name == "local-llm" {
-            // Check if local-llm model config file exists
-            if let Some(config_dir) = moltis_config::config_dir() {
-                let config_path = config_dir.join("local-llm.json");
-                return config_path.exists();
-            }
-        }
         false
     }
 
     /// Build a ProvidersConfig that includes saved keys for registry rebuild.
     pub(crate) fn effective_config(&self) -> ProvidersConfig {
         let base = self.config_snapshot();
-        config_with_saved_keys(&base, &self.key_store, &[])
+        config_with_saved_keys(&base, &self.key_store)
     }
 
     pub(crate) fn build_registry(&self, config: &ProvidersConfig) -> ProviderRegistry {

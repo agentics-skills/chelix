@@ -8,8 +8,8 @@ import {
 	highlightAndScroll,
 	removeThinking,
 	scrollChatToBottom,
-	syncChatFollowStateFromPosition,
 	stripChannelPrefix,
+	syncChatFollowStateFromPosition,
 	updateCommandInputUI,
 	updateTokenBar,
 } from "../chat-ui";
@@ -384,10 +384,10 @@ export function postHistoryLoadActions(
 
 	if (!skipAutoScroll && searchContext?.query && S.chatMsgBox) {
 		highlightAndScroll(msgEls, searchContext.messageIndex, searchContext.query);
-	} else if (!skipAutoScroll) {
-		scrollChatToBottom(true);
-	} else {
+	} else if (skipAutoScroll) {
 		syncChatFollowStateFromPosition();
+	} else {
+		scrollChatToBottom(true);
 	}
 
 	const session = sessionStore.getByKey(key);

@@ -72,7 +72,7 @@ export function getProviderModal(): HTMLElement {
 }
 
 // Lazy import to avoid circular dependency at module level.
-// openProviderModal needs showApiKeyForm/showOAuthFlow/showLocalModelFlow/showCustomProviderForm,
+// openProviderModal needs showApiKeyForm/showOAuthFlow/showCustomProviderForm,
 // and those modules need openProviderModal for "Back" buttons.
 export function openProviderModal(): void {
 	// Dynamic import breaks the cycle.

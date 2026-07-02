@@ -26,7 +26,6 @@ pub struct GatewayServices {
     pub logs: Arc<dyn LogsService>,
     pub provider_setup: Arc<dyn ProviderSetupService>,
     pub project: Arc<dyn ProjectService>,
-    pub local_llm: Arc<dyn LocalLlmService>,
     pub external_agent: Arc<dyn ExternalAgentService>,
     pub network_audit: Arc<dyn crate::network_audit::NetworkAuditService>,
     /// Optional channel registry for direct plugin access (thread context, etc.).
@@ -161,7 +160,6 @@ impl GatewayServices {
             logs: Arc::new(NoopLogsService),
             provider_setup: Arc::new(NoopProviderSetupService),
             project: Arc::new(NoopProjectService),
-            local_llm: Arc::new(NoopLocalLlmService),
             external_agent: Arc::new(NoopExternalAgentService),
             network_audit: Arc::new(crate::network_audit::NoopNetworkAuditService),
             channel_registry: None,
@@ -177,11 +175,6 @@ impl GatewayServices {
             #[cfg(feature = "telephony")]
             telephony_plugin: None,
         }
-    }
-
-    pub fn with_local_llm(mut self, local_llm: Arc<dyn LocalLlmService>) -> Self {
-        self.local_llm = local_llm;
-        self
     }
 
     pub fn with_network_audit(
@@ -292,7 +285,6 @@ impl GatewayServices {
             logs: self.logs.clone(),
             provider_setup: self.provider_setup.clone(),
             project: self.project.clone(),
-            local_llm: self.local_llm.clone(),
             system_info,
             external_agent: self.external_agent.clone(),
         })

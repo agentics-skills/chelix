@@ -849,10 +849,7 @@ pub(crate) fn subscription_provider_rank(provider_name: &str) -> usize {
 
 #[allow(dead_code)]
 pub(crate) fn is_allowlist_exempt_provider(provider_name: &str) -> bool {
-    matches!(
-        normalize_provider_key(provider_name).as_str(),
-        "local-llm" | "ollama"
-    )
+    matches!(normalize_provider_key(provider_name).as_str(), "ollama")
 }
 
 /// Returns `true` if the model matches the allowlist patterns.

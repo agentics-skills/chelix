@@ -125,8 +125,6 @@ default = [
   "graphql",
   "hermes-import",
   "home-assistant",
-  "local-llm",
-  "local-llm-metal",
   "matrix",
   "mdns",
   "metrics",
@@ -165,14 +163,6 @@ hermes-import = ["dep:moltis-hermes-import"]
 home-assistant = ["dep:moltis-home-assistant"]
 llm-compaction = ["moltis-chat/llm-compaction"]
 local-embeddings = ["moltis-memory/local-embeddings"]
-local-llm = [
-  "moltis-chat/local-llm",
-  "moltis-provider-setup/local-llm",
-  "moltis-providers/local-llm",
-]
-local-llm-cuda = ["local-llm", "moltis-providers/local-llm-cuda"]
-local-llm-metal = ["local-llm", "moltis-providers/local-llm-metal"]
-local-llm-vulkan = ["local-llm", "moltis-providers/local-llm-vulkan"]
 matrix = ["dep:moltis-matrix"]
 mdns = ["dep:mdns-sd"]
 metrics = [

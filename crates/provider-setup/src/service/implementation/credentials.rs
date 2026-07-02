@@ -151,16 +151,6 @@ impl LiveProviderSetupService {
             // immediately re-enable the provider on next rebuild.
             set_provider_enabled_in_config(provider_name, false)?;
             self.set_provider_enabled_in_memory(provider_name, false);
-
-            // Remove local-llm config
-            #[cfg(feature = "local-llm")]
-            if known.auth_type == AuthType::Local
-                && provider_name == "local-llm"
-                && let Some(config_dir) = moltis_config::config_dir()
-            {
-                let config_path = config_dir.join("local-llm.json");
-                let _ = std::fs::remove_file(config_path);
-            }
         }
 
         // Rebuild the provider registry without the removed provider.

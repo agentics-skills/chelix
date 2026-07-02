@@ -6,10 +6,6 @@ version.workspace    = true
 
 [features]
 default                 = ["metrics", "provider-async-openai", "provider-genai"]
-local-llm               = ["dep:directories", "dep:encoding_rs", "dep:llama-cpp-2", "dep:sysinfo"]
-local-llm-cuda          = ["llama-cpp-2/cuda", "local-llm"]
-local-llm-metal         = ["llama-cpp-2/metal", "local-llm"]
-local-llm-vulkan        = ["llama-cpp-2/vulkan", "local-llm"]
 metrics                 = ["dep:moltis-metrics"]
 provider-async-openai   = ["dep:async-openai"]
 provider-genai          = ["dep:genai"]
@@ -41,13 +37,9 @@ tracing           = { workspace = true }
 # Optional LLM provider crates
 async-openai   = { optional = true, workspace = true }
 base64         = { optional = true, workspace = true }
-directories    = { optional = true, workspace = true }
-encoding_rs    = { optional = true, workspace = true }
 genai          = { optional = true, workspace = true }
-llama-cpp-2    = { optional = true, workspace = true }
 moltis-metrics = { optional = true, workspace = true }
 moltis-oauth   = { optional = true, workspace = true }
-sysinfo        = { optional = true, workspace = true }
 
 [dev-dependencies]
 axum     = { workspace = true }

@@ -38,7 +38,6 @@ Configure providers through the web UI or directly in configuration files.
 |----------|-------------|-------|
 | **Ollama** | `ollama` | Local or remote Ollama instance |
 | **LM Studio** | `lmstudio` | Local LM Studio or any OpenAI-compatible server |
-| **Local LLM** | `local-llm` | Runs GGUF models directly on your machine |
 
 ### Custom OpenAI-Compatible
 
@@ -227,21 +226,13 @@ enabled = true
 ### LM Studio
 
 LM Studio auto-detects when running at `http://127.0.0.1:1234`. No API key needed.
-Also works with llama.cpp or any OpenAI-compatible local server.
+Also works with any OpenAI-compatible local server.
 
 ```toml
 [providers.lmstudio]
 enabled = true
 # base_url = "http://127.0.0.1:1234/v1"  # Override for different port/host
 ```
-
-### Local LLM
-
-Local LLM runs GGUF models directly on your machine.
-
-1. Go to **Settings** → **Providers** → **Local LLM**.
-2. Choose a model from the local registry or download one.
-3. Save and select it as your active model.
 
 ## Switching Models
 

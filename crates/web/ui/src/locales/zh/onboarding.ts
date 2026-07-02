@@ -108,19 +108,6 @@ export default {
 		oauthWaiting: "等待认证中\u2026",
 		failedToStartOAuth: "启动 OAuth 失败",
 		oauthTimedOut: "OAuth 超时。请重试。",
-		// Local model
-		ram: "内存：{{totalRamGb}}GB",
-		tier: "等级：{{memoryTier}}",
-		gpuAvailable: "GPU 可用",
-		backend: "后端",
-		notInstalled: "未安装",
-		selectAModel: "选择模型",
-		noModelsForBackend: "{{backend}} 无可用模型",
-		contextTokens: "上下文：{{tokens}}k tokens",
-		configuring: "配置中\u2026",
-		loadingSystemInfo: "加载系统信息中\u2026",
-		failedSystemInfo: "获取系统信息失败",
-		failedConfigureModel: "配置模型失败",
 	},
 
 	// ── Voice step ───────────────────────────────────────────

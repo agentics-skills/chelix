@@ -12,12 +12,11 @@ use crate::{
     types::{
         AgentIdentity, BoolResult, ChannelInfo, ChannelSendersResult, ChatRawPrompt, CronJob,
         CronRunRecord, CronStatus, ExecApprovalConfig, ExecNodeConfig, HealthInfo, HeartbeatStatus,
-        HookInfo, LocalSystemInfo, LogListResult, LogStatus, LogTailResult, McpServer, McpTool,
-        MemoryConfig, MemoryStatus, ModelInfo, NodeDescription, NodeInfo, Project, ProjectContext,
-        ProviderInfo, SecurityScanResult, SecurityStatus, SessionActiveResult, SessionBranch,
-        SessionEntry, SessionShareResult, SkillInfo, SkillRepo, StatusInfo, SttStatus,
-        SystemPresence, TtsStatus, UsageCost, UsageStatus, VoiceConfig, VoicewakeConfig,
-        VoxtralRequirements,
+        HookInfo, LogListResult, LogStatus, LogTailResult, McpServer, McpTool, MemoryConfig,
+        MemoryStatus, ModelInfo, NodeDescription, NodeInfo, Project, ProjectContext, ProviderInfo,
+        SecurityScanResult, SecurityStatus, SessionActiveResult, SessionBranch, SessionEntry,
+        SessionShareResult, SkillInfo, SkillRepo, StatusInfo, SttStatus, SystemPresence, TtsStatus,
+        UsageCost, UsageStatus, VoiceConfig, VoicewakeConfig, VoxtralRequirements,
     },
 };
 
@@ -627,46 +626,6 @@ impl ProviderQuery {
     async fn oauth_status(&self, ctx: &Context<'_>) -> Result<BoolResult> {
         let s = services!(ctx);
         from_service(s.provider_setup.oauth_status(serde_json::json!({})).await)
-    }
-
-    /// Local LLM queries.
-    async fn local(&self) -> LocalLlmQuery {
-        LocalLlmQuery
-    }
-}
-
-#[derive(Default)]
-pub struct LocalLlmQuery;
-
-#[Object]
-impl LocalLlmQuery {
-    /// Get system information for local LLM.
-    async fn system_info(&self, ctx: &Context<'_>) -> Result<LocalSystemInfo> {
-        let s = services!(ctx);
-        from_service(s.local_llm.system_info().await)
-    }
-
-    /// List available local models.
-    async fn models(&self, ctx: &Context<'_>) -> Result<Vec<ModelInfo>> {
-        let s = services!(ctx);
-        from_service(s.local_llm.models().await)
-    }
-
-    /// Get local LLM status.
-    async fn status(&self, ctx: &Context<'_>) -> Result<BoolResult> {
-        let s = services!(ctx);
-        from_service(s.local_llm.status().await)
-    }
-
-    /// Search HuggingFace models.
-    async fn search_hf(&self, ctx: &Context<'_>, query: String) -> Result<Json> {
-        let s = services!(ctx);
-        // HuggingFace search results have external API shape.
-        from_service_json(
-            s.local_llm
-                .search_hf(serde_json::json!({ "query": query }))
-                .await,
-        )
     }
 }
 

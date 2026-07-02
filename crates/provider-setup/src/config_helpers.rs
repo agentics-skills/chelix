@@ -103,11 +103,7 @@ pub(crate) fn ui_offered_provider_set(offered_order: &[String]) -> Option<BTreeS
 
 /// Merge persisted provider configs into a ProvidersConfig so the registry rebuild
 /// picks them up without needing env vars.
-pub fn config_with_saved_keys(
-    base: &ProvidersConfig,
-    key_store: &KeyStore,
-    local_model_ids: &[String],
-) -> ProvidersConfig {
+pub fn config_with_saved_keys(base: &ProvidersConfig, key_store: &KeyStore) -> ProvidersConfig {
     let mut config = base.clone();
     if let Some((home_config, _)) = home_provider_config() {
         for (name, entry) in home_config.providers {
@@ -183,17 +179,6 @@ pub fn config_with_saved_keys(
         }
     }
 
-    // Merge local-llm model IDs (injected by the caller).
-    if !local_model_ids.is_empty() {
-        config.local_models = local_model_ids.to_vec();
-
-        // Keep provider models in sync so model pickers can prioritize these.
-        let entry = config.providers.entry("local".into()).or_default();
-        if entry.models.is_empty() {
-            entry.models = normalize_model_list(config.local_models.clone());
-        }
-    }
-
     config
 }
 
@@ -235,8 +220,6 @@ pub fn detect_auto_provider_sources_with_overrides(
     let config_dir = current_config_dir();
     let provider_keys_path = config_dir.join("provider_keys.json");
     let oauth_tokens_path = config_dir.join("oauth_tokens.json");
-    #[cfg(feature = "local-llm")]
-    let local_llm_config_path = config_dir.join("local-llm.json");
     let codex_path = codex_cli_auth_path();
 
     let mut seen = BTreeSet::new();
@@ -320,11 +303,6 @@ pub fn detect_auto_provider_sources_with_overrides(
             sources.push(format!("file:{}", path.display()));
         }
 
-        #[cfg(feature = "local-llm")]
-        if provider.name == "local-llm" && local_llm_config_path.exists() {
-            sources.push(format!("file:{}", local_llm_config_path.display()));
-        }
-
         for source in sources {
             if seen.insert((provider.name.to_string(), source.clone())) {
                 detected.push(AutoDetectedProviderSource {
@@ -357,7 +335,7 @@ mod tests {
             .unwrap();
 
         let base = ProvidersConfig::default();
-        let merged = config_with_saved_keys(&base, &store, &[]);
+        let merged = config_with_saved_keys(&base, &store);
         let entry = merged.get("openai").unwrap();
         assert_eq!(
             entry.api_key.as_ref().map(|s| s.expose_secret().as_str()),
@@ -374,7 +352,7 @@ mod tests {
         store.save("anthropic", "sk-saved").unwrap();
 
         let base = ProvidersConfig::default();
-        let merged = config_with_saved_keys(&base, &store, &[]);
+        let merged = config_with_saved_keys(&base, &store);
         let entry = merged.get("anthropic").unwrap();
         assert_eq!(
             entry.api_key.as_ref().map(|s| s.expose_secret().as_str()),
@@ -393,7 +371,7 @@ mod tests {
             api_key: Some(Secret::new("sk-config".into())),
             ..Default::default()
         });
-        let merged = config_with_saved_keys(&base, &store, &[]);
+        let merged = config_with_saved_keys(&base, &store);
         let entry = merged.get("anthropic").unwrap();
         // Config key takes precedence over saved key.
         assert_eq!(

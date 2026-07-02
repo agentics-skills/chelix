@@ -525,35 +525,6 @@ fn chat_config_toml_parses_workspace_file_limit() {
 }
 
 #[test]
-fn providers_config_local_alias_maps_local_llm_to_local() {
-    let mut config = ProvidersConfig::default();
-    config.providers.insert("local-llm".into(), ProviderEntry {
-        enabled: false,
-        ..ProviderEntry::default()
-    });
-
-    assert!(!config.is_enabled("local"));
-    assert!(!config.is_enabled("local-llm"));
-    assert!(config.get("local").is_some());
-}
-
-#[test]
-fn providers_config_local_alias_prefers_exact_key() {
-    let mut config = ProvidersConfig::default();
-    config.providers.insert("local".into(), ProviderEntry {
-        enabled: false,
-        ..ProviderEntry::default()
-    });
-    config.providers.insert("local-llm".into(), ProviderEntry {
-        enabled: true,
-        ..ProviderEntry::default()
-    });
-
-    assert!(!config.is_enabled("local"));
-    assert!(config.is_enabled("local-llm"));
-}
-
-#[test]
 fn providers_config_offered_controls_enablement() {
     let config = ProvidersConfig {
         offered: vec!["openai".into()],
@@ -561,16 +532,6 @@ fn providers_config_offered_controls_enablement() {
     };
     assert!(config.is_enabled("openai"));
     assert!(!config.is_enabled("anthropic"));
-}
-
-#[test]
-fn providers_config_offered_handles_local_alias() {
-    let config = ProvidersConfig {
-        offered: vec!["local-llm".into()],
-        ..ProvidersConfig::default()
-    };
-    assert!(config.is_enabled("local"));
-    assert!(config.is_enabled("local-llm"));
 }
 
 #[test]

@@ -10,9 +10,6 @@ use {
 
 use {moltis_config::MessageQueueMode, moltis_service_traits::ServiceResult};
 
-#[cfg(feature = "local-llm")]
-use moltis_providers::model_id::raw_model_id;
-
 use crate::{
     agent_loop::run_explicit_shell_command,
     channels::deliver_channel_error,
@@ -578,29 +575,6 @@ impl LiveChatService {
             client_seq = ?client_seq,
             "chat.send: provider resolved"
         );
-
-        // Check if this is a local model that needs downloading/loading.
-        // Only do this check for local-llm providers.
-        #[cfg(feature = "local-llm")]
-        if provider.name() == "local-llm" {
-            let model_to_check = model_id
-                .map(raw_model_id)
-                .unwrap_or_else(|| raw_model_id(provider.id()))
-                .to_string();
-            tracing::info!(
-                provider_name = provider.name(),
-                model_to_check,
-                "checking local model cache"
-            );
-            if let Err(e) = self.state.ensure_local_model_cached(&model_to_check).await {
-                return Err(format!("Failed to prepare local model: {}", e).into());
-            }
-            // Pre-load the model into RAM (broadcasts lifecycle events so the
-            // chat UI shows "Loading model X into memory..." before inference).
-            if let Err(e) = self.state.ensure_local_model_loaded(&model_to_check).await {
-                tracing::warn!(model = model_to_check, error = %e, "lifecycle pre-load failed, inference will still lazy-load");
-            }
-        }
 
         // Resolve project context for this connection's active project.
         let project_context = self

@@ -764,32 +764,6 @@ impl ProviderMutation {
         let s = services!(ctx);
         from_service(s.provider_setup.oauth_complete(input.0).await)
     }
-
-    /// Local LLM mutations.
-    async fn local(&self) -> LocalLlmMutation {
-        LocalLlmMutation
-    }
-}
-
-#[derive(Default)]
-pub struct LocalLlmMutation;
-
-#[Object]
-impl LocalLlmMutation {
-    async fn configure(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
-        let s = services!(ctx);
-        from_service(s.local_llm.configure(input.0).await)
-    }
-
-    async fn configure_custom(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
-        let s = services!(ctx);
-        from_service(s.local_llm.configure_custom(input.0).await)
-    }
-
-    async fn remove_model(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
-        let s = services!(ctx);
-        from_service(s.local_llm.remove_model(input.0).await)
-    }
 }
 
 // ── MCP ─────────────────────────────────────────────────────────────────────

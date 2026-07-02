@@ -36,7 +36,6 @@ supported by Moltis so you can pick the best fit for your use case.
 | **Venice** | Various | Varies | Yes | Varies | $ | Medium | Privacy-focused, uncensored models |
 | **NEAR AI Cloud** | GLM, Qwen, GPT OSS, Claude | Full | Yes | Varies | Varies | Medium | TEE-backed private inference with attestation-aware catalog |
 | **Ollama** | Any GGUF model | Varies | Yes | Varies | Free | Varies | Local inference, no API key |
-| **Local LLM** | Any GGUF model | Varies | Yes | Varies | Free | Varies | Built-in GGUF runner, no server needed |
 | **GitHub Copilot** | GPT-4o, Claude (via Copilot) | Full | Yes | Varies | Subscription | Fast | Uses existing Copilot subscription |
 | **OpenAI Codex** | Codex models | Full | Yes | Varies | $$ | Fast | OAuth-based, code-focused |
 
@@ -75,8 +74,7 @@ though model selection is more limited.
 ### For local / offline use
 
 **Ollama** is the easiest path --- install it, pull a model, and Moltis
-auto-detects it. **Local LLM** runs GGUF models directly without a
-separate server. Both require sufficient RAM (8GB+ for small models,
+auto-detects it. It requires sufficient RAM (8GB+ for small models,
 16GB+ recommended).
 
 ### For access to many models

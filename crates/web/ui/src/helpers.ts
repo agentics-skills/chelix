@@ -3,7 +3,7 @@ import { Marked, Renderer, type Token } from "marked";
 import { onEvent } from "./events";
 import { hasTranslation, t } from "./i18n";
 import * as S from "./state";
-import { WsEventName, type OperationProgressPayload, type RpcResponse } from "./types";
+import { type OperationProgressPayload, type RpcResponse, WsEventName } from "./types";
 
 // Extend Window for webkitAudioContext (Safari)
 declare global {

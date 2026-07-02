@@ -53,9 +53,9 @@ impl KnownProvider {
     }
 }
 
-/// Build the known providers list at runtime, including local-llm if enabled.
+/// Build the known providers list at runtime.
 pub fn known_providers() -> Vec<KnownProvider> {
-    let providers = vec![
+    vec![
         // Membership/OAuth providers first — no API key needed, just sign in.
         KnownProvider {
             name: "openai-codex",
@@ -277,26 +277,7 @@ pub fn known_providers() -> Vec<KnownProvider> {
             key_optional: false,
             local_only: false,
         },
-    ];
-
-    // Add local-llm provider when the local-llm feature is enabled
-    #[cfg(feature = "local-llm")]
-    let providers = {
-        let mut p = providers;
-        p.push(KnownProvider {
-            name: "local-llm",
-            display_name: "Local LLM (Offline)",
-            auth_type: AuthType::Local,
-            env_key: None,
-            default_base_url: None,
-            requires_model: true,
-            key_optional: false,
-            local_only: true,
-        });
-        p
-    };
-
-    providers
+    ]
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]

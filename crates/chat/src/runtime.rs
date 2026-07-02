@@ -142,18 +142,6 @@ pub trait ChatRuntime: Send + Sync {
         session_key: Option<&str>,
     ) -> crate::error::Result<usize>;
 
-    // ── Local LLM ────────────────────────────────────────────────────────
-
-    /// Ensure a local model is cached/downloaded. No-op if local-llm is disabled.
-    async fn ensure_local_model_cached(&self, model_id: &str) -> crate::error::Result<bool>;
-
-    /// Ensure a local model is loaded into RAM (broadcasting lifecycle events).
-    /// No-op if local-llm is disabled or the model is already loaded.
-    async fn ensure_local_model_loaded(&self, model_id: &str) -> crate::error::Result<()> {
-        let _ = model_id;
-        Ok(())
-    }
-
     // ── Remote nodes ─────────────────────────────────────────────────────
 
     /// List currently connected remote nodes.

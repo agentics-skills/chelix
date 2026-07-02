@@ -128,17 +128,17 @@ port = {port}                           # Port number (auto-generated for this i
 #   policy    - Per-provider tool policy override (allow/deny lists)
 #   model_overrides.<model_id>.context_window - Override context window for a specific model
 #   probe_timeout_secs - Timeout for completion-based model probes (default: 30s).
-#                        Increase for local LLM servers that load large models on first request.
+#                        Increase for local LLM servers (Ollama, LM Studio) that load large models on first request.
 
 # [providers]
-# offered = ["local-llm", "lmstudio", "github-copilot", "openai-codex", "openai", "anthropic", "openrouter", "ollama", "moonshot", "minimax", "zai"]
+# offered = ["lmstudio", "github-copilot", "openai-codex", "openai", "anthropic", "openrouter", "ollama", "moonshot", "minimax", "zai"]
                                     # Enabled providers and those shown in onboarding/picker UI ([] = enable/show all)
 # show_legacy_models = true         # Show models older than 1 year in the chat model selector (they always appear in Settings)
 # All available providers (canonical list in schema/providers.rs):
 #   "anthropic", "openai", "gemini", "groq", "xai", "deepinfra",
 #   "deepseek", "fireworks", "mistral", "openrouter", "cerebras", "minimax",
 #   "moonshot", "zai", "zai-code", "venice", "nearai", "alibaba-coding",
-#   "ollama", "lmstudio", "local-llm", "openai-codex",
+#   "ollama", "lmstudio", "openai-codex",
 #   "github-copilot", "kimi-code"
 
 # ── Anthropic (Claude) ────────────────────────────────────────
@@ -241,11 +241,6 @@ port = {port}                           # Port number (auto-generated for this i
 # [providers.ollama]
 # base_url = "http://localhost:11434"
 # models = ["llama3.2", "qwen2.5:7b"]         # Optional preferred models; installed models are discovered dynamically
-
-# ── Local LLM ─────────────────────────────────────────────────
-# [providers.local-llm]
-# models = ["qwen2.5-coder-7b-q4_k_m"]        # Optional; configure local models in onboarding
-# idle_timeout_secs = 300                      # Auto-unload local models after 5 minutes of inactivity (per-model overrides in local-llm.json)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MODEL OVERRIDES (GLOBAL)

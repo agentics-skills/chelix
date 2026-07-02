@@ -55,7 +55,6 @@ interface HistoryPoint {
 	tool_executions?: number;
 	mcp_calls?: number;
 	process_memory_bytes?: number;
-	local_llama_cpp_bytes?: number;
 	by_provider?: Record<string, { input_tokens?: number; output_tokens?: number }>;
 	[key: string]: unknown;
 }
@@ -391,15 +390,9 @@ function prepareMemoryChart(points: HistoryPoint[]): { data: (number | null)[][]
 	const mib = 1024 * 1024;
 	const timestamps = points.map((p) => p.timestamp / 1000);
 	const processMemory = points.map((p) => (p.process_memory_bytes || 0) / mib);
-	const hasLocalLlama = points.some((p) => ((p.local_llama_cpp_bytes as number) || 0) > 0);
 
 	const data: (number | null)[][] = [timestamps, processMemory];
 	const series: ChartSeries[] = [{ label: t("metrics:series.processMemory"), color: chartColors.error }];
-
-	if (hasLocalLlama) {
-		data.push(points.map((p) => ((p.local_llama_cpp_bytes as number) || 0) / mib));
-		series.push({ label: t("metrics:series.localLlamaCpp"), color: chartColors.primary });
-	}
 
 	return { data, series };
 }

@@ -614,7 +614,6 @@ mod tests {
         provider_names.extend_from_slice(&[
             "github-copilot",
             "kimi-code",
-            "local-llm",
             "openai-codex",
             "groq",
             "xai",

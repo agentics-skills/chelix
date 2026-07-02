@@ -18,13 +18,11 @@ import { targetValue } from "../../typed-events";
 import { ErrorPanel } from "../shared";
 import type {
 	KeyHelp,
-	LocalModel,
 	ModelSelectorRow,
 	OAuthInfo,
 	ProbeResult,
 	ProviderInfo,
 	RawModelRow,
-	SysInfo,
 	ValidationResult,
 } from "../types";
 
@@ -50,7 +48,6 @@ const RECOMMENDED_PROVIDERS = new Set([
 	"minimax",
 	"zai",
 	"ollama",
-	"local-llm",
 	"lmstudio",
 ]);
 
@@ -192,18 +189,12 @@ interface OnboardingProviderRowProps {
 	oauthCallbackInput: string;
 	setOauthCallbackInput: (v: string) => void;
 	oauthSubmitting: boolean;
-	localProvider: string | null;
-	sysInfo: SysInfo | null;
-	localModels: LocalModel[];
-	selectedBackend: string | null;
-	setSelectedBackend: (v: string) => void;
 	apiKey: string;
 	setApiKey: (v: string) => void;
 	endpoint: string;
 	setEndpoint: (v: string) => void;
 	model: string;
 	setModel: (v: string) => void;
-	saving: boolean;
 	savingModels: boolean;
 	error: string | null;
 	validationResult: ValidationResult | null;
@@ -214,11 +205,9 @@ interface OnboardingProviderRowProps {
 	onSaveModels: () => void;
 	onSubmitOAuthCallback: (name: string) => void;
 	onCancelOAuth: () => void;
-	onConfigureLocalModel: (mdl: LocalModel) => void;
-	onCancelLocal: () => void;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: provider row renders inline config forms for api-key, oauth, and local flows
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: provider row renders inline config forms for api-key and oauth flows
 export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode {
 	const {
 		provider,
@@ -234,18 +223,12 @@ export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode 
 		oauthCallbackInput,
 		setOauthCallbackInput,
 		oauthSubmitting,
-		localProvider,
-		sysInfo,
-		localModels,
-		selectedBackend,
-		setSelectedBackend,
 		apiKey,
 		setApiKey,
 		endpoint,
 		setEndpoint,
 		model,
 		setModel,
-		saving,
 		savingModels,
 		error,
 		validationResult,
@@ -256,15 +239,12 @@ export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode 
 		onSaveModels,
 		onSubmitOAuthCallback,
 		onCancelOAuth,
-		onConfigureLocalModel,
-		onCancelLocal,
 	} = props;
 
 	const isApiKeyForm = configuring === provider.name && (phase === "form" || phase === "validating");
 	const isModelSelect = configuring === provider.name && phase === "selectModel";
 	const isOAuth = oauthProvider === provider.name;
-	const isLocal = localProvider === provider.name;
-	const isExpanded = isApiKeyForm || isModelSelect || isOAuth || isLocal;
+	const isExpanded = isApiKeyForm || isModelSelect || isOAuth;
 	const keyInputRef = useRef<HTMLInputElement>(null);
 	const rowRef = useRef<HTMLDivElement>(null);
 
@@ -527,78 +507,6 @@ export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode 
 					</button>
 				</div>
 			) : null}
-			{isLocal ? (
-				<div className="flex flex-col gap-2 mt-3 border-t border-[var(--border)] pt-3">
-					{sysInfo ? (
-						<div className="flex flex-col gap-3">
-							<div className="flex gap-3 text-xs text-[var(--muted)]">
-								<span>RAM: {sysInfo.totalRamGb}GB</span>
-								<span>Tier: {sysInfo.memoryTier}</span>
-								{sysInfo.hasGpu ? <span className="text-[var(--ok)]">GPU available</span> : null}
-							</div>
-							{sysInfo.isAppleSilicon && (sysInfo.availableBackends || []).length > 0 ? (
-								<div className="flex flex-col gap-2">
-									<div className="text-xs font-medium text-[var(--text-strong)]">Backend</div>
-									<div className="flex flex-col gap-2">
-										{(sysInfo.availableBackends || []).map((b) => (
-											<div
-												key={b.id}
-												className={`backend-card ${b.id === selectedBackend ? "selected" : ""} ${b.available ? "" : "disabled"}`}
-												onClick={() => {
-													if (b.available) setSelectedBackend(b.id);
-												}}
-											>
-												<div className="flex flex-wrap items-center justify-between gap-2">
-													<span className="text-sm font-medium text-[var(--text)]">{b.name}</span>
-													<div className="flex flex-wrap gap-2 justify-end">
-														{b.id === sysInfo.recommendedBackend && b.available ? (
-															<span className="recommended-badge">Recommended</span>
-														) : null}
-														{b.available ? null : <span className="tier-badge">Not installed</span>}
-													</div>
-												</div>
-												<div className="text-xs text-[var(--muted)] mt-1">{b.description}</div>
-											</div>
-										))}
-									</div>
-								</div>
-							) : null}
-							<div className="text-xs font-medium text-[var(--text-strong)]">Select a model</div>
-							<div className="flex flex-col gap-2">
-								{localModels.filter((m) => m.backend === selectedBackend).length === 0 ? (
-									<div className="text-xs text-[var(--muted)] py-4 text-center">
-										No models available for {selectedBackend}
-									</div>
-								) : (
-									localModels
-										.filter((m) => m.backend === selectedBackend)
-										.map((mdl) => (
-											<div key={mdl.id} className="model-card" onClick={() => onConfigureLocalModel(mdl)}>
-												<div className="flex flex-wrap items-center justify-between gap-2">
-													<span className="text-sm font-medium text-[var(--text)]">{mdl.displayName}</span>
-													<div className="flex flex-wrap gap-2 justify-end">
-														<span className="tier-badge">{mdl.minRamGb}GB</span>
-														{mdl.suggested ? <span className="recommended-badge">Recommended</span> : null}
-													</div>
-												</div>
-												<div className="text-xs text-[var(--muted)] mt-1">
-													Context: {(mdl.contextWindow / 1000).toFixed(0)}k tokens
-												</div>
-											</div>
-										))
-								)}
-							</div>
-							{saving ? <div className="text-xs text-[var(--muted)]">Configuring{"\u2026"}</div> : null}
-						</div>
-					) : (
-						<div className="text-xs text-[var(--muted)]">Loading system info{"\u2026"}</div>
-					)}
-					{error ? <ErrorPanel message={error} /> : null}
-					<button className="provider-btn provider-btn-secondary provider-btn-sm self-start" onClick={onCancelLocal}>
-						Cancel
-					</button>
-				</div>
-			) : null}
 		</div>
 	);
 }
@@ -612,7 +520,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 	const [showAllProviders, setShowAllProviders] = useState(false);
 	const [configuring, setConfiguring] = useState<string | null>(null);
 	const [oauthProvider, setOauthProvider] = useState<string | null>(null);
-	const [localProvider, setLocalProvider] = useState<string | null>(null);
 	const [phase, setPhase] = useState("form");
 	const [providerModels, setProviderModels] = useState<ModelSelectorRow[]>([]);
 	const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
@@ -623,15 +530,11 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 	const [apiKey, setApiKey] = useState("");
 	const [endpoint, setEndpoint] = useState("");
 	const [model, setModel] = useState("");
-	const [saving, setSaving] = useState(false);
 	const [validationResults, setValidationResults] = useState<Record<string, ValidationResult>>({});
 	const [oauthInfo, setOauthInfo] = useState<OAuthInfo | null>(null);
 	const [oauthCallbackInput, setOauthCallbackInput] = useState("");
 	const [oauthSubmitting, setOauthSubmitting] = useState(false);
 	const oauthTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-	const [sysInfo, setSysInfo] = useState<SysInfo | null>(null);
-	const [localModels, setLocalModels] = useState<LocalModel[]>([]);
-	const [selectedBackend, setSelectedBackend] = useState<string | null>(null);
 
 	function refreshProviders(): Promise<unknown> {
 		return sendRpc<ProviderInfo[]>("providers.available", {}).then((res) => {
@@ -682,7 +585,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 	function closeAll(): void {
 		setConfiguring(null);
 		setOauthProvider(null);
-		setLocalProvider(null);
 		setModelSelectProvider(null);
 		setPhase("form");
 		setProviderModels([]);
@@ -697,8 +599,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		setOauthInfo(null);
 		setOauthCallbackInput("");
 		setOauthSubmitting(false);
-		setSysInfo(null);
-		setLocalModels([]);
 		if (oauthTimerRef.current) {
 			clearInterval(oauthTimerRef.current);
 			oauthTimerRef.current = null;
@@ -736,8 +636,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 			setPhase("form");
 		} else if (p.authType === "oauth") {
 			startOAuth(p);
-		} else if (p.authType === "local") {
-			startLocal(p);
 		}
 	}
 
@@ -1020,53 +918,12 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 			});
 	}
 
-	function startLocal(p: ProviderInfo): void {
-		setLocalProvider(p.name);
-		sendRpc<SysInfo>("providers.local.system_info", {}).then((sysRes) => {
-			if (!sysRes?.ok) {
-				setError((sysRes?.error as { message?: string })?.message || "Failed to get system info");
-				setLocalProvider(null);
-				return;
-			}
-			setSysInfo(sysRes.payload!);
-			setSelectedBackend(sysRes.payload?.recommendedBackend || "GGUF");
-			sendRpc<{ recommended?: LocalModel[] }>("providers.local.models", {}).then((modelsRes) => {
-				if (modelsRes?.ok) setLocalModels(modelsRes.payload?.recommended || []);
-			});
-		});
-	}
-
-	function configureLocalModel(mdl: LocalModel): void {
-		const provName = localProvider;
-		setSaving(true);
-		setError(null);
-		sendRpc("providers.local.configure", { modelId: mdl.id, backend: selectedBackend }).then((res) => {
-			setSaving(false);
-			if (res?.ok) {
-				setLocalProvider(null);
-				setSysInfo(null);
-				setLocalModels([]);
-				setValidationResults((prev) => ({ ...prev, [provName!]: { ok: true, message: null } }));
-				refreshProviders();
-			} else setError((res?.error as { message?: string })?.message || "Failed to configure model");
-		});
-	}
-
-	function cancelLocal(): void {
-		setLocalProvider(null);
-		setSysInfo(null);
-		setLocalModels([]);
-		setError(null);
-	}
-
 	if (loading) return <div className="text-sm text-[var(--muted)]">{t("onboarding:provider.loadingLlms")}</div>;
 
 	const configuredProviders = providers.filter((p) => p.configured);
 	const recommendedProviders = providers.filter((p) => p.configured || RECOMMENDED_PROVIDERS.has(p.name));
 	const otherProviders = providers.filter((p) => !(p.configured || RECOMMENDED_PROVIDERS.has(p.name)));
-	const otherIsActive = otherProviders.some(
-		(p) => configuring === p.name || oauthProvider === p.name || localProvider === p.name,
-	);
+	const otherIsActive = otherProviders.some((p) => configuring === p.name || oauthProvider === p.name);
 	const showOther = showAllProviders || otherIsActive;
 
 	function renderProviderRow(p: ProviderInfo): VNode {
@@ -1086,20 +943,14 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 				oauthCallbackInput={oauthCallbackInput}
 				setOauthCallbackInput={setOauthCallbackInput}
 				oauthSubmitting={oauthSubmitting}
-				localProvider={localProvider}
-				sysInfo={sysInfo}
-				localModels={localModels}
-				selectedBackend={selectedBackend}
-				setSelectedBackend={setSelectedBackend}
 				apiKey={apiKey}
 				setApiKey={setApiKey}
 				endpoint={endpoint}
 				setEndpoint={setEndpoint}
 				model={model}
 				setModel={setModel}
-				saving={saving}
 				savingModels={savingModels}
-				error={configuring === p.name || oauthProvider === p.name || localProvider === p.name ? error : null}
+				error={configuring === p.name || oauthProvider === p.name ? error : null}
 				validationResult={validationResults[p.name] || null}
 				onStartConfigure={onStartConfigure}
 				onCancelConfigure={closeAll}
@@ -1108,8 +959,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 				onSaveModels={onSaveSelectedModels}
 				onSubmitOAuthCallback={submitOAuthCallback}
 				onCancelOAuth={cancelOAuth}
-				onConfigureLocalModel={configureLocalModel}
-				onCancelLocal={cancelLocal}
 			/>
 		);
 	}
@@ -1159,7 +1008,7 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 					{showOther ? otherProviders.map(renderProviderRow) : null}
 				</div>
 			) : null}
-			{error && !configuring && !oauthProvider && !localProvider ? <ErrorPanel message={error} /> : null}
+			{error && !configuring && !oauthProvider ? <ErrorPanel message={error} /> : null}
 			<div className="flex flex-wrap items-center gap-3 mt-1">
 				<button className="provider-btn provider-btn-secondary" onClick={onBack || undefined}>
 					{t("common:actions.back")}
