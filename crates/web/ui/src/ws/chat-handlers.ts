@@ -57,6 +57,18 @@ export type ChatHandler = (p: ChatPayload, isActive: boolean, isChatPage: boolea
 
 // ── Individual chat event handlers ────────────────────────────
 
+function resetVoicePending(eventSession: string): void {
+	const session = sessionStore.getByKey(eventSession);
+	if (session) session.voicePending.value = false;
+	S.setVoicePending(false);
+}
+
+function sessionMediaUrl(sessionKey: string, audioPath: string): string | null {
+	const filename = audioPath.split("/").pop() || "";
+	if (!filename) return null;
+	return `/api/sessions/${encodeURIComponent(sessionKey)}/media/${encodeURIComponent(filename)}`;
+}
+
 function handleChatThinking(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
 	updateSessionRunId(eventSession, p.runId);
 	setSessionReplying(eventSession, true);
@@ -284,6 +296,7 @@ function handleChatFinal(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 	if (p.messageIndex !== undefined && p.messageIndex <= lastIdx) {
 		setSessionReplying(eventSession, false);
 		setSessionActiveRunId(eventSession, null);
+		resetVoicePending(eventSession);
 		if (isActive && isChatPage) setComposerStopButton(false);
 		return;
 	}
@@ -301,9 +314,9 @@ function handleChatFinal(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 	removeThinking();
 	clearStaleRunningToolCards();
 
-	if (S.voicePending && p.text && p.replyMedium === "voice") {
+	if (S.voicePending && p.replyMedium === "voice") {
 		// Voice pending path: we suppressed streaming, so render everything at once.
-		console.debug("[audio] voice-pending path, audio:", !!p.audio, "text:", p.text.substring(0, 40));
+		console.debug("[audio] voice-pending path, audio:", !!p.audio, "text:", finalText.substring(0, 40));
 		const msgEl = S.streamEl || document.createElement("div");
 		msgEl.className = "msg assistant";
 		msgEl.textContent = "";
@@ -313,16 +326,17 @@ function handleChatFinal(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 		}
 
 		if (p.audio) {
-			const filename = p.audio.split("/").pop() || "";
-			const audioSrc = `/api/sessions/${encodeURIComponent(p.sessionKey || S.activeSessionKey)}/media/${encodeURIComponent(filename)}`;
-			console.debug("[audio] rendering persisted audio:", filename);
-			renderAudioPlayer(msgEl, audioSrc, true);
+			const audioSrc = sessionMediaUrl(p.sessionKey || S.activeSessionKey, p.audio);
+			if (audioSrc) {
+				console.debug("[audio] rendering persisted audio:", p.audio);
+				renderAudioPlayer(msgEl, audioSrc, true);
+			}
 		}
-		if (hasNonWhitespaceContent(p.text)) {
+		if (hasNonWhitespaceContent(finalText)) {
 			// Safe: renderMarkdown calls esc() first -- all user input is HTML-escaped.
 			const textWrap = document.createElement("div");
 			textWrap.className = "mt-2";
-			setSafeMarkdownHtml(textWrap, p.text);
+			setSafeMarkdownHtml(textWrap, finalText);
 			msgEl.appendChild(textWrap);
 		}
 		if (p.reasoning && !isReasoningAlreadyShown(p.reasoning)) {
@@ -339,24 +353,27 @@ function handleChatFinal(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 		if (resolvedEl && p.reasoning && !skipReasoning) {
 			appendReasoningDisclosure(resolvedEl, p.reasoning);
 		}
-		if (resolvedEl && p.text && p.replyMedium === "voice") {
+		if (p.replyMedium === "voice" && p.audio) {
+			if (!resolvedEl) resolvedEl = chatAddMsg("assistant", "", false);
 			console.debug(
 				"[audio] streamed path, audio:",
 				!!p.audio,
 				"voicePending:",
 				S.voicePending,
 				"text:",
-				p.text.substring(0, 40),
+				finalText.substring(0, 40),
 			);
-			if (p.audio) {
-				const fn2 = p.audio.split("/").pop() || "";
-				const src2 = `/api/sessions/${encodeURIComponent(p.sessionKey || S.activeSessionKey)}/media/${encodeURIComponent(fn2)}`;
-				console.debug("[audio] rendering persisted audio (streamed):", fn2);
+			if (resolvedEl) {
+				const src2 = sessionMediaUrl(p.sessionKey || S.activeSessionKey, p.audio);
+				console.debug("[audio] rendering persisted audio (streamed):", p.audio);
 				resolvedEl.textContent = "";
-				renderAudioPlayer(resolvedEl, src2, true);
-				appendFinalFooter(resolvedEl, p, eventSession);
-			} else {
-				console.debug("[audio] no persisted audio, showing voice fallback action");
+				if (src2) renderAudioPlayer(resolvedEl, src2, true);
+				if (hasNonWhitespaceContent(finalText)) {
+					const textWrap = document.createElement("div");
+					textWrap.className = "mt-2";
+					setSafeMarkdownHtml(textWrap, finalText);
+					resolvedEl.appendChild(textWrap);
+				}
 				appendFinalFooter(resolvedEl, p, eventSession);
 			}
 		} else {

@@ -781,6 +781,9 @@ fn insert_standard_headers(response: &mut axum::response::Response, csp: &str) {
     if let Ok(val) = csp.parse() {
         headers.insert(axum::http::header::CONTENT_SECURITY_POLICY, val);
     }
+    if let Ok(val) = "autoplay=(self)".parse() {
+        headers.insert("Permissions-Policy", val);
+    }
 }
 
 fn trim_route_path(path: &str) -> &str {
@@ -978,12 +981,13 @@ pub(crate) async fn render_spa_template(
 
     let csp = format!(
         "default-src 'self'; \
-         script-src 'self' 'nonce-{nonce}' 'wasm-unsafe-eval'; \
+         script-src 'self' 'nonce-{nonce}' 'wasm-unsafe-eval' blob:; \
          style-src 'self' 'unsafe-inline'; \
          img-src 'self' data: blob: https://github.com https://avatars.githubusercontent.com https://clawhub.ai; \
          media-src 'self' blob:; \
          font-src 'self'; \
          connect-src 'self' ws: wss:; \
+         worker-src 'self' blob:; \
          frame-ancestors 'none'; \
          form-action 'self'; \
          base-uri 'self'; \

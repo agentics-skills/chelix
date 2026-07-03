@@ -86,7 +86,9 @@ where
         ))
         .layer(SetResponseHeaderLayer::overriding(
             header::HeaderName::from_static("permissions-policy"),
-            HeaderValue::from_static("camera=(), microphone=(self), geolocation=(), payment=()"),
+            HeaderValue::from_static(
+                "camera=(), microphone=(self), geolocation=(), payment=(), autoplay=(self)",
+            ),
         ))
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(cors);
