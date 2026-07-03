@@ -25,7 +25,7 @@ import {
 	sendRpc,
 	tokenSpeedTone,
 } from "../helpers";
-import { appendMessageActions, appendUserMessageCopyAction } from "../message-actions";
+import { appendMessageActions, appendUserMessageActions } from "../message-actions";
 import { upsertTtsProviderFooter } from "../message-voice";
 import { navigate } from "../router";
 import { settingsPath } from "../routes";
@@ -43,6 +43,7 @@ import type { HistoryMessage } from "../types";
 import type { ToolResult } from "../types/ws-events";
 
 import { computeHistoryTailIndex, ensureHistoryScrollBinding, syncHistoryState } from "./session-history";
+import { markSessionTailLocallyTruncated } from "./session-tail";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -82,6 +83,7 @@ interface AssistantMsg extends HistoryMessage {
 
 interface UserMsg extends Omit<HistoryMessage, "content"> {
 	content?: string | unknown[];
+	historyIndex?: number;
 	documents?: Array<{
 		display_name?: string;
 		stored_filename?: string;
@@ -96,6 +98,14 @@ interface UserMsg extends Omit<HistoryMessage, "content"> {
 		message_kind?: string;
 	};
 	audio?: string;
+}
+
+type TruncateTailEntry = Parameters<typeof markSessionTailLocallyTruncated>[2];
+
+interface TruncateTailPayload {
+	sessionKey?: string;
+	keptCount?: number;
+	entry?: TruncateTailEntry;
 }
 
 interface AgentInfo {
@@ -203,9 +213,32 @@ function renderHistoryUserMessage(msg: UserMsg): HTMLElement | null {
 			renderDocument(el, mediaSrc, doc.display_name || storedName, doc.mime_type, doc.size_bytes);
 		}
 	}
-	appendUserMessageCopyAction(el, text);
+	appendUserMessageActions({
+		messageEl: el,
+		sessionKey: S.activeSessionKey,
+		messageIndex: msg.historyIndex,
+		text,
+		onDeleted: (payload) => handleUserMessageDeleted(el, payload),
+	});
 	if (el && msg.channel) appendChannelFooter(el, msg.channel);
 	return el;
+}
+
+function handleUserMessageDeleted(messageEl: HTMLElement | null, payload: unknown): void {
+	const data = payload as TruncateTailPayload | null;
+	const sessionKey = data?.sessionKey || S.activeSessionKey;
+	markSessionTailLocallyTruncated(sessionKey, Number(data?.keptCount) || 0, data?.entry);
+	if (sessionKey !== S.activeSessionKey || !location.pathname.startsWith("/chats/")) return;
+	removeMessageTailFromDom(messageEl);
+}
+
+function removeMessageTailFromDom(messageEl: HTMLElement | null): void {
+	let current = messageEl;
+	while (current) {
+		const next = current.nextElementSibling as HTMLElement | null;
+		current.remove();
+		current = next;
+	}
 }
 
 function createModelFooter(msg: AssistantMsg): HTMLDivElement {

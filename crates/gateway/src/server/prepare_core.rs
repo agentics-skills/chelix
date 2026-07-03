@@ -222,6 +222,7 @@ pub async fn prepare_gateway_core(
     let approval_manager = Arc::new(approval_manager_from_config(&config));
 
     let mut services = GatewayServices::noop();
+    let session_mutations = Arc::clone(&services.session_mutations);
 
     // Wire live logs service if a log buffer is available.
     if let Some(ref buf) = log_buffer {
@@ -1222,6 +1223,7 @@ pub async fn prepare_gateway_core(
         deploy_platform,
         session_event_bus,
         services,
+        session_mutations,
         registry,
         effective_providers,
         config_env_overrides,

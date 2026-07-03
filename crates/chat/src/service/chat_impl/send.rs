@@ -4,11 +4,13 @@ use std::{sync::Arc, time::Duration};
 
 use {
     serde_json::Value,
-    tokio::sync::OwnedSemaphorePermit,
     tracing::{debug, info, warn},
 };
 
-use {moltis_config::MessageQueueMode, moltis_service_traits::ServiceResult};
+use {
+    moltis_config::MessageQueueMode,
+    moltis_service_traits::{ServiceError, ServiceResult, SessionBusyReason},
+};
 
 use crate::{
     agent_loop::run_explicit_shell_command,
@@ -181,8 +183,7 @@ impl LiveChatService {
         // session, queue immediately instead of letting a follow-up request
         // contend with the active run's locks.
         let message_queue_mode = self.config.chat.message_queue_mode;
-        let session_sem = self.session_semaphore(&session_key).await;
-        let permit: OwnedSemaphorePermit = match session_sem.clone().try_acquire_owned() {
+        let permit = match self.session_mutations.try_acquire_turn(&session_key).await {
             Ok(p) => {
                 info!(
                     session = %session_key,
@@ -191,6 +192,17 @@ impl LiveChatService {
                     "chat.send: acquired session permit"
                 );
                 p
+            },
+            Err(error) if error.reason() == SessionBusyReason::ReservedMutation => {
+                info!(
+                    session = %session_key,
+                    client_seq = ?client_seq,
+                    queued_replay,
+                    "chat.send: rejected because session mutation is in progress"
+                );
+                return Err(ServiceError::message(
+                    "Session history is being updated; please try again.",
+                ));
             },
             Err(_) => {
                 let queue_mode = message_queue_mode;

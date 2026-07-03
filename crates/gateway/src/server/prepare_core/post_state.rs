@@ -61,6 +61,7 @@ pub(super) struct PostStateInputs {
     pub deploy_platform: Option<String>,
     pub session_event_bus: SessionEventBus,
     pub services: GatewayServices,
+    pub session_mutations: Arc<moltis_service_traits::SessionMutationCoordinator>,
     pub registry: Arc<tokio::sync::RwLock<ProviderRegistry>>,
     pub effective_providers: moltis_config::schema::ProvidersConfig,
     pub config_env_overrides: std::collections::HashMap<String, String>,
@@ -249,6 +250,7 @@ pub(super) async fn complete_startup(
         deploy_platform,
         session_event_bus,
         mut services,
+        session_mutations,
         registry,
         effective_providers,
         config_env_overrides,
@@ -1306,6 +1308,7 @@ pub(super) async fn complete_startup(
         )
         .with_session_state_store(Arc::clone(&session_state_store))
         .with_tools(Arc::clone(&shared_tool_registry))
+        .with_session_mutations(Arc::clone(&session_mutations))
         .with_config(config.clone())
         .with_failover(config.failover.clone());
 

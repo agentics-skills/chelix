@@ -167,6 +167,45 @@ async function mockChatSendOk(page) {
 	});
 }
 
+async function mockUserMessageDelete(page) {
+	await page.evaluate(async () => {
+		var appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
+		if (!appScript) throw new Error("app module script not found");
+		var appUrl = new URL(appScript.src, window.location.origin);
+		var prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
+		var stateModule = await import(`${prefix}js/state.js`);
+		var ws = stateModule.ws;
+		if (!ws) throw new Error("websocket unavailable");
+
+		if (!window.__origUserDeleteWsSend) {
+			window.__origUserDeleteWsSend = ws.send.bind(ws);
+		}
+		window.__userDeletePayloads = [];
+
+		ws.send = (payload) => {
+			try {
+				var parsed = JSON.parse(payload);
+				if (parsed?.method === "sessions.truncate_tail") {
+					window.__userDeletePayloads.push(parsed.params || {});
+					var resolver = stateModule.pending?.[parsed.id];
+					if (typeof resolver === "function") {
+						delete stateModule.pending[parsed.id];
+						resolver({ ok: true, payload: { ok: true, keptCount: 0, removedCount: 1 } });
+					}
+					return;
+				}
+			} catch (_err) {
+				// Fall through to original sender.
+			}
+			return window.__origUserDeleteWsSend(payload);
+		};
+	});
+}
+
+async function getUserDeletePayloads(page) {
+	return await page.evaluate(() => window.__userDeletePayloads || []);
+}
+
 async function setChatSeq(page, seq) {
 	await page.evaluate(async (nextSeq) => {
 		var appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
@@ -186,6 +225,27 @@ async function getChatSeq(page) {
 		var prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
 		var state = await import(`${prefix}js/state.js`);
 		return state.chatSeq;
+	});
+}
+
+async function getActiveSessionUiState(page) {
+	return await page.evaluate(async () => {
+		var appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
+		if (!appScript) throw new Error("app module script not found");
+		var appUrl = new URL(appScript.src, window.location.origin);
+		var prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
+		var state = await import(`${prefix}js/state.js`);
+		var sessionStoreModule = await import(`${prefix}js/stores/session-store.js`);
+		var historyCache = await import(`${prefix}js/stores/session-history-cache.js`);
+		var key = state.activeSessionKey;
+		var session = sessionStoreModule.sessionStore.getByKey(key);
+		var history = historyCache.getSessionHistory(key);
+		return {
+			chatSeq: state.chatSeq,
+			messageCount: session?.messageCount ?? null,
+			preview: session?.preview ?? "",
+			historyLength: Array.isArray(history) ? history.length : null,
+		};
 	});
 }
 
@@ -344,6 +404,34 @@ test.describe("Chat input and slash commands", () => {
 		await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("copy this user message");
 		const afterBox = await userMessage.boundingBox();
 		expect(Math.round(afterBox?.height || 0)).toBe(Math.round(beforeBox?.height || 0));
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("user message delete button truncates by client sequence", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await mockChatSendOk(page);
+		await mockUserMessageDelete(page);
+
+		const chatInput = await waitForChatInputReady(page);
+		await chatInput.fill("delete this user message");
+		await page.locator("#sendBtn").click();
+
+		const userMessage = page.locator(".msg.user", { hasText: "delete this user message" }).last();
+		await expect(userMessage).toBeVisible();
+		const copyBtn = userMessage.locator(".msg-user-copy-btn");
+		const deleteBtn = userMessage.locator(".msg-user-delete-btn");
+		await expect(copyBtn).toBeVisible();
+		await expect(deleteBtn).toBeVisible();
+
+		const copyBox = await copyBtn.boundingBox();
+		const deleteBox = await deleteBtn.boundingBox();
+		expect((deleteBox?.y || 0) > (copyBox?.y || 0)).toBeTruthy();
+
+		await deleteBtn.click();
+		await expect.poll(async () => (await getUserDeletePayloads(page)).length).toBe(1);
+		const payloads = await getUserDeletePayloads(page);
+		expect(payloads[0]).toMatchObject({ key: "main", seq: 1 });
 
 		expect(pageErrors).toEqual([]);
 	});
@@ -554,12 +642,19 @@ test.describe("Chat input and slash commands", () => {
 
 		const chatInput = page.locator("#chatInput");
 		const sendBtn = page.locator("#sendBtn");
+		const beforeState = await getActiveSessionUiState(page);
 		await chatInput.fill("hello");
 		await chatInput.press("Enter");
 
 		await expect(page.locator("#messages")).toContainText("Request failed");
+		await expect(page.locator(".msg.user", { hasText: "hello" })).toHaveCount(0);
 		await expect(sendBtn).toHaveAttribute("data-mode", "send");
 		await expect(sendBtn).toHaveAttribute("aria-label", "Send");
+		const afterState = await getActiveSessionUiState(page);
+		expect(afterState.chatSeq).toBe(beforeState.chatSeq);
+		expect(afterState.messageCount).toBe(beforeState.messageCount);
+		expect(afterState.preview).toBe(beforeState.preview);
+		expect(afterState.historyLength).toBe(beforeState.historyLength);
 		expect(pageErrors).toEqual([]);
 	});
 

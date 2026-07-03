@@ -6,7 +6,7 @@
 
 use serde::Deserialize;
 
-use crate::services::ServiceError;
+use {crate::services::ServiceError, moltis_sessions::store::UserMessageTarget};
 
 /// Params for `session.patch`.
 ///
@@ -78,6 +78,42 @@ impl VoiceGenerateParams {
             return Ok(VoiceTarget::ByMessageIndex(idx));
         }
         Err("missing 'messageIndex' or 'runId' parameter")
+    }
+}
+
+/// Params for `sessions.truncate_tail`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TruncateTailParams {
+    pub key: String,
+    #[serde(default)]
+    pub message_index: Option<usize>,
+    #[serde(default)]
+    pub history_index: Option<usize>,
+    #[serde(default)]
+    pub seq: Option<u64>,
+}
+
+impl TruncateTailParams {
+    /// Return a non-empty session key.
+    pub fn key(&self) -> Result<&str, &'static str> {
+        let key = self.key.trim();
+        if key.is_empty() {
+            return Err("missing 'key' parameter");
+        }
+        Ok(key)
+    }
+
+    /// Resolve the target user message. Raw history index takes precedence
+    /// over client sequence because it is stable for persisted history renders.
+    pub fn target(&self) -> Result<UserMessageTarget, &'static str> {
+        if let Some(idx) = self.message_index.or(self.history_index) {
+            return Ok(UserMessageTarget::MessageIndex(idx));
+        }
+        if let Some(seq) = self.seq {
+            return Ok(UserMessageTarget::ClientSeq(seq));
+        }
+        Err("missing 'messageIndex' or 'seq' parameter")
     }
 }
 

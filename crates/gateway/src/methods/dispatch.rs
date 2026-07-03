@@ -210,6 +210,7 @@ const WRITE_METHODS: &[&str] = &[
     "channels.senders.deny",
     "sessions.switch",
     "sessions.fork",
+    "sessions.truncate_tail",
     "sessions.voice.generate",
     "sessions.clear_all",
     "sessions.share.create",

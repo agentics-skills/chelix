@@ -28,6 +28,8 @@ pub struct GatewayServices {
     pub project: Arc<dyn ProjectService>,
     pub external_agent: Arc<dyn ExternalAgentService>,
     pub network_audit: Arc<dyn crate::network_audit::NetworkAuditService>,
+    /// Shared per-session mutation coordinator used by chat turns and history mutations.
+    pub session_mutations: Arc<SessionMutationCoordinator>,
     /// Optional channel registry for direct plugin access (thread context, etc.).
     pub channel_registry: Option<Arc<moltis_channels::ChannelRegistry>>,
     /// Optional persisted channel store for safe config mutations.
@@ -162,6 +164,7 @@ impl GatewayServices {
             project: Arc::new(NoopProjectService),
             external_agent: Arc::new(NoopExternalAgentService),
             network_audit: Arc::new(crate::network_audit::NoopNetworkAuditService),
+            session_mutations: Arc::new(SessionMutationCoordinator::default()),
             channel_registry: None,
             channel_store: None,
             channel_outbound: None,

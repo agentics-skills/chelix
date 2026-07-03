@@ -294,6 +294,10 @@ impl SessionService for LiveSessionService {
         self.delete_impl(params).await
     }
 
+    async fn truncate_tail(&self, params: Value) -> ServiceResult {
+        self.truncate_tail_impl(params).await
+    }
+
     async fn search(&self, params: Value) -> ServiceResult {
         self.search_impl(params).await
     }

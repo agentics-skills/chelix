@@ -11,17 +11,21 @@ import {
 	type UploadedDocumentFile,
 	uploadDocumentAttachment,
 } from "../../media-drop";
-import { appendUserMessageCopyAction } from "../../message-actions";
+import { appendUserMessageActions } from "../../message-actions";
 import { setSessionModel } from "../../models";
 import {
 	bumpSessionCount,
 	cacheOutgoingUserMessage,
+	clearSessionHistoryCache,
+	markSessionTailLocallyTruncated,
 	seedSessionPreviewFromUserText,
 	setSessionActiveRunId,
 	setSessionReplying,
 } from "../../sessions";
 import * as S from "../../state";
 import { modelStore } from "../../stores/model-store";
+import { sessionStore } from "../../stores/session-store";
+import type { SessionMeta } from "../../types";
 import type { RpcResponse } from "../../types/rpc";
 import { handleSlashCommand, parseSlashCommand, shouldHandleSlashLocally, slashHideMenu } from "./slash-commands";
 
@@ -44,6 +48,40 @@ interface PendingImageAttachment extends PendingAttachment {
 export interface ChatSendPayload {
 	runId?: string;
 	queued?: boolean;
+}
+
+type TruncateTailEntry = Parameters<typeof markSessionTailLocallyTruncated>[2];
+
+interface TruncateTailPayload {
+	sessionKey?: string;
+	keptCount?: number;
+	entry?: TruncateTailEntry;
+}
+
+interface SessionOptimisticSnapshot {
+	messageCount: number;
+	lastSeenMessageCount: number;
+	preview: string;
+	updatedAt: number;
+	lastHistoryIndex: number;
+	version: number;
+}
+
+interface LegacySessionOptimisticSnapshot {
+	messageCount?: number;
+	lastSeenMessageCount?: number;
+	preview?: string | null;
+	updatedAt?: number;
+	version?: number;
+	_localUnread?: boolean;
+	_replying?: boolean;
+}
+
+interface OptimisticSendSnapshot {
+	sessionKey: string;
+	previousChatSeq: number;
+	session?: SessionOptimisticSnapshot;
+	legacy?: LegacySessionOptimisticSnapshot;
 }
 
 // ── Auto-resize ─────────────────────────────────────────────
@@ -122,23 +160,25 @@ export function applySelectedModelToChatParams(chatParams: ChatSendParams): void
 	setSessionModel(S.activeSessionKey, effectiveId);
 }
 
-export function handleChatSendRpcResponse(res: RpcResponse<ChatSendPayload>, userEl: HTMLElement | null): void {
+export function handleChatSendRpcResponse(res: RpcResponse<ChatSendPayload>, userEl: HTMLElement | null): boolean {
 	if (res.ok && res.payload?.runId) setSessionActiveRunId(S.activeSessionKey, res.payload.runId);
 	if (res.payload?.queued) {
 		markMessageQueued(userEl, S.activeSessionKey);
-		return;
+		return true;
 	}
-	if (!res.ok && res.error) {
+	if (!res.ok) {
 		setComposerStopButton(false);
-		chatAddMsg("error", res.error.message || "Request failed");
+		chatAddMsg("error", res.error?.message || "Request failed");
+		return false;
 	}
+	return res.ok;
 }
 
 export async function buildChatMessage(
 	text: string,
 	seq: number,
 	displayText?: string,
-): Promise<{ params: ChatSendParams; el: HTMLElement | null }> {
+): Promise<{ params: ChatSendParams; el: HTMLElement | null; enableDeleteAction: () => void }> {
 	const userText = displayText !== undefined ? displayText : text;
 	const attachments = hasPendingAttachments() ? getPendingAttachments() : [];
 	const images = attachments.filter((attachment): attachment is PendingImageAttachment => Boolean(attachment.dataUrl));
@@ -153,13 +193,128 @@ export async function buildChatMessage(
 		const params: ChatSendParams = content.length > 0 ? { content, _seq: seq } : { text, _seq: seq };
 		if (uploadedDocuments.length > 0) params._document_files = uploadedDocuments;
 		const el = chatAddMsgWithAttachments("user", userText ? renderMarkdown(userText) : "", images, uploadedDocuments);
-		appendUserMessageCopyAction(el, userText);
+		appendUserMessageActions({
+			messageEl: el,
+			sessionKey: S.activeSessionKey,
+			text: userText,
+			seq,
+			deleteEnabled: false,
+			onDeleted: (payload) => handleUserMessageDeleted(el, payload),
+		});
 		clearPendingAttachments();
-		return { params, el };
+		return {
+			params,
+			el,
+			enableDeleteAction: () =>
+				appendUserMessageActions({
+					messageEl: el,
+					sessionKey: S.activeSessionKey,
+					text: userText,
+					seq,
+					onDeleted: (payload) => handleUserMessageDeleted(el, payload),
+				}),
+		};
 	}
 	const el = chatAddMsg("user", renderMarkdown(userText), true);
-	appendUserMessageCopyAction(el, userText);
-	return { params: { text, _seq: seq }, el };
+	appendUserMessageActions({
+		messageEl: el,
+		sessionKey: S.activeSessionKey,
+		text: userText,
+		seq,
+		deleteEnabled: false,
+		onDeleted: (payload) => handleUserMessageDeleted(el, payload),
+	});
+	return {
+		params: { text, _seq: seq },
+		el,
+		enableDeleteAction: () =>
+			appendUserMessageActions({
+				messageEl: el,
+				sessionKey: S.activeSessionKey,
+				text: userText,
+				seq,
+				onDeleted: (payload) => handleUserMessageDeleted(el, payload),
+			}),
+	};
+}
+
+function handleUserMessageDeleted(messageEl: HTMLElement | null, payload: unknown): void {
+	const data = payload as TruncateTailPayload | null;
+	const sessionKey = data?.sessionKey || S.activeSessionKey;
+	markSessionTailLocallyTruncated(sessionKey, Number(data?.keptCount) || 0, data?.entry);
+	if (sessionKey !== S.activeSessionKey || !location.pathname.startsWith("/chats/")) return;
+	removeMessageTailFromDom(messageEl);
+}
+
+function removeMessageTailFromDom(messageEl: HTMLElement | null): void {
+	let current = messageEl;
+	while (current) {
+		const next = current.nextElementSibling as HTMLElement | null;
+		current.remove();
+		current = next;
+	}
+}
+
+function captureOptimisticSendSnapshot(sessionKey: string, previousChatSeq: number): OptimisticSendSnapshot {
+	const session = sessionStore.getByKey(sessionKey);
+	const legacy = (S.sessions as SessionMeta[]).find((entry) => entry.key === sessionKey);
+	return {
+		sessionKey,
+		previousChatSeq,
+		session: session
+			? {
+					messageCount: session.messageCount,
+					lastSeenMessageCount: session.lastSeenMessageCount,
+					preview: session.preview,
+					updatedAt: session.updatedAt,
+					lastHistoryIndex: session.lastHistoryIndex.value,
+					version: session.version,
+				}
+			: undefined,
+		legacy: legacy
+			? {
+					messageCount: legacy.messageCount,
+					lastSeenMessageCount: legacy.lastSeenMessageCount,
+					preview: legacy.preview,
+					updatedAt: legacy.updatedAt,
+					version: legacy.version,
+					_localUnread: legacy._localUnread,
+					_replying: legacy._replying,
+				}
+			: undefined,
+	};
+}
+
+function rollbackOptimisticSend(snapshot: OptimisticSendSnapshot, userEl: HTMLElement | null): void {
+	if (userEl?.isConnected) userEl.remove();
+	S.setChatSeq(snapshot.previousChatSeq);
+
+	const session = sessionStore.getByKey(snapshot.sessionKey);
+	if (session && snapshot.session) {
+		session.messageCount = snapshot.session.messageCount;
+		session.lastSeenMessageCount = snapshot.session.lastSeenMessageCount;
+		session.preview = snapshot.session.preview;
+		session.updatedAt = snapshot.session.updatedAt;
+		session.lastHistoryIndex.value = snapshot.session.lastHistoryIndex;
+		session.version = snapshot.session.version;
+		session.updateBadge();
+		session.dataVersion.value++;
+	}
+
+	const legacy = (S.sessions as SessionMeta[]).find((entry) => entry.key === snapshot.sessionKey);
+	if (legacy && snapshot.legacy) {
+		legacy.messageCount = snapshot.legacy.messageCount;
+		legacy.lastSeenMessageCount = snapshot.legacy.lastSeenMessageCount;
+		legacy.preview = snapshot.legacy.preview;
+		legacy.updatedAt = snapshot.legacy.updatedAt;
+		legacy.version = snapshot.legacy.version;
+		legacy._localUnread = snapshot.legacy._localUnread;
+		legacy._replying = snapshot.legacy._replying;
+	}
+
+	clearSessionHistoryCache(snapshot.sessionKey);
+	setSessionReplying(snapshot.sessionKey, false);
+	setComposerStopButton(false);
 }
 
 function markMessageQueued(el: HTMLElement | null, sessionKey: string): void {
@@ -214,8 +369,10 @@ async function sendChatAsync(): Promise<void> {
 	try {
 		if (tryHandleLocalSlashCommand(text, hasAttachments)) return;
 		const outgoingText = normalizeOutgoingText(text, hasAttachments);
-		S.setChatSeq(S.chatSeq + 1);
+		const previousChatSeq = S.chatSeq;
+		S.setChatSeq(previousChatSeq + 1);
 		const msg = await buildChatMessage(outgoingText, S.chatSeq, text);
+		const rollbackSnapshot = captureOptimisticSendSnapshot(S.activeSessionKey, previousChatSeq);
 		rememberChatHistory(text);
 		resetComposerAfterSend();
 		const chatParams = msg.params;
@@ -229,10 +386,14 @@ async function sendChatAsync(): Promise<void> {
 		setComposerStopButton(true, S.activeSessionKey);
 		try {
 			const res = await sendRpc<ChatSendPayload>("chat.send", chatParams);
-			handleChatSendRpcResponse(res, userEl);
+			const accepted = handleChatSendRpcResponse(res, userEl);
+			if (!accepted) {
+				rollbackOptimisticSend(rollbackSnapshot, userEl);
+			} else if (res.ok && !res.payload?.queued) {
+				msg.enableDeleteAction();
+			}
 		} catch {
-			setComposerStopButton(false);
-			setSessionReplying(S.activeSessionKey, false);
+			rollbackOptimisticSend(rollbackSnapshot, userEl);
 			chatAddMsg("error", "Request failed");
 		}
 		maybeRefreshFullContextFn?.();

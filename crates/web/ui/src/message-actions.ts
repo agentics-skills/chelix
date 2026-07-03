@@ -49,16 +49,76 @@ export interface MessageActionContext {
 	audioWarning?: string;
 }
 
+export interface UserMessageActionContext {
+	messageEl: HTMLElement | null;
+	sessionKey: string;
+	text: string;
+	messageIndex?: number;
+	seq?: number;
+	deleteEnabled?: boolean;
+	onDeleted?: (payload: unknown) => void;
+}
+
+export function appendUserMessageActions(ctx: UserMessageActionContext): void {
+	const { messageEl, text } = ctx;
+	if (!messageEl) return;
+	let stack = messageEl.querySelector(".msg-user-action-stack") as HTMLDivElement | null;
+	if (!stack) {
+		stack = document.createElement("div");
+		stack.className = "msg-user-action-stack";
+		messageEl.appendChild(stack);
+	}
+
+	if (text && !stack.querySelector(".msg-user-copy-btn")) {
+		stack.appendChild(buildUserCopyButton(text));
+	}
+
+	const canDelete = ctx.deleteEnabled !== false && (Number.isInteger(ctx.messageIndex) || Number.isInteger(ctx.seq));
+	if (canDelete && !stack.querySelector(".msg-user-delete-btn")) {
+		stack.appendChild(buildUserDeleteButton(ctx));
+	}
+
+	if (!stack.childElementCount) stack.remove();
+}
+
 export function appendUserMessageCopyAction(messageEl: HTMLElement | null, text: string): void {
-	if (!(messageEl && text)) return;
-	if (messageEl.querySelector(".msg-user-copy-btn")) return;
+	appendUserMessageActions({ messageEl, sessionKey: "", text, deleteEnabled: false });
+}
+
+function buildUserCopyButton(text: string): HTMLButtonElement {
 	const copyBtn = actionButton("icon-copy", "Copy");
 	copyBtn.classList.add("msg-user-copy-btn");
 	copyBtn.addEventListener("click", (e) => {
 		e.stopPropagation();
 		copyTextWithButtonFeedback(copyBtn, text);
 	});
-	messageEl.appendChild(copyBtn);
+	return copyBtn;
+}
+
+function buildUserDeleteButton(ctx: UserMessageActionContext): HTMLButtonElement {
+	const deleteBtn = actionButton("icon-trash", "Delete message and everything after it");
+	deleteBtn.classList.add("msg-user-delete-btn");
+	deleteBtn.addEventListener("click", async (e) => {
+		e.stopPropagation();
+		deleteBtn.classList.add("msg-action-btn-active");
+		deleteBtn.disabled = true;
+		const params: Record<string, unknown> = { key: ctx.sessionKey };
+		if (Number.isInteger(ctx.messageIndex)) {
+			params.messageIndex = ctx.messageIndex;
+		} else if (Number.isInteger(ctx.seq)) {
+			params.seq = ctx.seq;
+		}
+		const result = await sendRpc("sessions.truncate_tail", params);
+		if (result.ok) {
+			ctx.onDeleted?.(result.payload);
+			showToast("Message deleted", "success");
+			return;
+		}
+		deleteBtn.classList.remove("msg-action-btn-active");
+		deleteBtn.disabled = false;
+		showToast(result.error?.message || "Delete failed", "error");
+	});
+	return deleteBtn;
 }
 
 export function appendMessageActions(ctx: MessageActionContext): void {

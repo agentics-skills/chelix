@@ -6,11 +6,13 @@
 mod bundle;
 mod error;
 mod interfaces;
+mod session_mutations;
 
 pub use crate::{
     bundle::Services,
     error::{ServiceError, ServiceResult},
     interfaces::*,
+    session_mutations::{SessionBusyReason, SessionMutationCoordinator},
 };
 
 #[cfg(test)]

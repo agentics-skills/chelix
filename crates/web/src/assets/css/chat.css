@@ -1009,18 +1009,32 @@
   pointer-events: none;
 }
 
-.msg-user-copy-btn {
+.msg-user-action-stack {
   position: absolute;
   top: 2px;
   right: calc(100% + 4px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.msg-user-copy-btn,
+.msg-user-delete-btn {
   width: 24px;
   height: 24px;
   opacity: 0.55;
 }
 
 .msg-user-copy-btn:hover,
-.msg-user-copy-btn:focus-visible {
+.msg-user-copy-btn:focus-visible,
+.msg-user-delete-btn:hover,
+.msg-user-delete-btn:focus-visible {
   opacity: 1;
+}
+
+.msg-user-delete-btn:hover,
+.msg-user-delete-btn:focus-visible {
+  color: var(--error);
 }
 
 /* Retry popover */

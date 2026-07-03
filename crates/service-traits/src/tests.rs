@@ -1,8 +1,8 @@
 use serde_json::json;
 
 use crate::{
-    BrowserService, ChatService, NoopBrowserService, ServiceResult,
-    interfaces::model_service_not_configured_error,
+    BrowserService, ChatService, NoopBrowserService, ServiceResult, SessionBusyReason,
+    SessionMutationCoordinator, interfaces::model_service_not_configured_error,
 };
 
 struct SlowShutdownBrowserService;
@@ -108,4 +108,39 @@ async fn chat_service_default_refresh_prompt_memory_returns_not_configured() {
         Err(error) => error,
     };
     assert_eq!(error.to_string(), "chat not configured");
+}
+
+#[tokio::test]
+async fn session_mutation_coordinator_reports_active_turn_busy() {
+    let coordinator = SessionMutationCoordinator::default();
+    let turn = match coordinator.try_acquire_turn("s").await {
+        Ok(turn) => turn,
+        Err(error) => panic!("first turn should acquire, got {error}"),
+    };
+
+    let error = match coordinator.try_acquire_turn("s").await {
+        Ok(_) => panic!("second turn should be busy"),
+        Err(error) => error,
+    };
+
+    assert_eq!(error.reason(), SessionBusyReason::ActiveTurn);
+    drop(turn);
+}
+
+#[tokio::test]
+async fn session_mutation_coordinator_reports_reserved_mutation_busy() {
+    let coordinator = SessionMutationCoordinator::default();
+    let reservation = coordinator.reserve_mutation("s").await;
+
+    let error = match coordinator.try_acquire_turn("s").await {
+        Ok(_) => panic!("turn should be blocked by mutation reservation"),
+        Err(error) => error,
+    };
+
+    assert_eq!(error.reason(), SessionBusyReason::ReservedMutation);
+    let permit = match reservation.acquire().await {
+        Ok(permit) => permit,
+        Err(error) => panic!("reserved mutation should acquire, got {error}"),
+    };
+    drop(permit);
 }

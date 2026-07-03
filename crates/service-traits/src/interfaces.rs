@@ -45,6 +45,7 @@ pub trait SessionService: Send + Sync {
     async fn share_revoke(&self, params: Value) -> ServiceResult;
     async fn reset(&self, params: Value) -> ServiceResult;
     async fn delete(&self, params: Value) -> ServiceResult;
+    async fn truncate_tail(&self, params: Value) -> ServiceResult;
     async fn compact(&self, params: Value) -> ServiceResult;
     async fn search(&self, params: Value) -> ServiceResult;
     async fn fork(&self, params: Value) -> ServiceResult;
@@ -96,6 +97,10 @@ impl SessionService for NoopSessionService {
 
     async fn delete(&self, _p: Value) -> ServiceResult {
         Ok(serde_json::json!({ "ok": true }))
+    }
+
+    async fn truncate_tail(&self, _p: Value) -> ServiceResult {
+        Err("session tail truncation not available".into())
     }
 
     async fn compact(&self, _p: Value) -> ServiceResult {

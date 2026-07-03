@@ -11,7 +11,10 @@ use {
         runtimes::{acp::AcpTransport, claude_code::ClaudeCodeTransport, codex::CodexTransport},
         types::ContextTurn,
     },
-    moltis_service_traits::{ChatService, ExternalAgentService, ServiceResult, SessionService},
+    moltis_service_traits::{
+        ChatService, ExternalAgentService, ServiceError, ServiceResult, SessionBusyReason,
+        SessionService,
+    },
     moltis_sessions::{MessageContent, PersistedMessage},
     serde_json::Value,
     tokio::sync::Mutex,
@@ -305,6 +308,13 @@ impl SessionService for ExternalAgentSessionService {
         self.inner.delete(params).await
     }
 
+    async fn truncate_tail(&self, params: Value) -> ServiceResult {
+        if let Some(session_key) = session_key_param(&params) {
+            self.external_agents.shutdown_binding(&session_key).await;
+        }
+        self.inner.truncate_tail(params).await
+    }
+
     async fn compact(&self, params: Value) -> ServiceResult {
         self.inner.compact(params).await
     }
@@ -444,6 +454,25 @@ impl ExternalAgentChatService {
         session_key: String,
         kind: AgentTransportKind,
     ) -> ServiceResult {
+        let _session_permit = match self
+            .state
+            .services
+            .session_mutations
+            .try_acquire_turn(&session_key)
+            .await
+        {
+            Ok(permit) => permit,
+            Err(error) if error.reason() == SessionBusyReason::ReservedMutation => {
+                return Err(ServiceError::message(
+                    "Session history is being updated; please try again.",
+                ));
+            },
+            Err(_) => {
+                return Err(ServiceError::message(
+                    "External agent session is busy; please wait for the active turn to finish.",
+                ));
+            },
+        };
         let text = params
             .get("text")
             .or_else(|| params.get("message"))
@@ -765,6 +794,8 @@ fn session_key_param(params: &Value) -> Option<String> {
         .or_else(|| params.get("session_key"))
         .or_else(|| params.get("_session_key"))
         .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
 }
 

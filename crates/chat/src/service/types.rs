@@ -9,16 +9,14 @@ use std::{
 use {
     serde::Serialize,
     serde_json::Value,
-    tokio::{
-        sync::{RwLock, Semaphore},
-        task::AbortHandle,
-    },
+    tokio::{sync::RwLock, task::AbortHandle},
     tracing::warn,
 };
 
 use {
     moltis_agents::tool_registry::ToolRegistry,
     moltis_providers::ProviderRegistry,
+    moltis_service_traits::SessionMutationCoordinator,
     moltis_sessions::{
         PersistedMessage,
         message::{PersistedFunction, PersistedToolCall},
@@ -236,8 +234,8 @@ pub struct LiveChatService {
     pub(in crate::service) session_metadata: Arc<SqliteSessionMetadata>,
     pub(in crate::service) session_state_store: Option<Arc<SessionStateStore>>,
     pub(in crate::service) hook_registry: Option<Arc<moltis_common::hooks::HookRegistry>>,
-    /// Per-session semaphore ensuring only one agent run executes per session at a time.
-    pub(in crate::service) session_locks: Arc<RwLock<HashMap<String, Arc<Semaphore>>>>,
+    /// Per-session coordinator ensuring session history mutations do not race chat turns.
+    pub(in crate::service) session_mutations: Arc<SessionMutationCoordinator>,
     /// Per-session message queue for messages arriving during an active run.
     pub(in crate::service) message_queue: Arc<RwLock<HashMap<String, Vec<QueuedMessage>>>>,
     /// Per-session last-seen client sequence number for ordering diagnostics.
@@ -281,7 +279,7 @@ impl LiveChatService {
             session_metadata,
             session_state_store: None,
             hook_registry: None,
-            session_locks: Arc::new(RwLock::new(HashMap::new())),
+            session_mutations: Arc::new(SessionMutationCoordinator::default()),
             message_queue: Arc::new(RwLock::new(HashMap::new())),
             last_client_seq: Arc::new(RwLock::new(HashMap::new())),
             active_thinking_text: Arc::new(RwLock::new(HashMap::new())),
@@ -305,6 +303,11 @@ impl LiveChatService {
 
     pub fn with_tools(mut self, registry: Arc<RwLock<ToolRegistry>>) -> Self {
         self.tool_registry = registry;
+        self
+    }
+
+    pub fn with_session_mutations(mut self, mutations: Arc<SessionMutationCoordinator>) -> Self {
+        self.session_mutations = mutations;
         self
     }
 
@@ -339,24 +342,6 @@ impl LiveChatService {
                 has
             })
             .unwrap_or(true)
-    }
-
-    /// Return the per-session semaphore, creating one if absent.
-    pub(in crate::service) async fn session_semaphore(&self, key: &str) -> Arc<Semaphore> {
-        // Fast path: read lock.
-        {
-            let locks = self.session_locks.read().await;
-            if let Some(sem) = locks.get(key) {
-                return Arc::clone(sem);
-            }
-        }
-        // Slow path: write lock, insert.
-        let mut locks = self.session_locks.write().await;
-        Arc::clone(
-            locks
-                .entry(key.to_string())
-                .or_insert_with(|| Arc::new(Semaphore::new(1))),
-        )
     }
 
     pub(in crate::service) async fn abort_run_handle(

@@ -307,6 +307,66 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
     reg.register(
+        "sessions.truncate_tail",
+        Box::new(|ctx| {
+            Box::pin(async move {
+                let key = ctx
+                    .params
+                    .get("key")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| {
+                        ErrorShape::from(ServiceError::message("missing 'key' parameter"))
+                    })?
+                    .to_string();
+                let mutation_reservation = ctx
+                    .state
+                    .services
+                    .session_mutations
+                    .reserve_mutation(&key)
+                    .await;
+                let _ = ctx
+                    .state
+                    .chat()
+                    .cancel_queued(serde_json::json!({ "sessionKey": key }))
+                    .await;
+                let _ = ctx
+                    .state
+                    .chat()
+                    .abort(serde_json::json!({ "sessionKey": key }))
+                    .await;
+                let _mutation_permit = mutation_reservation
+                    .acquire()
+                    .await
+                    .map_err(|e| ErrorShape::from(ServiceError::message(e.to_string())))?;
+                let result = ctx
+                    .state
+                    .services
+                    .session
+                    .truncate_tail(ctx.params.clone())
+                    .await
+                    .map_err(ErrorShape::from)?;
+                broadcast(
+                    &ctx.state,
+                    "session",
+                    serde_json::json!({
+                        "kind": "history_truncated",
+                        "sessionKey": key,
+                        "entry": result.get("entry").cloned(),
+                        "targetIndex": result.get("targetIndex").cloned(),
+                        "keptCount": result.get("keptCount").cloned(),
+                        "removedCount": result.get("removedCount").cloned(),
+                        "prunedMediaCount": result.get("prunedMediaCount").cloned(),
+                    }),
+                    BroadcastOpts::default(),
+                )
+                .await;
+                Ok(result)
+            })
+        }),
+    );
+    reg.register(
         "sessions.clear_all",
         Box::new(|ctx| {
             Box::pin(async move {

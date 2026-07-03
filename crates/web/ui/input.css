@@ -2436,6 +2436,10 @@
     -webkit-mask-image: url("./icons/masks/mask-git-fork.svg");
     mask-image: url("./icons/masks/mask-git-fork.svg");
   }
+  .icon-trash {
+    -webkit-mask-image: url("./icons/masks/mask-trash.svg");
+    mask-image: url("./icons/masks/mask-trash.svg");
+  }
   .icon-list-plus {
     -webkit-mask-image: url("./icons/masks/mask-list-plus.svg");
     mask-image: url("./icons/masks/mask-list-plus.svg");

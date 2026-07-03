@@ -28,7 +28,14 @@ import { mount, navigate, registerPage, sessionPath } from "./router";
 import { routes } from "./routes";
 import { updateSandboxImageUI, updateSandboxUI } from "./sandbox";
 import * as _sessions from "./sessions";
-import { fetchSessions, refreshWelcomeCardIfNeeded, removeSessionFromClientState, renderSessionList } from "./sessions";
+import {
+	fetchSessions,
+	markSessionTailLocallyTruncated,
+	refreshWelcomeCardIfNeeded,
+	removeSessionFromClientState,
+	renderSessionList,
+	switchSession,
+} from "./sessions";
 import * as S from "./state";
 import { togglePalette } from "./stores/command-store";
 import * as modelStore from "./stores/model-store";
@@ -39,6 +46,7 @@ import * as _sessionHistoryCache from "./stores/session-history-cache";
 import * as _sessionStoreModule from "./stores/session-store";
 import { insertSessionInOrder, sessionStore } from "./stores/session-store";
 import { initTheme, injectMarkdownStyles } from "./theme";
+import type { SessionMeta } from "./types";
 import type { VaultStatus } from "./types/gon";
 import { GlobalDialogs, Toasts } from "./ui";
 import { connect } from "./websocket";
@@ -123,10 +131,7 @@ interface ProjectEntry {
 	[key: string]: unknown;
 }
 
-interface SessionEntry {
-	key: string;
-	[key: string]: unknown;
-}
+type SessionEntry = SessionMeta;
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -221,6 +226,16 @@ onEvent("session", (_payload: unknown) => {
 	if (payload.kind === "deleted") {
 		if (!removeSessionFromEvent(payload.sessionKey as string)) {
 			fetchSessions();
+		}
+		return;
+	}
+	if (payload.kind === "history_truncated") {
+		const sessionKey = payload.sessionKey as string;
+		const entry = (payload.entry as SessionEntry) || null;
+		if (entry) upsertSessionFromEvent(entry);
+		markSessionTailLocallyTruncated(sessionKey, Number(payload.keptCount) || 0, entry || undefined);
+		if (sessionKey === sessionStore.activeSessionKey.value && location.pathname.startsWith("/chats/")) {
+			switchSession(sessionKey);
 		}
 		return;
 	}

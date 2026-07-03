@@ -146,6 +146,10 @@ impl moltis_service_traits::SessionService for MockSession {
         self.0.call("sessions.delete", p)
     }
 
+    async fn truncate_tail(&self, p: Value) -> ServiceResult {
+        self.0.call("sessions.truncate_tail", p)
+    }
+
     async fn compact(&self, p: Value) -> ServiceResult {
         self.0.call("sessions.compact", p)
     }

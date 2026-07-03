@@ -33,7 +33,9 @@ use moltis_tools::fs::FsState;
 use crate::{
     agent_persona::AgentPersonaStore,
     services::{ServiceError, ServiceResult, SessionService, TtsService},
-    session_types::{PatchParams, VoiceGenerateParams, VoiceTarget, parse_params},
+    session_types::{
+        PatchParams, TruncateTailParams, VoiceGenerateParams, VoiceTarget, parse_params,
+    },
     share_store::{
         ShareSnapshot, ShareStore, ShareVisibility, SharedImageAsset, SharedImageSet,
         SharedMapLinks, SharedMessage, SharedMessageRole,
@@ -111,6 +113,38 @@ fn session_voice_format(status: &TtsStatusPayload) -> AudioFormat {
         Some(TtsProviderId::OpenAi) => AudioFormat::Mp3,
         _ => AudioFormat::Opus,
     }
+}
+
+fn session_entry_value(entry: &moltis_sessions::metadata::SessionEntry) -> Value {
+    serde_json::json!({
+        "id": &entry.id,
+        "key": &entry.key,
+        "label": &entry.label,
+        "model": &entry.model,
+        "createdAt": entry.created_at,
+        "updatedAt": entry.updated_at,
+        "messageCount": entry.message_count,
+        "lastSeenMessageCount": entry.last_seen_message_count,
+        "projectId": &entry.project_id,
+        "sandbox_enabled": entry.sandbox_enabled,
+        "sandbox_image": &entry.sandbox_image,
+        "worktree_branch": &entry.worktree_branch,
+        "channelBinding": &entry.channel_binding,
+        "parentSessionKey": &entry.parent_session_key,
+        "forkPoint": entry.fork_point,
+        "mcpDisabled": entry.mcp_disabled,
+        "preview": &entry.preview,
+        "archived": entry.archived,
+        "agent_id": &entry.agent_id,
+        "agentId": &entry.agent_id,
+        "mode_id": &entry.mode_id,
+        "modeId": &entry.mode_id,
+        "node_id": &entry.node_id,
+        "external_agent_kind": entry.external_agent_kind.map(|kind| kind.as_str()),
+        "externalAgentKind": entry.external_agent_kind.map(|kind| kind.as_str()),
+        "externalSessionId": &entry.external_session_id,
+        "version": entry.version,
+    })
 }
 
 #[derive(Debug, Deserialize)]

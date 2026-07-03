@@ -26,6 +26,44 @@ impl LiveSessionService {
         Ok(serde_json::json!({ "ok": true }))
     }
 
+    pub(super) async fn truncate_tail_impl(&self, params: Value) -> ServiceResult {
+        let params: TruncateTailParams = parse_params(params)?;
+        let key = params.key().map_err(ServiceError::message)?.to_string();
+        let target = params.target().map_err(ServiceError::message)?;
+
+        let truncate = self
+            .store
+            .truncate_from_user_message(&key, target)
+            .await
+            .map_err(ServiceError::message)?;
+        let retained_history = self.store.read(&key).await.map_err(ServiceError::message)?;
+        let preview = extract_preview(&retained_history);
+
+        self.metadata
+            .upsert(&key, None)
+            .await
+            .map_err(ServiceError::message)?;
+        self.metadata.touch(&key, truncate.kept_count as u32).await;
+        self.metadata.set_preview(&key, preview.as_deref()).await;
+
+        let entry = self
+            .metadata
+            .get(&key)
+            .await
+            .ok_or_else(|| format!("session '{key}' not found after truncation"))?;
+
+        Ok(serde_json::json!({
+            "ok": true,
+            "sessionKey": key,
+            "targetIndex": truncate.target_index,
+            "keptCount": truncate.kept_count,
+            "removedCount": truncate.removed_count,
+            "prunedMediaCount": truncate.pruned_media_count,
+            "preview": preview,
+            "entry": session_entry_value(&entry),
+        }))
+    }
+
     async fn collect_session_delete_order(&self, root_key: &str) -> Vec<String> {
         let mut order = Vec::new();
         let mut seen = HashSet::new();

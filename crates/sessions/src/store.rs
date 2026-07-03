@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File, OpenOptions},
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Seek, Write},
     path::PathBuf,
 };
 
@@ -9,6 +9,24 @@ use {
     fd_lock::RwLock,
     serde::{Deserialize, Serialize},
 };
+
+/// How to locate a user message that starts a session-tail mutation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UserMessageTarget {
+    /// Zero-based physical JSONL message index.
+    MessageIndex(usize),
+    /// Client-assigned user message sequence number.
+    ClientSeq(u64),
+}
+
+/// Result of truncating a session from a selected user message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TruncateTailResult {
+    pub target_index: usize,
+    pub kept_count: usize,
+    pub removed_count: usize,
+    pub pruned_media_count: usize,
+}
 
 /// A single search hit within a session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -185,6 +203,8 @@ impl SessionStore {
                 fs::remove_file(&path)?;
             }
             if media_dir.exists() {
+                // Deleting this parent-session media directory also breaks any fork that still
+                // references the same paths; forks need containerized media snapshots.
                 let _ = fs::remove_dir_all(&media_dir);
             }
             Ok(())
@@ -402,6 +422,62 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Truncate a session from a selected user message, removing that message
+    /// and every subsequent message in the JSONL file.
+    pub async fn truncate_from_user_message(
+        &self,
+        key: &str,
+        target: UserMessageTarget,
+    ) -> Result<TruncateTailResult> {
+        let path = self.path_for(key);
+        let media_dir = self.media_dir_for(key);
+        let key_filename = Self::key_to_filename(key);
+        let session_key = key.to_string();
+
+        tokio::task::spawn_blocking(move || -> Result<TruncateTailResult> {
+            if !path.exists() {
+                return Err(Error::message(format!("session '{session_key}' not found")));
+            }
+            let file = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .truncate(false)
+                .open(&path)?;
+            let mut lock = RwLock::new(file);
+            let mut guard = lock
+                .write()
+                .map_err(|e| Error::lock_failed(e.to_string()))?;
+
+            let mut messages = read_messages_from_file(&mut guard)?;
+            let original_count = messages.len();
+            let target_index = find_user_message_target(&messages, target)?;
+            let retained_media =
+                collect_session_media_refs(&messages[..target_index], &key_filename);
+            let removed_count = original_count.saturating_sub(target_index);
+            messages.truncate(target_index);
+
+            guard.set_len(0)?;
+            guard.rewind()?;
+            for msg in &messages {
+                let line = serde_json::to_string(msg)?;
+                writeln!(*guard, "{line}")?;
+            }
+
+            // This only checks media references retained in the current session file.
+            // Forks may still reference parent media until fork snapshots get their
+            // own containerized media copy without prompt-cache-sensitive URL rewrites.
+            let pruned_media_count = prune_unreferenced_media(&media_dir, &retained_media)?;
+
+            Ok(TruncateTailResult {
+                target_index,
+                kept_count: messages.len(),
+                removed_count,
+                pruned_media_count,
+            })
+        })
+        .await?
+    }
+
     /// Append a typed message to the session file.
     pub async fn append_typed(
         &self,
@@ -430,6 +506,131 @@ impl SessionStore {
         })
         .await?
     }
+}
+
+fn read_messages_from_file(file: &mut File) -> Result<Vec<serde_json::Value>> {
+    file.rewind()?;
+    let mut messages = Vec::new();
+    {
+        let reader = BufReader::new(&mut *file);
+        for line in reader.lines() {
+            let line = line?;
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            match serde_json::from_str(trimmed) {
+                Ok(val) => messages.push(val),
+                Err(e) => {
+                    tracing::warn!("skipping malformed JSONL line while truncating: {e}");
+                },
+            }
+        }
+    }
+    file.rewind()?;
+    Ok(messages)
+}
+
+fn find_user_message_target(
+    messages: &[serde_json::Value],
+    target: UserMessageTarget,
+) -> Result<usize> {
+    let index = match target {
+        UserMessageTarget::MessageIndex(idx) => {
+            if idx >= messages.len() {
+                return Err(Error::message(format!(
+                    "messageIndex {idx} exceeds message count {}",
+                    messages.len()
+                )));
+            }
+            idx
+        },
+        UserMessageTarget::ClientSeq(seq) => messages
+            .iter()
+            .position(|msg| {
+                msg.get("role").and_then(|v| v.as_str()) == Some("user")
+                    && msg.get("seq").and_then(|v| v.as_u64()) == Some(seq)
+            })
+            .ok_or_else(|| Error::message(format!("user message with seq {seq} not found")))?,
+    };
+
+    let role = messages[index].get("role").and_then(|v| v.as_str());
+    if role != Some("user") {
+        return Err(Error::message(format!(
+            "message at index {index} is not a user message"
+        )));
+    }
+    Ok(index)
+}
+
+fn collect_session_media_refs(
+    messages: &[serde_json::Value],
+    key_filename: &str,
+) -> std::collections::HashSet<String> {
+    let prefix = format!("media/{key_filename}/");
+    let mut refs = std::collections::HashSet::new();
+    for message in messages {
+        collect_media_refs_from_value(message, &prefix, &mut refs);
+    }
+    refs
+}
+
+fn collect_media_refs_from_value(
+    value: &serde_json::Value,
+    prefix: &str,
+    refs: &mut std::collections::HashSet<String>,
+) {
+    match value {
+        serde_json::Value::String(text) => {
+            if let Some(rest) = text.strip_prefix(prefix)
+                && !rest.is_empty()
+                && !rest.contains('/')
+            {
+                refs.insert(rest.to_string());
+            }
+        },
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_media_refs_from_value(item, prefix, refs);
+            }
+        },
+        serde_json::Value::Object(map) => {
+            for value in map.values() {
+                collect_media_refs_from_value(value, prefix, refs);
+            }
+        },
+        _ => {},
+    }
+}
+
+fn prune_unreferenced_media(
+    media_dir: &std::path::Path,
+    retained_media: &std::collections::HashSet<String>,
+) -> Result<usize> {
+    let Ok(entries) = fs::read_dir(media_dir) else {
+        return Ok(0);
+    };
+    let mut pruned = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if retained_media.contains(file_name) {
+            continue;
+        }
+        // Deleting this parent-session media file also breaks any fork that still
+        // references the same path; forks need containerized media snapshots.
+        match fs::remove_file(&path) {
+            Ok(()) => pruned += 1,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(pruned)
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -746,6 +947,161 @@ mod tests {
 
         assert!(!media_dir.exists());
         assert!(store.read("main").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_truncate_from_user_message_removes_target_and_tail() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("main", &json!({"role": "system", "content": "context"}))
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &json!({"role": "user", "content": "remove me", "seq": 7}),
+            )
+            .await
+            .unwrap();
+        store
+            .append("main", &json!({"role": "assistant", "content": "tail"}))
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &json!({"role": "tool_result", "tool_name": "exec", "success": true}),
+            )
+            .await
+            .unwrap();
+
+        let result = store
+            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(1))
+            .await
+            .unwrap();
+
+        assert_eq!(result.target_index, 1);
+        assert_eq!(result.kept_count, 1);
+        assert_eq!(result.removed_count, 3);
+        let messages = store.read("main").await.unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["role"], "system");
+    }
+
+    #[tokio::test]
+    async fn test_truncate_from_user_message_can_target_client_seq() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append(
+                "main",
+                &json!({"role": "user", "content": "keep", "seq": 1}),
+            )
+            .await
+            .unwrap();
+        store
+            .append("main", &json!({"role": "assistant", "content": "keep"}))
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &json!({"role": "user", "content": "remove", "seq": 2}),
+            )
+            .await
+            .unwrap();
+
+        let result = store
+            .truncate_from_user_message("main", UserMessageTarget::ClientSeq(2))
+            .await
+            .unwrap();
+
+        assert_eq!(result.target_index, 2);
+        assert_eq!(store.read("main").await.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_truncate_from_user_message_rejects_non_user_target() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("main", &json!({"role": "assistant", "content": "not user"}))
+            .await
+            .unwrap();
+
+        let error = store
+            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(0))
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("not a user message"));
+        assert_eq!(store.read("main").await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_truncate_from_user_message_rejects_out_of_range() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("main", &json!({"role": "user", "content": "only"}))
+            .await
+            .unwrap();
+
+        let error = store
+            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(5))
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("exceeds message count"));
+        assert_eq!(store.read("main").await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_truncate_from_user_message_rejects_missing_session() {
+        let (store, dir) = temp_store();
+
+        let error = store
+            .truncate_from_user_message("missing", UserMessageTarget::MessageIndex(0))
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("session 'missing' not found"));
+        assert!(!dir.path().join("missing.jsonl").exists());
+    }
+
+    #[tokio::test]
+    async fn test_truncate_from_user_message_prunes_unreferenced_media() {
+        let (store, _dir) = temp_store();
+
+        store.save_media("main", "keep.ogg", b"keep").await.unwrap();
+        store
+            .save_media("main", "remove.ogg", b"remove")
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &json!({"role": "user", "content": "keep", "audio": "media/main/keep.ogg"}),
+            )
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &json!({"role": "user", "content": "remove", "audio": "media/main/remove.ogg"}),
+            )
+            .await
+            .unwrap();
+
+        let result = store
+            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(1))
+            .await
+            .unwrap();
+
+        assert_eq!(result.pruned_media_count, 1);
+        assert!(store.media_path_for("main", "keep.ogg").exists());
+        assert!(!store.media_path_for("main", "remove.ogg").exists());
     }
 
     // --- Typed API tests ---
