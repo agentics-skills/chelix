@@ -49,6 +49,18 @@ export interface MessageActionContext {
 	audioWarning?: string;
 }
 
+export function appendUserMessageCopyAction(messageEl: HTMLElement | null, text: string): void {
+	if (!(messageEl && text)) return;
+	if (messageEl.querySelector(".msg-user-copy-btn")) return;
+	const copyBtn = actionButton("icon-copy", "Copy");
+	copyBtn.classList.add("msg-user-copy-btn");
+	copyBtn.addEventListener("click", (e) => {
+		e.stopPropagation();
+		copyTextWithButtonFeedback(copyBtn, text);
+	});
+	messageEl.appendChild(copyBtn);
+}
+
 export function appendMessageActions(ctx: MessageActionContext): void {
 	const { messageEl, sessionKey } = ctx;
 	const shouldKeepBottomAnchored = isChatAtBottom();
@@ -70,15 +82,7 @@ export function appendMessageActions(ctx: MessageActionContext): void {
 	// ── Copy button ──────────────────────────────────────────
 	const copyBtn = actionButton("icon-copy", "Copy");
 	copyBtn.addEventListener("click", () => {
-		copyToClipboard(ctx.text, "", "Failed to copy to clipboard").then((ok) => {
-			if (!ok) return;
-			copyBtn.replaceChildren(iconSpan("icon-checkmark"));
-			copyBtn.title = "Copied";
-			setTimeout(() => {
-				copyBtn.replaceChildren(iconSpan("icon-copy"));
-				copyBtn.title = "Copy";
-			}, 1500);
-		});
+		copyTextWithButtonFeedback(copyBtn, ctx.text);
 	});
 	bar.appendChild(copyBtn);
 
@@ -159,6 +163,18 @@ export function appendMessageActions(ctx: MessageActionContext): void {
 }
 
 // ── Button factory ───────────────────────────────────────────
+
+function copyTextWithButtonFeedback(copyBtn: HTMLButtonElement, text: string): void {
+	copyToClipboard(text, "", "Failed to copy to clipboard").then((ok) => {
+		if (!ok) return;
+		copyBtn.replaceChildren(iconSpan("icon-checkmark"));
+		copyBtn.title = "Copied";
+		setTimeout(() => {
+			copyBtn.replaceChildren(iconSpan("icon-copy"));
+			copyBtn.title = "Copy";
+		}, 1500);
+	});
+}
 
 function actionButton(iconClass: string, title: string): HTMLButtonElement {
 	const btn = document.createElement("button");

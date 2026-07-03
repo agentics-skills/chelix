@@ -134,6 +134,39 @@ async function waitForChatInputReady(page) {
 	return chatInput;
 }
 
+async function mockChatSendOk(page) {
+	await page.evaluate(async () => {
+		var appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
+		if (!appScript) throw new Error("app module script not found");
+		var appUrl = new URL(appScript.src, window.location.origin);
+		var prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
+		var stateModule = await import(`${prefix}js/state.js`);
+		var ws = stateModule.ws;
+		if (!ws) throw new Error("websocket unavailable");
+
+		if (!window.__origChatSendOkWsSend) {
+			window.__origChatSendOkWsSend = ws.send.bind(ws);
+		}
+
+		ws.send = (payload) => {
+			try {
+				var parsed = JSON.parse(payload);
+				if (parsed?.method === "chat.send") {
+					var resolver = stateModule.pending?.[parsed.id];
+					if (typeof resolver === "function") {
+						delete stateModule.pending[parsed.id];
+						resolver({ ok: true, payload: { runId: "e2e-user-copy-run" } });
+					}
+					return;
+				}
+			} catch (_err) {
+				// Fall through to original sender.
+			}
+			return window.__origChatSendOkWsSend(payload);
+		};
+	});
+}
+
 async function setChatSeq(page, seq) {
 	await page.evaluate(async (nextSeq) => {
 		var appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
@@ -289,6 +322,30 @@ test.describe("Chat input and slash commands", () => {
 		await expect(chatInput).toBeVisible();
 		await chatInput.focus();
 		await expect(chatInput).toBeFocused();
+	});
+
+	test("user message exposes compact copy button", async ({ page, context }) => {
+		const pageErrors = watchPageErrors(page);
+		await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+		await mockChatSendOk(page);
+
+		const chatInput = await waitForChatInputReady(page);
+		await chatInput.fill("copy this user message");
+		await page.locator("#sendBtn").click();
+
+		const userMessage = page.locator(".msg.user", { hasText: "copy this user message" }).last();
+		await expect(userMessage).toBeVisible();
+		const copyBtn = userMessage.locator(".msg-user-copy-btn");
+		await expect(copyBtn).toBeVisible();
+
+		const beforeBox = await userMessage.boundingBox();
+		await copyBtn.click();
+		await expect(copyBtn).toHaveAttribute("title", "Copied", { timeout: 2_000 });
+		await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("copy this user message");
+		const afterBox = await userMessage.boundingBox();
+		expect(Math.round(afterBox?.height || 0)).toBe(Math.round(beforeBox?.height || 0));
+
+		expect(pageErrors).toEqual([]);
 	});
 
 	test("chat.full_context reports workspace prompt truncation", async ({ page }) => {

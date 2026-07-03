@@ -55,6 +55,7 @@
   border: 1px solid var(--user-border);
   color: var(--text);
   align-self: flex-end;
+  position: relative;
 }
 
 .msg.assistant {
@@ -1006,6 +1007,20 @@
   color: var(--accent);
   opacity: 0.7;
   pointer-events: none;
+}
+
+.msg-user-copy-btn {
+  position: absolute;
+  top: 2px;
+  right: calc(100% + 4px);
+  width: 24px;
+  height: 24px;
+  opacity: 0.55;
+}
+
+.msg-user-copy-btn:hover,
+.msg-user-copy-btn:focus-visible {
+  opacity: 1;
 }
 
 /* Retry popover */

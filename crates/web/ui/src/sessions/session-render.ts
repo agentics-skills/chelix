@@ -25,7 +25,7 @@ import {
 	sendRpc,
 	tokenSpeedTone,
 } from "../helpers";
-import { appendMessageActions } from "../message-actions";
+import { appendMessageActions, appendUserMessageCopyAction } from "../message-actions";
 import { upsertTtsProviderFooter } from "../message-voice";
 import { navigate } from "../router";
 import { settingsPath } from "../routes";
@@ -203,6 +203,7 @@ function renderHistoryUserMessage(msg: UserMsg): HTMLElement | null {
 			renderDocument(el, mediaSrc, doc.display_name || storedName, doc.mime_type, doc.size_bytes);
 		}
 	}
+	appendUserMessageCopyAction(el, text);
 	if (el && msg.channel) appendChannelFooter(el, msg.channel);
 	return el;
 }

@@ -11,6 +11,7 @@ import {
 	type UploadedDocumentFile,
 	uploadDocumentAttachment,
 } from "../../media-drop";
+import { appendUserMessageCopyAction } from "../../message-actions";
 import { setSessionModel } from "../../models";
 import {
 	bumpSessionCount,
@@ -152,10 +153,13 @@ export async function buildChatMessage(
 		const params: ChatSendParams = content.length > 0 ? { content, _seq: seq } : { text, _seq: seq };
 		if (uploadedDocuments.length > 0) params._document_files = uploadedDocuments;
 		const el = chatAddMsgWithAttachments("user", userText ? renderMarkdown(userText) : "", images, uploadedDocuments);
+		appendUserMessageCopyAction(el, userText);
 		clearPendingAttachments();
 		return { params, el };
 	}
-	return { params: { text, _seq: seq }, el: chatAddMsg("user", renderMarkdown(userText), true) };
+	const el = chatAddMsg("user", renderMarkdown(userText), true);
+	appendUserMessageCopyAction(el, userText);
+	return { params: { text, _seq: seq }, el };
 }
 
 function markMessageQueued(el: HTMLElement | null, sessionKey: string): void {
