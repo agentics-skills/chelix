@@ -223,6 +223,14 @@ pub async fn sync_runtime_webauthn_host_and_notice(
             return None;
         },
     };
+    if !crate::auth_webauthn::is_origin_potentially_trustworthy(&origin_url) {
+        debug!(
+            host = %normalized,
+            origin = %origin,
+            "skipping runtime WebAuthn origin that is not potentially trustworthy"
+        );
+        return None;
+    }
     let webauthn = match crate::auth_webauthn::WebAuthnState::new(&normalized, &origin_url, &[]) {
         Ok(webauthn) => webauthn,
         Err(error) => {

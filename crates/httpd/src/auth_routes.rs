@@ -10,7 +10,6 @@ use {
         response::IntoResponse,
         routing::{delete, get, post},
     },
-    axum_extra::extract::Host,
 };
 
 use {
@@ -156,13 +155,12 @@ async fn status_handler(
 
     let setup_code_required = state.gateway_state.inner.read().await.setup_code.is_some();
 
-    let webauthn_available = state.webauthn_registry.is_some();
-
-    let passkey_origins: Vec<String> = if let Some(registry) = state.webauthn_registry.as_ref() {
-        registry.read().await.get_all_origins()
-    } else {
-        Vec::new()
-    };
+    let current_webauthn = resolve_request_webauthn(&state, &headers).await;
+    let webauthn_available = current_webauthn.is_some();
+    let passkey_origins = current_webauthn
+        .as_ref()
+        .map(|(_, webauthn)| webauthn.get_allowed_origins())
+        .unwrap_or_default();
 
     if !has_passkeys {
         state
@@ -894,17 +892,85 @@ fn cookie_host(headers: &axum::http::HeaderMap, behind_proxy: bool) -> Option<&s
         .filter(|v| !v.is_empty())
         .or(host)
 }
+
+fn request_origin_scheme(
+    headers: &axum::http::HeaderMap,
+    gateway_state: &GatewayState,
+) -> &'static str {
+    if gateway_state.tls_active {
+        return "https";
+    }
+
+    if gateway_state.behind_proxy {
+        let forwarded_proto = headers
+            .get("x-forwarded-proto")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|value| value.split(',').next())
+            .map(str::trim)
+            .unwrap_or_default();
+        if forwarded_proto.eq_ignore_ascii_case("https") {
+            return "https";
+        }
+    }
+
+    "http"
+}
+
+fn request_webauthn_host(
+    headers: &axum::http::HeaderMap,
+    gateway_state: &GatewayState,
+) -> Option<String> {
+    cookie_host(headers, gateway_state.behind_proxy).map(ToOwned::to_owned)
+}
+
+fn request_webauthn_origin(
+    headers: &axum::http::HeaderMap,
+    gateway_state: &GatewayState,
+) -> Option<String> {
+    let host = request_webauthn_host(headers, gateway_state)?;
+    let scheme = request_origin_scheme(headers, gateway_state);
+    Some(format!("{scheme}://{host}"))
+}
+
+async fn resolve_request_webauthn(
+    state: &AuthState,
+    headers: &axum::http::HeaderMap,
+) -> Option<(
+    String,
+    Arc<moltis_gateway::auth_webauthn::WebAuthnState>,
+)> {
+    let registry = state.webauthn_registry.as_ref()?;
+    let host = request_webauthn_host(headers, &state.gateway_state)?;
+
+    if let Some(webauthn) = host_to_webauthn(&host, registry).await {
+        return Some((host, webauthn));
+    }
+
+    let origin = request_webauthn_origin(headers, &state.gateway_state)?;
+    let _ = moltis_gateway::server::sync_runtime_webauthn_host_and_notice(
+        &state.gateway_state,
+        Some(registry),
+        Some(&host),
+        Some(&origin),
+        "auth request",
+    )
+    .await;
+
+    host_to_webauthn(&host, registry)
+        .await
+        .map(|webauthn| (host, webauthn))
+}
 // ── Passkey registration (requires session) ──────────────────────────────────
 
 async fn passkey_register_begin_handler(
     _session: AuthSession,
     State(state): State<AuthState>,
-    Host(host): Host,
+    headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let Some(ref registry) = state.webauthn_registry else {
+    if state.webauthn_registry.is_none() {
         return (StatusCode::NOT_IMPLEMENTED, "passkeys not configured").into_response();
-    };
-    let Some(wa) = host_to_webauthn(&host, registry).await else {
+    }
+    let Some((_host, wa)) = resolve_request_webauthn(&state, &headers).await else {
         return (
             StatusCode::BAD_REQUEST,
             "no passkey config for this hostname",
@@ -936,13 +1002,13 @@ struct PasskeyRegisterFinishRequest {
 async fn passkey_register_finish_handler(
     _session: AuthSession,
     State(state): State<AuthState>,
-    Host(host): Host,
+    headers: axum::http::HeaderMap,
     Json(body): Json<PasskeyRegisterFinishRequest>,
 ) -> impl IntoResponse {
-    let Some(ref registry) = state.webauthn_registry else {
+    if state.webauthn_registry.is_none() {
         return (StatusCode::NOT_IMPLEMENTED, "passkeys not configured").into_response();
-    };
-    let Some(wa) = host_to_webauthn(&host, registry).await else {
+    }
+    let Some((host, wa)) = resolve_request_webauthn(&state, &headers).await else {
         return (
             StatusCode::BAD_REQUEST,
             "no passkey config for this hostname",
@@ -987,12 +1053,12 @@ async fn passkey_register_finish_handler(
 
 async fn passkey_auth_begin_handler(
     State(state): State<AuthState>,
-    Host(host): Host,
+    headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let Some(ref registry) = state.webauthn_registry else {
+    if state.webauthn_registry.is_none() {
         return (StatusCode::NOT_IMPLEMENTED, "passkeys not configured").into_response();
-    };
-    let Some(wa) = host_to_webauthn(&host, registry).await else {
+    }
+    let Some((_host, wa)) = resolve_request_webauthn(&state, &headers).await else {
         return (
             StatusCode::BAD_REQUEST,
             "no passkey config for this hostname",
@@ -1025,7 +1091,6 @@ struct PasskeyAuthFinishRequest {
 async fn passkey_auth_finish_handler(
     State(state): State<AuthState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Host(host): Host,
     headers: axum::http::HeaderMap,
     Json(body): Json<PasskeyAuthFinishRequest>,
 ) -> impl IntoResponse {
@@ -1040,10 +1105,10 @@ async fn passkey_auth_finish_handler(
         return blocked_response(block);
     }
 
-    let Some(ref registry) = state.webauthn_registry else {
+    if state.webauthn_registry.is_none() {
         return (StatusCode::NOT_IMPLEMENTED, "passkeys not configured").into_response();
-    };
-    let Some(wa) = host_to_webauthn(&host, registry).await else {
+    }
+    let Some((_host, wa)) = resolve_request_webauthn(&state, &headers).await else {
         return (
             StatusCode::BAD_REQUEST,
             "no passkey config for this hostname",
@@ -1079,7 +1144,7 @@ struct SetupPasskeyBeginRequest {
 
 async fn setup_passkey_register_begin_handler(
     State(state): State<AuthState>,
-    Host(host): Host,
+    headers: axum::http::HeaderMap,
     Json(body): Json<SetupPasskeyBeginRequest>,
 ) -> impl IntoResponse {
     if state.credential_store.is_setup_complete() {
@@ -1096,10 +1161,10 @@ async fn setup_passkey_register_begin_handler(
         }
     }
 
-    let Some(ref registry) = state.webauthn_registry else {
+    if state.webauthn_registry.is_none() {
         return (StatusCode::NOT_IMPLEMENTED, "passkeys not configured").into_response();
-    };
-    let Some(wa) = host_to_webauthn(&host, registry).await else {
+    }
+    let Some((_host, wa)) = resolve_request_webauthn(&state, &headers).await else {
         return (
             StatusCode::BAD_REQUEST,
             "no passkey config for this hostname",
@@ -1131,7 +1196,6 @@ struct SetupPasskeyFinishRequest {
 
 async fn setup_passkey_register_finish_handler(
     State(state): State<AuthState>,
-    Host(host): Host,
     headers: axum::http::HeaderMap,
     Json(body): Json<SetupPasskeyFinishRequest>,
 ) -> impl IntoResponse {
@@ -1149,10 +1213,10 @@ async fn setup_passkey_register_finish_handler(
         }
     }
 
-    let Some(ref registry) = state.webauthn_registry else {
+    if state.webauthn_registry.is_none() {
         return (StatusCode::NOT_IMPLEMENTED, "passkeys not configured").into_response();
-    };
-    let Some(wa) = host_to_webauthn(&host, registry).await else {
+    }
+    let Some((host, wa)) = resolve_request_webauthn(&state, &headers).await else {
         return (
             StatusCode::BAD_REQUEST,
             "no passkey config for this hostname",

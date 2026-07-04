@@ -1,6 +1,6 @@
 import type { VNode } from "preact";
 import { render } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { applyIdentityFavicon, formatLoginTitle } from "./branding";
 import { init as initI18n, t } from "./i18n";
 import * as S from "./state";
@@ -24,6 +24,7 @@ interface AuthStatus {
 	authenticated?: boolean;
 	has_passkeys?: boolean;
 	has_password?: boolean;
+	webauthn_available?: boolean;
 }
 
 interface LoginFailure {
@@ -100,15 +101,22 @@ async function parseLoginFailure(response: Response): Promise<LoginFailure> {
 
 // ── Passkey helpers ──────────────────────────────────────────
 
+function isIpAddressHost(hostname: string): boolean {
+	return /^\d+\.\d+\.\d+\.\d+$/.test(hostname) || hostname.startsWith("[");
+}
+
 function startPasskeyLogin(setError: (v: string | null) => void, setLoading: (v: boolean) => void): void {
 	setError(null);
-	if (/^\d+\.\d+\.\d+\.\d+$/.test(location.hostname) || location.hostname.startsWith("[")) {
+	if (isIpAddressHost(location.hostname)) {
 		setError(t("login:passkeyRequiresDomain", { hostname: location.hostname }));
 		return;
 	}
 	setLoading(true);
 	fetch("/api/auth/passkey/auth/begin", { method: "POST" })
-		.then((r) => r.json())
+		.then((r) => {
+			if (r.ok) return r.json();
+			return r.text().then((msg) => Promise.reject(new Error(msg || t("login:passkeyAuthFailed"))));
+		})
 		.then(
 			(data: {
 				options: PublicKeyCredentialRequestOptions & {
@@ -241,7 +249,9 @@ function LoginApp(): VNode {
 	const [retrySecondsLeft, setRetrySecondsLeft] = useState(0);
 	const [hasPasskeys, setHasPasskeys] = useState(false);
 	const [hasPassword, setHasPassword] = useState(false);
+	const [webauthnAvailable, setWebauthnAvailable] = useState(false);
 	const [ready, setReady] = useState(false);
+	const passkeyPromptStarted = useRef(false);
 
 	useEffect(() => {
 		fetch("/api/auth/status")
@@ -254,6 +264,7 @@ function LoginApp(): VNode {
 				}
 				setHasPasskeys(!!data.has_passkeys);
 				setHasPassword(!!data.has_password);
+				setWebauthnAvailable(data.webauthn_available !== false);
 				setReady(true);
 			})
 			.catch(() => setReady(true));
@@ -266,6 +277,17 @@ function LoginApp(): VNode {
 		}, 1000);
 		return () => clearInterval(timer);
 	}, [retrySecondsLeft]);
+
+	useEffect(() => {
+		if (
+			!(ready && hasPasskeys && webauthnAvailable) ||
+			passkeyPromptStarted.current ||
+			isIpAddressHost(location.hostname)
+		)
+			return;
+		passkeyPromptStarted.current = true;
+		startPasskeyLogin(setError, setLoading);
+	}, [ready, hasPasskeys, webauthnAvailable]);
 
 	function onPasswordLogin(e: Event): void {
 		e.preventDefault();
@@ -313,8 +335,8 @@ function LoginApp(): VNode {
 	}
 
 	const title = formatLoginTitle(identity);
-	const showPassword = hasPassword || !hasPasskeys;
-	const showPasskeys = hasPasskeys;
+	const showPasskeys = hasPasskeys && webauthnAvailable;
+	const showPassword = hasPassword || !showPasskeys;
 	const showDivider = showPassword && showPasskeys;
 
 	return renderLoginCard({

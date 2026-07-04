@@ -502,6 +502,7 @@ test.describe("Login page", () => {
 			localhost_only: false,
 			has_password: true,
 			has_passkeys: false,
+			webauthn_available: true,
 		};
 		const status = { ...defaults, ...overrides };
 		return page.addInitScript((mockStatus) => {
@@ -519,6 +520,44 @@ test.describe("Login page", () => {
 				return origFetch.apply(this, args);
 			};
 		}, status);
+	}
+
+	function mockPasskeyPromptCancellation(page) {
+		return page.addInitScript(() => {
+			window.__passkeyBeginCount = 0;
+			window.__passkeyGetCount = 0;
+			const origFetch = window.fetch;
+			window.fetch = function (...args) {
+				var url = typeof args[0] === "string" ? args[0] : args[0].url;
+				if (url.endsWith("/api/auth/passkey/auth/begin")) {
+					window.__passkeyBeginCount += 1;
+					return Promise.resolve(
+						new Response(
+							JSON.stringify({
+								challenge_id: "challenge-1",
+								options: {
+									publicKey: {
+										challenge: "AQIDBA",
+										allowCredentials: [{ id: "BQYHCA", type: "public-key" }],
+									},
+								},
+							}),
+							{ status: 200, headers: { "Content-Type": "application/json" } },
+						),
+					);
+				}
+				return origFetch.apply(this, args);
+			};
+			Object.defineProperty(window.navigator, "credentials", {
+				configurable: true,
+				value: {
+					get() {
+						window.__passkeyGetCount += 1;
+						return Promise.reject(new DOMException("Passkey prompt cancelled", "NotAllowedError"));
+					},
+				},
+			});
+		});
 	}
 
 	test("login page is a standalone page without app chrome", async ({ page }) => {
@@ -617,6 +656,7 @@ test.describe("Login page", () => {
 	test("login page shows both methods when password and passkeys are set", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await mockAuthStatus(page, { has_password: true, has_passkeys: true });
+		await mockPasskeyPromptCancellation(page);
 
 		await page.goto("/login");
 
@@ -630,12 +670,40 @@ test.describe("Login page", () => {
 	test("login page shows only passkey when no password is set", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await mockAuthStatus(page, { has_password: false, has_passkeys: true });
+		await mockPasskeyPromptCancellation(page);
 
 		await page.goto("/login");
 
 		await expect(page.getByRole("button", { name: "Sign in with passkey" })).toBeVisible();
 		await expect(page.getByPlaceholder("Enter password")).not.toBeVisible();
 		await expect(page.locator(".auth-divider")).not.toBeVisible();
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("login page starts passkey prompt automatically when passkeys exist", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await mockAuthStatus(page, { has_password: true, has_passkeys: true });
+		await mockPasskeyPromptCancellation(page);
+
+		await page.goto("/login");
+
+		await expect.poll(() => page.evaluate(() => window.__passkeyBeginCount)).toBe(1);
+		await expect.poll(() => page.evaluate(() => window.__passkeyGetCount)).toBe(1);
+		await expect(page.getByRole("button", { name: "Sign in with passkey" })).toBeVisible();
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("login page does not start passkey prompt when WebAuthn is unavailable for current host", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await mockAuthStatus(page, { has_password: true, has_passkeys: true, webauthn_available: false });
+		await mockPasskeyPromptCancellation(page);
+
+		await page.goto("/login");
+
+		await expect(page.getByPlaceholder("Enter password")).toBeVisible();
+		await expect(page.getByRole("button", { name: "Sign in with passkey" })).not.toBeVisible();
+		await expect.poll(() => page.evaluate(() => window.__passkeyBeginCount)).toBe(0);
+		await expect.poll(() => page.evaluate(() => window.__passkeyGetCount)).toBe(0);
 		expect(pageErrors).toEqual([]);
 	});
 

@@ -20,6 +20,7 @@ use async_trait::async_trait;
 use {
     moltis_gateway::{
         auth::{self, CredentialStore},
+        auth_webauthn::{SharedWebAuthnRegistry, WebAuthnRegistry, WebAuthnState},
         methods::MethodRegistry,
         services::{GatewayServices, OnboardingService, ServiceResult},
         state::GatewayState,
@@ -106,6 +107,14 @@ async fn start_auth_server_impl(
     localhost_only: bool,
     behind_proxy: bool,
 ) -> (SocketAddr, Arc<CredentialStore>, Arc<GatewayState>) {
+    start_auth_server_impl_with_webauthn(localhost_only, behind_proxy, None).await
+}
+
+async fn start_auth_server_impl_with_webauthn(
+    localhost_only: bool,
+    behind_proxy: bool,
+    webauthn_registry: Option<SharedWebAuthnRegistry>,
+) -> (SocketAddr, Arc<CredentialStore>, Arc<GatewayState>) {
     // Isolate each test process with its own config/data directory so
     // concurrent nextest processes don't race on shared config files.
     let tmp = tempfile::tempdir().unwrap();
@@ -153,9 +162,9 @@ async fn start_auth_server_impl(
     let state_clone = Arc::clone(&state);
     let methods = Arc::new(MethodRegistry::new());
     #[cfg(feature = "push-notifications")]
-    let (router, app_state) = build_gateway_base(state, methods, None, None);
+    let (router, app_state) = build_gateway_base(state, methods, None, webauthn_registry);
     #[cfg(not(feature = "push-notifications"))]
-    let (router, app_state) = build_gateway_base(state, methods, None);
+    let (router, app_state) = build_gateway_base(state, methods, webauthn_registry);
 
     let router = router.merge(moltis_web::web_routes());
     let app = finalize_gateway_app(router, app_state, false);
@@ -171,6 +180,16 @@ async fn start_auth_server_impl(
         .unwrap();
     });
     (addr, cred_store, state_clone)
+}
+
+fn test_webauthn_registry() -> SharedWebAuthnRegistry {
+    let localhost_origin = webauthn_rs::prelude::Url::parse("http://localhost:18080").unwrap();
+    let extras = vec![webauthn_rs::prelude::Url::parse("http://moltis.localhost:18080").unwrap()];
+    let localhost_state = WebAuthnState::new("localhost", &localhost_origin, &extras).unwrap();
+
+    let mut registry = WebAuthnRegistry::new();
+    registry.add("localhost".to_string(), localhost_state);
+    Arc::new(tokio::sync::RwLock::new(registry))
 }
 
 /// Start a localhost test server with a vault attached.
@@ -1117,6 +1136,59 @@ async fn status_reports_passkey_host_update_warning() {
         body["passkey_host_update_hosts"],
         serde_json::json!(["mybox.tail12345.ts.net"])
     );
+}
+
+/// When the browser reaches Moltis through an HTTPS proxy host, auth status
+/// should lazily register that forwarded host for WebAuthn and return the
+/// origins that apply to the current host instead of localhost fallbacks.
+#[cfg(feature = "web-ui")]
+#[tokio::test]
+async fn proxied_status_syncs_forwarded_webauthn_host() {
+    let registry = test_webauthn_registry();
+    let (addr, _store, _state) =
+        start_auth_server_impl_with_webauthn(false, true, Some(Arc::clone(&registry))).await;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("http://{addr}/api/auth/status"))
+        .header("X-Forwarded-Host", "app.example.com")
+        .header("X-Forwarded-Proto", "https")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["webauthn_available"], true);
+    assert_eq!(body["passkey_origins"], serde_json::json!(["https://app.example.com"]));
+    assert!(registry.read().await.contains_host("app.example.com"));
+}
+
+/// Passkey registration should use the forwarded HTTPS host when the gateway
+/// runs behind a reverse proxy, even if that host was not preconfigured.
+#[cfg(feature = "web-ui")]
+#[tokio::test]
+async fn proxied_passkey_begin_uses_forwarded_webauthn_host() {
+    let registry = test_webauthn_registry();
+    let (addr, store, _state) =
+        start_auth_server_impl_with_webauthn(false, true, Some(Arc::clone(&registry))).await;
+    set_initial_test_password(&store).await;
+    let token = store.create_session().await.unwrap();
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("http://{addr}/api/auth/passkey/register/begin"))
+        .header("Cookie", format!("moltis_session={token}"))
+        .header("X-Forwarded-Host", "app.example.com")
+        .header("X-Forwarded-Proto", "https")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["options"]["publicKey"]["rp"]["id"], "app.example.com");
+    assert!(registry.read().await.contains_host("app.example.com"));
 }
 
 // ── Three-tier model tests ──────────────────────────────────────────────────

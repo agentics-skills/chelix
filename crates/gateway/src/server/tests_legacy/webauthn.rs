@@ -96,3 +96,30 @@ async fn sync_runtime_webauthn_host_rejects_invalid_origin() {
             .contains_host("team-gateway.ngrok.app")
     );
 }
+
+#[tokio::test]
+async fn sync_runtime_webauthn_host_skips_insecure_http_origin() {
+    let gateway = crate::state::GatewayState::new(
+        ResolvedAuth {
+            mode: AuthMode::Token,
+            token: None,
+            password: None,
+        },
+        crate::services::GatewayServices::noop(),
+    );
+    let registry = Arc::new(tokio::sync::RwLock::new(
+        crate::auth_webauthn::WebAuthnRegistry::new(),
+    ));
+
+    let notice = crate::server::startup::sync_runtime_webauthn_host_and_notice(
+        &gateway,
+        Some(&registry),
+        Some("moltis.local"),
+        None,
+        "test",
+    )
+    .await;
+
+    assert!(notice.is_none());
+    assert!(!registry.read().await.contains_host("moltis.local"));
+}

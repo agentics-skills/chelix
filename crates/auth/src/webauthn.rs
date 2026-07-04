@@ -43,6 +43,20 @@ pub fn normalize_host(host: &str) -> String {
     without_port.to_ascii_lowercase()
 }
 
+fn is_localhost_host(host: &str) -> bool {
+    let normalized = normalize_host(host);
+    normalized == "localhost" || normalized.ends_with(".localhost")
+}
+
+/// Whether the browser can treat this WebAuthn origin as potentially trustworthy.
+pub fn is_origin_potentially_trustworthy(origin: &Url) -> bool {
+    match origin.scheme() {
+        "https" => true,
+        "http" => origin.host_str().is_some_and(is_localhost_host),
+        _ => false,
+    }
+}
+
 fn collect_allowed_hosts(rp_id: &str, state: &WebAuthnState) -> Vec<String> {
     let mut hosts = Vec::new();
 
@@ -332,6 +346,25 @@ mod tests {
         assert_eq!(normalize_host("Example.COM:443"), "example.com");
         assert_eq!(normalize_host("moltis.local"), "moltis.local");
         assert_eq!(normalize_host("[::1]:8443"), "::1");
+    }
+
+    #[test]
+    fn potentially_trustworthy_origins_require_https_or_localhost_http() {
+        assert!(is_origin_potentially_trustworthy(
+            &Url::parse("https://moltis.example.com").unwrap()
+        ));
+        assert!(is_origin_potentially_trustworthy(
+            &Url::parse("http://localhost:18080").unwrap()
+        ));
+        assert!(is_origin_potentially_trustworthy(
+            &Url::parse("http://moltis.localhost:18080").unwrap()
+        ));
+        assert!(!is_origin_potentially_trustworthy(
+            &Url::parse("http://moltis.local:18080").unwrap()
+        ));
+        assert!(!is_origin_potentially_trustworthy(
+            &Url::parse("http://moltis:18080").unwrap()
+        ));
     }
 
     #[test]
