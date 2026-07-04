@@ -48,11 +48,12 @@ pub use {
 /// - **Other providers**: ignored if unsupported
 ///
 /// Not all providers support every level. Providers map unsupported levels
-/// to their nearest supported equivalent (e.g. `ExtraHigh` → `High` when
+/// to their nearest supported equivalent (e.g. `Max` → `ExtraHigh` when
 /// the provider caps at `High`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ReasoningEffort {
+    None,
     Minimal,
     Low,
     Medium,
@@ -60,27 +61,32 @@ pub enum ReasoningEffort {
     /// Extra-high reasoning effort. Serializes as `"xhigh"`.
     #[serde(rename = "xhigh")]
     ExtraHigh,
+    Max,
 }
 
 impl ReasoningEffort {
     /// All levels in ascending order.
     pub const ALL: &[Self] = &[
+        Self::None,
         Self::Minimal,
         Self::Low,
         Self::Medium,
         Self::High,
         Self::ExtraHigh,
+        Self::Max,
     ];
 
     /// Wire / serialization name (matches serde output).
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::None => "none",
             Self::Minimal => "minimal",
             Self::Low => "low",
             Self::Medium => "medium",
             Self::High => "high",
             Self::ExtraHigh => "xhigh",
+            Self::Max => "max",
         }
     }
 
@@ -88,11 +94,13 @@ impl ReasoningEffort {
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
+            Self::None => "None",
             Self::Minimal => "Minimal",
             Self::Low => "Low",
             Self::Medium => "Medium",
             Self::High => "High",
             Self::ExtraHigh => "Extra High",
+            Self::Max => "Max",
         }
     }
 }
@@ -102,11 +110,13 @@ impl TryFrom<&str> for ReasoningEffort {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
+            "none" => Ok(Self::None),
             "minimal" => Ok(Self::Minimal),
             "low" => Ok(Self::Low),
             "medium" => Ok(Self::Medium),
             "high" => Ok(Self::High),
             "xhigh" => Ok(Self::ExtraHigh),
+            "max" => Ok(Self::Max),
             other => Err(format!("unknown reasoning effort: {other}")),
         }
     }

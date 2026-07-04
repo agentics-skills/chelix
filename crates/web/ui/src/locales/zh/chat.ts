@@ -48,11 +48,13 @@ export default {
 	// ── Reasoning toggle ─────────────────────────────────────
 	reasoningTooltip: "推理深度",
 	reasoningOff: "关闭",
+	reasoningNone: "无",
 	reasoningMinimal: "最低",
 	reasoningLow: "低",
 	reasoningMedium: "中",
 	reasoningHigh: "高",
 	reasoningExtraHigh: "极高",
+	reasoningMax: "最大",
 
 	// ── Debug panel ──────────────────────────────────────────
 	debugTooltip: "显示上下文调试信息",

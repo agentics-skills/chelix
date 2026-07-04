@@ -79,8 +79,8 @@ impl OpenAiCodexProvider {
     }
 
     /// Add `reasoning.effort` to a Responses-API request body when an effort
-    /// is configured. GPT-5 family models accept `minimal`, `low`, `medium`,
-    /// `high`, and `xhigh` (matching the official Codex client).
+    /// is configured. GPT-5 family models accept `none`, `minimal`, `low`,
+    /// `medium`, `high`, `xhigh`, and `max`.
     fn apply_reasoning(&self, body: &mut serde_json::Value) {
         if let Some(effort) = self.reasoning_effort {
             body["reasoning"]["effort"] = serde_json::json!(effort.as_str());
@@ -864,11 +864,13 @@ mod tests {
     #[test]
     fn apply_reasoning_maps_each_effort_level_to_wire_value() {
         for (effort, expected) in [
+            (ReasoningEffort::None, "none"),
             (ReasoningEffort::Minimal, "minimal"),
             (ReasoningEffort::Low, "low"),
             (ReasoningEffort::Medium, "medium"),
             (ReasoningEffort::High, "high"),
             (ReasoningEffort::ExtraHigh, "xhigh"),
+            (ReasoningEffort::Max, "max"),
         ] {
             let mut provider = OpenAiCodexProvider::new("gpt-5.4".to_string());
             provider.reasoning_effort = Some(effort);

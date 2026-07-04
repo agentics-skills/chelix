@@ -258,37 +258,28 @@ impl OpenAiProvider {
 
     /// Return the reasoning effort string if configured.
     ///
-    /// OpenAI accepts `"low"`, `"medium"`, `"high"`. Levels outside that range
-    /// are clamped to the nearest supported value.
+    /// OpenAI-compatible providers accept provider-specific reasoning effort strings.
+    /// Levels outside a provider's supported range are clamped to the nearest supported value.
     pub(crate) fn reasoning_effort_str(&self) -> Option<&'static str> {
         use moltis_agents::model::ReasoningEffort;
         match self.capabilities.reasoning_effort_policy {
             ReasoningEffortPolicy::Unsupported => None,
             ReasoningEffortPolicy::DeepSeek => self.reasoning_effort.map(|e| match e {
+                ReasoningEffort::None => "none",
                 ReasoningEffort::Minimal
                 | ReasoningEffort::Low
                 | ReasoningEffort::Medium
                 | ReasoningEffort::High => "high",
-                ReasoningEffort::ExtraHigh => "max",
+                ReasoningEffort::ExtraHigh | ReasoningEffort::Max => "max",
             }),
             ReasoningEffortPolicy::OpenAi => self.reasoning_effort.map(|e| match e {
-                ReasoningEffort::Minimal => {
-                    tracing::debug!(
-                        model = %self.model,
-                        "reasoning effort Minimal clamped to \"low\" (OpenAI minimum)"
-                    );
-                    "low"
-                },
+                ReasoningEffort::None => "none",
+                ReasoningEffort::Minimal => "minimal",
                 ReasoningEffort::Low => "low",
                 ReasoningEffort::Medium => "medium",
                 ReasoningEffort::High => "high",
-                ReasoningEffort::ExtraHigh => {
-                    tracing::debug!(
-                        model = %self.model,
-                        "reasoning effort ExtraHigh clamped to \"high\" (OpenAI maximum)"
-                    );
-                    "high"
-                },
+                ReasoningEffort::ExtraHigh => "xhigh",
+                ReasoningEffort::Max => "max",
             }),
         }
     }

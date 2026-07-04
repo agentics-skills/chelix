@@ -10,6 +10,7 @@ pub(crate) const REASONING_SUFFIX_SEP: char = '@';
 ///
 /// Derived from [`ReasoningEffort::ALL`] — one entry per level.
 pub(crate) const REASONING_SUFFIXES: &[(&str, moltis_agents::model::ReasoningEffort)] = &[
+    ("reasoning-none", moltis_agents::model::ReasoningEffort::None),
     (
         "reasoning-minimal",
         moltis_agents::model::ReasoningEffort::Minimal,
@@ -27,6 +28,7 @@ pub(crate) const REASONING_SUFFIXES: &[(&str, moltis_agents::model::ReasoningEff
         "reasoning-xhigh",
         moltis_agents::model::ReasoningEffort::ExtraHigh,
     ),
+    ("reasoning-max", moltis_agents::model::ReasoningEffort::Max),
 ];
 
 #[must_use]
@@ -103,8 +105,16 @@ mod tests {
             ("model", Some(ReasoningEffort::Minimal))
         );
         assert_eq!(
+            split_reasoning_suffix("gpt-5@reasoning-none"),
+            ("gpt-5", Some(ReasoningEffort::None))
+        );
+        assert_eq!(
             split_reasoning_suffix("gpt-5@reasoning-xhigh"),
             ("gpt-5", Some(ReasoningEffort::ExtraHigh))
+        );
+        assert_eq!(
+            split_reasoning_suffix("gpt-5@reasoning-max"),
+            ("gpt-5", Some(ReasoningEffort::Max))
         );
         assert_eq!(split_reasoning_suffix("gpt-4o"), ("gpt-4o", None));
         assert_eq!(

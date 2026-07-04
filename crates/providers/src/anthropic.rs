@@ -103,11 +103,12 @@ impl AnthropicProvider {
             return;
         };
         let budget_tokens: u64 = match effort {
+            ReasoningEffort::None => return,
             ReasoningEffort::Minimal => 1024,
             ReasoningEffort::Low => 4096,
             ReasoningEffort::Medium => 10240,
             ReasoningEffort::High => 32768,
-            ReasoningEffort::ExtraHigh => 65536,
+            ReasoningEffort::ExtraHigh | ReasoningEffort::Max => 65536,
         };
         body["thinking"] = serde_json::json!({
             "type": "enabled",
@@ -753,7 +754,9 @@ impl LlmProvider for AnthropicProvider {
             body["tools"] = serde_json::Value::Array(to_anthropic_tools(tools));
         }
 
-        if self.reasoning_effort.is_some()
+        if self.reasoning_effort.is_some_and(|effort| {
+            !matches!(effort, moltis_agents::model::ReasoningEffort::None)
+        })
             && matches!(
                 options.tool_choice,
                 Some(ToolChoice::Tool { .. } | ToolChoice::Any)
@@ -897,7 +900,9 @@ impl LlmProvider for AnthropicProvider {
                 body["tools"] = serde_json::Value::Array(to_anthropic_tools(&tools));
             }
 
-            if self.reasoning_effort.is_some()
+            if self.reasoning_effort.is_some_and(|effort| {
+                !matches!(effort, moltis_agents::model::ReasoningEffort::None)
+            })
                 && matches!(options.tool_choice, Some(ToolChoice::Tool { .. } | ToolChoice::Any))
             {
                 yield StreamEvent::Error(
