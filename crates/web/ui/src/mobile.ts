@@ -32,7 +32,9 @@ function orientedScreenHeight(): number {
 	const screenWidth = window.screen?.width || 0;
 	const screenHeight = window.screen?.height || 0;
 	if (!(screenWidth > 0 && screenHeight > 0)) return 0;
-	return window.innerWidth > window.innerHeight ? Math.min(screenWidth, screenHeight) : Math.max(screenWidth, screenHeight);
+	return window.innerWidth > window.innerHeight
+		? Math.min(screenWidth, screenHeight)
+		: Math.max(screenWidth, screenHeight);
 }
 
 function applyMobileViewportHeight(): void {
@@ -64,7 +66,9 @@ function scheduleMobileViewportHeightSync(): void {
 		applyMobileViewportHeight();
 	});
 
-	viewportHeightTimers.forEach((timer) => window.clearTimeout(timer));
+	for (const timer of viewportHeightTimers) {
+		window.clearTimeout(timer);
+	}
 	viewportHeightTimers = [50, 250, 700].map((delay) => window.setTimeout(applyMobileViewportHeight, delay));
 }
 
