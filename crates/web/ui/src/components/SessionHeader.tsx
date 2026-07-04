@@ -621,6 +621,7 @@ export function SessionHeader({
 						allowEmpty={false}
 						fullWidth={false}
 						disabled={agentSelectDisabled}
+						floating
 					/>
 				)}
 				{showSelectors && shouldShowNodePicker && (
@@ -633,6 +634,7 @@ export function SessionHeader({
 						allowEmpty={false}
 						fullWidth={false}
 						disabled={switchingNode}
+						floating
 					/>
 				)}
 				{showSelectors && shouldShowExternalAgentPicker && (
@@ -646,6 +648,7 @@ export function SessionHeader({
 							allowEmpty={false}
 							fullWidth={false}
 							disabled={switchingExternalAgent}
+							floating
 						/>
 						{externalAgentStatus && (
 							<span className="text-xs text-[var(--text-muted)]" title={externalAgentStatus}>

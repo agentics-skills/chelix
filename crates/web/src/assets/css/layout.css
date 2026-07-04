@@ -321,6 +321,21 @@ header .cmd-palette-header-kbd {
   right: 0;
 }
 
+.model-dropdown.floating-dropdown {
+  position: fixed;
+  top: auto;
+  left: auto;
+  right: auto;
+  z-index: 70;
+  width: max-content;
+  min-width: 200px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  margin-top: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
 .model-dropdown.hidden { display: none; }
 
 #reasoningCombo .model-combo-btn {

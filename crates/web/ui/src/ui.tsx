@@ -3,8 +3,9 @@
 import type { Signal } from "@preact/signals";
 import { signal } from "@preact/signals";
 import type { ComponentChildren, VNode } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { CommandPalette } from "./components/CommandPalette";
+import { positionFloatingDropdown } from "./floating-dropdown";
 import { t } from "./i18n";
 
 // ── Toast notifications ──────────────────────────────────────
@@ -562,6 +563,7 @@ interface ComboSelectProps {
 	fullWidth?: boolean;
 	allowEmpty?: boolean;
 	disabled?: boolean;
+	floating?: boolean;
 }
 
 export function ComboSelect({
@@ -574,6 +576,7 @@ export function ComboSelect({
 	fullWidth = true,
 	allowEmpty = true,
 	disabled = false,
+	floating = false,
 }: ComboSelectProps): VNode {
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
@@ -616,6 +619,7 @@ export function ComboSelect({
 	useEffect(() => {
 		if (!open) return;
 		function updateAlignment(): void {
+			if (floating) return;
 			if (!ref.current) return;
 			const comboRect = ref.current.getBoundingClientRect();
 			const dropdownWidth = dropdownRef.current?.offsetWidth || (fullWidth ? comboRect.width : 280);
@@ -627,7 +631,22 @@ export function ComboSelect({
 		requestAnimationFrame(updateAlignment);
 		window.addEventListener("resize", updateAlignment);
 		return () => window.removeEventListener("resize", updateAlignment);
-	}, [open, fullWidth]);
+	}, [open, fullWidth, floating]);
+
+	useLayoutEffect(() => {
+		if (!(open && floating)) return;
+		const dropdown = dropdownRef.current;
+		const anchor = ref.current?.querySelector<HTMLButtonElement>(".model-combo-btn") || null;
+		if (!(dropdown && anchor)) return;
+		const updatePosition = (): void => positionFloatingDropdown(dropdown, anchor, { minWidth: 200 });
+		updatePosition();
+		window.addEventListener("resize", updatePosition);
+		document.addEventListener("scroll", updatePosition, true);
+		return () => {
+			window.removeEventListener("resize", updatePosition);
+			document.removeEventListener("scroll", updatePosition, true);
+		};
+	}, [open, floating, filtered.length, query, value]);
 
 	useEffect(() => {
 		setKbIndex(-1);
@@ -675,7 +694,7 @@ export function ComboSelect({
 			</button>
 			{open && (
 				<div
-					class={`model-dropdown ${alignRight ? "align-right" : ""}`}
+					class={`model-dropdown ${floating ? "floating-dropdown" : alignRight ? "align-right" : ""}`}
 					ref={dropdownRef}
 					tabIndex={-1}
 					style={dropdownStyle}

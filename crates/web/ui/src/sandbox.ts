@@ -1,6 +1,7 @@
 // ── Sandbox toggle + image selector ─────────────────────────
 
 import { updateCommandInputUI, updateTokenBar } from "./chat-ui";
+import { positionFloatingDropdown } from "./floating-dropdown";
 import { sendRpc } from "./helpers";
 import { t } from "./i18n";
 import * as S from "./state";
@@ -211,40 +212,7 @@ function positionImageDropdown(): void {
 	const btn = S.sandboxImageBtn;
 	if (!(dropdown && btn)) return;
 	if (dropdown.classList.contains("hidden")) return;
-
-	const btnRect = btn.getBoundingClientRect();
-	const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-	const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-
-	dropdown.style.position = "fixed";
-	dropdown.style.zIndex = "70";
-	dropdown.style.marginTop = "0";
-	dropdown.style.minWidth = `${Math.max(200, Math.round(btnRect.width))}px`;
-	dropdown.style.maxWidth = `${Math.max(220, viewportWidth - 16)}px`;
-
-	const preferredTop = btnRect.bottom + 4;
-	dropdown.style.top = `${preferredTop}px`;
-	dropdown.style.left = `${Math.max(8, Math.round(btnRect.left))}px`;
-
-	// Measure after placement so we can clamp to viewport and optionally open upward.
-	let dropdownRect = dropdown.getBoundingClientRect();
-	const spaceBelow = viewportHeight - btnRect.bottom - 8;
-	const spaceAbove = btnRect.top - 8;
-	const shouldOpenUp = spaceBelow < 180 && spaceAbove > spaceBelow;
-	const maxHeight = Math.max(120, shouldOpenUp ? spaceAbove : spaceBelow);
-	dropdown.style.maxHeight = `${Math.floor(maxHeight)}px`;
-
-	if (shouldOpenUp) {
-		const desiredTop = btnRect.top - Math.min(dropdownRect.height, maxHeight) - 4;
-		dropdown.style.top = `${Math.max(8, Math.round(desiredTop))}px`;
-	}
-
-	dropdownRect = dropdown.getBoundingClientRect();
-	const clampedLeft = Math.max(
-		8,
-		Math.min(Math.round(btnRect.left), Math.round(viewportWidth - dropdownRect.width - 8)),
-	);
-	dropdown.style.left = `${clampedLeft}px`;
+	positionFloatingDropdown(dropdown, btn, { minWidth: 200 });
 }
 
 function populateImageDropdown(): void {
