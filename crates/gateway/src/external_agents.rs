@@ -664,7 +664,10 @@ impl ChatService for ExternalAgentChatService {
     }
 
     async fn send_sync(&self, params: Value) -> ServiceResult {
-        self.send(params).await
+        if let Some(result) = self.maybe_send_external(&params).await {
+            return result;
+        }
+        self.inner.send_sync(params).await
     }
 
     async fn abort(&self, params: Value) -> ServiceResult {
@@ -987,6 +990,66 @@ mod tests {
         )
     }
 
+    #[derive(Default)]
+    struct SyncTrackingChatService {
+        calls: std::sync::Mutex<Vec<&'static str>>,
+    }
+
+    #[async_trait]
+    impl ChatService for SyncTrackingChatService {
+        async fn send(&self, _params: Value) -> ServiceResult {
+            self.calls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push("send");
+            Ok(serde_json::json!({ "source": "send" }))
+        }
+
+        async fn send_sync(&self, _params: Value) -> ServiceResult {
+            self.calls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push("send_sync");
+            Ok(serde_json::json!({ "source": "send_sync" }))
+        }
+
+        async fn abort(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({}))
+        }
+
+        async fn cancel_queued(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({ "cleared": 0 }))
+        }
+
+        async fn history(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!([]))
+        }
+
+        async fn inject(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({ "ok": true }))
+        }
+
+        async fn clear(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({ "ok": true }))
+        }
+
+        async fn compact(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({ "ok": true }))
+        }
+
+        async fn context(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({}))
+        }
+
+        async fn raw_prompt(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({}))
+        }
+
+        async fn full_context(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({}))
+        }
+    }
+
     async fn test_chat_service(
         external_agents: Arc<GatewayExternalAgentService>,
         metadata: Arc<SqliteSessionMetadata>,
@@ -1113,6 +1176,39 @@ mod tests {
         assert_eq!(
             select_rejected_acp_option(&request),
             Some("reject".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn unbound_chat_send_sync_delegates_to_inner_send_sync() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
+        metadata.upsert("main", None).await.unwrap();
+        let agent_state = Arc::new(FakeAgentState::default());
+        let external_agents = fake_external_agents(Arc::clone(&metadata), agent_state);
+        let inner = Arc::new(SyncTrackingChatService::default());
+        let inner_chat: Arc<dyn ChatService> = inner.clone();
+        let chat = ExternalAgentChatService::new(
+            inner_chat,
+            external_agents,
+            test_gateway_state(),
+            session_store,
+            metadata,
+        );
+
+        let result = chat
+            .send_sync(serde_json::json!({ "sessionKey": "main", "text": "hello" }))
+            .await
+            .expect("send_sync delegates to inner chat");
+
+        assert_eq!(result["source"], "send_sync");
+        assert_eq!(
+            *inner
+                .calls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()),
+            vec!["send_sync"]
         );
     }
 
