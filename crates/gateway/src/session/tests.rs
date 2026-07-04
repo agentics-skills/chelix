@@ -1267,6 +1267,186 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn patch_parent_sets_and_clears_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlite_pool().await;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        metadata
+            .upsert("session:parent", Some("Parent".to_string()))
+            .await
+            .unwrap();
+        metadata
+            .upsert("session:child", Some("Child".to_string()))
+            .await
+            .unwrap();
+
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
+
+        let result = svc
+            .patch(serde_json::json!({
+                "key": "session:child",
+                "parentSessionKey": "session:parent"
+            }))
+            .await
+            .unwrap();
+        assert_eq!(
+            result.get("parentSessionKey").and_then(|v| v.as_str()),
+            Some("session:parent")
+        );
+        assert_eq!(
+            metadata
+                .get("session:child")
+                .await
+                .unwrap()
+                .parent_session_key
+                .as_deref(),
+            Some("session:parent")
+        );
+
+        // Clearing via explicit null.
+        let result = svc
+            .patch(serde_json::json!({
+                "key": "session:child",
+                "parentSessionKey": null
+            }))
+            .await
+            .unwrap();
+        assert!(
+            result
+                .get("parentSessionKey")
+                .map(|v| v.is_null())
+                .unwrap_or(false)
+        );
+        assert!(
+            metadata
+                .get("session:child")
+                .await
+                .unwrap()
+                .parent_session_key
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn patch_parent_rejects_self_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlite_pool().await;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        metadata
+            .upsert("session:loner", Some("Loner".to_string()))
+            .await
+            .unwrap();
+
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
+
+        let error = svc
+            .patch(serde_json::json!({
+                "key": "session:loner",
+                "parentSessionKey": "session:loner"
+            }))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("its own parent"));
+    }
+
+    #[tokio::test]
+    async fn patch_parent_rejects_missing_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlite_pool().await;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        metadata
+            .upsert("session:orphan", Some("Orphan".to_string()))
+            .await
+            .unwrap();
+
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
+
+        let error = svc
+            .patch(serde_json::json!({
+                "key": "session:orphan",
+                "parentSessionKey": "session:ghost"
+            }))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn patch_parent_rejects_cycle() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlite_pool().await;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        for key in ["session:a", "session:b", "session:c"] {
+            metadata.upsert(key, None).await.unwrap();
+        }
+        // Chain: c -> b -> a
+        metadata
+            .set_parent("session:b", Some("session:a".to_string()), None)
+            .await;
+        metadata
+            .set_parent("session:c", Some("session:b".to_string()), None)
+            .await;
+
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
+
+        // a -> c would create a cycle a -> c -> b -> a.
+        let error = svc
+            .patch(serde_json::json!({
+                "key": "session:a",
+                "parentSessionKey": "session:c"
+            }))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("cycle"));
+        assert!(
+            metadata
+                .get("session:a")
+                .await
+                .unwrap()
+                .parent_session_key
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn patch_parent_change_resets_fork_point() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlite_pool().await;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        metadata.upsert("session:old-parent", None).await.unwrap();
+        metadata.upsert("session:new-parent", None).await.unwrap();
+        metadata.upsert("session:moved", None).await.unwrap();
+        metadata
+            .set_parent(
+                "session:moved",
+                Some("session:old-parent".to_string()),
+                Some(7),
+            )
+            .await;
+
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
+
+        svc.patch(serde_json::json!({
+            "key": "session:moved",
+            "parentSessionKey": "session:new-parent"
+        }))
+        .await
+        .unwrap();
+
+        let entry = metadata.get("session:moved").await.unwrap();
+        assert_eq!(
+            entry.parent_session_key.as_deref(),
+            Some("session:new-parent")
+        );
+        assert_eq!(entry.fork_point, None, "fork point must reset on re-parent");
+    }
+
+    #[tokio::test]
     async fn patch_archived_rejects_main_session() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));

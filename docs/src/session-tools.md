@@ -4,6 +4,32 @@ Session tools enable persistent, asynchronous coordination between agent session
 
 ## Available Tools
 
+### `sessions_create`
+
+Create a new chat session (or resolve an existing one by key).
+
+Input:
+
+```json
+{
+  "key": "optional session key (generated if omitted)",
+  "label": "optional label",
+  "model": "optional model override",
+  "project_id": "optional project id",
+  "inherit_agent_from": "optional source session key"
+}
+```
+
+Sessions created by an agent are automatically linked to the calling session
+as children (`parentSessionKey`), so the sessions sidebar renders them nested
+under their creator — the same tree mechanism used for forks. Nesting works
+recursively: if the created session's agent creates another session, it nests
+one level deeper. Existing sessions are never re-parented by this tool.
+
+The parent link can also be managed via the `session.patch` RPC using the
+`parentSessionKey` field (set a new parent or `null` to detach). Cycles and
+self-parenting are rejected.
+
 ### `sessions_list`
 
 List sessions visible to the current policy.

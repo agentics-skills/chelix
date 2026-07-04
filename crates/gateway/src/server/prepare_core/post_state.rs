@@ -989,6 +989,7 @@ pub(super) async fn complete_startup(
                 let metadata = Arc::clone(&metadata_for_session_create);
                 Box::pin(async move {
                     let key = req.key;
+                    let parent_session_key = req.parent_session_key;
 
                     let mut resolve_params = serde_json::json!({ "key": key.clone() });
                     if let Some(inherit) = req.inherit_agent_from {
@@ -1021,6 +1022,15 @@ pub(super) async fn complete_startup(
                             .map_err(|e| moltis_tools::Error::message(e.to_string()))?;
                     }
 
+                    // Link the new session to its creator (agent-spawned
+                    // sessions render as children in the UI, like forks).
+                    if let Some(parent) = parent_session_key
+                        && parent != key
+                        && metadata.get(&parent).await.is_some()
+                    {
+                        metadata.set_parent(&key, Some(parent), None).await;
+                    }
+
                     let entry = metadata.get(&key).await.ok_or_else(|| {
                         moltis_tools::Error::message(format!(
                             "session '{key}' not found after create"
@@ -1036,6 +1046,7 @@ pub(super) async fn complete_startup(
                             "updatedAt": entry.updated_at,
                             "messageCount": entry.message_count,
                             "projectId": entry.project_id,
+                            "parentSessionKey": entry.parent_session_key,
                             "agent_id": entry.agent_id,
                             "agentId": entry.agent_id,
                             "version": entry.version,

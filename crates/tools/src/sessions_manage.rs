@@ -23,6 +23,10 @@ pub struct CreateSessionRequest {
     pub model: Option<String>,
     pub project_id: Option<String>,
     pub inherit_agent_from: Option<String>,
+    /// Session that spawned this one. Drives the parent/child tree in the
+    /// UI (same mechanism as session forks). Only set for newly created
+    /// sessions, never overwritten on existing ones.
+    pub parent_session_key: Option<String>,
 }
 
 /// Callback used by `sessions_create`.
@@ -78,7 +82,8 @@ impl AgentTool for SessionsCreateTool {
 
     fn description(&self) -> &str {
         "Create a new chat session or resolve an existing one. \
-         Optionally set label/model/project and inherit agent persona from another session."
+         Optionally set label/model/project and inherit agent persona from another session. \
+         Newly created sessions are linked to the calling session as children."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -122,12 +127,20 @@ impl AgentTool for SessionsCreateTool {
 
         let created = self.metadata.get(&key).await.is_none();
 
+        // Link the new session to its creator so the UI renders it as a
+        // child (same tree mechanism as forks). `_session_key` is injected
+        // into tool params by the agent runner.
+        let parent_session_key = str_param(&params, "_session_key")
+            .map(String::from)
+            .filter(|parent| created && parent != &key);
+
         let req = CreateSessionRequest {
             key: key.clone(),
             label,
             model,
             project_id,
             inherit_agent_from,
+            parent_session_key,
         };
         let result = (self.create_fn)(req).await?;
 
@@ -244,6 +257,115 @@ mod tests {
         assert!(key.starts_with("session:"));
         assert_eq!(result["created"], true);
         assert!(called.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sessions_create_links_parent_from_session_context() -> TestResult<()> {
+        let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
+        metadata
+            .upsert("session:parent", Some("Parent".to_string()))
+            .await?;
+
+        let captured_parent = Arc::new(std::sync::Mutex::new(None::<Option<String>>));
+        let captured_ref = Arc::clone(&captured_parent);
+        let create_fn: CreateSessionFn = Arc::new(move |req| {
+            let captured_ref = Arc::clone(&captured_ref);
+            Box::pin(async move {
+                *captured_ref.lock().unwrap_or_else(|e| e.into_inner()) =
+                    Some(req.parent_session_key.clone());
+                Ok(serde_json::json!({
+                    "entry": { "key": req.key }
+                }))
+            })
+        });
+
+        let tool = SessionsCreateTool::new(metadata, create_fn);
+        let result = tool
+            .execute(serde_json::json!({
+                "label": "Child session",
+                "_session_key": "session:parent"
+            }))
+            .await?;
+
+        assert_eq!(result["created"], true);
+        let parent = captured_parent
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+            .ok_or_else(|| std::io::Error::other("callback was not invoked"))?;
+        assert_eq!(parent.as_deref(), Some("session:parent"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sessions_create_skips_parent_for_self_reference() -> TestResult<()> {
+        let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
+
+        let captured_parent = Arc::new(std::sync::Mutex::new(None::<Option<String>>));
+        let captured_ref = Arc::clone(&captured_parent);
+        let create_fn: CreateSessionFn = Arc::new(move |req| {
+            let captured_ref = Arc::clone(&captured_ref);
+            Box::pin(async move {
+                *captured_ref.lock().unwrap_or_else(|e| e.into_inner()) =
+                    Some(req.parent_session_key.clone());
+                Ok(serde_json::json!({
+                    "entry": { "key": req.key }
+                }))
+            })
+        });
+
+        let tool = SessionsCreateTool::new(metadata, create_fn);
+        tool.execute(serde_json::json!({
+            "key": "session:self",
+            "_session_key": "session:self"
+        }))
+        .await?;
+
+        let parent = captured_parent
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+            .ok_or_else(|| std::io::Error::other("callback was not invoked"))?;
+        assert_eq!(parent, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sessions_create_skips_parent_for_existing_session() -> TestResult<()> {
+        let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
+        metadata
+            .upsert("session:existing", Some("Existing".to_string()))
+            .await?;
+
+        let captured_parent = Arc::new(std::sync::Mutex::new(None::<Option<String>>));
+        let captured_ref = Arc::clone(&captured_parent);
+        let create_fn: CreateSessionFn = Arc::new(move |req| {
+            let captured_ref = Arc::clone(&captured_ref);
+            Box::pin(async move {
+                *captured_ref.lock().unwrap_or_else(|e| e.into_inner()) =
+                    Some(req.parent_session_key.clone());
+                Ok(serde_json::json!({
+                    "entry": { "key": req.key }
+                }))
+            })
+        });
+
+        let tool = SessionsCreateTool::new(metadata, create_fn);
+        let result = tool
+            .execute(serde_json::json!({
+                "key": "session:existing",
+                "_session_key": "session:caller"
+            }))
+            .await?;
+
+        assert_eq!(result["created"], false);
+        let parent = captured_parent
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+            .ok_or_else(|| std::io::Error::other("callback was not invoked"))?;
+        assert_eq!(parent, None, "existing sessions must never get re-parented");
         Ok(())
     }
 

@@ -40,6 +40,12 @@ pub struct PatchParams {
     pub sandbox_enabled: Option<Option<bool>>,
     #[serde(default, deserialize_with = "double_option", alias = "sandbox_backend")]
     pub sandbox_backend: Option<Option<String>>,
+    #[serde(
+        default,
+        deserialize_with = "double_option",
+        alias = "parent_session_key"
+    )]
+    pub parent_session_key: Option<Option<String>>,
 }
 
 /// Deserialize a field as `Some(inner)` when present (even if null),

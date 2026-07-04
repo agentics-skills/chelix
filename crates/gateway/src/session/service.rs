@@ -186,6 +186,49 @@ impl LiveSessionService {
         "main".to_string()
     }
 
+    /// Validate that assigning `parent_key` as the parent of `key` is legal:
+    /// the parent must exist, must not be the session itself, and the
+    /// assignment must not introduce a cycle in the parent chain.
+    pub(super) async fn validate_parent_assignment(
+        &self,
+        key: &str,
+        parent_key: &str,
+    ) -> Result<(), ServiceError> {
+        if parent_key == key {
+            return Err(ServiceError::message(format!(
+                "session '{key}' cannot be its own parent"
+            )));
+        }
+        let Some(parent_entry) = self.metadata.get(parent_key).await else {
+            return Err(ServiceError::message(format!(
+                "parent session '{parent_key}' not found"
+            )));
+        };
+        // Walk up the ancestor chain from the proposed parent; if we reach
+        // `key`, the assignment would create a cycle. Bounded to guard
+        // against pre-existing corrupt chains.
+        const MAX_ANCESTOR_DEPTH: usize = 64;
+        let mut current = parent_entry.parent_session_key;
+        let mut depth = 0;
+        while let Some(ancestor) = current {
+            if ancestor == key {
+                return Err(ServiceError::message(format!(
+                    "cannot set parent '{parent_key}' for session '{key}': would create a cycle"
+                )));
+            }
+            depth += 1;
+            if depth >= MAX_ANCESTOR_DEPTH {
+                break;
+            }
+            current = self
+                .metadata
+                .get(&ancestor)
+                .await
+                .and_then(|e| e.parent_session_key);
+        }
+        Ok(())
+    }
+
     pub(super) async fn resolve_agent_id_for_entry(
         &self,
         entry: &moltis_sessions::metadata::SessionEntry,
@@ -448,6 +491,8 @@ impl SessionService for LiveSessionService {
                     "sandbox_image": entry.sandbox_image,
                     "worktree_branch": entry.worktree_branch,
                     "mcpDisabled": entry.mcp_disabled,
+                    "parentSessionKey": entry.parent_session_key,
+                    "forkPoint": entry.fork_point,
                     "agent_id": entry.agent_id,
                     "agentId": entry.agent_id,
                     "mode_id": entry.mode_id,
@@ -506,6 +551,8 @@ impl SessionService for LiveSessionService {
                 "sandbox_image": entry.sandbox_image,
                 "worktree_branch": entry.worktree_branch,
                 "mcpDisabled": entry.mcp_disabled,
+                "parentSessionKey": entry.parent_session_key,
+                "forkPoint": entry.fork_point,
                 "agent_id": entry.agent_id,
                 "agentId": entry.agent_id,
                 "mode_id": entry.mode_id,
@@ -623,6 +670,15 @@ impl SessionService for LiveSessionService {
                 }
             }
         }
+        if let Some(parent_opt) = p.parent_session_key {
+            let parent = parent_opt.filter(|s| !s.is_empty());
+            if let Some(ref parent_key) = parent {
+                self.validate_parent_assignment(key, parent_key).await?;
+            }
+            // Changing the parent invalidates any fork point recorded for the
+            // previous relationship.
+            self.metadata.set_parent(key, parent, None).await;
+        }
 
         let entry = self
             .metadata
@@ -640,6 +696,8 @@ impl SessionService for LiveSessionService {
             "sandbox_backend": entry.sandbox_backend,
             "worktree_branch": entry.worktree_branch,
             "mcpDisabled": entry.mcp_disabled,
+            "parentSessionKey": entry.parent_session_key,
+            "forkPoint": entry.fork_point,
             "agent_id": entry.agent_id,
             "agentId": entry.agent_id,
             "mode_id": entry.mode_id,
