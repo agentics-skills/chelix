@@ -23,10 +23,12 @@ function applyMobileViewportHeight(): void {
 	}
 
 	const visualHeight = window.visualViewport?.height || 0;
+	const visualOffsetTop = window.visualViewport?.offsetTop || 0;
 	const innerHeight = window.innerHeight || 0;
 	const clientHeight = document.documentElement.clientHeight || 0;
 	const keyboardOpen = visualHeight > 0 && innerHeight > 0 && visualHeight < innerHeight - 120;
-	const height = keyboardOpen ? visualHeight : Math.max(visualHeight, innerHeight, clientHeight);
+	const visualBottom = visualHeight > 0 ? visualHeight + visualOffsetTop : 0;
+	const height = keyboardOpen ? visualBottom : Math.max(visualBottom, innerHeight, clientHeight);
 
 	if (height > 0) {
 		document.documentElement.style.setProperty(MOBILE_VIEWPORT_HEIGHT_VAR, `${Math.ceil(height)}px`);

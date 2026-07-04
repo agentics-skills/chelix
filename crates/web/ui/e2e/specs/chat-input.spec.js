@@ -658,7 +658,7 @@ test.describe("Chat input and slash commands", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
-	test("chat composer is centered with footer controls", async ({ page }) => {
+	test("compact composer spans full width with status strip (design 1B)", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		const composer = page.locator("#chatComposer");
 		const queuedMessages = page.locator("#queuedMessages");
@@ -666,16 +666,20 @@ test.describe("Chat input and slash commands", () => {
 		await expect(queuedMessages).toHaveClass(/\bhidden\b/);
 		await expect(page.locator("#modelCombo")).toBeVisible();
 		await expect(page.locator("#attachBtn")).toBeVisible();
+		await expect(page.locator("#sendBtn")).toBeVisible();
 		await expect(page.locator("#micBtn")).toBeAttached();
 
 		const layout = await page.evaluate(() => {
 			var composerEl = document.getElementById("chatComposer");
 			var tokenBarEl = document.getElementById("tokenBar");
 			var rowEl = document.querySelector(".chat-input-row");
-			var footerEl = document.querySelector(".chat-composer-footer");
-			if (!(composerEl && tokenBarEl && rowEl && footerEl)) throw new Error("composer elements missing");
+			var inputLineEl = document.querySelector(".chat-composer-input-line");
+			var statusEl = document.querySelector(".chat-composer-status");
+			if (!(composerEl && tokenBarEl && rowEl && inputLineEl && statusEl))
+				throw new Error("composer elements missing");
 			var composerRect = composerEl.getBoundingClientRect();
 			var rowRect = rowEl.getBoundingClientRect();
+			var inputLineRect = inputLineEl.getBoundingClientRect();
 			var styles = window.getComputedStyle(composerEl);
 			var rowStyles = window.getComputedStyle(rowEl);
 			return {
@@ -684,19 +688,24 @@ test.describe("Chat input and slash commands", () => {
 				leftGap: composerRect.left - rowRect.left,
 				rightGap: rowRect.right - composerRect.right,
 				borderRadius: Number.parseFloat(styles.borderTopLeftRadius),
-				footerDirection: window.getComputedStyle(footerEl).display,
+				inputLineHeight: inputLineRect.height,
+				statusDisplay: window.getComputedStyle(statusEl).display,
 				rowBackground: rowStyles.backgroundColor,
 				pageBackground: window.getComputedStyle(document.body).backgroundColor,
 				tokenParentClass: tokenBarEl.parentElement?.className || "",
 			};
 		});
 
-		expect(layout.composerWidth).toBeLessThan(layout.rowWidth);
-		expect(Math.abs(layout.leftGap - layout.rightGap)).toBeLessThanOrEqual(2);
-		expect(layout.borderRadius).toBeGreaterThanOrEqual(18);
-		expect(layout.footerDirection).toBe("flex");
+		// Composer fills the full row width with no side gaps and no rounding.
+		expect(Math.abs(layout.composerWidth - layout.rowWidth)).toBeLessThanOrEqual(1);
+		expect(layout.leftGap).toBeLessThanOrEqual(1);
+		expect(layout.rightGap).toBeLessThanOrEqual(1);
+		expect(layout.borderRadius).toBeLessThanOrEqual(1);
+		// Input row stays a single compact line.
+		expect(layout.inputLineHeight).toBeLessThanOrEqual(48);
+		expect(layout.statusDisplay).toBe("flex");
 		expect(layout.rowBackground).toBe(layout.pageBackground);
-		expect(layout.tokenParentClass).toContain("chat-composer-footer");
+		expect(layout.tokenParentClass).toContain("chat-composer-status");
 		expect(pageErrors).toEqual([]);
 	});
 

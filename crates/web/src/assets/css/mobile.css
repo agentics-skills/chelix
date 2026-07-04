@@ -342,18 +342,6 @@ html {
     align-self: stretch;
   }
 
-  /* Chat input adjustments */
-  .chat-input-area {
-    padding-left: calc(12px + var(--safe-left));
-    padding-right: calc(12px + var(--safe-right));
-    padding-bottom: calc(8px + var(--safe-bottom));
-  }
-
-  /* Larger touch target for send button */
-  #sendBtn {
-    display: none;
-  }
-
   /* Approval cards full width on mobile */
   .approval-card {
     max-width: 100%;
@@ -445,38 +433,25 @@ html {
   }
 
   .chat-input-row {
-    /* Keep the composer close to the viewport edge; its own height keeps controls above the home indicator. */
-    padding-top: 6px !important;
-    padding-left: calc(6px + var(--safe-left)) !important;
-    padding-right: calc(6px + var(--safe-right)) !important;
-    padding-bottom: 0 !important;
+    /* Compact composer glued to the viewport edge; only the safe-area inset
+       keeps the status strip above the home indicator. */
+    padding: 0 !important;
     border-radius: 0 !important;
   }
 
   .chat-composer {
-    border-radius: 18px;
-    padding: 8px 10px;
+    border-radius: 0;
+    /* Left/right safe insets keep controls clear of rounded screen corners. */
+    padding: 0 var(--safe-left) 0 var(--safe-right);
   }
 
-  .chat-composer-footer {
-    align-items: flex-end;
-    flex-wrap: wrap;
-    gap: 8px;
+  /* Keep only a tiny visual gap; the full safe-area inset creates dead space. */
+  .chat-composer-status {
+    padding-bottom: 4px;
   }
 
-  .chat-composer-tools {
-    flex-wrap: wrap;
-    overflow: visible;
-  }
-
-  .chat-composer-footer .model-combo-btn {
-    max-width: 160px;
-  }
-
-  .chat-composer-icon-btn,
-  .chat-composer-send-btn {
-    width: 36px;
-    height: 36px;
+  .chat-composer-status .model-combo-btn {
+    max-width: 60vw;
   }
 
   #queuedMessages {
@@ -710,6 +685,27 @@ html {
   textarea {
     min-height: 44px;
     font-size: 16px; /* Prevents iOS zoom on focus */
+  }
+
+  /* The compact chat composer intentionally opts out of the generic 44px
+     mobile touch-target rule; otherwise the textarea and icon buttons cannot
+     shrink below 44px even when chat.css requests a compact row. */
+  .chat-composer button,
+  .chat-composer [role="button"],
+  .chat-composer textarea {
+    min-height: 0;
+  }
+
+  .chat-composer-input-line {
+    min-height: 30px;
+  }
+
+  .chat-composer-textarea {
+    min-height: 30px;
+    font-size: 16px;
+    line-height: 1.2;
+    padding-top: 5px;
+    padding-bottom: 5px;
   }
 }
 

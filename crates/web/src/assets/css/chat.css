@@ -717,12 +717,18 @@
 
 .token-bar:empty { display: none; }
 
+/* ══ Compact composer ══
+   Two full-width rows glued to the bottom edge:
+   1. input row  — attach · textarea · mic · vad · send  (~40px)
+   2. status strip — model · reasoning · token usage      (~20px)
+   No outer margins, no rounding, 1px separators between controls. */
+
 .chat-command-prompt {
-  min-width: 20px;
-  height: 40px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface2);
+  align-self: stretch;
+  min-width: 18px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 0.85rem;
@@ -742,47 +748,44 @@
   border-top: 0;
   background: var(--bg);
   min-width: 0;
-  padding: 16px 24px 0;
+  padding: 0;
 }
 
 .chat-composer {
-  width: min(100%, 980px);
+  width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  margin: 0 auto;
-  border: 1px solid var(--border);
-  border-radius: 18px;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
   background: var(--surface2);
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.08);
-  padding: 14px 16px 12px;
-}
-
-.chat-composer:focus-within {
-  border-color: var(--border);
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.08);
+  box-shadow: none;
 }
 
 .chat-composer-input-line {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
+  align-items: stretch;
+  gap: 0;
   min-width: 0;
+  min-height: 30px;
 }
 
 .chat-composer-textarea {
   flex: 1;
   min-width: 0;
-  min-height: 40px;
+  min-height: 30px;
   max-height: 140px;
+  align-self: center;
   border: 0;
   outline: 0;
   resize: none;
   background: transparent;
   color: var(--text);
   font-family: var(--font-body);
-  font-size: 0.95rem;
-  line-height: 1.6;
-  padding: 4px 2px;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  padding: 5px 8px;
   overflow-x: hidden;
   overflow-wrap: anywhere;
 }
@@ -792,54 +795,68 @@
   opacity: 0.72;
 }
 
-.chat-composer-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 8px;
-}
+/* ── Status strip ── */
 
-.chat-composer-tools,
-.chat-composer-actions {
+.chat-composer-status {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: stretch;
+  min-height: 20px;
   min-width: 0;
+  border-top: 1px solid var(--border);
+  overflow: visible;
 }
 
-.chat-composer-tools {
-  flex: 0 1 auto;
-}
-
-.chat-composer-footer .token-bar {
+.chat-composer-status .token-bar {
   flex: 0 0 auto;
-  margin-right: auto;
+  margin-left: auto;
+  align-self: center;
+  max-width: none;
+  padding: 0 8px;
+  font-size: 0.66rem;
+  font-family: var(--font-mono);
+  color: var(--muted);
 }
 
-.chat-composer-footer .model-dropdown {
+.chat-composer-status .model-combo {
+  display: flex;
+}
+
+.chat-composer-status .model-combo:not(:first-child) .model-combo-btn {
+  border-left: 1px solid var(--border);
+}
+
+.chat-composer-status .model-dropdown {
   top: auto;
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + 4px);
 }
 
-.chat-composer-footer #modelDropdown {
-  width: clamp(360px, 56vw, 640px);
-  min-width: 320px;
-  max-width: calc(100vw - 32px);
+.chat-composer-status #modelDropdown {
+  width: clamp(320px, 56vw, 640px);
+  min-width: 280px;
+  max-width: calc(100vw - 16px);
   overflow: hidden;
 }
 
-.chat-composer-footer .model-combo-btn {
-  min-height: 36px;
-  border-radius: 14px;
-  padding: 6px 12px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 0.85rem;
+.chat-composer-status .model-combo-btn {
+  height: 100%;
+  min-height: 20px;
+  border: 0;
+  border-radius: 0;
+  padding: 0 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-family: var(--font-mono);
 }
 
-.chat-composer-footer #modelComboBtn {
-  max-width: min(56vw, 360px);
+.chat-composer-status .model-combo-btn:hover,
+.chat-composer-status .model-combo-btn:focus {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.chat-composer-status #modelComboBtn {
+  max-width: min(60vw, 360px);
 }
 
 #modelComboLabel {
@@ -848,40 +865,56 @@
   text-overflow: ellipsis;
 }
 
+/* ── Inline icon / send buttons (input row) ── */
+
 .chat-composer-icon-btn,
 .chat-composer-send-btn {
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  flex: none;
+  width: 38px;
+  align-self: stretch;
+  border: 0;
+  border-radius: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
 }
 
 .chat-composer-icon-btn {
-  background: var(--surface);
+  background: transparent;
   color: var(--muted);
+}
+
+/* 1px separators around the textarea: attach on the left, mic/vad on the right.
+   Rules target the buttons directly so the hidden file input (first DOM child)
+   does not break the separators. */
+#attachBtn.chat-composer-icon-btn {
+  border-right: 1px solid var(--border);
+}
+
+.chat-composer-textarea ~ .chat-composer-icon-btn {
+  border-left: 1px solid var(--border);
 }
 
 .chat-composer-icon-btn:hover:not(:disabled),
 .chat-composer-icon-btn:focus-visible:not(:disabled) {
-  border-color: var(--border-strong);
   color: var(--text);
+  background: var(--bg-hover);
   outline: none;
 }
 
 .chat-composer-send-btn {
-  border-color: transparent;
-  background: var(--text);
-  color: var(--surface);
+  width: 44px;
+  margin: 1px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
 }
 
 .chat-composer-send-btn:hover:not(:disabled),
 .chat-composer-send-btn:focus-visible:not(:disabled) {
-  background: var(--accent);
+  background: var(--accent-hover);
   outline: none;
 }
 
@@ -899,10 +932,6 @@
 .chat-composer-send-btn:disabled {
   cursor: default;
   opacity: 0.4;
-}
-
-.chat-input-row.command-mode {
-  border-top-color: var(--accent-subtle);
 }
 
 .chat-input-row.command-mode #chatInput {
