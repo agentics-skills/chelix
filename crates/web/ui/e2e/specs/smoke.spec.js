@@ -17,6 +17,71 @@ test("app shell loads chat route instead of onboarding", async ({ page }) => {
 	expect(pageErrors).toEqual([]);
 });
 
+test("desktop top bars stay compact and chat toolbar scrolls horizontally", async ({ page }) => {
+	const pageErrors = watchPageErrors(page);
+	await page.setViewportSize({ width: 900, height: 720 });
+
+	await page.goto("/");
+	await expect(page).toHaveURL(/\/chats\/main$/);
+	await expectPageContentMounted(page);
+
+	await expect(page.locator("#sessionsPanel")).toBeVisible();
+	await expect(page.locator("#settingsBtn")).toBeVisible();
+	await expect(page.locator("#debugPanelBtn")).toBeVisible();
+
+	const layout = await page.evaluate(() => {
+		const header = document.querySelector("body > header");
+		const toolbar = document.querySelector(".chat-toolbar");
+		const buttons = Array.from(document.querySelectorAll(".chat-toolbar button"));
+		return {
+			headerHeight: header?.getBoundingClientRect().height || 0,
+			toolbarHeight: toolbar?.getBoundingClientRect().height || 0,
+			toolbarOverflowX: toolbar ? getComputedStyle(toolbar).overflowX : "",
+			toolbarWrap: toolbar ? getComputedStyle(toolbar).flexWrap : "",
+			maxToolbarButtonHeight: Math.max(0, ...buttons.map((button) => button.getBoundingClientRect().height)),
+		};
+	});
+
+	expect(layout.headerHeight).toBeLessThanOrEqual(24);
+	expect(layout.toolbarHeight).toBeLessThanOrEqual(24);
+	expect(layout.maxToolbarButtonHeight).toBeLessThanOrEqual(20);
+	expect(layout.toolbarOverflowX).toBe("auto");
+	expect(layout.toolbarWrap).toBe("nowrap");
+	expect(pageErrors).toEqual([]);
+});
+
+test("mobile chat toolbar exposes the same controls as desktop", async ({ page }) => {
+	const pageErrors = watchPageErrors(page);
+	await page.setViewportSize({ width: 390, height: 844 });
+
+	await page.goto("/");
+	await expect(page).toHaveURL(/\/chats\/main$/);
+	await expectPageContentMounted(page);
+
+	for (const selector of [
+		"#sandboxImageBtn",
+		"#mcpToggleBtn",
+		"#debugPanelBtn",
+		"#fullContextBtn",
+		'button[title="Fork session"]',
+		'button[title="Clear session"]',
+	]) {
+		await expect(page.locator(selector)).toBeVisible();
+	}
+
+	const layout = await page.evaluate(() => {
+		const toolbar = document.querySelector(".chat-toolbar");
+		return {
+			toolbarOverflowX: toolbar ? getComputedStyle(toolbar).overflowX : "",
+			toolbarWrap: toolbar ? getComputedStyle(toolbar).flexWrap : "",
+		};
+	});
+
+	expect(layout.toolbarOverflowX).toBe("auto");
+	expect(layout.toolbarWrap).toBe("nowrap");
+	expect(pageErrors).toEqual([]);
+});
+
 test("index page exposes OG and Twitter share metadata", async ({ page }) => {
 	const pageErrors = watchPageErrors(page);
 
@@ -158,6 +223,72 @@ test("standalone mobile layout avoids double safe-area padding", async ({ page }
 	expect(layout.bodyPaddingTop).toBe(0);
 	expect(layout.headerPaddingTop).toBeGreaterThan(24);
 	expect(layout.inputPaddingBottom).toBeGreaterThan(18);
+	expect(pageErrors).toEqual([]);
+});
+
+test("standalone mobile viewport uses screen height when initial viewport is short", async ({ page }) => {
+	const pageErrors = watchPageErrors(page);
+	await page.setViewportSize({ width: 390, height: 760 });
+	await page.addInitScript(() => {
+		const originalMatchMedia = window.matchMedia.bind(window);
+		window.matchMedia = (query) => {
+			if (query === "(display-mode: standalone)") {
+				return {
+					matches: true,
+					media: query,
+					onchange: null,
+					addListener() {
+						return undefined;
+					},
+					removeListener() {
+						return undefined;
+					},
+					addEventListener() {
+						return undefined;
+					},
+					removeEventListener() {
+						return undefined;
+					},
+					dispatchEvent() {
+						return true;
+					},
+				};
+			}
+			return originalMatchMedia(query);
+		};
+		Object.defineProperty(navigator, "standalone", {
+			configurable: true,
+			get() {
+				return true;
+			},
+		});
+		Object.defineProperty(window.screen, "width", {
+			configurable: true,
+			get() {
+				return 390;
+			},
+		});
+		Object.defineProperty(window.screen, "height", {
+			configurable: true,
+			get() {
+				return 844;
+			},
+		});
+	});
+
+	await page.goto("/");
+	await expect(page).toHaveURL(/\/chats\/main$/);
+	await expectPageContentMounted(page);
+
+	const layout = await page.evaluate(() => ({
+		heightVar: getComputedStyle(document.documentElement).getPropertyValue("--mobile-viewport-height").trim(),
+		bodyHeight: document.body.getBoundingClientRect().height,
+		inputBottom: document.querySelector(".chat-input-row")?.getBoundingClientRect().bottom || 0,
+	}));
+
+	expect(layout.heightVar).toBe("844px");
+	expect(layout.bodyHeight).toBeCloseTo(844, 0);
+	expect(layout.inputBottom).toBeCloseTo(844, 0);
 	expect(pageErrors).toEqual([]);
 });
 

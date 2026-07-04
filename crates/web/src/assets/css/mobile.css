@@ -391,27 +391,6 @@ html {
     flex-shrink: 0;
   }
 
-  .chat-toolbar #modelCombo {
-    min-width: 0;
-    order: 0;
-  }
-
-  .chat-toolbar #reasoningCombo {
-    order: 1;
-  }
-
-  .chat-toolbar .sandbox-toggle {
-    order: 2;
-  }
-
-  .chat-toolbar #sessionActionsMount {
-    order: 3;
-  }
-
-  .chat-toolbar #sessionHeaderToolbarMount {
-    order: 4;
-  }
-
   .chat-toolbar #modelComboBtn {
     width: 100%;
     max-width: none;
@@ -700,6 +679,10 @@ html {
     min-height: 30px;
   }
 
+  .msg-action-btn {
+    min-height: 0;
+  }
+
   .chat-composer-textarea {
     min-height: 30px;
     font-size: 16px;
@@ -742,19 +725,13 @@ html {
   }
 }
 
-/* ── Hide secondary chat badges on mobile ── */
+/* ── Compact chat toolbar controls on mobile ── */
 
 @media (max-width: 767px) {
-  .chat-badge-desktop-only {
-    display: none !important;
-  }
-
-  .chat-toolbar #sessionActionsMount button[title="Fork session"],
-  .chat-toolbar #sessionActionsMount button[title="Clear session"] {
-    display: none !important;
-  }
-
   .chat-toolbar .sandbox-toggle,
+  .chat-toolbar button.chat-badge-desktop-only,
+  .chat-toolbar .chat-badge-desktop-only > button,
+  .chat-toolbar #sessionHeaderToolbarMount button,
   .chat-toolbar #sessionActionsMount button {
     font-size: 0.7rem !important;
     padding: 2px 6px !important;
@@ -787,7 +764,7 @@ html.pwa-standalone body {
 }
 
 html.pwa-standalone header {
-  padding-top: calc(8px + var(--safe-top));
+  padding-top: calc(1px + var(--safe-top)) !important;
 }
 
 @media (display-mode: standalone) {
@@ -796,6 +773,6 @@ html.pwa-standalone header {
   }
 
   header {
-    padding-top: calc(8px + var(--safe-top));
+    padding-top: calc(1px + var(--safe-top)) !important;
   }
 }

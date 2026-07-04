@@ -591,14 +591,16 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   align-items: center;
-  gap: 2px;
-  padding: 2px;
+  gap: 1px;
+  padding: 1px;
   display: flex;
+  flex: 0 0 auto;
 }
 
 .theme-btn {
-  width: 28px;
-  height: 28px;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
   color: var(--muted);
   cursor: pointer;
   background: 0 0;
@@ -623,8 +625,8 @@
 
 .theme-btn svg,
 .theme-btn .icon {
-  width: 16px;
-  height: 16px;
+  width: 11px;
+  height: 11px;
 }
 
 /* ── Approval Cards ── */

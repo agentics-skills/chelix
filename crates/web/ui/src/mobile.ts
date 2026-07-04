@@ -11,9 +11,28 @@ let viewportHeightTimers: number[] = [];
 
 const MOBILE_VIEWPORT_HEIGHT_VAR = "--mobile-viewport-height";
 
+interface NavigatorStandalone extends Navigator {
+	standalone?: boolean;
+}
+
 // Check if we're in mobile view
 function isMobile(): boolean {
 	return window.innerWidth < 768;
+}
+
+function isStandaloneViewport(): boolean {
+	return (
+		document.documentElement.classList.contains("pwa-standalone") ||
+		window.matchMedia("(display-mode: standalone)").matches ||
+		(navigator as NavigatorStandalone).standalone === true
+	);
+}
+
+function orientedScreenHeight(): number {
+	const screenWidth = window.screen?.width || 0;
+	const screenHeight = window.screen?.height || 0;
+	if (!(screenWidth > 0 && screenHeight > 0)) return 0;
+	return window.innerWidth > window.innerHeight ? Math.min(screenWidth, screenHeight) : Math.max(screenWidth, screenHeight);
 }
 
 function applyMobileViewportHeight(): void {
@@ -28,7 +47,8 @@ function applyMobileViewportHeight(): void {
 	const clientHeight = document.documentElement.clientHeight || 0;
 	const keyboardOpen = visualHeight > 0 && innerHeight > 0 && visualHeight < innerHeight - 120;
 	const visualBottom = visualHeight > 0 ? visualHeight + visualOffsetTop : 0;
-	const height = keyboardOpen ? visualBottom : Math.max(visualBottom, innerHeight, clientHeight);
+	const standaloneHeight = keyboardOpen || !isStandaloneViewport() ? 0 : orientedScreenHeight();
+	const height = keyboardOpen ? visualBottom : Math.max(visualBottom, innerHeight, clientHeight, standaloneHeight);
 
 	if (height > 0) {
 		document.documentElement.style.setProperty(MOBILE_VIEWPORT_HEIGHT_VAR, `${Math.ceil(height)}px`);
