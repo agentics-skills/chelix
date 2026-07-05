@@ -199,6 +199,21 @@ impl ChatService for LiveChatService {
         let user_message_index = history.len();
 
         if !ephemeral {
+            self.active_runs_by_session
+                .write()
+                .await
+                .insert(session_key.clone(), run_id.clone());
+            self.active_reply_medium
+                .write()
+                .await
+                .insert(session_key.clone(), desired_reply_medium);
+            self.active_partial_assistant.write().await.insert(
+                session_key.clone(),
+                ActiveAssistantDraft::new(&run_id, &model_id, &provider_name, None),
+            );
+        }
+
+        if !ephemeral {
             broadcast(
                 &self.state,
                 "chat",
@@ -262,7 +277,7 @@ impl ChatService for LiveChatService {
                 None, // send_sync: no sender name
                 Some(&self.session_store),
                 None, // send_sync: no client seq
-                None, // send_sync: no partial assistant tracking
+                (!ephemeral).then(|| Arc::clone(&self.active_partial_assistant)),
                 &terminal_runs,
             )
             .await
@@ -291,9 +306,9 @@ impl ChatService for LiveChatService {
                 Some(&self.session_store),
                 false, // send_sync: MCP tools always enabled for API calls
                 None,  // send_sync: no client seq
-                None,  // send_sync: no thinking text tracking
-                None,  // send_sync: no tool call tracking
-                None,  // send_sync: no partial assistant tracking
+                (!ephemeral).then(|| Arc::clone(&self.active_thinking_text)),
+                (!ephemeral).then(|| Arc::clone(&self.active_tool_calls)),
+                (!ephemeral).then(|| Arc::clone(&self.active_partial_assistant)),
                 &active_event_forwarders,
                 &terminal_runs,
                 None, // send_sync: no sender name
@@ -301,6 +316,22 @@ impl ChatService for LiveChatService {
             )
             .await
         };
+
+        if !ephemeral {
+            let mut runs_by_session = self.active_runs_by_session.write().await;
+            if runs_by_session.get(&session_key) == Some(&run_id) {
+                runs_by_session.remove(&session_key);
+            }
+            drop(runs_by_session);
+            self.active_thinking_text.write().await.remove(&session_key);
+            self.active_tool_calls.write().await.remove(&session_key);
+            terminal_runs.write().await.remove(&run_id);
+            self.active_partial_assistant
+                .write()
+                .await
+                .remove(&session_key);
+            self.active_reply_medium.write().await.remove(&session_key);
+        }
 
         // Persist assistant response (even empty ones — needed for LLM history coherence).
         if !ephemeral && let Some(ref assistant_output) = result {
