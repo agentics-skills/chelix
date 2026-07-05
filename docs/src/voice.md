@@ -16,7 +16,7 @@ voice = ["dep:moltis-voice"]
 
 To disable voice features at compile time:
 ```bash
-cargo build --no-default-features --features "file-watcher,tailscale,tls,web-ui"
+cargo build --no-default-features --features "file-watcher,tls,web-ui"
 ```
 
 When disabled:

@@ -408,16 +408,6 @@ key_path = "~/.config/moltis/key.pem"
 
 Override via environment variable: `MOLTIS_TLS__HTTP_REDIRECT_PORT=8080`.
 
-## Tailscale Integration
-
-Expose Moltis over your Tailscale network:
-
-```toml
-[tailscale]
-mode = "serve"                  # "off", "serve", or "funnel"
-reset_on_exit = true
-```
-
 ## Observability
 
 ```toml

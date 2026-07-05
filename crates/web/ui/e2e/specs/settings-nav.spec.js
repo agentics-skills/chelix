@@ -54,7 +54,6 @@ test.describe("Settings navigation", () => {
 				nodes: readRuleMask('.settings-nav-item[data-section="nodes"]::before'),
 				ssh: readRuleMask('.settings-nav-item[data-section="ssh"]::before'),
 				tools: readRuleMask('.settings-nav-item[data-section="tools"]::before'),
-				remoteAccess: readRuleMask('.settings-nav-item[data-section="remote-access"]::before'),
 				networkAudit: readRuleMask('.settings-nav-item[data-section="network-audit"]::before'),
 				mcp: readRuleMask('.settings-nav-item[data-section="mcp"]::before'),
 				openclawImport: readRuleMask('.settings-nav-item[data-section="import"]::before'),
@@ -71,10 +70,8 @@ test.describe("Settings navigation", () => {
 		}
 		expect(hasMask(masks.ssh)).toBeTruthy();
 		expect(hasMask(masks.tools)).toBeTruthy();
-		expect(hasMask(masks.remoteAccess)).toBeTruthy();
 		expect(hasMask(masks.networkAudit)).toBeTruthy();
 		expect(hasMask(masks.mcp)).toBeTruthy();
-		expect(masks.remoteAccess).not.toBe(masks.networkAudit);
 
 		// Import appears only when OpenClaw is detected in this run.
 		if (masks.openclawImport !== null) {
@@ -94,7 +91,6 @@ test.describe("Settings navigation", () => {
 		{ id: "phone", heading: "Phone" },
 		{ id: "security", heading: "Security" },
 		{ id: "ssh", heading: "SSH" },
-		{ id: "remote-access", heading: "Remote Access" },
 		{ id: "network-audit", heading: "Network Audit" },
 		{ id: "notifications", heading: "Notifications" },
 		{ id: "providers", heading: "LLMs" },
@@ -200,95 +196,6 @@ test.describe("Settings navigation", () => {
 			.last();
 		await expect(modal).toBeVisible();
 		await expect(modal.locator('input[data-field="baseUrl"]')).toHaveValue("");
-		expect(pageErrors).toEqual([]);
-	});
-
-	test("remote access page shows all connector cards", async ({ page }) => {
-		const pageErrors = watchPageErrors(page);
-		await page.route("**/api/auth/status", async (route) => {
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify({
-					auth_disabled: false,
-					authenticated: true,
-					has_api_keys: false,
-					has_passkeys: false,
-					has_password: true,
-				}),
-			});
-		});
-		await page.route("**/api/tailscale/status", async (route) => {
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify({
-					hostname: "moltis.tail-scale.ts.net",
-					installed: true,
-					login_name: "team@example.com",
-					mode: "serve",
-					tailnet: "example.ts.net",
-					tailscale_ip: "100.64.0.10",
-					tailscale_up: true,
-					url: "https://moltis.tail-scale.ts.net",
-					version: "1.88.2",
-				}),
-			});
-		});
-		await page.route("**/api/ngrok/status", async (route) => {
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify({
-					authtoken_present: true,
-					authtoken_source: "config",
-					domain: "team-gateway.ngrok.app",
-					enabled: true,
-					public_url: "https://team-gateway.ngrok.app",
-				}),
-			});
-		});
-		await page.route("**/api/netbird/status", async (route) => {
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify({
-					installed: true,
-					mode: "serve",
-					netbird_up: true,
-					url: "https://100.80.0.10:8443",
-				}),
-			});
-		});
-		await page.route("**/api/cloudflare-tunnel/status", async (route) => {
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify({
-					enabled: true,
-					hostname: "moltis.example.com",
-					public_url: "https://moltis.example.com",
-					token_source: "config",
-				}),
-			});
-		});
-
-		await navigateAndWait(page, "/settings/remote-access");
-
-		await expect(page.getByRole("heading", { name: "Remote Access", exact: true })).toBeVisible();
-		// Tailscale tab is active by default
-		await expect(page.getByRole("tab", { name: /Tailscale/ })).toBeVisible();
-		await expect(page.getByRole("tab", { name: /ngrok/ })).toBeVisible();
-		await expect(page.getByRole("tab", { name: /NetBird/ })).toBeVisible();
-		await expect(page.getByRole("tab", { name: /Cloudflare/ })).toBeVisible();
-		// Switch to ngrok tab to see its content
-		await page.getByRole("tab", { name: /ngrok/ }).click();
-		await expect(page.getByText("https://team-gateway.ngrok.app", { exact: true })).toBeVisible();
-		await page.getByRole("tab", { name: /NetBird/ }).click();
-		await expect(page.getByText("https://100.80.0.10:8443", { exact: true })).toBeVisible();
-		await page.getByRole("tab", { name: /Cloudflare/ }).click();
-		await expect(page.getByText("https://moltis.example.com", { exact: true }).last()).toBeVisible();
-
 		expect(pageErrors).toEqual([]);
 	});
 
@@ -656,7 +563,6 @@ test.describe("Settings navigation", () => {
 			"Heartbeat",
 			"Authentication",
 			...presentOptionalItems(["Encryption", "SSH"]),
-			"Remote Access",
 			"Network Audit",
 			"Sandboxes",
 			"Channels",

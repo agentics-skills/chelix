@@ -204,14 +204,6 @@ export function buildCommands(): Command[] {
 			action: settingsNav("ssh"),
 		},
 		{
-			id: "set-remote",
-			label: "Remote Access",
-			group: "settings",
-			icon: "icon-share",
-			keywords: ["tailscale", "tunnel"],
-			action: settingsNav("remote-access"),
-		},
-		{
 			id: "set-sandboxes",
 			label: "Sandboxes",
 			group: "settings",

@@ -39,7 +39,7 @@ moltis-cron = { version = "0.1", features = ["metrics"] }
 To build without metrics entirely:
 
 ```bash
-cargo build --release --no-default-features --features "file-watcher,tailscale,tls,web-ui"
+cargo build --release --no-default-features --features "file-watcher,tls,web-ui"
 ```
 
 ## Prometheus Endpoint

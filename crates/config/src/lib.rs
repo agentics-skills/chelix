@@ -52,7 +52,7 @@ pub use {
         CompactionConfig, CompactionMode, GeoLocation, GroupToolPolicy, HeartbeatConfig,
         HomeAssistantAccountConfig, HomeAssistantConfig, MemoryBackend, MemoryCitationsMode,
         MemoryProvider, MemoryScope, MemorySearchMergeStrategy, MemoryStyle, MessageQueueMode,
-        ModePreset, ModesConfig, MoltisConfig, NgrokConfig, PresetMemoryConfig, PresetToolPolicy,
+        ModePreset, ModesConfig, MoltisConfig, PresetMemoryConfig, PresetToolPolicy,
         PromptMemoryMode, ResolvedIdentity, SessionAccessPolicyConfig, SessionExportMode, Timezone,
         ToolMode, ToolPolicyConfig, ToolRegistryMode, UserProfile, UserProfileWriteMode,
         VoiceConfig, VoiceElevenLabsConfig, VoiceOpenAiConfig, VoiceSttConfig, VoiceSttProvider,

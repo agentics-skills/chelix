@@ -12,7 +12,6 @@ export default {
 		crons: "Crons",
 		security: "Security",
 		securityItem: "Security",
-		tailscale: "Tailscale",
 		integrations: "Integrations",
 		channels: "Channels",
 		hooks: "Hooks",
@@ -182,16 +181,6 @@ export default {
 		tipLabel: "Tip:",
 		tipText:
 			'Click "Load Template" to see all available configuration options with documentation. This replaces the editor content with a fully documented template - copy your current values first if needed.',
-	},
-
-	// ── Tailscale section ────────────────────────────────────
-	tailscale: {
-		title: "Tailscale",
-		description:
-			"Expose the gateway via Tailscale Serve (tailnet-only HTTPS) or Funnel (public HTTPS). The gateway stays bound to localhost; Tailscale proxies traffic to it.",
-		featureNotEnabled: "Tailscale feature is not enabled. Rebuild with --features tailscale.",
-		configuringMode: "Configuring tailscale {{mode}}\u2026 This can take up to 10 seconds.",
-		loadingSlowHint: "Loading\u2026 this can take a few seconds.",
 	},
 
 	// ── Voice section ────────────────────────────────────────

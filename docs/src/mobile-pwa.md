@@ -138,7 +138,7 @@ moltis-gateway = { default-features = false, features = ["web-ui", "tls"] }
 Or build without the feature:
 
 ```bash
-cargo build --no-default-features --features web-ui,tls,tailscale,file-watcher
+cargo build --no-default-features --features web-ui,tls,file-watcher
 ```
 
 ### Data Storage

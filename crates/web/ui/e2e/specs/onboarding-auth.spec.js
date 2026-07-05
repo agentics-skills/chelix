@@ -29,7 +29,6 @@ async function detectOnboardingStep(page) {
 	if (headingText === "Set up your identity") return "identity";
 	if (/^(Add LLMs|Add providers)$/.test(headingText)) return "providers";
 	if (headingText === "Voice (optional)") return "voice";
-	if (headingText === "Remote Access") return "remote-access";
 	if (headingText === "Connect a Channel") return "channel";
 	if (headingText === "Setup Summary") return "summary";
 	return "pending";
@@ -48,7 +47,7 @@ async function advanceToIdentityStep(page) {
 			await completePasswordAuthStep(page);
 			continue;
 		}
-		if (step === "providers" || step === "voice" || step === "remote-access" || step === "channel") {
+		if (step === "providers" || step === "voice" || step === "channel") {
 			if (await clickFirstVisibleButton(page, { name: /skip for now/i })) continue;
 			if (await clickFirstVisibleButton(page, { name: /continue/i })) continue;
 		}

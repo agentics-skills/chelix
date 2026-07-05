@@ -50,13 +50,9 @@ pub async fn prepare_gateway_core(
     log_buffer: Option<crate::logs::LogBuffer>,
     config_dir: Option<PathBuf>,
     data_dir: Option<PathBuf>,
-    tailscale_mode_override: Option<String>,
-    tailscale_reset_on_exit_override: Option<bool>,
     session_event_bus: Option<SessionEventBus>,
 ) -> anyhow::Result<PreparedGatewayCore> {
     let session_event_bus = session_event_bus.unwrap_or_default();
-    #[cfg(not(feature = "tailscale"))]
-    let _ = (&tailscale_mode_override, &tailscale_reset_on_exit_override);
 
     // Apply directory overrides before loading config.
     if let Some(dir) = config_dir {
@@ -1264,10 +1260,6 @@ pub async fn prepare_gateway_core(
         audit_buffer: audit_buffer_for_broadcast,
         #[cfg(feature = "trusted-network")]
         proxy_shutdown_tx,
-        #[cfg(feature = "tailscale")]
-        tailscale_mode_override,
-        #[cfg(feature = "tailscale")]
-        tailscale_reset_on_exit_override,
         code_index,
         #[cfg(any(feature = "qmd", feature = "code-index-builtin"))]
         project_store: Arc::clone(&project_store),

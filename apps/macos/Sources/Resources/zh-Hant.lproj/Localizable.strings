@@ -13,7 +13,6 @@
 "Notifications" = "通知";
 "Crons" = "排程任務";
 "Heartbeat" = "心跳檢測";
-"Tailscale" = "Tailscale";
 "Channels" = "頻道";
 "Hooks" = "Hooks";
 "LLMs" = "LLMs";
@@ -97,7 +96,6 @@
 "Add Cron Job" = "新增排程任務";
 "Require password login" = "要求密碼登入";
 "Enable passkeys" = "啟用通行金鑰";
-"Tailscale mode" = "Tailscale 模式";
 "No Channels" = "沒有頻道";
 "Connect messaging platforms like Telegram or Slack" = "連結 Telegram 或 Slack 等通訊平臺";
 "Add Channel" = "新增頻道";

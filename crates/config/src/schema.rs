@@ -301,8 +301,6 @@ impl Default for ResolvedIdentity {
 #[serde(default)]
 pub struct MoltisConfig {
     pub server: ServerConfig,
-    pub ngrok: NgrokConfig,
-    pub cloudflare_tunnel: CloudflareTunnelConfig,
     pub providers: ProvidersConfig,
     pub chat: ChatConfig,
     pub tools: ToolsConfig,
@@ -319,8 +317,6 @@ pub struct MoltisConfig {
     pub user: UserProfile,
     pub hooks: Option<HooksConfig>,
     pub memory: MemoryEmbeddingConfig,
-    pub tailscale: TailscaleConfig,
-    pub netbird: NetbirdConfig,
     pub failover: FailoverConfig,
     pub heartbeat: HeartbeatConfig,
     pub voice: VoiceConfig,

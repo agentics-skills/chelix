@@ -12,7 +12,6 @@ export default {
 		crons: "排程任務",
 		security: "安全性",
 		securityItem: "安全性",
-		tailscale: "Tailscale",
 		integrations: "整合",
 		channels: "頻道",
 		hooks: "Hooks",
@@ -179,16 +178,6 @@ export default {
 		tipLabel: "提示：",
 		tipText:
 			"按一下「載入範本」即可檢視所有支援的組態選項及說明文件。此操作會以完整文件範本取代編輯器內容——如有需要，請先複製目前的值。",
-	},
-
-	// ── Tailscale section ────────────────────────────────────
-	tailscale: {
-		title: "Tailscale",
-		description:
-			"透過 Tailscale Serve（僅限 tailnet 的 HTTPS）或 Funnel（公開 HTTPS）暴露閘道。閘道持續繫結在 localhost；Tailscale 會將流量代理至閘道。",
-		featureNotEnabled: "Tailscale 功能未啟用。請使用 --features tailscale 重新建置。",
-		configuringMode: "正在設定 Tailscale {{mode}}\u2026 此過程最多需要 10 秒。",
-		loadingSlowHint: "載入中\u2026 可能需要幾秒鐘。",
 	},
 
 	// ── Voice section ────────────────────────────────────────

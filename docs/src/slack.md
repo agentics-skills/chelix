@@ -149,8 +149,7 @@ connection_mode = "events_api"
 signing_secret = "abc123..."
 ```
 
-This requires your Moltis instance to be reachable from the internet (or use
-[Tailscale Funnel](configuration.md#tailscale-integration)).
+This requires your Moltis instance to be reachable from the internet.
 
 ## Access Control
 

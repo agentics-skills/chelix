@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Settings panels connected to Rust backend — all settings (Identity, Soul,
-  Heartbeat, Memory, Security, Tailscale, Monitoring, GraphQL, Sandbox, Voice,
+  Heartbeat, Memory, Security, Monitoring, GraphQL, Sandbox, Voice,
   Channels, Hooks, MCP, Skills) now load from and save to `moltis.toml`,
   `IDENTITY.md`, `USER.md`, and `SOUL.md` via 6 new FFI functions
   (`moltis_get_config`, `moltis_save_config`, `moltis_get_soul`,
@@ -19,7 +19,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   credential store (`moltis_list_env_vars`, `moltis_set_env_var`,
   `moltis_delete_env_var`), including encrypted/plaintext badges and vault
   status messaging
-- Tailscale panel uses mode picker (off/serve/funnel) matching config schema
 - Real-time session sync with web UI — sessions created, deleted, or patched in
   the web UI now instantly appear in the macOS sidebar (and vice versa) via the
   new `SessionEventBus` and `moltis_set_session_event_callback` FFI
@@ -62,7 +61,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   so the macOS app and web UI share the same session list
 
 - HTTP Server description updated to reflect full gateway capability
-- Security and Tailscale sections are now shown only when HTTP Server is enabled
+- Security section is now shown only when HTTP Server is enabled
 - Security settings now use auth-backed controls (password set/change,
   passkey listing/rename/remove, and full auth reset) with clear HTTP-only scope
 - Server start/stop controls disabled while startup is in progress

@@ -153,9 +153,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - [tls] Support public IP SAN for generated certs (#1000)
 - [mcp] Support OAuth client secrets (#1001)
-- [remote-access] Add NetBird and Cloudflare Tunnel support (#1002)
 - [external-agents] Add persistent agent sessions (#566)
-- Add NetBird and Cloudflare Tunnel to onboarding (#1008)
 
 
 ### Fixed
@@ -1314,7 +1312,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [httpd] Repair test and bridge lint fallout
 - [httpd] Restore vault test imports
 - [telegram] Mark byte-truncated documents
-- [httpd] Repair ngrok server split
 - [provider-setup] Restore ollama validation payload
 - [gateway] Drop duplicate broadcaster default impl
 - [gateway] Remove stale mcp service doc comment
@@ -1591,9 +1588,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Fixed
-- [web] Integrate Tailscale Funnel into Teams channel setup
 - [web] Remove 'Requires public URL' badge from Teams card
-- [web] Simplify Teams onboarding now that Remote Access step exists
 - [msteams] Address PR review feedback
 - [msteams] Use Graph token for reactions and thread context
 - [msteams] Prevent streaming retry storm and URL injection in search
@@ -1680,7 +1675,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [chat] Address PR review — safer mock assertions and precedence test
 - [web] Use globe icon for webhooks settings nav
 - [web] Use ModelSelect and ComboSelect for webhook agent/model fields
-- [web] Use public URL (ngrok/tailscale) for webhook endpoint display
 - Improve webhook test script with verbose output and TLS support
 - Use OnceLock for webhook state fields instead of Arc::get_mut
 - [web] Show Hoppscotch link below webhook list, not only in empty state
@@ -1868,11 +1862,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [web] Preserve server error message for model probes
 - [web] Sort and collapse onboarding model selector like settings
 - [web] Sort models by version number when no date available
-- [httpd] Harden ngrok controller lifecycle
-- [httpd] Retain ngrok controller after startup
-- [ngrok] Harden loopback tunnel handling
-- [ngrok] Avoid fatal startup on tunnel errors
-- [ngrok] Clarify defaults and warnings
 - Update local setup and ElevenLabs error logging
 - [web] Localize toggle button in onboarding and fix JSDoc comment
 - [chat] Use relative timestamps in created_at test
@@ -2076,9 +2065,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [mcp] Add McpTransport and McpClientTrait trait abstractions
 - [mcp] Wire MCP tool bridges into agent ToolRegistry
 - [mcp] SSE transport, health polling, auto-restart, and edit config
-- [gateway] Add tailscale serve/funnel management, UI consistency overhaul, and HTTP/2 support
 - [memory] Log status with DB size after initial sync
-- [tailscale] Add Start Tailscale button when daemon is not running
 - [channels] Assign default model to new telegram sessions
 - [agents] Add model failover with per-provider circuit breakers
 - [gateway] Add report an issue link to nav sidebar
@@ -2419,9 +2406,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [mcp] Add McpTransport and McpClientTrait trait abstractions
 - [mcp] Wire MCP tool bridges into agent ToolRegistry
 - [mcp] SSE transport, health polling, auto-restart, and edit config
-- [gateway] Add tailscale serve/funnel management, UI consistency overhaul, and HTTP/2 support
 - [memory] Log status with DB size after initial sync
-- [tailscale] Add Start Tailscale button when daemon is not running
 - [channels] Assign default model to new telegram sessions
 - [agents] Add model failover with per-provider circuit breakers
 - [gateway] Add report an issue link to nav sidebar
@@ -2488,9 +2473,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [memory] Skip redundant work on sync restart
 - [gateway] Use inline script for identity instead of server-side HTML replace
 - [api] Split /api/skills and /api/plugins into separate endpoints
-- [ui] Use CSS classes for tailscale status bar, single line layout
 - [ui] Rename ts-status-bar to generic info-bar classes and fix image page font size
-- [tailscale] Remove Start Tailscale button and up endpoint
 - [ui] Move session rename/delete to chat header and clean up
 - Remove unsafe set_var in detect.rs tests, resolve merge conflicts
 - [gateway] Reorder nav items alphabetically with Chat first
@@ -2539,7 +2522,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [web] Extract web UI into dedicated moltis-web crate
 - [identity] Consolidate creature+vibe into single theme field
 - [gateway] Extract moltis-service-traits crate (Phase 0)
-- [gateway] Extract moltis-tls and moltis-tailscale crates (Phase 1)
 - [gateway] Extract moltis-auth crate (Phase 2)
 - [gateway] Extract moltis-provider-setup crate (Phase 3)
 - [gateway] Extract moltis-chat crate (Phase 4)
@@ -2571,9 +2553,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [memory] Skip redundant work on sync restart
 - [gateway] Use inline script for identity instead of server-side HTML replace
 - [api] Split /api/skills and /api/plugins into separate endpoints
-- [ui] Use CSS classes for tailscale status bar, single line layout
 - [ui] Rename ts-status-bar to generic info-bar classes and fix image page font size
-- [tailscale] Remove Start Tailscale button and up endpoint
 - [ui] Move session rename/delete to chat header and clean up
 - Remove unsafe set_var in detect.rs tests, resolve merge conflicts
 - [gateway] Reorder nav items alphabetically with Chat first
@@ -2657,18 +2637,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ui] Use consistent button class for skills Remove button
 - [ui] Fix skills Disable button style and add error feedback
 - [skills] Route disable to correct RPC for plugin-sourced skills
-- [ui] Use inline style for tailscale status green dot
-- [ui] Use status-dot connected class for tailscale green dot
-- [ui] Replace Tailwind arbitrary classes with inline styles in tailscale templates
-- [ui] Make tailscale status bar fit-content width
 - [ui] Make info-bar full width to match warning/error divs
 - [ui] Constrain info-bar to max-width 600px matching alert divs
 - [ui] Add alert-info-text to shared alert base styles
 - [ui] Add btn-row and btn-row-mt CSS classes for button spacing
 - [ui] Space cancel/create buttons apart and normalize height
-- [ui] Improve tailscale loading message to set expectations
-- [tailscale] Open Tailscale.app on macOS instead of running tailscale up
-- [ui] Preserve funnel security warning when rebuilding tailscale DOM
 - [ui] Use alert-warning-text style for funnel auth warning
 - [ui] Replace auth text with green button linking to security settings
 - [ui] Move auth button below the funnel security warning panel
@@ -3031,7 +3004,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [local-llm] Use sampler API for mlx-lm >= 0.20
 - [gateway] Break redirect loop when onboarded but auth not configured (#310)
 - [gateway] Reduce idle CPU from metrics loop and log broadcast feedback
-- [gateway] Speed up startup by deferring tailscale and log scan
 - [gateway] Improve browser warmup integration
 - [scripts] Run local nextest with ci timeout profile
 - [ci] Build macOS app arm64 in fast path
@@ -3054,7 +3026,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [prompt] Omit sandbox/node info from runtime prompt when disabled (#362)
 - [web] Allow deleting cron sessions from chat sidebar (#357)
 - [chat] Skip duplicate text fallback when TTS disabled and voice streamed (#373)
-- [web] Break redirect loop when accessing via Tailscale Serve (#356)
 - Node WebSocket connection and UI connection string (#382)
 - [config] Write IDENTITY.md and SOUL.md to agents/main/ instead of root (#384)
 - [auth] Bypass auth for local API requests during onboarding (#386)
@@ -3135,18 +3106,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ui] Use consistent button class for skills Remove button
 - [ui] Fix skills Disable button style and add error feedback
 - [skills] Route disable to correct RPC for plugin-sourced skills
-- [ui] Use inline style for tailscale status green dot
-- [ui] Use status-dot connected class for tailscale green dot
-- [ui] Replace Tailwind arbitrary classes with inline styles in tailscale templates
-- [ui] Make tailscale status bar fit-content width
 - [ui] Make info-bar full width to match warning/error divs
 - [ui] Constrain info-bar to max-width 600px matching alert divs
 - [ui] Add alert-info-text to shared alert base styles
 - [ui] Add btn-row and btn-row-mt CSS classes for button spacing
 - [ui] Space cancel/create buttons apart and normalize height
-- [ui] Improve tailscale loading message to set expectations
-- [tailscale] Open Tailscale.app on macOS instead of running tailscale up
-- [ui] Preserve funnel security warning when rebuilding tailscale DOM
 - [ui] Use alert-warning-text style for funnel auth warning
 - [ui] Replace auth text with green button linking to security settings
 - [ui] Move auth button below the funnel security warning panel
@@ -3330,7 +3294,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Fixed
-- [gateway] Speed up startup by deferring tailscale and log scan
 - [gateway] Improve browser warmup integration
 - [scripts] Run local nextest with ci timeout profile
 - [ci] Build macOS app arm64 in fast path
@@ -3353,7 +3316,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [prompt] Omit sandbox/node info from runtime prompt when disabled (#362)
 - [web] Allow deleting cron sessions from chat sidebar (#357)
 - [chat] Skip duplicate text fallback when TTS disabled and voice streamed (#373)
-- [web] Break redirect loop when accessing via Tailscale Serve (#356)
 
 
 ### Security
@@ -3418,7 +3380,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [local-llm] Use sampler API for mlx-lm >= 0.20
 - [gateway] Break redirect loop when onboarded but auth not configured (#310)
 - [gateway] Reduce idle CPU from metrics loop and log broadcast feedback
-- [gateway] Speed up startup by deferring tailscale and log scan
 - [gateway] Improve browser warmup integration
 - [scripts] Run local nextest with ci timeout profile
 - [ci] Build macOS app arm64 in fast path

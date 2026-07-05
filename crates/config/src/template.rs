@@ -615,31 +615,6 @@ port = {port}                           # Port number (auto-generated for this i
 # language = "en"                       # Optional ISO 639-1 hint
 
 # ══════════════════════════════════════════════════════════════════════════════
-# NGROK
-# ══════════════════════════════════════════════════════════════════════════════
-
-# [ngrok]
-# enabled = false
-# authtoken = "${{NGROK_AUTHTOKEN}}"
-# domain = "team-gateway.ngrok.app"
-
-# [cloudflare_tunnel]
-# enabled = false
-# token = "${{CLOUDFLARE_TUNNEL_TOKEN}}"
-# hostname = "moltis.example.com"       # Optional public hostname for display/passkeys
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TAILSCALE
-# ══════════════════════════════════════════════════════════════════════════════
-
-# [tailscale]
-# mode = "off"                      # "off" | "serve" | "funnel"
-# reset_on_exit = true
-
-# [netbird]
-# mode = "off"                      # "off" | "serve" (private mesh only)
-
-# ══════════════════════════════════════════════════════════════════════════════
 # MEMORY / EMBEDDINGS
 # ══════════════════════════════════════════════════════════════════════════════
 

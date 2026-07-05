@@ -99,7 +99,7 @@ Current Rust workspace: ~270K LoC across 59 crates. The table below groups the m
 | Setup and import | `moltis-provider-setup`, `moltis-openclaw-import`, `moltis-onboarding` | 11.7K |
 | Native and node hosts | `moltis-swift-bridge`, `moltis-node-host`, `moltis-courier` | 5.7K |
 | WASM tools | `moltis-wasm-precompile`, `moltis-wasm-calc`, `moltis-wasm-web-fetch`, `moltis-wasm-web-search` | 1.4K |
-| Supporting crates | `moltis-media`, `moltis-metrics`, `moltis-tailscale`, `moltis-routing`, `moltis-canvas`, `moltis-schema-export`, `benchmarks` | 2.1K |
+| Supporting crates | `moltis-media`, `moltis-metrics`, `moltis-routing`, `moltis-canvas`, `moltis-schema-export`, `benchmarks` | 2.1K |
 
 Use `--no-default-features --features lightweight` for constrained devices (Raspberry Pi, etc.).
 
@@ -125,7 +125,7 @@ Verify releases with `gh attestation verify <artifact> -R agentics-skills/chelix
 - **Safer Agent Editing** — Automatic checkpoints before built-in skill and memory mutations, restore tooling, session branching
 - **Extensibility** — MCP servers (stdio + HTTP/SSE), skill system, 15 lifecycle hook events with circuit breaker, destructive command guard
 - **Security** — Encryption-at-rest vault (XChaCha20-Poly1305 + Argon2id), password + passkey + API key auth, sandbox isolation, SSRF/CSWSH protection
-- **Operations** — Cron scheduling, OpenTelemetry tracing, Prometheus metrics, cloud deploy (Fly.io, DigitalOcean), Tailscale integration, managed SSH deploy keys, host-pinned remote targets, live tool inventory in Settings, and CLI/web remote-exec doctor flows
+- **Operations** — Cron scheduling, OpenTelemetry tracing, Prometheus metrics, cloud deploy (Fly.io, DigitalOcean), managed SSH deploy keys, host-pinned remote targets, live tool inventory in Settings, and CLI/web remote-exec doctor flows
 
 ## How It Works
 

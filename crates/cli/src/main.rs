@@ -27,8 +27,6 @@ static malloc_conf: &[u8] = b"dirty_decay_ms:1000,muzzy_decay_ms:1000,background
 mod auth_commands;
 mod browser_commands;
 mod channel_commands;
-#[cfg(feature = "cloudflare-tunnel")]
-mod cloudflare_tunnel_commands;
 mod config_commands;
 mod data_commands;
 mod db_commands;
@@ -37,13 +35,9 @@ mod hooks_commands;
 #[cfg(feature = "openclaw-import")]
 mod import_commands;
 mod memory_commands;
-#[cfg(feature = "netbird")]
-mod netbird_commands;
 mod node_commands;
 mod sandbox_commands;
 mod service_commands;
-#[cfg(feature = "tailscale")]
-mod tailscale_commands;
 mod voicecall_commands;
 
 use {
@@ -92,14 +86,6 @@ struct Cli {
     #[cfg(feature = "tls")]
     #[arg(long, global = true, env = "MOLTIS_NO_TLS")]
     no_tls: bool,
-    /// Tailscale mode: off, serve, or funnel.
-    #[cfg(feature = "tailscale")]
-    #[arg(long, global = true, env = "MOLTIS_TAILSCALE")]
-    tailscale: Option<String>,
-    /// Reset tailscale serve/funnel when the gateway exits.
-    #[cfg(feature = "tailscale")]
-    #[arg(long, global = true, default_value_t = true)]
-    tailscale_reset_on_exit: bool,
 }
 
 #[derive(Subcommand)]
@@ -196,24 +182,6 @@ enum Commands {
     Import {
         #[command(subcommand)]
         action: import_commands::ImportAction,
-    },
-    /// Tailscale Serve/Funnel management.
-    #[cfg(feature = "tailscale")]
-    Tailscale {
-        #[command(subcommand)]
-        action: tailscale_commands::TailscaleAction,
-    },
-    /// NetBird private mesh access management.
-    #[cfg(feature = "netbird")]
-    Netbird {
-        #[command(subcommand)]
-        action: netbird_commands::NetbirdAction,
-    },
-    /// Cloudflare Tunnel management.
-    #[cfg(feature = "cloudflare-tunnel")]
-    CloudflareTunnel {
-        #[command(subcommand)]
-        action: cloudflare_tunnel_commands::CloudflareTunnelAction,
     },
     /// Voice call management (initiate, status, end).
     VoiceCall {
@@ -456,15 +424,6 @@ async fn main() -> anyhow::Result<()> {
             let no_tls = cli.no_tls;
             #[cfg(not(feature = "tls"))]
             let no_tls = false;
-
-            #[cfg(feature = "tailscale")]
-            let tailscale_opts = cli.tailscale.map(|mode| moltis_httpd::TailscaleOpts {
-                mode,
-                reset_on_exit: cli.tailscale_reset_on_exit,
-            });
-            #[cfg(not(feature = "tailscale"))]
-            let tailscale_opts: Option<()> = None;
-            let _ = &tailscale_opts; // suppress unused warning when feature disabled
             #[cfg(feature = "web-ui")]
             let extra_routes: Option<moltis_httpd::RouteEnhancer> = Some(moltis_web::web_routes);
             #[cfg(not(feature = "web-ui"))]
@@ -477,8 +436,6 @@ async fn main() -> anyhow::Result<()> {
                 log_buffer,
                 cli.config_dir,
                 cli.data_dir,
-                #[cfg(feature = "tailscale")]
-                tailscale_opts,
                 extra_routes,
             )
             .await
@@ -504,14 +461,6 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Service { action }) => service_commands::handle_service(action),
         #[cfg(feature = "openclaw-import")]
         Some(Commands::Import { action }) => import_commands::handle_import(action).await,
-        #[cfg(feature = "tailscale")]
-        Some(Commands::Tailscale { action }) => tailscale_commands::handle_tailscale(action).await,
-        #[cfg(feature = "netbird")]
-        Some(Commands::Netbird { action }) => netbird_commands::handle_netbird(action).await,
-        #[cfg(feature = "cloudflare-tunnel")]
-        Some(Commands::CloudflareTunnel { action }) => {
-            cloudflare_tunnel_commands::handle_cloudflare_tunnel(action).await
-        },
         Some(Commands::Skills { action }) => handle_skills(action).await,
         Some(Commands::Config { action }) => config_commands::handle_config(action).await,
         Some(Commands::Doctor) => doctor_commands::handle_doctor().await,

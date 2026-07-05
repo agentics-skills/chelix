@@ -12,7 +12,6 @@ export default {
 		crons: "定时任务",
 		security: "安全",
 		securityItem: "安全",
-		tailscale: "Tailscale",
 		integrations: "集成",
 		channels: "频道",
 		hooks: "钩子",
@@ -177,16 +176,6 @@ export default {
 		failedToLoadTemplate: "加载模板失败",
 		tipLabel: "提示：",
 		tipText: '点击"加载模板"查看所有可用的配置选项及文档。这会用完整文档模板替换编辑器内容 - 如有需要请先复制当前值。',
-	},
-
-	// ── Tailscale section ────────────────────────────────────
-	tailscale: {
-		title: "Tailscale",
-		description:
-			"通过 Tailscale Serve（仅限 tailnet 的 HTTPS）或 Funnel（公开 HTTPS）暴露网关。网关保持绑定在 localhost；Tailscale 将流量代理到网关。",
-		featureNotEnabled: "Tailscale 功能未启用。请使用 --features tailscale 重新编译。",
-		configuringMode: "正在配置 tailscale {{mode}}\u2026 这可能需要最多 10 秒。",
-		loadingSlowHint: "加载中\u2026 这可能需要几秒钟。",
 	},
 
 	// ── Voice section ────────────────────────────────────────

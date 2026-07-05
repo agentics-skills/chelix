@@ -33,8 +33,6 @@
   - [`auth`](#auth)
   - [`tls`](#tls)
   - [`graphql`](#graphql)
-  - [`ngrok`](#ngrok)
-  - [`tailscale`](#tailscale)
   - [`upstream_proxy`](#upstream-proxy)
   - [`failover`](#failover)
 - **Observability**
@@ -168,48 +166,6 @@ Runtime GraphQL server configuration.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | bool | `true` | Whether GraphQL HTTP/WS handlers accept requests. |
-
-
-### `ngrok` — NgrokConfig
-
-ngrok public HTTPS tunnel configuration.
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `enabled` | bool | `false` | Whether the ngrok tunnel is enabled. |
-| `authtoken` | optional secret string | — | ngrok authtoken. If unset, `NGROK_AUTHTOKEN` env var is used. |
-| `domain` | optional string | — | Optional reserved/static domain to request from ngrok. |
-
-
-### `cloudflare_tunnel` — CloudflareTunnelConfig
-
-Cloudflare Tunnel public HTTPS connector configuration.
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `enabled` | bool | `false` | Whether the Cloudflare Tunnel connector is enabled. |
-| `token` | optional secret string | — | Cloudflare Tunnel token. If unset, `CLOUDFLARE_TUNNEL_TOKEN` env var is used. |
-| `hostname` | optional string | — | Optional public hostname for status display and WebAuthn origin updates. |
-
-
-### `tailscale` — TailscaleConfig
-
-Tailscale Serve/Funnel configuration.
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `mode` | string | `"off"` | Tailscale mode: `"off"`, `"serve"`, or `"funnel"`. |
-| `reset_on_exit` | bool | `true` | Reset tailscale serve/funnel when the gateway shuts down. |
-
-
-### `netbird` — NetbirdConfig
-
-NetBird private mesh access configuration.
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `mode` | string | `"off"` | NetBird mode: `"off"` or `"serve"`. |
-
 
 ### `upstream_proxy` (top-level scalar)
 

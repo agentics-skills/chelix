@@ -99,9 +99,7 @@ The Moltis web UI and CLI both generate this URL for you. Paste it into your
 bot's **Messaging endpoint** field in the Azure Portal or Teams Developer Portal.
 
 ```admonish info title="HTTPS required"
-Teams requires HTTPS. For local development, use a tunnel like
-[ngrok](https://ngrok.com/) (`ngrok http 8080`) or
-[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/).
+Teams requires HTTPS. For local development, use any HTTPS-capable tunnel or reverse proxy.
 ```
 
 ## Configuration

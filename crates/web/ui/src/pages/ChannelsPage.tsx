@@ -134,13 +134,6 @@ interface ChannelDescriptor {
 	};
 }
 
-export interface TailscaleStatus {
-	mode?: string;
-	url?: string;
-	installed?: boolean;
-	tailscale_up?: boolean;
-}
-
 interface SenderEntry {
 	peer_id: string;
 	sender_name?: string;

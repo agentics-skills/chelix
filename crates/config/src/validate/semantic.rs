@@ -582,62 +582,6 @@ pub(super) fn check_semantic_warnings(config: &MoltisConfig, diagnostics: &mut V
         }
     }
 
-    // Unknown tailscale mode
-    let valid_ts_modes = ["off", "serve", "funnel"];
-    if !valid_ts_modes.contains(&config.tailscale.mode.as_str()) {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "unknown-field",
-            path: "tailscale.mode".into(),
-            message: format!(
-                "unknown tailscale mode \"{}\"; expected one of: {}",
-                config.tailscale.mode,
-                valid_ts_modes.join(", ")
-            ),
-        });
-    }
-
-    let valid_netbird_modes = ["off", "serve"];
-    if !valid_netbird_modes.contains(&config.netbird.mode.as_str()) {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "unknown-field",
-            path: "netbird.mode".into(),
-            message: format!(
-                "unknown netbird mode \"{}\"; expected one of: {}",
-                config.netbird.mode,
-                valid_netbird_modes.join(", ")
-            ),
-        });
-    }
-
-    if config.netbird.mode == "serve" && config.auth.disabled {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "security",
-            path: "netbird.mode".into(),
-            message: "NetBird serve mode is enabled while auth.disabled is true; NetBird mesh peers will be blocked with setup required until authentication is configured".into(),
-        });
-    }
-
-    if config.ngrok.enabled && config.auth.disabled {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "security",
-            path: "ngrok.enabled".into(),
-            message: "ngrok is enabled while auth.disabled is true; remote visitors will be blocked with setup required until authentication is configured".into(),
-        });
-    }
-
-    if config.cloudflare_tunnel.enabled && config.auth.disabled {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "security",
-            path: "cloudflare_tunnel.enabled".into(),
-            message: "Cloudflare Tunnel is enabled while auth.disabled is true; remote visitors will be blocked with setup required until authentication is configured".into(),
-        });
-    }
-
     // Unknown sandbox backend
     let valid_sandbox_backends = [
         "auto",

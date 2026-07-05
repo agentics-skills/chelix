@@ -3,7 +3,7 @@
 // Domain modules:
 // - location:      GatewayLocationRequester trait impl
 // - helpers:        utility fns, env helpers, mem probe, diagnostics
-// - startup:        OpenClaw, warmup, WebAuthn sync, Tailscale, feature stubs
+// - startup:        OpenClaw, warmup, WebAuthn sync, feature stubs
 // - prepared:       PreparedGatewayCore struct definition
 // - prepare_core:   prepare_gateway_core entry point
 // - hooks:          hook discovery, DCG guard, seeding

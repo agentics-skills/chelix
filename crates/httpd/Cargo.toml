@@ -42,7 +42,6 @@ moltis-tls            = { optional = true, workspace = true }
 moltis-tools          = { workspace = true }
 moltis-vault          = { optional = true, workspace = true }
 moltis-webhooks       = { workspace = true }
-ngrok                 = { optional = true, workspace = true }
 rand                  = { workspace = true }
 reqwest               = { workspace = true }
 rustls                = { optional = true, workspace = true }
@@ -65,22 +64,18 @@ uuid                  = { workspace = true }
 webauthn-rs           = { features = ["danger-allow-state-serialisation"], workspace = true }
 
 [features]
-cloudflare-tunnel = []
 default = [
-  "cloudflare-tunnel",
   "discord",
   "graphql",
   "matrix",
   "mdns",
   "metrics",
   "msteams",
-  "netbird",
   "nostr",
   "prometheus",
   "push-notifications",
   "signal",
   "slack",
-  "tailscale",
   "telephony",
   "tls",
   "trusted-network",
@@ -99,14 +94,11 @@ matrix = ["dep:moltis-matrix", "moltis-gateway/matrix"]
 mdns = ["moltis-gateway/mdns"]
 metrics = ["dep:moltis-metrics", "moltis-gateway/metrics"]
 msteams = ["dep:moltis-msteams", "moltis-gateway/msteams"]
-netbird = ["moltis-gateway/netbird"]
-ngrok = ["dep:ngrok"]
 nostr = ["moltis-gateway/nostr"]
 prometheus = ["metrics", "moltis-gateway/prometheus"]
 push-notifications = ["dep:chrono", "moltis-gateway/push-notifications"]
 signal = ["moltis-gateway/signal"]
 slack = ["dep:moltis-slack", "moltis-gateway/slack"]
-tailscale = ["moltis-gateway/tailscale"]
 telephony = ["dep:moltis-telephony", "moltis-gateway/telephony"]
 tls = ["dep:moltis-tls", "dep:rustls", "moltis-gateway/tls"]
 trusted-network = ["moltis-gateway/trusted-network"]

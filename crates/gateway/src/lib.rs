@@ -34,8 +34,6 @@ pub mod mcp_service;
 pub mod mdns;
 pub mod message_log_store;
 pub mod methods;
-#[cfg(feature = "netbird")]
-pub mod netbird;
 pub mod network_audit;
 pub mod node_exec;
 pub mod nodes;
@@ -53,8 +51,6 @@ pub mod session;
 pub mod session_types;
 pub mod share_store;
 pub mod state;
-#[cfg(feature = "tailscale")]
-pub mod tailscale;
 #[cfg(feature = "msteams")]
 pub mod teams_agent_tools;
 pub mod tts_phrases;

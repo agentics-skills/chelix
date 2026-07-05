@@ -13,7 +13,6 @@
 "Notifications" = "Notifications";
 "Crons" = "Cron";
 "Heartbeat" = "Heartbeat";
-"Tailscale" = "Tailscale";
 "Channels" = "Canaux";
 "Hooks" = "Hooks";
 "LLMs" = "LLM";
@@ -97,7 +96,6 @@
 "Add Cron Job" = "Ajouter une tâche cron";
 "Require password login" = "Exiger une connexion par mot de passe";
 "Enable passkeys" = "Activer les passkeys";
-"Tailscale mode" = "Mode Tailscale";
 "No Channels" = "Aucun canal";
 "Connect messaging platforms like Telegram or Slack" = "Connectez des plateformes de messagerie comme Telegram ou Slack";
 "Add Channel" = "Ajouter un canal";

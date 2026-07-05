@@ -25,7 +25,6 @@ struct SettingsSectionContent: View {
         case .crons: cronsPane
         case .heartbeat: heartbeatPane
         case .security: securityPane
-        case .tailscale: tailscalePane
         case .channels: channelsPane
         case .hooks: hooksPane
         case .llms: llmsPane
@@ -461,19 +460,6 @@ private extension SettingsSectionContent {
         NSWorkspace.shared.open(url)
     }
 
-    var tailscalePane: some View {
-        Group {
-            Picker("Tailscale mode", selection: $settings.tailscaleMode) {
-                ForEach(settings.tailscaleModes, id: \.self) { mode in
-                    Text(mode.capitalized).tag(mode)
-                }
-            }
-            .onChange(of: settings.tailscaleMode) {
-                settings.tailscaleEnabled = settings.tailscaleMode != "off"
-                settings.saveTailscale()
-            }
-        }
-    }
 }
 
 // MARK: - Integrations

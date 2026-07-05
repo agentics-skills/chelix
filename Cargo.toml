@@ -33,7 +33,6 @@ default-members = [
   "crates/memory",
   "crates/metrics",
   "crates/msteams",
-  "crates/netbird",
   "crates/network-filter",
   "crates/node-host",
   "crates/nostr",
@@ -55,7 +54,6 @@ default-members = [
   "crates/skills",
   "crates/slack",
   "crates/swift-bridge",
-  "crates/tailscale",
   "crates/telegram",
   "crates/telephony",
   "crates/tls",
@@ -102,7 +100,6 @@ members = [
   "crates/memory",
   "crates/metrics",
   "crates/msteams",
-  "crates/netbird",
   "crates/node-host",
   "crates/nostr",
   "crates/oauth",
@@ -125,7 +122,6 @@ members = [
   "crates/slack",
   "crates/splitter",
   "crates/swift-bridge",
-  "crates/tailscale",
   "crates/telegram",
   "crates/telephony",
   "crates/tls",
@@ -280,7 +276,6 @@ hostname    = "0.4"
 http        = "1"
 hyper       = { features = ["client", "http1", "http2", "server"], version = "1" }
 hyper-util  = { features = ["client-legacy", "http1", "http2", "server-auto", "service", "tokio"], version = "0.1" }
-ngrok       = "0.18"
 tower       = "0.5"
 tower-http  = "0.6"
 url         = "2"
@@ -382,7 +377,6 @@ moltis-media            = { path = "crates/media" }
 moltis-memory           = { path = "crates/memory" }
 moltis-metrics          = { path = "crates/metrics" }
 moltis-msteams          = { path = "crates/msteams" }
-moltis-netbird          = { path = "crates/netbird" }
 moltis-network-filter   = { default-features = false, path = "crates/network-filter" }
 moltis-node-host        = { path = "crates/node-host" }
 moltis-nostr            = { path = "crates/nostr" }
@@ -406,7 +400,6 @@ moltis-skills           = { path = "crates/skills" }
 moltis-slack            = { path = "crates/slack" }
 moltis-splitter         = { path = "crates/splitter" }
 moltis-swift-bridge     = { path = "crates/swift-bridge" }
-moltis-tailscale        = { path = "crates/tailscale" }
 moltis-telegram         = { path = "crates/telegram" }
 moltis-telephony        = { path = "crates/telephony" }
 moltis-tls              = { path = "crates/tls" }

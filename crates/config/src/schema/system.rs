@@ -116,40 +116,6 @@ impl ServerConfig {
     }
 }
 
-/// ngrok public HTTPS tunnel configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct NgrokConfig {
-    /// Whether the ngrok tunnel is enabled.
-    pub enabled: bool,
-    /// ngrok authtoken. If unset, `NGROK_AUTHTOKEN` is used.
-    #[serde(
-        default,
-        serialize_with = "serialize_option_secret",
-        deserialize_with = "deserialize_option_secret"
-    )]
-    pub authtoken: Option<Secret<String>>,
-    /// Optional reserved/static domain to request from ngrok.
-    pub domain: Option<String>,
-}
-
-/// Cloudflare Tunnel public HTTPS tunnel configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct CloudflareTunnelConfig {
-    /// Whether the Cloudflare Tunnel connector is enabled.
-    pub enabled: bool,
-    /// Cloudflare Tunnel token. If unset, `CLOUDFLARE_TUNNEL_TOKEN` is used.
-    #[serde(
-        default,
-        serialize_with = "serialize_option_secret",
-        deserialize_with = "deserialize_option_secret"
-    )]
-    pub token: Option<Secret<String>>,
-    /// Optional public hostname for status display and WebAuthn origin updates.
-    pub hostname: Option<String>,
-}
-
 /// Failover configuration for automatic model/provider failover.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -471,37 +437,4 @@ impl std::fmt::Debug for HomeAssistantAccountConfig {
 
 fn default_ha_timeout() -> u64 {
     10
-}
-
-/// Tailscale Serve/Funnel configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct TailscaleConfig {
-    /// Tailscale mode: "off", "serve", or "funnel".
-    pub mode: String,
-    /// Reset tailscale serve/funnel when the gateway shuts down.
-    pub reset_on_exit: bool,
-}
-
-/// NetBird private mesh configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct NetbirdConfig {
-    /// NetBird mode: "off" or "serve".
-    pub mode: String,
-}
-
-impl Default for NetbirdConfig {
-    fn default() -> Self {
-        Self { mode: "off".into() }
-    }
-}
-
-impl Default for TailscaleConfig {
-    fn default() -> Self {
-        Self {
-            mode: "off".into(),
-            reset_on_exit: true,
-        }
-    }
 }

@@ -273,7 +273,6 @@ fn is_onboarding_bypass_path(path: &str) -> bool {
     path.starts_with("/api/sessions/")  // STT upload / media
         || path.starts_with("/api/bootstrap")
         || path == "/api/gon"
-        || path.starts_with("/api/tailscale/")
         || path.starts_with("/ws/") // WS RPCs (voice, provider config)
 }
 

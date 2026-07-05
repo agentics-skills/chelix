@@ -25,7 +25,6 @@ enum SettingsSection: String, CaseIterable, Hashable {
     case crons = "Crons"
     case heartbeat = "Heartbeat"
     case security = "Security"
-    case tailscale = "Tailscale"
     case channels = "Channels"
     case hooks = "Hooks"
     case llms = "LLMs"
@@ -72,7 +71,6 @@ enum SettingsSection: String, CaseIterable, Hashable {
         .crons:         "clock.arrow.circlepath",
         .heartbeat:     "heart.text.square.fill",
         .security:      "lock.shield.fill",
-        .tailscale:     "network",
         .channels:      "bubble.left.and.bubble.right.fill",
         .hooks:         "wrench.and.screwdriver.fill",
         .llms:          "cpu.fill",
@@ -96,7 +94,6 @@ enum SettingsSection: String, CaseIterable, Hashable {
         .crons:         .orange,
         .heartbeat:     .pink,
         .security:      .green,
-        .tailscale:     .cyan,
         .channels:      .indigo,
         .hooks:         .brown,
         .llms:          .teal,
@@ -120,7 +117,6 @@ enum SettingsSection: String, CaseIterable, Hashable {
         .crons:         .general,
         .heartbeat:     .general,
         .security:      .security,
-        .tailscale:     .security,
         .channels:      .integrations,
         .hooks:         .integrations,
         .llms:          .integrations,
@@ -150,7 +146,7 @@ struct SettingsView: View {
 
     private func isSectionVisible(_ section: SettingsSection) -> Bool {
         switch section {
-        case .security, .tailscale:
+        case .security:
             return settings.httpdEnabled
         default:
             return true
@@ -261,7 +257,7 @@ struct SettingsView: View {
         }
         .onChange(of: settings.httpdEnabled) { _, enabled in
             guard let section = selectedSection else { return }
-            if !enabled && (section == .security || section == .tailscale) {
+            if !enabled && section == .security {
                 selectedSection = .identity
             }
         }

@@ -2,9 +2,6 @@ use std::{path::PathBuf, sync::Arc};
 
 use crate::{auth_webauthn::SharedWebAuthnRegistry, methods::MethodRegistry, state::GatewayState};
 
-#[cfg(feature = "tailscale")]
-use crate::tailscale::TailscaleMode;
-
 /// Core gateway state produced by [`super::prepare_gateway_core`].
 ///
 /// Contains everything needed to build an HTTP server on top of the core, but
@@ -60,12 +57,6 @@ pub struct PreparedGatewayCore {
     pub port: u16,
     /// Whether TLS is active for this gateway instance.
     pub tls_enabled: bool,
-    /// Tailscale mode.
-    #[cfg(feature = "tailscale")]
-    pub tailscale_mode: TailscaleMode,
-    /// Whether to reset tailscale on exit.
-    #[cfg(feature = "tailscale")]
-    pub tailscale_reset_on_exit: bool,
     /// Shutdown sender for the trusted-network proxy.  Retained here so the
     /// proxy task is not cancelled when `prepare_gateway` returns (dropping
     /// the sender closes the watch channel and triggers immediate shutdown).

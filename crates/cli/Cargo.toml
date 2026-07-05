@@ -114,7 +114,6 @@ tempfile = { workspace = true }
 [features]
 agent             = ["moltis-gateway/agent", "moltis-web?/agent"]
 caldav            = ["moltis-gateway/caldav"]
-cloudflare-tunnel = ["moltis-httpd/cloudflare-tunnel", "moltis-web?/cloudflare-tunnel"]
 home-assistant    = ["moltis-gateway/home-assistant"]
 # User-facing integrations stay default-on in the CLI crate per workspace policy,
 # even when the underlying implementation remains feature-gated in lower crates.
@@ -130,7 +129,6 @@ full = [
   "bundled-skills",
   "caldav",
   "claude-import",
-  "cloudflare-tunnel",
   "code-index-builtin",
   "code-splitter",
   "codex-import",
@@ -163,8 +161,6 @@ full = [
   "mdns",
   "metrics",
   "msteams",
-  "netbird",
-  "ngrok",
   "nostr",
   "openclaw-import",
   "prometheus",
@@ -173,7 +169,6 @@ full = [
   "qmd",
   "signal",
   "slack",
-  "tailscale",
   "telegram",
   "telephony",
   "tls",
@@ -224,8 +219,6 @@ matrix                = ["moltis-httpd/matrix"]
 mdns                  = ["moltis-gateway/mdns"]
 metrics               = ["moltis-httpd/metrics", "moltis-web?/metrics"]
 msteams               = ["moltis-httpd/msteams"]
-netbird               = ["moltis-httpd/netbird", "moltis-web?/netbird"]
-ngrok                 = ["moltis-httpd/ngrok", "moltis-web?/ngrok"]
 nostr                 = ["moltis-httpd/nostr"]
 openclaw-import       = ["dep:moltis-openclaw-import", "moltis-gateway/openclaw-import"]
 prometheus            = ["moltis-httpd/prometheus"]
@@ -234,7 +227,6 @@ push-notifications    = ["moltis-httpd/push-notifications", "moltis-web?/push-no
 qmd                   = ["moltis-gateway/qmd"]
 signal                = ["moltis-httpd/signal"]
 slack                 = ["moltis-httpd/slack"]
-tailscale             = ["moltis-httpd/tailscale", "moltis-web?/tailscale"]
 telegram              = ["moltis-gateway/telegram"]
 telephony             = ["moltis-httpd/telephony"]
 tls                   = ["moltis-httpd/tls"]

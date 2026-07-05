@@ -102,7 +102,7 @@ If **any** check fails, the connection is treated as remote.
 - Stored in `passkeys` table as serialized WebAuthn credential data
 - Multiple passkeys can be registered per instance
 - Passkeys are bound to the hostname you visit. If you add a new public host
-  later, for example a Tailscale name or ngrok URL, you may need to log in
+  later, you may need to log in
   with a password once and register a new passkey for that host
 
 ### Session cookie

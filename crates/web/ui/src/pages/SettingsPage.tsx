@@ -45,7 +45,6 @@ import { ImportSection } from "./sections/ImportSection";
 import { MemorySection } from "./sections/MemorySection";
 import { NotificationsSection } from "./sections/NotificationsSection";
 import { PhoneSection } from "./sections/PhoneSection";
-import { RemoteAccessSection } from "./sections/RemoteAccessSection";
 import { SecuritySection } from "./sections/SecuritySection";
 import { SshSection } from "./sections/SshSection";
 import { ToolsSection } from "./sections/ToolsSection";
@@ -127,11 +126,6 @@ const sections: SectionItem[] = [
 		id: "ssh",
 		label: "SSH",
 		icon: <span className="icon icon-ssh" />,
-	},
-	{
-		id: "remote-access",
-		label: "Remote Access",
-		icon: <span className="icon icon-share" />,
 	},
 	{
 		id: "network-audit",
@@ -393,7 +387,6 @@ function SettingsPage(): VNode {
 					{section === "security" ? <SecuritySection /> : null}
 					{section === "vault" ? <VaultSection /> : null}
 					{section === "ssh" ? <SshSection /> : null}
-					{section === "remote-access" ? <RemoteAccessSection /> : null}
 					{section === "voice" ? (
 						gon.get("voice_enabled") === true ? (
 							<VoiceSection />
@@ -430,9 +423,7 @@ registerPrefix(
 		const parts = (param || "").replace(/:/g, "/").split("/").filter(Boolean);
 		const requestedSection = parts[0] || "";
 		const requestedSectionAlias =
-			requestedSection === "tailscale"
-				? "remote-access"
-				: requestedSection === "identity"
+			requestedSection === "identity"
 					? "profile"
 					: requestedSection;
 		const subPath = parts.slice(1).join("/");

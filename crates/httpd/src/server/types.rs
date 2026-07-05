@@ -2,31 +2,11 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-#[cfg(feature = "ngrok")]
-use std::sync::Weak;
-
 use axum::Router;
 
 use moltis_gateway::{auth_webauthn::SharedWebAuthnRegistry, state::GatewayState};
 
-#[cfg(feature = "tailscale")]
-use moltis_gateway::tailscale::TailscaleMode;
-
-#[cfg(feature = "cloudflare-tunnel")]
-use super::cloudflare_tunnel::{CloudflareTunnelController, CloudflareTunnelRuntimeStatus};
-#[cfg(feature = "netbird")]
-use super::netbird::{NetbirdController, NetbirdRuntimeStatus};
-#[cfg(feature = "ngrok")]
-use super::ngrok::{NgrokController, NgrokRuntimeStatus};
-
 // ── Shared app state ─────────────────────────────────────────────────────────
-
-/// Options for tailscale serve/funnel passed from CLI flags.
-#[cfg(feature = "tailscale")]
-pub struct TailscaleOpts {
-    pub mode: String,
-    pub reset_on_exit: bool,
-}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -34,22 +14,6 @@ pub struct AppState {
     pub methods: Arc<moltis_gateway::methods::MethodRegistry>,
     pub request_throttle: Arc<crate::request_throttle::RequestThrottle>,
     pub webauthn_registry: Option<SharedWebAuthnRegistry>,
-    #[cfg(feature = "ngrok")]
-    pub ngrok_controller_owner: Option<Arc<NgrokController>>,
-    #[cfg(feature = "ngrok")]
-    pub ngrok_controller: Weak<NgrokController>,
-    #[cfg(feature = "ngrok")]
-    pub ngrok_runtime: Arc<tokio::sync::RwLock<Option<NgrokRuntimeStatus>>>,
-    #[cfg(feature = "cloudflare-tunnel")]
-    pub cloudflare_tunnel_controller: Arc<CloudflareTunnelController>,
-    #[cfg(feature = "cloudflare-tunnel")]
-    pub cloudflare_tunnel_runtime: Arc<tokio::sync::RwLock<Option<CloudflareTunnelRuntimeStatus>>>,
-    #[cfg(feature = "netbird")]
-    pub netbird_controller: Arc<NetbirdController>,
-    #[cfg(feature = "netbird")]
-    pub netbird_runtime: Arc<tokio::sync::RwLock<Option<NetbirdRuntimeStatus>>>,
-    #[cfg(feature = "tailscale")]
-    pub tailscale_manager: Arc<moltis_gateway::tailscale::CachedTailscaleManager>,
     #[cfg(feature = "push-notifications")]
     pub push_service: Option<Arc<moltis_gateway::push::PushService>>,
     #[cfg(feature = "graphql")]
@@ -59,10 +23,6 @@ pub struct AppState {
 /// Function signature for adding extra routes (e.g. web-UI) to the gateway.
 pub type RouteEnhancer = fn() -> Router<AppState>;
 
-#[cfg(feature = "ngrok")]
-pub(crate) type GatewayBase = (Router<AppState>, AppState, Arc<NgrokController>);
-
-#[cfg(not(feature = "ngrok"))]
 pub(crate) type GatewayBase = (Router<AppState>, AppState);
 
 // ── Prepared gateway types ───────────────────────────────────────────────────
@@ -103,17 +63,7 @@ pub struct BannerMeta {
     pub openclaw_status: String,
     pub setup_code_display: Option<String>,
     pub webauthn_registry: Option<SharedWebAuthnRegistry>,
-    #[cfg(feature = "ngrok")]
-    pub ngrok_controller: Arc<NgrokController>,
-    #[cfg(feature = "cloudflare-tunnel")]
-    pub cloudflare_tunnel_controller: Arc<CloudflareTunnelController>,
-    #[cfg(feature = "netbird")]
-    pub netbird_controller: Arc<NetbirdController>,
     pub browser_for_lifecycle: Arc<dyn moltis_gateway::services::BrowserService>,
     pub browser_tool_for_warmup: Option<Arc<dyn moltis_agents::tool_registry::AgentTool>>,
     pub config: moltis_config::schema::MoltisConfig,
-    #[cfg(feature = "tailscale")]
-    pub tailscale_mode: TailscaleMode,
-    #[cfg(feature = "tailscale")]
-    pub tailscale_reset_on_exit: bool,
 }

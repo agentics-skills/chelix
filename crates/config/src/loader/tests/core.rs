@@ -1,6 +1,6 @@
 use secrecy::{ExposeSecret, Secret};
 
-use crate::{AgentIdentity, UserProfile, schema::MoltisConfig};
+use crate::{AgentIdentity, MemoryBackend, UserProfile, schema::MoltisConfig};
 
 use super::*;
 
@@ -107,12 +107,12 @@ fn apply_env_overrides_multiple() {
     let vars = vec![
         ("MOLTIS_AUTH__DISABLED".into(), "true".into()),
         ("MOLTIS_TOOLS__AGENT_TIMEOUT_SECS".into(), "300".into()),
-        ("MOLTIS_TAILSCALE__MODE".into(), "funnel".into()),
+        ("MOLTIS_MEMORY__BACKEND".into(), "builtin".into()),
     ];
     let config = apply_env_overrides_with(MoltisConfig::default(), vars.into_iter());
     assert!(config.auth.disabled);
     assert_eq!(config.tools.agent_timeout_secs, 300);
-    assert_eq!(config.tailscale.mode, "funnel");
+    assert_eq!(config.memory.backend, MemoryBackend::Builtin);
 }
 
 #[test]

@@ -18,29 +18,11 @@ pub(super) struct FinalizeGatewayArgs<'a> {
     pub openclaw_startup_status: String,
     pub setup_code_display: Option<String>,
     pub webauthn_registry: Option<SharedWebAuthnRegistry>,
-    #[cfg(feature = "ngrok")]
-    pub ngrok_controller: Arc<NgrokController>,
-    #[cfg(feature = "cloudflare-tunnel")]
-    pub cloudflare_tunnel_controller: Arc<CloudflareTunnelController>,
-    #[cfg(feature = "netbird")]
-    pub netbird_controller: Arc<NetbirdController>,
     #[cfg(feature = "trusted-network")]
     pub audit_buffer_for_broadcast: Option<moltis_gateway::network_audit::NetworkAuditBuffer>,
     #[cfg(feature = "trusted-network")]
     pub _proxy_shutdown_tx: Option<tokio::sync::watch::Sender<bool>>,
-    #[cfg(feature = "tailscale")]
-    pub tailscale_mode: TailscaleMode,
-    #[cfg(feature = "tailscale")]
-    pub tailscale_reset_on_exit: bool,
     pub app: Router,
-}
-
-#[cfg(feature = "ngrok")]
-pub(super) fn attach_ngrok_controller_owner(
-    app_state: &mut AppState,
-    ngrok_controller: &Arc<NgrokController>,
-) {
-    app_state.ngrok_controller_owner = Some(Arc::clone(ngrok_controller));
 }
 #[cfg(feature = "mdns")]
 pub(super) fn instance_slug(config: &moltis_config::MoltisConfig) -> String {
@@ -101,20 +83,10 @@ pub(super) async fn finalize_prepared_gateway(
         openclaw_startup_status,
         setup_code_display,
         webauthn_registry,
-        #[cfg(feature = "ngrok")]
-        ngrok_controller,
-        #[cfg(feature = "cloudflare-tunnel")]
-        cloudflare_tunnel_controller,
-        #[cfg(feature = "netbird")]
-        netbird_controller,
         #[cfg(feature = "trusted-network")]
         audit_buffer_for_broadcast,
         #[cfg(feature = "trusted-network")]
         _proxy_shutdown_tx,
-        #[cfg(feature = "tailscale")]
-        tailscale_mode,
-        #[cfg(feature = "tailscale")]
-        tailscale_reset_on_exit,
         app,
     } = args;
     #[cfg(not(feature = "tls"))]
@@ -829,9 +801,6 @@ pub(super) async fn finalize_prepared_gateway(
         }
     }
 
-    #[cfg(feature = "ngrok")]
-    ngrok_controller.configure_app(app.clone()).await;
-
     Ok(PreparedGateway {
         app,
         state: Arc::clone(&state),
@@ -845,19 +814,9 @@ pub(super) async fn finalize_prepared_gateway(
             openclaw_status: openclaw_startup_status,
             setup_code_display,
             webauthn_registry,
-            #[cfg(feature = "ngrok")]
-            ngrok_controller,
-            #[cfg(feature = "cloudflare-tunnel")]
-            cloudflare_tunnel_controller,
-            #[cfg(feature = "netbird")]
-            netbird_controller,
             browser_for_lifecycle,
             browser_tool_for_warmup,
             config,
-            #[cfg(feature = "tailscale")]
-            tailscale_mode,
-            #[cfg(feature = "tailscale")]
-            tailscale_reset_on_exit,
         },
         #[cfg(feature = "trusted-network")]
         audit_buffer: audit_buffer_for_broadcast,
@@ -868,9 +827,6 @@ pub(super) async fn finalize_prepared_gateway(
 
 /// Prepare the full gateway for embedded callers (for example swift-bridge)
 /// using a feature-stable argument list.
-///
-/// This wrapper intentionally hides `tailscale_opts`, which only exists when
-/// the `tailscale` feature is enabled.
 #[allow(clippy::expect_used)]
 pub async fn prepare_gateway_embedded(
     bind: &str,
@@ -889,8 +845,6 @@ pub async fn prepare_gateway_embedded(
         log_buffer,
         config_dir,
         data_dir,
-        #[cfg(feature = "tailscale")]
-        None,
         extra_routes,
         session_event_bus,
     )
@@ -904,120 +858,6 @@ pub async fn prepare_gateway_embedded(
 /// Alias for [`prepare_gateway_embedded`] used by swift-bridge consumers.
 pub use prepare_gateway_embedded as prepare_httpd_embedded;
 
-#[cfg(feature = "ngrok")]
-pub(super) fn ngrok_loopback_has_proxy_headers(headers: &axum::http::HeaderMap) -> bool {
-    moltis_auth::locality::has_proxy_headers(headers)
-}
-
-#[cfg(feature = "ngrok")]
-pub(super) async fn require_ngrok_proxy_headers(
-    request: axum::http::Request<axum::body::Body>,
-    next: axum::middleware::Next,
-) -> axum::response::Response {
-    if !ngrok_loopback_has_proxy_headers(request.headers()) {
-        warn!("rejecting ngrok loopback request without proxy headers");
-        return StatusCode::FORBIDDEN.into_response();
-    }
-
-    next.run(request).await
-}
-
-#[cfg(feature = "ngrok")]
-pub(super) async fn start_ngrok_tunnel(
-    app: Router,
-    gateway: Arc<GatewayState>,
-    webauthn_registry: Option<SharedWebAuthnRegistry>,
-    ngrok_config: &moltis_config::NgrokConfig,
-) -> crate::error::Result<NgrokActiveTunnel> {
-    use ::ngrok::prelude::{EndpointInfo, ForwarderBuilder};
-
-    let internal_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-    let internal_addr = internal_listener.local_addr()?;
-    let internal_app = app
-        .clone()
-        .layer(axum::middleware::from_fn(require_ngrok_proxy_headers));
-    let loopback_shutdown = CancellationToken::new();
-    let loopback_cancel = loopback_shutdown.clone();
-    let loopback_task = tokio::spawn(async move {
-        let server = axum::serve(
-            internal_listener,
-            internal_app.into_make_service_with_connect_info::<SocketAddr>(),
-        )
-        .with_graceful_shutdown(async move {
-            loopback_cancel.cancelled().await;
-        });
-
-        if let Err(error) = server.await {
-            warn!(%error, "ngrok loopback forward server exited");
-        }
-    });
-
-    let forward_to = format!("http://{internal_addr}")
-        .parse()
-        .map_err(|error| crate::Error::Ngrok(format!("invalid ngrok forward target: {error}")))?;
-
-    let mut session_builder = ::ngrok::Session::builder();
-    if let Some(authtoken) = ngrok_config.authtoken.as_ref() {
-        session_builder.authtoken(authtoken.expose_secret());
-    } else {
-        session_builder.authtoken_from_env();
-    }
-    let mut session = match session_builder.connect().await {
-        Ok(session) => session,
-        Err(error) => {
-            loopback_shutdown.cancel();
-            if let Err(join_error) = loopback_task.await {
-                warn!(%join_error, "ngrok loopback server task join failed during startup");
-            }
-            return Err(crate::Error::Ngrok(error.to_string()));
-        },
-    };
-
-    let mut endpoint = session.http_endpoint();
-    if let Some(domain) = ngrok_config.domain.as_deref() {
-        endpoint.domain(domain);
-    }
-    endpoint.forwards_to(format!("moltis://{internal_addr}"));
-    let forwarder = match endpoint.listen_and_forward(forward_to).await {
-        Ok(forwarder) => forwarder,
-        Err(error) => {
-            if let Err(close_error) = session.close().await {
-                warn!(%close_error, "failed to close ngrok session after startup error");
-            }
-            loopback_shutdown.cancel();
-            if let Err(join_error) = loopback_task.await {
-                warn!(%join_error, "ngrok loopback server task join failed during startup");
-            }
-            return Err(crate::Error::Ngrok(error.to_string()));
-        },
-    };
-    let public_url = forwarder.url().to_string();
-    let public_host = url::Url::parse(&public_url)
-        .ok()
-        .and_then(|url| url.host_str().map(str::to_string));
-
-    let passkey_warning = moltis_gateway::server::sync_runtime_webauthn_host_and_notice(
-        &gateway,
-        webauthn_registry.as_ref(),
-        public_host.as_deref(),
-        Some(&public_url),
-        "ngrok tunnel",
-    )
-    .await;
-    let status = NgrokRuntimeStatus {
-        public_url,
-        passkey_warning,
-    };
-
-    Ok(NgrokActiveTunnel {
-        session,
-        forwarder,
-        loopback_shutdown,
-        loopback_task,
-        status,
-    })
-}
-
 /// Start the gateway HTTP + WebSocket server.
 ///
 /// Thin wrapper around [`prepare_gateway`] that adds the startup banner,
@@ -1030,7 +870,6 @@ pub async fn start_gateway(
     log_buffer: Option<moltis_gateway::logs::LogBuffer>,
     config_dir: Option<PathBuf>,
     data_dir: Option<PathBuf>,
-    #[cfg(feature = "tailscale")] tailscale_opts: Option<TailscaleOpts>,
     extra_routes: Option<RouteEnhancer>,
 ) -> crate::error::Result<()> {
     let prepared = prepare_gateway(
@@ -1040,8 +879,6 @@ pub async fn start_gateway(
         log_buffer,
         config_dir,
         data_dir,
-        #[cfg(feature = "tailscale")]
-        tailscale_opts,
         extra_routes,
         None, // session_event_bus — CLI creates its own
     )
@@ -1098,30 +935,6 @@ pub async fn start_gateway(
     let app = prepared.app;
     let browser_for_warmup = Arc::clone(&banner.browser_for_lifecycle);
     let browser_tool_for_warmup = banner.browser_tool_for_warmup.clone();
-    #[cfg(feature = "ngrok")]
-    let (ngrok_status, ngrok_startup_error) =
-        ngrok::start_for_banner(&banner.ngrok_controller, &config.ngrok).await;
-
-    #[cfg(feature = "cloudflare-tunnel")]
-    let (cloudflare_tunnel_status, cloudflare_tunnel_startup_error) =
-        cloudflare_tunnel::start_for_banner(
-            &banner.cloudflare_tunnel_controller,
-            &config.cloudflare_tunnel,
-            &config.server.bind,
-            port,
-            !no_tls && config.tls.enabled,
-        )
-        .await;
-
-    #[cfg(feature = "netbird")]
-    let (netbird_status, netbird_startup_error) = netbird::start_for_banner(
-        &banner.netbird_controller,
-        &config.netbird,
-        &config.server.bind,
-        port,
-        !no_tls && config.tls.enabled,
-    )
-    .await;
 
     #[cfg(feature = "tls")]
     if tls_active {
@@ -1247,37 +1060,6 @@ pub async fn start_gateway(
         format!("openclaw: {}", banner.openclaw_status),
     ];
     lines.extend(startup_passkey_origin_lines(&passkey_origins));
-    #[cfg(feature = "ngrok")]
-    lines.extend(ngrok::startup_lines(
-        ngrok_status.as_ref(),
-        ngrok_startup_error.as_deref(),
-    ));
-    #[cfg(not(feature = "ngrok"))]
-    if config.ngrok.enabled {
-        lines.push(
-            "ngrok: enabled in config but this build does not include the ngrok feature".into(),
-        );
-    }
-    #[cfg(feature = "cloudflare-tunnel")]
-    lines.extend(cloudflare_tunnel::startup_lines(
-        cloudflare_tunnel_status.as_ref(),
-        cloudflare_tunnel_startup_error.as_deref(),
-    ));
-    #[cfg(not(feature = "cloudflare-tunnel"))]
-    if config.cloudflare_tunnel.enabled {
-        lines.push("cloudflare tunnel: enabled in config but this build does not include the cloudflare-tunnel feature".into());
-    }
-    #[cfg(feature = "netbird")]
-    lines.extend(netbird::startup_lines(
-        netbird_status.as_ref(),
-        netbird_startup_error.as_deref(),
-    ));
-    #[cfg(not(feature = "netbird"))]
-    if config.netbird.mode != "off" {
-        lines.push(
-            "netbird: enabled in config but this build does not include the netbird feature".into(),
-        );
-    }
     #[cfg(target_os = "macos")]
     if banner.sandbox_backend_name == "docker" || banner.sandbox_backend_name == "podman" {
         lines.push(
@@ -1312,32 +1094,6 @@ pub async fn start_gateway(
         }
         lines.push("run `moltis trust-ca` to remove browser warnings".into());
     }
-    // Tailscale: enable serve/funnel and show in banner.
-    #[cfg(feature = "tailscale")]
-    {
-        let tailscale_mode = banner.tailscale_mode;
-        if tailscale_mode != TailscaleMode::Off {
-            let manager = CliTailscaleManager::new();
-            let ts_result = match tailscale_mode {
-                TailscaleMode::Serve => manager.enable_serve(port, tls_active).await,
-                TailscaleMode::Funnel => manager.enable_funnel(port, tls_active).await,
-                TailscaleMode::Off => unreachable!(),
-            };
-            match ts_result {
-                Ok(()) => {
-                    if let Ok(Some(hostname)) = manager.hostname().await {
-                        lines.push(format!("tailscale {tailscale_mode}: https://{hostname}"));
-                    } else {
-                        lines.push(format!("tailscale {tailscale_mode}: enabled"));
-                    }
-                },
-                Err(e) => {
-                    warn!("failed to enable tailscale {tailscale_mode}: {e}");
-                    lines.push(format!("tailscale {tailscale_mode}: FAILED ({e})"));
-                },
-            }
-        }
-    }
     let width = lines.iter().map(|l| l.len()).max().unwrap_or(0) + 4;
     info!("┌{}┐", "─".repeat(width));
     for line in &lines {
@@ -1360,11 +1116,6 @@ pub async fn start_gateway(
     // - SIGINT  (ctrl-c): immediate exit
     {
         let browser_for_shutdown = Arc::clone(&banner.browser_for_lifecycle);
-        #[cfg(feature = "tailscale")]
-        let reset_tailscale_on_exit =
-            banner.tailscale_mode != TailscaleMode::Off && banner.tailscale_reset_on_exit;
-        #[cfg(feature = "tailscale")]
-        let ts_mode = banner.tailscale_mode;
         tokio::spawn(async move {
             #[cfg(unix)]
             let signal_name: &str = {
@@ -1406,15 +1157,6 @@ pub async fn start_gateway(
             #[cfg(feature = "mdns")]
             if let Some(ref daemon) = _mdns_daemon {
                 moltis_gateway::mdns::shutdown(daemon);
-            }
-
-            #[cfg(feature = "tailscale")]
-            if reset_tailscale_on_exit {
-                info!("shutting down tailscale {ts_mode}");
-                let manager = CliTailscaleManager::new();
-                if let Err(e) = manager.disable().await {
-                    warn!("failed to reset tailscale on exit: {e}");
-                }
             }
 
             let shutdown_grace = std::time::Duration::from_secs(5);

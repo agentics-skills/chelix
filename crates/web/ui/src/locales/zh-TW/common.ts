@@ -90,7 +90,6 @@ export default {
 		notifications: "通知",
 		crons: "排程任務",
 		security: "安全性",
-		tailscale: "Tailscale",
 		integrations: "整合",
 		channels: "頻道",
 		hooks: "Hooks",

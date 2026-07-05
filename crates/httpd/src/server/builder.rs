@@ -25,13 +25,6 @@ use super::{
     middleware::{apply_middleware_stack, build_cors_layer},
 };
 
-#[cfg(feature = "cloudflare-tunnel")]
-use super::cloudflare_tunnel::CloudflareTunnelController;
-#[cfg(feature = "netbird")]
-use super::netbird::NetbirdController;
-#[cfg(feature = "ngrok")]
-use super::ngrok::NgrokController;
-
 /// Build the gateway base router and `AppState` without throttle, middleware,
 /// or state consumption. Callers can merge additional routes (e.g. web-UI)
 /// before calling [`finalize_gateway_app`].
@@ -61,48 +54,12 @@ pub(super) fn build_gateway_base_internal(
 
     #[cfg(feature = "graphql")]
     let graphql_schema = crate::graphql_routes::build_graphql_schema(Arc::clone(&state));
-    #[cfg(feature = "ngrok")]
-    let ngrok_runtime = Arc::new(tokio::sync::RwLock::new(None));
-    #[cfg(feature = "ngrok")]
-    let ngrok_controller = Arc::new(NgrokController::new(
-        Arc::clone(&state),
-        webauthn_registry.clone(),
-        Arc::clone(&ngrok_runtime),
-    ));
-    #[cfg(feature = "cloudflare-tunnel")]
-    let cloudflare_tunnel_runtime = Arc::new(tokio::sync::RwLock::new(None));
-    #[cfg(feature = "cloudflare-tunnel")]
-    let cloudflare_tunnel_controller = Arc::new(CloudflareTunnelController::new(
-        Arc::clone(&state),
-        webauthn_registry.clone(),
-        Arc::clone(&cloudflare_tunnel_runtime),
-    ));
-    #[cfg(feature = "netbird")]
-    let netbird_runtime = Arc::new(tokio::sync::RwLock::new(None));
-    #[cfg(feature = "netbird")]
-    let netbird_controller = Arc::new(NetbirdController::new(Arc::clone(&netbird_runtime)));
 
     let app_state = AppState {
         gateway: state,
         methods,
         request_throttle: Arc::new(crate::request_throttle::RequestThrottle::new()),
         webauthn_registry: webauthn_registry.clone(),
-        #[cfg(feature = "ngrok")]
-        ngrok_controller_owner: None,
-        #[cfg(feature = "ngrok")]
-        ngrok_controller: Arc::downgrade(&ngrok_controller),
-        #[cfg(feature = "ngrok")]
-        ngrok_runtime,
-        #[cfg(feature = "cloudflare-tunnel")]
-        cloudflare_tunnel_controller,
-        #[cfg(feature = "cloudflare-tunnel")]
-        cloudflare_tunnel_runtime,
-        #[cfg(feature = "netbird")]
-        netbird_controller,
-        #[cfg(feature = "netbird")]
-        netbird_runtime,
-        #[cfg(feature = "tailscale")]
-        tailscale_manager: moltis_gateway::tailscale::CachedTailscaleManager::new_with_prefetch(),
         push_service,
         #[cfg(feature = "graphql")]
         graphql_schema,
@@ -119,14 +76,7 @@ pub(super) fn build_gateway_base_internal(
         );
     }
 
-    #[cfg(feature = "ngrok")]
-    {
-        (router, app_state, ngrok_controller)
-    }
-    #[cfg(not(feature = "ngrok"))]
-    {
-        (router, app_state)
-    }
+    (router, app_state)
 }
 
 /// Build the gateway base router and `AppState` without throttle, middleware,
@@ -139,12 +89,6 @@ pub fn build_gateway_base(
     push_service: Option<Arc<moltis_gateway::push::PushService>>,
     webauthn_registry: Option<SharedWebAuthnRegistry>,
 ) -> (Router<AppState>, AppState) {
-    #[cfg(feature = "ngrok")]
-    let (router, mut app_state, ngrok_controller) =
-        build_gateway_base_internal(state, methods, push_service, webauthn_registry);
-    #[cfg(feature = "ngrok")]
-    super::runtime::attach_ngrok_controller_owner(&mut app_state, &ngrok_controller);
-    #[cfg(not(feature = "ngrok"))]
     let (router, app_state) =
         build_gateway_base_internal(state, methods, push_service, webauthn_registry);
     (router, app_state)
@@ -187,48 +131,12 @@ pub(super) fn build_gateway_base_internal(
 
     #[cfg(feature = "graphql")]
     let graphql_schema = crate::graphql_routes::build_graphql_schema(Arc::clone(&state));
-    #[cfg(feature = "ngrok")]
-    let ngrok_runtime = Arc::new(tokio::sync::RwLock::new(None));
-    #[cfg(feature = "ngrok")]
-    let ngrok_controller = Arc::new(NgrokController::new(
-        Arc::clone(&state),
-        webauthn_registry.clone(),
-        Arc::clone(&ngrok_runtime),
-    ));
-    #[cfg(feature = "cloudflare-tunnel")]
-    let cloudflare_tunnel_runtime = Arc::new(tokio::sync::RwLock::new(None));
-    #[cfg(feature = "cloudflare-tunnel")]
-    let cloudflare_tunnel_controller = Arc::new(CloudflareTunnelController::new(
-        Arc::clone(&state),
-        webauthn_registry.clone(),
-        Arc::clone(&cloudflare_tunnel_runtime),
-    ));
-    #[cfg(feature = "netbird")]
-    let netbird_runtime = Arc::new(tokio::sync::RwLock::new(None));
-    #[cfg(feature = "netbird")]
-    let netbird_controller = Arc::new(NetbirdController::new(Arc::clone(&netbird_runtime)));
 
     let app_state = AppState {
         gateway: state,
         methods,
         request_throttle: Arc::new(crate::request_throttle::RequestThrottle::new()),
         webauthn_registry: webauthn_registry.clone(),
-        #[cfg(feature = "ngrok")]
-        ngrok_controller_owner: None,
-        #[cfg(feature = "ngrok")]
-        ngrok_controller: Arc::downgrade(&ngrok_controller),
-        #[cfg(feature = "ngrok")]
-        ngrok_runtime,
-        #[cfg(feature = "cloudflare-tunnel")]
-        cloudflare_tunnel_controller,
-        #[cfg(feature = "cloudflare-tunnel")]
-        cloudflare_tunnel_runtime,
-        #[cfg(feature = "netbird")]
-        netbird_controller,
-        #[cfg(feature = "netbird")]
-        netbird_runtime,
-        #[cfg(feature = "tailscale")]
-        tailscale_manager: moltis_gateway::tailscale::CachedTailscaleManager::new_with_prefetch(),
         #[cfg(feature = "graphql")]
         graphql_schema,
     };
@@ -244,14 +152,7 @@ pub(super) fn build_gateway_base_internal(
         );
     }
 
-    #[cfg(feature = "ngrok")]
-    {
-        (router, app_state, ngrok_controller)
-    }
-    #[cfg(not(feature = "ngrok"))]
-    {
-        (router, app_state)
-    }
+    (router, app_state)
 }
 
 /// Build the gateway base router and `AppState` without throttle, middleware,
@@ -263,12 +164,6 @@ pub fn build_gateway_base(
     methods: Arc<MethodRegistry>,
     webauthn_registry: Option<SharedWebAuthnRegistry>,
 ) -> (Router<AppState>, AppState) {
-    #[cfg(feature = "ngrok")]
-    let (router, mut app_state, ngrok_controller) =
-        build_gateway_base_internal(state, methods, webauthn_registry);
-    #[cfg(feature = "ngrok")]
-    super::runtime::attach_ngrok_controller_owner(&mut app_state, &ngrok_controller);
-    #[cfg(not(feature = "ngrok"))]
     let (router, app_state) = build_gateway_base_internal(state, methods, webauthn_registry);
     (router, app_state)
 }

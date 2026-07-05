@@ -2,7 +2,6 @@
 
 import { useSignal } from "@preact/signals";
 import type { VNode } from "preact";
-import { useEffect } from "preact/hooks";
 
 import {
 	addChannel,
@@ -21,7 +20,6 @@ import {
 	ConnectionModeHint,
 	loadChannels,
 	showAddTeams,
-	type TailscaleStatus,
 } from "../../ChannelsPage";
 import { AdvancedConfigPatchField, SharedChannelFields } from "../ChannelFields";
 
@@ -34,51 +32,7 @@ export function AddTeamsModal(): VNode {
 	const webhookSecret = useSignal("");
 	const baseUrlDraft = useSignal(defaultTeamsBaseUrl());
 	const bootstrapEndpoint = useSignal("");
-	const tsStatus = useSignal<TailscaleStatus | null>(null);
-	const tsLoading = useSignal(true);
-	const enablingFunnel = useSignal(false);
 	const advancedConfigPatch = useSignal("");
-
-	// Fetch Tailscale status on mount.
-	useEffect(() => {
-		fetch("/api/tailscale/status")
-			.then((r) => (r.ok ? r.json() : null))
-			.then((data: TailscaleStatus | null) => {
-				tsStatus.value = data;
-				tsLoading.value = false;
-				if (data?.mode === "funnel" && data?.url) {
-					baseUrlDraft.value = data.url.replace(/\/$/, "");
-				}
-			})
-			.catch(() => {
-				tsLoading.value = false;
-			});
-	}, []);
-
-	function onEnableFunnel(): void {
-		enablingFunnel.value = true;
-		error.value = "";
-		fetch("/api/tailscale/configure", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ mode: "funnel" }),
-		})
-			.then((r) => r.json())
-			.then((data: TailscaleStatus & { ok?: boolean; error?: string }) => {
-				enablingFunnel.value = false;
-				if (data?.ok !== false && data?.url) {
-					baseUrlDraft.value = data.url.replace(/\/$/, "");
-					tsStatus.value = data;
-					refreshBootstrapEndpoint();
-				} else {
-					error.value = data?.error || "Failed to enable Tailscale Funnel.";
-				}
-			})
-			.catch((e: Error) => {
-				enablingFunnel.value = false;
-				error.value = `Tailscale error: ${e.message}`;
-			});
-	}
 
 	function refreshBootstrapEndpoint(): void {
 		if (!bootstrapEndpoint.value) return;
@@ -170,51 +124,14 @@ export function AddTeamsModal(): VNode {
 			title="Connect Microsoft Teams"
 		>
 			<div className="channel-form">
-				{!(tsLoading.value || (tsStatus.value?.mode === "funnel" && tsStatus.value?.url)) && (
+				{baseUrlDraft.value === defaultTeamsBaseUrl() && (
 					<div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs flex flex-col gap-2">
 						<span className="font-medium text-[var(--text-strong)]">Public URL required</span>
 						<span className="text-[var(--muted)]">
 							Teams sends messages to your server via webhook. Your Moltis instance must be reachable over HTTPS.
 						</span>
-						{tsStatus.value?.installed && tsStatus.value?.tailscale_up ? (
-							<div className="flex flex-col gap-2">
-								<span className="text-[var(--muted)]">
-									Tailscale is connected. Enable <strong>Funnel</strong> to make it publicly reachable:
-								</span>
-								<button
-									type="button"
-									className="provider-btn provider-btn-sm"
-									onClick={onEnableFunnel}
-									disabled={enablingFunnel.value}
-								>
-									{enablingFunnel.value ? "Enabling\u2026" : "Enable Tailscale Funnel"}
-								</button>
-							</div>
-						) : (
-							<span className="text-[var(--muted)]">
-								Enable <strong>Tailscale Funnel</strong> in Settings, or use{" "}
-								<a href="https://ngrok.com/" target="_blank" className="text-[var(--accent)] underline" rel="noopener">
-									ngrok
-								</a>{" "}
-								/{" "}
-								<a
-									href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/"
-									target="_blank"
-									className="text-[var(--accent)] underline"
-									rel="noopener"
-								>
-									Cloudflare Tunnel
-								</a>
-								.
-							</span>
-						)}
-					</div>
-				)}
-				{tsStatus.value?.mode === "funnel" && tsStatus.value?.url && (
-					<div className="rounded-md border border-green-500/30 bg-green-500/5 p-3 text-xs flex items-center gap-2">
-						<span className="text-green-600">{"\u2713"}</span>
 						<span className="text-[var(--muted)]">
-							Tailscale Funnel active &mdash; publicly reachable at <strong>{tsStatus.value.url}</strong>
+							Enter your public HTTPS base URL manually.
 						</span>
 					</div>
 				)}
@@ -355,20 +272,7 @@ export function AddTeamsModal(): VNode {
 						</div>
 					)}
 					<div className="text-[10px] text-[var(--muted)] mt-1 opacity-70">
-						Teams requires HTTPS. For local dev, use{" "}
-						<a href="https://ngrok.com/" target="_blank" className="text-[var(--accent)] underline" rel="noopener">
-							ngrok
-						</a>{" "}
-						or{" "}
-						<a
-							href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/"
-							target="_blank"
-							className="text-[var(--accent)] underline"
-							rel="noopener"
-						>
-							Cloudflare Tunnel
-						</a>
-						.
+						Teams requires HTTPS.
 					</div>
 				</div>
 				<SharedChannelFields addModel={addModel} allowlistItems={allowlistItems} />

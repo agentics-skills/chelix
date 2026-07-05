@@ -23,26 +23,16 @@ pub mod ws;
 
 pub use error::Error;
 
-#[cfg(feature = "cloudflare-tunnel")]
-pub mod cloudflare_tunnel_routes;
 #[cfg(feature = "graphql")]
 pub mod graphql_routes;
 #[cfg(feature = "metrics")]
 pub mod metrics_middleware;
 #[cfg(feature = "metrics")]
 pub mod metrics_routes;
-#[cfg(feature = "netbird")]
-pub mod netbird_routes;
-#[cfg(feature = "ngrok")]
-pub mod ngrok_routes;
 #[cfg(feature = "push-notifications")]
 pub mod push_routes;
-#[cfg(feature = "tailscale")]
-pub mod tailscale_routes;
 
 // Re-export key types for consumers.
 #[cfg(feature = "tls")]
 pub use moltis_tls as tls;
-#[cfg(feature = "tailscale")]
-pub use server::TailscaleOpts;
 pub use server::{AppState, PreparedGateway, RouteEnhancer, prepare_httpd_embedded, start_gateway};

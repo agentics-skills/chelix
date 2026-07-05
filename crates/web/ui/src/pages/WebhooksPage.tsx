@@ -59,27 +59,7 @@ const publicBaseUrl = signal("");
 let _container: HTMLElement | null = null;
 
 function fetchPublicBaseUrl(): void {
-	// Prefer ngrok public URL, then tailscale funnel, then window.location.origin.
-	fetch("/api/ngrok/status")
-		.then((r) => (r.ok ? r.json() : null))
-		.then((data: { public_url?: string } | null) => {
-			if (data?.public_url) {
-				publicBaseUrl.value = data.public_url.replace(/\/$/, "");
-				return;
-			}
-			return fetch("/api/tailscale/status")
-				.then((r) => (r.ok ? r.json() : null))
-				.then((ts: { mode?: string; url?: string } | null) => {
-					if (ts?.mode === "funnel" && ts?.url) {
-						publicBaseUrl.value = ts.url.replace(/\/$/, "");
-					} else {
-						publicBaseUrl.value = window.location.origin;
-					}
-				});
-		})
-		.catch(() => {
-			publicBaseUrl.value = window.location.origin;
-		});
+	publicBaseUrl.value = window.location.origin;
 }
 
 export function initWebhooks(container: HTMLElement): void {

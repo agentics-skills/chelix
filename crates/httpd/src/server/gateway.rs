@@ -16,16 +16,10 @@ use {
     moltis_sessions::session_events::SessionEventBus,
 };
 
-#[cfg(not(feature = "ngrok"))]
 use super::builder::build_gateway_base;
-#[cfg(feature = "ngrok")]
-use super::builder::build_gateway_base_internal;
 use super::{
     PreparedGateway, RouteEnhancer, builder::finalize_gateway_app, runtime::FinalizeGatewayArgs,
 };
-
-#[cfg(feature = "tailscale")]
-use super::TailscaleOpts;
 
 #[cfg(feature = "telephony")]
 fn header_value(headers: &axum::http::HeaderMap, name: &str) -> Option<String> {
@@ -113,7 +107,6 @@ pub async fn prepare_gateway(
     log_buffer: Option<moltis_gateway::logs::LogBuffer>,
     config_dir: Option<PathBuf>,
     data_dir: Option<PathBuf>,
-    #[cfg(feature = "tailscale")] tailscale_opts: Option<TailscaleOpts>,
     extra_routes: Option<RouteEnhancer>,
     session_event_bus: Option<SessionEventBus>,
 ) -> crate::error::Result<PreparedGateway> {
@@ -125,15 +118,6 @@ pub async fn prepare_gateway(
     #[cfg(feature = "tls")]
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    #[cfg(feature = "tailscale")]
-    let tailscale_mode_override = tailscale_opts.as_ref().map(|opts| opts.mode.clone());
-    #[cfg(feature = "tailscale")]
-    let tailscale_reset_on_exit_override = tailscale_opts.as_ref().map(|opts| opts.reset_on_exit);
-    #[cfg(not(feature = "tailscale"))]
-    let tailscale_mode_override: Option<String> = None;
-    #[cfg(not(feature = "tailscale"))]
-    let tailscale_reset_on_exit_override: Option<bool> = None;
-
     let core = prepare_gateway_core(
         bind,
         port,
@@ -141,8 +125,6 @@ pub async fn prepare_gateway(
         log_buffer,
         config_dir,
         data_dir,
-        tailscale_mode_override,
-        tailscale_reset_on_exit_override,
         session_event_bus,
     )
     .await
@@ -177,25 +159,10 @@ pub async fn prepare_gateway(
         setup_code_display,
         port,
         tls_enabled: tls_enabled_for_gateway,
-        #[cfg(feature = "tailscale")]
-        tailscale_mode,
-        #[cfg(feature = "tailscale")]
-        tailscale_reset_on_exit,
         ..
     } = core;
 
     #[cfg(feature = "push-notifications")]
-    #[cfg(feature = "ngrok")]
-    let (router, mut app_state, ngrok_controller) = build_gateway_base_internal(
-        Arc::clone(&state),
-        Arc::clone(&methods),
-        push_service,
-        webauthn_registry.clone(),
-    );
-    #[cfg(feature = "push-notifications")]
-    #[cfg(feature = "ngrok")]
-    super::runtime::attach_ngrok_controller_owner(&mut app_state, &ngrok_controller);
-    #[cfg(all(feature = "push-notifications", not(feature = "ngrok")))]
     let (router, app_state) = build_gateway_base(
         Arc::clone(&state),
         Arc::clone(&methods),
@@ -203,16 +170,6 @@ pub async fn prepare_gateway(
         webauthn_registry.clone(),
     );
     #[cfg(not(feature = "push-notifications"))]
-    #[cfg(feature = "ngrok")]
-    let (router, mut app_state, ngrok_controller) = build_gateway_base_internal(
-        Arc::clone(&state),
-        Arc::clone(&methods),
-        webauthn_registry.clone(),
-    );
-    #[cfg(not(feature = "push-notifications"))]
-    #[cfg(feature = "ngrok")]
-    super::runtime::attach_ngrok_controller_owner(&mut app_state, &ngrok_controller);
-    #[cfg(all(not(feature = "push-notifications"), not(feature = "ngrok")))]
     let (router, app_state) = build_gateway_base(
         Arc::clone(&state),
         Arc::clone(&methods),
@@ -220,11 +177,6 @@ pub async fn prepare_gateway(
     );
 
     // Merge caller-provided routes (e.g. web-UI) before finalization.
-    #[cfg(feature = "cloudflare-tunnel")]
-    let cloudflare_tunnel_controller = Arc::clone(&app_state.cloudflare_tunnel_controller);
-    #[cfg(feature = "netbird")]
-    let netbird_controller = Arc::clone(&app_state.netbird_controller);
-
     let router = if let Some(enhance) = extra_routes {
         router.merge(enhance())
     } else {
@@ -1455,20 +1407,10 @@ pub async fn prepare_gateway(
         openclaw_startup_status,
         setup_code_display,
         webauthn_registry,
-        #[cfg(feature = "ngrok")]
-        ngrok_controller,
-        #[cfg(feature = "cloudflare-tunnel")]
-        cloudflare_tunnel_controller,
-        #[cfg(feature = "netbird")]
-        netbird_controller,
         #[cfg(feature = "trusted-network")]
         audit_buffer_for_broadcast,
         #[cfg(feature = "trusted-network")]
         _proxy_shutdown_tx,
-        #[cfg(feature = "tailscale")]
-        tailscale_mode,
-        #[cfg(feature = "tailscale")]
-        tailscale_reset_on_exit,
         app,
     })
     .await

@@ -60,8 +60,6 @@ final class AppSettings: ObservableObject {
     @Published var securityMessage: String?
     @Published var securityError: String?
     @Published var securityRecoveryKey: String?
-    @Published var tailscaleEnabled = false
-    @Published var tailscaleMode = "off"
 
     @Published var channels: [ChannelItem] = []
     @Published var hooks: [HookItem] = []
@@ -144,7 +142,6 @@ final class AppSettings: ObservableObject {
     let memoryCitationModes = ["auto", "on", "off"]
     let sandboxBackends = ["auto", "docker", "apple-container"]
     let logLevels = ["trace", "debug", "info", "warn", "error"]
-    let tailscaleModes = ["off", "serve", "funnel"]
 
     var sandboxRuntimeAvailable: Bool {
         sandboxRuntimeBackend != "none"
@@ -419,11 +416,6 @@ final class AppSettings: ObservableObject {
         securityBusy = false
     }
 
-    func saveTailscale() {
-        setConfigValue(tailscaleMode, at: ["tailscale", "mode"])
-        persistConfig("tailscale")
-    }
-
     func saveMonitoring() {
         setConfigValue(metricsEnabled, at: ["metrics", "enabled"])
         setConfigValue(prometheusEndpointEnabled, at: ["metrics", "prometheus_endpoint"])
@@ -696,10 +688,6 @@ extension AppSettings {
             memoryLlmReranking = memory["llm_reranking"] as? Bool ?? false
             memorySessionExport = memory["session_export"] as? Bool ?? false
             memoryHasEmbeddings = memory["disable_rag"] as? Bool == true ? false : true
-        }
-        if let tailscale = config["tailscale"] as? [String: Any] {
-            tailscaleMode = tailscale["mode"] as? String ?? "off"
-            tailscaleEnabled = tailscaleMode != "off"
         }
         if let metrics = config["metrics"] as? [String: Any] {
             metricsEnabled = metrics["enabled"] as? Bool ?? true

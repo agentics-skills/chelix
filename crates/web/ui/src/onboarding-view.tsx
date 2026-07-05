@@ -2,7 +2,7 @@
 //
 // Multi-step setup page shown to first-time users.
 // Steps: Auth (conditional) → Import (conditional) → Provider →
-// Voice (conditional) → Skills → Remote Access → Channel → Identity → Summary
+// Voice (conditional) → Skills → Channel → Identity → Summary
 // No new Rust code — all existing RPC methods and REST endpoints.
 
 import type { VNode } from "preact";
@@ -19,7 +19,6 @@ import { ChannelStep } from "./onboarding/steps/ChannelStep";
 import { IdentityStep } from "./onboarding/steps/IdentityStep";
 import { ImportStep } from "./onboarding/steps/ImportStep";
 import { ProviderStep } from "./onboarding/steps/ProviderStep";
-import { RemoteAccessStep } from "./onboarding/steps/RemoteAccessStep";
 import { SkillsStep } from "./onboarding/steps/SkillsStep";
 import { VoiceStep } from "./onboarding/steps/VoiceStep";
 import type { IdentityInfo } from "./onboarding/types";
@@ -151,7 +150,6 @@ interface SummaryData {
 	voiceEnabled: boolean;
 	providers: SummaryProvider[];
 	channels: SummaryChannel[];
-	tailscale: { tailscale_up?: boolean; installed?: boolean } | null;
 	voice: SummaryVoice | null;
 	sandbox: { backend?: string } | null;
 	skills: SummarySkills | null;
@@ -180,7 +178,7 @@ function SummaryStep({ onBack, onFinish }: { onBack: () => void; onFinish: () =>
 			} | null;
 			const voiceEnabled = getGon("voice_enabled") === true;
 
-			const [providersRes, channelsRes, tailscaleRes, voiceRes, bootstrapRes, skillsRes] = await Promise.all([
+			const [providersRes, channelsRes, voiceRes, bootstrapRes, skillsRes] = await Promise.all([
 				(
 					sendRpc("providers.available", {}) as Promise<{
 						ok?: boolean;
@@ -193,16 +191,6 @@ function SummaryStep({ onBack, onFinish }: { onBack: () => void; onFinish: () =>
 						payload?: { channels?: SummaryChannel[] };
 					}>
 				).catch(() => null),
-				fetch("/api/tailscale/status")
-					.then((r) =>
-						r.ok
-							? (r.json() as Promise<{
-									tailscale_up?: boolean;
-									installed?: boolean;
-								}>)
-							: null,
-					)
-					.catch(() => null),
 				voiceEnabled
 					? (
 							fetchVoiceProviders() as Promise<{
@@ -243,7 +231,6 @@ function SummaryStep({ onBack, onFinish }: { onBack: () => void; onFinish: () =>
 				voiceEnabled,
 				providers: providersRes?.ok ? providersRes.payload || [] : [],
 				channels: channelsRes?.ok ? channelsRes.payload?.channels || [] : [],
-				tailscale: tailscaleRes,
 				voice: voiceRes?.ok ? voiceRes.payload || { tts: [], stt: [] } : null,
 				sandbox: bootstrapRes?.sandbox || null,
 				skills: skillsCats.length
@@ -423,29 +410,6 @@ function SummaryStep({ onBack, onFinish }: { onBack: () => void; onFinish: () =>
 					)}
 				</SummaryRow>
 
-				{/* Tailscale (hidden if feature not compiled) */}
-				{data.tailscale !== null ? (
-					<SummaryRow
-						icon={
-							data.tailscale?.tailscale_up ? <CheckIcon /> : data.tailscale?.installed ? <WarnIcon /> : <InfoIcon />
-						}
-						label="Tailscale"
-					>
-						{data.tailscale?.tailscale_up ? (
-							<>Connected</>
-						) : data.tailscale?.installed ? (
-							<>
-								Installed but not connected &mdash;{" "}
-								<a href="/settings/remote-access" className="text-[var(--accent)] underline">
-									Configure in Settings
-								</a>
-							</>
-						) : (
-							<>Not installed. Install Tailscale for secure remote access.</>
-						)}
-					</SummaryRow>
-				) : null}
-
 				{/* Voice (hidden if not enabled) */}
 				{data.voiceEnabled ? (
 					<SummaryRow
@@ -572,7 +536,6 @@ function OnboardingPage(): VNode {
 	if (voiceAvailable) allLabels.push(t("onboarding:steps.voice"));
 	allLabels.push(
 		t("onboarding:steps.skills"),
-		t("onboarding:steps.remoteAccess"),
 		t("onboarding:steps.channel"),
 		t("onboarding:steps.identity"),
 		t("onboarding:steps.summary"),
@@ -586,7 +549,6 @@ function OnboardingPage(): VNode {
 	const llmStep = nextIdx++;
 	const voiceStep = voiceAvailable ? nextIdx++ : -1;
 	const skillsStep = nextIdx++;
-	const remoteAccessStep = nextIdx++;
 	const channelStep = nextIdx++;
 	const identityStep = nextIdx++;
 	const summaryStep = nextIdx;
@@ -618,7 +580,6 @@ function OnboardingPage(): VNode {
 				{step === llmStep && <ProviderStep onNext={goNext} onBack={authNeeded || anyImportDetected ? goBack : null} />}
 				{step === voiceStep && <VoiceStep onNext={goNext} onBack={goBack} />}
 				{step === skillsStep && <SkillsStep onNext={goNext} onBack={goBack} />}
-				{step === remoteAccessStep && <RemoteAccessStep onNext={goNext} onBack={goBack} />}
 				{step === channelStep && <ChannelStep onNext={goNext} onBack={goBack} />}
 				{step === identityStep && <IdentityStep onNext={goNext} onBack={goBack} />}
 				{step === summaryStep && <SummaryStep onBack={goBack} onFinish={goFinish} />}

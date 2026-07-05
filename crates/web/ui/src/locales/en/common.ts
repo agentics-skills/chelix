@@ -90,7 +90,6 @@ export default {
 		notifications: "Notifications",
 		crons: "Crons",
 		security: "Security",
-		tailscale: "Tailscale",
 		integrations: "Integrations",
 		channels: "Channels",
 		hooks: "Hooks",

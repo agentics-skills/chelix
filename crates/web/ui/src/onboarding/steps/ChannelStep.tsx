@@ -44,13 +44,6 @@ import {
 	SignalForm,
 	TelegramForm,
 } from "./channel-forms";
-import {
-	fetchRemoteAccessStatus,
-	type NgrokStatus,
-	preferredPublicBaseUrl,
-	type TailscaleStatus,
-} from "./RemoteAccessStep";
-
 // ── Matrix form ─────────────────────────────────────────────
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Matrix form has many fields for all auth/policy/encryption combinations
@@ -806,26 +799,6 @@ function TeamsForm({ onConnected, error, setError }: ChannelFormProps): VNode {
 	const [advancedConfig, setAdvancedConfig] = useState("");
 	const [saving, setSaving] = useState(false);
 
-	useEffect(() => {
-		let cancelled = false;
-		const currentDefault = defaultTeamsBaseUrl();
-		if (baseUrl !== currentDefault) return undefined;
-		Promise.all([
-			fetchRemoteAccessStatus("/api/ngrok/status", "ngrok feature is not enabled in this build."),
-			fetchRemoteAccessStatus("/api/tailscale/status", "Tailscale feature is not enabled in this build."),
-		]).then(([nextNgrokStatus, nextTailscaleStatus]) => {
-			if (cancelled) return;
-			const nextPublicBaseUrl = preferredPublicBaseUrl({
-				ngrokStatus: nextNgrokStatus as NgrokStatus | null,
-				tailscaleStatus: nextTailscaleStatus as TailscaleStatus | null,
-			});
-			if (nextPublicBaseUrl) setBaseUrl(nextPublicBaseUrl);
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, [baseUrl]);
-
 	function onBootstrap(): void {
 		const id = appId.trim();
 		if (!id) {
@@ -900,8 +873,7 @@ function TeamsForm({ onConnected, error, setError }: ChannelFormProps): VNode {
 				<div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs flex flex-col gap-1">
 					<span className="font-medium text-[var(--text-strong)]">Public URL required</span>
 					<span className="text-[var(--muted)]">
-						Teams sends messages via webhook &mdash; your server must be reachable over HTTPS. Set up a tunnel in the
-						previous <strong>Remote Access</strong> step, or enter a public URL below.
+						Teams sends messages via webhook &mdash; your server must be reachable over HTTPS. Enter a public URL below.
 					</span>
 				</div>
 			)}

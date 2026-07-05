@@ -265,8 +265,8 @@ mod tests {
     }
 
     #[test]
-    fn localhost_cookie_domain_tailscale_host_omits_domain() {
-        let h = headers_with_host("mybox.tail12345.ts.net:8080");
+    fn localhost_cookie_domain_external_subdomain_omits_domain() {
+        let h = headers_with_host("gateway.example.net:8080");
         assert_eq!(localhost_cookie_domain(&h, false), "");
     }
 

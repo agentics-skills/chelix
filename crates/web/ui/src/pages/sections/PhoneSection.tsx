@@ -359,8 +359,7 @@ function PhoneConfigModal({ onSaved }: PhoneConfigModalProps): VNode {
 					onInput={(e) => setWebhookUrl(targetValue(e))}
 				/>
 				<span className="text-[10px] text-[var(--muted)]">
-					Public HTTPS URL for provider callbacks. Required for inbound calls. Auto-detected from Tailscale/ngrok if
-					configured.
+					Public HTTPS URL for provider callbacks. Required for inbound calls.
 				</span>
 
 				{error && <div className="text-xs text-red-500">{error}</div>}

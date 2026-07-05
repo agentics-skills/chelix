@@ -46,8 +46,8 @@ async fn sync_runtime_webauthn_host_registers_new_origin() {
     let notice = crate::server::startup::sync_runtime_webauthn_host_and_notice(
         &gateway,
         Some(&registry),
-        Some("team-gateway.ngrok.app"),
-        Some("https://team-gateway.ngrok.app"),
+        Some("gateway.example.com"),
+        Some("https://gateway.example.com"),
         "test",
     )
     .await;
@@ -57,7 +57,7 @@ async fn sync_runtime_webauthn_host_registers_new_origin() {
         registry
             .read()
             .await
-            .contains_host("team-gateway.ngrok.app")
+            .contains_host("gateway.example.com")
     );
     assert!(
         gateway.passkey_host_update_pending().await.is_empty(),
@@ -82,7 +82,7 @@ async fn sync_runtime_webauthn_host_rejects_invalid_origin() {
     let notice = crate::server::startup::sync_runtime_webauthn_host_and_notice(
         &gateway,
         Some(&registry),
-        Some("team-gateway.ngrok.app"),
+        Some("gateway.example.com"),
         Some("not a url"),
         "test",
     )
@@ -93,7 +93,7 @@ async fn sync_runtime_webauthn_host_rejects_invalid_origin() {
         !registry
             .read()
             .await
-            .contains_host("team-gateway.ngrok.app")
+            .contains_host("gateway.example.com")
     );
 }
 

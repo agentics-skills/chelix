@@ -34,9 +34,6 @@ use crate::{
     state::{DiscoveredHookInfo, GatewayState},
 };
 
-#[cfg(feature = "tailscale")]
-use crate::tailscale::{TailscaleMode, validate_tailscale_config};
-
 use crate::server::{
     helpers::{StartupMemProbe, env_flag_enabled, instance_slug},
     prepared::PreparedGatewayCore,
@@ -106,10 +103,6 @@ pub(super) struct PostStateInputs {
     pub audit_buffer: Option<crate::network_audit::NetworkAuditBuffer>,
     #[cfg(feature = "trusted-network")]
     pub proxy_shutdown_tx: Option<tokio::sync::watch::Sender<bool>>,
-    #[cfg(feature = "tailscale")]
-    pub tailscale_mode_override: Option<String>,
-    #[cfg(feature = "tailscale")]
-    pub tailscale_reset_on_exit_override: Option<bool>,
 }
 
 async fn build_webauthn_registry(
@@ -292,10 +285,6 @@ pub(super) async fn complete_startup(
         audit_buffer,
         #[cfg(feature = "trusted-network")]
         proxy_shutdown_tx,
-        #[cfg(feature = "tailscale")]
-        tailscale_mode_override,
-        #[cfg(feature = "tailscale")]
-        tailscale_reset_on_exit_override,
         code_index,
         #[cfg(any(feature = "qmd", feature = "code-index-builtin"))]
         project_store,
@@ -516,20 +505,6 @@ pub(super) async fn complete_startup(
         } else {
             None
         };
-
-    #[cfg(feature = "tailscale")]
-    let tailscale_mode: TailscaleMode = {
-        let mode_str = tailscale_mode_override.unwrap_or_else(|| config.tailscale.mode.clone());
-        mode_str.parse().unwrap_or(TailscaleMode::Off)
-    };
-    #[cfg(feature = "tailscale")]
-    let tailscale_reset_on_exit =
-        tailscale_reset_on_exit_override.unwrap_or(config.tailscale.reset_on_exit);
-
-    #[cfg(feature = "tailscale")]
-    if tailscale_mode != TailscaleMode::Off {
-        validate_tailscale_config(tailscale_mode, &bind, credential_store.is_setup_complete())?;
-    }
 
     let webauthn_registry = build_webauthn_registry(&config, port).await?;
 
@@ -1297,10 +1272,6 @@ pub(super) async fn complete_startup(
         setup_code_display,
         port,
         tls_enabled: tls_enabled_for_gateway,
-        #[cfg(feature = "tailscale")]
-        tailscale_mode,
-        #[cfg(feature = "tailscale")]
-        tailscale_reset_on_exit,
         browser_tool_for_warmup: None,
         #[cfg(feature = "trusted-network")]
         _proxy_shutdown_tx: proxy_shutdown_tx,

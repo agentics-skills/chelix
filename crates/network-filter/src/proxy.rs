@@ -107,7 +107,7 @@ fn is_private_or_loopback(ip: &IpAddr) -> bool {
             v4.is_loopback()            // 127.0.0.0/8
                 || v4.is_private()       // 10/8, 172.16/12, 192.168/16
                 || v4.is_link_local()    // 169.254/16
-                || is_cgnat(*v4) // 100.64/10 (Tailscale, CGNAT)
+                || is_cgnat(*v4) // 100.64/10 shared address space
         },
         IpAddr::V6(v6) => {
             v6.is_loopback()             // ::1
@@ -116,7 +116,7 @@ fn is_private_or_loopback(ip: &IpAddr) -> bool {
     }
 }
 
-/// CGNAT / shared address space (100.64.0.0/10), also used by Tailscale.
+/// CGNAT / shared address space (100.64.0.0/10).
 fn is_cgnat(ip: Ipv4Addr) -> bool {
     let octets = ip.octets();
     octets[0] == 100 && (octets[1] & 0xC0) == 64
@@ -772,7 +772,7 @@ mod tests {
         assert!(is_private_or_loopback(&"172.17.0.1".parse().unwrap())); // Docker bridge
         assert!(is_private_or_loopback(&"192.168.64.1".parse().unwrap())); // macOS vmnet
 
-        // CGNAT / Tailscale
+        // CGNAT / shared address space
         assert!(is_private_or_loopback(&"100.64.0.1".parse().unwrap()));
         assert!(is_private_or_loopback(&"100.127.255.254".parse().unwrap()));
 

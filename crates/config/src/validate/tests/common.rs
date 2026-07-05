@@ -104,9 +104,6 @@ default_timeout_secs = 30
 mode = "all"
 backend = "auto"
 
-[tailscale]
-mode = "off"
-
 [memory]
 backend = "builtin"
 provider = "local"

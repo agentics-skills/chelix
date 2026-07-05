@@ -373,7 +373,6 @@ ownership means you can run it on your own hardware with understandable tradeoff
     <div class="mt-4">
       <ul>
         <li>designed to keep strangers out</li>
-        <li>Tailscale support for private access paths</li>
         <li>local-first deployment instead of exposing everything by default</li>
       </ul>
     </div>
@@ -392,7 +391,7 @@ The line is not "others are insecure." The line is:
 "Once agents can touch code, files, credentials, and networks, I wanted a more
 defense-in-depth architecture, and Rust was part of that choice."
 
-Mention passkeys/passwords, sandboxing, vault, and Tailscale as concrete signals
+Mention passkeys/passwords, sandboxing, and vault as concrete signals
 that security is part of the product shape, not just a README section.
 -->
 
@@ -526,7 +525,7 @@ This is not a vanity slide. The point is product velocity and real usage.
     <div class="mt-2 text-sm">
       <ul>
         <li><code>web-ui</code>, <code>voice</code>, <code>vault</code></li>
-        <li><code>graphql</code>, <code>tailscale</code></li>
+        <li><code>graphql</code></li>
         <li><code>lightweight</code> for smaller builds</li>
       </ul>
     </div>

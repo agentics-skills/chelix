@@ -600,21 +600,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "ngrok")]
-    #[test]
-    fn ngrok_loopback_guard_rejects_requests_without_proxy_headers() {
-        let headers = axum::http::HeaderMap::new();
-        assert!(!ngrok_loopback_has_proxy_headers(&headers));
-    }
-
-    #[cfg(feature = "ngrok")]
-    #[test]
-    fn ngrok_loopback_guard_allows_requests_with_proxy_headers() {
-        let mut headers = axum::http::HeaderMap::new();
-        headers.insert("x-forwarded-for", "203.0.113.50".parse().unwrap());
-        assert!(ngrok_loopback_has_proxy_headers(&headers));
-    }
-
     #[test]
     fn ipv6_bind_addresses_parse_correctly() {
         // Regression test for GitHub issue #447 — binding to "::" crashed
@@ -674,68 +659,4 @@ mod tests {
         ]);
     }
 
-    #[cfg(feature = "ngrok")]
-    #[test]
-    fn public_build_gateway_base_keeps_ngrok_controller_alive() {
-        let state = GatewayState::new(
-            auth::resolve_auth(None, None),
-            moltis_gateway::services::GatewayServices::noop(),
-        );
-        let methods = Arc::new(MethodRegistry::new());
-        #[cfg(feature = "push-notifications")]
-        let (_router, app_state) = build_gateway_base(state, methods, None, None);
-        #[cfg(not(feature = "push-notifications"))]
-        let (_router, app_state) = build_gateway_base(state, methods, None);
-
-        assert!(app_state.ngrok_controller_owner.is_some());
-        assert!(app_state.ngrok_controller.upgrade().is_some());
-    }
-
-    #[cfg(feature = "ngrok")]
-    #[test]
-    fn attaching_owner_keeps_internal_ngrok_controller_alive_after_local_arc_drop() {
-        let state = GatewayState::new(
-            auth::resolve_auth(None, None),
-            moltis_gateway::services::GatewayServices::noop(),
-        );
-        let methods = Arc::new(MethodRegistry::new());
-        #[cfg(feature = "push-notifications")]
-        let (_router, app_state, ngrok_controller) =
-            build_gateway_base_internal(state, methods, None, None);
-        #[cfg(not(feature = "push-notifications"))]
-        let (_router, mut app_state, ngrok_controller) =
-            build_gateway_base_internal(state, methods, None);
-
-        assert!(app_state.ngrok_controller.upgrade().is_some());
-
-        let weak = app_state.ngrok_controller.clone();
-        drop(ngrok_controller);
-        assert!(weak.upgrade().is_none());
-
-        #[cfg(feature = "push-notifications")]
-        let (_router, mut app_state, ngrok_controller) = build_gateway_base_internal(
-            GatewayState::new(
-                auth::resolve_auth(None, None),
-                moltis_gateway::services::GatewayServices::noop(),
-            ),
-            Arc::new(MethodRegistry::new()),
-            None,
-            None,
-        );
-        #[cfg(not(feature = "push-notifications"))]
-        let (_router, mut app_state, ngrok_controller) = build_gateway_base_internal(
-            GatewayState::new(
-                auth::resolve_auth(None, None),
-                moltis_gateway::services::GatewayServices::noop(),
-            ),
-            Arc::new(MethodRegistry::new()),
-            None,
-        );
-
-        attach_ngrok_controller_owner(&mut app_state, &ngrok_controller);
-        let weak = app_state.ngrok_controller.clone();
-        drop(ngrok_controller);
-        assert!(weak.upgrade().is_some());
-        assert!(app_state.ngrok_controller_owner.is_some());
-    }
 }

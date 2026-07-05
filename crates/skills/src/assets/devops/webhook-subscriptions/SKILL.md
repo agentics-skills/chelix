@@ -351,5 +351,5 @@ If a service retries a delivery, Moltis automatically deduplicates based on the 
 3. **IP blocked (403)?** Check `allowed_cidrs` matches the sender's IP range.
 4. **Rate limited (429)?** Check per-webhook and global rate limits.
 5. **Events filtered?** Verify `event_filter.allow` includes the event type the service sends. Check delivery history for `status: filtered`.
-6. **Firewall/NAT?** The webhook URL must be reachable from the sending service. For local development, use a tunnel (ngrok, cloudflared, or Moltis's built-in Tailscale/ngrok support).
+6. **Firewall/NAT?** The webhook URL must be reachable from the sending service. For local development, use a tunnel or another reachable public HTTPS endpoint.
 7. **Check delivery history:** Use `webhooks.deliveries` RPC to inspect status, rejection reasons, and timing.

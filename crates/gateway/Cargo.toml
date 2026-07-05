@@ -44,7 +44,6 @@ moltis-media            = { workspace = true }
 moltis-memory           = { workspace = true }
 moltis-metrics          = { optional = true, workspace = true }
 moltis-msteams          = { optional = true, workspace = true }
-moltis-netbird          = { optional = true, workspace = true }
 moltis-network-filter   = { features = ["proxy", "service"], optional = true, workspace = true }
 moltis-nostr            = { optional = true, workspace = true }
 moltis-oauth            = { workspace = true }
@@ -63,7 +62,6 @@ moltis-sessions         = { workspace = true }
 moltis-signal           = { optional = true, workspace = true }
 moltis-skills           = { workspace = true }
 moltis-slack            = { optional = true, workspace = true }
-moltis-tailscale        = { optional = true, workspace = true }
 moltis-telegram         = { optional = true, workspace = true }
 moltis-telephony        = { optional = true, workspace = true }
 moltis-tools            = { workspace = true }
@@ -129,7 +127,6 @@ default = [
   "mdns",
   "metrics",
   "msteams",
-  "netbird",
   "nostr",
   "openclaw-import",
   "prometheus",
@@ -138,7 +135,6 @@ default = [
   "qmd",
   "signal",
   "slack",
-  "tailscale",
   "telegram",
   "telephony",
   "tls",
@@ -176,7 +172,6 @@ metrics = [
   "moltis-signal?/metrics",
 ]
 msteams = ["dep:moltis-msteams"]
-netbird = ["dep:moltis-netbird"]
 nostr = ["dep:moltis-nostr"]
 openclaw-import = ["dep:moltis-openclaw-import"]
 prometheus = ["metrics", "moltis-metrics/prometheus"]
@@ -188,7 +183,6 @@ push-notifications = ["dep:chrono", "dep:p256", "dep:web-push", "moltis-chat/pus
 qmd = ["dep:moltis-qmd", "moltis-code-index/qmd"]
 signal = ["dep:moltis-signal"]
 slack = ["dep:moltis-slack", "moltis-slack/metrics"]
-tailscale = ["dep:moltis-tailscale"]
 telegram = ["dep:moltis-telegram", "moltis-chat/telegram"]
 telephony = ["dep:moltis-telephony"]
 tls = []

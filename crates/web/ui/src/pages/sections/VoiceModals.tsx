@@ -21,7 +21,15 @@ import {
 } from "../../voice-utils";
 import type { RpcResponse } from "./_shared";
 import { rerender } from "./_shared";
-import { cloneHidden } from "./RemoteAccessSection";
+
+function cloneHidden(id: string): HTMLElement | null {
+	const el = document.getElementById(id);
+	if (!el) return null;
+	const clone = el.cloneNode(true) as HTMLElement;
+	clone.removeAttribute("id");
+	clone.style.display = "";
+	return clone;
+}
 
 // ── Shared signals ──────────────────────────────────────────
 
