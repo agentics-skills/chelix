@@ -95,8 +95,13 @@ export function bindReasoningToggle(): void {
 	disposeVisibility = effect(() => {
 		const show = modelStore.supportsReasoning.value;
 		reasoningCombo?.classList.toggle("hidden", !show);
-		// Reset effort when switching to a non-reasoning model
-		if (!show && modelStore.reasoningEffort.value) {
+		// Reset effort only when the selected model is resolved in the loaded
+		// model list and genuinely lacks reasoning support. During initial
+		// page load the list is still empty, so supportsReasoning is false
+		// merely because the model is unresolved yet — wiping the restored
+		// effort here made the toggle always show "Off" on chat open.
+		const modelResolved = modelStore.selectedModel.value !== null;
+		if (!show && modelResolved && modelStore.reasoningEffort.value) {
 			modelStore.setReasoningEffort("");
 		}
 		if (reasoningComboLabel) {

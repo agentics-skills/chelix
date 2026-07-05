@@ -252,4 +252,48 @@ test.describe("reasoning effort toggle", () => {
 
 		expect(pageErrors).toEqual([]);
 	});
+
+	test("effort restored before model list loads is not reset to Off", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+
+		await page.evaluate(async () => {
+			var appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
+			var appUrl = new URL(appScript.src, window.location.origin);
+			var prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
+			var store = await import(`${prefix}js/stores/model-store.js`);
+			// Wait for bootstrap to populate the initial model list so there are
+			// no in-flight fetch/setAll calls that could overwrite our mock data.
+			for (var i = 0; i < 100 && store.models.value.length === 0; i++) {
+				await new Promise((r) => setTimeout(r, 50));
+			}
+			// Freeze the modelStore object to block future bootstrap/WS updates.
+			store.modelStore.fetch = () => Promise.resolve();
+			store.modelStore.setAll = () => {};
+			// Simulate the boot race: sessions.switch restores the reasoning
+			// effort while the model list is still empty (model unresolved),
+			// then the model list arrives afterwards.
+			store.select("claude-opus-4-5");
+			store.models.value = [];
+			store.setReasoningEffort("high");
+			store.models.value = [
+				{ id: "claude-opus-4-5", displayName: "Claude Opus 4.5", provider: "anthropic", supportsReasoning: true },
+			];
+		});
+
+		const reasoningCombo = page.locator("#reasoningCombo");
+		await expect(reasoningCombo).toBeVisible();
+		const label = page.locator("#reasoningComboLabel");
+		await expect(label).toHaveText("High");
+
+		const effort = await page.evaluate(async () => {
+			var appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
+			var appUrl = new URL(appScript.src, window.location.origin);
+			var prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
+			var store = await import(`${prefix}js/stores/model-store.js`);
+			return store.reasoningEffort.value;
+		});
+		expect(effort).toBe("high");
+
+		expect(pageErrors).toEqual([]);
+	});
 });
