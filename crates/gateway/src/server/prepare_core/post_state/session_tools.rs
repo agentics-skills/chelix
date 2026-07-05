@@ -25,10 +25,7 @@ pub(super) fn register_session_tools(
         moltis_tools::sessions_manage::SessionsExploreTool::new(explore_sessions),
     ));
     tool_registry.register(Box::new(
-        moltis_tools::sessions_manage::SessionsCreateTool::new(
-            Arc::clone(session_metadata),
-            create_session,
-        ),
+        moltis_tools::sessions_manage::SessionsCreateTool::new(create_session),
     ));
     tool_registry.register(Box::new(
         moltis_tools::sessions_manage::SessionsDeleteTool::new(
@@ -114,11 +111,7 @@ fn build_create_session(
                 let parent_session_key = req.parent_session_key.clone();
 
                 validate_agent_id(&state, &agent_id).await?;
-                let effective_model = if req.created {
-                    Some(resolve_effective_model(&state, &agent_id, &req).await?)
-                } else {
-                    None
-                };
+                let effective_model = resolve_effective_model(&state, &agent_id, &req).await?;
 
                 state
                     .services
@@ -127,37 +120,33 @@ fn build_create_session(
                     .await
                     .map_err(|error| moltis_tools::Error::message(error.to_string()))?;
 
-                if req.created {
-                    metadata
-                        .set_agent_id(&key, Some(&agent_id))
-                        .await
-                        .map_err(|error| moltis_tools::Error::message(error.to_string()))?;
+                metadata
+                    .set_agent_id(&key, Some(&agent_id))
+                    .await
+                    .map_err(|error| moltis_tools::Error::message(error.to_string()))?;
 
-                    let mut patch = serde_json::Map::new();
-                    patch.insert("key".to_string(), serde_json::json!(key.clone()));
-                    if let Some(label) = req.label {
-                        patch.insert("label".to_string(), serde_json::json!(label));
-                    }
-                    if let Some(effective_model) = effective_model {
-                        patch.insert("model".to_string(), serde_json::json!(effective_model));
-                    }
-                    if let Some(project_id) = req.project_id {
-                        patch.insert("projectId".to_string(), serde_json::json!(project_id));
-                    }
-                    state
-                        .services
-                        .session
-                        .patch(Value::Object(patch))
-                        .await
-                        .map_err(|error| moltis_tools::Error::message(error.to_string()))?;
+                let mut patch = serde_json::Map::new();
+                patch.insert("key".to_string(), serde_json::json!(key.clone()));
+                if let Some(label) = req.label {
+                    patch.insert("label".to_string(), serde_json::json!(label));
+                }
+                patch.insert("model".to_string(), serde_json::json!(effective_model));
+                if let Some(project_id) = req.project_id {
+                    patch.insert("projectId".to_string(), serde_json::json!(project_id));
+                }
+                state
+                    .services
+                    .session
+                    .patch(Value::Object(patch))
+                    .await
+                    .map_err(|error| moltis_tools::Error::message(error.to_string()))?;
 
-                    // Link the new session to its creator so the UI renders it as a child.
-                    if let Some(parent) = parent_session_key
-                        && parent != key
-                        && metadata.get(&parent).await.is_some()
-                    {
-                        metadata.set_parent(&key, Some(parent), None).await;
-                    }
+                // Link the new session to its creator so the UI renders it as a child.
+                if let Some(parent) = parent_session_key
+                    && parent != key
+                    && metadata.get(&parent).await.is_some()
+                {
+                    metadata.set_parent(&key, Some(parent), None).await;
                 }
 
                 let entry = metadata.get(&key).await.ok_or_else(|| {

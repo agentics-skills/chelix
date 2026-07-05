@@ -19,14 +19,13 @@ and preset model configuration. Use the returned `id` as `agent_id`.
 
 ### `sessions_create`
 
-Create a new chat session (or resolve an existing one by key) for one explicit
-agent.
+Create a new chat session for one explicit agent. The tool always generates a
+standard `session:<uuid>` key and returns it in the result for later calls.
 
 Input:
 
 ```json
 {
-  "key": "optional session key (generated if omitted)",
   "agent_id": "required agent id from sessions_explore",
   "label": "optional label",
   "project_id": "optional project id",
@@ -63,13 +62,11 @@ If `model` is omitted, the selected agent must have both
 `[agents.presets.<agent_id>].reasoning_effort` configured. Otherwise the tool
 returns an explicit error explaining which preset field is missing.
 
-Resolving an existing session never overwrites its existing agent or model.
-
 Sessions created by an agent are automatically linked to the calling session
 as children (`parentSessionKey`), so the sessions sidebar renders them nested
 under their creator — the same tree mechanism used for forks. Nesting works
 recursively: if the created session's agent creates another session, it nests
-one level deeper. Existing sessions are never re-parented by this tool.
+one level deeper.
 
 The parent link can also be managed via the `session.patch` RPC using the
 `parentSessionKey` field (set a new parent or `null` to detach). Cycles and
@@ -231,7 +228,7 @@ Use session tools when you need:
 Common coordinator flow:
 
 1. `sessions_explore` to choose an explicit `agent_id`
-2. `sessions_create` to create or resolve worker sessions
+2. `sessions_create` to create worker sessions
 3. `sessions_list` to discover existing workers
 4. `sessions_search` to find prior related work
 5. `sessions_history` to inspect progress
