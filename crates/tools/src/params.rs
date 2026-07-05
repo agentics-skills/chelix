@@ -77,6 +77,29 @@ pub fn owned_str_param(params: &Value, keys: &[&str]) -> Option<String> {
     str_param_any(params, keys).map(String::from)
 }
 
+/// Recursively drop `null` entries from JSON object parameters.
+///
+/// Model callers sometimes pass explicit `null` for optional fields; treat
+/// those values as omitted. Object fields that become empty after stripping
+/// are removed as well.
+#[must_use]
+pub fn without_null_params(mut params: Value) -> Value {
+    prune_null_entries(&mut params);
+    params
+}
+
+fn prune_null_entries(value: &mut Value) {
+    if let Some(map) = value.as_object_mut() {
+        map.retain(|_, child| {
+            if child.is_null() {
+                return false;
+            }
+            prune_null_entries(child);
+            !child.as_object().is_some_and(serde_json::Map::is_empty)
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, serde_json::json};
@@ -160,5 +183,42 @@ mod tests {
         let p = json!({"limit": 50});
         assert_eq!(u64_param(&p, "limit", 20), 50);
         assert_eq!(u64_param(&p, "missing", 20), 20);
+    }
+
+    #[test]
+    fn without_null_params_drops_null_values() {
+        let p = json!({
+            "key": "session:x",
+            "label": null,
+            "model_override": null
+        });
+        let cleaned = without_null_params(p);
+        assert_eq!(cleaned, json!({"key": "session:x"}));
+    }
+
+    #[test]
+    fn without_null_params_drops_nested_nulls_and_empty_objects() {
+        let p = json!({
+            "key": "session:x",
+            "model_override": {
+                "model": null,
+                "reasoning_effort": null
+            }
+        });
+        let cleaned = without_null_params(p);
+        assert_eq!(cleaned, json!({"key": "session:x"}));
+    }
+
+    #[test]
+    fn without_null_params_keeps_non_null_values() {
+        let p = json!({
+            "key": "session:x",
+            "model_override": {
+                "model": "provider::model",
+                "reasoning_effort": "high"
+            },
+            "wait_for_reply": false
+        });
+        assert_eq!(without_null_params(p.clone()), p);
     }
 }

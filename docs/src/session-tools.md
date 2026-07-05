@@ -4,21 +4,66 @@ Session tools enable persistent, asynchronous coordination between agent session
 
 ## Available Tools
 
+### `sessions_explore`
+
+List all agents that can be passed to `sessions_create`.
+
+Input:
+
+```json
+{}
+```
+
+Output includes each agent `id`, `name`, `description`, optional persona fields,
+and preset model configuration. Use the returned `id` as `agent_id`.
+
 ### `sessions_create`
 
-Create a new chat session (or resolve an existing one by key).
+Create a new chat session (or resolve an existing one by key) for one explicit
+agent.
 
 Input:
 
 ```json
 {
   "key": "optional session key (generated if omitted)",
+  "agent_id": "required agent id from sessions_explore",
   "label": "optional label",
-  "model": "optional model override",
   "project_id": "optional project id",
-  "inherit_agent_from": "optional source session key"
+  "model_override": {
+    "model": "advanced base model id override from models.list",
+    "reasoning_effort": "none|minimal|low|medium|high|xhigh|max"
+  }
 }
 ```
+
+`agent_id` is mandatory. The tool does not apply an implicit default agent and
+does not fall back to another agent if the requested agent is missing.
+
+Omit `model_override` to use the selected agent's preset model. `model_override`
+is for advanced intentional overrides only. When it is provided, both
+`model_override.model` and `model_override.reasoning_effort` are mandatory. The
+model must be the base ID shown in the chat model registry (`models.list`) and
+must support reasoning. Do not include an `@reasoning-*` suffix in
+`model_override.model`; the tool stores the same effective model ID as the chat
+UI, for example:
+
+```json
+{
+  "agent_id": "researcher",
+  "model_override": {
+    "model": "anthropic::claude-opus-4-5-20251101",
+    "reasoning_effort": "high"
+  }
+}
+```
+
+If `model` is omitted, the selected agent must have both
+`[agents.presets.<agent_id>].model` and
+`[agents.presets.<agent_id>].reasoning_effort` configured. Otherwise the tool
+returns an explicit error explaining which preset field is missing.
+
+Resolving an existing session never overwrites its existing agent or model.
 
 Sessions created by an agent are automatically linked to the calling session
 as children (`parentSessionKey`), so the sessions sidebar renders them nested
@@ -79,9 +124,15 @@ Send a message to another session, optionally waiting for reply.
   "key": "agent:coder:main",
   "message": "Please implement JWT middleware",
   "wait_for_reply": true,
-  "context": "coordinator"
+  "context": "coordinator",
+  "model_override": {
+    "model": "anthropic::claude-opus-4-5-20251101",
+    "reasoning_effort": "high"
+  }
 }
 ```
+
+Omit `model_override` in `sessions_send` to use the target session model.
 
 ## Session Access Policy
 
@@ -179,8 +230,10 @@ Use session tools when you need:
 
 Common coordinator flow:
 
-1. `sessions_list` to discover workers
-2. `sessions_search` to find prior related work
-3. `sessions_history` to inspect progress
-4. `sessions_send` to dispatch next tasks
-5. `task_list` to track cross-session work items
+1. `sessions_explore` to choose an explicit `agent_id`
+2. `sessions_create` to create or resolve worker sessions
+3. `sessions_list` to discover existing workers
+4. `sessions_search` to find prior related work
+5. `sessions_history` to inspect progress
+6. `sessions_send` to dispatch next tasks
+7. `task_list` to track cross-session work items

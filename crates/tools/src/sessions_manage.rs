@@ -1,6 +1,7 @@
 //! Session management tools for creating and deleting chat sessions.
 //!
 //! These tools expose explicit session lifecycle operations to the agent:
+//! - `sessions_explore`: list available agents for session creation
 //! - `sessions_create`: create (or resolve) a session key
 //! - `sessions_delete`: delete a session and its history
 
@@ -12,17 +13,19 @@ use {moltis_agents::tool_registry::AgentTool, moltis_sessions::metadata::SqliteS
 
 use crate::{
     Error,
-    params::{bool_param, owned_str_param, require_str, str_param},
+    params::{bool_param, owned_str_param, require_str, str_param, without_null_params},
+    session_model_override::{ModelOverride, model_override_schema, parse_model_override},
 };
 
 /// Request payload for session creation.
 #[derive(Debug, Clone)]
 pub struct CreateSessionRequest {
     pub key: String,
+    pub agent_id: String,
+    pub created: bool,
     pub label: Option<String>,
-    pub model: Option<String>,
+    pub model_override: Option<ModelOverride>,
     pub project_id: Option<String>,
-    pub inherit_agent_from: Option<String>,
     /// Session that spawned this one. Drives the parent/child tree in the
     /// UI (same mechanism as session forks). Only set for newly created
     /// sessions, never overwritten on existing ones.
@@ -32,6 +35,10 @@ pub struct CreateSessionRequest {
 /// Callback used by `sessions_create`.
 pub type CreateSessionFn =
     Arc<dyn Fn(CreateSessionRequest) -> BoxFuture<'static, crate::Result<Value>> + Send + Sync>;
+
+/// Callback used by `sessions_explore`.
+pub type ExploreSessionsFn =
+    Arc<dyn Fn() -> BoxFuture<'static, crate::Result<Value>> + Send + Sync>;
 
 /// Request payload for session deletion.
 #[derive(Debug, Clone)]
@@ -43,6 +50,17 @@ pub struct DeleteSessionRequest {
 /// Callback used by `sessions_delete`.
 pub type DeleteSessionFn =
     Arc<dyn Fn(DeleteSessionRequest) -> BoxFuture<'static, crate::Result<Value>> + Send + Sync>;
+
+/// Tool for discovering available session agents.
+pub struct SessionsExploreTool {
+    explore_fn: ExploreSessionsFn,
+}
+
+impl SessionsExploreTool {
+    pub fn new(explore_fn: ExploreSessionsFn) -> Self {
+        Self { explore_fn }
+    }
+}
 
 /// Tool for creating sessions.
 pub struct SessionsCreateTool {
@@ -75,55 +93,88 @@ impl SessionsDeleteTool {
 }
 
 #[async_trait]
+impl AgentTool for SessionsExploreTool {
+    fn name(&self) -> &str {
+        "sessions_explore"
+    }
+
+    fn description(&self) -> &str {
+        "List every available agent that can be used with sessions_create. \
+         Returns each agent's id, name, description, and preset model configuration. \
+         Call this before sessions_create to choose an explicit agent_id."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, _params: Value) -> anyhow::Result<Value> {
+        (self.explore_fn)().await.map_err(Into::into)
+    }
+}
+
+#[async_trait]
 impl AgentTool for SessionsCreateTool {
     fn name(&self) -> &str {
         "sessions_create"
     }
 
     fn description(&self) -> &str {
-        "Create a new chat session or resolve an existing one. \
-         Optionally set label/model/project and inherit agent persona from another session. \
-         Newly created sessions are linked to the calling session as children."
+        "Create a new chat session or resolve an existing one for an explicit agent. \
+         The agent_id parameter is required; call sessions_explore first to discover valid agents. \
+         Omit model_override to use the selected agent's preset model; provide model_override only for intentional advanced overrides."
     }
 
     fn parameters_schema(&self) -> Value {
         serde_json::json!({
             "type": "object",
+            "additionalProperties": false,
             "properties": {
+                "agent_id": {
+                    "description": "Required agent id from sessions_explore. No default or fallback is applied.",
+                    "minLength": 1,
+                    "type": "string"
+                },
                 "key": {
-                    "type": "string",
-                    "description": "Session key to create. If omitted, a new key is generated."
+                    "description": "Session key to create. If omitted, a new key is generated. Do not pass null or empty strings; omit the field instead.",
+                    "minLength": 1,
+                    "type": "string"
                 },
                 "label": {
-                    "type": "string",
-                    "description": "Optional session label."
-                },
-                "model": {
-                    "type": "string",
-                    "description": "Optional model override for the session."
+                    "description": "Optional session label.",
+                    "minLength": 1,
+                    "type": "string"
                 },
                 "project_id": {
-                    "type": "string",
-                    "description": "Optional project ID to associate with the session."
+                    "description": "Optional project ID to associate with the session. Do not pass null or empty strings; omit the field instead.",
+                    "minLength": 1,
+                    "type": "string"
                 },
-                "inherit_agent_from": {
-                    "type": "string",
-                    "description": "Optional source session key to inherit agent persona from."
-                }
-            }
+                "model_override": model_override_schema()
+            },
+            "required": ["agent_id"]
         })
     }
 
     async fn execute(&self, params: Value) -> anyhow::Result<Value> {
+        let params = without_null_params(params);
+        if params.get("inherit_agent_from").is_some() || params.get("inheritAgentFrom").is_some() {
+            return Err(Error::message(
+                "inherit_agent_from is not supported by sessions_create; pass an explicit agent_id",
+            )
+            .into());
+        }
+        let agent_id = require_str(&params, "agent_id")?.to_string();
         let key = str_param(&params, "key")
             .map(String::from)
             .unwrap_or_else(|| format!("session:{}", uuid::Uuid::new_v4()));
 
         let label = owned_str_param(&params, &["label"]);
-        let model = owned_str_param(&params, &["model"]);
+        let model_override = parse_model_override(&params)?;
         let project_id = owned_str_param(&params, &["project_id", "projectId"]);
-        let inherit_agent_from =
-            owned_str_param(&params, &["inherit_agent_from", "inheritAgentFrom"]);
 
         let created = self.metadata.get(&key).await.is_none();
 
@@ -136,16 +187,20 @@ impl AgentTool for SessionsCreateTool {
 
         let req = CreateSessionRequest {
             key: key.clone(),
+            agent_id: agent_id.clone(),
+            created,
             label,
-            model,
+            model_override,
             project_id,
-            inherit_agent_from,
             parent_session_key,
         };
         let result = (self.create_fn)(req).await?;
+        let agent_id = agent_id.as_str();
 
         Ok(serde_json::json!({
             "key": key,
+            "agent_id": agent_id,
+            "agentId": agent_id,
             "created": created,
             "result": result,
         }))
@@ -246,6 +301,7 @@ mod tests {
 
         let result = tool
             .execute(serde_json::json!({
+                "agent_id": "main",
                 "label": "Worker session"
             }))
             .await?;
@@ -283,6 +339,7 @@ mod tests {
         let tool = SessionsCreateTool::new(metadata, create_fn);
         let result = tool
             .execute(serde_json::json!({
+                "agent_id": "main",
                 "label": "Child session",
                 "_session_key": "session:parent"
             }))
@@ -317,6 +374,7 @@ mod tests {
 
         let tool = SessionsCreateTool::new(metadata, create_fn);
         tool.execute(serde_json::json!({
+            "agent_id": "main",
             "key": "session:self",
             "_session_key": "session:self"
         }))
@@ -354,6 +412,7 @@ mod tests {
         let tool = SessionsCreateTool::new(metadata, create_fn);
         let result = tool
             .execute(serde_json::json!({
+                "agent_id": "main",
                 "key": "session:existing",
                 "_session_key": "session:caller"
             }))
@@ -387,12 +446,162 @@ mod tests {
         let tool = SessionsCreateTool::new(Arc::clone(&metadata), create_fn);
         let result = tool
             .execute(serde_json::json!({
+                "agent_id": "main",
                 "key": "session:existing"
             }))
             .await?;
 
         assert_eq!(result["created"], false);
         assert_eq!(result["key"], "session:existing");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sessions_explore_delegates_to_callback() -> TestResult<()> {
+        let tool = SessionsExploreTool::new(Arc::new(|| {
+            Box::pin(async move {
+                Ok(serde_json::json!({
+                    "agents": [{ "id": "main", "name": "Main" }]
+                }))
+            })
+        }));
+
+        let result = tool.execute(serde_json::json!({})).await?;
+
+        assert_eq!(result["agents"][0]["id"], "main");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sessions_create_rejects_missing_agent_id() -> TestResult<()> {
+        let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
+        let create_fn: CreateSessionFn =
+            Arc::new(move |_req| Box::pin(async move { Ok(serde_json::json!({ "ok": true })) }));
+        let tool = SessionsCreateTool::new(metadata, create_fn);
+
+        let result = tool.execute(serde_json::json!({})).await;
+
+        let err = result
+            .err()
+            .ok_or_else(|| std::io::Error::other("expected missing agent_id to fail"))?;
+        assert!(
+            err.to_string()
+                .contains("missing required parameter: agent_id")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sessions_create_rejects_invalid_reasoning_effort() -> TestResult<()> {
+        let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
+        let create_fn: CreateSessionFn =
+            Arc::new(move |_req| Box::pin(async move { Ok(serde_json::json!({ "ok": true })) }));
+        let tool = SessionsCreateTool::new(metadata, create_fn);
+
+        let result = tool
+            .execute(serde_json::json!({
+                "agent_id": "main",
+                "model_override": {
+                    "model": "anthropic::claude-opus-4-5-20251101",
+                    "reasoning_effort": "ultra"
+                }
+            }))
+            .await;
+
+        let err = result
+            .err()
+            .ok_or_else(|| std::io::Error::other("expected invalid reasoning effort to fail"))?;
+        assert!(err.to_string().contains("invalid reasoning_effort"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sessions_create_ignores_null_parameters() -> TestResult<()> {
+        let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
+        let captured_override = Arc::new(std::sync::Mutex::new(None::<Option<ModelOverride>>));
+        let captured_ref = Arc::clone(&captured_override);
+        let create_fn: CreateSessionFn = Arc::new(move |req| {
+            let captured_ref = Arc::clone(&captured_ref);
+            Box::pin(async move {
+                *captured_ref.lock().unwrap_or_else(|e| e.into_inner()) =
+                    Some(req.model_override.clone());
+                Ok(serde_json::json!({ "ok": true }))
+            })
+        });
+        let tool = SessionsCreateTool::new(metadata, create_fn);
+
+        let result = tool
+            .execute(serde_json::json!({
+                "agent_id": "main",
+                "label": null,
+                "project_id": null,
+                "model_override": null
+            }))
+            .await?;
+
+        assert_eq!(result["created"], true);
+        let model_override = captured_override
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+            .ok_or_else(|| std::io::Error::other("callback was not invoked"))?;
+        assert!(model_override.is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sessions_create_rejects_inherit_agent_from() -> TestResult<()> {
+        let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
+        let create_fn: CreateSessionFn =
+            Arc::new(move |_req| Box::pin(async move { Ok(serde_json::json!({ "ok": true })) }));
+        let tool = SessionsCreateTool::new(metadata, create_fn);
+
+        let result = tool
+            .execute(serde_json::json!({
+                "agent_id": "main",
+                "inherit_agent_from": "main"
+            }))
+            .await;
+
+        let err = result
+            .err()
+            .ok_or_else(|| std::io::Error::other("expected inherit_agent_from to fail"))?;
+        assert!(
+            err.to_string()
+                .contains("inherit_agent_from is not supported")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sessions_create_passes_created_flag_to_callback() -> TestResult<()> {
+        let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
+        metadata
+            .upsert("session:existing", Some("Existing".to_string()))
+            .await?;
+
+        let captured_created = Arc::new(std::sync::Mutex::new(None::<bool>));
+        let captured_ref = Arc::clone(&captured_created);
+        let create_fn: CreateSessionFn = Arc::new(move |req| {
+            let captured_ref = Arc::clone(&captured_ref);
+            Box::pin(async move {
+                *captured_ref.lock().unwrap_or_else(|e| e.into_inner()) = Some(req.created);
+                Ok(serde_json::json!({ "ok": true }))
+            })
+        });
+        let tool = SessionsCreateTool::new(metadata, create_fn);
+
+        tool.execute(serde_json::json!({
+            "agent_id": "main",
+            "key": "session:existing"
+        }))
+        .await?;
+
+        let created = captured_created
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .ok_or_else(|| std::io::Error::other("callback was not invoked"))?;
+        assert!(!created);
         Ok(())
     }
 

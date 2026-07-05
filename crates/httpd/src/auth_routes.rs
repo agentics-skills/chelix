@@ -2,14 +2,12 @@ use std::{net::SocketAddr, sync::Arc};
 
 use secrecy::ExposeSecret;
 
-use {
-    axum::{
-        Json,
-        extract::{ConnectInfo, State},
-        http::StatusCode,
-        response::IntoResponse,
-        routing::{delete, get, post},
-    },
+use axum::{
+    Json,
+    extract::{ConnectInfo, State},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{delete, get, post},
 };
 
 use {
@@ -935,10 +933,7 @@ fn request_webauthn_origin(
 async fn resolve_request_webauthn(
     state: &AuthState,
     headers: &axum::http::HeaderMap,
-) -> Option<(
-    String,
-    Arc<moltis_gateway::auth_webauthn::WebAuthnState>,
-)> {
+) -> Option<(String, Arc<moltis_gateway::auth_webauthn::WebAuthnState>)> {
     let registry = state.webauthn_registry.as_ref()?;
     let host = request_webauthn_host(headers, &state.gateway_state)?;
 

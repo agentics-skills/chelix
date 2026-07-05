@@ -10,7 +10,10 @@ pub(crate) const REASONING_SUFFIX_SEP: char = '@';
 ///
 /// Derived from [`ReasoningEffort::ALL`] — one entry per level.
 pub(crate) const REASONING_SUFFIXES: &[(&str, moltis_agents::model::ReasoningEffort)] = &[
-    ("reasoning-none", moltis_agents::model::ReasoningEffort::None),
+    (
+        "reasoning-none",
+        moltis_agents::model::ReasoningEffort::None,
+    ),
     (
         "reasoning-minimal",
         moltis_agents::model::ReasoningEffort::Minimal,
@@ -56,6 +59,14 @@ pub fn split_reasoning_suffix(
         }
     }
     (model_id, None)
+}
+
+#[must_use]
+pub fn model_id_with_reasoning_suffix(
+    model_id: &str,
+    effort: moltis_agents::model::ReasoningEffort,
+) -> String {
+    format!("{model_id}@reasoning-{}", effort.as_str())
 }
 
 #[must_use]

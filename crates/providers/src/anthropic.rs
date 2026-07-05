@@ -754,9 +754,9 @@ impl LlmProvider for AnthropicProvider {
             body["tools"] = serde_json::Value::Array(to_anthropic_tools(tools));
         }
 
-        if self.reasoning_effort.is_some_and(|effort| {
-            !matches!(effort, moltis_agents::model::ReasoningEffort::None)
-        })
+        if self
+            .reasoning_effort
+            .is_some_and(|effort| !matches!(effort, moltis_agents::model::ReasoningEffort::None))
             && matches!(
                 options.tool_choice,
                 Some(ToolChoice::Tool { .. } | ToolChoice::Any)

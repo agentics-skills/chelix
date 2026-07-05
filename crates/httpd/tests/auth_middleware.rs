@@ -1160,7 +1160,10 @@ async fn proxied_status_syncs_forwarded_webauthn_host() {
 
     let body: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(body["webauthn_available"], true);
-    assert_eq!(body["passkey_origins"], serde_json::json!(["https://app.example.com"]));
+    assert_eq!(
+        body["passkey_origins"],
+        serde_json::json!(["https://app.example.com"])
+    );
     assert!(registry.read().await.contains_host("app.example.com"));
 }
 

@@ -48,7 +48,7 @@ pub(crate) use http::{retry_after_ms_from_headers, with_retry_after_marker};
 #[allow(unused_imports)]
 pub(crate) use model_id::{
     MODEL_ID_NAMESPACE_SEP, REASONING_SUFFIX_SEP, REASONING_SUFFIXES, namespaced_model_id,
-    raw_model_id, split_reasoning_suffix,
+    raw_model_id,
 };
 #[allow(unused_imports)]
 pub(crate) use ollama::normalize_ollama_api_base_url;
@@ -59,6 +59,7 @@ pub use {
         context_window_for_model_with_config, extract_cw_overrides, is_chat_capable_model,
         supports_reasoning_for_model, supports_tools_for_model, supports_vision_for_model,
     },
+    model_id::{model_id_with_reasoning_suffix, split_reasoning_suffix},
     registry::{
         PendingDiscoveries, ProviderRegistry, RediscoveryResult, fetch_discoverable_models,
     },

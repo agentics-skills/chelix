@@ -17,7 +17,8 @@ use {
 
 use crate::{
     Error,
-    params::{bool_param, owned_str_param, require_str, str_param, u64_param},
+    params::{bool_param, owned_str_param, require_str, str_param, u64_param, without_null_params},
+    session_model_override::{ModelOverride, model_override_schema, parse_model_override},
 };
 
 /// Request payload for cross-session message delivery.
@@ -26,7 +27,7 @@ pub struct SendToSessionRequest {
     pub key: String,
     pub message: String,
     pub wait_for_reply: bool,
-    pub model: Option<String>,
+    pub model_override: Option<ModelOverride>,
 }
 
 /// Callback used by `sessions_send`.
@@ -428,13 +429,16 @@ impl AgentTool for SessionsSendTool {
     fn parameters_schema(&self) -> Value {
         serde_json::json!({
             "type": "object",
+            "additionalProperties": false,
             "properties": {
                 "key": {
                     "type": "string",
+                    "minLength": 1,
                     "description": "Session key to send to."
                 },
                 "message": {
                     "type": "string",
+                    "minLength": 1,
                     "description": "Message text to send."
                 },
                 "wait_for_reply": {
@@ -443,24 +447,23 @@ impl AgentTool for SessionsSendTool {
                 },
                 "context": {
                     "type": "string",
+                    "minLength": 1,
                     "description": "Optional sender context prepended to the message."
                 },
-                "model": {
-                    "type": "string",
-                    "description": "Optional model override for the target session turn."
-                }
+                "model_override": model_override_schema()
             },
             "required": ["key", "message"]
         })
     }
 
     async fn execute(&self, params: Value) -> anyhow::Result<Value> {
+        let params = without_null_params(params);
         let key = require_str(&params, "key")?.to_string();
         let message = require_str(&params, "message")?.to_string();
         let wait_for_reply = bool_param(&params, "wait_for_reply", false)
             || bool_param(&params, "waitForReply", false);
         let context = owned_str_param(&params, &["context"]);
-        let model = owned_str_param(&params, &["model"]);
+        let model_override = parse_model_override(&params)?;
 
         // Enforce session access policy.
         if let Some(ref policy) = self.policy {
@@ -490,7 +493,7 @@ impl AgentTool for SessionsSendTool {
             key: key.clone(),
             message,
             wait_for_reply,
-            model,
+            model_override,
         })
         .await?;
 
@@ -749,6 +752,67 @@ mod tests {
         assert_eq!(result["waitForReply"], true);
         assert_eq!(result["result"]["text"], "ok");
         assert!(called.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sessions_send_passes_model_override_to_callback() -> TestResult<()> {
+        let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
+        metadata
+            .upsert("session:target", Some("Target".to_string()))
+            .await?;
+
+        let send_fn: SendToSessionFn = Arc::new(move |req| {
+            Box::pin(async move {
+                let override_config = req
+                    .model_override
+                    .ok_or_else(|| std::io::Error::other("missing model override"))?;
+                assert_eq!(override_config.model, "anthropic::claude-opus-4-5-20251101");
+                assert_eq!(override_config.reasoning_effort.as_str(), "high");
+                Ok(serde_json::json!({ "ok": true }))
+            })
+        });
+        let tool = SessionsSendTool::new(metadata, send_fn);
+
+        tool.execute(serde_json::json!({
+            "key": "session:target",
+            "message": "Do work",
+            "model_override": {
+                "model": "anthropic::claude-opus-4-5-20251101",
+                "reasoning_effort": "high"
+            }
+        }))
+        .await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sessions_send_ignores_null_parameters() -> TestResult<()> {
+        let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
+        metadata
+            .upsert("session:target", Some("Target".to_string()))
+            .await?;
+
+        let send_fn: SendToSessionFn = Arc::new(move |req| {
+            Box::pin(async move {
+                assert!(req.model_override.is_none());
+                assert!(!req.wait_for_reply);
+                Ok(serde_json::json!({ "ok": true }))
+            })
+        });
+        let tool = SessionsSendTool::new(metadata, send_fn);
+
+        let result = tool
+            .execute(serde_json::json!({
+                "key": "session:target",
+                "message": "Do work",
+                "context": null,
+                "wait_for_reply": null,
+                "model_override": null
+            }))
+            .await?;
+
+        assert_eq!(result["sent"], true);
         Ok(())
     }
 

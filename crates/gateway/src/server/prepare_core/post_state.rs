@@ -9,6 +9,7 @@ use {
 };
 
 mod credential_env;
+mod session_tools;
 
 use credential_env::{CredentialEnvVarProvider, ensure_sandbox_api_key};
 
@@ -981,160 +982,12 @@ pub(super) async fn complete_startup(
             moltis_tools::session_state::SessionStateTool::new(Arc::clone(&session_state_store)),
         ));
 
-        let state_for_session_create = Arc::clone(&state);
-        let metadata_for_session_create = Arc::clone(&session_metadata);
-        let create_session: moltis_tools::sessions_manage::CreateSessionFn = Arc::new(
-            move |req: moltis_tools::sessions_manage::CreateSessionRequest| {
-                let state = Arc::clone(&state_for_session_create);
-                let metadata = Arc::clone(&metadata_for_session_create);
-                Box::pin(async move {
-                    let key = req.key;
-                    let parent_session_key = req.parent_session_key;
-
-                    let mut resolve_params = serde_json::json!({ "key": key.clone() });
-                    if let Some(inherit) = req.inherit_agent_from {
-                        resolve_params["inherit_agent_from"] = serde_json::json!(inherit);
-                    }
-                    state
-                        .services
-                        .session
-                        .resolve(resolve_params)
-                        .await
-                        .map_err(|e| moltis_tools::Error::message(e.to_string()))?;
-
-                    let mut patch = serde_json::Map::new();
-                    patch.insert("key".to_string(), serde_json::json!(key.clone()));
-                    if let Some(label) = req.label {
-                        patch.insert("label".to_string(), serde_json::json!(label));
-                    }
-                    if let Some(model) = req.model {
-                        patch.insert("model".to_string(), serde_json::json!(model));
-                    }
-                    if let Some(project_id) = req.project_id {
-                        patch.insert("projectId".to_string(), serde_json::json!(project_id));
-                    }
-                    if patch.len() > 1 {
-                        state
-                            .services
-                            .session
-                            .patch(serde_json::Value::Object(patch))
-                            .await
-                            .map_err(|e| moltis_tools::Error::message(e.to_string()))?;
-                    }
-
-                    // Link the new session to its creator (agent-spawned
-                    // sessions render as children in the UI, like forks).
-                    if let Some(parent) = parent_session_key
-                        && parent != key
-                        && metadata.get(&parent).await.is_some()
-                    {
-                        metadata.set_parent(&key, Some(parent), None).await;
-                    }
-
-                    let entry = metadata.get(&key).await.ok_or_else(|| {
-                        moltis_tools::Error::message(format!(
-                            "session '{key}' not found after create"
-                        ))
-                    })?;
-                    Ok(serde_json::json!({
-                        "entry": {
-                            "id": entry.id,
-                            "key": entry.key,
-                            "label": entry.label,
-                            "model": entry.model,
-                            "createdAt": entry.created_at,
-                            "updatedAt": entry.updated_at,
-                            "messageCount": entry.message_count,
-                            "projectId": entry.project_id,
-                            "parentSessionKey": entry.parent_session_key,
-                            "agent_id": entry.agent_id,
-                            "agentId": entry.agent_id,
-                            "version": entry.version,
-                        }
-                    }))
-                })
-            },
+        session_tools::register_session_tools(
+            &mut tool_registry,
+            &state,
+            &session_store,
+            &session_metadata,
         );
-
-        let state_for_session_delete = Arc::clone(&state);
-        let delete_session: moltis_tools::sessions_manage::DeleteSessionFn = Arc::new(
-            move |req: moltis_tools::sessions_manage::DeleteSessionRequest| {
-                let state = Arc::clone(&state_for_session_delete);
-                Box::pin(async move {
-                    state
-                        .services
-                        .session
-                        .delete(serde_json::json!({
-                            "key": req.key,
-                            "force": req.force,
-                        }))
-                        .await
-                        .map_err(|e| moltis_tools::Error::message(e.to_string()))
-                })
-            },
-        );
-
-        tool_registry.register(Box::new(
-            moltis_tools::sessions_manage::SessionsCreateTool::new(
-                Arc::clone(&session_metadata),
-                create_session,
-            ),
-        ));
-        tool_registry.register(Box::new(
-            moltis_tools::sessions_manage::SessionsDeleteTool::new(
-                Arc::clone(&session_metadata),
-                delete_session,
-            ),
-        ));
-        tool_registry.register(Box::new(
-            moltis_tools::sessions_communicate::SessionsListTool::new(Arc::clone(
-                &session_metadata,
-            )),
-        ));
-        tool_registry.register(Box::new(
-            moltis_tools::sessions_communicate::SessionsHistoryTool::new(
-                Arc::clone(&session_store),
-                Arc::clone(&session_metadata),
-            ),
-        ));
-        tool_registry.register(Box::new(
-            moltis_tools::sessions_communicate::SessionsSearchTool::new(
-                Arc::clone(&session_store),
-                Arc::clone(&session_metadata),
-            ),
-        ));
-
-        let state_for_session_send = Arc::clone(&state);
-        let send_to_session: moltis_tools::sessions_communicate::SendToSessionFn = Arc::new(
-            move |req: moltis_tools::sessions_communicate::SendToSessionRequest| {
-                let state = Arc::clone(&state_for_session_send);
-                Box::pin(async move {
-                    let mut params = serde_json::json!({
-                        "text": req.message,
-                        "_session_key": req.key,
-                    });
-                    if let Some(model) = req.model {
-                        params["model"] = serde_json::json!(model);
-                    }
-                    let chat = state.chat();
-                    if req.wait_for_reply {
-                        chat.send_sync(params)
-                            .await
-                            .map_err(|e| moltis_tools::Error::message(e.to_string()))
-                    } else {
-                        chat.send(params)
-                            .await
-                            .map_err(|e| moltis_tools::Error::message(e.to_string()))
-                    }
-                })
-            },
-        );
-        tool_registry.register(Box::new(
-            moltis_tools::sessions_communicate::SessionsSendTool::new(
-                Arc::clone(&session_metadata),
-                send_to_session,
-            ),
-        ));
         tool_registry.register(Box::new(
             moltis_tools::checkpoints::CheckpointsListTool::new(data_dir.clone()),
         ));

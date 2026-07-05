@@ -36,6 +36,7 @@ pub mod policy;
 pub mod process;
 pub mod sandbox;
 pub mod sandbox_packages;
+pub mod session_model_override;
 pub mod send_document;
 pub mod send_image;
 pub mod session_state;
