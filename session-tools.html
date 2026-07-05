@@ -15,11 +15,10 @@
 <p>Output includes each agent <code>id</code>, <code>name</code>, <code>description</code>, optional persona fields,
 and preset model configuration. Use the returned <code>id</code> as <code>agent_id</code>.</p>
 <h3 id="sessions_create"><code>sessions_create</code></h3>
-<p>Create a new chat session (or resolve an existing one by key) for one explicit
-agent.</p>
+<p>Create a new chat session for one explicit agent. The tool always generates a
+standard <code>session:&#x3C;uuid></code> key and returns it in the result for later calls.</p>
 <p>Input:</p>
 <pre class="astro-code astro-code-themes min-light github-dark" style="background-color:#ffffff;--shiki-dark-bg:#24292e;color:#24292eff;--shiki-dark:#e1e4e8; overflow-x: auto;" tabindex="0" data-language="json" data-code="{
-  &#x22;key&#x22;: &#x22;optional session key (generated if omitted)&#x22;,
   &#x22;agent_id&#x22;: &#x22;required agent id from sessions_explore&#x22;,
   &#x22;label&#x22;: &#x22;optional label&#x22;,
   &#x22;project_id&#x22;: &#x22;optional project id&#x22;,
@@ -28,7 +27,6 @@ agent.</p>
     &#x22;reasoning_effort&#x22;: &#x22;none|minimal|low|medium|high|xhigh|max&#x22;
   }
 }"><code><span class="line"><span style="color:#24292EFF;--shiki-dark:#E1E4E8">{</span></span>
-<span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "key"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "optional session key (generated if omitted)"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
 <span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "agent_id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "required agent id from sessions_explore"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
 <span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "label"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "optional label"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
 <span class="line"><span style="color:#D32F2F;--shiki-dark:#79B8FF">  "project_id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">:</span><span style="color:#22863A;--shiki-dark:#9ECBFF"> "optional project id"</span><span style="color:#212121;--shiki-dark:#E1E4E8">,</span></span>
@@ -63,12 +61,11 @@ UI, for example:</p>
 <code>[agents.presets.&#x3C;agent_id>].model</code> and
 <code>[agents.presets.&#x3C;agent_id>].reasoning_effort</code> configured. Otherwise the tool
 returns an explicit error explaining which preset field is missing.</p>
-<p>Resolving an existing session never overwrites its existing agent or model.</p>
 <p>Sessions created by an agent are automatically linked to the calling session
 as children (<code>parentSessionKey</code>), so the sessions sidebar renders them nested
 under their creator — the same tree mechanism used for forks. Nesting works
 recursively: if the created session’s agent creates another session, it nests
-one level deeper. Existing sessions are never re-parented by this tool.</p>
+one level deeper.</p>
 <p>The parent link can also be managed via the <code>session.patch</code> RPC using the
 <code>parentSessionKey</code> field (set a new parent or <code>null</code> to detach). Cycles and
 self-parenting are rejected.</p>
@@ -236,7 +233,7 @@ name = &#x22;classify_destination&#x22;"><code><span class="line"><span style="c
 <p>Common coordinator flow:</p>
 <ol>
 <li><code>sessions_explore</code> to choose an explicit <code>agent_id</code></li>
-<li><code>sessions_create</code> to create or resolve worker sessions</li>
+<li><code>sessions_create</code> to create worker sessions</li>
 <li><code>sessions_list</code> to discover existing workers</li>
 <li><code>sessions_search</code> to find prior related work</li>
 <li><code>sessions_history</code> to inspect progress</li>
