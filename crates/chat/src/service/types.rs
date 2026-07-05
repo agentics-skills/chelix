@@ -37,9 +37,15 @@ pub(in crate::service) struct QueuedMessage {
 /// A tool call currently executing within an active agent run.
 #[derive(Debug, Clone, Serialize)]
 pub struct ActiveToolCall {
+    #[serde(rename = "runId")]
+    pub run_id: String,
+    #[serde(rename = "toolCallId")]
     pub id: String,
+    #[serde(rename = "toolName")]
     pub name: String,
     pub arguments: Value,
+    #[serde(rename = "executionMode", skip_serializing_if = "Option::is_none")]
+    pub execution_mode: Option<String>,
     #[serde(rename = "startedAt")]
     pub started_at: u64,
 }
@@ -585,12 +591,59 @@ impl LiveChatService {
 mod tests {
     use {
         super::{
-            ActiveAssistantDraft, build_persisted_assistant_message,
+            ActiveAssistantDraft, ActiveToolCall, build_persisted_assistant_message,
             build_tool_call_assistant_message,
         },
         crate::types::AssistantTurnOutput,
         moltis_sessions::PersistedMessage,
     };
+
+    #[test]
+    fn active_tool_call_serializes_switch_payload_shape() {
+        let call = ActiveToolCall {
+            run_id: "run-1".to_string(),
+            id: "tool-1".to_string(),
+            name: "browser".to_string(),
+            arguments: serde_json::json!({"url": "https://example.com"}),
+            execution_mode: Some("sandbox".to_string()),
+            started_at: 42,
+        };
+
+        let value = serde_json::to_value(call).expect("active tool call serializes");
+
+        assert_eq!(value.get("runId").and_then(|v| v.as_str()), Some("run-1"));
+        assert_eq!(
+            value.get("toolCallId").and_then(|v| v.as_str()),
+            Some("tool-1")
+        );
+        assert_eq!(
+            value.get("toolName").and_then(|v| v.as_str()),
+            Some("browser")
+        );
+        assert_eq!(
+            value.get("executionMode").and_then(|v| v.as_str()),
+            Some("sandbox")
+        );
+        assert_eq!(value.get("startedAt").and_then(|v| v.as_u64()), Some(42));
+        assert!(value.get("id").is_none());
+        assert!(value.get("name").is_none());
+    }
+
+    #[test]
+    fn active_tool_call_omits_missing_execution_mode() {
+        let call = ActiveToolCall {
+            run_id: "run-1".to_string(),
+            id: "tool-1".to_string(),
+            name: "exec".to_string(),
+            arguments: serde_json::json!({"command": "true"}),
+            execution_mode: None,
+            started_at: 42,
+        };
+
+        let value = serde_json::to_value(call).expect("active tool call serializes");
+
+        assert!(value.get("executionMode").is_none());
+    }
 
     #[test]
     fn active_assistant_draft_omits_cache_usage_fields() {

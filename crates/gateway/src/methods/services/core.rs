@@ -1,5 +1,30 @@
 use super::*;
 
+fn insert_session_activity_snapshot(
+    obj: &mut serde_json::Map<String, serde_json::Value>,
+    replying: bool,
+    thinking_text: Option<String>,
+    tool_calls: Vec<serde_json::Value>,
+    voice_pending: bool,
+) {
+    obj.insert("replying".to_string(), serde_json::Value::Bool(replying));
+    if !replying {
+        return;
+    }
+    if let Some(text) = thinking_text {
+        obj.insert("thinkingText".to_string(), serde_json::Value::String(text));
+    }
+    if !tool_calls.is_empty() {
+        obj.insert(
+            "activeToolCalls".to_string(),
+            serde_json::Value::Array(tool_calls),
+        );
+    }
+    if voice_pending {
+        obj.insert("voicePending".to_string(), serde_json::Value::Bool(true));
+    }
+}
+
 pub(super) fn register(reg: &mut MethodRegistry) {
     // Config
     reg.register(
@@ -1092,16 +1117,25 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 let chat = ctx.state.chat();
                 let active_keys = chat.active_session_keys().await;
                 let replying = active_keys.iter().any(|k| k == key);
+                let thinking_text = if replying {
+                    chat.active_thinking_text(key).await
+                } else {
+                    None
+                };
+                let tool_calls = if replying {
+                    chat.active_tool_calls(key).await
+                } else {
+                    Vec::new()
+                };
+                let voice_pending = replying && chat.active_voice_pending(key).await;
                 if let Some(obj) = result.as_object_mut() {
-                    obj.insert("replying".to_string(), serde_json::Value::Bool(replying));
-                    if replying {
-                        if let Some(text) = chat.active_thinking_text(key).await {
-                            obj.insert("thinkingText".to_string(), serde_json::Value::String(text));
-                        }
-                        if chat.active_voice_pending(key).await {
-                            obj.insert("voicePending".to_string(), serde_json::Value::Bool(true));
-                        }
-                    }
+                    insert_session_activity_snapshot(
+                        obj,
+                        replying,
+                        thinking_text,
+                        tool_calls,
+                        voice_pending,
+                    );
                 }
 
                 Ok(result)
@@ -1354,5 +1388,64 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 })
             }),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::insert_session_activity_snapshot;
+
+    #[test]
+    fn session_activity_snapshot_includes_active_tool_calls_only_when_replying() {
+        let mut obj = serde_json::Map::new();
+
+        insert_session_activity_snapshot(
+            &mut obj,
+            true,
+            Some("working".to_string()),
+            vec![serde_json::json!({
+                "runId": "run-1",
+                "toolCallId": "tool-1",
+                "toolName": "exec",
+            })],
+            true,
+        );
+
+        assert_eq!(obj.get("replying").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            obj.get("thinkingText").and_then(|v| v.as_str()),
+            Some("working")
+        );
+        assert_eq!(
+            obj.get("voicePending").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        let tool_call = obj
+            .get("activeToolCalls")
+            .and_then(|v| v.as_array())
+            .and_then(|calls| calls.first())
+            .expect("active tool call is included");
+        assert_eq!(
+            tool_call.get("toolName").and_then(|v| v.as_str()),
+            Some("exec")
+        );
+    }
+
+    #[test]
+    fn session_activity_snapshot_omits_active_fields_when_idle() {
+        let mut obj = serde_json::Map::new();
+
+        insert_session_activity_snapshot(
+            &mut obj,
+            false,
+            Some("stale".to_string()),
+            vec![serde_json::json!({"toolName": "exec"})],
+            true,
+        );
+
+        assert_eq!(obj.get("replying").and_then(|v| v.as_bool()), Some(false));
+        assert!(obj.get("thinkingText").is_none());
+        assert!(obj.get("activeToolCalls").is_none());
+        assert!(obj.get("voicePending").is_none());
     }
 }

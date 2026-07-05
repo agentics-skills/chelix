@@ -284,7 +284,7 @@ final class ChatStore: ObservableObject {
                     let thinking = dict["thinkingText"] as? String
                     var toolNames: [String] = []
                     if let tools = dict["toolCalls"] as? [[String: Any]] {
-                        toolNames = tools.compactMap { $0["name"] as? String }
+                        toolNames = tools.compactMap { $0["toolName"] as? String }
                     }
                     peekResult = PeekResult(
                         active: true,

@@ -929,10 +929,6 @@ impl LiveChatService {
             "chat.send"
         );
 
-        // Capture user message index (0-based) so we can include assistant
-        // message index in the "final" broadcast for client-side deduplication.
-        let user_message_index = history.len(); // user msg is at this index in the JSONL
-
         let provider_name = provider.name().to_string();
         let model_id = provider.id().to_string();
         if self
@@ -1059,6 +1055,11 @@ impl LiveChatService {
             }
         }
 
+        // Capture the user message index after any auto-compaction reloads
+        // history. The user message is persisted immediately after this point,
+        // so the index matches the JSONL slot used by subsequent broadcasts.
+        let user_message_index = history.len();
+
         // Persist the user message now that we know it won't be queued.
         // (Queued messages skip this; they are persisted when replayed.)
         if let Err(e) = self
@@ -1072,10 +1073,10 @@ impl LiveChatService {
         // Broadcast a user_message event so that other connected clients
         // (e.g. the web UI when the message was sent via the GraphQL API)
         // can display the message in real-time without a page reload.
-        // We intentionally omit messageIndex (same rationale as
-        // channel_user in dispatch.rs) and include `seq` so that the
-        // originating web client can suppress the echo it already
-        // rendered optimistically.
+        // Include messageIndex now that the message has been persisted. Chat
+        // sends are serialized per session by the run permit, so concurrent
+        // accepted messages cannot receive the same persisted index. `seq`
+        // still lets the originating web client suppress the optimistic echo.
         broadcast(
             &self.state,
             "chat",
@@ -1084,6 +1085,7 @@ impl LiveChatService {
                 "text": text,
                 "sessionKey": session_key,
                 "seq": client_seq,
+                "messageIndex": user_message_index,
             }),
             BroadcastOpts::default(),
         )

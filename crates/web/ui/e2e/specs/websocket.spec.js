@@ -582,6 +582,80 @@ test.describe("WebSocket connection lifecycle", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
+	test("switch payload restores active running tool calls", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await page.goto("/chats/main");
+		await waitForWsConnected(page);
+		await waitForChatSessionReady(page);
+		await expectRpcOk(page, "chat.clear", {});
+
+		await mockRpcOkResponse(page, "sessions.switch", {
+			entry: { key: "session:active-tool", messageCount: 1 },
+			historyOmitted: false,
+			history: [{ role: "user", content: "run a command", historyIndex: 0 }],
+			replying: true,
+			activeToolCalls: [
+				{
+					runId: "run-switch-tool",
+					toolCallId: "tc-switch-tool",
+					toolName: "exec",
+					arguments: { command: "sleep 10" },
+				},
+			],
+		});
+
+		await page.evaluate(async () => {
+			const appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
+			if (!appScript) throw new Error("app module script not found");
+			const appUrl = new URL(appScript.src, window.location.origin);
+			const prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
+			const sessions = await import(`${prefix}js/sessions.js`);
+			sessions.switchSession("session:active-tool");
+		});
+
+		const card = page.locator("#tool-run-switch-tool-tc-switch-tool");
+		await expect(card).toBeVisible();
+		await expect(card.locator(".tool-call-result-placeholder")).toContainText("Waiting for tool result");
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("user_message during switch is cached and rendered in child sessions", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await page.goto("/chats/main");
+		await waitForWsConnected(page);
+		await waitForChatSessionReady(page);
+		await expectRpcOk(page, "chat.clear", {});
+
+		await mockRpcOkResponse(page, "sessions.switch", {
+			entry: { key: "session:child-live", messageCount: 1 },
+			historyOmitted: false,
+			history: [],
+			replying: false,
+		});
+
+		await page.evaluate(async () => {
+			const appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
+			if (!appScript) throw new Error("app module script not found");
+			const appUrl = new URL(appScript.src, window.location.origin);
+			const prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
+			const sessions = await import(`${prefix}js/sessions.js`);
+			sessions.switchSession("session:child-live");
+		});
+
+		await expectRpcOk(page, "system-event", {
+			event: "chat",
+			payload: {
+				sessionKey: "session:child-live",
+				state: "user_message",
+				text: "prompt sent to child",
+				messageIndex: 0,
+			},
+		});
+
+		await expect(page.locator("#messages .msg.user").filter({ hasText: "prompt sent to child" })).toBeVisible();
+		expect(pageErrors).toEqual([]);
+	});
+
 	test("final event clears stale running exec status when tool end is missed", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await page.goto("/chats/main");

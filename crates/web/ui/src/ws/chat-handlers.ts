@@ -201,6 +201,9 @@ function handleChatChannelUser(p: ChatPayload, isActive: boolean, isChatPage: bo
 function handleChatUserMessage(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
 	// Suppress the echo for the originating client.
 	if (p.seq !== undefined && p.seq !== null && p.seq <= S.chatSeq) return;
+	const msgSession = sessionStore.getByKey(eventSession);
+	const lastIdx = msgSession ? msgSession.lastHistoryIndex.value : -1;
+	if (p.messageIndex !== undefined && p.messageIndex !== null && p.messageIndex <= lastIdx) return;
 
 	bumpSessionCount(eventSession, 1);
 	cacheSessionHistoryMessage(
@@ -215,6 +218,7 @@ function handleChatUserMessage(p: ChatPayload, isActive: boolean, isChatPage: bo
 	if (!isActive) {
 		setSessionUnread(eventSession, true);
 	}
+	updateSessionHistoryIndex(eventSession, p.messageIndex);
 	if (!(isChatPage && isActive)) return;
 	// Safe: renderMarkdown calls esc() first -- all user input is
 	// HTML-escaped before formatting tags are applied.
@@ -756,6 +760,7 @@ export function handleChatEvent(p: ChatPayload): void {
 		// terminal frames. Unstick and process final/error so replies still show
 		// without requiring a full page reload.
 		const allowDuringSwitch =
+			p.state === "user_message" ||
 			p.state === "final" ||
 			p.state === "error" ||
 			p.state === "aborted" ||

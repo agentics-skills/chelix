@@ -19,6 +19,8 @@ import {
 } from "../stores/session-history-cache";
 import { insertSessionInOrder, Session, sessionStore } from "../stores/session-store";
 import type { HistoryMessage, RpcResponse, SessionMeta } from "../types";
+import type { ChatPayload, ToolCallPayload } from "../types/ws-events";
+import { handleToolCallStartDom } from "../ws/tool-helpers";
 
 import {
 	clearHistoryPaginationState,
@@ -64,6 +66,7 @@ interface SwitchPayload {
 	replying?: boolean;
 	thinkingText?: string;
 	voicePending?: boolean;
+	activeToolCalls?: ToolCallPayload[];
 	hasMore?: boolean;
 	nextCursor?: number;
 	totalMessages?: number;
@@ -215,6 +218,29 @@ function applyReplyingStateFromSwitchPayload(key: string, payload: SwitchPayload
 	}
 }
 
+function restoreActiveToolCallsFromSwitchPayload(key: string, payload: SwitchPayload): void {
+	if (key !== sessionStore.activeSessionKey.value) return;
+	const toolCalls = Array.isArray(payload.activeToolCalls) ? payload.activeToolCalls : [];
+	for (const call of toolCalls) {
+		if (!call || typeof call !== "object") continue;
+		const toolCallId = call.toolCallId;
+		const toolName = call.toolName;
+		if (!toolCallId) continue;
+		handleToolCallStartDom(
+			{
+				sessionKey: key,
+				state: "tool_call_start",
+				runId: call.runId,
+				toolCallId,
+				toolName,
+				arguments: call.arguments,
+				executionMode: call.executionMode,
+			} as ChatPayload,
+			key,
+		);
+	}
+}
+
 /** Clear history for the currently active session and reset local UI state. */
 export function clearActiveSession(): Promise<RpcResponse> {
 	const prevHistoryIdx = S.lastHistoryIndex;
@@ -347,6 +373,7 @@ export function switchSession(key: string, searchContext?: SearchContext | null,
 				} else {
 					postHistoryLoadActions(key, searchContext || null, [], thinkingText, false);
 				}
+				restoreActiveToolCallsFromSwitchPayload(key, switchPayload);
 				if (appliedServerHistory && historyPayload.historyTruncated === true) {
 					const dropped = Number(historyPayload.historyDroppedCount) || 0;
 					chatAddMsg(

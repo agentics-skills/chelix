@@ -2,10 +2,7 @@
 
 use {moltis_config::schema::ReasoningEffort, serde_json::Value};
 
-use crate::{
-    Error, Result,
-    params::str_param,
-};
+use crate::{Error, Result, params::str_param};
 
 #[derive(Debug, Clone)]
 pub struct ModelOverride {
@@ -52,9 +49,7 @@ pub fn parse_model_override(params: &Value) -> Result<Option<ModelOverride>> {
         .ok_or_else(|| Error::message("model_override.model must be a non-empty string"))?
         .to_string();
     let reasoning_effort = str_param(value, "reasoning_effort")
-        .ok_or_else(|| {
-            Error::message("model_override.reasoning_effort must be a non-empty string")
-        })
+        .ok_or_else(|| Error::message("model_override.reasoning_effort must be a non-empty string"))
         .and_then(parse_reasoning_effort)?;
     Ok(Some(ModelOverride {
         model,

@@ -260,12 +260,7 @@ async fn effective_model_from_override(
     state: &GatewayState,
     model_override: moltis_tools::session_model_override::ModelOverride,
 ) -> moltis_tools::Result<String> {
-    effective_model_from_parts(
-        state,
-        model_override.model,
-        model_override.reasoning_effort,
-    )
-    .await
+    effective_model_from_parts(state, model_override.model, model_override.reasoning_effort).await
 }
 
 #[tracing::instrument(skip(state))]

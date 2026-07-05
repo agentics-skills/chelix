@@ -515,7 +515,7 @@ private struct PeekPopoverView: View {
                         HStack(spacing: 4) {
                             Image(systemName: "gearshape")
                                 .foregroundStyle(.secondary)
-                            Text(tc.name)
+                            Text(tc.toolName)
                                 .font(.subheadline.monospaced())
                         }
                     }

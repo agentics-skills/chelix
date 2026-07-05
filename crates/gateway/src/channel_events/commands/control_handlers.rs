@@ -780,7 +780,7 @@ pub(in crate::channel_events) async fn handle_peek(
             }
             if let Some(tools) = res.get("toolCalls").and_then(|v| v.as_array()) {
                 for tc in tools {
-                    let name = tc.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+                    let name = tc.get("toolName").and_then(|v| v.as_str()).unwrap_or("?");
                     lines.push(format!("  Running: {name}"));
                 }
             }

@@ -198,6 +198,21 @@ impl ChatService for LiveChatService {
         let model_store = Arc::clone(&self.model_store);
         let user_message_index = history.len();
 
+        if !ephemeral {
+            broadcast(
+                &self.state,
+                "chat",
+                serde_json::json!({
+                    "state": "user_message",
+                    "text": text,
+                    "sessionKey": session_key,
+                    "messageIndex": user_message_index,
+                }),
+                BroadcastOpts::default(),
+            )
+            .await;
+        }
+
         info!(
             run_id = %run_id,
             user_message = %text,
@@ -1320,6 +1335,18 @@ impl ChatService for LiveChatService {
             .await
             .get(session_key)
             .is_some_and(|m| *m == ReplyMedium::Voice)
+    }
+
+    async fn active_tool_calls(&self, session_key: &str) -> Vec<Value> {
+        self.active_tool_calls
+            .read()
+            .await
+            .get(session_key)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|call| serde_json::to_value(call).ok())
+            .collect()
     }
 
     async fn peek(&self, params: Value) -> ServiceResult {

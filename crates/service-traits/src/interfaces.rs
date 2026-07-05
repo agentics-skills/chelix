@@ -374,6 +374,10 @@ pub trait ChatService: Send + Sync {
         false
     }
 
+    async fn active_tool_calls(&self, _session_key: &str) -> Vec<Value> {
+        Vec::new()
+    }
+
     async fn peek(&self, _params: Value) -> ServiceResult {
         Ok(serde_json::json!({ "active": false }))
     }

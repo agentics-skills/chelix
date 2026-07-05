@@ -38,15 +38,18 @@ export const pendingToolCallEnds: Map<string, ToolCallPayload> = new Map();
 
 export function toolCallLogicalId(payload: ToolCallPayload | null | undefined): string {
 	if (!payload) return "";
-	if (payload.runId) return `${payload.runId}:${payload.toolCallId}`;
-	return String(payload.toolCallId || "");
+	const toolCallId = payload.toolCallId || "";
+	if (payload.runId) return `${payload.runId}:${toolCallId}`;
+	return String(toolCallId);
 }
 
 export function toolCallCardId(payload: ToolCallPayload | ChatPayload | null | undefined): string {
-	if ((payload as ToolCallPayload)?.runId) {
-		return `tool-${(payload as ToolCallPayload).runId}-${(payload as ToolCallPayload).toolCallId}`;
+	const p = payload as ToolCallPayload | null | undefined;
+	const toolCallId = p?.toolCallId || "";
+	if (p?.runId) {
+		return `tool-${p.runId}-${toolCallId}`;
 	}
-	return `tool-${(payload as ToolCallPayload)?.toolCallId}`;
+	return `tool-${toolCallId}`;
 }
 
 export function toolCallEventKey(

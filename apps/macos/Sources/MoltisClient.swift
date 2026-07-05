@@ -232,9 +232,11 @@ struct BridgePeekResult: Decodable {
 }
 
 struct BridgePeekToolCall: Decodable, Identifiable {
-    let id: String
-    let name: String
+    let toolCallId: String
+    let toolName: String
     let startedAt: UInt64?
+
+    var id: String { toolCallId }
 }
 
 // MARK: - Session types

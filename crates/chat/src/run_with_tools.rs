@@ -58,6 +58,16 @@ use crate::{
 #[cfg(feature = "push-notifications")]
 use crate::channels::send_chat_push_notification;
 
+fn tool_execution_mode(tool_name: &str, session_is_sandboxed: bool) -> Option<String> {
+    (tool_name == "browser").then(|| {
+        if session_is_sandboxed {
+            "sandbox".to_string()
+        } else {
+            "host".to_string()
+        }
+    })
+}
+
 pub(crate) async fn run_with_tools(
     persona: PromptPersona,
     state: &Arc<dyn ChatRuntime>,
@@ -329,9 +339,11 @@ pub(crate) async fn run_with_tools(
                             .entry(sk.clone())
                             .or_default()
                             .push(ActiveToolCall {
+                                run_id: run_id.clone(),
                                 id: id.clone(),
                                 name: name.clone(),
                                 arguments: arguments.clone(),
+                                execution_mode: tool_execution_mode(&name, session_is_sandboxed),
                                 started_at: now_ms(),
                             });
                     }
@@ -367,12 +379,11 @@ pub(crate) async fn run_with_tools(
                         "arguments": arguments,
                         "seq": seq,
                     });
-                    if is_browser {
-                        payload["executionMode"] = serde_json::json!(if session_is_sandboxed {
-                            "sandbox"
-                        } else {
-                            "host"
-                        });
+                    if is_browser
+                        && let Some(execution_mode) =
+                            tool_execution_mode(&name, session_is_sandboxed)
+                    {
+                        payload["executionMode"] = serde_json::json!(execution_mode);
                     }
                     payload
                 },

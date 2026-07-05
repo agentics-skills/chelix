@@ -730,6 +730,10 @@ impl ChatService for ExternalAgentChatService {
         self.inner.active_voice_pending(session_key).await
     }
 
+    async fn active_tool_calls(&self, session_key: &str) -> Vec<Value> {
+        self.inner.active_tool_calls(session_key).await
+    }
+
     async fn peek(&self, params: Value) -> ServiceResult {
         self.inner.peek(params).await
     }

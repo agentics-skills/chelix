@@ -137,6 +137,7 @@ export interface ChatPayload {
 	audioWarning?: string | null;
 	replyMedium?: string;
 	messageIndex?: number;
+	activeToolCalls?: ToolCallPayload[];
 	toolCallId?: string;
 	toolName?: string;
 	arguments?: Record<string, unknown>;
