@@ -18,7 +18,7 @@ use {
 use {
     moltis_agents::{
         ChatMessage, UserContent,
-        model::values_to_chat_messages,
+        model::{ReasoningEffort, values_to_chat_messages},
         prompt::{
             build_system_prompt_minimal_runtime_details,
             build_system_prompt_with_session_runtime_details,
@@ -53,6 +53,60 @@ use crate::{
 
 use super::*;
 
+pub(super) fn resolved_turn_reasoning_effort(
+    session_entry: Option<&moltis_sessions::metadata::SessionEntry>,
+    persona: &PromptPersona,
+    agent_id: &str,
+) -> Option<String> {
+    if let Some(reasoning_effort) = session_entry.and_then(|entry| entry.reasoning_effort.clone()) {
+        return Some(reasoning_effort);
+    }
+    persona
+        .config
+        .agents
+        .get_preset(agent_id)
+        .and_then(|preset| preset.reasoning_effort)
+        .map(|effort| effort.as_str().to_string())
+}
+
+pub(super) fn requested_reasoning_effort(params: &Value) -> Result<Option<ReasoningEffort>, String> {
+    let Some(value) = params
+        .get("reasoningEffort")
+        .or_else(|| params.get("reasoning_effort"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+    else {
+        return Ok(None);
+    };
+    if value.is_empty() {
+        return Ok(None);
+    }
+    ReasoningEffort::try_from(value).map(Some)
+}
+
+pub(super) fn apply_reasoning_effort_to_provider(
+    provider: Arc<dyn moltis_agents::model::LlmProvider>,
+    reasoning_effort: Option<&str>,
+) -> Result<Arc<dyn moltis_agents::model::LlmProvider>, String> {
+    let Some(reasoning_effort) = reasoning_effort.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(provider);
+    };
+    let effort = ReasoningEffort::try_from(reasoning_effort)?;
+    Arc::clone(&provider).with_reasoning_effort(effort).ok_or_else(|| {
+        format!(
+            "model '{}' does not support reasoning_effort",
+            provider.id()
+        )
+    })
+}
+
+fn send_sync_model_id<'a>(
+    explicit_model: Option<&'a str>,
+    session_entry: Option<&'a moltis_sessions::metadata::SessionEntry>,
+) -> Option<&'a str> {
+    explicit_model.or_else(|| session_entry.and_then(|entry| entry.model.as_deref()))
+}
+
 #[async_trait]
 impl ChatService for LiveChatService {
     async fn send(&self, params: Value) -> ServiceResult {
@@ -84,6 +138,7 @@ impl ChatService for LiveChatService {
             .unwrap_or(false);
 
         let explicit_model = params.get("model").and_then(|v| v.as_str());
+        let requested_reasoning_effort_override = requested_reasoning_effort(&params)?;
         let tool_controls =
             moltis_config::schema::AgentToolControls::from_tool_context(Some(&params));
         let stream_only = !self.has_tools_sync();
@@ -92,21 +147,6 @@ impl ChatService for LiveChatService {
         let session_key = match params.get("_session_key").and_then(|v| v.as_str()) {
             Some(sk) => sk.to_string(),
             None => "main".to_string(),
-        };
-
-        // Resolve provider.
-        let provider: Arc<dyn moltis_agents::model::LlmProvider> = {
-            let reg = self.providers.read().await;
-            if let Some(id) = explicit_model {
-                reg.get(id)
-                    .ok_or_else(|| format!("model '{id}' not found"))?
-            } else if !stream_only {
-                reg.first_with_tools()
-                    .ok_or_else(|| "no LLM providers configured".to_string())?
-            } else {
-                reg.first()
-                    .ok_or_else(|| "no LLM providers configured".to_string())?
-            }
         };
 
         let user_audio = user_audio_path_from_params(&params, &session_key);
@@ -154,6 +194,20 @@ impl ChatService for LiveChatService {
         }
 
         let session_entry = self.session_metadata.get(&session_key).await;
+        let model_id = send_sync_model_id(explicit_model, session_entry.as_ref());
+        let provider: Arc<dyn moltis_agents::model::LlmProvider> = {
+            let reg = self.providers.read().await;
+            if let Some(id) = model_id {
+                reg.get(id)
+                    .ok_or_else(|| format!("model '{id}' not found"))?
+            } else if !stream_only {
+                reg.first_with_tools()
+                    .ok_or_else(|| "no LLM providers configured".to_string())?
+            } else {
+                reg.first()
+                    .ok_or_else(|| "no LLM providers configured".to_string())?
+            }
+        };
         let session_agent_id = resolve_prompt_agent_id(session_entry.as_ref());
         let persona = load_prompt_persona_for_session(
             &session_key,
@@ -161,6 +215,16 @@ impl ChatService for LiveChatService {
             self.session_state_store.as_deref(),
         )
         .await;
+        let resolved_reasoning_effort = requested_reasoning_effort_override
+            .map(|effort| effort.as_str().to_string())
+            .or_else(|| {
+                resolved_turn_reasoning_effort(
+                    session_entry.as_ref(),
+                    &persona,
+                    &session_agent_id,
+                )
+            });
+        let provider = apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
         let mut runtime_context = build_prompt_runtime_context(
             &self.state,
             &persona.config,
@@ -193,8 +257,8 @@ impl ChatService for LiveChatService {
             Arc::clone(&self.tool_registry)
         };
         let hook_registry = self.hook_registry.clone();
-        let provider_name = provider.name().to_string();
-        let model_id = provider.id().to_string();
+            let provider_name = provider.name().to_string();
+            let model_id = provider.id().to_string();
         let model_store = Arc::clone(&self.model_store);
         let user_message_index = history.len();
 
@@ -269,6 +333,7 @@ impl ChatService for LiveChatService {
                 &history,
                 &session_key,
                 &session_agent_id,
+                    resolved_reasoning_effort.clone(),
                 desired_reply_medium,
                 None,
                 user_message_index,
@@ -295,6 +360,7 @@ impl ChatService for LiveChatService {
                 &history,
                 &session_key,
                 &session_agent_id,
+                    resolved_reasoning_effort.clone(),
                 desired_reply_medium,
                 None,
                 Some(&runtime_context),
@@ -339,6 +405,7 @@ impl ChatService for LiveChatService {
                 assistant_output.clone(),
                 Some(model_id.clone()),
                 Some(provider_name.clone()),
+                    resolved_reasoning_effort.clone(),
                 None,
                 Some(run_id.clone()),
             );
@@ -1417,5 +1484,60 @@ impl ChatService for LiveChatService {
             "thinkingText": thinking_text,
             "toolCalls": tool_calls,
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use moltis_sessions::metadata::SessionEntry;
+
+    use super::send_sync_model_id;
+
+    fn session_entry_with_model(model: Option<&str>) -> SessionEntry {
+        SessionEntry {
+            key: "session:test".to_string(),
+            id: "test".to_string(),
+            label: None,
+            model: model.map(str::to_string),
+            created_at: 0,
+            updated_at: 0,
+            message_count: 0,
+            project_id: None,
+            archived: false,
+            worktree_branch: None,
+            sandbox_enabled: None,
+            sandbox_image: None,
+            channel_binding: None,
+            parent_session_key: None,
+            fork_point: None,
+            mcp_disabled: None,
+            preview: None,
+            last_seen_message_count: 0,
+            version: 0,
+            agent_id: None,
+            node_id: None,
+            mode_id: None,
+            sandbox_backend: None,
+            external_agent_kind: None,
+            external_session_id: None,
+            reasoning_effort: None,
+        }
+    }
+
+    #[test]
+    fn send_sync_prefers_explicit_model_over_session_model() {
+        let entry = session_entry_with_model(Some("preset-model"));
+
+        assert_eq!(
+            send_sync_model_id(Some("override-model"), Some(&entry)),
+            Some("override-model")
+        );
+    }
+
+    #[test]
+    fn send_sync_uses_session_model_without_override() {
+        let entry = session_entry_with_model(Some("preset-model"));
+
+        assert_eq!(send_sync_model_id(None, Some(&entry)), Some("preset-model"));
     }
 }

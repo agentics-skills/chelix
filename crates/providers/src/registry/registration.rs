@@ -1183,25 +1183,10 @@ impl ProviderRegistry {
     }
 
     pub fn get(&self, model_id: &str) -> Option<Arc<dyn LlmProvider>> {
-        let (base_id, reasoning) = split_reasoning_suffix(model_id);
-        let provider = self
-            .resolve_registry_model_id(base_id, None)
+        self.resolve_registry_model_id(model_id, None)
             .as_deref()
             .and_then(|id| self.providers.get(id))
-            .cloned()?;
-        if let Some(effort) = reasoning {
-            let new_provider = Arc::clone(&provider).with_reasoning_effort(effort);
-            if new_provider.is_none() {
-                tracing::warn!(
-                    model_id,
-                    ?effort,
-                    "provider does not support reasoning effort; ignoring suffix"
-                );
-            }
-            Some(new_provider.unwrap_or(provider))
-        } else {
-            Some(provider)
-        }
+            .cloned()
     }
 
     pub fn first(&self) -> Option<Arc<dyn LlmProvider>> {
@@ -1229,37 +1214,6 @@ impl ProviderRegistry {
 
     pub fn list_models(&self) -> &[ModelInfo] {
         &self.models
-    }
-
-    /// Return the base model list plus reasoning-effort variants for supported models.
-    ///
-    /// For each model that supports extended thinking, three additional entries
-    /// are appended: `<id>@reasoning-low`, `<id>@reasoning-medium`, `<id>@reasoning-high`.
-    /// These virtual IDs are resolved by `get()` back to the base provider with
-    /// the corresponding reasoning effort applied.
-    #[must_use]
-    pub fn list_models_with_reasoning_variants(&self) -> Vec<ModelInfo> {
-        let mut result = Vec::with_capacity(self.models.len() * 4);
-        for m in &self.models {
-            result.push(m.clone());
-            if m.capabilities.reasoning {
-                for &(suffix, _) in REASONING_SUFFIXES {
-                    let label = suffix.strip_prefix("reasoning-").unwrap_or(suffix);
-                    result.push(ModelInfo {
-                        id: format!("{}{REASONING_SUFFIX_SEP}{suffix}", m.id),
-                        provider: m.provider.clone(),
-                        display_name: format!("{} ({label} reasoning)", m.display_name),
-                        created_at: m.created_at,
-                        recommended: false,
-                        capabilities: ModelCapabilities {
-                            reasoning: true,
-                            ..m.capabilities
-                        },
-                    });
-                }
-            }
-        }
-        result
     }
 
     /// Return all registered providers in registration order.

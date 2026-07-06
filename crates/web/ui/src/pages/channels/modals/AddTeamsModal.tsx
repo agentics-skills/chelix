@@ -15,12 +15,7 @@ import { models as modelsSig } from "../../../stores/model-store";
 import { targetValue } from "../../../typed-events";
 import { ChannelType } from "../../../types";
 import { copyToClipboard, Modal, showToast } from "../../../ui";
-import {
-	type ChannelConfig,
-	ConnectionModeHint,
-	loadChannels,
-	showAddTeams,
-} from "../../ChannelsPage";
+import { type ChannelConfig, ConnectionModeHint, loadChannels, showAddTeams } from "../../ChannelsPage";
 import { AdvancedConfigPatchField, SharedChannelFields } from "../ChannelFields";
 
 export function AddTeamsModal(): VNode {
@@ -130,9 +125,7 @@ export function AddTeamsModal(): VNode {
 						<span className="text-[var(--muted)]">
 							Teams sends messages to your server via webhook. Your Moltis instance must be reachable over HTTPS.
 						</span>
-						<span className="text-[var(--muted)]">
-							Enter your public HTTPS base URL manually.
-						</span>
+						<span className="text-[var(--muted)]">Enter your public HTTPS base URL manually.</span>
 					</div>
 				)}
 				<div className="channel-card">
@@ -271,9 +264,7 @@ export function AddTeamsModal(): VNode {
 							<code className="text-xs block break-all select-all">{bootstrapEndpoint.value}</code>
 						</div>
 					)}
-					<div className="text-[10px] text-[var(--muted)] mt-1 opacity-70">
-						Teams requires HTTPS.
-					</div>
+					<div className="text-[10px] text-[var(--muted)] mt-1 opacity-70">Teams requires HTTPS.</div>
 				</div>
 				<SharedChannelFields addModel={addModel} allowlistItems={allowlistItems} />
 				<AdvancedConfigPatchField

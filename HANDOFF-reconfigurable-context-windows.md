@@ -51,7 +51,7 @@ pub fn context_window_for_model(model_id: &str) -> u32 {
 
 **File**: `crates/providers/src/model_id.rs:63-69`
 
-`capability_model_id()` strips provider namespace (`::`) and reasoning suffix (`@reasoning-high`) and takes the last path segment after `/`. Example: `custom-openrouter::openai/gpt-5.2@reasoning-high` → `gpt-5.2`.
+`capability_model_id()` strips provider namespace (`::`) and takes the last path segment after `/`. Example: `custom-openrouter::openai/gpt-5.2` → `gpt-5.2`.
 
 ### 2.3 The LlmProvider Trait
 

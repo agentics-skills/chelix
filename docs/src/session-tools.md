@@ -43,9 +43,8 @@ Omit `model_override` to use the selected agent's preset model. `model_override`
 is for advanced intentional overrides only. When it is provided, both
 `model_override.model` and `model_override.reasoning_effort` are mandatory. The
 model must be the base ID shown in the chat model registry (`models.list`) and
-must support reasoning. Do not include an `@reasoning-*` suffix in
-`model_override.model`; the tool stores the same effective model ID as the chat
-UI, for example:
+must support reasoning. The tool stores `model` and `reasoning_effort` as
+separate session fields, for example:
 
 ```json
 {

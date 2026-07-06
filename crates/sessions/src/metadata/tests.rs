@@ -148,6 +148,19 @@ async fn test_sqlite_touch() {
 }
 
 #[tokio::test]
+async fn test_sqlite_set_reasoning_effort() {
+    let pool = sqlite_pool().await;
+    let meta = SqliteSessionMetadata::new(pool);
+
+    meta.upsert("main", None).await.unwrap();
+    meta.set_reasoning_effort("main", Some("high".to_string())).await;
+    assert_eq!(meta.get("main").await.unwrap().reasoning_effort.as_deref(), Some("high"));
+
+    meta.set_reasoning_effort("main", Some(String::new())).await;
+    assert_eq!(meta.get("main").await.unwrap().reasoning_effort.as_deref(), Some(""));
+}
+
+#[tokio::test]
 async fn test_sqlite_set_external_agent() {
     let pool = sqlite_pool().await;
     let meta = SqliteSessionMetadata::new(pool);
@@ -249,6 +262,20 @@ fn test_touch() {
     meta.upsert("main", None);
     meta.touch("main", 5);
     assert_eq!(meta.get("main").unwrap().message_count, 5);
+}
+
+#[test]
+fn test_set_reasoning_effort() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("meta.json");
+    let mut meta = SessionMetadata::load(path).unwrap();
+
+    meta.upsert("main", None);
+    meta.set_reasoning_effort("main", Some("high".to_string()));
+    assert_eq!(meta.get("main").unwrap().reasoning_effort.as_deref(), Some("high"));
+
+    meta.set_reasoning_effort("main", Some(String::new()));
+    assert_eq!(meta.get("main").unwrap().reasoning_effort.as_deref(), Some(""));
 }
 
 #[test]

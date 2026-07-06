@@ -396,6 +396,7 @@ impl SessionService for LiveSessionService {
                 "key": e.key,
                 "label": e.label,
                 "model": e.model,
+                "reasoningEffort": e.reasoning_effort,
                 "createdAt": e.created_at,
                 "updatedAt": e.updated_at,
                 "messageCount": e.message_count,
@@ -482,6 +483,7 @@ impl SessionService for LiveSessionService {
                     "key": entry.key,
                     "label": entry.label,
                     "model": entry.model,
+                    "reasoningEffort": entry.reasoning_effort,
                     "createdAt": entry.created_at,
                     "updatedAt": entry.updated_at,
                     "messageCount": entry.message_count,
@@ -542,6 +544,7 @@ impl SessionService for LiveSessionService {
                 "key": entry.key,
                 "label": entry.label,
                 "model": entry.model,
+                "reasoningEffort": entry.reasoning_effort,
                 "createdAt": entry.created_at,
                 "updatedAt": entry.updated_at,
                 "messageCount": entry.message_count,
@@ -585,6 +588,11 @@ impl SessionService for LiveSessionService {
         }
         if p.model.is_some() {
             self.metadata.set_model(key, p.model).await;
+        }
+        if p.reasoning_effort.is_some() {
+            self.metadata
+                .set_reasoning_effort(key, p.reasoning_effort)
+                .await;
         }
         if let Some(archived) = p.archived {
             self.metadata.set_archived(key, archived).await;
@@ -690,6 +698,7 @@ impl SessionService for LiveSessionService {
             "key": entry.key,
             "label": entry.label,
             "model": entry.model,
+            "reasoningEffort": entry.reasoning_effort,
             "archived": entry.archived,
             "sandbox_enabled": entry.sandbox_enabled,
             "sandbox_image": entry.sandbox_image,

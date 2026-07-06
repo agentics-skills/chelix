@@ -119,7 +119,44 @@ test.describe("reasoning effort toggle", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
-	test("effective model ID includes reasoning suffix in chat.send", async ({ page }) => {
+	test("session restore honors explicit reasoningEffort when model has no suffix", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+
+		await setMockModels(
+			page,
+			[{ id: "claude-opus-4-5", displayName: "Claude Opus 4.5", provider: "anthropic", supportsReasoning: true }],
+			"claude-opus-4-5",
+		);
+
+		await page.evaluate(async () => {
+			var appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
+			var appUrl = new URL(appScript.src, window.location.origin);
+			var prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
+			var switchModule = await import(`${prefix}js/sessions/session-switch.js`);
+			switchModule.restoreSessionState({
+				id: 0,
+				key: "main",
+				model: "claude-opus-4-5",
+				reasoningEffort: "high",
+			});
+		});
+
+		const label = page.locator("#reasoningComboLabel");
+		await expect(label).toHaveText("High");
+
+		const effort = await page.evaluate(async () => {
+			var appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
+			var appUrl = new URL(appScript.src, window.location.origin);
+			var prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
+			var store = await import(`${prefix}js/stores/model-store.js`);
+			return store.reasoningEffort.value;
+		});
+		expect(effort).toBe("high");
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("chat.send sends model and reasoning effort separately", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 
 		// Install WS spy to capture chat.send payloads
@@ -155,12 +192,13 @@ test.describe("reasoning effort toggle", () => {
 
 		const payloads = await page.evaluate(() => window.__chatSendPayloads);
 		expect(payloads.length).toBeGreaterThan(0);
-		expect(payloads[0].model).toBe("claude-opus-4-5@reasoning-high");
+		expect(payloads[0].model).toBe("claude-opus-4-5");
+		expect(payloads[0].reasoningEffort).toBe("high");
 
 		expect(pageErrors).toEqual([]);
 	});
 
-	test("reasoning variants are filtered from model dropdown", async ({ page }) => {
+	test("model dropdown shows registered models once", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 
 		await setMockModels(
@@ -172,24 +210,6 @@ test.describe("reasoning effort toggle", () => {
 					provider: "anthropic",
 					supportsReasoning: true,
 				},
-				{
-					id: "claude-opus-4-5@reasoning-low",
-					displayName: "Claude Opus 4.5 (low reasoning)",
-					provider: "anthropic",
-					supportsReasoning: true,
-				},
-				{
-					id: "claude-opus-4-5@reasoning-medium",
-					displayName: "Claude Opus 4.5 (medium reasoning)",
-					provider: "anthropic",
-					supportsReasoning: true,
-				},
-				{
-					id: "claude-opus-4-5@reasoning-high",
-					displayName: "Claude Opus 4.5 (high reasoning)",
-					provider: "anthropic",
-					supportsReasoning: true,
-				},
 			],
 			"claude-opus-4-5",
 		);
@@ -198,7 +218,6 @@ test.describe("reasoning effort toggle", () => {
 		await modelBtn.click();
 
 		const items = page.locator("#modelDropdownList .model-dropdown-item");
-		// Only the base model should appear, not the 3 reasoning variants
 		await expect(items).toHaveCount(1);
 		await expect(items.first()).toContainText("Claude Opus 4.5");
 

@@ -19,7 +19,7 @@ use {async_trait::async_trait, tokio_stream::Stream, tracing::warn};
 #[cfg(feature = "metrics")]
 use moltis_metrics::{counter, histogram, labels, llm as llm_metrics};
 
-use crate::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent};
+use crate::model::{ChatMessage, CompletionResponse, LlmProvider, ReasoningEffort, StreamEvent};
 
 /// How a provider error should be handled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -230,6 +230,19 @@ impl LlmProvider for ProviderChain {
 
     fn context_window(&self) -> u32 {
         self.primary().provider.context_window()
+    }
+
+    fn reasoning_effort(&self) -> Option<ReasoningEffort> {
+        self.primary().provider.reasoning_effort()
+    }
+
+    fn with_reasoning_effort(self: Arc<Self>, effort: ReasoningEffort) -> Option<Arc<dyn LlmProvider>> {
+        let providers = self
+            .chain
+            .iter()
+            .map(|entry| Arc::clone(&entry.provider).with_reasoning_effort(effort))
+            .collect::<Option<Vec<_>>>()?;
+        Some(Arc::new(Self::new(providers)))
     }
 
     async fn complete(

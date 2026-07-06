@@ -44,6 +44,7 @@ import {
 	SignalForm,
 	TelegramForm,
 } from "./channel-forms";
+
 // ── Matrix form ─────────────────────────────────────────────
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Matrix form has many fields for all auth/policy/encryption combinations

@@ -1,5 +1,9 @@
 use super::*;
 
+use crate::session_reasoning::{
+    enrich_session_entry_for_ui, materialize_agent_preset_session_defaults,
+};
+
 fn insert_session_activity_snapshot(
     obj: &mut serde_json::Map<String, serde_json::Value>,
     replying: bool,
@@ -969,7 +973,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 {
                     resolve_params["inherit_agent_from"] = serde_json::json!(previous_key);
                 }
-                let result = ctx
+                let mut result = ctx
                     .state
                     .services
                     .session
@@ -982,6 +986,16 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             format!("session resolve failed: {e}"),
                         )
                     })?;
+
+                if !was_existing_session
+                    && let Some(entry_obj) = result.get_mut("entry").and_then(|value| value.as_object_mut())
+                    && let Some(agent_id) = entry_obj
+                        .get("agent_id")
+                        .or_else(|| entry_obj.get("agentId"))
+                        .and_then(|value| value.as_str())
+                {
+                    materialize_agent_preset_session_defaults(&ctx.state, key, agent_id).await;
+                }
 
                 // Mark the session as seen so unread state clears.
                 ctx.state.services.session.mark_seen(key).await;
@@ -1091,7 +1105,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     .params
                     .get("cached_message_count")
                     .and_then(|v| v.as_u64());
-                let mut result = result;
                 if !include_history && let Some(obj) = result.as_object_mut() {
                     obj.insert("history".to_string(), serde_json::Value::Array(Vec::new()));
                     obj.insert("historyOmitted".to_string(), serde_json::Value::Bool(true));
@@ -1136,6 +1149,9 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         tool_calls,
                         voice_pending,
                     );
+                    if let Some(entry_obj) = obj.get_mut("entry").and_then(|value| value.as_object_mut()) {
+                        enrich_session_entry_for_ui(&ctx.state, entry_obj).await;
+                    }
                 }
 
                 Ok(result)

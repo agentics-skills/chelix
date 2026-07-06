@@ -805,7 +805,7 @@ mod tests {
         global.insert("gpt-5.2".into(), 256_000);
         assert_eq!(
             context_window_for_model_with_config(
-                "custom-openrouter::openai/gpt-5.2@reasoning-high",
+                "custom-openrouter::openai/gpt-5.2",
                 &global,
                 &empty_map(),
             ),

@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::session_reasoning::enrich_session_entry_for_ui;
+
 pub(super) fn register(reg: &mut MethodRegistry) {
     // Sessions
     reg.register(
@@ -25,6 +27,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                                 "replying".to_string(),
                                 serde_json::Value::Bool(active_keys.iter().any(|k| k == &key)),
                             );
+                            enrich_session_entry_for_ui(&ctx.state, obj).await;
                         }
                     }
                 }
@@ -62,13 +65,20 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "sessions.resolve",
         Box::new(|ctx| {
             Box::pin(async move {
-                let result = ctx
+                let mut result = ctx
                     .state
                     .services
                     .session
                     .resolve(ctx.params.clone())
                     .await
                     .map_err(ErrorShape::from)?;
+
+                if let Some(entry_obj) = result
+                    .get_mut("entry")
+                    .and_then(|value| value.as_object_mut())
+                {
+                    enrich_session_entry_for_ui(&ctx.state, entry_obj).await;
+                }
 
                 // Newly created sessions have an empty history array.
                 let is_new = result

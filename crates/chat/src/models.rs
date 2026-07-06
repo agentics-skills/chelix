@@ -547,7 +547,7 @@ impl ModelService for LiveModelService {
         let reg = self.providers.read().await;
         let disabled = self.disabled.read().await;
         let order = self.priority_order().await;
-        let all_models = reg.list_models_with_reasoning_variants();
+        let all_models = reg.list_models();
 
         // Hide models older than 1 year from the chat selector unless the
         // user opted in via `providers.show_legacy_models`.  Preferred models
@@ -611,7 +611,7 @@ impl ModelService for LiveModelService {
         let reg = self.providers.read().await;
         let disabled = self.disabled.read().await;
         let order = self.priority_order().await;
-        let all_models = reg.list_models_with_reasoning_variants();
+        let all_models = reg.list_models();
         let prioritized = Self::prioritize_models(
             &order,
             all_models

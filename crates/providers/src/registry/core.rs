@@ -31,10 +31,7 @@ use crate::{
     },
     model_capabilities::{ModelCapabilities, ModelInfo, extract_cw_overrides},
     model_catalogs::{ANTHROPIC_MODELS, OPENAI_COMPAT_PROVIDERS},
-    model_id::{
-        REASONING_SUFFIX_SEP, REASONING_SUFFIXES, namespaced_model_id, raw_model_id,
-        split_reasoning_suffix,
-    },
+    model_id::{namespaced_model_id, raw_model_id},
     nearai,
     ollama::{
         self, OllamaShowResponse, probe_ollama_models_batch, probe_ollama_models_batch_async,

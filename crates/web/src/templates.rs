@@ -8,6 +8,7 @@ use {
         http::StatusCode,
         response::{Html, IntoResponse},
     },
+    moltis_gateway::session_reasoning::preset_defaults_for_agent,
     moltis_gateway::state::GatewayState,
     tracing::warn,
 };
@@ -234,12 +235,17 @@ async fn build_recent_sessions_snapshot(gw: &GatewayState, limit: usize) -> Vec<
             .map(|text| truncate_preview(text, SESSION_PREVIEW_MAX_CHARS));
         let agent_id = entry.agent_id.clone().unwrap_or_else(|| "main".to_owned());
         let agent_id_camel = agent_id.clone();
+        let (preset_model, preset_reasoning) =
+            preset_defaults_for_agent(gw, Some(agent_id.as_str())).await;
+        let model = entry.model.clone().or(preset_model);
+        let reasoning_effort = entry.reasoning_effort.clone().or(preset_reasoning);
 
         recent.push(serde_json::json!({
             "id": entry.id,
             "key": entry.key,
             "label": entry.label,
-            "model": entry.model,
+            "model": model,
+            "reasoningEffort": reasoning_effort,
             "createdAt": entry.created_at,
             "updatedAt": entry.updated_at,
             "messageCount": entry.message_count,

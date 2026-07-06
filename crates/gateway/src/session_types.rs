@@ -24,6 +24,8 @@ pub struct PatchParams {
     pub label: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
+    #[serde(default, alias = "reasoning_effort")]
+    pub reasoning_effort: Option<String>,
     #[serde(default)]
     pub archived: Option<bool>,
     #[serde(default, deserialize_with = "double_option", alias = "project_id")]
@@ -151,6 +153,7 @@ mod tests {
         assert_eq!(p.key, "main");
         assert!(p.label.is_none());
         assert!(p.model.is_none());
+        assert!(p.reasoning_effort.is_none());
         assert!(p.archived.is_none());
         assert!(p.project_id.is_none());
         assert!(p.sandbox_enabled.is_none());
@@ -162,6 +165,7 @@ mod tests {
             "key": "main",
             "label": "My Chat",
             "model": "gpt-4o",
+            "reasoningEffort": "high",
             "archived": true,
             "sandboxEnabled": true,
             "mcpDisabled": false,
@@ -169,6 +173,7 @@ mod tests {
         .unwrap();
         assert_eq!(p.label.as_deref(), Some("My Chat"));
         assert_eq!(p.model.as_deref(), Some("gpt-4o"));
+        assert_eq!(p.reasoning_effort.as_deref(), Some("high"));
         assert_eq!(p.archived, Some(true));
         assert_eq!(p.sandbox_enabled, Some(Some(true)));
         assert_eq!(p.mcp_disabled, Some(Some(false)));
@@ -198,6 +203,7 @@ mod tests {
     fn patch_params_accepts_legacy_snake_case_fields() {
         let p: PatchParams = serde_json::from_value(json!({
             "key": "main",
+            "reasoning_effort": "medium",
             "project_id": "proj-1",
             "worktree_branch": "feature/abc",
             "sandbox_image": "custom:latest",
@@ -205,6 +211,7 @@ mod tests {
             "mcp_disabled": true,
         }))
         .unwrap();
+        assert_eq!(p.reasoning_effort.as_deref(), Some("medium"));
         assert_eq!(p.project_id, Some(Some("proj-1".to_string())));
         assert_eq!(p.worktree_branch, Some(Some("feature/abc".to_string())));
         assert_eq!(p.sandbox_image, Some(Some("custom:latest".to_string())));

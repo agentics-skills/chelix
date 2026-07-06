@@ -53,6 +53,8 @@ pub enum PersistedMessage {
         model: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         provider: Option<String>,
+        #[serde(rename = "reasoningEffort", skip_serializing_if = "Option::is_none")]
+        reasoning_effort: Option<String>,
         /// Total input tokens spent during this assistant turn.
         #[serde(rename = "inputTokens", skip_serializing_if = "Option::is_none")]
         input_tokens: Option<u32>,
@@ -262,6 +264,7 @@ impl PersistedMessage {
             created_at: Some(now_ms()),
             model: Some(model.into()),
             provider: Some(provider.into()),
+            reasoning_effort: None,
             input_tokens: Some(input_tokens),
             output_tokens: Some(output_tokens),
             cache_read_tokens: None,
@@ -465,6 +468,7 @@ mod tests {
             created_at: Some(12345),
             model: Some("gpt-4o".to_string()),
             provider: Some("openai".to_string()),
+            reasoning_effort: Some("high".to_string()),
             input_tokens: Some(100),
             output_tokens: Some(50),
             cache_read_tokens: Some(90),
@@ -486,6 +490,7 @@ mod tests {
         assert_eq!(json["content"], "response");
         assert_eq!(json["model"], "gpt-4o");
         assert_eq!(json["provider"], "openai");
+        assert_eq!(json["reasoningEffort"], "high");
         assert_eq!(json["inputTokens"], 100);
         assert_eq!(json["outputTokens"], 50);
         assert_eq!(json["cacheReadTokens"], 90);
@@ -650,6 +655,7 @@ mod tests {
                 content,
                 model,
                 provider,
+                reasoning_effort,
                 input_tokens,
                 output_tokens,
                 cache_read_tokens,
@@ -665,6 +671,7 @@ mod tests {
                 assert_eq!(content, "response");
                 assert_eq!(model.as_deref(), Some("gpt-4o"));
                 assert_eq!(provider.as_deref(), Some("openai"));
+                assert!(reasoning_effort.is_none());
                 assert_eq!(input_tokens, Some(100));
                 assert_eq!(output_tokens, Some(50));
                 assert!(cache_read_tokens.is_none());
@@ -746,6 +753,7 @@ mod tests {
             created_at: Some(12345),
             model: Some("gpt-4.1".to_string()),
             provider: Some("openai".to_string()),
+            reasoning_effort: Some("medium".to_string()),
             input_tokens: Some(1_200),
             output_tokens: Some(80),
             cache_read_tokens: Some(1_050),
@@ -768,12 +776,14 @@ mod tests {
         let parsed: PersistedMessage = serde_json::from_value(json).unwrap();
         match parsed {
             PersistedMessage::Assistant {
+                reasoning_effort,
                 cache_read_tokens,
                 cache_write_tokens,
                 request_cache_read_tokens,
                 request_cache_write_tokens,
                 ..
             } => {
+                assert_eq!(reasoning_effort.as_deref(), Some("medium"));
                 assert_eq!(cache_read_tokens, Some(1_050));
                 assert_eq!(cache_write_tokens, Some(0));
                 assert_eq!(request_cache_read_tokens, Some(1_050));

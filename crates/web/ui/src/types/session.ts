@@ -18,6 +18,7 @@ export interface SessionMeta {
 	key: string;
 	label?: string;
 	model?: string;
+	reasoningEffort?: string;
 	provider?: string;
 	createdAt?: number;
 	updatedAt?: number;

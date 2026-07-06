@@ -275,6 +275,9 @@ export function appendFinalFooter(msgEl: HTMLElement | null, p: ChatPayload, eve
 	const footer = document.createElement("div");
 	footer.className = "msg-model-footer";
 	let footerText = p.provider ? `${p.provider} / ${p.model}` : p.model;
+	if (p.reasoningEffort !== undefined) {
+		footerText += ` \u00b7 reasoning_effort: ${p.reasoningEffort || "off"}`;
+	}
 	if (p.inputTokens || p.outputTokens) {
 		footerText += ` \u00b7 ${formatAssistantTokenUsage(p.inputTokens, p.outputTokens, p.cacheReadTokens)}`;
 	}

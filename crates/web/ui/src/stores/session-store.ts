@@ -14,6 +14,7 @@ export class Session {
 	key: string;
 	label: string;
 	model: string;
+	reasoningEffort: string;
 	provider: string;
 	projectId: string;
 	messageCount: number;
@@ -56,6 +57,7 @@ export class Session {
 		this.key = serverData.key;
 		this.label = serverData.label || "";
 		this.model = serverData.model || "";
+		this.reasoningEffort = serverData.reasoningEffort ?? "";
 		this.provider = serverData.provider || "";
 		this.projectId = serverData.projectId || "";
 		this.messageCount = serverData.messageCount || 0;
@@ -109,6 +111,7 @@ export class Session {
 		this.version = incoming || this.version;
 		this.label = serverData.label || "";
 		this.model = serverData.model || "";
+		this.reasoningEffort = serverData.reasoningEffort ?? this.reasoningEffort;
 		this.provider = serverData.provider || "";
 		this.projectId = serverData.projectId || "";
 		// Only accept server counts when they've caught up with optimistic
@@ -172,6 +175,7 @@ export class Session {
 			key: this.key,
 			label: this.label,
 			model: this.model,
+			reasoningEffort: this.reasoningEffort,
 			provider: this.provider,
 			createdAt: this.createdAt,
 			updatedAt: this.updatedAt,

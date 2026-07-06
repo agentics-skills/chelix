@@ -606,6 +606,7 @@ impl ExternalAgentChatService {
             created_at: Some(now_ms()),
             model: Some(kind.as_str().to_string()),
             provider: Some("external-agent".to_string()),
+            reasoning_effort: None,
             input_tokens: token_usage.as_ref().map(|usage| usage.input_tokens),
             output_tokens: token_usage.as_ref().map(|usage| usage.output_tokens),
             cache_read_tokens: None,

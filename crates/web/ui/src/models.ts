@@ -4,11 +4,13 @@ import { sendRpc } from "./helpers";
 import { t } from "./i18n";
 import { showModelNotice } from "./pages/ChatPage";
 import * as S from "./state";
-import { modelStore, REASONING_SEP } from "./stores/model-store";
+import { modelStore } from "./stores/model-store";
 import type { ModelInfo } from "./types";
 
-function setSessionModel(sessionKey: string, modelId: string): void {
-	sendRpc("sessions.patch", { key: sessionKey, model: modelId });
+function setSessionModel(sessionKey: string, modelId: string, reasoningEffort?: string): void {
+	const params: Record<string, string> = { key: sessionKey, model: modelId };
+	if (reasoningEffort !== undefined) params.reasoningEffort = reasoningEffort;
+	sendRpc("sessions.patch", params);
 }
 
 export { setSessionModel };
@@ -57,7 +59,7 @@ export function selectModel(m: ModelInfo): void {
 	S.setSelectedModelId(m.id);
 	updateModelComboLabel(m);
 	localStorage.setItem("moltis-model", m.id);
-	setSessionModel(S.activeSessionKey, m.id);
+	setSessionModel(S.activeSessionKey, m.id, m.supportsReasoning ? modelStore.reasoningEffort.value : "");
 	closeModelDropdown();
 	// Show notice if model doesn't support tools
 	showModelNotice(m);
@@ -131,8 +133,6 @@ export function renderModelList(query: string): void {
 	const q = query.toLowerCase();
 	const allModels = modelStore.models.value;
 	const filtered = allModels.filter((m) => {
-		// Hide @reasoning-* virtual variants — the reasoning toggle handles these.
-		if (m.id.indexOf(REASONING_SEP) !== -1) return false;
 		const label = (m.displayName || m.id).toLowerCase();
 		const provider = (m.provider || "").toLowerCase();
 		return !q || label.indexOf(q) !== -1 || provider.indexOf(q) !== -1 || m.id.toLowerCase().indexOf(q) !== -1;

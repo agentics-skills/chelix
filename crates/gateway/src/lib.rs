@@ -48,6 +48,7 @@ pub mod push;
 pub mod server;
 pub mod services;
 pub mod session;
+pub mod session_reasoning;
 pub mod session_types;
 pub mod share_store;
 pub mod state;

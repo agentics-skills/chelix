@@ -67,6 +67,8 @@ pub struct SessionEntry {
     pub label: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
     pub created_at: u64,
     pub updated_at: u64,
     pub message_count: u32,
@@ -178,6 +180,7 @@ impl SessionMetadata {
                 key: key.to_string(),
                 label,
                 model: None,
+                reasoning_effort: None,
                 created_at: now,
                 updated_at: now,
                 message_count: 0,
@@ -206,6 +209,15 @@ impl SessionMetadata {
     pub fn set_model(&mut self, key: &str, model: Option<String>) {
         if let Some(entry) = self.entries.get_mut(key) {
             entry.model = model;
+            entry.updated_at = now_ms();
+            entry.version += 1;
+        }
+    }
+
+    /// Update the reasoning effort associated with a session.
+    pub fn set_reasoning_effort(&mut self, key: &str, reasoning_effort: Option<String>) {
+        if let Some(entry) = self.entries.get_mut(key) {
+            entry.reasoning_effort = reasoning_effort;
             entry.updated_at = now_ms();
             entry.version += 1;
         }
@@ -375,6 +387,7 @@ struct SessionRow {
     id: String,
     label: Option<String>,
     model: Option<String>,
+    reasoning_effort: Option<String>,
     created_at: i64,
     updated_at: i64,
     message_count: i32,
@@ -405,6 +418,7 @@ impl From<SessionRow> for SessionEntry {
             id: r.id,
             label: r.label,
             model: r.model,
+            reasoning_effort: r.reasoning_effort,
             created_at: r.created_at as u64,
             updated_at: r.updated_at as u64,
             message_count: r.message_count as u32,
@@ -476,6 +490,7 @@ impl SqliteSessionMetadata {
                 id              TEXT    NOT NULL,
                 label           TEXT,
                 model           TEXT,
+                reasoning_effort TEXT,
                 created_at      INTEGER NOT NULL,
                 updated_at      INTEGER NOT NULL,
                 message_count   INTEGER NOT NULL DEFAULT 0,
@@ -583,6 +598,22 @@ impl SqliteSessionMetadata {
             "UPDATE sessions SET model = ?, updated_at = ?, version = version + 1 WHERE key = ?",
         )
         .bind(&model)
+        .bind(now)
+        .bind(key)
+        .execute(&self.pool)
+        .await
+        .ok();
+        self.emit(crate::session_events::SessionEvent::Patched {
+            session_key: key.to_string(),
+        });
+    }
+
+    pub async fn set_reasoning_effort(&self, key: &str, reasoning_effort: Option<String>) {
+        let now = now_ms() as i64;
+        sqlx::query(
+            "UPDATE sessions SET reasoning_effort = ?, updated_at = ?, version = version + 1 WHERE key = ?",
+        )
+        .bind(&reasoning_effort)
         .bind(now)
         .bind(key)
         .execute(&self.pool)

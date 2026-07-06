@@ -5,7 +5,7 @@ import { sendRpc } from "../helpers";
 import { modelDisplayLabel, modelTitle } from "../models";
 import { restoreNodeSelection } from "../nodes-selector";
 import { updateSessionProjectSelect } from "../project-combo";
-import { restoreReasoningFromModelId } from "../reasoning-toggle";
+import { restoreReasoningEffort } from "../reasoning-toggle";
 import { sessionPath } from "../router";
 import { updateSandboxImageUI, updateSandboxUI } from "../sandbox";
 import * as S from "../state";
@@ -109,17 +109,17 @@ export function restoreSessionState(entry: SessionMeta, projectId?: string): voi
 	localStorage.setItem("moltis-project", effectiveProjectId);
 	updateSessionProjectSelect(effectiveProjectId);
 	if (entry.model) {
-		const baseModelId = restoreReasoningFromModelId(entry.model);
-		modelStore.select(baseModelId);
-		S.setSelectedModelId(baseModelId);
-		localStorage.setItem("moltis-model", baseModelId);
-		const found = modelStore.getById(baseModelId);
+		modelStore.select(entry.model);
+		S.setSelectedModelId(entry.model);
+		localStorage.setItem("moltis-model", entry.model);
+		const found = modelStore.getById(entry.model);
 		if (S.modelComboLabel) {
-			const label = found ? modelDisplayLabel(found) : baseModelId;
+			const label = found ? modelDisplayLabel(found) : entry.model;
 			S.modelComboLabel.textContent = label;
 			S.modelComboLabel.title = found ? modelTitle(found) : label;
 		}
 	}
+	restoreReasoningEffort(entry.reasoningEffort);
 	updateSandboxUI(entry.sandbox_enabled !== false);
 	updateSandboxImageUI(entry.sandbox_image || null);
 	S.setSessionSandboxBackend(entry.sandbox_backend || null);

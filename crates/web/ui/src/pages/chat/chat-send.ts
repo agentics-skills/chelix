@@ -37,6 +37,7 @@ export interface ChatSendParams {
 	_document_files?: UploadedDocumentFile[];
 	_seq: number;
 	model?: string;
+	reasoningEffort?: string;
 }
 
 export type ChatContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
@@ -154,10 +155,12 @@ export function normalizeOutgoingText(text: string, hasAttachments: boolean): st
 }
 
 export function applySelectedModelToChatParams(chatParams: ChatSendParams): void {
-	const effectiveId = modelStore.effectiveModelId.value;
-	if (!effectiveId) return;
-	chatParams.model = effectiveId;
-	setSessionModel(S.activeSessionKey, effectiveId);
+	const modelId = modelStore.selectedModelId.value;
+	if (!modelId) return;
+	const reasoningEffort = modelStore.supportsReasoning.value ? modelStore.reasoningEffort.value : "";
+	chatParams.model = modelId;
+	chatParams.reasoningEffort = reasoningEffort;
+	setSessionModel(S.activeSessionKey, modelId, reasoningEffort);
 }
 
 export function handleChatSendRpcResponse(res: RpcResponse<ChatSendPayload>, userEl: HTMLElement | null): boolean {

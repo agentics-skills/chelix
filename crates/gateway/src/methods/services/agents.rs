@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::session_reasoning::materialize_agent_preset_session_defaults;
+
 pub(super) fn register(reg: &mut MethodRegistry) {
     // Agent
     reg.register(
@@ -381,6 +383,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     meta.set_agent_id(session_key, Some(&agent_id))
                         .await
                         .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e.to_string()))?;
+                    materialize_agent_preset_session_defaults(&ctx.state, session_key, &agent_id)
+                        .await;
                     Ok(serde_json::json!({ "ok": true, "agent_id": agent_id }))
                 })
             }),

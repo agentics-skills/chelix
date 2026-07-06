@@ -422,10 +422,7 @@ registerPrefix(
 		container.style.cssText = "flex-direction:row;padding:0;overflow:hidden;";
 		const parts = (param || "").replace(/:/g, "/").split("/").filter(Boolean);
 		const requestedSection = parts[0] || "";
-		const requestedSectionAlias =
-			requestedSection === "identity"
-					? "profile"
-					: requestedSection;
+		const requestedSectionAlias = requestedSection === "identity" ? "profile" : requestedSection;
 		const subPath = parts.slice(1).join("/");
 		const isValidSection = requestedSectionAlias && getSectionItems().some((s) => s.id === requestedSectionAlias);
 		const section = isValidSection ? requestedSectionAlias : DEFAULT_SECTION;

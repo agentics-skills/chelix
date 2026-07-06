@@ -3,7 +3,6 @@ use std::sync::Arc;
 use {
     moltis_agents::tool_registry::ToolRegistry,
     moltis_config::{AgentPreset, schema::ReasoningEffort},
-    moltis_providers::{model_id_with_reasoning_suffix, split_reasoning_suffix},
     moltis_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
     serde_json::Value,
 };
@@ -111,7 +110,12 @@ fn build_create_session(
                 let parent_session_key = req.parent_session_key.clone();
 
                 validate_agent_id(&state, &agent_id).await?;
-                let effective_model = resolve_effective_model(&state, &agent_id, &req).await?;
+                let (model, reasoning_effort) = resolve_model_and_reasoning_effort(
+                    &state,
+                    &agent_id,
+                    req.model_override.as_ref(),
+                )
+                .await?;
 
                 state
                     .services
@@ -130,7 +134,11 @@ fn build_create_session(
                 if let Some(label) = req.label {
                     patch.insert("label".to_string(), serde_json::json!(label));
                 }
-                patch.insert("model".to_string(), serde_json::json!(effective_model));
+                patch.insert("model".to_string(), serde_json::json!(model));
+                patch.insert(
+                    "reasoningEffort".to_string(),
+                    serde_json::json!(reasoning_effort.as_str()),
+                );
                 if let Some(project_id) = req.project_id {
                     patch.insert("projectId".to_string(), serde_json::json!(project_id));
                 }
@@ -191,8 +199,10 @@ fn build_send_to_session(
                     "_session_key": req.key,
                 });
                 if let Some(model_override) = req.model_override {
-                    let model = effective_model_from_override(&state, model_override).await?;
+                    let reasoning_effort = model_override.reasoning_effort;
+                    let model = model_from_override(&state, model_override).await?;
                     params["model"] = serde_json::json!(model);
+                    params["reasoningEffort"] = serde_json::json!(reasoning_effort.as_str());
                 }
                 let chat = state.chat();
                 if req.wait_for_reply {
@@ -229,42 +239,46 @@ async fn validate_agent_id(state: &GatewayState, agent_id: &str) -> moltis_tools
     )))
 }
 
-#[tracing::instrument(skip(state, req))]
-async fn resolve_effective_model(
+#[tracing::instrument(skip(state, model_override))]
+async fn resolve_model_and_reasoning_effort(
     state: &GatewayState,
     agent_id: &str,
-    req: &moltis_tools::sessions_manage::CreateSessionRequest,
-) -> moltis_tools::Result<String> {
-    let (model, effort) = if let Some(model_override) = req.model_override.clone() {
-        (model_override.model, model_override.reasoning_effort)
+    model_override: Option<&moltis_tools::session_model_override::ModelOverride>,
+) -> moltis_tools::Result<(String, ReasoningEffort)> {
+    let (model, effort) = if let Some(model_override) = model_override {
+        (
+            model_override.model.clone(),
+            model_override.reasoning_effort,
+        )
     } else {
         preset_model_and_reasoning(state, agent_id).await?
     };
 
-    effective_model_from_parts(state, model, effort).await
+    validate_model_and_reasoning_effort(state, &model, effort).await?;
+    Ok((model, effort))
 }
 
 #[tracing::instrument(skip(state, model_override))]
-async fn effective_model_from_override(
+async fn model_from_override(
     state: &GatewayState,
     model_override: moltis_tools::session_model_override::ModelOverride,
 ) -> moltis_tools::Result<String> {
-    effective_model_from_parts(state, model_override.model, model_override.reasoning_effort).await
+    validate_model_and_reasoning_effort(
+        state,
+        &model_override.model,
+        model_override.reasoning_effort,
+    )
+    .await?;
+    Ok(model_override.model)
 }
 
 #[tracing::instrument(skip(state))]
-async fn effective_model_from_parts(
+async fn validate_model_and_reasoning_effort(
     state: &GatewayState,
-    model: String,
-    effort: ReasoningEffort,
-) -> moltis_tools::Result<String> {
-    if split_reasoning_suffix(&model).1.is_some() {
-        return Err(moltis_tools::Error::message(
-            "model_override.model must be a base model id without an @reasoning-* suffix",
-        ));
-    }
-    validate_base_model(state, &model).await?;
-    Ok(model_id_with_reasoning_suffix(&model, effort))
+    model: &str,
+    _reasoning_effort: ReasoningEffort,
+) -> moltis_tools::Result<()> {
+    validate_base_model(state, model).await
 }
 
 #[tracing::instrument(skip(state))]
@@ -371,17 +385,4 @@ fn session_entry_payload(entry: moltis_sessions::metadata::SessionEntry) -> Valu
             "version": version,
         }
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn model_id_with_reasoning_suffix_builds_virtual_reasoning_id() {
-        assert_eq!(
-            model_id_with_reasoning_suffix("anthropic::claude", ReasoningEffort::ExtraHigh),
-            "anthropic::claude@reasoning-xhigh"
-        );
-    }
 }

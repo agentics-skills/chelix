@@ -102,6 +102,7 @@ export interface ChannelInfo {
 export interface PartialMessage {
 	content?: string;
 	reasoning?: string;
+	reasoningEffort?: string;
 	model?: string;
 	provider?: string;
 	inputTokens?: number;
@@ -122,6 +123,7 @@ export interface ChatPayload {
 	runId?: string;
 	text?: string;
 	model?: string;
+	reasoningEffort?: string;
 	provider?: string;
 	inputTokens?: number;
 	outputTokens?: number;

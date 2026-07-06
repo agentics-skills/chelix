@@ -2,12 +2,13 @@
 //
 // Adds a "brain" combo next to the model selector that lets users
 // pick Low / Medium / High reasoning effort for models that support
-// extended thinking.  The selected effort is appended as a
-// `@reasoning-*` suffix on the model ID sent to the backend -- no
-// backend changes required.
+// extended thinking. The selected effort is sent as an explicit
+// `reasoningEffort` value alongside the selected model.
 
 import { effect } from "@preact/signals";
+import { sendRpc } from "./helpers";
 import { t } from "./i18n";
+import * as S from "./state";
 import { modelStore } from "./stores/model-store";
 
 const EFFORT_VALUES: string[] = ["", "none", "minimal", "low", "medium", "high", "xhigh", "max"];
@@ -52,6 +53,7 @@ function renderOptions(): void {
 
 function selectEffort(effort: string): void {
 	modelStore.setReasoningEffort(effort);
+	sendRpc("sessions.patch", { key: S.activeSessionKey, reasoningEffort: effort });
 	if (reasoningComboLabel) reasoningComboLabel.textContent = effortLabel(effort);
 	closeDropdown();
 }
@@ -110,14 +112,12 @@ export function bindReasoningToggle(): void {
 	});
 }
 
-/** Restore reasoning toggle state from a session's stored model ID. */
-export function restoreReasoningFromModelId(modelId: string): string {
-	const parsed = modelStore.parseReasoningSuffix(modelId);
-	modelStore.setReasoningEffort(parsed.effort);
+/** Restore reasoning toggle state from a session's stored reasoning effort. */
+export function restoreReasoningEffort(storedEffort?: string | null): void {
+	modelStore.setReasoningEffort(storedEffort || "");
 	if (reasoningComboLabel) {
 		reasoningComboLabel.textContent = effortLabel(modelStore.reasoningEffort.value);
 	}
-	return parsed.baseId || modelId;
 }
 
 export function unbindReasoningToggle(): void {

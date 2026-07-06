@@ -25,9 +25,3 @@ export interface ModelInfo {
 	unsupportedProvider?: string | null;
 	unsupportedUpdatedAt?: number | null;
 }
-
-/** Parsed reasoning-suffix result. */
-export interface ReasoningSuffix {
-	baseId: string;
-	effort: string;
-}

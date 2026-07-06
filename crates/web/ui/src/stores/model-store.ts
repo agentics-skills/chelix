@@ -5,9 +5,7 @@
 
 import { computed, signal } from "@preact/signals";
 import { sendRpc } from "../helpers";
-import type { ModelInfo, ReasoningSuffix, RpcResponse } from "../types";
-
-export const REASONING_SEP = "@reasoning-";
+import type { ModelInfo, RpcResponse } from "../types";
 
 // ── Signals ──────────────────────────────────────────────────
 export const models = signal<ModelInfo[]>([]);
@@ -25,31 +23,6 @@ export const supportsReasoning = computed<boolean>(() => {
 	return !!m?.supportsReasoning;
 });
 
-/** Model ID with @reasoning-* suffix when effort is active. */
-export const effectiveModelId = computed<string>(() => {
-	const id = selectedModelId.value;
-	if (!id) return "";
-	const effort = reasoningEffort.value;
-	if (effort && supportsReasoning.value) return id + REASONING_SEP + effort;
-	return id;
-});
-
-// ── Helpers ──────────────────────────────────────────────────
-
-/** Parse a model ID that may contain a @reasoning-* suffix.
- *  Returns { baseId, effort } where effort is "" if no suffix. */
-export function parseReasoningSuffix(modelId: string): ReasoningSuffix {
-	if (!modelId) return { baseId: "", effort: "" };
-	const idx = modelId.indexOf(REASONING_SEP);
-	if (idx === -1) return { baseId: modelId, effort: "" };
-	return { baseId: modelId.substring(0, idx), effort: modelId.substring(idx + REASONING_SEP.length) };
-}
-
-/** True if a model ID is a @reasoning-* virtual variant. */
-export function isReasoningVariant(modelId: string): boolean {
-	return modelId.indexOf(REASONING_SEP) !== -1;
-}
-
 // ── Methods ──────────────────────────────────────────────────
 
 /** Replace the full model list (e.g. after fetch or bootstrap). */
@@ -64,14 +37,7 @@ export function fetch(): Promise<void> {
 		if (!res?.ok) return;
 		setAll(res.payload || []);
 		if (models.value.length === 0) return;
-		let saved = localStorage.getItem("moltis-model") || "";
-		// If the saved model has a reasoning suffix, strip it and restore the effort
-		const parsed = parseReasoningSuffix(saved);
-		if (parsed.effort) {
-			saved = parsed.baseId;
-			setReasoningEffort(parsed.effort);
-			localStorage.setItem("moltis-model", saved);
-		}
+		const saved = localStorage.getItem("moltis-model") || "";
 		const found = models.value.find((m) => m.id === saved);
 		const model = found || models.value[0];
 		select(model.id);
@@ -101,9 +67,6 @@ export const modelStore = {
 	selectedModel,
 	reasoningEffort,
 	supportsReasoning,
-	effectiveModelId,
-	parseReasoningSuffix,
-	isReasoningVariant,
 	setAll,
 	fetch,
 	select,

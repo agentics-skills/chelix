@@ -98,6 +98,7 @@ impl LiveChatService {
             .and_then(|v| v.as_str())
             .map(String::from);
         let explicit_model = params.get("model").and_then(|v| v.as_str());
+        let requested_reasoning_effort_override = requested_reasoning_effort(&params)?;
         let tool_controls =
             moltis_config::schema::AgentToolControls::from_tool_context(Some(&params));
         // Use streaming-only mode if explicitly requested or if no tools are registered.
@@ -418,6 +419,7 @@ impl LiveChatService {
                     assistant_output,
                     None,
                     None,
+                        None,
                     client_seq,
                     Some(run_id_clone.clone()),
                 );
@@ -857,6 +859,16 @@ impl LiveChatService {
             self.session_state_store.as_deref(),
         )
         .await;
+        let resolved_reasoning_effort = requested_reasoning_effort_override
+            .map(|effort| effort.as_str().to_string())
+            .or_else(|| {
+                resolved_turn_reasoning_effort(
+                    session_entry.as_ref(),
+                    &persona,
+                    &session_agent_id,
+                )
+            });
+        let provider = apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
         let runtime_limits = persona.config.agent_runtime_limits(&session_agent_id);
         info!(
             session = %session_key,
@@ -1165,6 +1177,7 @@ impl LiveChatService {
                         &history,
                         &session_key_clone,
                         &session_agent_id_clone,
+                        resolved_reasoning_effort.clone(),
                         desired_reply_medium,
                         ctx_ref,
                         user_message_index,
@@ -1191,6 +1204,7 @@ impl LiveChatService {
                         &history,
                         &session_key_clone,
                         &session_agent_id_clone,
+                        resolved_reasoning_effort.clone(),
                         desired_reply_medium,
                         ctx_ref,
                         Some(&runtime_context),
@@ -1261,6 +1275,7 @@ impl LiveChatService {
                     assistant_output,
                     Some(model_id.clone()),
                     Some(provider_name.clone()),
+                    resolved_reasoning_effort.clone(),
                     client_seq,
                     Some(run_id_clone.clone()),
                 );

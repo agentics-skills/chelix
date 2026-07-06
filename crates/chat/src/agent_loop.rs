@@ -511,6 +511,7 @@ pub(crate) async fn run_explicit_shell_command(
         final_text.clone(),
         String::new(),
         String::new(),
+        None,
         UsageSnapshot::new(
             moltis_agents::model::Usage::default(),
             Some(moltis_agents::model::Usage::default()),

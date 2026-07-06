@@ -64,6 +64,7 @@ interface ToolResultMsg extends HistoryMessage {
 interface AssistantMsg extends HistoryMessage {
 	content?: string;
 	model?: string;
+	reasoningEffort?: string;
 	provider?: string;
 	inputTokens?: number;
 	outputTokens?: number;
@@ -245,6 +246,9 @@ function createModelFooter(msg: AssistantMsg): HTMLDivElement {
 	const ft = document.createElement("div");
 	ft.className = "msg-model-footer";
 	let ftText = msg.provider ? `${msg.provider} / ${msg.model}` : msg.model || "";
+	if (msg.reasoningEffort !== undefined) {
+		ftText += ` \u00b7 reasoning_effort: ${msg.reasoningEffort || "off"}`;
+	}
 	if (msg.inputTokens || msg.outputTokens) {
 		ftText += ` \u00b7 ${formatAssistantTokenUsage(msg.inputTokens || 0, msg.outputTokens || 0, msg.cacheReadTokens || 0)}`;
 	}
