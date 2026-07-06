@@ -620,7 +620,7 @@ pub(crate) static PROCESS_STARTED_AT_MS: std::sync::LazyLock<u64> =
             .as_millis() as u64
     });
 
-pub(crate) const SHARE_IMAGE_URL: &str = "https://www.moltis.org/og-social.jpg?v=4";
+pub(crate) const SHARE_IMAGE_URL: &str = "https://raw.githubusercontent.com/agentics-skills/chelix/master/crates/web/src/assets/icons/icon-512.png";
 
 // Shiki is now bundled by Vite — no CDN URL needed.
 

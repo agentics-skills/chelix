@@ -128,7 +128,7 @@ Gateway server configuration.
 | `http_request_logs` | bool | `false` | Enable verbose Axum/Tower HTTP request logs (`http_request` spans). Useful for debugging redirects and request flow. |
 | `ws_request_logs` | bool | `false` | Enable WebSocket request/response logs (`ws:` entries). Useful for debugging RPC calls from the web UI. |
 | `log_buffer_size` | integer | `1000` | Maximum number of log entries kept in the in-memory ring buffer. Older entries are persisted to disk. Increase for busy servers, decrease for memory-constrained devices. |
-| `update_releases_url` | optional string | — | URL of the releases manifest (`releases.json`) used by the update checker. Defaults to `https://www.moltis.org/releases.json` when unset. |
+| `update_releases_url` | optional string | — | URL of the releases manifest (`releases.json`) used by the update checker. Defaults to `https://github.com/agentics-skills/chelix` when unset. |
 | `db_pool_max_connections` | integer | `5` | Maximum number of SQLite pool connections. Lower values reduce memory usage for personal gateways. |
 | `shiki_cdn_url` | optional string | — | Base URL for the Shiki syntax-highlighting library loaded by the web UI. Defaults to `https://esm.sh/shiki@3.2.1?bundle` when unset. |
 | `terminal_enabled` | bool | `true` | Enable or disable the host terminal in the web UI. Set to `false` to prevent an unsandboxed shell. The `MOLTIS_TERMINAL_DISABLED` env var (`1` or `true`) takes precedence. |

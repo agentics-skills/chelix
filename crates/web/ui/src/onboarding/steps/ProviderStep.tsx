@@ -968,7 +968,7 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 			<div className="flex items-baseline justify-between gap-2">
 				<h2 className="text-lg font-medium text-[var(--text-strong)]">{t("onboarding:provider.addLlms")}</h2>
 				<a
-					href="https://docs.moltis.org/choosing-a-provider.html"
+					href="https://github.com/agentics-skills/chelix/blob/master/docs/src/choosing-a-provider.md"
 					target="_blank"
 					rel="noopener noreferrer"
 					className="text-xs text-[var(--accent)] hover:underline shrink-0"

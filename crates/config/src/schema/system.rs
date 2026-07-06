@@ -26,7 +26,7 @@ pub struct ServerConfig {
     pub log_buffer_size: usize,
     /// URL of the releases manifest (`releases.json`) used by the update checker.
     ///
-    /// Defaults to `https://www.moltis.org/releases.json` when unset.
+    /// Defaults to `https://github.com/agentics-skills/chelix` when unset.
     pub update_releases_url: Option<String>,
     /// Maximum number of SQLite pool connections. Lower values reduce memory
     /// usage for personal gateways. Defaults to 5.

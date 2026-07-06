@@ -36,5 +36,5 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now moltis
 ```
 
-See [docs.moltis.org/deploy-vps](https://docs.moltis.org/deploy-vps.html) for
-a complete walkthrough.
+See the project repository for deployment-related documentation and examples:
+<https://github.com/agentics-skills/chelix>.

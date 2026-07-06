@@ -1,7 +1,7 @@
 //! Core types for trusted-network domain filtering and audit logging.
 //!
-//! These types are shared between the proxy (emits entries), the gateway
-//! (buffer, persistence, UI streaming), and the macOS Swift bridge.
+//! These types are shared between the proxy (emits entries), the gateway,
+//! and the UI-facing buffering / persistence layers.
 
 use {
     async_trait::async_trait,

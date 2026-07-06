@@ -1,3 +1,4 @@
+# shellcheck disable=all
 # Default recipe (runs when just is called without arguments)
 default:
     @just --list
@@ -57,7 +58,6 @@ build-web-assets:
 # Ad-hoc codesign debug binaries (macOS only, requires MACOS_CODESIGN_IDENTITY).
 # Signs the main binary and all test binaries in target/debug/deps/ so Little
 # Snitch doesn't prompt on every rebuild during local dev.
-[private]
 codesign-debug:
     #!/usr/bin/env bash
     [ "$(uname -s)" = "Darwin" ] || exit 0
@@ -68,7 +68,7 @@ codesign-debug:
     if [ -f target/debug/moltis ]; then sign target/debug/moltis; fi
     # Test binaries (Mach-O executables, skip .d/.fingerprint/dylib)
     for bin in target/debug/deps/moltis*; do
-        if [ -f "$bin" ] && [ -x "$bin" ] && [[ "$bin" != *.d ]]; then sign "$bin"; fi
+        if [ -f "$bin" ] && [ -x "$bin" ] && [ "${bin##*.}" != "d" ]; then sign "$bin"; fi
     done
 
 # Build the project
@@ -130,14 +130,13 @@ arch-pkg: build-release
     mkdir -p "$PKG_DIR/usr/bin"
     cp target/release/moltis "$PKG_DIR/usr/bin/moltis"
     chmod 755 "$PKG_DIR/usr/bin/moltis"
-    cat > "$PKG_DIR/.PKGINFO" <<PKGINFO
-    pkgname = moltis
-    pkgver = ${VERSION}-1
-    pkgdesc = Personal AI gateway inspired by OpenClaw
-    url = https://www.moltis.org/
-    arch = ${ARCH}
-    license = MIT
-    PKGINFO
+        printf '%s\n' \
+            'pkgname = moltis' \
+            "pkgver = ${VERSION}-1" \
+            'pkgdesc = Personal AI gateway inspired by OpenClaw' \
+            'url = https://github.com/agentics-skills/chelix' \
+            "arch = ${ARCH}" \
+            'license = MIT' > "$PKG_DIR/.PKGINFO"
     cd "$PKG_DIR"
     fakeroot -- tar --zstd -cf "../../moltis-${VERSION}-1-${ARCH}.pkg.tar.zst" .PKGINFO usr/
     echo "Built moltis-${VERSION}-1-${ARCH}.pkg.tar.zst"
@@ -153,14 +152,13 @@ arch-pkg-x86_64:
     mkdir -p "$PKG_DIR/usr/bin"
     cp target/x86_64-unknown-linux-gnu/release/moltis "$PKG_DIR/usr/bin/moltis"
     chmod 755 "$PKG_DIR/usr/bin/moltis"
-    cat > "$PKG_DIR/.PKGINFO" <<PKGINFO
-    pkgname = moltis
-    pkgver = ${VERSION}-1
-    pkgdesc = Personal AI gateway inspired by OpenClaw
-    url = https://www.moltis.org/
-    arch = x86_64
-    license = MIT
-    PKGINFO
+        printf '%s\n' \
+            'pkgname = moltis' \
+            "pkgver = ${VERSION}-1" \
+            'pkgdesc = Personal AI gateway inspired by OpenClaw' \
+            'url = https://github.com/agentics-skills/chelix' \
+            'arch = x86_64' \
+            'license = MIT' > "$PKG_DIR/.PKGINFO"
     cd "$PKG_DIR"
     fakeroot -- tar --zstd -cf "../../moltis-${VERSION}-1-x86_64.pkg.tar.zst" .PKGINFO usr/
     echo "Built moltis-${VERSION}-1-x86_64.pkg.tar.zst"
@@ -176,14 +174,13 @@ arch-pkg-aarch64:
     mkdir -p "$PKG_DIR/usr/bin"
     cp target/aarch64-unknown-linux-gnu/release/moltis "$PKG_DIR/usr/bin/moltis"
     chmod 755 "$PKG_DIR/usr/bin/moltis"
-    cat > "$PKG_DIR/.PKGINFO" <<PKGINFO
-    pkgname = moltis
-    pkgver = ${VERSION}-1
-    pkgdesc = Personal AI gateway inspired by OpenClaw
-    url = https://www.moltis.org/
-    arch = aarch64
-    license = MIT
-    PKGINFO
+        printf '%s\n' \
+            'pkgname = moltis' \
+            "pkgver = ${VERSION}-1" \
+            'pkgdesc = Personal AI gateway inspired by OpenClaw' \
+            'url = https://github.com/agentics-skills/chelix' \
+            'arch = aarch64' \
+            'license = MIT' > "$PKG_DIR/.PKGINFO"
     cd "$PKG_DIR"
     fakeroot -- tar --zstd -cf "../../moltis-${VERSION}-1-aarch64.pkg.tar.zst" .PKGINFO usr/
     echo "Built moltis-${VERSION}-1-aarch64.pkg.tar.zst"
@@ -219,25 +216,17 @@ appimage: build-release
     mkdir -p "$APP_DIR/usr/bin"
     cp target/release/moltis "$APP_DIR/usr/bin/moltis"
     chmod 755 "$APP_DIR/usr/bin/moltis"
-    cat > "$APP_DIR/moltis.desktop" <<DESKTOP
-    [Desktop Entry]
-    Type=Application
-    Name=Moltis
-    Exec=moltis
-    Icon=moltis
-    Categories=Network;
-    Terminal=true
-    DESKTOP
-    cat > "$APP_DIR/moltis.svg" <<SVG
-    <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#333"/><text x="128" y="140" font-size="120" text-anchor="middle" fill="white">M</text></svg>
-    SVG
+        printf '%s\n' \
+            '[Desktop Entry]' \
+            'Type=Application' \
+            'Name=Moltis' \
+            'Exec=moltis' \
+            'Icon=moltis' \
+            'Categories=Network;' \
+            'Terminal=true' > "$APP_DIR/moltis.desktop"
+        printf '%s\n' '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#333"/><text x="128" y="140" font-size="120" text-anchor="middle" fill="white">M</text></svg>' > "$APP_DIR/moltis.svg"
     ln -sf moltis.svg "$APP_DIR/.DirIcon"
-    cat > "$APP_DIR/AppRun" <<'APPRUN'
-    #!/bin/sh
-    SELF=$(readlink -f "$0")
-    HERE=${SELF%/*}
-    exec "$HERE/usr/bin/moltis" "$@"
-    APPRUN
+        printf '%s\n' '#!/bin/sh' 'SELF=$(readlink -f "$0")' 'HERE=${SELF%/*}' 'exec "$HERE/usr/bin/moltis" "$@"' > "$APP_DIR/AppRun"
     chmod +x "$APP_DIR/AppRun"
     if [ ! -f target/appimagetool ]; then
         wget -q "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${ARCH}.AppImage" -O target/appimagetool
@@ -309,14 +298,6 @@ build-test: build-web-assets
 # Run the same Rust preflight gates used before release packaging.
 release-preflight: lint
     cargo +{{nightly_toolchain}} fmt --all -- --check
-
-# Sync repo-root install.sh into website/install.sh for Cloudflare deployment.
-sync-website-install:
-    ./scripts/sync-website-install.sh
-
-# Ensure repo-root install.sh and website/install.sh are identical.
-check-website-install-sync:
-    ./scripts/check-website-install-sync.sh
 
 # Dispatch release workflow from GitHub Actions (normal mode).
 release-workflow ref='main':
@@ -393,55 +374,6 @@ ui-e2e-headed:
 # Build all Linux packages (deb + rpm + arch + appimage) for all architectures
 packages-all: deb-all rpm-all arch-pkg-all
 
-# Build Rust static library and generated C header for the macOS app.
-swift-build-rust:
-    ./scripts/build-swift-bridge.sh
-
-# Generate Xcode project from YAML spec in apps/macos.
-swift-generate:
-    ./scripts/generate-swift-project.sh
-
-# Lint macOS app sources with SwiftLint.
-swift-lint:
-    ./scripts/lint-swift.sh
-
-# Build Swift macOS app.
-swift-build: swift-build-rust swift-generate
-    ./scripts/build-swift.sh
-
-# Run Swift app unit tests.
-swift-test: swift-build-rust swift-generate
-    ./scripts/test-swift.sh
-
-# Build and launch the Swift macOS app locally.
-swift-run: swift-build-rust swift-generate
-    ./scripts/run-swift.sh
-
-# Open generated project in Xcode.
-swift-open: swift-build-rust swift-generate
-    open apps/macos/Moltis.xcodeproj
-
-# Generate iOS app Xcode project.
-ios-generate:
-    ./scripts/generate-ios-project.sh
-
-# Generate Apollo GraphQL types for iOS.
-ios-graphql:
-    cargo run -p moltis-schema-export -- apps/ios/GraphQL/Schema/schema.graphqls
-    ./scripts/generate-ios-graphql.sh
-
-# Build iOS app (generic iOS destination, no signing).
-ios-build: ios-graphql ios-generate
-    xcodebuild -project apps/ios/Moltis.xcodeproj -scheme Moltis -configuration Debug -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO build
-
-# Lint iOS app sources with SwiftLint.
-ios-lint:
-    cd apps/ios && swiftlint
-
-# Open iOS project in Xcode (regenerates GraphQL types and project first).
-ios-open: ios-graphql ios-generate
-    open apps/ios/Moltis.xcodeproj
-
 # Build the APNS push relay.
 courier-build:
     cargo build -p moltis-courier --release
@@ -458,7 +390,3 @@ courier-deploy:
 courier-run *ARGS:
     cargo run -p moltis-courier -- {{ARGS}}
 
-# Serve the website locally with SSR partial injection (default port 4000).
-website-dev:
-    node website/scripts/build-changelog.mjs
-    node website/scripts/dev-server.mjs

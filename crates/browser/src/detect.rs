@@ -89,7 +89,7 @@ struct BrowserPath {
     path: &'static str,
 }
 
-/// macOS app bundle paths for Chromium-based browsers.
+/// macOS bundle paths for Chromium-based browsers.
 #[cfg(target_os = "macos")]
 const MACOS_APP_PATHS: &[BrowserPath] = &[
     BrowserPath {
@@ -273,7 +273,7 @@ fn push_browser(
 /// Checks (in order):
 /// 1. Custom path from config (if provided)
 /// 2. CHROME environment variable
-/// 3. Platform-specific installation paths (macOS app bundles, Windows paths)
+/// 3. Platform-specific installation paths (macOS bundles, Windows paths)
 /// 4. Known executable names in PATH (fallback)
 #[must_use]
 pub fn detect_browsers(custom_path: Option<&str>) -> Vec<DetectedBrowser> {

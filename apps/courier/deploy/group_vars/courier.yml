@@ -1,7 +1,7 @@
 # Domain name for the courier service (Caddy will provision TLS automatically).
 courier_domain: courier.example.com
 
-# iOS app bundle identifier (apns-topic).
+# Client app bundle identifier (apns-topic).
 courier_bundle_id: com.example.Moltis
 
 # Apple .p8 key settings (from App Store Connect).

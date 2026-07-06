@@ -99,7 +99,7 @@
 
           meta = with pkgs.lib; {
             description = "Personal AI gateway inspired by OpenClaw";
-            homepage = "https://www.moltis.org/";
+            homepage = "https://github.com/agentics-skills/chelix";
             license = licenses.mit;
             mainProgram = "moltis";
           };

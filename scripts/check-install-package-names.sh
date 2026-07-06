@@ -207,21 +207,6 @@ if [[ -f "$RELEASE_YML" ]]; then
   fi
 fi
 
-# ---------------------------------------------------------------------------
-# Check 9: Verify both install scripts are in sync (belt + suspenders)
-# ---------------------------------------------------------------------------
-
-echo "Checking install.sh sync..."
-
-WEBSITE_SH="$REPO_ROOT/website/install.sh"
-if [[ -f "$WEBSITE_SH" ]]; then
-  if cmp -s "$INSTALL_SH" "$WEBSITE_SH"; then
-    pass "install.sh and website/install.sh are identical"
-  else
-    fail "install.sh and website/install.sh have diverged — run ./scripts/sync-website-install.sh"
-  fi
-fi
-
 # --- Summary ---
 echo ""
 if [[ "$FAILURES" -gt 0 ]]; then

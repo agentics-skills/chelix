@@ -564,7 +564,7 @@ test.describe("Session management", () => {
 		await page.waitForURL((url) => url.pathname === sharePath && !url.searchParams.has("k"), { timeout: 10_000 });
 
 		await expect(page.locator("main")).toBeVisible();
-		await expect(page.locator("a[href='https://www.moltis.org']")).toBeVisible();
+		await expect(page.locator("a[href='https://github.com/agentics-skills/chelix']")).toBeVisible();
 		const shareFooter = page.locator(".share-page-footer");
 		await expect(shareFooter).toContainText("Get your AI assistant at");
 		await expect(shareFooter.locator("strong")).toHaveCount(0);

@@ -339,8 +339,6 @@ Exact commands (must match `local-validate.sh`):
 - Fmt: `cargo fmt --all -- --check`
 - Clippy: `just lint` (OS-aware: on macOS excludes CUDA features, on Linux uses `--all-features`)
 - Tests: `just test` (OS-aware: on macOS uses nextest without CUDA features, on Linux uses `--all-features`)
-- macOS app (Darwin hosts): `./scripts/build-swift-bridge.sh && ./scripts/generate-swift-project.sh && ./scripts/lint-swift.sh && xcodebuild -project apps/macos/Moltis.xcodeproj -scheme Moltis -configuration Release -destination "platform=macOS" -derivedDataPath apps/macos/.derivedData-local-validate CODE_SIGNING_ALLOWED=NO build`
-- iOS app (Darwin hosts): `cargo run -p moltis-schema-export -- apps/ios/GraphQL/Schema/schema.graphqls && ./scripts/generate-ios-graphql.sh && ./scripts/generate-ios-project.sh && xcodebuild -project apps/ios/Moltis.xcodeproj -scheme Moltis -configuration Debug -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO build`
 
 ### PR Descriptions
 
@@ -364,7 +362,7 @@ with exact commands), `## Manual QA`. Include concrete test steps.
 
 ## Documentation
 
-Source in `docs/src/` (mdBook). Auto-deployed to docs.moltis.org on push to main.
+Source in `docs/src/` (mdBook).
 Update `docs/src/SUMMARY.md` when adding pages. Preview: `cd docs && mdbook serve`.
 
 **Keep docs in sync with code.** When adding or changing user-facing features

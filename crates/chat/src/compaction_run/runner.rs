@@ -135,7 +135,7 @@ pub(crate) fn compaction_mode_key(mode: CompactionMode) -> &'static str {
 /// straight into `moltis.toml`.
 pub(crate) const SETTINGS_HINT: &str = "Change chat.compaction.mode in moltis.toml (or the web UI settings panel) \
      to pick a different compaction strategy. See \
-     https://docs.moltis.org/compaction for a comparison of the four modes.";
+    https://github.com/agentics-skills/chelix/blob/master/docs/src/compaction.md for a comparison of the four modes.";
 
 /// Best-effort extraction of a human-readable summary body from a
 /// compacted history, for use in memory-file snapshots and hook payloads.

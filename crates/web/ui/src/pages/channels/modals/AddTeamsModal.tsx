@@ -183,7 +183,7 @@ export function AddTeamsModal(): VNode {
 							Then generate the endpoint below and paste it as the <strong>Messaging endpoint</strong> in your bot
 							settings.{" "}
 							<a
-								href="https://docs.moltis.org/teams.html"
+								href="https://github.com/agentics-skills/chelix/blob/master/docs/src/teams.md"
 								target="_blank"
 								className="text-[var(--accent)] underline"
 								rel="noopener"

@@ -203,7 +203,7 @@ pub(super) async fn finalize_prepared_gateway(
     });
 
     // Spawn session event → WebSocket forwarder.
-    // Events published by the swift-bridge (or any other bus producer) are
+    // Events published by any bus producer are
     // relayed to all connected WebSocket clients as `"session"` events,
     // enriched with full entry metadata so clients can update in-place.
     {
@@ -825,7 +825,7 @@ pub(super) async fn finalize_prepared_gateway(
     })
 }
 
-/// Prepare the full gateway for embedded callers (for example swift-bridge)
+/// Prepare the full gateway for embedded callers
 /// using a feature-stable argument list.
 #[allow(clippy::expect_used)]
 pub async fn prepare_gateway_embedded(
@@ -855,7 +855,7 @@ pub async fn prepare_gateway_embedded(
     Ok(prepared)
 }
 
-/// Alias for [`prepare_gateway_embedded`] used by swift-bridge consumers.
+/// Alias for [`prepare_gateway_embedded`] used by embedded consumers.
 pub use prepare_gateway_embedded as prepare_httpd_embedded;
 
 /// Start the gateway HTTP + WebSocket server.

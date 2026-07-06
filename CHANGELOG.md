@@ -1768,7 +1768,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Fixed
-- [swift-bridge] Await embedded httpd shutdown
 - [cron] Use time crate for retention math and fix named-session guard
 - [sandbox] Include remove_image_override in cleanup_session
 - [cron] Skip pruning cycle when session key lookup fails
@@ -2706,7 +2705,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [browser] Register BrowserTool in tool registry
 - [agents] Correctly pass tools through ProviderChain and detect tool result failures
 - [browser] Include install instructions when browser launch fails
-- [browser] Check macOS app bundles before PATH for browser detection
 - [browser] Improve tool description with explicit examples
 - [agents] Add strict mode to OpenAI-compatible tool schemas
 - [browser] Default to navigate action when only url is provided
@@ -2957,7 +2955,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [openclaw-import] Collapse nested if chains for clippy
 - [docker] Use modern Docker CLI in published image (#238)
 - [web] Update qmd package references to @tobilu/qmd
-- [ci] Exclude swift-bridge from coverage and increase E2E poll timeout
 - [e2e] Match error code instead of localized message in full context tests
 - [gateway] Remove duplicate /certs/ca.pem route in start_gateway
 - [ci] Unblock clippy and macOS bridge wasm build
@@ -2968,7 +2965,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ios] Add cancel button to connection banner for unreachable servers
 - [agents] Resolve clippy collapsible-if and expect-used lints
 - [ci] Add WASM component build step to all release jobs
-- [ci] Parallelize macOS app with release package builds
 - [release] Ship v0.10.2 packaging fixes
 - [sandbox] Make apple container keepalive portable (#269)
 - [local-llm] Combine compile-time and runtime Metal detection
@@ -2986,27 +2982,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [sandbox] Resolve host gateway IP for Podman < 5.0 (#287)
 - [e2e] Fix flaky "deleting unmodified fork" test
 - [ci] Stale lockfile, missing Tailwind in macOS job, OAuth e2e setup
-- [ci] Use standalone Tailwind binary for macOS app job
 - [e2e] Fix OAuth token-exchange failure test and add error-context capture
 - [web] Auto-install node_modules in Tailwind build script
 - [web] Retry openclaw onboarding scan until ws is ready
 - [ci] Add Tailwind CSS build step to release workflow, Dockerfile, and snapcraft
 - [e2e] Wait for session history render before DOM injection in chat-abort
 - [ci] Harden tailwindcss cli downloads
-- [swift-bridge] Stabilize gateway migration and stream tests
 - [config] Support provider url alias for remote Ollama config (#299)
 - [ci] Make release dry-run job conditions valid
 - [providers] Use Ollama capabilities for tool support detection (#301)
 - [scripts] Roll back heavy local validation parallelism
 - [web] Skip npm install when TAILWINDCSS binary is provided
-- [ci] Update website/releases.json on release
 - [web] Add missing i18n button key for preferredModels
 - [local-llm] Use sampler API for mlx-lm >= 0.20
 - [gateway] Break redirect loop when onboarded but auth not configured (#310)
 - [gateway] Reduce idle CPU from metrics loop and log broadcast feedback
 - [gateway] Improve browser warmup integration
 - [scripts] Run local nextest with ci timeout profile
-- [ci] Build macOS app arm64 in fast path
 - [web] Move session history off websocket and cap payload size
 - [web] Use combo select for session header selectors
 - [web] Externalize SVG icons and restore empty-chat centering
@@ -3296,7 +3288,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - [gateway] Improve browser warmup integration
 - [scripts] Run local nextest with ci timeout profile
-- [ci] Build macOS app arm64 in fast path
 - [web] Move session history off websocket and cap payload size
 - [web] Use combo select for session header selectors
 - [web] Externalize SVG icons and restore empty-chat centering
@@ -3375,14 +3366,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [providers] Use Ollama capabilities for tool support detection (#301)
 - [scripts] Roll back heavy local validation parallelism
 - [web] Skip npm install when TAILWINDCSS binary is provided
-- [ci] Update website/releases.json on release
 - [web] Add missing i18n button key for preferredModels
 - [local-llm] Use sampler API for mlx-lm >= 0.20
 - [gateway] Break redirect loop when onboarded but auth not configured (#310)
 - [gateway] Reduce idle CPU from metrics loop and log broadcast feedback
 - [gateway] Improve browser warmup integration
 - [scripts] Run local nextest with ci timeout profile
-- [ci] Build macOS app arm64 in fast path
 - [web] Move session history off websocket and cap payload size
 - [web] Use combo select for session header selectors
 - [web] Externalize SVG icons and restore empty-chat centering
@@ -3396,7 +3385,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.10.10] - 2026-03-02
 ### Fixed
-- [swift-bridge] Stabilize gateway migration and stream tests
 
 ## [0.10.9] - 2026-03-02
 ### Fixed
@@ -3432,7 +3420,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [sandbox] Resolve host gateway IP for Podman < 5.0 (#287)
 - [e2e] Fix flaky "deleting unmodified fork" test
 - [ci] Stale lockfile, missing Tailwind in macOS job, OAuth e2e setup
-- [ci] Use standalone Tailwind binary for macOS app job
 - [e2e] Fix OAuth token-exchange failure test and add error-context capture
 - [web] Auto-install node_modules in Tailwind build script
 - [web] Retry openclaw onboarding scan until ws is ready
@@ -3513,7 +3500,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Gemini first-class provider**: Google Gemini is now registered via the OpenAI-compatible endpoint with native tool calling, vision/multimodal support, streaming, and model discovery. Replaces the previous genai-backed fallback that lacked tool support. Supports both `GEMINI_API_KEY` and `GOOGLE_API_KEY` environment variables
 - **Podman sandbox backend** — Podman as a first-class sandbox backend. Set `backend = "podman"` or let auto-detection prefer it over Docker (Apple Container → Podman → Docker → restricted-host). Uses the `podman` CLI directly (no socket compatibility needed)
 - **Trusted network mode**: sandbox containers now default to `sandbox.network = "trusted"`, routing outbound traffic through an HTTP CONNECT proxy with full audit logging. When `trusted_domains` is empty (the default), all domains are allowed (audit-only mode); when configured, only listed domains pass without approval. Includes real-time network audit log with domain, protocol, and action filtering via Settings > Network Audit. Configurable via `sandbox.trusted_domains` in `moltis.toml`. Proxy env vars (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`) are now automatically injected into both Docker and Apple Container sandboxes, and the proxy binds to `0.0.0.0` so it is reachable from container VMs. The proxy rejects connections from non-private IPs (only loopback, RFC 1918, link-local, and CGNAT ranges are accepted)
-- **New `moltis-network-filter` crate**: domain filtering, proxy, and audit buffer logic extracted from `moltis-tools` and `moltis-gateway` into a standalone crate with feature flags (`proxy`, `service`, `metrics`). The macOS app can now depend on it directly for network audit log display via `moltis-swift-bridge`
 - **macOS Network Audit pane**: new Settings > Network Audit section with real-time log display, action filtering (allowed/denied), search, pause/resume, clipboard export, and JSONL download — matching the web UI pattern. New FFI callback `moltis_set_network_audit_callback` bridges Rust audit entries to Swift
 - **Proxy-compliant HTTP tools**: all HTTP tools (`web_fetch`, `web_search`, `location`, `map`) now route through the trusted-network proxy when active, so their traffic appears in the Network Audit log and respects domain filtering. The shared `reqwest` client is initialized with proxy config at gateway startup; `web_fetch` uses a per-tool proxy setting for its custom redirect-following client
 - **Network policy rename**: `sandbox.network = "open"` has been renamed to `"bypass"` to make explicit that traffic bypasses the proxy entirely (no audit logging)
@@ -3529,8 +3515,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Discord OTP self-approval for DMs: non-allowlisted users receive a 6-digit challenge code (visible in web UI) to self-approve access, matching Telegram's existing OTP flow
 - Discord native slash commands: `/new`, `/clear`, `/compact`, `/context`, `/model`, `/sessions`, `/agent`, `/help` registered as Discord application commands with ephemeral responses
 - OTP module moved from `moltis-telegram` to shared `moltis-channels` crate for cross-platform reuse
-- Real-time session sync between macOS app and web UI via `SessionEventBus` (`tokio::sync::broadcast`). Sessions created, deleted, or patched in one UI instantly appear in the other. New FFI callback `moltis_set_session_event_callback` and WebSocket `"session"` events for create/delete/fork operations.
-- Swift bridge: persistent session storage via FFI — `moltis_list_sessions`, `moltis_switch_session`, `moltis_create_session`, `moltis_session_chat_stream` functions backed by JSONL files and shared SQLite metadata (`moltis.db`) across all UIs (macOS app, web, TUI)
 - **Internationalization (i18n)**: web UI now supports runtime language switching via `i18next` with English and French locales. Error codes use structured constants with locale-aware error messages across API handlers, terminal, chat, and environment routes. Onboarding step labels, navigation buttons, and page strings use translation keys (`t()` calls)
 - **Vault UI**: recovery key display during onboarding password setup, vault status/unlock controls in Settings > Security, encrypted/plaintext badges on environment variables
 - **Encryption-at-rest vault** (`vault` feature, default on) — environment variables are encrypted with XChaCha20-Poly1305 AEAD using Argon2id-derived keys. Vault is initialized on first password setup and auto-unsealed on login. Recovery key provided at initialization for emergency access. API: `/api/auth/vault/status`, `/api/auth/vault/unlock`, `/api/auth/vault/recovery`
@@ -3541,7 +3525,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `graphql` feature flag (default on) in gateway and CLI crates for compile-time opt-out
 - Settings > GraphQL page embedding GraphiQL playground at `/settings/graphql`
 - Gateway startup now seeds a built-in `dcg-guard` hook in `~/.moltis/hooks/dcg-guard/` (manifest + handler), so destructive command guarding is available out of the box once `dcg` is installed
-- Swift embedding POC scaffold with a new `moltis-swift-bridge` static library crate, XcodeGen YAML project (`apps/macos/project.yml`), and SwiftLint wiring for SwiftUI frontend code quality
 - New `moltis-openclaw-import` crate for detecting OpenClaw installations and selectively importing identity, providers, skills, memory files, Telegram channels, sessions, and MCP servers
 - New onboarding RPC methods: `openclaw.detect`, `openclaw.scan`, and `openclaw.import`
 - New `moltis import` CLI commands (`detect`, `all`, `select`) with `--dry-run` and `--json` output options
@@ -3572,7 +3555,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Gateway and CLI now enable the `openclaw-import` feature in default builds
 - Providers now support `stream_transport = "sse" | "websocket" | "auto"` in config. OpenAI can stream via Responses API WebSocket mode, and `auto` falls back to SSE when WebSocket setup is unavailable.
 - Agent Identity emoji picker now includes 🐰 🐹 🦀 🦞 🦝 🦭 🧠 🧭 options
-- Added architecture docs for a native Swift UI app embedding Moltis Rust core through a C FFI bridge (`docs/src/native-swift-embedding.md`)
 - Channel persistence and message-log queries are now channel-type scoped (`channel_type + account_id`) so Telegram and Teams accounts can share the same account IDs safely
 - Chat/system prompt resolution is now agent-aware, loading `IDENTITY.md`, `SOUL.md`, `MEMORY.md`, `AGENTS.md`, and `TOOLS.md` from the active session agent workspace with backward-compatible fallbacks
 - Memory tool operations and compaction memory writes are now agent-scoped, preventing cross-agent memory leakage during search/read/write flows
@@ -5241,7 +5223,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Thumbnails are 200×150px max with hover effects
 
 - **Improved Browser Detection**: Better cross-platform browser detection
-  - Checks macOS app bundles before PATH (avoids broken Homebrew chromium wrapper)
   - Supports Chrome, Chromium, Edge, Brave, Opera, Vivaldi, Arc
   - Shows platform-specific installation instructions when no browser found
   - Custom path via `chrome_path` config or `CHROME` environment variable

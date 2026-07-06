@@ -1,7 +1,5 @@
 <div align="center">
 
-<a href="https://github.com/agentics-skills/chelix"><img src="https://raw.githubusercontent.com/moltis-org/moltis/main/website/favicon.svg" alt="Chelix" width="64"></a>
-
 # Chelix — A secure persistent personal agent server in Rust
 
 One binary — sandboxed, secure, yours.
@@ -48,7 +46,7 @@ cargo install moltis --git https://github.com/agentics-skills/chelix
 
 | | OpenClaw | Hermes Agent | **Chelix** |
 |---|---|---|---|
-| Primary stack | TypeScript + Swift/Kotlin companion apps | Python + TypeScript TUI/web surfaces | **Rust** |
+| Primary stack | TypeScript | Python + TypeScript TUI/web surfaces | **Rust** |
 | Runtime | Node.js + npm/pnpm/bun | Python + uv/pip, optional Node UI pieces | **Single Rust binary** |
 | Local checkout size\* | ~1.1M app LoC | ~152K app LoC | **~270K Rust LoC** |
 | Architecture | Broad gateway, channel, node, and app ecosystem | CLI/gateway agent with learning loop and research tooling | **Persistent personal agent server with modular crates** |
@@ -97,7 +95,7 @@ Current Rust workspace: ~270K LoC across 59 crates. The table below groups the m
 | Auth and security | `moltis-auth`, `moltis-oauth`, `moltis-vault`, `moltis-secret-store`, `moltis-network-filter`, `moltis-tls` | 8.5K |
 | Scheduling and automation | `moltis-cron`, `moltis-caldav`, `moltis-auto-reply` | 4.7K |
 | Setup and import | `moltis-provider-setup`, `moltis-openclaw-import`, `moltis-onboarding` | 11.7K |
-| Native and node hosts | `moltis-swift-bridge`, `moltis-node-host`, `moltis-courier` | 5.7K |
+| Native and node hosts | `moltis-node-host`, `moltis-courier` | 5.7K |
 | WASM tools | `moltis-wasm-precompile`, `moltis-wasm-calc`, `moltis-wasm-web-fetch`, `moltis-wasm-web-search` | 1.4K |
 | Supporting crates | `moltis-media`, `moltis-metrics`, `moltis-routing`, `moltis-canvas`, `moltis-schema-export`, `benchmarks` | 2.1K |
 

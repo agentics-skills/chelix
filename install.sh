@@ -1,14 +1,14 @@
 #!/bin/sh
 # Moltis installer script
-# https://www.moltis.org/
+# https://github.com/agentics-skills/chelix
 #
 # Usage:
-#   curl -fsSL https://www.moltis.org/install.sh | sh
+#   curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh
 #
 # Or with options:
-#   curl -fsSL https://www.moltis.org/install.sh | sh -s -- --no-homebrew
-#   curl -fsSL https://www.moltis.org/install.sh | sh -s -- --method=binary
-#   curl -fsSL https://www.moltis.org/install.sh | sh -s -- --version=0.1.3
+#   curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --no-homebrew
+#   curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --method=binary
+#   curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --version=0.1.3
 
 set -e
 
@@ -85,9 +85,9 @@ Environment variables:
     INSTALL_DIR         Binary installation directory (default: ~/.local/bin)
 
 Examples:
-    curl -fsSL https://www.moltis.org/install.sh | sh
-    curl -fsSL https://www.moltis.org/install.sh | sh -s -- --method=binary
-    curl -fsSL https://www.moltis.org/install.sh | sh -s -- --version=0.1.3
+    curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh
+    curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --method=binary
+    curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --version=0.1.3
 EOF
             exit 0
             ;;
@@ -732,7 +732,7 @@ main() {
         printf "  ${BOLD}moltis${NC}          # Start the gateway\n"
         printf "  ${BOLD}moltis --help${NC}   # Show help\n"
         printf "\n"
-        printf "Documentation: ${BLUE}https://www.moltis.org/${NC}\n"
+        printf "Project: ${BLUE}https://github.com/agentics-skills/chelix${NC}\n"
     elif [ -x "$INSTALL_DIR/$BINARY_NAME" ]; then
         printf "\n"
         success "Installation complete!"

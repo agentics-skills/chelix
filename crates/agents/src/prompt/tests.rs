@@ -186,7 +186,11 @@ fn test_documentation_section_falls_back_to_public_docs() {
         None,
     );
 
-    assert!(prompt.contains("Moltis docs: https://docs.moltis.org"));
+    assert!(
+        prompt.contains(
+            "Moltis docs: https://github.com/agentics-skills/chelix/tree/master/docs/src"
+        )
+    );
 }
 
 #[test]

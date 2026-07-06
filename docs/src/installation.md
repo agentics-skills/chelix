@@ -28,21 +28,21 @@ Package filenames are versioned on every release. Use the installer script below
 
 ```bash
 # Install the latest .deb package
-curl -fsSL https://www.moltis.org/install.sh | sh -s -- --method=deb
+curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --method=deb
 ```
 
 ### Fedora / RHEL (.rpm)
 
 ```bash
 # Install the latest .rpm package
-curl -fsSL https://www.moltis.org/install.sh | sh -s -- --method=rpm
+curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --method=rpm
 ```
 
 ### Arch Linux (.pkg.tar.zst)
 
 ```bash
 # Install the latest package
-curl -fsSL https://www.moltis.org/install.sh | sh -s -- --method=arch
+curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --method=arch
 ```
 
 ### Snap
@@ -55,7 +55,7 @@ sudo snap install moltis
 
 ```bash
 # Install the latest AppImage
-curl -fsSL https://www.moltis.org/install.sh | sh -s -- --method=appimage
+curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --method=appimage
 ```
 
 ## Docker

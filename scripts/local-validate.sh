@@ -193,8 +193,6 @@ fi
 e2e_cmd="${LOCAL_VALIDATE_E2E_CMD:-cd crates/web/ui && if [ ! -d node_modules ]; then npm ci; fi && npm run e2e:install && npm run e2e}"
 ollama_qwen_e2e_cmd="${LOCAL_VALIDATE_OLLAMA_QWEN_E2E_CMD:-cd crates/web/ui && if [ ! -d node_modules ]; then npm ci; fi && npm run e2e:install && MOLTIS_E2E_OLLAMA_QWEN_LIVE=1 npx playwright test --project=ollama-qwen-live e2e/specs/ollama-qwen-live.spec.js}"
 coverage_cmd="${LOCAL_VALIDATE_COVERAGE_CMD:-cargo +${nightly_toolchain} llvm-cov --workspace --all-features --html}"
-macos_app_cmd="${LOCAL_VALIDATE_MACOS_APP_CMD:-./scripts/build-swift-bridge.sh && ./scripts/generate-swift-project.sh && ./scripts/lint-swift.sh && xcodebuild -project apps/macos/Moltis.xcodeproj -scheme Moltis -configuration Release -destination \"platform=macOS\" -derivedDataPath apps/macos/.derivedData-local-validate CODE_SIGNING_ALLOWED=NO build}"
-ios_app_cmd="${LOCAL_VALIDATE_IOS_APP_CMD:-cargo run -p moltis-schema-export -- apps/ios/GraphQL/Schema/schema.graphqls && ./scripts/generate-ios-graphql.sh && ./scripts/generate-ios-project.sh && xcodebuild -project apps/ios/Moltis.xcodeproj -scheme Moltis -configuration Debug -destination \"generic/platform=iOS\" CODE_SIGNING_ALLOWED=NO build}"
 build_cmd="${LOCAL_VALIDATE_BUILD_CMD:-cargo +${nightly_toolchain} build --workspace --all-features --all-targets}"
 
 strip_all_features_flag() {
@@ -561,8 +559,7 @@ fi
 run_check "local/lint" "$lint_cmd"
 
 # Build and pre-compile WASM guest components if the target is installed.
-# Release-profile builds (macOS app, swift-bridge) embed `.cwasm` artifacts
-# via include_bytes!.
+# Release-profile builds embed `.cwasm` artifacts via include_bytes!.
 if rustup target list --installed 2>/dev/null | grep -q wasm32-wasip2; then
   echo "Building WASM tool components..."
   cargo build --target wasm32-wasip2 -p moltis-wasm-calc -p moltis-wasm-web-fetch -p moltis-wasm-web-search --release
@@ -574,32 +571,8 @@ fi
 # and means both nextest and E2E reuse these artifacts without recompilation.
 run_check "local/build" "$build_cmd"
 
-# Keep test and platform checks sequential to avoid overloading local machines.
+# Keep test checks sequential to avoid overloading local machines.
 run_check "local/test" "$test_cmd"
-if [[ "${LOCAL_VALIDATE_SKIP_MACOS_APP:-0}" != "1" ]]; then
-  if [[ "$(uname -s)" == "Darwin" ]]; then
-    run_check "local/macos-app" "$macos_app_cmd"
-  else
-    echo "Skipping macOS app checks (requires macOS host)."
-    set_status success "local/macos-app" "Skipped on non-macOS host"
-  fi
-else
-  echo "Skipping macOS app checks (LOCAL_VALIDATE_SKIP_MACOS_APP=1)."
-  set_status success "local/macos-app" "Skipped via LOCAL_VALIDATE_SKIP_MACOS_APP"
-fi
-
-# iOS app validation (macOS hosts only — requires Xcode with iOS SDK).
-if [[ "${LOCAL_VALIDATE_SKIP_IOS_APP:-0}" != "1" ]]; then
-  if [[ "$(uname -s)" == "Darwin" ]]; then
-    run_check "local/ios-app" "$ios_app_cmd"
-  else
-    echo "Skipping iOS app checks (requires macOS host)."
-    set_status success "local/ios-app" "Skipped on non-macOS host"
-  fi
-else
-  echo "Skipping iOS app checks (LOCAL_VALIDATE_SKIP_IOS_APP=1)."
-  set_status success "local/ios-app" "Skipped via LOCAL_VALIDATE_SKIP_IOS_APP"
-fi
 
 # Gateway web UI e2e tests.
 if [[ "${LOCAL_VALIDATE_SKIP_E2E:-0}" != "1" ]]; then

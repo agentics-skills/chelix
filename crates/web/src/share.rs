@@ -182,7 +182,7 @@ fn serve_static_share_html(body: String) -> axum::response::Response {
     let csp = "default-src 'none'; \
                script-src 'self'; \
                style-src 'unsafe-inline'; \
-               img-src 'self' data: https://www.moltis.org; \
+               img-src 'self' data: https://raw.githubusercontent.com; \
                media-src 'self' data:; \
                connect-src 'self' data:; \
                base-uri 'none'; \

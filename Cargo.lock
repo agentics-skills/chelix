@@ -8223,35 +8223,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "moltis-swift-bridge"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "metrics 0.24.3",
- "moltis-agents",
- "moltis-config",
- "moltis-gateway",
- "moltis-httpd",
- "moltis-network-filter",
- "moltis-projects",
- "moltis-provider-setup",
- "moltis-providers",
- "moltis-sessions",
- "moltis-tools",
- "moltis-web",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "serial_test",
- "sqlx",
- "tokio",
- "tokio-stream",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "moltis-telegram"
 version = "0.1.0"
 dependencies = [

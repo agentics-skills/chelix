@@ -3,7 +3,7 @@ Version:        0.1.0
 Release:        1%{?dist}
 Summary:        Personal AI gateway inspired by OpenClaw
 License:        MIT
-URL:            https://www.moltis.org/
+URL:            https://github.com/agentics-skills/chelix
 
 %description
 Moltis is a personal AI gateway inspired by OpenClaw. One binary, multiple LLM providers.

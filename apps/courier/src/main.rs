@@ -46,7 +46,7 @@ struct Args {
     #[arg(long)]
     team_id: String,
 
-    /// iOS app bundle identifier (apns-topic).
+    /// Client app bundle identifier (apns-topic).
     #[arg(long)]
     bundle_id: String,
 

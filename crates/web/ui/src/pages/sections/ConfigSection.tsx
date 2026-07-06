@@ -420,7 +420,7 @@ export function ConfigSection(): VNode {
 				Edit the full moltis configuration. This includes server, tools, LLM providers, auth, and all other settings.
 				Test your changes before saving. Changes require a restart to take effect.{" "}
 				<a
-					href="https://docs.moltis.org/configuration.html"
+					href="https://github.com/agentics-skills/chelix/blob/master/docs/src/configuration.md"
 					target="_blank"
 					rel="noopener"
 					style={{ color: "var(--accent)", textDecoration: "underline" }}

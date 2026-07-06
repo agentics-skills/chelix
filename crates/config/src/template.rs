@@ -43,7 +43,7 @@ port = {port}                           # Port number (auto-generated for this i
                                          # NOTE: this can be re-enabled via the web UI config editor.
                                          # For hard lockdown, set MOLTIS_TERMINAL_DISABLED=1 (env var
                                          # takes precedence and cannot be changed from the web UI).
-# update_releases_url = "https://www.moltis.org/releases.json"  # Override releases manifest URL
+# update_releases_url = "https://github.com/agentics-skills/chelix"  # Override releases manifest URL
 # external_url = "https://moltis.example.com"  # Public URL when behind a reverse proxy.
                                                  # Used for WebAuthn passkey origins.
                                                  # Env var MOLTIS_EXTERNAL_URL takes precedence.

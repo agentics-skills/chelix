@@ -16,7 +16,7 @@ and Hermes Agent.
 
 | | [OpenClaw](https://github.com/openclaw/openclaw) | [Hermes Agent](https://github.com/NousResearch/hermes-agent) | **Chelix** |
 |---|---|---|---|
-| Primary stack | TypeScript, with Swift/Kotlin companion apps | Python, with TypeScript TUI/web surfaces | **Rust** |
+| Primary stack | TypeScript | Python, with TypeScript TUI/web surfaces | **Rust** |
 | Main runtime | Node.js 22.16+/24 + npm/pnpm/bun | Python + uv/pip, optional Node UI pieces | **Single Rust binary** |
 | Main shape | Broad gateway, channel, node, app, and plugin ecosystem | CLI/gateway agent with a learning loop and research tooling | **Persistent personal agent server with modular crates** |
 | Local checkout size\* | ~1.1M app LoC | ~152K app LoC | **~270K Rust LoC** |

@@ -2,7 +2,7 @@
 Description=Moltis Agent Server
 After=network-online.target
 Wants=network-online.target
-Documentation=https://docs.moltis.org
+Documentation=https://github.com/agentics-skills/chelix
 
 [Service]
 Type=simple

@@ -72,7 +72,7 @@ pub async fn prepare_gateway_core(
 
     // Load config file (moltis.toml / .yaml / .json) if present.
     // Note: initialize_config() is called once at CLI startup (main.rs)
-    // or by the swift-bridge before reaching here.
+    // before reaching here.
     let mut config = moltis_config::discover_and_load();
     info!(
         offered_channels = ?config.channels.offered,

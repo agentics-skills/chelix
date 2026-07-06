@@ -4,7 +4,7 @@ Privacy-preserving APNS push relay for self-hosted Moltis gateways.
 
 Courier holds a single Apple Push Notification Service (APNS) key and forwards
 opaque silent "wake up" pushes (`content-available: 1`) on behalf of gateways.
-The relay never sees message text or metadata — the iOS app reconnects to its
+The relay never sees message text or metadata — the client reconnects to its
 own gateway to fetch actual content.
 
 ## Getting a .p8 key
@@ -35,7 +35,7 @@ moltis-courier \
 | `--key-path`   | *(required)*  | Path to the `.p8` private key file     |
 | `--key-id`     | *(required)*  | Apple key identifier                   |
 | `--team-id`    | *(required)*  | Apple team identifier                  |
-| `--bundle-id`  | *(required)*  | iOS app bundle identifier (apns-topic) |
+| `--bundle-id`  | *(required)*  | Client app bundle identifier (apns-topic) |
 | `--auth-token` | *(optional)*  | Shared secret for gateway auth         |
 
 ## API

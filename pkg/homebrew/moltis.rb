@@ -1,6 +1,6 @@
 class Moltis < Formula
   desc "Personal AI gateway inspired by OpenClaw"
-  homepage "https://www.moltis.org/"
+  homepage "https://github.com/agentics-skills/chelix"
   license "MIT"
   version "0.1.0"
 

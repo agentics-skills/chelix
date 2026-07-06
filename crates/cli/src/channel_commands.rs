@@ -450,7 +450,9 @@ fn print_setup_links() {
     println!(
         "  - Azure app registrations: https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade"
     );
-    println!("  - Moltis Teams guide: https://docs.moltis.org/teams.html");
+    println!(
+        "  - Moltis Teams guide: https://github.com/agentics-skills/chelix/blob/master/docs/src/teams.md"
+    );
 }
 
 fn open_setup_links() {

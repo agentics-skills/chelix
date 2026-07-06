@@ -25,7 +25,7 @@ struct ReleasesManifest {
 
 pub const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
-const DEFAULT_RELEASES_URL: &str = "https://www.moltis.org/releases.json";
+const DEFAULT_RELEASES_URL: &str = "https://github.com/agentics-skills/chelix";
 
 /// Resolve the releases manifest URL from config, falling back to the default.
 #[must_use]

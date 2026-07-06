@@ -16,14 +16,6 @@ docs/book/
 docs/.astro/
 docs/dist/
 docs/node_modules/
-apps/macos/Generated/
-apps/macos/Moltis.xcodeproj/
-apps/macos/.derivedData*/
-apps/ios/MoltisCompanion.xcodeproj/
-apps/ios/Moltis.xcodeproj/
-apps/ios/.derivedData*/
-apps/ios/.tools/
-apps/ios/local.xcconfig
 crates/web/ui/node_modules/
 crates/web/ui/playwright-report/
 crates/web/ui/test-results/
@@ -34,8 +26,6 @@ crates/web/src/assets/dist/
 crates/web/src/assets/css/style.css
 crates/web/src/assets/style.css
 crates/web/src/assets/sw.js
-website/node_modules/
-website/.playwright-mcp/
 crates/web/src/assets/js/vendor/shiki.mjs
 crates/gateway/ui/node_modules/
 crates/gateway/ui/playwright-report/

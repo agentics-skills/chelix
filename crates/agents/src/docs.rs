@@ -11,7 +11,7 @@ use {
     tracing::{debug, warn},
 };
 
-pub const MOLTIS_DOCS_URL: &str = "https://docs.moltis.org";
+pub const MOLTIS_DOCS_URL: &str = "https://github.com/agentics-skills/chelix/tree/master/docs/src";
 pub const BUNDLED_DOCS_RELATIVE_DIR: &str = "docs/moltis";
 pub const CONFIG_TEMPLATE_DOC: &str = "config-template.md";
 

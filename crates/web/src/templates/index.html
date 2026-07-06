@@ -39,7 +39,8 @@
 <link rel="icon" type="image/png" sizes="16x16" href="{{ asset_prefix }}icons/favicon-16.png">
 <link rel="shortcut icon" href="/favicon.ico">
 <meta name="build-ts" content="{{ build_ts }}">
-<script nonce="{{ nonce }}">window.__MOLTIS__={{ gon_json|safe }};</script>
+<script nonce="{{ nonce }}" type="application/json" id="moltis-gon-json">{{ gon_json|safe }}</script>
+<script nonce="{{ nonce }}">!function(){var e=document.getElementById("moltis-gon-json");window.__MOLTIS__=e?JSON.parse(e.textContent||"null"):null}()</script>
 <link rel="stylesheet" href="{{ asset_prefix }}css/base.css">
 <link rel="stylesheet" href="{{ asset_prefix }}css/layout.css">
 <link rel="stylesheet" href="{{ asset_prefix }}css/chat.css">
@@ -86,7 +87,7 @@
       <span class="header-link-label">Settings</span>
     </button>
     <a
-      href="https://www.moltis.org/changelog/"
+      href="https://github.com/agentics-skills/chelix/blob/master/CHANGELOG.md"
       target="_blank"
       rel="noopener noreferrer"
       class="header-link-btn"

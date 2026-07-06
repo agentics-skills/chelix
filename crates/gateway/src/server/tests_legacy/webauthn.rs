@@ -53,12 +53,7 @@ async fn sync_runtime_webauthn_host_registers_new_origin() {
     .await;
 
     assert!(notice.is_none(), "unexpected notice: {notice:?}");
-    assert!(
-        registry
-            .read()
-            .await
-            .contains_host("gateway.example.com")
-    );
+    assert!(registry.read().await.contains_host("gateway.example.com"));
     assert!(
         gateway.passkey_host_update_pending().await.is_empty(),
         "passkey warning should not be queued without existing passkeys"
@@ -89,12 +84,7 @@ async fn sync_runtime_webauthn_host_rejects_invalid_origin() {
     .await;
 
     assert!(notice.is_none());
-    assert!(
-        !registry
-            .read()
-            .await
-            .contains_host("gateway.example.com")
-    );
+    assert!(!registry.read().await.contains_host("gateway.example.com"));
 }
 
 #[tokio::test]

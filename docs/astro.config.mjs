@@ -10,7 +10,7 @@ const copyButtonTransformer = {
 }
 
 export default defineConfig({
-  site: "https://docs.moltis.org",
+  site: "https://github.com/agentics-skills/chelix",
   integrations: [mdx()],
   build: {
     format: "file",

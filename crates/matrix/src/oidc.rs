@@ -148,7 +148,7 @@ async fn load_oidc_session(account_id: &str) -> ChannelResult<Option<PersistedOi
 
 /// Project URL used as `client_uri` during OIDC dynamic client registration.
 /// MAS validates this URL and rejects loopback addresses.
-const MOLTIS_CLIENT_URI: &str = "https://moltis.org/";
+const MOLTIS_CLIENT_URI: &str = "https://github.com/agentics-skills/chelix";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct ClientRegistrationDiagnostics {

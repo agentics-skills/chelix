@@ -695,7 +695,7 @@ mod tests {
             share_title: "title",
             share_description: "desc",
             share_site_name: "site",
-            share_image_url: "https://www.moltis.org/og-social.jpg?v=4",
+            share_image_url: "https://raw.githubusercontent.com/agentics-skills/chelix/master/crates/web/src/assets/icons/icon-512.png",
             share_image_alt: "alt",
             assistant_name: "Moltis",
             assistant_emoji: "\u{1F916}",

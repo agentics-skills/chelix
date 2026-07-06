@@ -192,7 +192,7 @@ test.describe("Settings channels", () => {
 		).toBeVisible();
 		await expect(modal.getByRole("link", { name: "Matrix setup docs", exact: true })).toHaveAttribute(
 			"href",
-			"https://docs.moltis.org/matrix.html",
+			"https://github.com/agentics-skills/chelix/blob/master/docs/src/matrix.md",
 		);
 		await modal.locator('input[data-field="credential"]').fill("syt_test_token");
 		await modal.getByText("Advanced Config JSON", { exact: true }).click();

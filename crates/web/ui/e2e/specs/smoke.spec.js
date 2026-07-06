@@ -94,12 +94,12 @@ test("index page exposes OG and Twitter share metadata", async ({ page }) => {
 		.toContain("personal AI assistant");
 	await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
 		"content",
-		"https://www.moltis.org/og-social.jpg?v=4",
+		"https://raw.githubusercontent.com/agentics-skills/chelix/master/crates/web/src/assets/icons/icon-512.png",
 	);
 	await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
 	await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute(
 		"content",
-		"https://www.moltis.org/og-social.jpg?v=4",
+		"https://raw.githubusercontent.com/agentics-skills/chelix/master/crates/web/src/assets/icons/icon-512.png",
 	);
 
 	expect(pageErrors).toEqual([]);

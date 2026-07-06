@@ -16,9 +16,10 @@ use {
     moltis_sessions::session_events::SessionEventBus,
 };
 
-use super::builder::build_gateway_base;
 use super::{
-    PreparedGateway, RouteEnhancer, builder::finalize_gateway_app, runtime::FinalizeGatewayArgs,
+    PreparedGateway, RouteEnhancer,
+    builder::{build_gateway_base, finalize_gateway_app},
+    runtime::FinalizeGatewayArgs,
 };
 
 #[cfg(feature = "telephony")]
@@ -94,8 +95,8 @@ fn telnyx_call_fields(body: &[u8]) -> (String, String, String) {
 /// Prepare the full gateway: load config, run migrations, wire services,
 /// spawn background tasks, and return the composed axum application.
 ///
-/// This is the HTTP layer on top of [`prepare_gateway_core`]. The swift-bridge
-/// calls this directly and manages its own TCP listener + graceful shutdown.
+/// This is the HTTP layer on top of [`prepare_gateway_core`]. Embedded callers
+/// can call this directly and manage their own TCP listener + graceful shutdown.
 ///
 /// `extra_routes` is an optional callback that returns additional routes
 /// (e.g. the web-UI) to merge before finalization.

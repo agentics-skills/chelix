@@ -1,6 +1,6 @@
 # Moltis Docs
 
-The published documentation at <https://docs.moltis.org> is built with Astro from the Markdown files in `docs/src/`.
+Project documentation is built from the Markdown files in `docs/src/`.
 
 ## Local development
 
