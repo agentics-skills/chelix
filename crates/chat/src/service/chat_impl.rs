@@ -194,19 +194,13 @@ impl ChatService for LiveChatService {
         }
 
         let session_entry = self.session_metadata.get(&session_key).await;
-        let model_id = send_sync_model_id(explicit_model, session_entry.as_ref());
+        let model_id = send_sync_model_id(explicit_model, session_entry.as_ref()).ok_or_else(|| {
+            format!("session '{session_key}' has no model; pass 'model' explicitly or set the session model")
+        })?;
         let provider: Arc<dyn moltis_agents::model::LlmProvider> = {
             let reg = self.providers.read().await;
-            if let Some(id) = model_id {
-                reg.get(id)
-                    .ok_or_else(|| format!("model '{id}' not found"))?
-            } else if !stream_only {
-                reg.first_with_tools()
-                    .ok_or_else(|| "no LLM providers configured".to_string())?
-            } else {
-                reg.first()
-                    .ok_or_else(|| "no LLM providers configured".to_string())?
-            }
+            reg.get(model_id)
+                .ok_or_else(|| format!("model '{model_id}' not found"))?
         };
         let session_agent_id = resolve_prompt_agent_id(session_entry.as_ref());
         let persona = load_prompt_persona_for_session(
