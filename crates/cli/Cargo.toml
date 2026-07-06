@@ -7,60 +7,6 @@ name              = "moltis"
 repository        = "https://github.com/moltis-org/moltis"
 version.workspace = true
 
-[package.metadata.deb]
-assets = [
-  [
-    "target/release/moltis",
-    "usr/bin/",
-    "755",
-  ],
-  [
-    "../web/src/assets/**/*",
-    "usr/share/moltis/web/",
-    "644",
-  ],
-  [
-    "../../docs/src/**/*",
-    "usr/share/moltis/docs/",
-    "644",
-  ],
-  [
-    "target/release/moltis_wasm_calc.wasm",
-    "usr/share/moltis/wasm/",
-    "644",
-  ],
-  [
-    "target/release/moltis_wasm_web_fetch.wasm",
-    "usr/share/moltis/wasm/",
-    "644",
-  ],
-  [
-    "target/release/moltis_wasm_web_search.wasm",
-    "usr/share/moltis/wasm/",
-    "644",
-  ],
-]
-copyright = "2025, Moltis Contributors"
-depends = "$auto"
-maintainer = "Moltis Contributors"
-name = "moltis"
-priority = "optional"
-section = "net"
-
-[package.metadata.generate-rpm]
-assets = [
-  { dest = "/usr/bin/moltis", mode = "0755", source = "target/release/moltis" },
-  { dest = "/usr/share/moltis/docs/", mode = "0644", source = "docs/src/**/*" },
-  { dest = "/usr/share/moltis/wasm/", mode = "0644", source = "target/wasm32-wasip2/release/moltis_wasm_calc.wasm" },
-  { dest = "/usr/share/moltis/wasm/", mode = "0644", source = "target/wasm32-wasip2/release/moltis_wasm_web_fetch.wasm" },
-  { dest = "/usr/share/moltis/wasm/", mode = "0644", source = "target/wasm32-wasip2/release/moltis_wasm_web_search.wasm" },
-  { dest = "/usr/share/moltis/web/", mode = "0644", source = "crates/web/src/assets/**/*" },
-]
-license = "MIT"
-name = "moltis"
-summary = "Personal AI gateway inspired by OpenClaw"
-url = "https://github.com/agentics-skills/chelix"
-
 [[bin]]
 name = "moltis"
 path = "src/main.rs"

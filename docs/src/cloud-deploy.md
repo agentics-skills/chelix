@@ -39,11 +39,11 @@ available.
 
 ### `MOLTIS_DEPLOY_PLATFORM`
 
-Set this to the name of your cloud provider (e.g. `flyio`, `digitalocean`,
+Set this to the name of your cloud provider (e.g. `flyio`,
 `render`). When set, Chelix hides local-only LLM providers
 such as Ollama from the provider setup page since they cannot run
-on cloud VMs. The included deploy templates for Fly.io, DigitalOcean, and
-Render already set this variable.
+on cloud VMs. The included deploy templates for Fly.io and Render already set
+this variable.
 
 ## Coolify (self-hosted, e.g. Hetzner)
 
@@ -94,27 +94,6 @@ fly certs add your-domain.com
 
 Then point a CNAME to `your-app.fly.dev`.
 
-## DigitalOcean App Platform
-
-[![Deploy to DO](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/agentics-skills/chelix/tree/master)
-
-Click the button above or create an app manually:
-
-1. Go to **Apps** > **Create App**
-2. Choose **Container Image** as source
-3. Set image to `ghcr.io/moltis-org/moltis:latest`
-4. Set the run command: `moltis --bind 0.0.0.0 --port 8080 --no-tls`
-5. Set environment variables:
-   - `MOLTIS_DATA_DIR` = `/data`
-   - `MOLTIS_PASSWORD` = your password
-6. Set the HTTP port to `8080`
-
-```admonish info title="No persistent disk"
-DigitalOcean App Platform does not support persistent disks for image-based
-services in the deploy template. Data will be lost on redeployment. For
-persistent storage, consider using a DigitalOcean Droplet with Docker instead.
-```
-
 ## Render
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/agentics-skills/chelix)
@@ -164,9 +143,6 @@ on the user's browser points to their own machine, not the cloud instance.
 # Fly.io
 fly ssh console -C "moltis auth login --provider openai-codex"
 
-# DigitalOcean (Droplet with Docker)
-docker exec -it moltis moltis auth login --provider openai-codex
-
 # Generic container
 docker exec -it <container> moltis auth login --provider openai-codex
 ```
@@ -195,8 +171,7 @@ fly secrets set MOLTIS_PASSWORD="your-secure-password"
 
 ```
 
-For Render and DigitalOcean, set the variable in the dashboard's environment
-settings.
+For Render, set the variable in the dashboard's environment settings.
 
 ## Health checks
 

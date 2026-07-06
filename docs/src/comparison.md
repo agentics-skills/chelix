@@ -96,7 +96,7 @@ safe Rust.
 | Metric | OpenClaw | Hermes Agent | **Chelix** |
 |--------|----------|--------------|------------|
 | Main implementation LoC\* | ~1.0M TypeScript, ~89K Swift, ~25K Kotlin | ~144K Python, ~8K TypeScript | **~270K Rust** |
-| Main install path | `npm install -g openclaw` | `curl .../install.sh \| bash`, then `hermes` | **Install script, Homebrew, Docker, or Cargo** |
+| Main install path | `npm install -g openclaw` | `curl .../install.sh \| bash`, then `hermes` | **Install script or Docker** |
 | Runtime dependency | Node.js | Python environment | **Bundled binary** |
 | Workspace/package count | npm packages, extensions, apps | Python package, plugins, tools, UI packages | **59 Rust crates** |
 | Test surface signal | Large TS/app test tree | Python and TUI tests | **470+ Rust files containing tests** |

@@ -32,14 +32,8 @@ Please [open an issue](https://github.com/agentics-skills/chelix/issues) for any
 # One-liner install script (macOS / Linux)
 curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/install.sh | sh
 
-# macOS / Linux via Homebrew
-brew install moltis-org/tap/moltis
-
 # Docker (multi-arch: amd64/arm64)
 docker pull ghcr.io/moltis-org/moltis:latest
-
-# Or build from source
-cargo install moltis --git https://github.com/agentics-skills/chelix
 ```
 
 ## Comparison
@@ -123,7 +117,7 @@ Verify releases with `gh attestation verify <artifact> -R agentics-skills/chelix
 - **Safer Agent Editing** — Automatic checkpoints before built-in skill and memory mutations, restore tooling, session branching
 - **Extensibility** — MCP servers (stdio + HTTP/SSE), skill system, 15 lifecycle hook events with circuit breaker, destructive command guard
 - **Security** — Encryption-at-rest vault (XChaCha20-Poly1305 + Argon2id), password + passkey + API key auth, sandbox isolation, SSRF/CSWSH protection
-- **Operations** — Cron scheduling, OpenTelemetry tracing, Prometheus metrics, cloud deploy (Fly.io, DigitalOcean), managed SSH deploy keys, host-pinned remote targets, live tool inventory in Settings, and CLI/web remote-exec doctor flows
+- **Operations** — Cron scheduling, OpenTelemetry tracing, Prometheus metrics, cloud deploy (Fly.io, Render), managed SSH deploy keys, host-pinned remote targets, live tool inventory in Settings, and CLI/web remote-exec doctor flows
 
 ## How It Works
 
@@ -215,10 +209,6 @@ before first boot to skip the setup wizard. See [Docker docs](docs/src/docker.md
 for Podman, OrbStack, TLS trust, and persistence details.
 
 ### Cloud Deployment
-
-| Provider | Deploy |
-|----------|--------|
-| DigitalOcean | [![Deploy to DO](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/agentics-skills/chelix/tree/master) |
 
 **Fly.io** (CLI):
 

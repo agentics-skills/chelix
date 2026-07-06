@@ -39,7 +39,10 @@ mod tests {
 
     #[test]
     fn raw_model_id_strips_provider_namespace() {
-        assert_eq!(raw_model_id("anthropic::claude-opus-4-5"), "claude-opus-4-5");
+        assert_eq!(
+            raw_model_id("anthropic::claude-opus-4-5"),
+            "claude-opus-4-5"
+        );
         assert_eq!(raw_model_id("gpt-4o"), "gpt-4o");
     }
 }

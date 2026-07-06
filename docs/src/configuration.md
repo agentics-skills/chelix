@@ -55,11 +55,10 @@ override.
 
 ## Agent-Readable Docs
 
-Moltis packages the documentation as local markdown files when the install
-format supports external share files, such as `.deb`, `.rpm`, Homebrew, and
-similar system packages. Agents are pointed at those local files through the
-system prompt so they can read setup, configuration, channel, and
-troubleshooting docs without needing web access.
+Moltis packages the documentation as local markdown files with release
+artifacts that support external share files. Agents are pointed at those local
+files through the system prompt so they can read setup, configuration, channel,
+and troubleshooting docs without needing web access.
 
 Resolution order is `MOLTIS_DOCS_DIR`, the packaged share docs directory
 (`<share>/docs`), the source checkout docs in development, then an embedded

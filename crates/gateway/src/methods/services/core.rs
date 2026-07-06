@@ -988,7 +988,9 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     })?;
 
                 if !was_existing_session
-                    && let Some(entry_obj) = result.get_mut("entry").and_then(|value| value.as_object_mut())
+                    && let Some(entry_obj) = result
+                        .get_mut("entry")
+                        .and_then(|value| value.as_object_mut())
                     && let Some(agent_id) = entry_obj
                         .get("agent_id")
                         .or_else(|| entry_obj.get("agentId"))
@@ -1149,7 +1151,9 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         tool_calls,
                         voice_pending,
                     );
-                    if let Some(entry_obj) = obj.get_mut("entry").and_then(|value| value.as_object_mut()) {
+                    if let Some(entry_obj) =
+                        obj.get_mut("entry").and_then(|value| value.as_object_mut())
+                    {
                         enrich_session_entry_for_ui(&ctx.state, entry_obj).await;
                     }
                 }

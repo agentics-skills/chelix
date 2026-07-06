@@ -141,7 +141,7 @@ prove *where* the artifact was built (CI), and GPG proves *who* authorized it
 
 ## Release Artifacts Per File
 
-Each release artifact (`.deb`, `.rpm`, `.tar.gz`, `.exe`, etc.) may have:
+Each release artifact (`.tar.gz`, `.exe`, etc.) may have:
 
 | Extension | Source | Description |
 |-----------|--------|-------------|

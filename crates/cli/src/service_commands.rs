@@ -525,7 +525,7 @@ mod tests {
 
     #[test]
     fn launchd_plist_basic() {
-        let bin = PathBuf::from("/opt/homebrew/bin/moltis");
+        let bin = PathBuf::from("/usr/local/bin/moltis");
         let opts = GatewayServiceOpts {
             bind: None,
             port: None,
@@ -537,7 +537,7 @@ mod tests {
 
         assert!(plist.starts_with("<?xml"));
         assert!(plist.contains("org.moltis.gateway"));
-        assert!(plist.contains("/opt/homebrew/bin/moltis"));
+        assert!(plist.contains("/usr/local/bin/moltis"));
         assert!(plist.contains("--log-level"));
         assert!(plist.contains("info"));
         assert!(plist.contains("<key>RunAtLoad</key>"));

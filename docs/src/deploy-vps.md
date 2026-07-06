@@ -6,8 +6,8 @@ talk to your agent from anywhere.
 
 ## Prerequisites
 
-- A VPS with at least 1 GB RAM and 10 GB disk (any provider: Hetzner,
-  DigitalOcean, Linode, Vultr, etc.)
+- A VPS with at least 1 GB RAM and 10 GB disk (any provider: Hetzner, Linode,
+  Vultr, etc.)
 - SSH access to the server
 - An API key from at least one LLM provider (Anthropic, OpenAI, etc.)
 

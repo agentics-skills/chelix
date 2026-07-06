@@ -236,7 +236,10 @@ impl LlmProvider for ProviderChain {
         self.primary().provider.reasoning_effort()
     }
 
-    fn with_reasoning_effort(self: Arc<Self>, effort: ReasoningEffort) -> Option<Arc<dyn LlmProvider>> {
+    fn with_reasoning_effort(
+        self: Arc<Self>,
+        effort: ReasoningEffort,
+    ) -> Option<Arc<dyn LlmProvider>> {
         let providers = self
             .chain
             .iter()

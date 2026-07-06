@@ -129,10 +129,7 @@ body:
     attributes:
       label: Install method
       options:
-        - Homebrew
-        - Cargo install
         - Pre-built binary
-        - Built from source
         - Docker
         - Other
     validations:

@@ -12,52 +12,6 @@ curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/insta
 
 This downloads the latest release for your platform and installs it to `~/.local/bin`.
 
-## Package Managers
-
-### Homebrew (macOS / Linux)
-
-```bash
-brew install moltis-org/tap/moltis
-```
-
-## Linux Packages
-
-Package filenames are versioned on every release. Use the installer script below instead of hardcoding GitHub release asset names.
-
-### Debian / Ubuntu (.deb)
-
-```bash
-# Install the latest .deb package
-curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --method=deb
-```
-
-### Fedora / RHEL (.rpm)
-
-```bash
-# Install the latest .rpm package
-curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --method=rpm
-```
-
-### Arch Linux (.pkg.tar.zst)
-
-```bash
-# Install the latest package
-curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --method=arch
-```
-
-### Snap
-
-```bash
-sudo snap install moltis
-```
-
-### AppImage
-
-```bash
-# Install the latest AppImage
-curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --method=appimage
-```
-
 ## Docker
 
 Multi-architecture images (amd64/arm64) are published to GitHub Container Registry:
@@ -67,38 +21,6 @@ docker pull ghcr.io/moltis-org/moltis:latest
 ```
 
 See [Docker Deployment](docker.md) for full instructions on running Chelix in a container.
-
-## Build from Source
-
-### Prerequisites
-
-- Rust 1.91 or later
-- A C compiler (for some dependencies)
-- [just](https://github.com/casey/just) (command runner)
-- Node.js (for building Tailwind CSS)
-
-### Clone and Build
-
-```bash
-git clone https://github.com/agentics-skills/chelix.git
-cd chelix
-just build-css           # Build Tailwind CSS for the web UI
-just build-release       # Build in release mode
-```
-
-For a full release build including WASM sandbox tools:
-
-```bash
-just build-release-with-wasm
-```
-
-The binary will be at `target/release/moltis`.
-
-### Install via Cargo
-
-```bash
-cargo install moltis --git https://github.com/agentics-skills/chelix
-```
 
 ## First Run
 
@@ -128,30 +50,7 @@ Authentication is only required when accessing Chelix from a non-localhost addre
 moltis --version
 ```
 
-## Updating
-
-### Homebrew
-
-```bash
-brew upgrade moltis
-```
-
-### From Source
-
-```bash
-cd moltis
-git pull
-just build-css
-just build-release
-```
-
 ## Uninstalling
-
-### Homebrew
-
-```bash
-brew uninstall moltis
-```
 
 ### Remove Data
 

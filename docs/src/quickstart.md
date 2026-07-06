@@ -8,12 +8,6 @@ Get Chelix running in under 5 minutes.
 curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/install.sh | sh
 ```
 
-Or via Homebrew:
-
-```bash
-brew install moltis-org/tap/moltis
-```
-
 ## 2. Start
 
 ```bash

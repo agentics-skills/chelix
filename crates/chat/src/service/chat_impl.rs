@@ -69,7 +69,9 @@ pub(super) fn resolved_turn_reasoning_effort(
         .map(|effort| effort.as_str().to_string())
 }
 
-pub(super) fn requested_reasoning_effort(params: &Value) -> Result<Option<ReasoningEffort>, String> {
+pub(super) fn requested_reasoning_effort(
+    params: &Value,
+) -> Result<Option<ReasoningEffort>, String> {
     let Some(value) = params
         .get("reasoningEffort")
         .or_else(|| params.get("reasoning_effort"))
@@ -88,16 +90,21 @@ pub(super) fn apply_reasoning_effort_to_provider(
     provider: Arc<dyn moltis_agents::model::LlmProvider>,
     reasoning_effort: Option<&str>,
 ) -> Result<Arc<dyn moltis_agents::model::LlmProvider>, String> {
-    let Some(reasoning_effort) = reasoning_effort.map(str::trim).filter(|value| !value.is_empty()) else {
+    let Some(reasoning_effort) = reasoning_effort
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
         return Ok(provider);
     };
     let effort = ReasoningEffort::try_from(reasoning_effort)?;
-    Arc::clone(&provider).with_reasoning_effort(effort).ok_or_else(|| {
-        format!(
-            "model '{}' does not support reasoning_effort",
-            provider.id()
-        )
-    })
+    Arc::clone(&provider)
+        .with_reasoning_effort(effort)
+        .ok_or_else(|| {
+            format!(
+                "model '{}' does not support reasoning_effort",
+                provider.id()
+            )
+        })
 }
 
 fn send_sync_model_id<'a>(
@@ -212,13 +219,10 @@ impl ChatService for LiveChatService {
         let resolved_reasoning_effort = requested_reasoning_effort_override
             .map(|effort| effort.as_str().to_string())
             .or_else(|| {
-                resolved_turn_reasoning_effort(
-                    session_entry.as_ref(),
-                    &persona,
-                    &session_agent_id,
-                )
+                resolved_turn_reasoning_effort(session_entry.as_ref(), &persona, &session_agent_id)
             });
-        let provider = apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
+        let provider =
+            apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
         let mut runtime_context = build_prompt_runtime_context(
             &self.state,
             &persona.config,
@@ -251,8 +255,8 @@ impl ChatService for LiveChatService {
             Arc::clone(&self.tool_registry)
         };
         let hook_registry = self.hook_registry.clone();
-            let provider_name = provider.name().to_string();
-            let model_id = provider.id().to_string();
+        let provider_name = provider.name().to_string();
+        let model_id = provider.id().to_string();
         let model_store = Arc::clone(&self.model_store);
         let user_message_index = history.len();
 
@@ -327,7 +331,7 @@ impl ChatService for LiveChatService {
                 &history,
                 &session_key,
                 &session_agent_id,
-                    resolved_reasoning_effort.clone(),
+                resolved_reasoning_effort.clone(),
                 desired_reply_medium,
                 None,
                 user_message_index,
@@ -354,7 +358,7 @@ impl ChatService for LiveChatService {
                 &history,
                 &session_key,
                 &session_agent_id,
-                    resolved_reasoning_effort.clone(),
+                resolved_reasoning_effort.clone(),
                 desired_reply_medium,
                 None,
                 Some(&runtime_context),
@@ -399,7 +403,7 @@ impl ChatService for LiveChatService {
                 assistant_output.clone(),
                 Some(model_id.clone()),
                 Some(provider_name.clone()),
-                    resolved_reasoning_effort.clone(),
+                resolved_reasoning_effort.clone(),
                 None,
                 Some(run_id.clone()),
             );

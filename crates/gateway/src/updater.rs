@@ -2,8 +2,6 @@
 //!
 //! Detects how moltis was installed and performs the appropriate upgrade:
 //! - Binary installs: download tarball, verify checksum, replace binary.
-//! - Homebrew: run `brew upgrade moltis`.
-//! - Package managers (deb/rpm/arch/snap): return the manual command.
 //! - Docker: replace binary in-place + warn about image persistence.
 
 use std::{
@@ -29,13 +27,7 @@ const GPG_KEY_URL: &str = "https://pen.so/gpg.asc";
 #[serde(rename_all = "snake_case")]
 pub enum InstallMethod {
     Binary,
-    Homebrew,
-    Deb,
-    Rpm,
-    Arch,
-    Snap,
     Docker,
-    Unknown,
 }
 
 /// Result of an update attempt.
@@ -52,13 +44,6 @@ pub enum UpdateOutcome {
     /// Already running the requested (or latest) version.
     #[serde(rename = "already_up_to_date")]
     AlreadyUpToDate { version: String },
-    /// Update requires root/manual intervention — here is the command.
-    #[serde(rename = "manual_required")]
-    ManualRequired {
-        method: InstallMethod,
-        command: String,
-        version: String,
-    },
     /// Binary replaced inside a container — warn about persistence.
     #[serde(rename = "docker_updated")]
     DockerUpdated { from: String, to: String },
@@ -83,59 +68,17 @@ pub enum UpdateError {
     Extraction(String),
     #[error("binary replacement failed: {0}")]
     Replacement(String),
-    #[error("homebrew upgrade failed: {0}")]
-    Homebrew(String),
 }
 
 // ── Install method detection ─────────────────────────────────
 
-/// Detect how moltis was installed by examining the executable path and
-/// probing package managers.
+/// Detect whether moltis is running in a container or as a standalone binary.
 pub fn detect_install_method() -> InstallMethod {
     if is_running_in_container() {
-        return InstallMethod::Docker;
+        InstallMethod::Docker
+    } else {
+        InstallMethod::Binary
     }
-
-    let exe = match std::env::current_exe().and_then(|p| p.canonicalize()) {
-        Ok(p) => p,
-        Err(_) => return InstallMethod::Unknown,
-    };
-    let exe_str = exe.to_string_lossy();
-
-    // Homebrew: path contains /Cellar/ or /homebrew/
-    if exe_str.contains("/Cellar/") || exe_str.contains("/homebrew/") {
-        return InstallMethod::Homebrew;
-    }
-
-    // Snap
-    if exe_str.contains("/snap/") {
-        return InstallMethod::Snap;
-    }
-
-    // System-installed binary — probe package managers
-    if exe_str.starts_with("/usr/bin/") || exe_str.starts_with("/usr/local/bin/") {
-        if probe_package_manager("dpkg", &["-S", &exe_str]) {
-            return InstallMethod::Deb;
-        }
-        if probe_package_manager("rpm", &["-qf", &exe_str]) {
-            return InstallMethod::Rpm;
-        }
-        if probe_package_manager("pacman", &["-Qo", &exe_str]) {
-            return InstallMethod::Arch;
-        }
-    }
-
-    // Default: standalone binary (e.g. ~/.local/bin/moltis)
-    InstallMethod::Binary
-}
-
-fn probe_package_manager(cmd: &str, args: &[&str]) -> bool {
-    std::process::Command::new(cmd)
-        .args(args)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
 }
 
 fn is_running_in_container() -> bool {
@@ -233,57 +176,6 @@ async fn perform_update_inner(
         InstallMethod::Binary | InstallMethod::Docker => {
             do_binary_update(client, current, &target, method).await
         },
-        InstallMethod::Homebrew => do_homebrew_update(current, &target),
-        InstallMethod::Deb => Ok(manual_command(
-            method,
-            &target,
-            &format!(
-                "curl -fsSL https://github.com/{GITHUB_REPO}/releases/download/{tag}/moltis_{ver}_{arch}.deb -o /tmp/moltis.deb && sudo dpkg -i /tmp/moltis.deb",
-                tag = release_tag(&target),
-                ver = target,
-                arch = deb_arch(),
-            ),
-        )),
-        InstallMethod::Rpm => Ok(manual_command(
-            method,
-            &target,
-            &format!(
-                "sudo rpm -U https://github.com/{GITHUB_REPO}/releases/download/{tag}/moltis-{ver}-1.{arch}.rpm",
-                tag = release_tag(&target),
-                ver = target,
-                arch = std::env::consts::ARCH,
-            ),
-        )),
-        InstallMethod::Arch => Ok(manual_command(
-            method,
-            &target,
-            &format!(
-                "curl -fsSL https://github.com/{GITHUB_REPO}/releases/download/{tag}/moltis-{ver}-1-{arch}.pkg.tar.zst -o /tmp/moltis.pkg.tar.zst && sudo pacman -U /tmp/moltis.pkg.tar.zst",
-                tag = release_tag(&target),
-                ver = target,
-                arch = std::env::consts::ARCH,
-            ),
-        )),
-        InstallMethod::Snap => Ok(manual_command(method, &target, "sudo snap refresh moltis")),
-        InstallMethod::Unknown => Err(UpdateError::UnsupportedPlatform(
-            "cannot determine install method".into(),
-        )),
-    }
-}
-
-fn manual_command(method: InstallMethod, version: &str, command: &str) -> UpdateOutcome {
-    UpdateOutcome::ManualRequired {
-        method,
-        command: command.to_owned(),
-        version: version.to_owned(),
-    }
-}
-
-fn deb_arch() -> &'static str {
-    match std::env::consts::ARCH {
-        "x86_64" => "amd64",
-        "aarch64" => "arm64",
-        other => other,
     }
 }
 
@@ -575,33 +467,6 @@ fn replace_binary(new_binary: &Path, current_exe: &Path) -> Result<(), UpdateErr
     Ok(())
 }
 
-// ── Homebrew ─────────────────────────────────────────────────
-
-fn do_homebrew_update(current: &str, target: &str) -> Result<UpdateOutcome, UpdateError> {
-    tracing::info!("running brew upgrade moltis");
-    let output = std::process::Command::new("brew")
-        .args(["upgrade", "moltis"])
-        .output()
-        .map_err(|e| UpdateError::Homebrew(format!("failed to run brew: {e}")))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        // "already installed" is not an error
-        if stderr.contains("already installed") || stderr.contains("already up-to-date") {
-            return Ok(UpdateOutcome::AlreadyUpToDate {
-                version: current.to_owned(),
-            });
-        }
-        return Err(UpdateError::Homebrew(stderr.into_owned()));
-    }
-
-    Ok(UpdateOutcome::Updated {
-        from: current.to_owned(),
-        to: target.to_owned(),
-        method: InstallMethod::Homebrew,
-    })
-}
-
 // ── Restart helper ───────────────────────────────────────────
 
 /// Re-exec the current process (reuse the restart pattern from tools_routes).
@@ -652,14 +517,7 @@ mod tests {
         // Just assert it doesn't panic and returns a valid variant
         assert!(matches!(
             method,
-            InstallMethod::Binary
-                | InstallMethod::Homebrew
-                | InstallMethod::Deb
-                | InstallMethod::Rpm
-                | InstallMethod::Arch
-                | InstallMethod::Snap
-                | InstallMethod::Docker
-                | InstallMethod::Unknown
+            InstallMethod::Binary | InstallMethod::Docker
         ));
     }
 
@@ -683,12 +541,6 @@ mod tests {
     }
 
     #[test]
-    fn deb_arch_mapping() {
-        let arch = deb_arch();
-        assert!(!arch.is_empty());
-    }
-
-    #[test]
     fn verify_sha256_correct() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("test.bin");
@@ -704,23 +556,6 @@ mod tests {
         let path = dir.path().join("test.bin");
         std::fs::write(&path, b"hello world").expect("write test file");
         assert!(verify_sha256(&path, "0000000000000000").is_err());
-    }
-
-    #[test]
-    fn manual_command_builds_outcome() {
-        let outcome = manual_command(InstallMethod::Deb, "20260428.03", "sudo dpkg -i foo.deb");
-        match outcome {
-            UpdateOutcome::ManualRequired {
-                method,
-                command,
-                version,
-            } => {
-                assert_eq!(method, InstallMethod::Deb);
-                assert!(command.contains("dpkg"));
-                assert_eq!(version, "20260428.03");
-            },
-            _ => panic!("expected ManualRequired"),
-        }
     }
 
     #[test]

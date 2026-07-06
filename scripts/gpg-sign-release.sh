@@ -120,11 +120,6 @@ echo "Downloading release artifacts for $VERSION..."
 gh release download "$VERSION" \
   --repo "$REPO" \
   --dir "$WORK_DIR" \
-  --pattern 'moltis*.deb' \
-  --pattern 'moltis*.rpm' \
-  --pattern 'moltis*.pkg.tar.zst' \
-  --pattern 'moltis*.AppImage' \
-  --pattern 'moltis*.snap' \
   --pattern 'moltis*.tar.gz' \
   --pattern 'moltis*.zip' \
   --pattern 'moltis*.exe' \
@@ -135,8 +130,7 @@ ARTIFACTS=()
 while IFS= read -r -d '' f; do
   ARTIFACTS+=("$f")
 done < <(find "$WORK_DIR" -maxdepth 1 -type f \
-  \( -name 'moltis*.deb' -o -name 'moltis*.rpm' -o -name 'moltis*.pkg.tar.zst' \
-     -o -name 'moltis*.AppImage' -o -name 'moltis*.snap' -o -name 'moltis*.tar.gz' \
+  \( -name 'moltis*.tar.gz' \
      -o -name 'moltis*.zip' -o -name 'moltis*.exe' \
      -o -name 'moltis*.cdx.json' -o -name 'moltis*.spdx.json' \) \
   -print0 | sort -z)

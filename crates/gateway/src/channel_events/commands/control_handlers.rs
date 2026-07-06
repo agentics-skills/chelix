@@ -753,11 +753,6 @@ pub(in crate::channel_events) async fn handle_update(
         Ok(crate::updater::UpdateOutcome::AlreadyUpToDate { version }) => {
             Ok(format!("Already up to date (v{version})."))
         },
-        Ok(crate::updater::UpdateOutcome::ManualRequired {
-            command, version, ..
-        }) => Ok(format!(
-            "Update to {version} requires manual installation:\n`{command}`"
-        )),
         Err(e) => Err(ChannelError::external("update", e)),
     }
 }

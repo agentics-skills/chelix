@@ -16,7 +16,7 @@ set -euo pipefail
 #   ./scripts/verify-release.sh [OPTIONS] [FILE...]
 #   ./scripts/verify-release.sh moltis-20260331.01-x86_64-unknown-linux-gnu.tar.gz
 #   ./scripts/verify-release.sh --version 20260331.01
-#   ./scripts/verify-release.sh *.tar.gz *.deb
+#   ./scripts/verify-release.sh *.tar.gz
 
 GPG_KEY_URL="https://pen.so/gpg.asc"
 EXPECTED_FINGERPRINT="310320A8CC1C5BA86AD09040C0451BADF7649BBF"
@@ -112,7 +112,6 @@ if [[ -n "$VERSION" ]]; then
 
   echo "Downloading release artifacts for $VERSION..."
   PATTERNS=(
-    '*.deb' '*.rpm' '*.pkg.tar.zst' '*.AppImage' '*.snap'
     '*.tar.gz' '*.zip' '*.exe'
     '*.cdx.json' '*.spdx.json'
     '*.asc'
@@ -135,8 +134,7 @@ if [[ -n "$VERSION" ]]; then
   while IFS= read -r -d '' f; do
     FILES+=("$f")
   done < <(find "$WORK_DIR" -maxdepth 1 -type f \
-    \( -name '*.deb' -o -name '*.rpm' -o -name '*.pkg.tar.zst' \
-       -o -name '*.AppImage' -o -name '*.snap' -o -name '*.tar.gz' \
+    \( -name '*.tar.gz' \
        -o -name '*.zip' -o -name '*.exe' \
        -o -name '*.cdx.json' -o -name '*.spdx.json' \) \
     -print0 | sort -z)

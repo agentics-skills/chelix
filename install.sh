@@ -6,20 +6,15 @@
 #   curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh
 #
 # Or with options:
-#   curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --no-homebrew
-#   curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --method=binary
 #   curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --version=0.1.3
 
 set -e
 
 GITHUB_REPO="moltis-org/moltis"
-HOMEBREW_TAP="moltis-org/tap"
 BINARY_NAME="moltis"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 # Default options
-USE_HOMEBREW=true
-PREFERRED_METHOD=""
 VERSION=""
 
 # Colors (disabled if not a terminal)
@@ -59,12 +54,6 @@ error() {
 # Parse arguments
 while [ $# -gt 0 ]; do
     case "$1" in
-        --no-homebrew)
-            USE_HOMEBREW=false
-            ;;
-        --method=*)
-            PREFERRED_METHOD="${1#*=}"
-            ;;
         --version=*)
             VERSION="${1#*=}"
             ;;
@@ -76,8 +65,6 @@ Usage:
     install.sh [OPTIONS]
 
 Options:
-    --no-homebrew       Skip Homebrew even if available (macOS)
-    --method=METHOD     Force installation method: homebrew, binary, deb, rpm, arch, appimage, snap, source, proxmox
     --version=VERSION   Install a specific version (default: latest)
     -h, --help          Show this help message
 
@@ -86,7 +73,6 @@ Environment variables:
 
 Examples:
     curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh
-    curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --method=binary
     curl -fsSL https://github.com/agentics-skills/chelix/raw/master/install.sh | sh -s -- --version=0.1.3
 EOF
             exit 0
@@ -135,22 +121,6 @@ detect_arch() {
             echo "$ARCH"
             ;;
     esac
-}
-
-detect_linux_distro() {
-    if [ -f /etc/os-release ]; then
-        # shellcheck disable=SC1091
-        . /etc/os-release
-        echo "$ID"
-    elif [ -f /etc/debian_version ]; then
-        echo "debian"
-    elif [ -f /etc/redhat-release ]; then
-        echo "rhel"
-    elif [ -f /etc/arch-release ]; then
-        echo "arch"
-    else
-        echo "unknown"
-    fi
 }
 
 command_exists() {
@@ -266,16 +236,6 @@ add_to_path_instructions() {
 
 # Installation methods
 
-install_homebrew() {
-    info "Installing via Homebrew..."
-    if ! command_exists brew; then
-        error "Homebrew not found. Install it from https://brew.sh/"
-    fi
-    brew tap "$HOMEBREW_TAP" 2>/dev/null || true
-    brew install moltis
-    success "Moltis installed via Homebrew"
-}
-
 install_binary() {
     os="$1"
     arch="$2"
@@ -332,260 +292,6 @@ install_binary() {
     add_to_path_instructions
 }
 
-install_deb() {
-    arch="$1"
-    version="$2"
-
-    case "$arch" in
-        x86_64) deb_arch="amd64" ;;
-        aarch64) deb_arch="arm64" ;;
-        *) error "Unsupported architecture for .deb: $arch" ;;
-    esac
-
-    # Package naming: moltis_VERSION_ARCH.deb (cargo-deb with --deb-version, no revision)
-    tag=$(release_tag "$version")
-    deb_file="moltis_${version}_${deb_arch}.deb"
-    url="https://github.com/${GITHUB_REPO}/releases/download/${tag}/${deb_file}"
-
-    info "Downloading ${deb_file}..."
-
-    tmpdir=$(mktemp -d)
-    trap 'rm -rf "$tmpdir"' EXIT
-
-    download "$url" "$tmpdir/$deb_file" || error "Failed to download $deb_file"
-
-    info "Installing .deb package (requires sudo)..."
-    sudo dpkg -i "$tmpdir/$deb_file" || sudo apt-get install -f -y
-
-    success "Moltis installed via .deb package"
-}
-
-install_rpm() {
-    arch="$1"
-    version="$2"
-
-    case "$arch" in
-        x86_64) rpm_arch="x86_64" ;;
-        aarch64) rpm_arch="aarch64" ;;
-        *) error "Unsupported architecture for .rpm: $arch" ;;
-    esac
-
-    # Package naming: moltis-VERSION-1.ARCH.rpm
-    tag=$(release_tag "$version")
-    rpm_file="moltis-${version}-1.${rpm_arch}.rpm"
-    url="https://github.com/${GITHUB_REPO}/releases/download/${tag}/${rpm_file}"
-
-    info "Downloading ${rpm_file}..."
-
-    tmpdir=$(mktemp -d)
-    trap 'rm -rf "$tmpdir"' EXIT
-
-    download "$url" "$tmpdir/$rpm_file" || error "Failed to download $rpm_file"
-
-    info "Installing .rpm package (requires sudo)..."
-    if command_exists dnf; then
-        sudo dnf install -y "$tmpdir/$rpm_file"
-    elif command_exists yum; then
-        sudo yum install -y "$tmpdir/$rpm_file"
-    else
-        sudo rpm -i "$tmpdir/$rpm_file"
-    fi
-
-    success "Moltis installed via .rpm package"
-}
-
-install_arch() {
-    arch="$1"
-    version="$2"
-
-    tag=$(release_tag "$version")
-    pkg_file="moltis-${version}-1-${arch}.pkg.tar.zst"
-    url="https://github.com/${GITHUB_REPO}/releases/download/${tag}/${pkg_file}"
-
-    info "Downloading ${pkg_file}..."
-
-    tmpdir=$(mktemp -d)
-    trap 'rm -rf "$tmpdir"' EXIT
-
-    download "$url" "$tmpdir/$pkg_file" || error "Failed to download $pkg_file"
-
-    info "Installing Arch package (requires sudo)..."
-    sudo pacman -U --noconfirm "$tmpdir/$pkg_file"
-
-    success "Moltis installed via Arch package"
-}
-
-install_appimage() {
-    os="$1"
-    arch="$2"
-    version="$3"
-
-    if [ "$os" != "linux" ]; then
-        error "AppImage installation is only supported on Linux"
-    fi
-
-    case "$arch" in
-        x86_64|aarch64)
-            ;;
-        *)
-            error "Unsupported architecture for AppImage: $arch"
-            ;;
-    esac
-
-    tag=$(release_tag "$version")
-    appimage_file="moltis-${version}-${arch}.AppImage"
-    url="https://github.com/${GITHUB_REPO}/releases/download/${tag}/${appimage_file}"
-    checksum_url="${url}.sha256"
-
-    info "Downloading ${appimage_file}..."
-
-    tmpdir=$(mktemp -d)
-    trap 'rm -rf "$tmpdir"' EXIT
-
-    download "$url" "$tmpdir/$appimage_file" || error "Failed to download $appimage_file"
-
-    if download "$checksum_url" "$tmpdir/checksum.sha256" 2>/dev/null; then
-        expected_sha=$(cut -d' ' -f1 "$tmpdir/checksum.sha256")
-        verify_checksum "$tmpdir/$appimage_file" "$expected_sha"
-        info "Checksum verified"
-    else
-        warn "Could not download checksum file, skipping verification"
-    fi
-
-    ensure_install_dir
-    mv "$tmpdir/$appimage_file" "$INSTALL_DIR/$BINARY_NAME"
-    chmod +x "$INSTALL_DIR/$BINARY_NAME"
-
-    success "Moltis AppImage installed to $INSTALL_DIR/$BINARY_NAME"
-    add_to_path_instructions
-}
-
-install_snap() {
-    info "Installing via Snap..."
-
-    if ! command_exists snap; then
-        error "Snap not found. Install it first: https://snapcraft.io/docs/installing-snapd"
-    fi
-
-    sudo snap install moltis
-
-    success "Moltis installed via Snap"
-}
-
-detect_proxmox() {
-    command_exists pveversion && [ -d /etc/pve ]
-}
-
-install_proxmox() {
-    info "Proxmox VE detected — installing Moltis as an LXC container..."
-
-    if ! detect_proxmox; then
-        error "This does not appear to be a Proxmox VE host."
-    fi
-
-    PROXMOX_REPO_URL="https://raw.githubusercontent.com/moltis-org/ProxmoxVED/feat/moltis"
-    PROXMOX_SCRIPT_URL="$PROXMOX_REPO_URL/ct/moltis.sh"
-
-    tmpdir=$(mktemp -d)
-    trap 'rm -rf "$tmpdir"' EXIT
-    proxmox_script="$tmpdir/moltis-proxmox.sh"
-    patched_script="$tmpdir/moltis-proxmox-patched.sh"
-
-    download "$PROXMOX_SCRIPT_URL" "$proxmox_script" || error "Failed to download Proxmox helper"
-
-    # Patch the fetched helper at launch time for Moltis-specific fixes that live
-    # in remote community-scripts files: keep /usr/bin/update on the Moltis fork,
-    # make the Docker prompt safe when lxc-attach has no interactive stdin, and
-    # keep optional CA certificate display failures from removing the container.
-    awk -v repo_url="$PROXMOX_REPO_URL" '
-        {
-            if ($0 ~ /^source <\(curl -fsSL / && !curl_patched) {
-                print "curl() {"
-                print "  case \"${*: -1}\" in"
-                print "    */install/moltis-install.sh)"
-                print "      command curl \"$@\" | sed '\''s|^[[:space:]]*read -r -p \".*Docker for sandbox support.*\" prompt$|if [[ -t 0 ]]; then &; else prompt=\"${MOLTIS_INSTALL_DOCKER:-no}\"; fi|'\''"
-                print "      ;;"
-                print "    *) command curl \"$@\" ;;"
-                print "  esac"
-                print "}"
-                curl_patched = 1
-            }
-            if ($0 == "CA_CERT=$(pct exec \"$CTID\" -- cat /etc/moltis/certs/ca.pem 2>/dev/null)" && !ca_cert_patched) {
-                sub(/\)$/, " || true)")
-                ca_cert_patched = 1
-            }
-            print
-            if ($0 == "description" && !patched) {
-                q = sprintf("%c", 39)
-                print "pct exec \"$CTID\" -- bash -c \"cat > /usr/bin/update <<" q "MOLTIS_UPDATE_EOF" q
-                print "bash -c \\\"\\$(curl -fsSL " repo_url "/ct/moltis.sh)\\\""
-                print "MOLTIS_UPDATE_EOF"
-                print "chmod +x /usr/bin/update\" || true"
-                patched = 1
-            }
-        }
-    ' "$proxmox_script" >"$patched_script"
-
-    grep -q 'curl()' "$patched_script" || error "Failed to apply Docker prompt patch to Proxmox helper"
-    grep -q 'MOLTIS_UPDATE_EOF' "$patched_script" || error "Failed to apply update URL patch to Proxmox helper"
-    grep -q 'cat /etc/moltis/certs/ca.pem 2>/dev/null || true' "$patched_script" || warn "Could not apply optional CA certificate patch to Proxmox helper"
-
-    info "Launching Proxmox VE helper script..."
-    bash "$patched_script"
-}
-
-install_from_source() {
-    warn "Building from source. This may take several minutes..."
-
-    if ! command_exists cargo; then
-        info "Rust not found. Installing via rustup..."
-        if command_exists curl; then
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        else
-            wget -qO- https://sh.rustup.rs | sh -s -- -y
-        fi
-        # shellcheck disable=SC1091
-        . "$HOME/.cargo/env"
-    fi
-
-    if ! command_exists git; then
-        error "Git is required to build from source. Please install it first."
-    fi
-
-    version="$1"
-
-    tmpdir=$(mktemp -d)
-    trap 'rm -rf "$tmpdir"' EXIT
-
-    info "Cloning repository..."
-    tag=$(release_tag "$version")
-    git clone --depth 1 --branch "$tag" "https://github.com/${GITHUB_REPO}.git" "$tmpdir/moltis"
-
-    cd "$tmpdir/moltis"
-
-    info "Building WASM tool components..."
-    rustup target add wasm32-wasip2
-    cargo build --target wasm32-wasip2 -p moltis-wasm-calc -p moltis-wasm-web-fetch -p moltis-wasm-web-search --release
-
-    info "Building release binary..."
-    cargo build --release
-
-    ensure_install_dir
-    cp "target/release/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
-    chmod +x "$INSTALL_DIR/$BINARY_NAME"
-
-    SHARE_STAGING="$tmpdir/moltis-share"
-    mkdir -p "$SHARE_STAGING/web" "$SHARE_STAGING/wasm"
-    cp -R "crates/web/src/assets/." "$SHARE_STAGING/web/"
-    cp "target/wasm32-wasip2/release/moltis_wasm_calc.wasm" "$SHARE_STAGING/wasm/"
-    cp "target/wasm32-wasip2/release/moltis_wasm_web_fetch.wasm" "$SHARE_STAGING/wasm/"
-    cp "target/wasm32-wasip2/release/moltis_wasm_web_search.wasm" "$SHARE_STAGING/wasm/"
-    install_shared_assets "$SHARE_STAGING"
-
-    success "Moltis built and installed to $INSTALL_DIR/$BINARY_NAME"
-    add_to_path_instructions
-}
-
 # Main installation logic
 
 main() {
@@ -617,109 +323,7 @@ main() {
     fi
     info "Version: $VERSION"
 
-    # Determine installation method
-    if [ -n "$PREFERRED_METHOD" ]; then
-        case "$PREFERRED_METHOD" in
-            homebrew)
-                install_homebrew
-                ;;
-            binary)
-                install_binary "$OS" "$ARCH" "$VERSION"
-                ;;
-            deb)
-                install_deb "$ARCH" "$VERSION"
-                ;;
-            rpm)
-                install_rpm "$ARCH" "$VERSION"
-                ;;
-            arch)
-                install_arch "$ARCH" "$VERSION"
-                ;;
-            appimage)
-                install_appimage "$OS" "$ARCH" "$VERSION"
-                ;;
-            snap)
-                install_snap
-                ;;
-            proxmox)
-                install_proxmox
-                return
-                ;;
-            source)
-                install_from_source "$VERSION"
-                ;;
-            *)
-                error "Unknown installation method: $PREFERRED_METHOD"
-                ;;
-        esac
-    elif [ "$OS" = "linux" ] && detect_proxmox; then
-        info "Proxmox VE host detected"
-        printf "  Install as an LXC container (recommended) or directly on this host?\n"
-        printf "  ${BOLD}1)${NC} LXC container (isolated, easy to manage)\n"
-        printf "  ${BOLD}2)${NC} Install directly on this host\n"
-        printf "\n"
-        printf "  Choice [1]: "
-        read -r choice </dev/tty 2>/dev/null || choice="1"
-        choice="${choice:-1}"
-        if [ "$choice" = "1" ]; then
-            install_proxmox
-            return
-        fi
-        # Fall through to normal Linux install
-        DISTRO=$(detect_linux_distro)
-        case "$DISTRO" in
-            ubuntu|debian|linuxmint|pop|elementary|zorin)
-                install_deb "$ARCH" "$VERSION" ;;
-            fedora|rhel|centos|rocky|alma|ol)
-                install_rpm "$ARCH" "$VERSION" ;;
-            *)
-                install_binary "$OS" "$ARCH" "$VERSION" ;;
-        esac
-    elif [ "$OS" = "macos" ]; then
-        # macOS: prefer Homebrew, fall back to binary
-        if [ "$USE_HOMEBREW" = true ] && command_exists brew; then
-            install_homebrew
-        else
-            install_binary "$OS" "$ARCH" "$VERSION"
-        fi
-    elif [ "$OS" = "linux" ]; then
-        # Linux: detect distro and use appropriate package manager
-        DISTRO=$(detect_linux_distro)
-
-        case "$DISTRO" in
-            ubuntu|debian|linuxmint|pop|elementary|zorin)
-                if command_exists apt-get; then
-                    install_deb "$ARCH" "$VERSION"
-                else
-                    install_binary "$OS" "$ARCH" "$VERSION"
-                fi
-                ;;
-            fedora|rhel|centos|rocky|alma|ol)
-                if command_exists dnf || command_exists yum; then
-                    install_rpm "$ARCH" "$VERSION"
-                else
-                    install_binary "$OS" "$ARCH" "$VERSION"
-                fi
-                ;;
-            arch|manjaro|endeavouros|garuda)
-                if command_exists pacman; then
-                    install_arch "$ARCH" "$VERSION"
-                else
-                    install_binary "$OS" "$ARCH" "$VERSION"
-                fi
-                ;;
-            *)
-                # Unknown distro: try binary, offer source as fallback
-                if [ "$ARCH" = "x86_64" ] || [ "$ARCH" = "aarch64" ]; then
-                    install_binary "$OS" "$ARCH" "$VERSION"
-                else
-                    warn "No pre-built binary available for $ARCH architecture."
-                    info "Falling back to building from source..."
-                    install_from_source "$VERSION"
-                fi
-                ;;
-        esac
-    fi
+    install_binary "$OS" "$ARCH" "$VERSION"
 
     # Verify installation
     if command_exists "$BINARY_NAME"; then

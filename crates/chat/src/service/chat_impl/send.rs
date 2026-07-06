@@ -419,7 +419,7 @@ impl LiveChatService {
                     assistant_output,
                     None,
                     None,
-                        None,
+                    None,
                     client_seq,
                     Some(run_id_clone.clone()),
                 );
@@ -862,13 +862,10 @@ impl LiveChatService {
         let resolved_reasoning_effort = requested_reasoning_effort_override
             .map(|effort| effort.as_str().to_string())
             .or_else(|| {
-                resolved_turn_reasoning_effort(
-                    session_entry.as_ref(),
-                    &persona,
-                    &session_agent_id,
-                )
+                resolved_turn_reasoning_effort(session_entry.as_ref(), &persona, &session_agent_id)
             });
-        let provider = apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
+        let provider =
+            apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
         let runtime_limits = persona.config.agent_runtime_limits(&session_agent_id);
         info!(
             session = %session_key,

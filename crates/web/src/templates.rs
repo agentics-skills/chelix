@@ -8,8 +8,7 @@ use {
         http::StatusCode,
         response::{Html, IntoResponse},
     },
-    moltis_gateway::session_reasoning::preset_defaults_for_agent,
-    moltis_gateway::state::GatewayState,
+    moltis_gateway::{session_reasoning::preset_defaults_for_agent, state::GatewayState},
     tracing::warn,
 };
 
