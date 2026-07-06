@@ -178,7 +178,7 @@ const sections: SectionItem[] = [
 	{
 		id: "import",
 		label: "Imports",
-		icon: <span className="icon icon-openclaw" />,
+		icon: <span className="icon icon-terminal-cmd" />,
 	},
 	{
 		id: "voice",
@@ -203,14 +203,7 @@ function getVisibleSections(): SectionItem[] {
 	return sections.filter((s) => {
 		if (!s.id) return true;
 		if (s.id === "graphql" && !gon.get("graphql_enabled")) return false;
-		if (
-			s.id === "import" &&
-			!gon.get("openclaw_detected") &&
-			!gon.get("claude_detected") &&
-			!gon.get("codex_detected") &&
-			!gon.get("hermes_detected")
-		)
-			return false;
+		if (s.id === "import" && !gon.get("claude_detected") && !gon.get("codex_detected")) return false;
 		if (s.id === "vault" && (!vs || vs === "disabled")) return false;
 		return true;
 	});

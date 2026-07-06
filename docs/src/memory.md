@@ -415,10 +415,6 @@ flush is skipped entirely.
 - Important facts, names, dates, and relationships
 - Technical setup details (tools, languages, frameworks)
 
-This is the same approach used by OpenClaw. See the
-[comparison page](memory-comparison.md) for a detailed analysis of both
-systems.
-
 ## Architecture
 
 ```

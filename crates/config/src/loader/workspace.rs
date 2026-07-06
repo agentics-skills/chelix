@@ -131,9 +131,6 @@ pub fn load_user() -> Option<UserProfile> {
 }
 
 /// Default soul text used when the user hasn't written their own.
-///
-/// Sourced from OpenClaw:
-/// <https://github.com/openclaw/openclaw/blob/main/docs/reference/templates/SOUL.md>
 pub const DEFAULT_SOUL: &str = "\
 # SOUL.md - Who You Are\n\
 \n\

@@ -24,9 +24,7 @@ test.describe("Settings navigation", () => {
 		await expect(page.getByRole("heading", { name: "User Profile", exact: true })).toBeVisible();
 	});
 
-	test("settings nav keeps distinct icons for nodes, remote access, network audit, and openclaw import", async ({
-		page,
-	}) => {
+	test("settings nav keeps distinct icons for nodes, remote access, network audit, and mcp", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await navigateAndWait(page, "/settings/profile");
 		await expect(page.locator(".settings-sidebar-nav")).toBeVisible();
@@ -56,7 +54,6 @@ test.describe("Settings navigation", () => {
 				tools: readRuleMask('.settings-nav-item[data-section="tools"]::before'),
 				networkAudit: readRuleMask('.settings-nav-item[data-section="network-audit"]::before'),
 				mcp: readRuleMask('.settings-nav-item[data-section="mcp"]::before'),
-				openclawImport: readRuleMask('.settings-nav-item[data-section="import"]::before'),
 			};
 		});
 
@@ -72,12 +69,6 @@ test.describe("Settings navigation", () => {
 		expect(hasMask(masks.tools)).toBeTruthy();
 		expect(hasMask(masks.networkAudit)).toBeTruthy();
 		expect(hasMask(masks.mcp)).toBeTruthy();
-
-		// Import appears only when OpenClaw is detected in this run.
-		if (masks.openclawImport !== null) {
-			expect(hasMask(masks.openclawImport)).toBeTruthy();
-			expect(masks.openclawImport).not.toBe(masks.mcp);
-		}
 
 		expect(pageErrors).toEqual([]);
 	});
@@ -572,7 +563,7 @@ test.describe("Settings navigation", () => {
 			"MCP",
 			"Skills",
 			...presentOptionalItems(["Imports"]),
-			...presentOptionalItems(["OpenClaw Import", "Voice", "Phone"]),
+			...presentOptionalItems(["Voice", "Phone"]),
 			"Terminal",
 			"Monitoring",
 			"Logs",

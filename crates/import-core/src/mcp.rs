@@ -14,8 +14,8 @@ use crate::report::{CategoryReport, ImportCategory, ImportStatus};
 
 /// A source-agnostic MCP server entry for import.
 ///
-/// This is the common denominator across Claude Code, OpenClaw, and Hermes
-/// MCP server formats. Fields are optional except `command` (for stdio) or
+/// This is the common denominator across supported MCP server formats. Fields
+/// are optional except `command` (for stdio) or
 /// `url` (for SSE/HTTP transports).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ImportMcpServer {

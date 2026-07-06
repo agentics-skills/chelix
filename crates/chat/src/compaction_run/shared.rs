@@ -317,9 +317,6 @@ fn prune_single_tool_result(message: &mut Value, threshold: usize) -> bool {
 /// 2. An assistant `tool_call` has no matching tool result (the result was
 ///    dropped). → a stub tool result is inserted after the assistant
 ///    message so the pairing is well-formed.
-///
-/// Adapted from hermes-agent's `_sanitize_tool_pairs` and openclaw's
-/// `repairToolUseResultPairing`.
 pub(super) fn sanitize_tool_pairs(messages: Vec<Value>) -> Result<Vec<Value>, CompactionRunError> {
     use std::collections::HashSet;
 

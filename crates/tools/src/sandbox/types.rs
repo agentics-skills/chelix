@@ -596,18 +596,7 @@ pub(crate) const GOGCLI_VERSION: &str = "latest";
 ///
 /// Only tools that work inside a Linux container belong here. macOS-only tools
 /// (e.g. wacrawl) are host-only and install via their skill's `requires.install`.
-pub(crate) const GO_TOOL_INSTALLS: &[(&str, &str, &str)] = &[
-    (
-        "github.com/openclaw/discrawl/cmd/discrawl",
-        "latest",
-        "discrawl",
-    ),
-    (
-        "github.com/openclaw/slacrawl/cmd/slacrawl",
-        "latest",
-        "slacrawl",
-    ),
-];
+pub(crate) const GO_TOOL_INSTALLS: &[(&str, &str, &str)] = &[];
 #[cfg(any(target_os = "macos", test))]
 pub(crate) const APPLE_CONTAINER_SAFE_WORKDIR: &str = "/tmp";
 

@@ -5,7 +5,7 @@ alwaysApply: true
 
 # CLAUDE.md
 
-Rust version of openclaw ([docs](https://docs.openclaw.ai), [code](https://github.com/openclaw/openclaw)).
+Chelix engineering guide for Rust architecture, testing, security, and release workflows.
 All code must have tests with high coverage. Always check for security.
 
 ## Cargo Features

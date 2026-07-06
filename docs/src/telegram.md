@@ -287,9 +287,8 @@ The same form is available during onboarding when Telegram is in `channels.offer
 
 ### "allowed_users" doesn't work
 
-The field name is `allowlist`, not `allowed_users`. If you're migrating from
-OpenClaw, note that the field was renamed. Values must also be **strings**
-(e.g. `["123456789"]`), not integers.
+The field name is `allowlist`, not `allowed_users`. Values must also be
+**strings** (e.g. `["123456789"]`), not integers.
 
 ### Bot responds to everyone
 

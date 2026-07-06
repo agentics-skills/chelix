@@ -82,14 +82,10 @@ pub(crate) struct GonData {
     sandbox: SandboxGonInfo,
     routes: SpaRoutes,
     started_at: u64,
-    /// Whether an OpenClaw installation was detected (for import UI).
-    openclaw_detected: bool,
     /// Whether a Claude Code/Desktop installation was detected (for import UI).
     claude_detected: bool,
     /// Whether a Codex CLI installation was detected (for import UI).
     codex_detected: bool,
-    /// Whether a Hermes installation was detected (for import UI).
-    hermes_detected: bool,
     /// Small recent session snapshot for instant sidebar paint.
     sessions_recent: Vec<serde_json::Value>,
     agents: Vec<serde_json::Value>,
@@ -564,10 +560,8 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> GonData {
         sandbox,
         routes: SPA_ROUTES.clone(),
         started_at: *PROCESS_STARTED_AT_MS,
-        openclaw_detected: moltis_gateway::server::openclaw_detected_for_ui(),
         claude_detected: moltis_gateway::server::claude_detected_for_ui(),
         codex_detected: moltis_gateway::server::codex_detected_for_ui(),
-        hermes_detected: moltis_gateway::server::hermes_detected_for_ui(),
         sessions_recent,
         agents,
         webhooks,
@@ -988,7 +982,7 @@ pub(crate) async fn render_spa_template(
         "default-src 'self'; \
          script-src 'self' 'nonce-{nonce}' 'wasm-unsafe-eval' blob:; \
          style-src 'self' 'unsafe-inline'; \
-         img-src 'self' data: blob: https://github.com https://avatars.githubusercontent.com https://clawhub.ai; \
+         img-src 'self' data: blob: https://github.com https://avatars.githubusercontent.com; \
          media-src 'self' blob:; \
          font-src 'self'; \
          connect-src 'self' ws: wss:; \

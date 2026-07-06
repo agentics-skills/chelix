@@ -34,7 +34,7 @@ export type {
 	UpdateAvailability,
 } from "./gon";
 
-export type { ModelInfo, ReasoningSuffix } from "./model";
+export type { ModelInfo } from "./model";
 
 export type { RpcError, RpcFrame, RpcResponse } from "./rpc";
 

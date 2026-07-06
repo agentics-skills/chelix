@@ -8,9 +8,7 @@ import { sendRpc } from "../../helpers";
 import type { RpcResponse } from "./_shared";
 import { ClaudeImportSection } from "./ClaudeImportSection";
 import { CodexImportSection } from "./CodexImportSection";
-import { HermesImportSection } from "./HermesImportSection";
 import { MoltisDataSection } from "./MoltisDataSection";
-import { OpenClawImportSection } from "./OpenClawImportSection";
 
 interface ImportTabDef {
 	id: string;
@@ -19,17 +17,6 @@ interface ImportTabDef {
 	detected: boolean;
 	detectRpc: string;
 	countFn: (payload: Record<string, unknown>) => number;
-}
-
-function countOpenClaw(p: Record<string, unknown>): number {
-	let n = 0;
-	if (p.identity_available) n++;
-	if (p.providers_available) n++;
-	n += Number(p.skills_count) || 0;
-	if (p.memory_available) n++;
-	if (p.channels_available) n++;
-	n += Number(p.sessions_count) || 0;
-	return n;
 }
 
 function countClaude(p: Record<string, unknown>): number {
@@ -46,26 +33,9 @@ function countCodex(p: Record<string, unknown>): number {
 	return n;
 }
 
-function countHermes(p: Record<string, unknown>): number {
-	let n = Number(p.credentials_count) || 0;
-	n += Number(p.skills_count) || 0;
-	const memFiles = p.memory_files;
-	if (Array.isArray(memFiles)) n += memFiles.length;
-	else if (p.has_memory) n++;
-	return n;
-}
-
 /** Build tab definitions at render time so gon.get() reads current state. */
 function getAllTabs(): ImportTabDef[] {
 	return [
-		{
-			id: "openclaw",
-			label: "OpenClaw",
-			icon: <span className="icon icon-openclaw" />,
-			detected: gon.get("openclaw_detected") === true,
-			detectRpc: "openclaw.scan",
-			countFn: countOpenClaw,
-		},
 		{
 			id: "claude",
 			label: "Claude Code",
@@ -81,14 +51,6 @@ function getAllTabs(): ImportTabDef[] {
 			detected: gon.get("codex_detected") === true,
 			detectRpc: "codex.detect",
 			countFn: countCodex,
-		},
-		{
-			id: "hermes",
-			label: "Hermes",
-			icon: <span className="icon icon-globe" />,
-			detected: gon.get("hermes_detected") === true,
-			detectRpc: "hermes.detect",
-			countFn: countHermes,
 		},
 	];
 }
@@ -147,14 +109,10 @@ function renderTab(id: string): VNode | null {
 	switch (id) {
 		case "moltis":
 			return <MoltisDataSection />;
-		case "openclaw":
-			return <OpenClawImportSection />;
 		case "claude":
 			return <ClaudeImportSection />;
 		case "codex":
 			return <CodexImportSection />;
-		case "hermes":
-			return <HermesImportSection />;
 		default:
 			return null;
 	}

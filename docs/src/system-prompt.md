@@ -49,8 +49,7 @@ included.
 ### Soul (`SOUL.md`)
 
 Loaded from `~/.moltis/SOUL.md`. When the file is absent or empty, the
-built-in `DEFAULT_SOUL` is used. The default is sourced from
-[OpenClaw's SOUL.md template](https://github.com/openclaw/openclaw/blob/main/docs/reference/templates/SOUL.md):
+built-in `DEFAULT_SOUL` is used. The default starts with:
 
 > **SOUL.md - Who You Are**
 >

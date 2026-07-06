@@ -418,10 +418,9 @@ originate from `127.0.0.1` — including requests from the public
 internet.  A naive "trust all loopback connections" check would bypass
 authentication for all proxied traffic.
 
-This is the same class of vulnerability as
-[CVE-2026-25253](https://github.com/openclaw/openclaw/security/advisories/GHSA-g8p2-7wf7-98mq),
-which allowed one-click remote code execution on OpenClaw through
-authentication token exfiltration and cross-site WebSocket hijacking.
+This is the same class of vulnerability as authentication token exfiltration
+and cross-site WebSocket hijacking attacks that can turn a trusted local
+service into a remote execution target.
 
 ### How Chelix handles it
 

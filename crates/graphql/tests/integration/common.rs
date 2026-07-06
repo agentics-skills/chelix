@@ -471,22 +471,6 @@ impl moltis_service_traits::SkillsService for MockSkills {
     async fn recipe(&self, p: Value) -> ServiceResult {
         self.0.call("skills.recipe", p)
     }
-
-    async fn clawhub_search(&self, p: Value) -> ServiceResult {
-        self.0.call("skills.clawhub.search", p)
-    }
-
-    async fn clawhub_install(&self, p: Value) -> ServiceResult {
-        self.0.call("skills.clawhub.install", p)
-    }
-
-    async fn clawhub_info(&self, p: Value) -> ServiceResult {
-        self.0.call("skills.clawhub.info", p)
-    }
-
-    async fn clawhub_scan(&self, p: Value) -> ServiceResult {
-        self.0.call("skills.clawhub.scan", p)
-    }
 }
 
 #[async_trait::async_trait]
@@ -616,18 +600,6 @@ impl moltis_service_traits::OnboardingService for MockOnboarding {
             .call("agent.identity.update_soul", json!({ "soul": soul }))
     }
 
-    async fn openclaw_detect(&self) -> ServiceResult {
-        self.0.call("openclaw.detect", json!({}))
-    }
-
-    async fn openclaw_scan(&self) -> ServiceResult {
-        self.0.call("openclaw.scan", json!({}))
-    }
-
-    async fn openclaw_import(&self, p: Value) -> ServiceResult {
-        self.0.call("openclaw.import", p)
-    }
-
     async fn claude_detect(&self) -> ServiceResult {
         self.0.call("claude.detect", json!({}))
     }
@@ -642,14 +614,6 @@ impl moltis_service_traits::OnboardingService for MockOnboarding {
 
     async fn codex_import(&self, p: Value) -> ServiceResult {
         self.0.call("codex.import", p)
-    }
-
-    async fn hermes_detect(&self) -> ServiceResult {
-        self.0.call("hermes.detect", json!({}))
-    }
-
-    async fn hermes_import(&self, p: Value) -> ServiceResult {
-        self.0.call("hermes.import", p)
     }
 }
 

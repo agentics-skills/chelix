@@ -1266,48 +1266,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
 
-    // ── OpenClaw import ─────────────────────────────────────────────────
-
-    reg.register(
-        "openclaw.detect",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .onboarding
-                    .openclaw_detect()
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-    reg.register(
-        "openclaw.scan",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .onboarding
-                    .openclaw_scan()
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-    reg.register(
-        "openclaw.import",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .onboarding
-                    .openclaw_import(ctx.params.clone())
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-
     // ── Claude import ────────────────────────────────────────────────────
 
     reg.register(
@@ -1360,35 +1318,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     .services
                     .onboarding
                     .codex_import(ctx.params.clone())
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-
-    // ── Hermes import ──────────────────────────────────────────────────
-
-    reg.register(
-        "hermes.detect",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .onboarding
-                    .hermes_detect()
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-    reg.register(
-        "hermes.import",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .onboarding
-                    .hermes_import(ctx.params.clone())
                     .await
                     .map_err(ErrorShape::from)
             })

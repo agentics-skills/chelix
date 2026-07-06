@@ -8,7 +8,6 @@
 
 - [Quickstart](quickstart.md)
 - [Installation](installation.md)
-- [Comparison](comparison.md)
 - [Configuration](configuration.md)
   - [Upstream Proxy](upstream-proxy.md)
   - [Configuration Reference](configuration-reference.md)
@@ -26,7 +25,6 @@
 - [External Agents](external-agents.md)
 - [Memory](memory.md)
   - [Memory Surfaces](memory-surfaces.md)
-  - [Chelix vs OpenClaw](memory-comparison.md)
 - [Hooks](hooks.md)
 - [Sandbox](sandbox.md)
   - [Trusted Network](trusted-network.md)
@@ -56,7 +54,6 @@
 - [Webhooks](webhooks.md)
 - [Skill Self-Extension](skill-tools.md)
 - [Mobile PWA](mobile-pwa.md)
-- [OpenClaw Import](openclaw-import.md)
 - [Multi-Node](nodes.md)
 - [Service Management](service.md)
 

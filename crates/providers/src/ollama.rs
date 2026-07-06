@@ -98,7 +98,6 @@ const OLLAMA_NATIVE_TOOL_FAMILIES: &[&str] = &[
     "mixtral",
     "command-r",
     "firefunction",
-    "hermes",
 ];
 
 /// Determine whether an Ollama model supports native tool calling based on its

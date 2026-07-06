@@ -36,9 +36,8 @@ impl Default for ModesConfig {
 
 /// Built-in modes available on every install.
 ///
-/// The communication-style modes are adapted from Hermes' built-in
-/// personalities. The workflow modes mirror common OpenClaw-style slash command
-/// workflows: plan, build, review, research, and elevated execution.
+/// The communication-style modes cover common response styles. The workflow
+/// modes cover plan, build, review, research, and elevated execution flows.
 #[must_use]
 pub fn default_mode_presets() -> HashMap<String, ModePreset> {
     [

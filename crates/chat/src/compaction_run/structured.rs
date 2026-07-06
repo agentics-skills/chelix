@@ -17,9 +17,6 @@
 //! without any loss of context`): it deliberately does NOT cap the summary
 //! length, since aggressive token targets are what cause multi-hour work to
 //! be compressed into a lossy stub.
-//!
-//! Also inspired by `hermes-agent`'s `ContextCompressor` and `openclaw`'s
-//! `safeguard` compaction.
 
 use {
     moltis_agents::model::{ChatMessage, LlmProvider, StreamEvent, Usage, values_to_chat_messages},

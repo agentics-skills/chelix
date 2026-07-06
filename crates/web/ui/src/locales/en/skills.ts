@@ -118,7 +118,6 @@ export default {
 	bundledDescription: "Toggle categories of built-in skills. Disabled categories are excluded from the agent context.",
 
 	// ── Featured skill descriptions ─────────────────────────
-	featuredOpenClaw: "Community skills from ClawdHub",
 	featuredAnthropic: "Official Anthropic agent skills",
 	featuredVercelAgent: "Vercel agent skills collection",
 	featuredVercelSkills: "Vercel skills toolkit",

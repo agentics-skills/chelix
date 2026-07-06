@@ -608,8 +608,6 @@ pub async fn prepare_gateway_core(
     services =
         services.with_onboarding(Arc::new(crate::onboarding::GatewayOnboardingService::new(
             live_onboarding,
-            Arc::clone(&session_metadata),
-            Arc::clone(&agent_persona_store),
             Arc::clone(&deferred_state),
         )));
 

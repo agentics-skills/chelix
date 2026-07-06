@@ -60,7 +60,6 @@ pub struct BannerMeta {
     pub method_count: usize,
     pub sandbox_backend_name: String,
     pub data_dir: PathBuf,
-    pub openclaw_status: String,
     pub setup_code_display: Option<String>,
     pub webauthn_registry: Option<SharedWebAuthnRegistry>,
     pub browser_for_lifecycle: Arc<dyn moltis_gateway::services::BrowserService>,

@@ -119,7 +119,6 @@ export default {
 		"Activez ou désactivez les catégories de compétences intégrées. Les catégories désactivées sont exclues du contexte de l'agent.",
 
 	// ── Featured skill descriptions ─────────────────────────
-	featuredOpenClaw: "Community skills from ClawdHub",
 	featuredAnthropic: "Official Anthropic agent skills",
 	featuredVercelAgent: "Vercel agent skills collection",
 	featuredVercelSkills: "Vercel skills toolkit",

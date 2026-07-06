@@ -1,7 +1,7 @@
 //! DOM snapshot extraction with element references.
 //!
 //! This module extracts interactive elements from a page and assigns them
-//! numeric reference IDs. This approach (inspired by openclaw) provides:
+//! numeric reference IDs. This approach provides:
 //! - Stable references that don't break with page updates
 //! - Security: no CSS selectors exposed to the model
 //! - Reliability: elements identified by role/content, not fragile paths

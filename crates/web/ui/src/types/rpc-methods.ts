@@ -119,9 +119,11 @@ export interface RpcMethodMap {
 	"node.pair.reject": unknown;
 	"nodes.set_session": unknown;
 
-	// ── OpenClaw ────────────────────────────────────────────────
-	"openclaw.import": unknown;
-	"openclaw.scan": unknown;
+	// ── External imports ────────────────────────────────────────
+	"claude.detect": unknown;
+	"claude.import": unknown;
+	"codex.detect": unknown;
+	"codex.import": unknown;
 
 	// ── Projects ────────────────────────────────────────────────
 	"projects.complete_path": unknown;
@@ -165,22 +167,6 @@ export interface RpcMethodMap {
 	"skills.skill.disable": unknown;
 	"skills.bundled.categories": unknown;
 	"skills.bundled.toggle_category": unknown;
-	"skills.clawhub.search": {
-		results: Array<{
-			score: number;
-			slug: string;
-			displayName?: string;
-			summary?: string;
-			updatedAt?: number;
-			version?: string;
-			downloads?: number;
-			ownerHandle?: string;
-			stars?: number;
-		}>;
-	};
-	"skills.clawhub.info": unknown;
-	"skills.clawhub.scan": unknown;
-	"skills.clawhub.install": { installed: Array<{ name: string; description?: string }> };
 	"skills.recipe": {
 		found: boolean;
 		recipe?: {

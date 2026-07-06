@@ -675,8 +675,7 @@ test.describe("Chat input and slash commands", () => {
 			var rowEl = document.querySelector(".chat-input-row");
 			var inputLineEl = document.querySelector(".chat-composer-input-line");
 			var statusEl = document.querySelector(".chat-composer-status");
-			if (!(composerEl && tokenBarEl && rowEl && inputLineEl && statusEl))
-				throw new Error("composer elements missing");
+			if (!(composerEl && tokenBarEl && rowEl && inputLineEl && statusEl)) throw new Error("composer elements missing");
 			var composerRect = composerEl.getBoundingClientRect();
 			var rowRect = rowEl.getBoundingClientRect();
 			var inputLineRect = inputLineEl.getBoundingClientRect();

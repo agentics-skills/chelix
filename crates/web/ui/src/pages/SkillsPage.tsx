@@ -23,7 +23,6 @@ import {
 	SkillSource,
 } from "../types/skill-source";
 import { ConfirmDialog, requestConfirm } from "../ui";
-import { ClawHubSection } from "./skills/ClawHubSection";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -298,19 +297,12 @@ async function checkPostInstallRecipe(source: string): Promise<void> {
 /** GitHub avatar URL — github.com/{owner}.png redirects to the correct avatar
  *  for both users and organizations. CSP img-src allows both domains. */
 function orgAvatarUrl(repo: string): string {
-	if (repo.startsWith("clawhub:")) {
-		return "https://clawhub.ai/favicon.ico";
-	}
 	const owner = repo.split("/")[0];
 	return `https://github.com/${owner}.png?size=40`;
 }
 
 /** Build the correct external link for a repo source. */
 function repoHref(source: string): string | null {
-	if (source.startsWith("clawhub:")) {
-		const slug = source.slice("clawhub:".length);
-		return `https://clawhub.ai/skills/${slug}`;
-	}
 	if (/^https?:\/\//.test(source)) return source;
 	return `https://github.com/${source}`;
 }
@@ -1285,7 +1277,6 @@ const skillsTabs = computed(() => {
 	return [
 		{ id: "skills", label: "Skills", badge: enabledSkills.value.length || undefined },
 		{ id: "categories", label: "Categories", badge: totalCats ? `${enabledCats}/${totalCats}` : undefined },
-		{ id: "clawhub", label: "ClawHub" },
 		{ id: "repositories", label: "Repositories", badge: repos.value.length || undefined },
 	];
 });
@@ -1341,7 +1332,6 @@ function SkillsPageComponent(): VNode {
 				</>
 			)}
 			{activeTab.value === "categories" && <BundledCategoriesSection />}
-			{activeTab.value === "clawhub" && <ClawHubSection onChanged={fetchAll} />}
 			{activeTab.value === "repositories" && (
 				<>
 					<InstallBox />

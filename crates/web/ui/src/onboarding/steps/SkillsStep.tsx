@@ -1,9 +1,8 @@
-// ── Skills step (bundled categories, repositories, ClawHub) ───
+// ── Skills step (bundled categories, repositories) ────────────
 //
 // Tabbed onboarding step letting users:
 // 1. Toggle bundled skill categories
 // 2. Install featured or custom GitHub skill repos
-// 3. Search and install ClawHub community skills
 
 import { useSignal } from "@preact/signals";
 import type { VNode } from "preact";
@@ -11,7 +10,6 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { TabBar } from "../../components/forms/Tabs";
 import { sendRpc } from "../../helpers";
 import { t } from "../../i18n";
-import { ClawHubSection } from "../../pages/skills/ClawHubSection";
 import { type BundledCategory, CATEGORY_META, categoryLabel } from "../../types/skill-source";
 import { showToast } from "../../ui";
 
@@ -296,7 +294,6 @@ function RepositoriesTab(): VNode {
 const TABS = [
 	{ id: "categories", label: "Categories" },
 	{ id: "repositories", label: "Repositories" },
-	{ id: "clawhub", label: "ClawHub" },
 ];
 
 export function SkillsStep({ onNext, onBack }: { onNext: () => void; onBack?: (() => void) | null }): VNode {
@@ -311,7 +308,6 @@ export function SkillsStep({ onNext, onBack }: { onNext: () => void; onBack?: ((
 
 			{activeTab === "categories" && <CategoriesTab />}
 			{activeTab === "repositories" && <RepositoriesTab />}
-			{activeTab === "clawhub" && <ClawHubSection onChanged={() => {}} />}
 
 			<div className="flex flex-wrap items-center gap-3 mt-1">
 				{onBack && (

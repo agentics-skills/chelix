@@ -22,7 +22,6 @@ default-members = [
   "crates/external-agents",
   "crates/gateway",
   "crates/graphql",
-  "crates/hermes-import",
   "crates/home-assistant",
   "crates/httpd",
   "crates/import-core",
@@ -38,7 +37,6 @@ default-members = [
   "crates/nostr",
   "crates/oauth",
   "crates/onboarding",
-  "crates/openclaw-import",
   "crates/plugins",
   "crates/portable",
   "crates/projects",
@@ -89,7 +87,6 @@ members = [
   "crates/external-agents",
   "crates/gateway",
   "crates/graphql",
-  "crates/hermes-import",
   "crates/home-assistant",
   "crates/httpd",
   "crates/import-core",
@@ -103,7 +100,6 @@ members = [
   "crates/nostr",
   "crates/oauth",
   "crates/onboarding",
-  "crates/openclaw-import",
   "crates/plugins",
   "crates/portable",
   "crates/projects",
@@ -364,7 +360,6 @@ moltis-discord          = { path = "crates/discord" }
 moltis-external-agents  = { path = "crates/external-agents" }
 moltis-gateway          = { default-features = false, path = "crates/gateway" }
 moltis-graphql          = { path = "crates/graphql" }
-moltis-hermes-import    = { path = "crates/hermes-import" }
 moltis-home-assistant   = { path = "crates/home-assistant" }
 moltis-httpd            = { default-features = false, path = "crates/httpd" }
 moltis-import-core      = { path = "crates/import-core" }
@@ -380,7 +375,6 @@ moltis-node-host        = { path = "crates/node-host" }
 moltis-nostr            = { path = "crates/nostr" }
 moltis-oauth            = { path = "crates/oauth" }
 moltis-onboarding       = { path = "crates/onboarding" }
-moltis-openclaw-import  = { path = "crates/openclaw-import" }
 moltis-plugins          = { path = "crates/plugins" }
 moltis-portable         = { path = "crates/portable" }
 moltis-projects         = { path = "crates/projects" }

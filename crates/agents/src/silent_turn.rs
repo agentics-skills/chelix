@@ -1,8 +1,8 @@
 /// Silent agentic turn for pre-compaction memory flush.
 ///
 /// Before compacting a session, runs a hidden LLM turn that reviews the conversation
-/// and writes important memories to disk. The LLM's response text is discarded (not
-/// shown to the user). This matches OpenClaw's approach to long-term memory creation.
+/// and writes important memories to disk. The LLM's response text is discarded and
+/// not shown to the user.
 use std::path::PathBuf;
 use std::sync::Arc;
 

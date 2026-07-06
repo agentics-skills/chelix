@@ -4,9 +4,6 @@
 //! strings that commonly show up in prompt-injection attempts (e.g.
 //! "ignore previous instructions"). Matches are reported to callers so
 //! they can emit a tracing warning; the scanner never blocks a read.
-//!
-//! Ported from hermes-agent's `skills_tool.py` injection pattern list so
-//! the two agents stay roughly in sync on their warn surface.
 
 /// Patterns to flag. Matched case-insensitively anywhere in the skill body.
 ///
@@ -31,8 +28,8 @@ const INJECTION_PATTERNS: &[&str] = &[
 /// value should be logged as a warning alongside the skill name.
 ///
 /// The `_skill_name` parameter is accepted for logging symmetry with the
-/// hermes implementation; it is not used by the scanner itself but keeps
-/// the call sites consistent.
+/// callers; it is not used by the scanner itself but keeps the call sites
+/// consistent.
 #[must_use]
 pub fn scan_skill_body(_skill_name: &str, body: &str) -> Vec<&'static str> {
     let lowered = body.to_ascii_lowercase();

@@ -1,5 +1,5 @@
 [package]
-description       = "Personal AI gateway inspired by OpenClaw"
+description       = "Personal AI gateway"
 edition.workspace = true
 homepage          = "https://github.com/agentics-skills/chelix"
 license           = "MIT"
@@ -23,14 +23,12 @@ moltis-common          = { workspace = true }
 moltis-config          = { workspace = true }
 moltis-cron            = { workspace = true }
 moltis-gateway         = { workspace = true }
-moltis-hermes-import   = { optional = true, workspace = true }
 moltis-httpd           = { workspace = true }
 moltis-import-core     = { workspace = true }
 moltis-memory          = { workspace = true }
 moltis-node-host       = { workspace = true }
 moltis-oauth           = { workspace = true }
 moltis-onboarding      = { workspace = true }
-moltis-openclaw-import = { optional = true, workspace = true }
 moltis-plugins         = { workspace = true }
 moltis-portable        = { workspace = true }
 moltis-projects        = { workspace = true }
@@ -83,7 +81,6 @@ full = [
   "firecrawl",
   "fs-tools",
   "graphql",
-  "hermes-import",
   "home-assistant",
   "jemalloc",
   "lang-bash",
@@ -108,7 +105,6 @@ full = [
   "metrics",
   "msteams",
   "nostr",
-  "openclaw-import",
   "prometheus",
   "provider-openai-codex",
   "push-notifications",
@@ -158,7 +154,6 @@ lang-typescript    = ["moltis-memory/lang-typescript"]
 # crashes on 16 KiB page kernels (e.g. Raspberry Pi OS variants).
 claude-import         = ["dep:moltis-claude-import", "moltis-gateway/claude-import"]
 codex-import          = ["dep:moltis-codex-import", "moltis-gateway/codex-import"]
-hermes-import         = ["dep:moltis-hermes-import", "moltis-gateway/hermes-import"]
 lightweight           = ["jemalloc", "tls", "web-ui"]
 local-embeddings      = ["moltis-gateway/local-embeddings"]
 matrix                = ["moltis-httpd/matrix"]
@@ -166,7 +161,6 @@ mdns                  = ["moltis-gateway/mdns"]
 metrics               = ["moltis-httpd/metrics", "moltis-web?/metrics"]
 msteams               = ["moltis-httpd/msteams"]
 nostr                 = ["moltis-httpd/nostr"]
-openclaw-import       = ["dep:moltis-openclaw-import", "moltis-gateway/openclaw-import"]
 prometheus            = ["moltis-httpd/prometheus"]
 provider-openai-codex = ["moltis-gateway/provider-openai-codex"]
 push-notifications    = ["moltis-httpd/push-notifications", "moltis-web?/push-notifications"]

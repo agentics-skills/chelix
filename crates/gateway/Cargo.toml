@@ -35,7 +35,6 @@ moltis-config           = { workspace = true }
 moltis-cron             = { workspace = true }
 moltis-discord          = { optional = true, workspace = true }
 moltis-external-agents  = { workspace = true }
-moltis-hermes-import    = { optional = true, workspace = true }
 moltis-home-assistant   = { optional = true, workspace = true }
 moltis-matrix           = { optional = true, workspace = true }
 moltis-mcp              = { workspace = true }
@@ -48,7 +47,6 @@ moltis-network-filter   = { features = ["proxy", "service"], optional = true, wo
 moltis-nostr            = { optional = true, workspace = true }
 moltis-oauth            = { workspace = true }
 moltis-onboarding       = { workspace = true }
-moltis-openclaw-import  = { optional = true, workspace = true }
 moltis-plugins          = { workspace = true }
 moltis-projects         = { workspace = true }
 moltis-protocol         = { workspace = true }
@@ -121,14 +119,12 @@ default = [
   "firecrawl",
   "fs-tools",
   "graphql",
-  "hermes-import",
   "home-assistant",
   "matrix",
   "mdns",
   "metrics",
   "msteams",
   "nostr",
-  "openclaw-import",
   "prometheus",
   "provider-openai-codex",
   "push-notifications",
@@ -149,13 +145,11 @@ discord = ["dep:moltis-discord"]
 file-watcher = [
   "moltis-code-index/file-watcher",
   "moltis-memory/file-watcher",
-  "moltis-openclaw-import?/file-watcher",
   "moltis-skills/file-watcher",
 ]
 firecrawl = ["moltis-tools/firecrawl"]
 fs-tools = ["moltis-tools/fs-tools"]
 graphql = []
-hermes-import = ["dep:moltis-hermes-import"]
 home-assistant = ["dep:moltis-home-assistant"]
 llm-compaction = ["moltis-chat/llm-compaction"]
 local-embeddings = ["moltis-memory/local-embeddings"]
@@ -173,7 +167,6 @@ metrics = [
 ]
 msteams = ["dep:moltis-msteams"]
 nostr = ["dep:moltis-nostr"]
-openclaw-import = ["dep:moltis-openclaw-import"]
 prometheus = ["metrics", "moltis-metrics/prometheus"]
 provider-openai-codex = [
   "moltis-providers/provider-openai-codex",

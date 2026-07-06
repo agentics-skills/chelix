@@ -32,7 +32,6 @@ mod data_commands;
 mod db_commands;
 mod doctor_commands;
 mod hooks_commands;
-#[cfg(feature = "openclaw-import")]
 mod import_commands;
 mod memory_commands;
 mod node_commands;
@@ -177,8 +176,7 @@ enum Commands {
         #[command(subcommand)]
         action: service_commands::ServiceAction,
     },
-    #[cfg(feature = "openclaw-import")]
-    /// Import data from an OpenClaw installation.
+    /// Import data from supported external AI tools.
     Import {
         #[command(subcommand)]
         action: import_commands::ImportAction,
@@ -459,7 +457,6 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Memory { action }) => memory_commands::handle_memory(action).await,
         Some(Commands::Node { action }) => node_commands::handle_node(action).await,
         Some(Commands::Service { action }) => service_commands::handle_service(action),
-        #[cfg(feature = "openclaw-import")]
         Some(Commands::Import { action }) => import_commands::handle_import(action).await,
         Some(Commands::Skills { action }) => handle_skills(action).await,
         Some(Commands::Config { action }) => config_commands::handle_config(action).await,

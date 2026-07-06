@@ -105,12 +105,11 @@ pub enum CompactionMode {
     ///
     /// Head and tail are preserved verbatim (same boundary logic as
     /// [`CompactionMode::RecencyPreserving`]). The middle is summarised
-    /// with a single LLM call using the
-    /// Goal / Progress / Decisions / Files / Next Steps template used by
-    /// hermes-agent and openclaw safeguard. Iterative re-compaction is
-    /// automatic: when the first head message is already a compacted
-    /// summary, the previous summary body is passed into the prompt so the
-    /// model can preserve and update sections instead of re-summarising.
+    /// with a single LLM call using the Goal / Progress / Decisions / Files /
+    /// Next Steps template. Iterative re-compaction is automatic: when the
+    /// first head message is already a compacted summary, the previous summary
+    /// body is passed into the prompt so the model can preserve and update
+    /// sections instead of re-summarising.
     ///
     /// On LLM failure (error or empty response), automatically falls back
     /// to [`CompactionMode::RecencyPreserving`] so compaction never

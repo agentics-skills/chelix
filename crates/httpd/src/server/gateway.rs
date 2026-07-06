@@ -156,7 +156,6 @@ pub async fn prepare_gateway(
         data_dir,
         provider_summary,
         mcp_configured_count,
-        openclaw_status: openclaw_startup_status,
         setup_code_display,
         port,
         tls_enabled: tls_enabled_for_gateway,
@@ -1405,7 +1404,6 @@ pub async fn prepare_gateway(
         provider_summary,
         mcp_configured_count,
         method_count,
-        openclaw_startup_status,
         setup_code_display,
         webauthn_registry,
         #[cfg(feature = "trusted-network")]

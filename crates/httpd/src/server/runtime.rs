@@ -15,7 +15,6 @@ pub(super) struct FinalizeGatewayArgs<'a> {
     pub provider_summary: String,
     pub mcp_configured_count: usize,
     pub method_count: usize,
-    pub openclaw_startup_status: String,
     pub setup_code_display: Option<String>,
     pub webauthn_registry: Option<SharedWebAuthnRegistry>,
     #[cfg(feature = "trusted-network")]
@@ -80,7 +79,6 @@ pub(super) async fn finalize_prepared_gateway(
         provider_summary,
         mcp_configured_count,
         method_count,
-        openclaw_startup_status,
         setup_code_display,
         webauthn_registry,
         #[cfg(feature = "trusted-network")]
@@ -811,7 +809,6 @@ pub(super) async fn finalize_prepared_gateway(
             method_count,
             sandbox_backend_name: sandbox_router.backend_name().to_owned(),
             data_dir,
-            openclaw_status: openclaw_startup_status,
             setup_code_display,
             webauthn_registry,
             browser_for_lifecycle,
@@ -849,9 +846,6 @@ pub async fn prepare_gateway_embedded(
         session_event_bus,
     )
     .await?;
-    // Embedded callers own the listener lifecycle, but still need non-blocking
-    // OpenClaw startup tasks.
-    moltis_gateway::server::start_openclaw_background_tasks(prepared.banner.data_dir.clone());
     Ok(prepared)
 }
 
@@ -1057,7 +1051,6 @@ pub async fn start_gateway(
             moltis_config::find_or_default_config_path().display()
         ),
         format!("data: {}", banner.data_dir.display()),
-        format!("openclaw: {}", banner.openclaw_status),
     ];
     lines.extend(startup_passkey_origin_lines(&passkey_origins));
     #[cfg(target_os = "macos")]
@@ -1204,7 +1197,6 @@ pub async fn start_gateway(
         // Plain HTTP requests to this port get a 301 redirect instead of a TLS error.
         let tls_cfg = rustls_config.expect("rustls config must be set when TLS is active");
         let tcp_listener = tokio::net::TcpListener::bind(addr).await?;
-        moltis_gateway::server::start_openclaw_background_tasks(banner.data_dir.clone());
         moltis_gateway::server::start_browser_warmup_after_listener(
             Arc::clone(&browser_for_warmup),
             browser_tool_for_warmup.clone(),
@@ -1217,7 +1209,6 @@ pub async fn start_gateway(
 
     // Plain HTTP server (existing behavior, or TLS feature disabled).
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    moltis_gateway::server::start_openclaw_background_tasks(banner.data_dir.clone());
     moltis_gateway::server::start_browser_warmup_after_listener(
         Arc::clone(&browser_for_warmup),
         browser_tool_for_warmup,

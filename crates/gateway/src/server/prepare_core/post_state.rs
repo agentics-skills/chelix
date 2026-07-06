@@ -4,7 +4,7 @@ use std::{
 };
 
 use {
-    secrecy::{ExposeSecret, Secret},
+    secrecy::Secret,
     tracing::{debug, info, warn},
 };
 
@@ -37,7 +37,6 @@ use crate::{
 use crate::server::{
     helpers::{StartupMemProbe, env_flag_enabled, instance_slug},
     prepared::PreparedGatewayCore,
-    startup::deferred_openclaw_status,
 };
 
 #[cfg(feature = "wasm")]
@@ -289,8 +288,6 @@ pub(super) async fn complete_startup(
         #[cfg(any(feature = "qmd", feature = "code-index-builtin"))]
         project_store,
     } = inputs;
-
-    let openclaw_startup_status = deferred_openclaw_status();
 
     let is_localhost =
         matches!(bind.as_str(), "127.0.0.1" | "::1" | "localhost") || bind.ends_with(".localhost");
@@ -1268,7 +1265,6 @@ pub(super) async fn complete_startup(
         data_dir,
         provider_summary,
         mcp_configured_count,
-        openclaw_status: openclaw_startup_status,
         setup_code_display,
         port,
         tls_enabled: tls_enabled_for_gateway,

@@ -1,8 +1,7 @@
 //! `CompactionMode::RecencyPreserving` — head + middle-marker + tail.
 //!
-//! Zero-LLM strategy inspired by hermes-agent's `ContextCompressor`:
-//! protect the head (system prompt + first exchange) and a token-budget
-//! tail verbatim, collapse the middle into a single marker message, prune
+//! Zero-LLM strategy: protect the head (system prompt + first exchange)
+//! and a token-budget tail verbatim, collapse the middle into a single marker message, prune
 //! any bulky tool-result content that survives in the retained slice, and
 //! repair orphaned tool_use / tool_result pairs so strict providers
 //! accept the retry.

@@ -5884,17 +5884,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "json5"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96b0db21af676c1ce64250b5f40f3ce2cf27e4e47cb91ed91eb6fe9350b430c1"
-dependencies = [
- "pest",
- "pest_derive",
- "serde",
-]
-
-[[package]]
 name = "json_schema_ast"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7006,14 +6995,12 @@ dependencies = [
  "moltis-config",
  "moltis-cron",
  "moltis-gateway",
- "moltis-hermes-import",
  "moltis-httpd",
  "moltis-import-core",
  "moltis-memory",
  "moltis-node-host",
  "moltis-oauth",
  "moltis-onboarding",
- "moltis-openclaw-import",
  "moltis-plugins",
  "moltis-portable",
  "moltis-projects",
@@ -7454,7 +7441,6 @@ dependencies = [
  "moltis-cron",
  "moltis-discord",
  "moltis-external-agents",
- "moltis-hermes-import",
  "moltis-home-assistant",
  "moltis-matrix",
  "moltis-mcp",
@@ -7467,7 +7453,6 @@ dependencies = [
  "moltis-nostr",
  "moltis-oauth",
  "moltis-onboarding",
- "moltis-openclaw-import",
  "moltis-plugins",
  "moltis-projects",
  "moltis-protocol",
@@ -7533,18 +7518,6 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
-]
-
-[[package]]
-name = "moltis-hermes-import"
-version = "0.1.0"
-dependencies = [
- "dirs-next",
- "moltis-import-core",
- "serde",
- "serde_json",
- "tempfile",
- "tracing",
 ]
 
 [[package]]
@@ -7902,29 +7875,6 @@ dependencies = [
  "tokio",
  "toml 0.8.23",
  "tracing",
-]
-
-[[package]]
-name = "moltis-openclaw-import"
-version = "0.1.0"
-dependencies = [
- "dirs-next",
- "json5",
- "moltis-common",
- "moltis-config",
- "moltis-oauth",
- "notify-debouncer-full",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "serde_yaml",
- "tempfile",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "toml 0.8.23",
- "tracing",
- "walkdir",
 ]
 
 [[package]]

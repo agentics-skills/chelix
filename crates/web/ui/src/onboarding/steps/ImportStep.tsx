@@ -1,7 +1,7 @@
 // ── Tabbed import step for onboarding ────────────────────────
 //
-// Wraps all detected import sources (OpenClaw, Claude Code, Codex, Hermes)
-// behind a tab bar, reusing the settings import section components.
+// Wraps detected Claude Code and Codex import sources behind a tab bar,
+// reusing the settings import section components.
 
 import type { VNode } from "preact";
 import { useEffect, useState } from "preact/hooks";
@@ -10,8 +10,6 @@ import { get as getGon } from "../../gon";
 import { sendRpc } from "../../helpers";
 import { ClaudeImportSection } from "../../pages/sections/ClaudeImportSection";
 import { CodexImportSection } from "../../pages/sections/CodexImportSection";
-import { HermesImportSection } from "../../pages/sections/HermesImportSection";
-import { OpenClawImportSection } from "../../pages/sections/OpenClawImportSection";
 import { ensureWsConnected } from "../shared";
 
 const WS_RETRY_LIMIT = 75;
@@ -24,17 +22,6 @@ interface ImportTabDef {
 	detected: boolean;
 	detectRpc: string;
 	countFn: (payload: Record<string, unknown>) => number;
-}
-
-function countOpenClaw(p: Record<string, unknown>): number {
-	let n = 0;
-	if (p.identity_available) n++;
-	if (p.providers_available) n++;
-	n += Number(p.skills_count) || 0;
-	if (p.memory_available) n++;
-	if (p.channels_available) n++;
-	n += Number(p.sessions_count) || 0;
-	return n;
 }
 
 function countClaude(p: Record<string, unknown>): number {
@@ -51,26 +38,9 @@ function countCodex(p: Record<string, unknown>): number {
 	return n;
 }
 
-function countHermes(p: Record<string, unknown>): number {
-	let n = Number(p.credentials_count) || 0;
-	n += Number(p.skills_count) || 0;
-	const memFiles = p.memory_files;
-	if (Array.isArray(memFiles)) n += memFiles.length;
-	else if (p.has_memory) n++;
-	return n;
-}
-
 /** Build tab definitions at render time so getGon() reads current state. */
 function getAllTabs(): ImportTabDef[] {
 	return [
-		{
-			id: "openclaw",
-			label: "OpenClaw",
-			icon: <span className="icon icon-openclaw" />,
-			detected: getGon("openclaw_detected") === true,
-			detectRpc: "openclaw.scan",
-			countFn: countOpenClaw,
-		},
 		{
 			id: "claude",
 			label: "Claude Code",
@@ -87,20 +57,12 @@ function getAllTabs(): ImportTabDef[] {
 			detectRpc: "codex.detect",
 			countFn: countCodex,
 		},
-		{
-			id: "hermes",
-			label: "Hermes",
-			icon: <span className="icon icon-globe" />,
-			detected: getGon("hermes_detected") === true,
-			detectRpc: "hermes.detect",
-			countFn: countHermes,
-		},
 	];
 }
 
 export function ImportStep({ onNext, onBack }: { onNext: () => void; onBack?: (() => void) | null }): VNode {
 	const detectedTabs = getAllTabs().filter((t) => t.detected);
-	const [activeTab, setActiveTab] = useState(detectedTabs[0]?.id || "openclaw");
+	const [activeTab, setActiveTab] = useState(detectedTabs[0]?.id || "claude");
 	const [wsReady, setWsReady] = useState(false);
 	const [badges, setBadges] = useState<Record<string, number>>({});
 
@@ -113,7 +75,7 @@ export function ImportStep({ onNext, onBack }: { onNext: () => void; onBack?: ((
 		function tryConnect(): void {
 			if (cancelled) return;
 			ensureWsConnected();
-			(sendRpc("openclaw.scan", {}) as Promise<{ ok?: boolean; error?: { code?: string; message?: string } }>).then(
+			(sendRpc("claude.detect", {}) as Promise<{ ok?: boolean; error?: { code?: string; message?: string } }>).then(
 				(res) => {
 					if (cancelled) return;
 					if (res?.ok || (res?.error?.code !== "UNAVAILABLE" && res?.error?.message !== "WebSocket not connected")) {
@@ -200,14 +162,10 @@ export function ImportStep({ onNext, onBack }: { onNext: () => void; onBack?: ((
 
 function renderTab(id: string): VNode | null {
 	switch (id) {
-		case "openclaw":
-			return <OpenClawImportSection />;
 		case "claude":
 			return <ClaudeImportSection />;
 		case "codex":
 			return <CodexImportSection />;
-		case "hermes":
-			return <HermesImportSection />;
 		default:
 			return null;
 	}

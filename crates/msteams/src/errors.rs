@@ -1,7 +1,6 @@
 //! Error classification and retry logic for Teams Bot Framework API calls.
 //!
-//! Classifies HTTP response status codes into retry categories following the
-//! same model as OpenClaw's `errors.ts`.
+//! Classifies HTTP response status codes into retry categories.
 
 use std::time::Duration;
 

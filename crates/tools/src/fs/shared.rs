@@ -28,7 +28,7 @@ use {
 };
 
 /// Number of consecutive identical reads before a `loop_warning` is added
-/// to Read's response payload. Ported from hermes's `_read_tracker`.
+/// to Read's response payload.
 pub const READ_LOOP_THRESHOLD: usize = 3;
 
 type MutationQueueMap = Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>;
@@ -206,13 +206,11 @@ pub const MAX_READ_OUTPUT_BYTES: usize = 256 * 1024;
 
 /// Minimum floor for the adaptive read cap. Even a tiny context window
 /// gets at least this many bytes per Read so small reads remain useful.
-/// Ported from openclaw's `DEFAULT_READ_PAGE_MAX_BYTES`.
 pub const MIN_ADAPTIVE_READ_BYTES: usize = 50 * 1024;
 
 /// Hard ceiling on the adaptive read cap. A huge context window (1M+
 /// tokens) would otherwise request hundreds of KB per call and blow
-/// tool-response payload limits. Ported from openclaw's
-/// `MAX_ADAPTIVE_READ_MAX_BYTES`.
+/// tool-response payload limits.
 pub const MAX_ADAPTIVE_READ_BYTES: usize = 512 * 1024;
 
 /// Rough tokens-to-characters conversion for adaptive cap computation.

@@ -206,7 +206,7 @@ pub struct SkillMetadata {
 /// Provenance information for a skill copied from an external source.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SkillOrigin {
-    /// Upstream project name (e.g. `"hermes-agent"`).
+    /// Upstream project name.
     #[serde(default)]
     pub source: Option<String>,
     /// URL of the upstream repository.
@@ -225,7 +225,7 @@ pub struct SkillRequirements {
     /// All of these binaries must be found in PATH.
     #[serde(default)]
     pub bins: Vec<String>,
-    /// At least one of these binaries must be found (openclaw `anyBins`).
+    /// At least one of these binaries must be found.
     #[serde(default)]
     pub any_bins: Vec<String>,
     /// Install instructions for missing binaries.

@@ -46,7 +46,7 @@ async function maybeCompleteIdentity(page) {
 }
 
 async function maybeSkipImport(page) {
-	const importHeading = page.getByRole("heading", { name: /^Import (from OpenClaw|Your Data)$/ });
+	const importHeading = page.getByRole("heading", { name: "Import Your Data", exact: true });
 	if (!(await isVisible(importHeading))) return false;
 
 	return clickFirstVisibleButton(page, { name: /^Skip/ });

@@ -115,7 +115,6 @@ export default {
 	bundledDescription: "切換內建 Skills 的類別。停用的類別不會加入 AI 助理可參考的內容。",
 
 	// ── Featured skill descriptions ─────────────────────────
-	featuredOpenClaw: "來自 ClawdHub 的社群 Skills",
 	featuredAnthropic: "Anthropic 官方 AI 助理 Skills",
 	featuredVercelAgent: "Vercel AI 助理 Skills 集合",
 	featuredVercelSkills: "Vercel Skills 工具組",

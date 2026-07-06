@@ -147,7 +147,7 @@ pub async fn handle_connection(
     //   - Host header loopback check
     //   - TCP source IP loopback check
     //
-    // See CVE-2026-25253 for the analogous OpenClaw vulnerability.
+    // See CVE-2026-25253 for the analogous loopback-auth vulnerability.
     let mut authenticated = header_identity.is_some();
     // Scopes from API key verification (if any).
     // When authenticated via HTTP header (cookie/bearer), scopes come from

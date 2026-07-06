@@ -8,7 +8,7 @@ One binary — sandboxed, secure, yours.
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-1.91%2B-orange.svg)](https://www.rust-lang.org)
 
-[Installation](#installation) • [Comparison](#comparison) • [Architecture](#architecture--crate-map) • [Security](#security) • [Features](#features) • [How It Works](#how-it-works) • [Contributing](CONTRIBUTING.md)
+[Installation](#installation) • [Architecture](#architecture--crate-map) • [Security](#security) • [Features](#features) • [How It Works](#how-it-works) • [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -35,26 +35,6 @@ curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/insta
 # Docker (multi-arch: amd64/arm64)
 docker pull ghcr.io/moltis-org/moltis:latest
 ```
-
-## Comparison
-
-| | OpenClaw | Hermes Agent | **Chelix** |
-|---|---|---|---|
-| Primary stack | TypeScript | Python + TypeScript TUI/web surfaces | **Rust** |
-| Runtime | Node.js + npm/pnpm/bun | Python + uv/pip, optional Node UI pieces | **Single Rust binary** |
-| Local checkout size\* | ~1.1M app LoC | ~152K app LoC | **~270K Rust LoC** |
-| Architecture | Broad gateway, channel, node, and app ecosystem | CLI/gateway agent with learning loop and research tooling | **Persistent personal agent server with modular crates** |
-| Crates/modules | npm packages, extensions, apps | Python packages, plugins, tools, TUI | **59 Rust workspace crates** |
-| Sandbox/backends | App-level permissions, browser/node tools | Local, Docker, SSH, Daytona, Singularity, Modal | **Docker/Podman + Apple Container + WASM** |
-| Auth/access | Pairing and local gateway controls | CLI and messaging gateway setup | **Password + Passkey + API keys + Vault** |
-| Voice I/O | Voice wake and talk modes | Voice memo transcription | **Built-in STT + TTS providers** |
-| MCP | Plugin/integration support | MCP integration | **stdio + HTTP/SSE** |
-| Skills | Bundled, managed, and workspace skills | Self-improving skills and Skills Hub support | **Bundled/workspace skills + autonomous improvement + OpenClaw import** |
-| Memory/RAG | Plugin-backed memory and context engine | Agent-curated memory, session search, user modeling | **SQLite + FTS + vector memory** |
-
-\* LoC measured with `tokei`, excluding `node_modules`, generated build output, `dist`, and `target`.
-
-> [Full comparison in the docs →](docs/src/comparison.md)
 
 ## Architecture — Crate Map
 
@@ -88,7 +68,7 @@ Current Rust workspace: ~270K LoC across 59 crates. The table below groups the m
 | Voice and browser | `moltis-voice`, `moltis-browser` | 9.2K |
 | Auth and security | `moltis-auth`, `moltis-oauth`, `moltis-vault`, `moltis-secret-store`, `moltis-network-filter`, `moltis-tls` | 8.5K |
 | Scheduling and automation | `moltis-cron`, `moltis-caldav`, `moltis-auto-reply` | 4.7K |
-| Setup and import | `moltis-provider-setup`, `moltis-openclaw-import`, `moltis-onboarding` | 11.7K |
+| Setup and import | `moltis-provider-setup`, `moltis-onboarding` | 11.7K |
 | Native and node hosts | `moltis-node-host`, `moltis-courier` | 5.7K |
 | WASM tools | `moltis-wasm-precompile`, `moltis-wasm-calc`, `moltis-wasm-web-fetch`, `moltis-wasm-web-search` | 1.4K |
 | Supporting crates | `moltis-media`, `moltis-metrics`, `moltis-routing`, `moltis-canvas`, `moltis-schema-export`, `benchmarks` | 2.1K |

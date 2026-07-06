@@ -620,10 +620,6 @@ pub trait SkillsService: Send + Sync {
     async fn bundled_categories(&self) -> ServiceResult;
     async fn bundled_toggle_category(&self, params: Value) -> ServiceResult;
     async fn recipe(&self, params: Value) -> ServiceResult;
-    async fn clawhub_search(&self, params: Value) -> ServiceResult;
-    async fn clawhub_install(&self, params: Value) -> ServiceResult;
-    async fn clawhub_info(&self, params: Value) -> ServiceResult;
-    async fn clawhub_scan(&self, params: Value) -> ServiceResult;
 }
 
 pub struct NoopSkillsStub;
@@ -725,22 +721,6 @@ impl SkillsService for NoopSkillsStub {
     async fn recipe(&self, _params: Value) -> ServiceResult {
         Ok(serde_json::json!({ "found": false }))
     }
-
-    async fn clawhub_search(&self, _params: Value) -> ServiceResult {
-        Ok(serde_json::json!({ "results": [] }))
-    }
-
-    async fn clawhub_install(&self, _params: Value) -> ServiceResult {
-        Err("skills service not configured".into())
-    }
-
-    async fn clawhub_info(&self, _params: Value) -> ServiceResult {
-        Ok(serde_json::json!({ "found": false }))
-    }
-
-    async fn clawhub_scan(&self, _params: Value) -> ServiceResult {
-        Ok(serde_json::json!({ "security": null }))
-    }
 }
 
 #[async_trait]
@@ -834,15 +814,10 @@ pub trait OnboardingService: Send + Sync {
     async fn identity_get(&self) -> ServiceResult;
     async fn identity_update(&self, params: Value) -> ServiceResult;
     async fn identity_update_soul(&self, soul: Option<String>) -> ServiceResult;
-    async fn openclaw_detect(&self) -> ServiceResult;
-    async fn openclaw_scan(&self) -> ServiceResult;
-    async fn openclaw_import(&self, params: Value) -> ServiceResult;
     async fn claude_detect(&self) -> ServiceResult;
     async fn claude_import(&self, params: Value) -> ServiceResult;
     async fn codex_detect(&self) -> ServiceResult;
     async fn codex_import(&self, params: Value) -> ServiceResult;
-    async fn hermes_detect(&self) -> ServiceResult;
-    async fn hermes_import(&self, params: Value) -> ServiceResult;
 }
 
 pub struct NoopOnboardingService;
@@ -877,18 +852,6 @@ impl OnboardingService for NoopOnboardingService {
         Ok(serde_json::json!({}))
     }
 
-    async fn openclaw_detect(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "detected": false }))
-    }
-
-    async fn openclaw_scan(&self) -> ServiceResult {
-        Err("onboarding service not configured".into())
-    }
-
-    async fn openclaw_import(&self, _params: Value) -> ServiceResult {
-        Err("onboarding service not configured".into())
-    }
-
     async fn claude_detect(&self) -> ServiceResult {
         Ok(serde_json::json!({ "detected": false }))
     }
@@ -902,14 +865,6 @@ impl OnboardingService for NoopOnboardingService {
     }
 
     async fn codex_import(&self, _params: Value) -> ServiceResult {
-        Err("onboarding service not configured".into())
-    }
-
-    async fn hermes_detect(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "detected": false }))
-    }
-
-    async fn hermes_import(&self, _params: Value) -> ServiceResult {
         Err("onboarding service not configured".into())
     }
 }

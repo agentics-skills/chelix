@@ -221,8 +221,7 @@ through CDP, but not pixel screenshots.
 ## Element Reference System
 
 The snapshot action extracts interactive elements and assigns them numeric
-references. This approach (inspired by [OpenClaw](https://docs.openclaw.ai))
-provides:
+references. This approach provides:
 
 - **Stability**: References don't break with minor page updates
 - **Security**: No CSS selectors exposed to the model

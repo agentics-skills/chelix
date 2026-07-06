@@ -1,5 +1,5 @@
 {
-  description = "Moltis - Personal AI gateway inspired by OpenClaw";
+  description = "Moltis - Personal AI gateway";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -98,7 +98,7 @@
           MOLTIS_VERSION = toString (self.shortRev or self.dirtyShortRev or self.lastModified or "nix");
 
           meta = with pkgs.lib; {
-            description = "Personal AI gateway inspired by OpenClaw";
+            description = "Personal AI gateway";
             homepage = "https://github.com/agentics-skills/chelix";
             license = licenses.mit;
             mainProgram = "moltis";

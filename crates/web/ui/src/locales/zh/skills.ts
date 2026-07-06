@@ -114,7 +114,6 @@ export default {
 	bundledDescription: "切换内置技能类别。已禁用的类别将从代理上下文中排除。",
 
 	// ── Featured skill descriptions ─────────────────────────
-	featuredOpenClaw: "来自 ClawdHub 的社区技能",
 	featuredAnthropic: "Anthropic 官方代理技能",
 	featuredVercelAgent: "Vercel 代理技能合集",
 	featuredVercelSkills: "Vercel 技能工具包",

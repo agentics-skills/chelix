@@ -270,7 +270,6 @@ fn seed_personal_skill_full(
 #[tokio::test]
 async fn test_read_skill_lists_assets_directory() {
     // agentskills.io standard: `assets/` holds supplementary files.
-    // hermes-agent surfaces these; we should too.
     let tmp = tempfile::tempdir().unwrap();
     let skill_dir = seed_personal_skill(tmp.path(), "demo", "# Demo\n");
     std::fs::create_dir_all(skill_dir.join("assets")).unwrap();

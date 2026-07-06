@@ -49,8 +49,6 @@ pub struct PreparedGatewayCore {
     pub provider_summary: String,
     /// Number of configured MCP servers.
     pub mcp_configured_count: usize,
-    /// OpenClaw detection status string.
-    pub openclaw_status: String,
     /// One-time setup code (when auth setup is pending).
     pub setup_code_display: Option<String>,
     /// Resolved port.

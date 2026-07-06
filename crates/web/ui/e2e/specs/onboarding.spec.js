@@ -22,9 +22,6 @@ async function clickFirstVisibleButton(page, roleQuery) {
 async function waitForOnboardingStepLoaded(page) {
 	await expect(page.locator(".onboarding-card")).toBeVisible();
 	await expect(page.getByText("Loading…")).toHaveCount(0, { timeout: 10_000 });
-	await expect(page.getByText("Scanning OpenClaw installation…", { exact: true })).not.toBeVisible({
-		timeout: 10_000,
-	});
 }
 
 async function visibleOnboardingHeadingText(page) {
@@ -99,8 +96,8 @@ async function maybeCompleteIdentity(page) {
 	return true;
 }
 
-async function maybeSkipOpenClawImport(page) {
-	const importHeading = page.getByRole("heading", { name: /^Import (from OpenClaw|Your Data)$/ });
+async function maybeSkipImport(page) {
+	const importHeading = page.getByRole("heading", { name: "Import Your Data", exact: true });
 	if (!(await isVisible(importHeading))) return false;
 	const headingBefore = await visibleOnboardingHeadingText(page);
 
@@ -155,9 +152,8 @@ async function maybeWaitForLlmLoading(page) {
 
 async function moveToLlmStep(page) {
 	const llmHeading = page.getByRole("heading", { name: LLM_STEP_HEADING });
-	// Onboarding step order can vary by environment, and the OpenClaw import step
-	// is populated asynchronously after the card first appears. Keep polling until
-	// a real pre-LLM step is visible and can advance.
+	// Onboarding step order can vary by environment. Keep polling until a real
+	// pre-LLM step is visible and can advance.
 	for (let i = 0; i < 40; i++) {
 		await waitForOnboardingStepLoaded(page);
 		if (await isVisible(llmHeading)) {
@@ -169,7 +165,7 @@ async function moveToLlmStep(page) {
 			return true;
 		}
 
-		if (await maybeSkipOpenClawImport(page)) continue;
+		if (await maybeSkipImport(page)) continue;
 		if (await maybeSkipAuth(page)) continue;
 		if (await maybeCompleteIdentity(page)) continue;
 
@@ -347,12 +343,11 @@ test.describe("Onboarding wizard", () => {
 		const importIdx = labels.indexOf("Import");
 		const llmIdx = labels.indexOf("LLM");
 		if (importIdx === -1 || llmIdx === -1) {
-			test.skip(true, "OpenClaw import is not available in this onboarding run");
+			test.skip(true, "Import step is not available in this onboarding run");
 		}
 
 		expect(importIdx).toBeLessThan(llmIdx);
 	});
-
 
 	test("auth step renders actionable controls when shown", async ({ page }) => {
 		await page.goto("/onboarding");
@@ -362,9 +357,9 @@ test.describe("Onboarding wizard", () => {
 		const isAuthStepVisible = await authHeading.isVisible().catch(() => false);
 
 		if (!isAuthStepVisible) {
-			// When auth is not needed, the wizard may show identity, OpenClaw import, or LLM step
+			// When auth is not needed, the wizard may show identity, import, or LLM step.
 			const anyStepHeading = page.getByRole("heading", {
-				name: /^(Add LLMs|Add providers|Set up your identity|Import from OpenClaw|Import Your Data)$/,
+				name: /^(Add LLMs|Add providers|Set up your identity|Import Your Data)$/,
 			});
 			await expect(anyStepHeading).toBeVisible();
 			return;

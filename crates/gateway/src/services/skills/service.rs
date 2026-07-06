@@ -139,11 +139,9 @@ impl SkillsService for NoopSkillsService {
             store.save(&manifest).map_err(ServiceError::message)?;
         }
 
-        // Filter out ClawHub individual skills — they show in the Skills tab, not Repositories.
         let repos: Vec<_> = manifest
             .repos
             .iter()
-            .filter(|repo| !moltis_skills::clawhub::is_clawhub_source(&repo.source))
             .map(|repo| {
                 // Deduplicate skills by name to avoid counting test fixtures.
                 let mut seen = HashSet::new();
@@ -226,7 +224,6 @@ impl SkillsService for NoopSkillsService {
         let repos: Vec<_> = manifest
             .repos
             .iter()
-            .filter(|repo| !moltis_skills::clawhub::is_clawhub_source(&repo.source))
             .map(|repo| {
                 let repo_dir = install_dir.join(&repo.repo_name);
                 // Re-detect format for repos that predate the formats module
@@ -1035,108 +1032,6 @@ impl SkillsService for NoopSkillsService {
             })),
             None => Ok(serde_json::json!({ "found": false })),
         }
-    }
-
-    async fn clawhub_search(&self, params: Value) -> ServiceResult {
-        use moltis_skills::clawhub::EnrichedSearchResult;
-
-        let query = params
-            .get("query")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "missing 'query' parameter".to_string())?;
-        let client = moltis_skills::clawhub::ClawHubClient::new();
-        let response = client.search(query).await.map_err(ServiceError::message)?;
-
-        // Enrich results with stats from skill info. Use a semaphore to limit
-        // concurrent requests (avoid hitting ClawHub's 180 req/min rate limit).
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
-        let futs: Vec<_> = response
-            .results
-            .iter()
-            .map(|r| {
-                let slug = r.slug.clone();
-                let client = moltis_skills::clawhub::ClawHubClient::new();
-                let sem = Arc::clone(&semaphore);
-                async move {
-                    let _permit = sem.acquire().await;
-                    (slug.clone(), client.skill_info(&slug).await.ok())
-                }
-            })
-            .collect();
-        let infos = futures::future::join_all(futs).await;
-
-        let enriched: Vec<EnrichedSearchResult> = response
-            .results
-            .into_iter()
-            .map(|r| {
-                let mut e = EnrichedSearchResult::from(r.clone());
-                if let Some((_, Some(info))) = infos.iter().find(|(s, _)| *s == r.slug) {
-                    if let Some(stats) = &info.skill.stats {
-                        e.downloads = stats.downloads;
-                        e.stars = stats.stars;
-                    }
-                    if let Some(owner) = &info.owner {
-                        e.owner_handle = owner.handle.clone();
-                        e.owner_image = owner.image.clone();
-                    }
-                }
-                e
-            })
-            .collect();
-
-        Ok(serde_json::json!({ "results": enriched }))
-    }
-
-    async fn clawhub_scan(&self, params: Value) -> ServiceResult {
-        let slug = params
-            .get("slug")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "missing 'slug' parameter".to_string())?;
-        moltis_skills::clawhub::validate_slug(slug).map_err(ServiceError::message)?;
-        let client = moltis_skills::clawhub::ClawHubClient::new();
-        let scan = client.scan(slug).await.map_err(ServiceError::message)?;
-        Ok(serde_json::to_value(scan).unwrap_or_default())
-    }
-
-    async fn clawhub_info(&self, params: Value) -> ServiceResult {
-        let slug = params
-            .get("slug")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "missing 'slug' parameter".to_string())?;
-        moltis_skills::clawhub::validate_slug(slug).map_err(ServiceError::message)?;
-        let client = moltis_skills::clawhub::ClawHubClient::new();
-        let info = client
-            .skill_info(slug)
-            .await
-            .map_err(ServiceError::message)?;
-        Ok(serde_json::to_value(info).unwrap_or_default())
-    }
-
-    async fn clawhub_install(&self, params: Value) -> ServiceResult {
-        let slug = params
-            .get("slug")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "missing 'slug' parameter".to_string())?;
-        let install_dir =
-            moltis_skills::install::default_install_dir().map_err(ServiceError::message)?;
-        let skills = moltis_skills::clawhub::install_from_clawhub(slug, &install_dir)
-            .await
-            .map_err(ServiceError::message)?;
-        let installed: Vec<_> = skills
-            .iter()
-            .map(|m| {
-                serde_json::json!({
-                    "name": m.name,
-                    "description": m.description,
-                    "path": m.path.to_string_lossy(),
-                })
-            })
-            .collect();
-        security_audit(
-            "skills.clawhub.install",
-            serde_json::json!({ "slug": slug, "installed_count": installed.len() }),
-        );
-        Ok(serde_json::json!({ "installed": installed }))
     }
 }
 

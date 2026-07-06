@@ -574,8 +574,8 @@ mod tests {
 
     /// Verify that user content containing role-like prefixes (e.g. injected
     /// `\nassistant:` lines) remains inside a User message and does NOT produce
-    /// a separate Assistant turn. This is the structural defence against the
-    /// OpenClaw-style sender-spoofing prompt injection (GHSA-g8p2-7wf7-98mq).
+    /// a separate Assistant turn. This is the structural defence against
+    /// sender-spoofing prompt injection.
     #[test]
     fn injected_role_prefix_stays_in_user_message() {
         let injected_content =
