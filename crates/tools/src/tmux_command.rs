@@ -829,22 +829,25 @@ fn build_paste_payload(
     run_id: &str,
     marker_enabled: bool,
 ) -> String {
-    let mut lines = Vec::new();
+    let mut statements = Vec::new();
     if let Some(cwd) = cwd.filter(|value| !value.trim().is_empty()) {
-        lines.push(format!("cd {}", shell_words::quote(cwd).as_ref()));
+        statements.push(format!("cd {}", shell_words::quote(cwd).as_ref()));
     }
     if marker_enabled {
-        lines.push(format!("printf '\\n{START_PREFIX}{run_id}\\n'"));
-    }
-    lines.push(command.to_string());
-    if marker_enabled {
-        lines.push("__moltis_exit=$?".to_string());
-        lines.push(format!(
+        statements.push(format!("printf '\\n{START_PREFIX}{run_id}\\n'"));
+        statements.push(format!("eval {}", shell_words::quote(command).as_ref()));
+        statements.push("__moltis_exit=$?".to_string());
+        statements.push(format!(
             "printf '\\n{DONE_PREFIX}{run_id}:%s\\n' \"$__moltis_exit\""
         ));
+        let mut payload = statements.join("; ");
+        payload.push('\n');
+        return payload;
     }
-    lines.push(String::new());
-    lines.join("\n")
+    statements.push(command.to_string());
+    let mut payload = statements.join("\n");
+    payload.push('\n');
+    payload
 }
 
 fn extract_run_capture(raw: &str, run: Option<&ManagedRun>) -> CaptureResult {
@@ -1018,8 +1021,26 @@ mod tests {
         let payload = build_paste_payload("echo true", Some("/home/sandbox"), "abc", true);
         assert!(payload.contains("cd /home/sandbox"));
         assert!(payload.contains("__MOLTIS_EXEC_START__abc"));
-        assert!(payload.contains("echo true"));
+        assert!(payload.contains("eval 'echo true'"));
         assert!(payload.contains("__MOLTIS_EXEC_DONE__abc"));
+    }
+
+    #[test]
+    fn paste_payload_keeps_done_marker_in_same_shell_input_as_command() {
+        let payload = build_paste_payload(
+            "apt-get update -qq && apt-get install -y -qq iputils-ping",
+            Some("/home/sandbox"),
+            "abc",
+            true,
+        );
+
+        assert_eq!(payload.lines().count(), 1);
+        assert!(
+            payload
+                .contains("; eval 'apt-get update -qq && apt-get install -y -qq iputils-ping'; ")
+        );
+        assert!(payload.contains("; __moltis_exit=$?; "));
+        assert!(payload.contains("__MOLTIS_EXEC_DONE__abc:%s"));
     }
 
     #[test]
