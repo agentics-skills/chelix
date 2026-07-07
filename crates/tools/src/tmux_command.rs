@@ -622,7 +622,8 @@ impl TmuxTerminalManager {
     }
 
     async fn paste_text(&self, terminal: &ManagedTerminal, text: &str) -> Result<()> {
-        let set_args = vec!["set-buffer".to_string(), "--".to_string(), text.to_string()];
+        let buffer_name = tmux_paste_buffer_name(&terminal.id);
+        let set_args = set_paste_buffer_args(&buffer_name, text);
         let set_output = self
             .run_tmux(&terminal.session_key, &set_args, Duration::from_secs(10))
             .await?;
@@ -633,21 +634,39 @@ impl TmuxTerminalManager {
             )));
         }
 
-        let paste_args = vec![
-            "paste-buffer".to_string(),
-            "-t".to_string(),
-            terminal.pane_id.clone(),
-        ];
-        let paste_output = self
+        let paste_args = paste_buffer_args(&buffer_name, &terminal.pane_id);
+        let paste_output = match self
             .run_tmux(&terminal.session_key, &paste_args, Duration::from_secs(10))
-            .await?;
+            .await
+        {
+            Ok(output) => output,
+            Err(err) => {
+                self.delete_paste_buffer(terminal, &buffer_name).await;
+                return Err(err);
+            },
+        };
         if paste_output.exit_code != 0 {
+            self.delete_paste_buffer(terminal, &buffer_name).await;
             return Err(Error::message(format!(
                 "failed to paste command into tmux pane: {}",
                 command_error_text(&paste_output)
             )));
         }
         Ok(())
+    }
+
+    async fn delete_paste_buffer(&self, terminal: &ManagedTerminal, buffer_name: &str) {
+        let delete_args = vec![
+            "delete-buffer".to_string(),
+            "-b".to_string(),
+            buffer_name.to_string(),
+        ];
+        if let Err(err) = self
+            .run_tmux(&terminal.session_key, &delete_args, Duration::from_secs(10))
+            .await
+        {
+            debug!(?err, buffer_name, "failed to clean up tmux paste buffer");
+        }
     }
 
     async fn run_tmux(
@@ -821,6 +840,35 @@ impl AgentTool for ReadTerminalOutputTool {
                 .await?,
         )?)
     }
+}
+
+fn tmux_paste_buffer_name(terminal_id: &str) -> String {
+    let id = terminal_id
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
+        .collect::<String>();
+    format!("moltis-paste-{}-{}", id, uuid::Uuid::new_v4().simple())
+}
+
+fn set_paste_buffer_args(buffer_name: &str, text: &str) -> Vec<String> {
+    vec![
+        "set-buffer".to_string(),
+        "-b".to_string(),
+        buffer_name.to_string(),
+        "--".to_string(),
+        text.to_string(),
+    ]
+}
+
+fn paste_buffer_args(buffer_name: &str, pane_id: &str) -> Vec<String> {
+    vec![
+        "paste-buffer".to_string(),
+        "-d".to_string(),
+        "-b".to_string(),
+        buffer_name.to_string(),
+        "-t".to_string(),
+        pane_id.to_string(),
+    ]
 }
 
 fn build_paste_payload(
@@ -1015,6 +1063,42 @@ fn truncate_output_for_display(output: &mut String, max_output_bytes: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tmux_paste_buffer_name_is_unique_and_tmux_safe() {
+        let first = tmux_paste_buffer_name("term/1:%2");
+        let second = tmux_paste_buffer_name("term/1:%2");
+
+        assert_ne!(first, second);
+        assert!(first.starts_with("moltis-paste-term12-"));
+        assert!(
+            first
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+        );
+    }
+
+    #[test]
+    fn paste_buffer_args_use_named_delete_after_paste_buffer() {
+        let set_args = set_paste_buffer_args("moltis-paste-1-abc", "cat <<'EOF'\nhello\nEOF\n");
+        let paste_args = paste_buffer_args("moltis-paste-1-abc", "%2");
+
+        assert_eq!(set_args, vec![
+            "set-buffer",
+            "-b",
+            "moltis-paste-1-abc",
+            "--",
+            "cat <<'EOF'\nhello\nEOF\n"
+        ]);
+        assert_eq!(paste_args, vec![
+            "paste-buffer",
+            "-d",
+            "-b",
+            "moltis-paste-1-abc",
+            "-t",
+            "%2"
+        ]);
+    }
 
     #[test]
     fn paste_payload_adds_marker_for_foreground_commands() {
