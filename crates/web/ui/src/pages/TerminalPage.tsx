@@ -18,13 +18,70 @@ interface WindowInfo {
 	active: boolean;
 }
 
+interface SandboxTerminalTarget {
+	id: string;
+	label: string;
+	backend: string;
+	containerName: string;
+	state: string;
+	image: string;
+}
+
+interface SandboxTmuxPaneInfo {
+	id: string;
+	index: number;
+	active: boolean;
+	currentCommand: string;
+	currentPath: string;
+	title: string;
+}
+
+interface SandboxTmuxWindowInfo {
+	id: string;
+	index: number;
+	name: string;
+	active: boolean;
+	panes: SandboxTmuxPaneInfo[];
+}
+
+interface SandboxTmuxSessionInfo {
+	id: string;
+	name: string;
+	attached: boolean;
+	windows: SandboxTmuxWindowInfo[];
+}
+
+interface SandboxTmuxTreePayload {
+	tree?: {
+		available?: boolean;
+		reason?: string;
+		sessions?: SandboxTmuxSessionInfo[];
+	};
+}
+
+interface SandboxTmuxTab {
+	key: string;
+	sessionId: string;
+	sessionName: string;
+	windowId: string;
+	windowIndex: number;
+	windowName: string;
+	paneId?: string;
+	paneLabel?: string;
+}
+
 interface ReadyPayload {
 	available: boolean;
+	mode?: string;
 	persistenceEnabled: boolean;
 	persistenceAvailable: boolean;
 	activeWindowId?: string;
 	tmuxInstallCommand?: string;
 	user?: string;
+	targetLabel?: string;
+	sessionId?: string;
+	windowId?: string;
+	paneId?: string;
 }
 
 interface TerminalMessage {
@@ -42,6 +99,10 @@ interface TerminalMessage {
 	persistenceAvailable?: boolean;
 	tmuxInstallCommand?: string;
 	user?: string;
+	mode?: string;
+	targetLabel?: string;
+	sessionId?: string;
+	paneId?: string;
 }
 
 interface SocketMessage {
@@ -134,7 +195,7 @@ let FitAddonCtorRef: FitAddonCtorType | null = null;
 let oscHandlerDisposables: { dispose: () => void }[] = [];
 
 let terminalAvailable = false;
-let selectedContainer: string | null = null; // null = host, "container-name" = exec into container
+let selectedSandboxTargetId: string | null = null;
 let targetSelectorEl: HTMLSelectElement | null = null;
 let lastSentCols = 0;
 let lastSentRows = 0;
@@ -145,6 +206,9 @@ let terminalWindows: WindowInfo[] = [];
 let activeWindowId: string | null = null;
 let pendingWindowId: string | null = null;
 let creatingWindow = false;
+let sandboxTargets: SandboxTerminalTarget[] = [];
+let sandboxTabs: SandboxTmuxTab[] = [];
+let activeSandboxTabKey: string | null = null;
 
 const RECONNECT_DELAY_MS = 800;
 const INPUT_FLUSH_MS = 16;
@@ -239,7 +303,12 @@ function setInstallActionsVisible(visible: boolean): void {
 	if (hintActionsEl) hintActionsEl.hidden = !visible;
 }
 function setWindowControlsEnabled(): void {
-	if (newTabBtn) newTabBtn.disabled = !(tmuxPersistenceEnabled && terminalAvailable) || creatingWindow;
+	if (newTabBtn)
+		newTabBtn.disabled = isSandboxMode() || !(tmuxPersistenceEnabled && terminalAvailable) || creatingWindow;
+}
+
+function isSandboxMode(): boolean {
+	return !!selectedSandboxTargetId;
 }
 
 interface RawWindowPayload {
@@ -268,6 +337,26 @@ function windowLabel(w: WindowInfo): string {
 function renderWindowTabs(): void {
 	if (!tabsEl) return;
 	while (tabsEl.firstChild) tabsEl.removeChild(tabsEl.firstChild);
+	if (isSandboxMode()) {
+		if (!sandboxTabs.length) {
+			const s = document.createElement("span");
+			s.className = "terminal-tab-empty";
+			s.textContent = "No tmux windows in sandbox";
+			tabsEl.appendChild(s);
+			return;
+		}
+		for (const tabInfo of sandboxTabs) {
+			const tab = document.createElement("button");
+			tab.type = "button";
+			tab.className = "terminal-tab";
+			if (tabInfo.key === activeSandboxTabKey) tab.classList.add("active");
+			tab.title = `Attach ${tabInfo.sessionName}:${tabInfo.windowIndex}${tabInfo.paneLabel || ""}`;
+			tab.textContent = `${tabInfo.sessionName} / ${tabInfo.windowIndex}: ${tabInfo.windowName}`;
+			tab.addEventListener("click", () => onSandboxTabClick(tabInfo.key));
+			tabsEl.appendChild(tab);
+		}
+		return;
+	}
 	if (!tmuxPersistenceEnabled) {
 		const s = document.createElement("span");
 		s.className = "terminal-tab-empty";
@@ -333,7 +422,96 @@ async function fetchTerminalWindows(): Promise<WindowsPayload> {
 	return p;
 }
 
+function isSandboxTarget(value: unknown): value is SandboxTerminalTarget {
+	if (!(value && typeof value === "object")) return false;
+	const v = value as SandboxTerminalTarget;
+	return (
+		typeof v.id === "string" &&
+		typeof v.label === "string" &&
+		typeof v.backend === "string" &&
+		typeof v.containerName === "string" &&
+		typeof v.state === "string" &&
+		typeof v.image === "string"
+	);
+}
+
+async function fetchSandboxTargets(): Promise<SandboxTerminalTarget[]> {
+	const r = await fetch("/api/terminal/sandbox/targets", { method: "GET", headers: { Accept: "application/json" } });
+	let p: { targets?: unknown[] } = {};
+	try {
+		p = await r.json();
+	} catch {
+		p = {};
+	}
+	if (!r.ok) throw new Error(localizedApiErrorMessage(p as never, "Failed to list sandbox terminals"));
+	return Array.isArray(p.targets) ? p.targets.filter(isSandboxTarget) : [];
+}
+
+function flattenSandboxTmuxTabs(sessions: SandboxTmuxSessionInfo[]): SandboxTmuxTab[] {
+	const tabs: SandboxTmuxTab[] = [];
+	for (const session of sessions) {
+		for (const windowInfo of session.windows || []) {
+			const activePane = (windowInfo.panes || []).find((pane) => pane.active) || windowInfo.panes?.[0] || null;
+			const paneSuffix = activePane ? `:${activePane.id}` : "";
+			tabs.push({
+				key: `${session.id}:${windowInfo.id}${paneSuffix}`,
+				sessionId: session.id,
+				sessionName: session.name || session.id,
+				windowId: windowInfo.id,
+				windowIndex: windowInfo.index,
+				windowName: windowInfo.name || "shell",
+				paneId: activePane?.id,
+				paneLabel: activePane ? `.${activePane.index}` : undefined,
+			});
+		}
+	}
+	return tabs;
+}
+
+function chooseActiveSandboxTab(nextTabs: SandboxTmuxTab[]): string | null {
+	if (!nextTabs.length) return null;
+	if (activeSandboxTabKey && nextTabs.some((tab) => tab.key === activeSandboxTabKey)) return activeSandboxTabKey;
+	return nextTabs[0].key;
+}
+
+async function refreshSandboxTmuxTree(opts?: { silent?: boolean }): Promise<void> {
+	if (!selectedSandboxTargetId) return;
+	try {
+		const r = await fetch(`/api/terminal/sandbox/tmux-tree?targetId=${encodeURIComponent(selectedSandboxTargetId)}`, {
+			method: "GET",
+			headers: { Accept: "application/json" },
+		});
+		let p: SandboxTmuxTreePayload = {};
+		try {
+			p = await r.json();
+		} catch {
+			p = {};
+		}
+		if (!r.ok) throw new Error(localizedApiErrorMessage(p as never, "Failed to list sandbox tmux windows"));
+		if (p.tree?.available === false) {
+			sandboxTabs = [];
+			activeSandboxTabKey = null;
+			renderWindowTabs();
+			setWindowControlsEnabled();
+			if (!opts?.silent) setStatus("tmux is not available inside this sandbox", "error");
+			return;
+		}
+		sandboxTabs = flattenSandboxTmuxTabs(p.tree?.sessions || []);
+		activeSandboxTabKey = chooseActiveSandboxTab(sandboxTabs);
+		tmuxPersistenceEnabled = sandboxTabs.length > 0;
+		renderWindowTabs();
+		setWindowControlsEnabled();
+		if (!(sandboxTabs.length || opts?.silent)) setStatus("No tmux windows found inside this sandbox", "error");
+	} catch (e) {
+		if (!opts?.silent) setStatus((e as Error)?.message || "Failed to refresh sandbox tmux windows", "error");
+	}
+}
+
 async function refreshTerminalWindows(opts?: { preferredWindowId?: string | null; silent?: boolean }): Promise<void> {
+	if (isSandboxMode()) {
+		await refreshSandboxTmuxTree(opts);
+		return;
+	}
 	const preferred = opts?.preferredWindowId || pendingWindowId || null;
 	try {
 		const p = await fetchTerminalWindows();
@@ -349,7 +527,7 @@ async function refreshTerminalWindows(opts?: { preferredWindowId?: string | null
 
 function startWindowsRefreshLoop(): void {
 	clearWindowsRefreshTimer();
-	if (!tmuxPersistenceEnabled) return;
+	if (!(tmuxPersistenceEnabled || isSandboxMode())) return;
 	windowsRefreshTimer = setInterval(() => {
 		void refreshTerminalWindows({ silent: true });
 	}, WINDOW_REFRESH_MS);
@@ -435,6 +613,15 @@ function onWindowTabClick(windowId: string): void {
 	if (requestWindowSwitch(windowId)) return;
 	terminalAvailable = false;
 	setControlsEnabled(false);
+	if (xterm) xterm.reset();
+	connectTerminalSocket();
+}
+
+function onSandboxTabClick(tabKey: string): void {
+	if (!isSandboxMode() || tabKey === activeSandboxTabKey) return;
+	activeSandboxTabKey = tabKey;
+	renderWindowTabs();
+	setStatus("Switching sandbox tmux window...", "ok");
 	if (xterm) xterm.reset();
 	connectTerminalSocket();
 }
@@ -679,6 +866,26 @@ function scheduleReconnect(): void {
 }
 
 function applyReadyPayload(payload: ReadyPayload): void {
+	if (payload.mode === "sandbox_tmux") {
+		terminalAvailable = !!payload.available;
+		tmuxPersistenceEnabled = true;
+		setControlsEnabled(terminalAvailable);
+		setInstallActionsVisible(false);
+		if (metaEl) metaEl.textContent = `Sandbox tmux: ${payload.targetLabel || selectedSandboxTargetId || "unknown"}`;
+		if (hintEl) hintEl.textContent = "Attached to a real tmux session inside the selected sandbox.";
+		renderWindowTabs();
+		setWindowControlsEnabled();
+		if (terminalAvailable) {
+			setStatus("Connected to sandbox tmux.", "ok");
+			startWindowsRefreshLoop();
+			kickResizeSettleLoop();
+			flushInputQueue();
+			if (xterm) xterm.focus();
+		} else {
+			setStatus("Failed to attach sandbox tmux.", "error");
+		}
+		return;
+	}
 	terminalAvailable = !!payload.available;
 	setControlsEnabled(terminalAvailable);
 	const pe = !!payload.persistenceEnabled;
@@ -779,9 +986,22 @@ function connectTerminalSocket(): void {
 	const proto = location.protocol === "https:" ? "wss:" : "ws:";
 	let wsUrl = `${proto}//${location.host}/api/terminal/ws`;
 	const params: string[] = [];
-	const tw = pendingWindowId || activeWindowId;
-	if (tmuxPersistenceEnabled && tw) params.push(`window=${encodeURIComponent(tw)}`);
-	if (selectedContainer) params.push(`container=${encodeURIComponent(selectedContainer)}`);
+	if (isSandboxMode()) {
+		const activeTab = sandboxTabs.find((tab) => tab.key === activeSandboxTabKey) || sandboxTabs[0] || null;
+		if (!(selectedSandboxTargetId && activeTab)) {
+			setStatus("Select a sandbox tmux window to attach.", "error");
+			renderWindowTabs();
+			return;
+		}
+		wsUrl = `${proto}//${location.host}/api/terminal/sandbox/ws`;
+		params.push(`targetId=${encodeURIComponent(selectedSandboxTargetId)}`);
+		params.push(`sessionId=${encodeURIComponent(activeTab.sessionId)}`);
+		params.push(`windowId=${encodeURIComponent(activeTab.windowId)}`);
+		if (activeTab.paneId) params.push(`paneId=${encodeURIComponent(activeTab.paneId)}`);
+	} else {
+		const tw = pendingWindowId || activeWindowId;
+		if (tmuxPersistenceEnabled && tw) params.push(`window=${encodeURIComponent(tw)}`);
+	}
 	if (params.length > 0) wsUrl += `?${params.join("&")}`;
 	socket = new WebSocket(wsUrl);
 	setStatus("Connecting terminal websocket...");
@@ -844,28 +1064,43 @@ function bindEvents(): void {
 		});
 }
 
-// ── Target selector (host vs container) ──────────────────────
+// ── Target selector (host vs sandbox tmux) ───────────────────
 
-function populateTargetSelector(): void {
+async function populateTargetSelector(): Promise<void> {
 	if (!targetSelectorEl) return;
-	// Keep existing "Host" option, add running containers.
-	fetch("/api/sandbox/containers")
-		.then((r) => r.json())
-		.then((data) => {
-			const containers: { name: string; state: string; backend: string }[] = data.containers || [];
-			const running = containers.filter((c) => c.state === "running");
-			// Remove old container options (keep first "Host" option).
-			while (targetSelectorEl!.options.length > 1) {
-				targetSelectorEl!.remove(1);
-			}
-			for (const c of running) {
-				const opt = document.createElement("option");
-				opt.value = c.name;
-				opt.textContent = `\u{1F4E6} ${c.name}`;
-				targetSelectorEl!.appendChild(opt);
-			}
-		})
-		.catch(() => {});
+	try {
+		sandboxTargets = await fetchSandboxTargets();
+		while (targetSelectorEl.options.length > 1) targetSelectorEl.remove(1);
+		for (const target of sandboxTargets) {
+			const opt = document.createElement("option");
+			opt.value = `sandbox:${target.id}`;
+			opt.textContent = `\u{1F4E6} ${target.label}`;
+			targetSelectorEl.appendChild(opt);
+		}
+	} catch (e) {
+		setStatus((e as Error)?.message || "Failed to load sandbox terminals", "error");
+	}
+}
+
+async function handleTargetSelectionChange(): Promise<void> {
+	if (!targetSelectorEl) return;
+	const value = targetSelectorEl.value || "";
+	if (value.startsWith("sandbox:")) {
+		selectedSandboxTargetId = value.slice("sandbox:".length);
+		terminalWindows = [];
+		activeWindowId = null;
+		pendingWindowId = null;
+		if (xterm) xterm.reset();
+		await refreshSandboxTmuxTree();
+		connectTerminalSocket();
+		return;
+	}
+	selectedSandboxTargetId = null;
+	sandboxTabs = [];
+	activeSandboxTabKey = null;
+	if (xterm) xterm.reset();
+	await refreshTerminalWindows({ silent: true });
+	connectTerminalSocket();
 }
 
 // Static HTML template for terminal page layout. No user input is interpolated.
@@ -931,13 +1166,12 @@ export async function initTerminal(container: HTMLElement): Promise<void> {
 	copyInstallBtn = container.querySelector("#terminalCopyInstall");
 	targetSelectorEl = container.querySelector("#terminalTarget");
 
-	// Populate container selector and bind change event.
+	// Populate target selector and bind change event.
 	if (targetSelectorEl) {
 		targetSelectorEl.addEventListener("change", () => {
-			selectedContainer = targetSelectorEl!.value || null;
-			connectTerminalSocket();
+			void handleTargetSelectionChange();
 		});
-		populateTargetSelector();
+		void populateTargetSelector();
 	}
 
 	setStatus("Initializing terminal...");
@@ -985,4 +1219,8 @@ export function teardownTerminal(): void {
 	pendingWindowId = null;
 	creatingWindow = false;
 	tmuxInstallCommand = "";
+	selectedSandboxTargetId = null;
+	sandboxTargets = [];
+	sandboxTabs = [];
+	activeSandboxTabKey = null;
 }

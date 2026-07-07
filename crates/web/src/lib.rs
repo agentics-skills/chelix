@@ -126,6 +126,18 @@ fn build_api_routes() -> Router<AppState> {
                 .post(terminal::api_terminal_windows_create_handler),
         )
         .route(
+            "/api/terminal/sandbox/targets",
+            get(terminal::api_terminal_sandbox_targets_handler),
+        )
+        .route(
+            "/api/terminal/sandbox/tmux-tree",
+            get(terminal::api_terminal_sandbox_tmux_tree_handler),
+        )
+        .route(
+            "/api/terminal/sandbox/ws",
+            get(terminal::api_terminal_sandbox_ws_upgrade_handler),
+        )
+        .route(
             "/api/terminal/ws",
             get(terminal::api_terminal_ws_upgrade_handler),
         )

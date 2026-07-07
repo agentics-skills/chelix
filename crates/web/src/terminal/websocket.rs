@@ -10,8 +10,9 @@ use {
 use super::{
     pty::{
         host_terminal_resize, host_terminal_stop_runtime, host_terminal_write_input,
-        spawn_host_terminal_runtime,
+        spawn_host_terminal_runtime, spawn_sandbox_tmux_terminal_runtime,
     },
+    sandbox_tmux::sandbox_tmux_prepare_attach,
     tmux::{
         host_terminal_apply_tmux_profile, host_terminal_default_window_target,
         host_terminal_ensure_tmux_session, host_terminal_resolve_window_target,
@@ -22,7 +23,8 @@ use super::{
     types::{
         HOST_TERMINAL_DEFAULT_COLS, HOST_TERMINAL_DEFAULT_ROWS, HOST_TERMINAL_MAX_INPUT_BYTES,
         HOST_TERMINAL_SESSION_NAME, HostTerminalOutputEvent, HostTerminalWsClientMessage,
-        HostTerminalWsControlAction, detect_host_root_user_for_terminal, host_terminal_user_name,
+        HostTerminalWsControlAction, SandboxTerminalTarget, SandboxTerminalWsQuery,
+        detect_host_root_user_for_terminal, host_terminal_user_name,
     },
 };
 
@@ -431,4 +433,263 @@ pub(crate) async fn handle_terminal_ws_connection(
 
     host_terminal_stop_runtime(&mut runtime);
     info!(conn_id = %conn_id, remote = %remote_addr, "terminal ws: connection closed");
+}
+
+pub(crate) async fn handle_sandbox_terminal_ws_connection(
+    socket: WebSocket,
+    remote_addr: SocketAddr,
+    target: SandboxTerminalTarget,
+    query: SandboxTerminalWsQuery,
+) {
+    let conn_id = uuid::Uuid::new_v4().to_string();
+    info!(
+        conn_id = %conn_id,
+        remote = %remote_addr,
+        target = %target.id,
+        session = %query.session_id,
+        "sandbox terminal ws: new connection"
+    );
+
+    let (mut ws_tx, mut ws_rx) = socket.split();
+    let mut current_cols = HOST_TERMINAL_DEFAULT_COLS;
+    let mut current_rows = HOST_TERMINAL_DEFAULT_ROWS;
+    let current_session_id = query.session_id.clone();
+    let current_window_id = query.window_id.clone();
+    let current_pane_id = query.pane_id.clone();
+
+    if let Err(err) = sandbox_tmux_prepare_attach(
+        &target,
+        &current_session_id,
+        current_window_id.as_deref(),
+        current_pane_id.as_deref(),
+    )
+    .await
+    {
+        let _ = terminal_ws_send_status(&mut ws_tx, &err, "error").await;
+        return;
+    }
+
+    let mut runtime = match spawn_sandbox_tmux_terminal_runtime(
+        current_cols,
+        current_rows,
+        &target,
+        &current_session_id,
+    ) {
+        Ok(runtime) => runtime,
+        Err(err) => {
+            let _ = terminal_ws_send_status(&mut ws_tx, &err, "error").await;
+            return;
+        },
+    };
+
+    if !terminal_ws_send_json(
+        &mut ws_tx,
+        serde_json::json!({
+            "type": "ready",
+            "available": true,
+            "mode": "sandbox_tmux",
+            "sandboxed": true,
+            "targetId": target.id,
+            "targetLabel": target.label,
+            "backend": target.backend,
+            "containerName": target.container_name,
+            "sessionId": current_session_id,
+            "windowId": current_window_id,
+            "paneId": current_pane_id,
+            "persistenceAvailable": true,
+            "persistenceEnabled": true,
+            "persistenceMode": "sandbox_tmux",
+        }),
+    )
+    .await
+    {
+        host_terminal_stop_runtime(&mut runtime);
+        return;
+    }
+
+    loop {
+        tokio::select! {
+            maybe_output = runtime.output_rx.recv() => {
+                match maybe_output {
+                    Some(HostTerminalOutputEvent::Output(data)) => {
+                        if !terminal_ws_send_output(&mut ws_tx, &data).await {
+                            break;
+                        }
+                    }
+                    Some(HostTerminalOutputEvent::Error(err)) => {
+                        if !terminal_ws_send_status(&mut ws_tx, &err, "error").await {
+                            break;
+                        }
+                    }
+                    Some(HostTerminalOutputEvent::Closed) | None => {
+                        let _ = terminal_ws_send_status(
+                            &mut ws_tx,
+                            "sandbox tmux terminal process exited",
+                            "error",
+                        )
+                        .await;
+                        break;
+                    }
+                }
+            }
+            maybe_msg = ws_rx.next() => {
+                let Some(msg_result) = maybe_msg else {
+                    break;
+                };
+                let Ok(msg) = msg_result else {
+                    break;
+                };
+
+                match msg {
+                    Message::Text(text) => {
+                        if text.len() > HOST_TERMINAL_MAX_INPUT_BYTES * 2 {
+                            if !terminal_ws_send_status(
+                                &mut ws_tx,
+                                "sandbox terminal ws message too large",
+                                "error",
+                            )
+                            .await
+                            {
+                                break;
+                            }
+                            continue;
+                        }
+
+                        let parsed: Result<HostTerminalWsClientMessage, _> = serde_json::from_str(&text);
+                        match parsed {
+                            Ok(HostTerminalWsClientMessage::Input { data }) => {
+                                if data.is_empty() {
+                                    continue;
+                                }
+                                if data.len() > HOST_TERMINAL_MAX_INPUT_BYTES {
+                                    if !terminal_ws_send_status(
+                                        &mut ws_tx,
+                                        &format!(
+                                            "input chunk too large (max {} bytes)",
+                                            HOST_TERMINAL_MAX_INPUT_BYTES
+                                        ),
+                                        "error",
+                                    )
+                                    .await
+                                    {
+                                        break;
+                                    }
+                                    continue;
+                                }
+                                if let Err(err) = host_terminal_write_input(&mut runtime, &data)
+                                    && !terminal_ws_send_status(&mut ws_tx, &err, "error").await
+                                {
+                                    break;
+                                }
+                            }
+                            Ok(HostTerminalWsClientMessage::Resize {
+                                cols: next_cols,
+                                rows: next_rows,
+                            }) => {
+                                if next_cols < 2 || next_rows < 1 {
+                                    continue;
+                                }
+                                if let Err(err) = host_terminal_resize(&runtime, next_cols, next_rows) {
+                                    if !terminal_ws_send_status(&mut ws_tx, &err, "error").await {
+                                        break;
+                                    }
+                                } else {
+                                    current_cols = next_cols;
+                                    current_rows = next_rows;
+                                }
+                            }
+                            Ok(HostTerminalWsClientMessage::SwitchWindow { .. }) => {
+                                if !terminal_ws_send_status(
+                                    &mut ws_tx,
+                                    "switching sandbox tmux windows requires reconnecting to the selected target",
+                                    "error",
+                                )
+                                .await
+                                {
+                                    break;
+                                }
+                            }
+                            Ok(HostTerminalWsClientMessage::Control { action }) => {
+                                let action_result = match action {
+                                    HostTerminalWsControlAction::Restart => {
+                                        host_terminal_stop_runtime(&mut runtime);
+                                        if let Err(err) = sandbox_tmux_prepare_attach(
+                                            &target,
+                                            &current_session_id,
+                                            current_window_id.as_deref(),
+                                            current_pane_id.as_deref(),
+                                        )
+                                        .await
+                                        {
+                                            Err(err)
+                                        } else {
+                                            match spawn_sandbox_tmux_terminal_runtime(
+                                                current_cols,
+                                                current_rows,
+                                                &target,
+                                                &current_session_id,
+                                            ) {
+                                                Ok(next_runtime) => {
+                                                    runtime = next_runtime;
+                                                    Ok(())
+                                                }
+                                                Err(err) => Err(err),
+                                            }
+                                        }
+                                    }
+                                    HostTerminalWsControlAction::CtrlC => {
+                                        host_terminal_write_input(&mut runtime, "\u{3}")
+                                    }
+                                    HostTerminalWsControlAction::Clear => {
+                                        host_terminal_write_input(&mut runtime, "\u{c}")
+                                    }
+                                };
+                                if let Err(err) = action_result
+                                    && !terminal_ws_send_status(&mut ws_tx, &err, "error").await
+                                {
+                                    break;
+                                }
+                            }
+                            Ok(HostTerminalWsClientMessage::Ping) => {
+                                if !terminal_ws_send_json(
+                                    &mut ws_tx,
+                                    serde_json::json!({ "type": "pong" }),
+                                )
+                                .await
+                                {
+                                    break;
+                                }
+                            }
+                            Err(err) => {
+                                if !terminal_ws_send_status(
+                                    &mut ws_tx,
+                                    &format!("invalid sandbox terminal ws message: {err}"),
+                                    "error",
+                                )
+                                .await
+                                {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Message::Ping(payload) => {
+                        if ws_tx.send(Message::Pong(payload)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Message::Close(_) => break,
+                    Message::Binary(_) | Message::Pong(_) => {}
+                }
+            }
+        }
+    }
+
+    host_terminal_stop_runtime(&mut runtime);
+    info!(
+        conn_id = %conn_id,
+        remote = %remote_addr,
+        target = %target.id,
+        "sandbox terminal ws: connection closed"
+    );
 }

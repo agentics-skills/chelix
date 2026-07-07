@@ -13,6 +13,7 @@ use {
 
 use super::{
     auth::{is_local_connection, is_same_origin, websocket_header_authenticated},
+    sandbox_tmux::{resolve_sandbox_terminal_target, sandbox_terminal_targets, sandbox_tmux_tree},
     tmux::{
         host_terminal_apply_tmux_profile, host_terminal_ensure_tmux_session,
         host_terminal_normalize_window_name, host_terminal_tmux_available,
@@ -20,11 +21,11 @@ use super::{
     },
     types::{
         HOST_TERMINAL_SESSION_NAME, HostTerminalCreateWindowRequest, HostTerminalWindowInfo,
-        HostTerminalWsQuery, TERMINAL_DISABLED, TERMINAL_SESSION_INIT_FAILED,
-        TERMINAL_TMUX_UNAVAILABLE, TERMINAL_WINDOW_CREATE_FAILED, TERMINAL_WINDOW_NAME_INVALID,
-        TERMINAL_WINDOWS_LIST_FAILED, terminal_error,
+        HostTerminalWsQuery, SandboxTerminalTargetQuery, SandboxTerminalWsQuery, TERMINAL_DISABLED,
+        TERMINAL_SESSION_INIT_FAILED, TERMINAL_TMUX_UNAVAILABLE, TERMINAL_WINDOW_CREATE_FAILED,
+        TERMINAL_WINDOW_NAME_INVALID, TERMINAL_WINDOWS_LIST_FAILED, terminal_error,
     },
-    websocket::handle_terminal_ws_connection,
+    websocket::{handle_sandbox_terminal_ws_connection, handle_terminal_ws_connection},
 };
 
 // ── Payload builders ─────────────────────────────────────────────────────────
@@ -185,6 +186,84 @@ pub async fn api_terminal_windows_create_handler(
     }
 }
 
+pub async fn api_terminal_sandbox_targets_handler(
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    if !state.gateway.config.server.is_terminal_enabled() {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(terminal_error(
+                TERMINAL_DISABLED,
+                "terminal has been disabled by the server administrator",
+            )),
+        )
+            .into_response();
+    }
+
+    match sandbox_terminal_targets(&state).await {
+        Ok(targets) => Json(serde_json::json!({
+            "ok": true,
+            "targets": targets,
+        }))
+        .into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(terminal_error(
+                TERMINAL_WINDOWS_LIST_FAILED,
+                err.to_string(),
+            )),
+        )
+            .into_response(),
+    }
+}
+
+pub async fn api_terminal_sandbox_tmux_tree_handler(
+    State(state): State<AppState>,
+    Query(query): Query<SandboxTerminalTargetQuery>,
+) -> impl IntoResponse {
+    if !state.gateway.config.server.is_terminal_enabled() {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(terminal_error(
+                TERMINAL_DISABLED,
+                "terminal has been disabled by the server administrator",
+            )),
+        )
+            .into_response();
+    }
+
+    let target = match resolve_sandbox_terminal_target(&state, &query.target_id).await {
+        Ok(target) => target,
+        Err(err) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(terminal_error(
+                    TERMINAL_WINDOWS_LIST_FAILED,
+                    err.to_string(),
+                )),
+            )
+                .into_response();
+        },
+    };
+
+    match sandbox_tmux_tree(&target).await {
+        Ok(tree) => Json(serde_json::json!({
+            "ok": true,
+            "target": target,
+            "tree": tree,
+        }))
+        .into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(terminal_error(
+                TERMINAL_WINDOWS_LIST_FAILED,
+                err.to_string(),
+            )),
+        )
+            .into_response(),
+    }
+}
+
 /// Dedicated host terminal WebSocket stream (`Settings > Terminal`).
 pub async fn api_terminal_ws_upgrade_handler(
     ws: WebSocketUpgrade,
@@ -246,4 +325,76 @@ pub async fn api_terminal_ws_upgrade_handler(
         handle_terminal_ws_connection(socket, addr, requested_window, container_target)
     })
     .into_response()
+}
+
+/// Dedicated sandbox tmux WebSocket stream (`Settings > Terminal`).
+pub async fn api_terminal_sandbox_ws_upgrade_handler(
+    ws: WebSocketUpgrade,
+    Query(query): Query<SandboxTerminalWsQuery>,
+    headers: axum::http::HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    if !state.gateway.config.server.is_terminal_enabled() {
+        return (
+            StatusCode::FORBIDDEN,
+            "terminal has been disabled by the server administrator",
+        )
+            .into_response();
+    }
+
+    if let Some(origin) = headers
+        .get(axum::http::header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+    {
+        let host = headers
+            .get(axum::http::header::HOST)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        if !is_same_origin(origin, host) {
+            warn!(
+                origin,
+                host,
+                remote = %addr,
+                "rejected cross-origin sandbox terminal WebSocket upgrade"
+            );
+            return (
+                StatusCode::FORBIDDEN,
+                "cross-origin WebSocket connections are not allowed",
+            )
+                .into_response();
+        }
+    }
+
+    let is_local = is_local_connection(&headers, addr, state.gateway.behind_proxy);
+    let header_authenticated =
+        websocket_header_authenticated(&headers, state.gateway.credential_store.as_ref(), is_local)
+            .await;
+    if !header_authenticated {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(terminal_error(
+                "AUTH_NOT_AUTHENTICATED",
+                "not authenticated",
+            )),
+        )
+            .into_response();
+    }
+
+    let target = match resolve_sandbox_terminal_target(&state, &query.target_id).await {
+        Ok(target) => target,
+        Err(err) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(terminal_error(
+                    TERMINAL_WINDOWS_LIST_FAILED,
+                    err.to_string(),
+                )),
+            )
+                .into_response();
+        },
+    };
+
+    ws.on_upgrade(move |socket| handle_sandbox_terminal_ws_connection(socket, addr, target, query))
+        .into_response()
 }

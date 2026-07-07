@@ -24,6 +24,70 @@ pub struct HostTerminalWsQuery {
     pub(crate) container: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SandboxTerminalTargetQuery {
+    pub(crate) target_id: String,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SandboxTerminalWsQuery {
+    pub(crate) target_id: String,
+    pub(crate) session_id: String,
+    pub(crate) window_id: Option<String>,
+    pub(crate) pane_id: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SandboxTerminalTarget {
+    pub(crate) id: String,
+    pub(crate) label: String,
+    pub(crate) backend: String,
+    pub(crate) container_name: String,
+    pub(crate) state: String,
+    pub(crate) image: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SandboxTmuxTree {
+    pub(crate) available: bool,
+    pub(crate) reason: Option<String>,
+    pub(crate) sessions: Vec<SandboxTmuxSessionInfo>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SandboxTmuxSessionInfo {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) attached: bool,
+    pub(crate) windows: Vec<SandboxTmuxWindowInfo>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SandboxTmuxWindowInfo {
+    pub(crate) id: String,
+    pub(crate) index: u32,
+    pub(crate) name: String,
+    pub(crate) active: bool,
+    pub(crate) panes: Vec<SandboxTmuxPaneInfo>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SandboxTmuxPaneInfo {
+    pub(crate) id: String,
+    pub(crate) index: u32,
+    pub(crate) active: bool,
+    pub(crate) current_command: String,
+    pub(crate) current_path: String,
+    pub(crate) title: String,
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct HostTerminalWindowInfo {
     pub(crate) id: String,

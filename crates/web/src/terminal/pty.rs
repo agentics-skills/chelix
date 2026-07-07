@@ -7,6 +7,10 @@ use super::types::{
     host_terminal_working_dir,
 };
 
+use super::{
+    sandbox_tmux::sandbox_terminal_tmux_attach_command_builder, types::SandboxTerminalTarget,
+};
+
 use super::tmux::{
     host_terminal_apply_env, host_terminal_apply_tmux_common_args,
     host_terminal_apply_tmux_profile, host_terminal_ensure_tmux_session,
@@ -126,6 +130,46 @@ pub(crate) fn spawn_host_terminal_runtime(
     let reader = master
         .try_clone_reader()
         .map_err(|err| format!("failed to open host terminal reader: {err}"))?;
+    let output_rx = spawn_host_terminal_reader(reader)?;
+
+    Ok(HostTerminalPtyRuntime {
+        master,
+        writer,
+        child,
+        output_rx,
+    })
+}
+
+pub(crate) fn spawn_sandbox_tmux_terminal_runtime(
+    cols: u16,
+    rows: u16,
+    target: &SandboxTerminalTarget,
+    session_id: &str,
+) -> TerminalResult<HostTerminalPtyRuntime> {
+    let pty_system = native_pty_system();
+    let pair = pty_system
+        .openpty(PtySize {
+            rows: rows.max(1),
+            cols: cols.max(2),
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .map_err(|err| format!("failed to allocate sandbox tmux PTY: {err}"))?;
+
+    let portable_pty::PtyPair { master, slave } = pair;
+    let child = slave
+        .spawn_command(sandbox_terminal_tmux_attach_command_builder(
+            target, session_id,
+        ))
+        .map_err(|err| format!("failed to attach sandbox tmux: {err}"))?;
+    drop(slave);
+
+    let writer = master
+        .take_writer()
+        .map_err(|err| format!("failed to open sandbox tmux writer: {err}"))?;
+    let reader = master
+        .try_clone_reader()
+        .map_err(|err| format!("failed to open sandbox tmux reader: {err}"))?;
     let output_rx = spawn_host_terminal_reader(reader)?;
 
     Ok(HostTerminalPtyRuntime {
