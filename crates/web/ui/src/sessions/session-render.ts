@@ -36,6 +36,7 @@ import {
 	appendToolCardError,
 	createToolCallCard,
 	getToolCardDetailsContainer,
+	isExecLikeToolName,
 	renderToolCardError,
 	renderToolCardResult,
 } from "../tool-call-card";
@@ -329,7 +330,7 @@ function renderHistoryToolResult(msg: ToolResultMsg): HTMLElement {
 		toolName: msg.tool_name,
 		arguments: msg.arguments,
 		status: success ? "success" : "error",
-		expanded: msg.tool_name === "exec",
+		expanded: isExecLikeToolName(msg.tool_name),
 	});
 
 	if (msg.result) {

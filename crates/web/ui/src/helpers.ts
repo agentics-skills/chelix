@@ -618,6 +618,7 @@ export function toolCallSummary(
 	if (!args) return name || "tool";
 	switch (name) {
 		case "exec":
+		case "execute_command":
 			return summarizeExecTool(args);
 		case "web_fetch":
 			return `web_fetch ${args.url || ""}`.trim();

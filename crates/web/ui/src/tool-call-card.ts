@@ -61,6 +61,10 @@ function buildToolSummary(toolName: string | undefined, args: unknown, execution
 	return `${normalizedName} ${compactArgs}`;
 }
 
+export function isExecLikeToolName(toolName: string | undefined): boolean {
+	return toolName === "exec" || toolName === "execute_command";
+}
+
 function makeLabeledPre(label: string, text: string, className: string): HTMLElement {
 	const wrap = document.createElement("div");
 	wrap.className = "tool-call-output-block";
@@ -121,10 +125,15 @@ function resolveScreenshotSrc(screenshot: string, options: ToolResultRenderOptio
 	return `data:image/png;base64,${screenshot}`;
 }
 
+function resultExitCode(result: ToolResult): number | undefined {
+	const raw = result.exit_code ?? result.exitCode;
+	return typeof raw === "number" && Number.isFinite(raw) ? raw : undefined;
+}
+
 export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 	const toolName = options.toolName || "tool";
 	const status = options.status || "running";
-	const expanded = options.expanded ?? status === "running";
+	const expanded = options.expanded ?? (status === "running" || isExecLikeToolName(toolName));
 
 	const card = document.createElement("div");
 	card.className = "msg exec-card tool-call-card";
@@ -183,7 +192,7 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 	}
 
 	appendRawPayload(details, "Parameters", options.arguments, {
-		open: toolName !== "exec",
+		open: !isExecLikeToolName(toolName),
 		className: "tool-call-params-details",
 	});
 
@@ -279,17 +288,32 @@ export function renderToolCardResult(
 		renderedVisibleResult = true;
 	}
 
+	const output = (result.output || "").replace(/\n+$/, "");
+	if (output) {
+		content.appendChild(makeLabeledPre("output", output, "exec-output tool-call-output"));
+		renderedVisibleResult = true;
+	}
+
 	const stderr = (result.stderr || "").replace(/\n+$/, "");
 	if (stderr) {
 		content.appendChild(makeLabeledPre("stderr", stderr, "exec-output exec-stderr tool-call-output"));
 		renderedVisibleResult = true;
 	}
 
-	if (result.exit_code !== undefined && result.exit_code !== 0) {
+	const exitCode = resultExitCode(result);
+	if (exitCode !== undefined && exitCode !== 0) {
 		const codeEl = document.createElement("div");
 		codeEl.className = "exec-exit exec-exit-error";
-		codeEl.textContent = `exit ${result.exit_code}`;
+		codeEl.textContent = `exit ${exitCode}`;
 		content.appendChild(codeEl);
+		renderedVisibleResult = true;
+	}
+
+	if (!renderedVisibleResult && result.message) {
+		const messageEl = document.createElement("div");
+		messageEl.className = "tool-call-result-placeholder";
+		messageEl.textContent = result.message;
+		content.appendChild(messageEl);
 		renderedVisibleResult = true;
 	}
 

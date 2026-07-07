@@ -39,6 +39,13 @@ export interface ToolResult {
 	stdout?: string;
 	stderr?: string;
 	exit_code?: number;
+	output?: string;
+	exitCode?: number;
+	completed?: boolean;
+	timedOut?: boolean;
+	background?: boolean;
+	terminalId?: string;
+	message?: string;
 	screenshot?: string;
 	screenshot_scale?: number;
 	document_ref?: string;

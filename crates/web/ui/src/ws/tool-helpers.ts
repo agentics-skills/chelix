@@ -24,6 +24,7 @@ import {
 	appendToolCardError,
 	createToolCallCard,
 	getToolCardDetailsContainer,
+	isExecLikeToolName,
 	renderToolCardError,
 	renderToolCardResult,
 	setToolCardExpanded,
@@ -111,7 +112,7 @@ export function completeToolCard(toolCard: HTMLElement, p: ChatPayload, eventSes
 	} else if (p.error) {
 		renderToolCardError(toolCard, p.error, isToolValidationErrorPayload(p));
 	}
-	setToolCardExpanded(toolCard, p.toolName === "exec");
+	setToolCardExpanded(toolCard, isExecLikeToolName(p.toolName));
 
 	// Show a hint below the card when a skill is created or updated.
 	if (p.success && (p.toolName === "create_skill" || p.toolName === "update_skill")) {
