@@ -373,8 +373,11 @@ impl TmuxTerminalManager {
         force_new: bool,
         cwd: Option<&str>,
     ) -> Result<ManagedTerminal> {
-        if let Some(terminal_id) = terminal_id.filter(|id| !id.trim().is_empty()) {
-            return self.lookup_terminal(session_key, terminal_id).await;
+        if let Some(terminal) = self
+            .requested_terminal_for_execute(session_key, terminal_id, force_new)
+            .await
+        {
+            return Ok(terminal);
         }
         if !force_new && let Some(terminal) = self.find_idle_terminal(session_key).await? {
             return Ok(terminal);
@@ -388,6 +391,24 @@ impl TmuxTerminalManager {
                 .any(|terminal| terminal.session_key == session_key && terminal.is_running());
         self.create_or_discover_terminal(session_key, force_new || has_busy_terminal, cwd)
             .await
+    }
+
+    async fn requested_terminal_for_execute(
+        &self,
+        session_key: &str,
+        terminal_id: Option<&str>,
+        force_new: bool,
+    ) -> Option<ManagedTerminal> {
+        if force_new {
+            return None;
+        }
+        let terminal_id = terminal_id.filter(|id| !id.trim().is_empty())?;
+        let terminal = self.terminals.read().await.get(terminal_id).cloned()?;
+        if terminal.session_key == session_key {
+            Some(terminal)
+        } else {
+            None
+        }
     }
 
     async fn lookup_terminal(
@@ -1062,7 +1083,7 @@ fn truncate_output_for_display(output: &mut String, max_output_bytes: usize) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, crate::sandbox::SandboxConfig};
 
     #[test]
     fn tmux_paste_buffer_name_is_unique_and_tmux_safe() {
@@ -1194,5 +1215,70 @@ mod tests {
 
         assert!(!is_tmux_no_server(message));
         assert!(is_tmux_missing(message));
+    }
+
+    async fn test_manager_with_terminal(terminal: ManagedTerminal) -> TmuxTerminalManager {
+        let router = Arc::new(SandboxRouter::new(SandboxConfig::default()));
+        let manager = TmuxTerminalManager::new(router, 4096);
+        manager.store_terminal(terminal).await;
+        manager
+    }
+
+    fn test_terminal(id: &str, session_key: &str) -> ManagedTerminal {
+        ManagedTerminal {
+            id: id.to_string(),
+            session_key: session_key.to_string(),
+            session_id: "$0".to_string(),
+            session_name: "main".to_string(),
+            window_id: "@1".to_string(),
+            window_name: "bash".to_string(),
+            pane_id: "%2".to_string(),
+            gate: Arc::new(Semaphore::new(1)),
+            last_run: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn execute_terminal_id_resolves_existing_terminal_in_session() {
+        let manager = test_manager_with_terminal(test_terminal("1", "main")).await;
+
+        let terminal = manager
+            .requested_terminal_for_execute("main", Some("1"), false)
+            .await;
+
+        assert_eq!(terminal.map(|terminal| terminal.id), Some("1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn execute_terminal_id_ignores_unknown_terminal_id() {
+        let manager = test_manager_with_terminal(test_terminal("1", "main")).await;
+
+        let terminal = manager
+            .requested_terminal_for_execute("main", Some("missing"), false)
+            .await;
+
+        assert!(terminal.is_none());
+    }
+
+    #[tokio::test]
+    async fn execute_terminal_id_ignores_terminal_from_another_session() {
+        let manager = test_manager_with_terminal(test_terminal("1", "other")).await;
+
+        let terminal = manager
+            .requested_terminal_for_execute("main", Some("1"), false)
+            .await;
+
+        assert!(terminal.is_none());
+    }
+
+    #[tokio::test]
+    async fn execute_terminal_id_ignores_terminal_id_when_new_terminal_is_requested() {
+        let manager = test_manager_with_terminal(test_terminal("1", "main")).await;
+
+        let terminal = manager
+            .requested_terminal_for_execute("main", Some("1"), true)
+            .await;
+
+        assert!(terminal.is_none());
     }
 }
