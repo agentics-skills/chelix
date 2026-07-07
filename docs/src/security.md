@@ -89,6 +89,12 @@ default. This protects your host system from:
 
 See [sandbox.md](sandbox.md) for backend configuration.
 
+Agent-facing `execute_command` runs sandbox commands through real tmux panes.
+It returns a managed `terminalId` that can be passed to
+`read_terminal_output` for commands that outlive the initial timeout or run in
+background mode. If no tmux server is running in the sandbox, Chelix creates one
+before pasting the command.
+
 ### Resource Limits
 
 ```toml

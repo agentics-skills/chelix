@@ -64,6 +64,22 @@ let removed_count = registry.unregister_mcp();
 The `source` and `mcpServer` fields are available to the UI for rendering
 tools grouped by origin.
 
+## Sandbox terminal tools
+
+Chelix registers tmux-backed sandbox terminal tools for agent command work:
+
+- `execute_command` pastes a structured command into a real tmux pane inside
+  the current sandbox session. It accepts `command`, `customCwd`,
+  `newTerminal`, `destructiveFlag`, `background`, `timeout`, and an optional
+  `terminalId` for reusing a managed terminal.
+- `read_terminal_output` captures output from a managed tmux terminal by
+  `terminalId`. Use it after a foreground timeout or for background commands
+  that continue running after `execute_command` returns.
+
+When a sandbox has no tmux server yet, `execute_command` creates a tmux session
+and returns the generated `terminalId`, tmux session/window/pane IDs, output,
+completion state, and exit code when available.
+
 ## Lazy Registry Mode
 
 By default every LLM turn includes full JSON schemas for all registered tools.

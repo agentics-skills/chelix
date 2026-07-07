@@ -669,6 +669,19 @@ pub(super) async fn complete_startup(
         let sandbox_packages_tool = moltis_tools::sandbox_packages::SandboxPackagesTool::new()
             .with_sandbox_router(Arc::clone(&sandbox_router));
 
+        let tmux_terminal_manager = Arc::new(moltis_tools::tmux_command::TmuxTerminalManager::new(
+            Arc::clone(&sandbox_router),
+            config.tools.exec.max_output_bytes,
+        ));
+
+        tool_registry.register(Box::new(
+            moltis_tools::tmux_command::ExecuteCommandTool::new(Arc::clone(&tmux_terminal_manager)),
+        ));
+        tool_registry.register(Box::new(
+            moltis_tools::tmux_command::ReadTerminalOutputTool::new(Arc::clone(
+                &tmux_terminal_manager,
+            )),
+        ));
         tool_registry.register(Box::new(exec_tool));
         tool_registry.register(Box::new(moltis_tools::calc::CalcTool::new()));
         #[cfg(feature = "fs-tools")]
