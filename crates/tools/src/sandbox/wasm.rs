@@ -11,9 +11,9 @@ use super::types::{
     truncate_output_for_display,
 };
 #[cfg(feature = "wasm")]
-use crate::error::{Context, Error, Result};
-#[cfg(feature = "wasm")]
 use crate::command::{CommandOptions, CommandOutput};
+#[cfg(feature = "wasm")]
+use crate::error::{Context, Error, Result};
 #[cfg(feature = "wasm")]
 use crate::wasm_engine::WasmComponentEngine;
 #[cfg(feature = "wasm")]

@@ -138,8 +138,8 @@ mod tests {
     use {
         super::*,
         crate::{
-            command::{CommandOptions, CommandOutput},
             Result,
+            command::{CommandOptions, CommandOutput},
             sandbox::{Sandbox, SandboxConfig, SandboxId},
         },
         std::io::Write,

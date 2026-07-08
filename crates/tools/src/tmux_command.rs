@@ -939,9 +939,9 @@ impl ExecuteCommandTool {
 
         match manager.wait_for_decision(rx).await {
             ApprovalDecision::Approved => Ok(()),
-            ApprovalDecision::Denied => Err(Error::message(format!(
-                "command denied by user: {command}"
-            ))),
+            ApprovalDecision::Denied => {
+                Err(Error::message(format!("command denied by user: {command}")))
+            },
             ApprovalDecision::Timeout => Err(Error::message(format!(
                 "approval timed out for command: {command}"
             ))),
@@ -1005,10 +1005,9 @@ impl ExecuteCommandTool {
         let Some(node_ref) = node_ref else {
             return Ok(None);
         };
-        let node_id = provider
-            .resolve_node_id(&node_ref)
-            .await
-            .ok_or_else(|| Error::message(format!("node '{node_ref}' not found or not connected")))?;
+        let node_id = provider.resolve_node_id(&node_ref).await.ok_or_else(|| {
+            Error::message(format!("node '{node_ref}' not found or not connected"))
+        })?;
         let timeout_secs = timeout_millis.div_ceil(1_000).max(1);
         info!(
             command,
@@ -1090,7 +1089,10 @@ impl ExecuteCommandTool {
         }
 
         let env = self.command_env().await;
-        let response = self.manager.execute_command(session_key, params, env).await?;
+        let response = self
+            .manager
+            .execute_command(session_key, params, env)
+            .await?;
         if response.completed {
             let result = CommandOutput {
                 stdout: response.output.clone(),
@@ -1150,7 +1152,9 @@ impl AgentTool for ExecuteCommandTool {
             "required": ["command"]
         });
         if self.has_connected_nodes()
-            && let Some(properties) = schema.get_mut("properties").and_then(|value| value.as_object_mut())
+            && let Some(properties) = schema
+                .get_mut("properties")
+                .and_then(|value| value.as_object_mut())
         {
             properties.insert(
                 "node".to_string(),

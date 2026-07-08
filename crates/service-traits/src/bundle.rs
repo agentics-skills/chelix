@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use crate::{
-    AgentService, BrowserService, ChannelService, ChatService, ConfigService, CronService,
-    CommandApprovalService, ExternalAgentService, LogsService, McpService, ModelService,
-    NoopAgentService, NoopBrowserService, NoopChannelService, NoopChatService, NoopConfigService,
-    NoopCommandApprovalService, NoopCronService, NoopExternalAgentService, NoopLogsService,
-    NoopMcpService, NoopModelService, NoopOnboardingService, NoopProjectService,
+    AgentService, BrowserService, ChannelService, ChatService, CommandApprovalService,
+    ConfigService, CronService, ExternalAgentService, LogsService, McpService, ModelService,
+    NoopAgentService, NoopBrowserService, NoopChannelService, NoopChatService,
+    NoopCommandApprovalService, NoopConfigService, NoopCronService, NoopExternalAgentService,
+    NoopLogsService, NoopMcpService, NoopModelService, NoopOnboardingService, NoopProjectService,
     NoopProviderSetupService, NoopSessionService, NoopSkillsStub, NoopSttService,
     NoopSystemInfoService, NoopTtsService, NoopUpdateService, NoopUsageService,
     NoopVoicewakeService, NoopWebLoginService, OnboardingService, ProjectService,

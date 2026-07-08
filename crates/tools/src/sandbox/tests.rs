@@ -17,7 +17,7 @@ use crate::sandbox::file_system::{
 #[cfg(target_os = "macos")]
 use std::env;
 use {
-    super::{containers::*, docker::*, host::*, paths::*, platform::*, router::*, types::*, *},
+    super::{containers::*, docker::*, host::*, paths::*, platform::*, router::*, types::*},
     crate::{
         command::{CommandOptions, CommandOutput},
         error::{Error, Result},

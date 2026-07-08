@@ -323,12 +323,12 @@ pub fn approval_manager_from_config(config: &moltis_config::MoltisConfig) -> App
 
     manager.mode =
         ApprovalMode::parse(&config.tools.execute_command.approval_mode).unwrap_or_else(|| {
-        warn!(
-            value = %config.tools.execute_command.approval_mode,
-            "invalid tools.execute_command.approval_mode; falling back to 'on-miss'"
-        );
-        ApprovalMode::OnMiss
-    });
+            warn!(
+                value = %config.tools.execute_command.approval_mode,
+                "invalid tools.execute_command.approval_mode; falling back to 'on-miss'"
+            );
+            ApprovalMode::OnMiss
+        });
 
     manager.security_level = SecurityLevel::parse(&config.tools.execute_command.security_level)
         .unwrap_or_else(|| {

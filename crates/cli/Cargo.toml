@@ -116,7 +116,6 @@ full = [
   "tls",
   "trusted-network",
   "vault",
-  "vercel-sandbox",
   "voice",
   "wasm",
   "web-ui",
@@ -172,7 +171,6 @@ telephony             = ["moltis-httpd/telephony"]
 tls                   = ["moltis-httpd/tls"]
 trusted-network       = ["moltis-httpd/trusted-network"]
 vault                 = ["moltis-httpd/vault", "moltis-web?/vault"]
-vercel-sandbox        = ["moltis-tools/vercel-sandbox"]
 voice                 = ["moltis-gateway/voice", "moltis-web?/voice"]
 wasm                  = ["moltis-tools/wasm"]
 web-ui                = ["dep:moltis-web", "moltis-httpd/web-ui"]

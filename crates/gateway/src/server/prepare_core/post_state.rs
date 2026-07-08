@@ -656,15 +656,13 @@ pub(super) async fn complete_startup(
             config.tools.execute_command.max_output_bytes,
         ));
         let mut execute_command_tool =
-            moltis_tools::tmux_command::ExecuteCommandTool::new(Arc::clone(
-                &tmux_terminal_manager,
-            ))
-            .with_default_timeout(std::time::Duration::from_secs(
-                config.tools.execute_command.default_timeout_secs,
-            ))
-            .with_approval(Arc::clone(&approval_manager), Arc::clone(&broadcaster))
-            .with_env_provider(Arc::clone(&env_provider))
-            .with_completion_callback(command_completion_callback);
+            moltis_tools::tmux_command::ExecuteCommandTool::new(Arc::clone(&tmux_terminal_manager))
+                .with_default_timeout(std::time::Duration::from_secs(
+                    config.tools.execute_command.default_timeout_secs,
+                ))
+                .with_approval(Arc::clone(&approval_manager), Arc::clone(&broadcaster))
+                .with_env_provider(Arc::clone(&env_provider))
+                .with_completion_callback(command_completion_callback);
 
         {
             let provider = Arc::new(crate::node_command::GatewayNodeCommandProvider::new(

@@ -1034,7 +1034,8 @@ Done."#;
     /// Invoke with JSON value in arg body is parsed as structured value.
     #[test]
     fn invoke_json_arg_value() {
-        let text = r#"<invoke name="execute_command"><arg name="config">{"verbose": true}</arg></invoke>"#;
+        let text =
+            r#"<invoke name="execute_command"><arg name="config">{"verbose": true}</arg></invoke>"#;
         let (calls, _) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].arguments["config"]["verbose"], true);
@@ -1157,8 +1158,7 @@ between
     /// Unclosed Zhipu block is gracefully skipped — no panic, no partial call.
     #[test]
     fn zhipu_unclosed_block_skipped() {
-        let text =
-            r#"before <tool_call>execute_command<arg_key>command</arg_key><arg_value>ls</arg_value> no-close"#;
+        let text = r#"before <tool_call>execute_command<arg_key>command</arg_key><arg_value>ls</arg_value> no-close"#;
         let (calls, _remaining) = parse_tool_calls_from_text(text);
         assert!(calls.is_empty());
     }
@@ -1194,7 +1194,8 @@ between
     /// it, and the merge step de-overlaps so we don't double-count.
     #[test]
     fn zhipu_parser_defers_to_json_wrapper() {
-        let text = r#"<tool_call>{"tool": "execute_command", "arguments": {"command": "ls"}}</tool_call>"#;
+        let text =
+            r#"<tool_call>{"tool": "execute_command", "arguments": {"command": "ls"}}</tool_call>"#;
         let (calls, _) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].name, "execute_command");
@@ -1232,7 +1233,8 @@ between
 
     #[test]
     fn zhipu_missing_arg_key_close_skipped() {
-        let text = r#"<tool_call>execute_command<arg_key>command<arg_value>ls</arg_value></tool_call>"#;
+        let text =
+            r#"<tool_call>execute_command<arg_key>command<arg_value>ls</arg_value></tool_call>"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert!(calls.is_empty());
         assert_eq!(remaining.as_deref(), Some(text));
@@ -1248,7 +1250,8 @@ between
 
     #[test]
     fn zhipu_missing_arg_value_close_skipped() {
-        let text = r#"<tool_call>execute_command<arg_key>command</arg_key><arg_value>ls</tool_call>"#;
+        let text =
+            r#"<tool_call>execute_command<arg_key>command</arg_key><arg_value>ls</tool_call>"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert!(calls.is_empty());
         assert_eq!(remaining.as_deref(), Some(text));

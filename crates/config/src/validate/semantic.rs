@@ -607,7 +607,8 @@ pub(super) fn check_semantic_warnings(config: &MoltisConfig, diagnostics: &mut V
     // Unknown sandbox network policy
     if !config.tools.execute_command.sandbox.network.is_empty() {
         let valid_network_policies = ["blocked", "trusted", "bypass"];
-        if !valid_network_policies.contains(&config.tools.execute_command.sandbox.network.as_str()) {
+        if !valid_network_policies.contains(&config.tools.execute_command.sandbox.network.as_str())
+        {
             diagnostics.push(Diagnostic {
                 severity: Severity::Warning,
                 category: "unknown-field",
@@ -712,7 +713,9 @@ pub(super) fn check_semantic_warnings(config: &MoltisConfig, diagnostics: &mut V
         });
     }
 
-    if config.tools.execute_command.host == "ssh" && config.tools.execute_command.ssh_target.is_none() {
+    if config.tools.execute_command.host == "ssh"
+        && config.tools.execute_command.ssh_target.is_none()
+    {
         diagnostics.push(Diagnostic {
             severity: Severity::Warning,
             category: "unknown-field",

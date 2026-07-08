@@ -770,14 +770,6 @@ pub(super) fn apply_env_overrides_with(
     apply_env_overrides_with_options(config, vars, true)
 }
 
-#[cfg(test)]
-pub(super) fn apply_env_overrides_without_aliases(
-    config: MoltisConfig,
-    vars: impl Iterator<Item = (String, String)>,
-) -> MoltisConfig {
-    apply_env_overrides_with_options(config, vars, false)
-}
-
 fn apply_env_overrides_with_options(
     config: MoltisConfig,
     vars: impl Iterator<Item = (String, String)>,
@@ -806,53 +798,9 @@ fn apply_env_overrides_with_options(
         },
     };
 
-    // Third-party env var aliases: standard env vars that map to config paths.
-    // These are only applied if the config field is empty/unset, so explicit
-    // config always takes precedence.
-    const ENV_ALIASES: &[(&str, &[&str])] = &[
-        ("VERCEL_TOKEN", &[
-            "tools",
-            "execute_command",
-            "sandbox",
-            "vercel_token",
-        ]),
-        ("VERCEL_OIDC_TOKEN", &[
-            "tools",
-            "execute_command",
-            "sandbox",
-            "vercel_token",
-        ]),
-        ("VERCEL_PROJECT_ID", &[
-            "tools",
-            "execute_command",
-            "sandbox",
-            "vercel_project_id",
-        ]),
-        ("VERCEL_TEAM_ID", &[
-            "tools",
-            "execute_command",
-            "sandbox",
-            "vercel_team_id",
-        ]),
-        ("DAYTONA_API_KEY", &[
-            "tools",
-            "execute_command",
-            "sandbox",
-            "daytona_api_key",
-        ]),
-        ("DAYTONA_API_URL", &[
-            "tools",
-            "execute_command",
-            "sandbox",
-            "daytona_api_url",
-        ]),
-        ("DAYTONA_TARGET", &[
-            "tools",
-            "execute_command",
-            "sandbox",
-            "daytona_target",
-        ]),
-    ];
+    // Third-party env var aliases.
+    // Intentionally empty for now.
+    const ENV_ALIASES: &[(&str, &[&str])] = &[];
 
     for (key, val) in vars {
         // Check third-party aliases first (before the MOLTIS_ prefix check).

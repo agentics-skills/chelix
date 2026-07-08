@@ -424,9 +424,8 @@ test.describe("Settings navigation", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
-	// Removed: "selecting identity emoji updates favicon" and "safari favicon reload notice"
-	// Emoji picker moved from IdentitySection to AgentsPage in the agents architecture
-	// simplification (#898). These tests tested code that no longer exists on the profile page.
+	// The profile page no longer owns favicon-related emoji controls.
+	// Those checks are intentionally covered elsewhere in the agents UI.
 
 	test("environment page has add form", async ({ page }) => {
 		await navigateAndWait(page, "/settings/environment");

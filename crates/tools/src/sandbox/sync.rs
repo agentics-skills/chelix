@@ -1,8 +1,8 @@
 //! Workspace synchronization for isolated sandbox backends.
 //!
-//! Isolated backends (Vercel, Daytona, Firecracker) run in their own
-//! filesystem — unlike bind-mount backends (Docker, Podman), the host
-//! workspace is not directly accessible. This module handles:
+//! Backends that keep their own filesystem separate from the host — unlike
+//! bind-mount backends (Docker, Podman) — cannot access the workspace
+//! directly. This module handles:
 //!
 //! - **sync-in**: Upload host workspace contents to the sandbox on first run.
 //! - **sync-out**: Download workspace changes from the sandbox on cleanup.
@@ -836,8 +836,8 @@ mod tests {
     #[test]
     fn test_shell_single_quote_escapes_embedded_quotes() {
         assert_eq!(
-            shell_single_quote("/home/daytona/work' && touch /tmp/pwned && echo '"),
-            "'/home/daytona/work'\\'' && touch /tmp/pwned && echo '\\'''"
+            shell_single_quote("/home/sandbox/work' && touch /tmp/pwned && echo '"),
+            "'/home/sandbox/work'\\'' && touch /tmp/pwned && echo '\\'''"
         );
     }
 

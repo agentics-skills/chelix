@@ -225,8 +225,9 @@ pub async fn prepare_gateway_core(
         services.logs = Arc::new(crate::logs::LiveLogsService::new(buf.clone()));
     }
 
-    services.command_approval =
-        Arc::new(LiveCommandApprovalService::new(Arc::clone(&approval_manager)));
+    services.command_approval = Arc::new(LiveCommandApprovalService::new(Arc::clone(
+        &approval_manager,
+    )));
 
     // Wire browser service if enabled.
     if let Some(browser_svc) =

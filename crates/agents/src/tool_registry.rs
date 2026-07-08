@@ -515,10 +515,10 @@ mod tests {
         }));
 
         let names = registry.list_names();
-        assert_eq!(
-            names,
-            vec!["execute_command".to_string(), "web_fetch".to_string()]
-        );
+        assert_eq!(names, vec![
+            "execute_command".to_string(),
+            "web_fetch".to_string()
+        ]);
     }
 
     #[test]
@@ -637,9 +637,9 @@ mod tests {
         let filtered =
             registry.clone_allowed_by(|name| name.starts_with("web") || name == "execute_command");
         let names = filtered.list_names();
-        assert_eq!(
-            names,
-            vec!["execute_command".to_string(), "web_fetch".to_string()]
-        );
+        assert_eq!(names, vec![
+            "execute_command".to_string(),
+            "web_fetch".to_string()
+        ]);
     }
 }

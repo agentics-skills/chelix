@@ -1,7 +1,5 @@
 //! Web-UI API handlers (bootstrap, skills, images, containers, media, logs).
 
-#[cfg(target_os = "linux")]
-use std::path::Path as FsPath;
 use std::{collections::HashMap, path::PathBuf};
 
 use {
@@ -13,7 +11,6 @@ use {
     },
     moltis_httpd::AppState,
     moltis_tools::image_cache::ImageBuilder,
-    secrecy::{ExposeSecret, Secret},
     tracing::warn,
 };
 
@@ -38,6 +35,8 @@ const SANDBOX_CONTAINERS_CLEAN_FAILED: &str = "SANDBOX_CONTAINERS_CLEAN_FAILED";
 const SANDBOX_DISK_USAGE_FAILED: &str = "SANDBOX_DISK_USAGE_FAILED";
 const SANDBOX_DAEMON_RESTART_FAILED: &str = "SANDBOX_DAEMON_RESTART_FAILED";
 const SANDBOX_SHARED_HOME_SAVE_FAILED: &str = "SANDBOX_SHARED_HOME_SAVE_FAILED";
+const SANDBOX_BACKEND_INVALID: &str = "SANDBOX_BACKEND_INVALID";
+const SANDBOX_BACKEND_SAVE_FAILED: &str = "SANDBOX_BACKEND_SAVE_FAILED";
 const SESSION_HISTORY_FAILED: &str = "SESSION_HISTORY_FAILED";
 const SESSION_LIST_FAILED: &str = "SESSION_LIST_FAILED";
 const SESSION_LIST_DEFAULT_LIMIT: usize = 40;
@@ -56,12 +55,6 @@ fn api_error_response(status: StatusCode, code: &str, error: impl Into<String>) 
     (status, Json(api_error(code, error))).into_response()
 }
 
-fn configured_secret(secret: &Option<Secret<String>>) -> bool {
-    secret
-        .as_ref()
-        .is_some_and(|secret| !secret.expose_secret().is_empty())
-}
-
 #[derive(serde::Deserialize)]
 pub struct SandboxSharedHomeUpdateRequest {
     enabled: bool,
@@ -69,24 +62,8 @@ pub struct SandboxSharedHomeUpdateRequest {
 }
 
 #[derive(serde::Deserialize)]
-pub struct RemoteBackendUpdateRequest {
-    /// Which backend: "vercel" or "daytona".
+pub struct SandboxDefaultBackendUpdateRequest {
     backend: String,
-    config: RemoteBackendConfigUpdate,
-}
-
-#[derive(Default, serde::Deserialize)]
-struct RemoteBackendConfigUpdate {
-    backend: Option<String>,
-    token: Option<Secret<String>>,
-    api_key: Option<Secret<String>>,
-    project_id: Option<Option<String>>,
-    team_id: Option<Option<String>>,
-    runtime: Option<String>,
-    timeout_ms: Option<u64>,
-    vcpus: Option<u64>,
-    api_url: Option<String>,
-    target: Option<Option<String>>,
 }
 
 fn shared_home_config_payload(config: &moltis_config::MoltisConfig) -> serde_json::Value {
@@ -962,180 +939,108 @@ pub async fn api_set_shared_home_handler(
 
 // ── Available sandbox backends ────────────────────────────────────────────────
 
+#[derive(Clone, Copy)]
+struct AvailableSandboxBackend {
+    id: &'static str,
+    label: &'static str,
+    kind: &'static str,
+}
+
+fn available_sandbox_backends() -> Vec<AvailableSandboxBackend> {
+    let mut backends = Vec::new();
+
+    if moltis_tools::sandbox::is_cli_available("docker") {
+        backends.push(AvailableSandboxBackend {
+            id: "docker",
+            label: "Docker",
+            kind: "local",
+        });
+    }
+    if moltis_tools::sandbox::is_cli_available("podman") {
+        backends.push(AvailableSandboxBackend {
+            id: "podman",
+            label: "Podman",
+            kind: "local",
+        });
+    }
+    #[cfg(target_os = "macos")]
+    if moltis_tools::sandbox::is_cli_available("container") {
+        backends.push(AvailableSandboxBackend {
+            id: "apple-container",
+            label: "Apple Container (VM)",
+            kind: "local",
+        });
+    }
+
+    backends.push(AvailableSandboxBackend {
+        id: "restricted-host",
+        label: "Restricted Host (no isolation)",
+        kind: "local",
+    });
+
+    backends
+}
+
+fn available_backends_payload(default_backend: &str) -> serde_json::Value {
+    let backends: Vec<serde_json::Value> = available_sandbox_backends()
+        .into_iter()
+        .map(|backend| {
+            serde_json::json!({
+                "id": backend.id,
+                "label": backend.label,
+                "kind": backend.kind,
+                "available": true,
+            })
+        })
+        .collect();
+
+    serde_json::json!({
+        "backends": backends,
+        "default": default_backend,
+    })
+}
+
 /// Returns which sandbox backends are available/configured on this instance.
 /// Used by the UI to populate backend selectors.
 pub async fn api_available_backends_handler() -> impl IntoResponse {
     let config = moltis_config::discover_and_load();
-    let sb = &config.tools.execute_command.sandbox;
-
-    let mut backends: Vec<serde_json::Value> = Vec::new();
-
-    // Local container backends.
-    if moltis_tools::sandbox::is_cli_available("docker") {
-        backends.push(serde_json::json!({
-            "id": "docker",
-            "label": "Docker",
-            "kind": "local",
-            "available": true,
-        }));
-    }
-    if moltis_tools::sandbox::is_cli_available("podman") {
-        backends.push(serde_json::json!({
-            "id": "podman",
-            "label": "Podman",
-            "kind": "local",
-            "available": true,
-        }));
-    }
-    #[cfg(target_os = "macos")]
-    if moltis_tools::sandbox::is_cli_available("container") {
-        backends.push(serde_json::json!({
-            "id": "apple-container",
-            "label": "Apple Container (VM)",
-            "kind": "local",
-            "available": true,
-        }));
-    }
-    #[cfg(target_os = "linux")]
-    if moltis_tools::sandbox::firecracker_bin_available(
-        sb.firecracker_bin.as_deref().map(FsPath::new),
-    ) {
-        backends.push(serde_json::json!({
-            "id": "firecracker",
-            "label": "Firecracker (microVM)",
-            "kind": "local",
-            "available": true,
-        }));
-    }
-
-    // Remote backends.
-    let has_vercel = configured_secret(&sb.vercel_token);
-    if has_vercel {
-        backends.push(serde_json::json!({
-            "id": "vercel",
-            "label": "Vercel Sandbox (Firecracker)",
-            "kind": "remote",
-            "available": true,
-        }));
-    }
-
-    let has_daytona = configured_secret(&sb.daytona_api_key);
-    if has_daytona {
-        backends.push(serde_json::json!({
-            "id": "daytona",
-            "label": "Daytona (Cloud)",
-            "kind": "remote",
-            "available": true,
-        }));
-    }
-
-    // Always include restricted-host as fallback.
-    backends.push(serde_json::json!({
-        "id": "restricted-host",
-        "label": "Restricted Host (no isolation)",
-        "kind": "local",
-        "available": true,
-    }));
-
-    Json(serde_json::json!({
-        "backends": backends,
-        "default": sb.backend,
-    }))
+    Json(available_backends_payload(
+        &config.tools.execute_command.sandbox.backend,
+    ))
 }
 
-// ── Remote sandbox backend configuration ──────────────────────────────────────
-
-fn remote_backends_payload(config: &moltis_config::MoltisConfig) -> serde_json::Value {
-    let sb = &config.tools.execute_command.sandbox;
-    let vercel_configured = configured_secret(&sb.vercel_token);
-    let vercel_from_env =
-        std::env::var("VERCEL_TOKEN").is_ok() || std::env::var("VERCEL_OIDC_TOKEN").is_ok();
-    let daytona_configured = configured_secret(&sb.daytona_api_key);
-    let daytona_from_env = std::env::var("DAYTONA_API_KEY").is_ok();
-    serde_json::json!({
-        "backend": sb.backend,
-        "vercel": {
-            "configured": vercel_configured,
-            "from_env": vercel_from_env,
-            "project_id": sb.vercel_project_id,
-            "team_id": sb.vercel_team_id,
-            "runtime": sb.vercel_runtime.as_deref().unwrap_or("node24"),
-            "timeout_ms": sb.vercel_timeout_ms.unwrap_or(300_000),
-            "vcpus": sb.vercel_vcpus.unwrap_or(2),
-        },
-        "daytona": {
-            "configured": daytona_configured,
-            "from_env": daytona_from_env,
-            "api_url": sb.daytona_api_url.as_deref().unwrap_or("https://app.daytona.io/api"),
-            "target": sb.daytona_target,
-        },
-    })
-}
-
-pub async fn api_get_remote_backends_handler() -> impl IntoResponse {
-    let config = moltis_config::discover_and_load();
-    Json(remote_backends_payload(&config))
-}
-
-pub async fn api_set_remote_backend_handler(
-    Json(body): Json<RemoteBackendUpdateRequest>,
+pub async fn api_set_default_backend_handler(
+    Json(body): Json<SandboxDefaultBackendUpdateRequest>,
 ) -> impl IntoResponse {
+    let backend = body.backend.trim();
+    let valid = backend == "auto"
+        || available_sandbox_backends()
+            .iter()
+            .any(|candidate| candidate.id == backend);
+
+    if backend.is_empty() || !valid {
+        return api_error_response(
+            StatusCode::BAD_REQUEST,
+            SANDBOX_BACKEND_INVALID,
+            format!("unsupported sandbox backend: {backend:?}"),
+        );
+    }
+
     let update_result = moltis_config::update_config(|cfg| {
-        let sb = &mut cfg.tools.execute_command.sandbox;
-        // Allow changing the default backend (auto/docker/podman/apple-container/vercel/daytona).
-        if let Some(v) = body.config.backend.as_deref() {
-            sb.backend = v.to_string();
-        }
-        match body.backend.as_str() {
-            "vercel" => {
-                if let Some(v) = body.config.token.clone() {
-                    sb.vercel_token = Some(v);
-                }
-                if let Some(v) = body.config.project_id.clone() {
-                    sb.vercel_project_id = v;
-                }
-                if let Some(v) = body.config.team_id.clone() {
-                    sb.vercel_team_id = v;
-                }
-                if let Some(v) = body.config.runtime.as_deref() {
-                    sb.vercel_runtime = Some(v.to_string());
-                }
-                if let Some(v) = body.config.timeout_ms {
-                    sb.vercel_timeout_ms = Some(v);
-                }
-                if let Some(v) = body.config.vcpus {
-                    sb.vercel_vcpus = Some(v as u32);
-                }
-            },
-            "daytona" => {
-                if let Some(v) = body.config.api_key.clone() {
-                    sb.daytona_api_key = Some(v);
-                }
-                if let Some(v) = body.config.api_url.as_deref() {
-                    sb.daytona_api_url = Some(v.to_string());
-                }
-                if let Some(v) = body.config.target.clone() {
-                    sb.daytona_target = v;
-                }
-            },
-            _ => {},
-        }
+        cfg.tools.execute_command.sandbox.backend = backend.to_string();
     });
 
     match update_result {
-        Ok(saved_path) => {
-            let config = moltis_config::discover_and_load();
-            Json(serde_json::json!({
-                "ok": true,
-                "restart_required": true,
-                "config_path": saved_path.display().to_string(),
-                "config": remote_backends_payload(&config),
-            }))
-            .into_response()
-        },
+        Ok(saved_path) => Json(serde_json::json!({
+            "ok": true,
+            "restart_required": true,
+            "config_path": saved_path.display().to_string(),
+            "config": available_backends_payload(backend),
+        }))
+        .into_response(),
         Err(e) => api_error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
-            "remote_backend_save_failed",
+            SANDBOX_BACKEND_SAVE_FAILED,
             e.to_string(),
         ),
     }

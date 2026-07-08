@@ -8,7 +8,6 @@ use std::{
 
 use {
     async_trait::async_trait,
-    secrecy::ExposeSecret,
     tokio::sync::RwLock,
     tracing::{debug, info, warn},
 };
@@ -361,11 +360,6 @@ pub(crate) fn select_backend(config: SandboxConfig) -> Arc<dyn Sandbox> {
             Arc::new(RestrictedHostSandbox::new(config))
         },
         "wasm" | "wasmtime" => create_wasm_backend(config),
-        #[cfg(feature = "vercel-sandbox")]
-        "vercel" => create_vercel_backend(config),
-        "daytona" => create_daytona_backend(config),
-        #[cfg(target_os = "linux")]
-        "firecracker" => create_firecracker_backend(config),
         _ => auto_detect_backend(config),
     }
 }
@@ -391,121 +385,6 @@ fn create_wasm_backend(config: SandboxConfig) -> Arc<dyn Sandbox> {
         tracing::warn!("wasm sandbox requested but feature not compiled in; using restricted-host");
         Arc::new(RestrictedHostSandbox::new(config))
     }
-}
-
-/// Create a Vercel sandbox backend, falling back to `RestrictedHostSandbox` if
-/// the feature is disabled or the token is not configured.
-#[cfg(feature = "vercel-sandbox")]
-fn create_vercel_backend(config: SandboxConfig) -> Arc<dyn Sandbox> {
-    use super::vercel::{VercelSandbox, VercelSandboxConfig};
-
-    let Some(token) = config
-        .vercel_token
-        .clone()
-        .filter(|token| !token.expose_secret().is_empty())
-    else {
-        tracing::warn!(
-            "vercel sandbox requested but no token configured (set VERCEL_TOKEN); \
-             using restricted-host"
-        );
-        return Arc::new(RestrictedHostSandbox::new(config));
-    };
-
-    let vercel_config = VercelSandboxConfig {
-        token,
-        project_id: config.vercel_project_id.clone(),
-        team_id: config.vercel_team_id.clone(),
-        runtime: config
-            .vercel_runtime
-            .clone()
-            .unwrap_or_else(|| "node24".into()),
-        timeout_ms: config.vercel_timeout_ms.unwrap_or(300_000),
-        vcpus: config.vercel_vcpus.unwrap_or(2),
-        snapshot_id: config.vercel_snapshot_id.clone(),
-    };
-
-    tracing::info!(
-        runtime = vercel_config.runtime,
-        vcpus = vercel_config.vcpus,
-        "sandbox backend: vercel (Firecracker microVM)"
-    );
-    Arc::new(VercelSandbox::new(config, vercel_config))
-}
-
-/// Create a Daytona sandbox backend, falling back to `RestrictedHostSandbox`
-/// if the API key is not configured.
-fn create_daytona_backend(config: SandboxConfig) -> Arc<dyn Sandbox> {
-    use super::daytona::{DaytonaSandbox, DaytonaSandboxConfig};
-
-    let Some(api_key) = config
-        .daytona_api_key
-        .clone()
-        .filter(|api_key| !api_key.expose_secret().is_empty())
-    else {
-        tracing::warn!(
-            "daytona sandbox requested but no API key configured (set DAYTONA_API_KEY); \
-             using restricted-host"
-        );
-        return Arc::new(RestrictedHostSandbox::new(config));
-    };
-
-    let daytona_config = DaytonaSandboxConfig {
-        api_key,
-        api_url: config
-            .daytona_api_url
-            .clone()
-            .unwrap_or_else(|| "https://app.daytona.io/api".into()),
-        target: config.daytona_target.clone(),
-        image: config.daytona_image.clone(),
-        language: None,
-    };
-
-    tracing::info!(
-        api_url = daytona_config.api_url,
-        "sandbox backend: daytona (cloud sandbox)"
-    );
-    Arc::new(DaytonaSandbox::new(config, daytona_config))
-}
-
-fn has_secret(secret: &Option<secrecy::Secret<String>>) -> bool {
-    secret
-        .as_ref()
-        .is_some_and(|secret| !secret.expose_secret().is_empty())
-}
-
-/// Create a Firecracker sandbox backend.
-/// Linux-only: requires firecracker binary, kernel, rootfs, and root/CAP_NET_ADMIN.
-#[cfg(target_os = "linux")]
-fn create_firecracker_backend(config: SandboxConfig) -> Arc<dyn Sandbox> {
-    use super::firecracker::{FirecrackerSandbox, FirecrackerSandboxConfig};
-
-    let fc_config = FirecrackerSandboxConfig {
-        firecracker_bin: super::firecracker::resolve_firecracker_bin(
-            config.firecracker_bin.as_deref(),
-        ),
-        kernel_path: config
-            .firecracker_kernel
-            .clone()
-            .unwrap_or_else(|| std::path::PathBuf::from("/opt/moltis/vmlinux")),
-        rootfs_path: config
-            .firecracker_rootfs
-            .clone()
-            .unwrap_or_else(|| std::path::PathBuf::from("/opt/moltis/rootfs.ext4")),
-        ssh_key_path: config
-            .firecracker_ssh_key
-            .clone()
-            .unwrap_or_else(|| std::path::PathBuf::from("/opt/moltis/ssh_key")),
-        vcpus: config.firecracker_vcpus.unwrap_or(2),
-        memory_mb: config.firecracker_memory_mb.unwrap_or(512),
-    };
-
-    tracing::info!(
-        firecracker = %fc_config.firecracker_bin.display(),
-        vcpus = fc_config.vcpus,
-        memory_mb = fc_config.memory_mb,
-        "sandbox backend: firecracker (local microVM)"
-    );
-    Arc::new(FirecrackerSandbox::new(config, fc_config))
 }
 
 /// Wrap a primary sandbox backend with a failover chain.
@@ -609,19 +488,6 @@ pub fn auto_detect_backend(config: SandboxConfig) -> Arc<dyn Sandbox> {
             "docker CLI detected but daemon is not accessible; \
              falling back to restricted-host sandbox"
         );
-    }
-
-    // No local container runtime available — try remote backends.
-    // Env vars are resolved into config fields by the config crate.
-    #[cfg(feature = "vercel-sandbox")]
-    if has_secret(&config.vercel_token) {
-        tracing::info!("no local container runtime; using vercel sandbox");
-        return create_vercel_backend(config);
-    }
-
-    if has_secret(&config.daytona_api_key) {
-        tracing::info!("no local container runtime; using daytona sandbox");
-        return create_daytona_backend(config);
     }
 
     // Use restricted-host sandbox as last resort.
@@ -991,40 +857,35 @@ impl SandboxRouter {
             });
 
             if backend.is_isolated() {
-                let sync_ok =
-                    if let Some(host_workspace) = super::sync::resolve_sync_workspace(&self.config, &id) {
-                        let sandbox_workspace = backend.workspace_dir_for(&id).await;
-                        match super::sync::sync_in(
-                            &*backend,
-                            &id,
-                            &host_workspace,
-                            &sandbox_workspace,
-                        )
+                let sync_ok = if let Some(host_workspace) =
+                    super::sync::resolve_sync_workspace(&self.config, &id)
+                {
+                    let sandbox_workspace = backend.workspace_dir_for(&id).await;
+                    match super::sync::sync_in(&*backend, &id, &host_workspace, &sandbox_workspace)
                         .await
-                        {
-                            Ok(()) => true,
-                            Err(error) => {
-                                let message = error.to_string();
-                                warn!(
-                                    session = session_key,
-                                    sandbox_id = %id,
-                                    error = %message,
-                                    "workspace sync-in failed"
-                                );
-                                self.clear_prepared_session(session_key).await;
-                                self.mark_sync_failed(session_key, message.clone()).await;
-                                return Err(Error::message(format!(
-                                    "workspace sync-in failed: {message}"
-                                )));
-                            },
-                        }
-                    } else {
-                        true
-                    };
+                    {
+                        Ok(()) => true,
+                        Err(error) => {
+                            let message = error.to_string();
+                            warn!(
+                                session = session_key,
+                                sandbox_id = %id,
+                                error = %message,
+                                "workspace sync-in failed"
+                            );
+                            self.clear_prepared_session(session_key).await;
+                            self.mark_sync_failed(session_key, message.clone()).await;
+                            return Err(Error::message(format!(
+                                "workspace sync-in failed: {message}"
+                            )));
+                        },
+                    }
+                } else {
+                    true
+                };
 
                 if sync_ok {
-                    let has_prebuilt =
-                        image != DEFAULT_SANDBOX_IMAGE && !image.is_empty();
+                    let has_prebuilt = image != DEFAULT_SANDBOX_IMAGE && !image.is_empty();
                     let packages = &self.config.packages;
                     if !has_prebuilt
                         && !packages.is_empty()
@@ -1045,7 +906,10 @@ impl SandboxRouter {
             let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
             while !self.is_synced(session_key).await {
                 if tokio::time::Instant::now() >= deadline {
-                    warn!(session = session_key, "timed out waiting for workspace sync-in");
+                    warn!(
+                        session = session_key,
+                        "timed out waiting for workspace sync-in"
+                    );
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(200)).await;
@@ -1167,10 +1031,8 @@ impl SandboxRouter {
 
     /// Set a runtime image override for a specific backend.
     ///
-    /// Background pre-builds are backend-specific: a Docker image tag is not a
-    /// Firecracker rootfs path, and vice versa. Keep those outputs scoped so a
-    /// session routed to a secondary backend gets the image/rootfs built for
-    /// that backend.
+    /// Background pre-builds are backend-specific, so keep the outputs scoped
+    /// to the backend that produced them.
     pub async fn set_backend_image(&self, backend_name: &str, image: String) -> Result<()> {
         if !self.backends.contains_key(backend_name) {
             return Err(Error::message(format!(
@@ -1196,11 +1058,8 @@ impl SandboxRouter {
         debug!("sandbox image build in progress, waiting before resolving image");
         // 10 minutes should be plenty for a first-time image build; if it takes
         // longer the caller falls through to the base image (same as before).
-        let _ = tokio::time::timeout(
-            Duration::from_secs(600),
-            self.build_complete.notified(),
-        )
-        .await;
+        let _ =
+            tokio::time::timeout(Duration::from_secs(600), self.build_complete.notified()).await;
     }
 
     async fn config_default_image(&self) -> String {

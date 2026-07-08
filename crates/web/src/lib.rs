@@ -109,11 +109,7 @@ fn build_api_routes() -> Router<AppState> {
         )
         .route(
             "/api/sandbox/available-backends",
-            get(api::api_available_backends_handler),
-        )
-        .route(
-            "/api/sandbox/remote-backends",
-            get(api::api_get_remote_backends_handler).put(api::api_set_remote_backend_handler),
+            get(api::api_available_backends_handler).put(api::api_set_default_backend_handler),
         )
         .route("/api/sandbox/disk-usage", get(api::api_disk_usage_handler))
         .route(

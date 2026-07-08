@@ -30,9 +30,9 @@ use super::types::{
     SandboxConfig, SandboxId, canonical_sandbox_packages, tail_lines, truncate_output_for_display,
 };
 #[cfg(target_os = "macos")]
-use crate::error::{Error, Result};
-#[cfg(target_os = "macos")]
 use crate::command::{CommandOptions, CommandOutput};
+#[cfg(target_os = "macos")]
+use crate::error::{Error, Result};
 #[cfg(target_os = "macos")]
 use crate::sandbox::file_system::{
     SandboxListFilesResult, SandboxReadResult, command_list_files, command_read_file,

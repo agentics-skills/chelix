@@ -534,10 +534,10 @@ mod tests {
         let lazy = wrap_registry_lazy_with_visible(full, ["execute_command".to_string()]);
 
         let names = lazy.list_names();
-        assert_eq!(
-            names,
-            vec!["execute_command".to_string(), "tool_search".to_string()]
-        );
+        assert_eq!(names, vec![
+            "execute_command".to_string(),
+            "tool_search".to_string()
+        ]);
         assert!(lazy.get("memory_search").is_some());
     }
 

@@ -9,14 +9,8 @@ fn sanitize_tool_name_clean_input() {
 
 #[test]
 fn sanitize_tool_name_trims_whitespace() {
-    assert_eq!(
-        sanitize_tool_name("  execute_command  "),
-        "execute_command"
-    );
-    assert_eq!(
-        sanitize_tool_name("\texecute_command\n"),
-        "execute_command"
-    );
+    assert_eq!(sanitize_tool_name("  execute_command  "), "execute_command");
+    assert_eq!(sanitize_tool_name("\texecute_command\n"), "execute_command");
 }
 
 #[test]
@@ -78,15 +72,9 @@ fn sanitize_tool_name_single_quotes_not_stripped() {
 
 #[test]
 fn sanitize_tool_name_strips_numeric_suffix() {
-    assert_eq!(
-        sanitize_tool_name("execute_command_2"),
-        "execute_command"
-    );
+    assert_eq!(sanitize_tool_name("execute_command_2"), "execute_command");
     assert_eq!(sanitize_tool_name("browser_4"), "browser");
-    assert_eq!(
-        sanitize_tool_name("execute_command_123"),
-        "execute_command"
-    );
+    assert_eq!(sanitize_tool_name("execute_command_123"), "execute_command");
 }
 
 #[test]

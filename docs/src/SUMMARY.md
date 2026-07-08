@@ -73,7 +73,6 @@
 
 - [Docker](docker.md)
 - [Cloud Deploy](cloud-deploy.md)
-- [Remote Sandboxes](sandbox-remote.md)
 - [VPS Deployment](deploy-vps.md)
 
 ---

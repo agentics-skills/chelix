@@ -1155,7 +1155,8 @@ fn build_doctor_checks(input: DoctorInputs<'_>) -> Vec<SshDoctorCheck> {
                     title: "Active SSH route",
                     message: "SSH execution is enabled, but no target is configured.".to_string(),
                     hint: Some(
-                        "Add a target in Settings → SSH or set tools.execute_command.ssh_target.".to_string(),
+                        "Add a target in Settings → SSH or set tools.execute_command.ssh_target."
+                            .to_string(),
                     ),
                 });
             }

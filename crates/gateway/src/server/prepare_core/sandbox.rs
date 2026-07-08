@@ -1,13 +1,10 @@
 //! Sandbox initialization helpers: router construction, background image build,
 //! host provisioning, and startup container garbage collection.
 
-#[cfg(target_os = "linux")]
-use std::path::Path as FsPath;
 use std::sync::{Arc, atomic::Ordering};
 
 use {
     moltis_tools::sandbox::SandboxConfig,
-    secrecy::{ExposeSecret, Secret},
     tracing::{debug, info, warn},
 };
 
@@ -20,12 +17,6 @@ use crate::{
 /// Type alias for the deferred state used in prepare_core.
 type DeferredState = tokio::sync::OnceCell<Arc<GatewayState>>;
 
-fn has_secret(secret: &Option<Secret<String>>) -> bool {
-    secret
-        .as_ref()
-        .is_some_and(|secret| !secret.expose_secret().is_empty())
-}
-
 /// Build the sandbox router with all configured backends registered.
 pub(super) fn build_sandbox_router(
     sandbox_config: &SandboxConfig,
@@ -36,38 +27,7 @@ pub(super) fn build_sandbox_router(
     config.container_prefix = Some(container_prefix.to_string());
     config.timezone = timezone.map(ToOwned::to_owned);
 
-    let mut router = moltis_tools::sandbox::SandboxRouter::new(config.clone());
-
-    // Register additional remote backends that have credentials configured.
-    // Env vars (VERCEL_TOKEN, DAYTONA_API_KEY) are resolved by the config crate
-    // into the config fields.
-    for (name, has_creds) in [
-        ("vercel", has_secret(&config.vercel_token)),
-        ("daytona", has_secret(&config.daytona_api_key)),
-    ] {
-        if has_creds && router.backend_name() != name {
-            let backend = moltis_tools::sandbox::router::select_backend_by_name(name, &config);
-            if backend.backend_name() == name {
-                router.register_backend(backend);
-            }
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let name = "firecracker";
-        let has_creds = moltis_tools::sandbox::firecracker_bin_available(
-            config.firecracker_bin.as_deref().map(FsPath::new),
-        );
-        if has_creds && router.backend_name() != name {
-            let backend = moltis_tools::sandbox::router::select_backend_by_name(name, &config);
-            if backend.backend_name() == name {
-                router.register_backend(backend);
-            }
-        }
-    }
-
-    router
+    moltis_tools::sandbox::SandboxRouter::new(config)
 }
 
 /// Spawn background sandbox tasks: image pre-build, host provisioning, and

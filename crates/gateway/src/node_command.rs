@@ -673,26 +673,10 @@ impl CommandNodeProvider for GatewayNodeCommandProvider {
                 )
                 .await?
             } else {
-                run_on_node(
-                    &self.state,
-                    node_id,
-                    command,
-                    timeout_secs,
-                    cwd,
-                    env,
-                )
-                .await?
+                run_on_node(&self.state, node_id, command, timeout_secs, cwd, env).await?
             }
         } else {
-            run_on_node(
-                &self.state,
-                node_id,
-                command,
-                timeout_secs,
-                cwd,
-                env,
-            )
-            .await?
+            run_on_node(&self.state, node_id, command, timeout_secs, cwd, env).await?
         };
 
         Ok(CommandOutput {

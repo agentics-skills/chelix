@@ -578,10 +578,9 @@ mod tests {
             .unwrap();
 
         let raw_webhook = raw.get_webhook(webhook.id).await.unwrap();
-        assert_eq!(
-            raw_webhook.tool_policy.clone().unwrap().deny,
-            vec!["execute_command"]
-        );
+        assert_eq!(raw_webhook.tool_policy.clone().unwrap().deny, vec![
+            "execute_command"
+        ]);
         assert_ne!(
             raw_webhook.auth_config,
             Some(serde_json::json!({ "secret": "super-secret-value" }))

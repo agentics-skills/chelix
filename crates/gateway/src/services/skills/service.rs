@@ -864,11 +864,11 @@ impl SkillsService for NoopSkillsService {
         }
 
         let mut approval = ApprovalManager::default();
-        approval.mode =
-            ApprovalMode::parse(&config.tools.execute_command.approval_mode)
-                .unwrap_or(ApprovalMode::OnMiss);
-        approval.security_level = SecurityLevel::parse(&config.tools.execute_command.security_level)
-            .unwrap_or(SecurityLevel::Allowlist);
+        approval.mode = ApprovalMode::parse(&config.tools.execute_command.approval_mode)
+            .unwrap_or(ApprovalMode::OnMiss);
+        approval.security_level =
+            SecurityLevel::parse(&config.tools.execute_command.security_level)
+                .unwrap_or(SecurityLevel::Allowlist);
         approval.allowlist = config.tools.execute_command.allowlist;
 
         match approval

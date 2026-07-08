@@ -53,9 +53,6 @@ export type SandboxBackendId =
 	| "cgroup"
 	| "restricted-host"
 	| "wasm"
-	| "vercel"
-	| "daytona"
-	| "firecracker"
 	| "none";
 
 export interface SandboxGonInfo {

@@ -8,6 +8,63 @@ async function openSandboxContainersTab(page) {
 	await expect(tab).toHaveAttribute("aria-selected", "true");
 }
 
+test.describe("Sandboxes page – Available backends", () => {
+	test("shows only local sandbox tabs and saves default backend selection", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		let savedBody = null;
+
+		await page.route("**/api/sandbox/available-backends", (route, request) => {
+			if (request.method() === "GET") {
+				return route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						backends: [
+							{ id: "docker", label: "Docker", kind: "local", available: true },
+							{ id: "podman", label: "Podman", kind: "local", available: true },
+							{ id: "restricted-host", label: "Restricted Host (no isolation)", kind: "local", available: true },
+						],
+						default: "auto",
+					}),
+				});
+			}
+			if (request.method() === "PUT") {
+				savedBody = request.postDataJSON();
+				return route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						ok: true,
+						restart_required: true,
+						config_path: "/test/moltis.toml",
+						config: {
+							backends: [
+								{ id: "docker", label: "Docker", kind: "local", available: true },
+								{ id: "podman", label: "Podman", kind: "local", available: true },
+								{ id: "restricted-host", label: "Restricted Host (no isolation)", kind: "local", available: true },
+							],
+							default: "docker",
+						},
+					}),
+				});
+			}
+			return route.continue();
+		});
+
+		await navigateAndWait(page, "/settings/sandboxes");
+
+		const tabs = page.getByRole("tab");
+		await expect(tabs).toHaveCount(2);
+		await expect(page.getByRole("tab", { name: "General", exact: true })).toBeVisible();
+		await expect(page.getByRole("tab", { name: "Containers & Images", exact: true })).toBeVisible();
+
+		await page.getByRole("button", { name: /Docker/ }).click();
+		await expect.poll(() => savedBody?.backend ?? null, { timeout: 10_000 }).toBe("docker");
+
+		expect(pageErrors).toEqual([]);
+	});
+});
+
 test.describe("Sandboxes page – Image tag truncation", () => {
 	test("long image hash tags are truncated in the cached images list", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);

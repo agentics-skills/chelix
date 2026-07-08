@@ -30,11 +30,8 @@ TCP TLS passthrough). In that case, set `MOLTIS_ALLOW_TLS_BEHIND_PROXY=true`.
 
 ```admonish tip
 **Sandbox on cloud deploys**: Most cloud providers do not support
-Docker-in-Docker. To enable sandboxed command execution, configure a
-[remote sandbox backend](sandbox-remote.md) — set `VERCEL_TOKEN` for Vercel
-Firecracker microVMs, or `DAYTONA_API_KEY` for Daytona cloud sandboxes
-(including self-hosted). Chelix auto-detects these when no local Docker is
-available.
+Docker-in-Docker. Sandboxed command execution therefore requires a
+deployment target with a local container runtime available to Chelix.
 ```
 
 ### `MOLTIS_DEPLOY_PLATFORM`

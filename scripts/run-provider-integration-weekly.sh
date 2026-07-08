@@ -72,30 +72,6 @@ prepare_web_e2e() {
   web_e2e_prepared=true
 }
 
-run_cloud_sandbox_live_e2e() {
-  local usable_backend=false
-
-  if [[ -n "${VERCEL_TOKEN:-}" && -n "${VERCEL_PROJECT_ID:-}" ]]; then
-    usable_backend=true
-  fi
-  if [[ -n "${DAYTONA_API_KEY:-}" ]]; then
-    usable_backend=true
-  fi
-  if [[ "$usable_backend" != "true" ]]; then
-    echo "==> cloud-sandbox-live-e2e: skipped (no usable Vercel or Daytona credentials)"
-    return 0
-  fi
-
-  prepare_web_e2e
-  (
-    cd crates/web/ui
-    CI=true \
-      MOLTIS_E2E_ONLY_PROJECT=remote-sandbox-live \
-      MOLTIS_E2E_SKIP_DEFAULT_PROJECTS=1 \
-      npx playwright test --project=remote-sandbox-live e2e/specs/remote-sandbox-live.spec.js
-  )
-}
-
 run_openai_live_e2e() {
   if [[ -z "${OPENAI_API_KEY:-}" ]]; then
     echo "==> openai-live-e2e: skipped (OPENAI_API_KEY is not set)"
@@ -138,7 +114,6 @@ run_provider_test gemini gemini_integration GEMINI_API_KEY
 run_provider_test zai zai_integration Z_API_KEY
 
 run_step "provider-e2e-scenarios" ./scripts/run-provider-e2e-daily.sh
-run_step "cloud-sandbox-live-e2e" run_cloud_sandbox_live_e2e
 run_step "openai-live-e2e" run_openai_live_e2e
 run_step "ollama-qwen-live-e2e" run_ollama_qwen_live_e2e
 

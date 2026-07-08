@@ -473,7 +473,8 @@ mod tests {
     /// TOOL_CALL_TAGS ("function_call", "tool_call") are separate from INTERNAL_TAGS.
     #[test]
     fn recover_tool_calls_unaffected_by_new_internal_tags() {
-        let input = r#"<tool_call>{"name": "execute_command", "arguments": {"command": "ls"}}</tool_call>"#;
+        let input =
+            r#"<tool_call>{"name": "execute_command", "arguments": {"command": "ls"}}</tool_call>"#;
         let (cleaned, calls) = recover_tool_calls_from_content(input);
         assert_eq!(cleaned, "");
         assert_eq!(calls.len(), 1);
