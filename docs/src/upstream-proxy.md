@@ -82,17 +82,12 @@ honours the standard proxy environment variables:
 Setting `upstream_proxy` in the config takes precedence over these variables
 for all traffic except Telegram (see caveat above).
 
-## Interaction with Trusted Network
+## Interaction with Sandbox Networking
 
-If you use both `upstream_proxy` and
-[trusted network mode](trusted-network.md) (`network = "trusted"`), they
-serve different purposes:
+`upstream_proxy` configures Chelix HTTP clients for provider, channel, and tool
+requests made by Chelix itself. Sandbox container networking is configured
+separately through `tools.execute_command.sandbox.network`.
 
-- **Trusted network proxy** is a local domain-filtering proxy for sandbox
-  tool execution. It controls *which* domains tools can reach.
-- **Upstream proxy** routes traffic through your corporate/network proxy to
-  *reach* the internet.
-
-When both are active, tool traffic routes through the trusted-network proxy
-(which enforces domain allowlists), while provider and channel traffic routes
-through the upstream proxy.
+Docker and Podman sandboxes receive the configured network directly as
+`--network=<name>`. If sandboxed commands must use a corporate proxy, configure
+that proxy inside the image, environment, or container network policy.

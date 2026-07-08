@@ -13,12 +13,6 @@ axum                  = { workspace = true }
 axum-extra            = { features = ["cookie"], workspace = true }
 base64                = { workspace = true }
 bytes                 = { workspace = true }
-chrono                = { features = ["serde"], optional = true, workspace = true }
-chrono-tz             = { workspace = true }
-dashmap               = { workspace = true }
-futures               = { workspace = true }
-hostname              = { workspace = true }
-ipnet                 = { workspace = true }
 chelix-agents         = { workspace = true }
 chelix-auth           = { workspace = true }
 chelix-browser        = { workspace = true }
@@ -42,6 +36,12 @@ chelix-tls            = { optional = true, workspace = true }
 chelix-tools          = { workspace = true }
 chelix-vault          = { optional = true, workspace = true }
 chelix-webhooks       = { workspace = true }
+chrono                = { features = ["serde"], optional = true, workspace = true }
+chrono-tz             = { workspace = true }
+dashmap               = { workspace = true }
+futures               = { workspace = true }
+hostname              = { workspace = true }
+ipnet                 = { workspace = true }
 rand                  = { workspace = true }
 reqwest               = { workspace = true }
 rustls                = { optional = true, workspace = true }
@@ -78,31 +78,29 @@ default = [
   "slack",
   "telephony",
   "tls",
-  "trusted-network",
   "vault",
   "voice",
   "web-ui",
 ]
 discord = ["chelix-gateway/discord"]
 graphql = [
+  "chelix-gateway/graphql",
   "dep:async-graphql",
   "dep:async-graphql-axum",
   "dep:chelix-graphql",
-  "chelix-gateway/graphql",
 ]
-matrix = ["dep:chelix-matrix", "chelix-gateway/matrix"]
+matrix = ["chelix-gateway/matrix", "dep:chelix-matrix"]
 mdns = ["chelix-gateway/mdns"]
-metrics = ["dep:chelix-metrics", "chelix-gateway/metrics"]
-msteams = ["dep:chelix-msteams", "chelix-gateway/msteams"]
+metrics = ["chelix-gateway/metrics", "dep:chelix-metrics"]
+msteams = ["chelix-gateway/msteams", "dep:chelix-msteams"]
 nostr = ["chelix-gateway/nostr"]
-prometheus = ["metrics", "chelix-gateway/prometheus"]
-push-notifications = ["dep:chrono", "chelix-gateway/push-notifications"]
+prometheus = ["chelix-gateway/prometheus", "metrics"]
+push-notifications = ["chelix-gateway/push-notifications", "dep:chrono"]
 signal = ["chelix-gateway/signal"]
-slack = ["dep:chelix-slack", "chelix-gateway/slack"]
-telephony = ["dep:chelix-telephony", "chelix-gateway/telephony"]
-tls = ["dep:chelix-tls", "dep:rustls", "chelix-gateway/tls"]
-trusted-network = ["chelix-gateway/trusted-network"]
-vault = ["dep:chelix-vault", "chelix-gateway/vault"]
+slack = ["chelix-gateway/slack", "dep:chelix-slack"]
+telephony = ["chelix-gateway/telephony", "dep:chelix-telephony"]
+tls = ["chelix-gateway/tls", "dep:chelix-tls", "dep:rustls"]
+vault = ["chelix-gateway/vault", "dep:chelix-vault"]
 voice = ["chelix-gateway/voice"]
 web-ui = ["chelix-gateway/web-ui"]
 

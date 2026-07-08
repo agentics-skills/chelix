@@ -432,7 +432,7 @@ port = {port}                           # Port number (auto-generated for this i
 # workspace_sysmount = "ro"         # "ro" | "rw" (rootfs + cap-drop/no-new-privileges hardening)
 # home_persistence = "shared"       # "off" | "session" | "shared"
 # backend = "auto"                  # "auto" | "docker" | "apple-container"
-# no_network = true                 # Disable network access in sandbox
+# network = "bridge"                # Docker/Podman network passed as --network=<name>
 # image = "custom-image:tag"        # Custom Docker image (default: auto-built)
 # packages = [...]                  # Packages installed in sandbox containers
 # host_data_dir = "/host/chelix-data" # Host path for Chelix data when running Chelix inside Docker

@@ -143,10 +143,6 @@ pub async fn prepare_gateway(
         telephony_webhook_plugin,
         #[cfg(feature = "push-notifications")]
         push_service,
-        #[cfg(feature = "trusted-network")]
-            audit_buffer: audit_buffer_for_broadcast,
-        #[cfg(feature = "trusted-network")]
-        _proxy_shutdown_tx,
         sandbox_router,
         browser_for_lifecycle,
         browser_tool_for_warmup,
@@ -1406,10 +1402,6 @@ pub async fn prepare_gateway(
         method_count,
         setup_code_display,
         webauthn_registry,
-        #[cfg(feature = "trusted-network")]
-        audit_buffer_for_broadcast,
-        #[cfg(feature = "trusted-network")]
-        _proxy_shutdown_tx,
         app,
     })
     .await

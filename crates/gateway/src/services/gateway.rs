@@ -27,7 +27,6 @@ pub struct GatewayServices {
     pub provider_setup: Arc<dyn ProviderSetupService>,
     pub project: Arc<dyn ProjectService>,
     pub external_agent: Arc<dyn ExternalAgentService>,
-    pub network_audit: Arc<dyn crate::network_audit::NetworkAuditService>,
     /// Shared per-session mutation coordinator used by chat turns and history mutations.
     pub session_mutations: Arc<SessionMutationCoordinator>,
     /// Optional channel registry for direct plugin access (thread context, etc.).
@@ -163,7 +162,6 @@ impl GatewayServices {
             provider_setup: Arc::new(NoopProviderSetupService),
             project: Arc::new(NoopProjectService),
             external_agent: Arc::new(NoopExternalAgentService),
-            network_audit: Arc::new(crate::network_audit::NoopNetworkAuditService),
             session_mutations: Arc::new(SessionMutationCoordinator::default()),
             channel_registry: None,
             channel_store: None,
@@ -178,14 +176,6 @@ impl GatewayServices {
             #[cfg(feature = "telephony")]
             telephony_plugin: None,
         }
-    }
-
-    pub fn with_network_audit(
-        mut self,
-        svc: Arc<dyn crate::network_audit::NetworkAuditService>,
-    ) -> Self {
-        self.network_audit = svc;
-        self
     }
 
     pub fn with_external_agent(mut self, external_agent: Arc<dyn ExternalAgentService>) -> Self {

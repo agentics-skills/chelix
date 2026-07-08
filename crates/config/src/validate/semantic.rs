@@ -604,24 +604,6 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         });
     }
 
-    // Unknown sandbox network policy
-    if !config.tools.execute_command.sandbox.network.is_empty() {
-        let valid_network_policies = ["blocked", "trusted", "bypass"];
-        if !valid_network_policies.contains(&config.tools.execute_command.sandbox.network.as_str())
-        {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Warning,
-                category: "unknown-field",
-                path: "tools.execute_command.sandbox.network".into(),
-                message: format!(
-                    "unknown sandbox network policy \"{}\"; expected one of: {}",
-                    config.tools.execute_command.sandbox.network,
-                    valid_network_policies.join(", ")
-                ),
-            });
-        }
-    }
-
     // Sandbox GPU passthrough validation
     if let Some(ref gpus) = config.tools.execute_command.sandbox.gpus {
         let valid = gpus == "all"

@@ -161,7 +161,7 @@ workspace_sysmount = "ro"       # "ro" keeps rootfs/cap-drop hardening, "rw" rel
 home_persistence = "shared"     # "off", "session", or "shared" (default: "shared")
 # shared_home_dir = "/path/to/shared-home"  # Optional path for shared mode
 backend = "auto"                # "auto", "docker", or "apple-container"
-no_network = true
+network = "bridge"              # Docker/Podman network passed as --network=<name>
 
 # Packages installed in the sandbox image
 packages = [
@@ -483,7 +483,7 @@ workspace_sysmount = "ro"
 home_persistence = "session"
 # shared_home_dir = "/path/to/shared-home"
 backend = "auto"
-no_network = true
+network = "bridge"
 packages = ["curl", "git", "jq", "python3", "nodejs", "golang-go"]
 
 [memory]

@@ -78,10 +78,6 @@ export function handleLocationRequest(payload: LocationRequestPayload): void {
 	);
 }
 
-export function handleNetworkAuditEntry(payload: unknown): void {
-	if (S.networkAuditEventHandler) S.networkAuditEventHandler(payload);
-}
-
 export function handleAuthCredentialsChanged(payload: AuthCredentialsPayload): void {
 	if (payload?.reason === "password_changed" && window.__chelixSuppressNextPasswordChangedRedirect === true) {
 		window.__chelixSuppressNextPasswordChangedRedirect = false;

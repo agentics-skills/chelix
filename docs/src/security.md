@@ -106,12 +106,11 @@ pids_max = 256
 
 ### Network Isolation
 
-Sandbox containers have no network access by default (`no_network = true`).
-
-For tasks that need internet access, [trusted network mode](trusted-network.md)
-provides a proxy-filtered allowlist — only connections to explicitly approved
-domains are permitted. All requests (allowed and denied) are recorded in the
-network audit log for review.
+Docker and Podman sandboxes use `tools.execute_command.sandbox.network` as the
+container runtime network. The default is `bridge`, and Chelix passes the value
+to Docker/Podman as `--network=<name>`. Use runtime networks, firewall rules,
+or a dedicated network such as `none` when a sandbox must not reach external
+services.
 
 ## Channel Authorization
 

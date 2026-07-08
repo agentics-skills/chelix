@@ -14,7 +14,6 @@ export enum WsEventName {
 	BrowserImagePull = "browser.image.pull",
 	ModelsUpdated = "models.updated",
 	LocationRequest = "location.request",
-	NetworkAuditEntry = "network.audit.entry",
 	OperationProgress = "operation.progress",
 	// Additional onEvent() events
 	Tick = "tick",
@@ -261,7 +260,6 @@ export interface WsEventPayloadMap {
 	[WsEventName.BrowserImagePull]: SandboxPhasePayload;
 	[WsEventName.ModelsUpdated]: ModelsUpdatedPayload;
 	[WsEventName.LocationRequest]: LocationRequestPayload;
-	[WsEventName.NetworkAuditEntry]: Record<string, unknown>;
 	[WsEventName.OperationProgress]: OperationProgressPayload;
 	[WsEventName.Tick]: Record<string, unknown>;
 	[WsEventName.Session]: Record<string, unknown>;

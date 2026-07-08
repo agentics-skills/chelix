@@ -84,7 +84,7 @@ impl WebFetchTool {
         })
     }
 
-    /// Route HTTP traffic through a proxy (e.g. the trusted-network proxy).
+    /// Route HTTP traffic through a configured upstream proxy.
     #[must_use]
     pub fn with_proxy(mut self, url: String) -> Self {
         self.proxy_url = Some(url);

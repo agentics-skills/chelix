@@ -22,7 +22,7 @@ use crate::{
     types::{
         PromptMemoryStatus, PromptPersona, default_user_prompt_timezone, detect_host_sudo_access,
         detect_runtime_shell, memory_style_allows_prompt, normalized_iana_timezone,
-        prompt_sandbox_no_network_state, refresh_runtime_prompt_time, server_prompt_timezone,
+        refresh_runtime_prompt_time, server_prompt_timezone,
     },
 };
 
@@ -448,7 +448,7 @@ pub(crate) async fn build_prompt_runtime_context(
                 home: Some("/home/sandbox".to_string()),
                 workspace_mount: Some(workspace_mount),
                 workspace_path,
-                no_network: prompt_sandbox_no_network_state(backend_name, config.no_network),
+                network: Some(config.network.clone()),
                 session_override: session_entry.and_then(|entry| entry.sandbox_enabled),
             })
         } else {

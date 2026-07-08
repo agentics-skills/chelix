@@ -385,7 +385,8 @@ malicious sites could attempt to inject instructions.
    Use firewall rules for additional restrictions.
 
 5. **Sandbox scripts**: Browser scripts running in the command sandbox (Puppeteer,
-   Playwright) inherit sandbox network restrictions (`no_network: true` by default).
+   Playwright) inherit `tools.execute_command.sandbox.network`, which defaults
+   to the Docker/Podman `bridge` network.
 
 ## Browser Detection
 

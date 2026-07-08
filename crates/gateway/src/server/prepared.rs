@@ -26,9 +26,6 @@ pub struct PreparedGatewayCore {
     /// Push notification service.
     #[cfg(feature = "push-notifications")]
     pub push_service: Option<Arc<crate::push::PushService>>,
-    /// Network audit buffer (trusted-network proxy).
-    #[cfg(feature = "trusted-network")]
-    pub audit_buffer: Option<crate::network_audit::NetworkAuditBuffer>,
     /// Sandbox router for container backends.
     pub sandbox_router: Arc<chelix_tools::sandbox::SandboxRouter>,
     /// Browser service for lifecycle management.
@@ -55,9 +52,4 @@ pub struct PreparedGatewayCore {
     pub port: u16,
     /// Whether TLS is active for this gateway instance.
     pub tls_enabled: bool,
-    /// Shutdown sender for the trusted-network proxy.  Retained here so the
-    /// proxy task is not cancelled when `prepare_gateway` returns (dropping
-    /// the sender closes the watch channel and triggers immediate shutdown).
-    #[cfg(feature = "trusted-network")]
-    pub _proxy_shutdown_tx: Option<tokio::sync::watch::Sender<bool>>,
 }

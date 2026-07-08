@@ -14,7 +14,6 @@ import { initImages, teardownImages } from "./ImagesPage";
 import { initLogs, teardownLogs } from "./LogsPage";
 import { initMcp, teardownMcp } from "./McpPage";
 import { initMonitoring, teardownMonitoring } from "./MetricsPage";
-import { initNetworkAudit, teardownNetworkAudit } from "./NetworkAuditPage";
 import { initNodes, teardownNodes } from "./NodesPage";
 import { initProjects, teardownProjects } from "./ProjectsPage";
 import { initProviders, teardownProviders } from "./ProvidersPage";
@@ -126,12 +125,6 @@ const sections: SectionItem[] = [
 		id: "ssh",
 		label: "SSH",
 		icon: <span className="icon icon-ssh" />,
-	},
-	{
-		id: "network-audit",
-		label: "Network Audit",
-		icon: <span className="icon icon-shield-check" />,
-		page: true,
 	},
 	{
 		id: "sandboxes",
@@ -298,7 +291,6 @@ const pageSectionHandlers: Record<string, PageSectionHandler> = {
 		teardown: teardownMonitoring,
 	},
 	logs: { init: initLogs, teardown: teardownLogs },
-	"network-audit": { init: initNetworkAudit, teardown: teardownNetworkAudit },
 };
 
 /** Wrapper that mounts a page init/teardown pair into a ref div. */

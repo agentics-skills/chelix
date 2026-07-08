@@ -26,8 +26,8 @@ use super::paths::{
 };
 #[cfg(target_os = "macos")]
 use super::types::{
-    BuildImageResult, DEFAULT_SANDBOX_IMAGE, NetworkPolicy, SANDBOX_HOME_DIR, Sandbox,
-    SandboxConfig, SandboxId, canonical_sandbox_packages, tail_lines, truncate_output_for_display,
+    BuildImageResult, DEFAULT_SANDBOX_IMAGE, SANDBOX_HOME_DIR, Sandbox, SandboxConfig, SandboxId,
+    canonical_sandbox_packages, tail_lines, truncate_output_for_display,
 };
 #[cfg(target_os = "macos")]
 use crate::command::{CommandOptions, CommandOutput};
@@ -45,8 +45,6 @@ use crate::sandbox::file_system::{
 pub struct AppleContainerSandbox {
     pub config: SandboxConfig,
     name_generations: RwLock<HashMap<String, u32>>,
-    /// Cached host gateway IP for proxy routing in Trusted mode.
-    host_gateway_cache: RwLock<Option<String>>,
 }
 
 #[cfg(target_os = "macos")]
@@ -55,52 +53,7 @@ impl AppleContainerSandbox {
         Self {
             config,
             name_generations: RwLock::new(HashMap::new()),
-            host_gateway_cache: RwLock::new(None),
         }
-    }
-
-    /// Detect the host gateway IP reachable from inside the container VM.
-    /// Caches the result after the first successful probe.
-    /// Falls back to `192.168.64.1` (default macOS vmnet gateway).
-    async fn detect_host_gateway(&self, container_name: &str) -> String {
-        const FALLBACK_GATEWAY: &str = "192.168.64.1";
-
-        // Return cached value if available.
-        {
-            let cache = self.host_gateway_cache.read().await;
-            if let Some(ref gw) = *cache {
-                return gw.clone();
-            }
-        }
-
-        let probe_cmd = "ip route 2>/dev/null | grep default | head -1 | awk '{print $3}'";
-        let args = apple_container_exec_args(container_name, probe_cmd.to_string());
-        let gateway = match tokio::process::Command::new("container")
-            .args(&args)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .stdin(std::process::Stdio::null())
-            .output()
-            .await
-        {
-            Ok(output) if output.status.success() => {
-                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if stdout.is_empty() {
-                    FALLBACK_GATEWAY.to_string()
-                } else {
-                    stdout
-                }
-            },
-            _ => FALLBACK_GATEWAY.to_string(),
-        };
-
-        // Cache the result.
-        {
-            let mut cache = self.host_gateway_cache.write().await;
-            *cache = Some(gateway.clone());
-        }
-
-        gateway
     }
 
     fn image(&self) -> &str {
@@ -990,25 +943,6 @@ impl Sandbox for AppleContainerSandbox {
         // Apple Container CLI doesn't support -e flags, so prepend export
         // statements to inject env vars into the shell.
         let mut prefix = String::new();
-
-        // Inject proxy env vars so traffic routes through the trusted-network
-        // proxy running on the host.
-        if self.config.network == NetworkPolicy::Trusted {
-            let gateway = self.detect_host_gateway(&name).await;
-            let proxy_url = format!(
-                "http://{}:{}",
-                gateway,
-                chelix_network_filter::DEFAULT_PROXY_PORT
-            );
-            let escaped_proxy = proxy_url.replace('\'', "'\\''");
-            for key in ["HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"] {
-                prefix.push_str(&format!("export {key}='{escaped_proxy}'; "));
-            }
-            let no_proxy = "localhost,127.0.0.1,::1";
-            for key in ["NO_PROXY", "no_proxy"] {
-                prefix.push_str(&format!("export {key}='{no_proxy}'; "));
-            }
-        }
 
         for (k, v) in &opts.env {
             // Shell-escape the value with single quotes.

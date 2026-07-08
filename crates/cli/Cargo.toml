@@ -12,42 +12,42 @@ name = "chelix"
 path = "src/main.rs"
 
 [dependencies]
-anyhow                 = { workspace = true }
-clap                   = { workspace = true }
-dotenvy                = { workspace = true }
-chelix-agents          = { workspace = true }
-chelix-browser         = { workspace = true }
-chelix-claude-import   = { optional = true, workspace = true }
-chelix-codex-import    = { optional = true, workspace = true }
-chelix-common          = { workspace = true }
-chelix-config          = { workspace = true }
-chelix-cron            = { workspace = true }
-chelix-gateway         = { workspace = true }
-chelix-httpd           = { workspace = true }
-chelix-import-core     = { workspace = true }
-chelix-memory          = { workspace = true }
-chelix-node-host       = { workspace = true }
-chelix-oauth           = { workspace = true }
-chelix-onboarding      = { workspace = true }
-chelix-plugins         = { workspace = true }
-chelix-portable        = { workspace = true }
-chelix-projects        = { workspace = true }
-chelix-sessions        = { workspace = true }
-chelix-skills          = { workspace = true }
-chelix-tools           = { workspace = true }
-chelix-web             = { optional = true, workspace = true }
-open                   = { workspace = true }
-rand                   = { workspace = true }
-reqwest                = { workspace = true }
-secrecy                = { workspace = true }
-serde_json             = { workspace = true }
-sqlx                   = { workspace = true }
-time                   = { workspace = true }
-tokio                  = { workspace = true }
-tracing                = { workspace = true }
-tracing-subscriber     = { workspace = true }
-uuid                   = { workspace = true }
-which                  = { workspace = true }
+anyhow               = { workspace = true }
+chelix-agents        = { workspace = true }
+chelix-browser       = { workspace = true }
+chelix-claude-import = { optional = true, workspace = true }
+chelix-codex-import  = { optional = true, workspace = true }
+chelix-common        = { workspace = true }
+chelix-config        = { workspace = true }
+chelix-cron          = { workspace = true }
+chelix-gateway       = { workspace = true }
+chelix-httpd         = { workspace = true }
+chelix-import-core   = { workspace = true }
+chelix-memory        = { workspace = true }
+chelix-node-host     = { workspace = true }
+chelix-oauth         = { workspace = true }
+chelix-onboarding    = { workspace = true }
+chelix-plugins       = { workspace = true }
+chelix-portable      = { workspace = true }
+chelix-projects      = { workspace = true }
+chelix-sessions      = { workspace = true }
+chelix-skills        = { workspace = true }
+chelix-tools         = { workspace = true }
+chelix-web           = { optional = true, workspace = true }
+clap                 = { workspace = true }
+dotenvy              = { workspace = true }
+open                 = { workspace = true }
+rand                 = { workspace = true }
+reqwest              = { workspace = true }
+secrecy              = { workspace = true }
+serde_json           = { workspace = true }
+sqlx                 = { workspace = true }
+time                 = { workspace = true }
+tokio                = { workspace = true }
+tracing              = { workspace = true }
+tracing-subscriber   = { workspace = true }
+uuid                 = { workspace = true }
+which                = { workspace = true }
 
 [target.'cfg(all(not(target_os = "windows"), not(all(target_os = "linux", target_arch = "aarch64"))))'.dependencies]
 tikv-jemallocator = { optional = true, workspace = true }
@@ -56,9 +56,9 @@ tikv-jemallocator = { optional = true, workspace = true }
 tempfile = { workspace = true }
 
 [features]
-agent             = ["chelix-gateway/agent", "chelix-web?/agent"]
-caldav            = ["chelix-gateway/caldav"]
-home-assistant    = ["chelix-gateway/home-assistant"]
+agent          = ["chelix-gateway/agent", "chelix-web?/agent"]
+caldav         = ["chelix-gateway/caldav"]
+home-assistant = ["chelix-gateway/home-assistant"]
 # User-facing integrations stay default-on in the CLI crate per workspace policy,
 # even when the underlying implementation remains feature-gated in lower crates.
 #
@@ -114,7 +114,6 @@ full = [
   "telegram",
   "telephony",
   "tls",
-  "trusted-network",
   "vault",
   "voice",
   "wasm",
@@ -151,8 +150,8 @@ lang-toml          = ["chelix-memory/lang-toml"]
 lang-typescript    = ["chelix-memory/lang-typescript"]
 # jemalloc is intentionally unavailable on linux/aarch64 to avoid runtime
 # crashes on 16 KiB page kernels (e.g. Raspberry Pi OS variants).
-claude-import         = ["dep:chelix-claude-import", "chelix-gateway/claude-import"]
-codex-import          = ["dep:chelix-codex-import", "chelix-gateway/codex-import"]
+claude-import         = ["chelix-gateway/claude-import", "dep:chelix-claude-import"]
+codex-import          = ["chelix-gateway/codex-import", "dep:chelix-codex-import"]
 lightweight           = ["jemalloc", "tls", "web-ui"]
 local-embeddings      = ["chelix-gateway/local-embeddings"]
 matrix                = ["chelix-httpd/matrix"]
@@ -169,11 +168,10 @@ slack                 = ["chelix-httpd/slack"]
 telegram              = ["chelix-gateway/telegram"]
 telephony             = ["chelix-httpd/telephony"]
 tls                   = ["chelix-httpd/tls"]
-trusted-network       = ["chelix-httpd/trusted-network"]
 vault                 = ["chelix-httpd/vault", "chelix-web?/vault"]
 voice                 = ["chelix-gateway/voice", "chelix-web?/voice"]
 wasm                  = ["chelix-tools/wasm"]
-web-ui                = ["dep:chelix-web", "chelix-httpd/web-ui"]
+web-ui                = ["chelix-httpd/web-ui", "dep:chelix-web"]
 whatsapp              = ["chelix-gateway/whatsapp"]
 
 [lints]

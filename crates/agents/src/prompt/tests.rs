@@ -382,7 +382,7 @@ fn test_runtime_context_injected_when_provided() {
             home: Some("/home/sandbox".into()),
             workspace_mount: Some("ro".into()),
             workspace_path: Some("/home/chelix/.chelix".into()),
-            no_network: Some(true),
+            network: Some("bridge".into()),
             session_override: Some(true),
         }),
         nodes: None,
@@ -425,7 +425,7 @@ fn test_runtime_context_injected_when_provided() {
     assert!(prompt.contains("backend=docker"));
     assert!(prompt.contains("home=/home/sandbox"));
     assert!(prompt.contains("workspace_path=/home/chelix/.chelix"));
-    assert!(prompt.contains("network=disabled"));
+    assert!(prompt.contains("network=bridge"));
     assert!(prompt.contains("Execution routing:"));
     assert!(prompt.contains("`~` and relative paths resolve under"));
     assert!(prompt.contains("Sandbox/host routing changes are expected runtime behavior"));

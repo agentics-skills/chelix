@@ -42,15 +42,6 @@ pub struct PreparedGateway {
     /// Metadata collected during setup, used by [`start_gateway`] for the
     /// startup banner. Not relevant for bridge callers.
     pub(crate) banner: BannerMeta,
-    /// Network audit buffer for real-time streaming (present when
-    /// the `trusted-network` feature is enabled and the proxy is active).
-    #[cfg(feature = "trusted-network")]
-    pub audit_buffer: Option<chelix_gateway::network_audit::NetworkAuditBuffer>,
-    /// Keeps the trusted-network proxy alive for the server's full lifetime.
-    /// Dropping this sender closes the watch channel, which is the proxy's
-    /// shutdown signal.
-    #[cfg(feature = "trusted-network")]
-    pub _proxy_shutdown_tx: Option<tokio::sync::watch::Sender<bool>>,
 }
 
 /// Internal metadata for the startup banner printed by [`start_gateway`].

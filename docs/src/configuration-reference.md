@@ -370,9 +370,7 @@ not create chat agents, change memory, or affect `spawn_agent` presets.
 | `shared_home_dir` | optional string | `null` | Host directory for shared `/home/sandbox` persistence. Relative paths resolved against `data_dir()`. |
 | `image` | optional string | `null` | Docker/Podman image for sandbox containers. |
 | `container_prefix` | optional string | `null` | Name prefix for created containers. |
-| `no_network` | bool | `false` | Disable all network access in sandbox containers. |
-| `network` | string | `"trusted"` | Network policy: `"blocked"`, `"trusted"` (proxy-filtered), or `"bypass"` (unrestricted). |
-| `trusted_domains` | array | `[]` | Domains allowed through the proxy in `"trusted"` network mode. |
+| `network` | string | `"bridge"` | Docker/Podman network name passed as `--network=<name>`. |
 | `backend` | string | `"auto"` | Sandbox backend: `"auto"`, `"docker"`, `"podman"`, `"apple-container"`, `"restricted-host"`, or `"wasm"`. |
 | `packages` | array | *(~130 packages)* | Packages to install via `apt-get` in the sandbox image. Empty list to skip. |
 | `wasm_fuel_limit` | optional integer | `null` | Fuel limit for WASM sandbox execution (instructions). |

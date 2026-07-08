@@ -343,21 +343,27 @@ the guest `data_dir()` to the host path you provide. It is mainly an override
 for Docker-in-Docker deployments where mount auto-detection is unavailable or
 ambiguous.
 
-## Network policy
+## Container network
 
-By default, sandbox containers have no network access (`no_network = true`).
-For tasks that need filtered internet access, use
-[trusted network mode](trusted-network.md) — a proxy-based allowlist that
-lets containers reach approved domains while blocking everything else.
+Docker and Podman sandboxes use the configured container network directly.
+The default is `bridge`, and Chelix passes the value to the container runtime
+as `--network=<name>`.
 
 ```toml
 [tools.execute_command.sandbox]
-network = "trusted"
-trusted_domains = ["registry.npmjs.org", "github.com"]
+network = "bridge"
 ```
 
-See [Trusted Network](trusted-network.md) for full configuration and the
-network audit log.
+Use any runtime network name accepted by Docker or Podman, for example a
+custom network created outside Chelix:
+
+```toml
+[tools.execute_command.sandbox]
+network = "chelix-sandbox-net"
+```
+
+Runtime-provided values such as `none` or `host` are passed through unchanged;
+Chelix no longer has sandbox-specific network policy modes.
 
 > **Note**: Home persistence applies to Docker, Apple Container, and WASM
 > backends. The restricted-host backend uses `HOME=/tmp` and does not mount

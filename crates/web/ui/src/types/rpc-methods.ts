@@ -110,9 +110,6 @@ export interface RpcMethodMap {
 	"models.list_all": ModelInfo[];
 	"models.test": unknown;
 
-	// ── Network ─────────────────────────────────────────────────
-	"network.audit.list": unknown;
-
 	// ── Nodes ───────────────────────────────────────────────────
 	"node.list": unknown;
 	"node.pair.approve": unknown;

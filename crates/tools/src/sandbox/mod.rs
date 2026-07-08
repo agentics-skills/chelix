@@ -39,8 +39,7 @@ pub use {
     platform::{RestrictedHostSandbox, is_wasm_sandbox_available},
     router::{FailoverSandbox, SandboxEvent, SandboxRouter, auto_detect_backend, create_sandbox},
     types::{
-        BuildImageResult, DEFAULT_SANDBOX_IMAGE, HomePersistence, NetworkPolicy, ResourceLimits,
-        Sandbox, SandboxBackendId, SandboxConfig, SandboxId, SandboxMode, SandboxScope,
-        WorkspaceMount,
+        BuildImageResult, DEFAULT_SANDBOX_IMAGE, HomePersistence, ResourceLimits, Sandbox,
+        SandboxBackendId, SandboxConfig, SandboxId, SandboxMode, SandboxScope, WorkspaceMount,
     },
 };

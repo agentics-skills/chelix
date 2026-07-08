@@ -1191,10 +1191,6 @@
   -webkit-mask-image: url("../icons/masks/mask-882cc0c8c4c9754a.svg");
   mask-image: url("../icons/masks/mask-882cc0c8c4c9754a.svg");
 }
-.settings-nav-item[data-section="network-audit"]::before {
-  -webkit-mask-image: url("../icons/masks/mask-720e8b5830af4f7f.svg");
-  mask-image: url("../icons/masks/mask-720e8b5830af4f7f.svg");
-}
 .settings-nav-item[data-section="sandboxes"]::before {
   -webkit-mask-image: url("../icons/masks/mask-6da716ec55cb2796.svg");
   mask-image: url("../icons/masks/mask-6da716ec55cb2796.svg");

@@ -199,14 +199,14 @@ fn test_sandbox_config_serde() {
         "scope": "session",
         "workspace_mount": "rw",
         "workspace_sysmount": "rw",
-        "no_network": true,
+        "network": "custom-net",
         "resource_limits": {"memory_limit": "1G"}
     }"#;
     let config: SandboxConfig = serde_json::from_str(json).unwrap();
     assert_eq!(config.mode, SandboxMode::All);
     assert_eq!(config.workspace_mount, WorkspaceMount::Rw);
     assert_eq!(config.workspace_sysmount, WorkspaceSysmount::Rw);
-    assert!(config.no_network);
+    assert_eq!(config.network, "custom-net");
     assert_eq!(config.resource_limits.memory_limit.as_deref(), Some("1G"));
 }
 

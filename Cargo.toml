@@ -32,7 +32,6 @@ default-members = [
   "crates/memory",
   "crates/metrics",
   "crates/msteams",
-  "crates/network-filter",
   "crates/node-host",
   "crates/nostr",
   "crates/oauth",
@@ -158,8 +157,8 @@ version      = "0.1.0"
 # APNS
 a2 = { default-features = false, features = ["ring"], version = "0.10" }
 # Async runtime
-tokio = { features = ["full"], version = "1" }
 agent-client-protocol = "0.10.2"
+tokio                 = { features = ["full"], version = "1" }
 # HTTP/WS server
 askama     = "0.15"
 axum       = { features = ["ws"], version = "0.8" }
@@ -370,7 +369,6 @@ chelix-media            = { path = "crates/media" }
 chelix-memory           = { path = "crates/memory" }
 chelix-metrics          = { path = "crates/metrics" }
 chelix-msteams          = { path = "crates/msteams" }
-chelix-network-filter   = { default-features = false, path = "crates/network-filter" }
 chelix-node-host        = { path = "crates/node-host" }
 chelix-nostr            = { path = "crates/nostr" }
 chelix-oauth            = { path = "crates/oauth" }

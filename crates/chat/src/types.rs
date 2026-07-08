@@ -1296,19 +1296,6 @@ pub(crate) fn validate_agent_memory_target_for_mode(
     }
 }
 
-pub(crate) fn prompt_sandbox_no_network_state(
-    backend: &str,
-    configured_no_network: bool,
-) -> Option<bool> {
-    match backend {
-        // Docker supports `--network=none`, so this value is reliable.
-        "docker" => Some(configured_no_network),
-        // Apple Container currently has no equivalent runtime toggle, and
-        // failover wrappers may switch backends dynamically.
-        _ => None,
-    }
-}
-
 /// Normalize a model lookup key by stripping non-alphanumeric characters and
 /// lowercasing.
 pub(crate) fn normalize_model_lookup_key(value: &str) -> String {

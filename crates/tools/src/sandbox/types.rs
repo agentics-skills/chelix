@@ -197,8 +197,6 @@ pub struct ResourceLimits {
     pub pids_max: Option<u32>,
 }
 
-pub use chelix_network_filter::NetworkPolicy;
-
 /// Configuration for sandbox behavior.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -218,11 +216,8 @@ pub struct SandboxConfig {
     pub shared_home_dir: Option<PathBuf>,
     pub image: Option<String>,
     pub container_prefix: Option<String>,
-    pub no_network: bool,
-    /// Network policy: `Blocked` (no network), `Trusted` (proxy-filtered), `Open` (unrestricted).
-    pub network: NetworkPolicy,
-    /// Domains allowed through the proxy in `Trusted` mode.
-    pub trusted_domains: Vec<String>,
+    /// Docker/Podman network name passed to `--network=<name>`.
+    pub network: String,
     /// Backend: `"auto"` (default), `"docker"`, `"podman"`, `"apple-container"`,
     /// `"restricted-host"`, or `"wasm"`.
     /// `"auto"` prefers Apple Container on macOS, then Podman, then Docker, then restricted-host.
@@ -255,9 +250,7 @@ impl Default for SandboxConfig {
             shared_home_dir: None,
             image: None,
             container_prefix: None,
-            no_network: false,
-            network: NetworkPolicy::default(),
-            trusted_domains: Vec::new(),
+            network: "bridge".into(),
             backend: "auto".into(),
             resource_limits: ResourceLimits::default(),
             gpus: None,
@@ -307,17 +300,7 @@ impl From<&chelix_config::schema::SandboxConfig> for SandboxConfig {
                 .map(PathBuf::from),
             image: cfg.image.clone(),
             container_prefix: cfg.container_prefix.clone(),
-            no_network: cfg.no_network,
-            network: match cfg.network.as_str() {
-                "trusted" => NetworkPolicy::Trusted,
-                "bypass" => NetworkPolicy::Bypass,
-                // Explicit "blocked" always means Blocked.
-                "blocked" => NetworkPolicy::Blocked,
-                // Empty/unset: fall back to legacy `no_network` flag.
-                _ if cfg.no_network => NetworkPolicy::Blocked,
-                _ => NetworkPolicy::Trusted,
-            },
-            trusted_domains: cfg.trusted_domains.clone(),
+            network: normalize_container_network(&cfg.network),
             backend: cfg.backend.clone(),
             resource_limits: ResourceLimits {
                 memory_limit: cfg.resource_limits.memory_limit.clone(),
@@ -331,6 +314,15 @@ impl From<&chelix_config::schema::SandboxConfig> for SandboxConfig {
             wasm_epoch_interval_ms: cfg.wasm_epoch_interval_ms,
             wasm_tool_limits: cfg.wasm_tool_limits.as_ref().map(WasmToolLimits::from),
         }
+    }
+}
+
+fn normalize_container_network(network: &str) -> String {
+    let trimmed = network.trim();
+    if trimmed.is_empty() {
+        "bridge".to_string()
+    } else {
+        trimmed.to_string()
     }
 }
 

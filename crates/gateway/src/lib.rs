@@ -34,7 +34,6 @@ pub mod mcp_service;
 pub mod mdns;
 pub mod message_log_store;
 pub mod methods;
-pub mod network_audit;
 pub mod node_command;
 pub mod nodes;
 pub mod onboarding;

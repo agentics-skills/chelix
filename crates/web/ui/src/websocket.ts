@@ -31,7 +31,6 @@ import {
 	handleLocationRequest,
 	handleLogEntry,
 	handleModelsUpdated,
-	handleNetworkAuditEntry,
 	handleWsError,
 } from "./ws/system-handlers";
 
@@ -65,7 +64,6 @@ const eventHandlers: Record<string, (payload: Record<string, unknown>, streamMet
 	"browser.image.pull": handleBrowserImagePull as (payload: Record<string, unknown>) => void,
 	"models.updated": handleModelsUpdated as (payload: Record<string, unknown>) => void,
 	"location.request": handleLocationRequest as (payload: Record<string, unknown>) => void,
-	"network.audit.entry": handleNetworkAuditEntry as (payload: Record<string, unknown>) => void,
 	"operation.progress": handleOperationProgress as (payload: Record<string, unknown>) => void,
 };
 

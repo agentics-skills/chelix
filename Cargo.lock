@@ -1941,7 +1941,6 @@ dependencies = [
  "chelix-memory",
  "chelix-metrics",
  "chelix-msteams",
- "chelix-network-filter",
  "chelix-nostr",
  "chelix-oauth",
  "chelix-onboarding",
@@ -2275,22 +2274,6 @@ dependencies = [
  "tracing",
  "url",
  "urlencoding",
-]
-
-[[package]]
-name = "chelix-network-filter"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chelix-metrics",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -2770,7 +2753,6 @@ dependencies = [
  "chelix-cron",
  "chelix-media",
  "chelix-metrics",
- "chelix-network-filter",
  "chelix-providers",
  "chelix-service-traits",
  "chelix-sessions",

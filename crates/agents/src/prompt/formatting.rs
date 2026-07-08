@@ -241,16 +241,9 @@ pub(crate) fn format_sandbox_runtime_line(sandbox: &PromptSandboxRuntimeContext)
         ("home", sandbox.home.as_deref()),
         ("workspace_mount", sandbox.workspace_mount.as_deref()),
         ("workspace_path", sandbox.workspace_path.as_deref()),
+        ("network", sandbox.network.as_deref()),
     ] {
         push_non_empty_runtime_field(&mut parts, key, value);
-    }
-    if let Some(no_network) = sandbox.no_network {
-        let network_state = if no_network {
-            "disabled"
-        } else {
-            "enabled"
-        };
-        parts.push(format!("network={network_state}"));
     }
     if let Some(session_override) = sandbox.session_override {
         parts.push(format!("session_override={session_override}"));

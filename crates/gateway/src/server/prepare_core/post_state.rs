@@ -101,10 +101,6 @@ pub(super) struct PostStateInputs {
     pub telephony_webhook_plugin: Arc<tokio::sync::RwLock<chelix_telephony::TelephonyPlugin>>,
     #[cfg(feature = "vault")]
     pub vault: Option<Arc<chelix_vault::Vault>>,
-    #[cfg(feature = "trusted-network")]
-    pub audit_buffer: Option<crate::network_audit::NetworkAuditBuffer>,
-    #[cfg(feature = "trusted-network")]
-    pub proxy_shutdown_tx: Option<tokio::sync::watch::Sender<bool>>,
 }
 
 async fn build_webauthn_registry(
@@ -275,10 +271,6 @@ pub(super) async fn complete_startup(
         telephony_webhook_plugin,
         #[cfg(feature = "vault")]
         vault,
-        #[cfg(feature = "trusted-network")]
-        audit_buffer,
-        #[cfg(feature = "trusted-network")]
-        proxy_shutdown_tx,
         code_index,
         #[cfg(any(feature = "qmd", feature = "code-index-builtin"))]
         project_store,
@@ -587,29 +579,13 @@ pub(super) async fn complete_startup(
     {
         let broadcaster: Arc<dyn chelix_tools::approval::ApprovalBroadcaster> =
             Arc::new(GatewayApprovalBroadcaster::new(Arc::clone(&state)));
-        // Build gateway URL for sandbox-to-gateway communication.
-        // Only inject when the sandbox network policy allows host access
-        // (Trusted or Bypass). With NetworkPolicy::Blocked the container
-        // has --network=none and host.docker.internal won't resolve.
-        let sandbox_network_allows_host = !matches!(
-            sandbox_router.config().network,
-            chelix_tools::sandbox::NetworkPolicy::Blocked
-        );
-        let sandbox_gateway_url = if sandbox_network_allows_host {
-            let scheme = if tls_enabled_for_gateway {
-                "https"
-            } else {
-                "http"
-            };
-            Some(format!("{scheme}://host.docker.internal:{port}"))
+        let scheme = if tls_enabled_for_gateway {
+            "https"
         } else {
-            None
+            "http"
         };
-        let sandbox_api_key = if sandbox_network_allows_host {
-            ensure_sandbox_api_key(&credential_store).await
-        } else {
-            None
-        };
+        let sandbox_gateway_url = Some(format!("{scheme}://host.docker.internal:{port}"));
+        let sandbox_api_key = ensure_sandbox_api_key(&credential_store).await;
 
         let env_provider: Arc<dyn chelix_tools::command::EnvVarProvider> =
             Arc::new(CredentialEnvVarProvider {
@@ -1263,8 +1239,6 @@ pub(super) async fn complete_startup(
         telephony_webhook_plugin,
         #[cfg(feature = "push-notifications")]
         push_service,
-        #[cfg(feature = "trusted-network")]
-        audit_buffer,
         sandbox_router,
         browser_for_lifecycle,
         cron_service,
@@ -1277,7 +1251,5 @@ pub(super) async fn complete_startup(
         port,
         tls_enabled: tls_enabled_for_gateway,
         browser_tool_for_warmup: None,
-        #[cfg(feature = "trusted-network")]
-        _proxy_shutdown_tx: proxy_shutdown_tx,
     })
 }

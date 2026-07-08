@@ -66,7 +66,7 @@ Current Rust workspace: ~270K LoC across 59 crates. The table below groups the m
 | Extensibility | `chelix-mcp`, `chelix-mcp-agent-bridge`, `chelix-skills`, `chelix-plugins` | 11.5K |
 | Memory and context | `chelix-memory`, `chelix-qmd`, `chelix-code-index`, `chelix-projects` | 11.7K |
 | Voice and browser | `chelix-voice`, `chelix-browser` | 9.2K |
-| Auth and security | `chelix-auth`, `chelix-oauth`, `chelix-vault`, `chelix-secret-store`, `chelix-network-filter`, `chelix-tls` | 8.5K |
+| Auth and security | `chelix-auth`, `chelix-oauth`, `chelix-vault`, `chelix-secret-store`, `chelix-tls` | 8.5K |
 | Scheduling and automation | `chelix-cron`, `chelix-caldav`, `chelix-auto-reply` | 4.7K |
 | Setup and import | `chelix-provider-setup`, `chelix-onboarding` | 11.7K |
 | Native and node hosts | `chelix-node-host`, `chelix-courier` | 5.7K |

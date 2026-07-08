@@ -28,6 +28,17 @@ anyhow                = { workspace = true }
 async-trait           = { workspace = true }
 base64                = { workspace = true }
 bytes                 = { workspace = true }
+chelix-agents         = { workspace = true }
+chelix-browser        = { workspace = true }
+chelix-common         = { workspace = true }
+chelix-config         = { workspace = true }
+chelix-cron           = { workspace = true }
+chelix-media          = { workspace = true }
+chelix-metrics        = { optional = true, workspace = true }
+chelix-providers      = { workspace = true }
+chelix-service-traits = { workspace = true }
+chelix-sessions       = { workspace = true }
+chelix-skills         = { workspace = true }
 flate2                = { workspace = true }
 futures               = { workspace = true }
 globset               = { optional = true, workspace = true }
@@ -38,18 +49,6 @@ html2text             = { workspace = true }
 ignore                = { optional = true, workspace = true }
 image                 = { workspace = true }
 ipnet                 = { workspace = true }
-chelix-agents         = { workspace = true }
-chelix-browser        = { workspace = true }
-chelix-common         = { workspace = true }
-chelix-config         = { workspace = true }
-chelix-cron           = { workspace = true }
-chelix-media          = { workspace = true }
-chelix-metrics        = { optional = true, workspace = true }
-chelix-network-filter = { workspace = true }
-chelix-providers      = { workspace = true }
-chelix-service-traits = { workspace = true }
-chelix-sessions       = { workspace = true }
-chelix-skills         = { workspace = true }
 pdf-extract           = { optional = true, workspace = true }
 regex                 = { workspace = true }
 reqwest               = { features = ["blocking"], workspace = true }

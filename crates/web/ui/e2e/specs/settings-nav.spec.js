@@ -24,7 +24,7 @@ test.describe("Settings navigation", () => {
 		await expect(page.getByRole("heading", { name: "User Profile", exact: true })).toBeVisible();
 	});
 
-	test("settings nav keeps distinct icons for nodes, remote access, network audit, and mcp", async ({ page }) => {
+	test("settings nav keeps distinct icons for nodes, remote access, tools, and mcp", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await navigateAndWait(page, "/settings/profile");
 		await expect(page.locator(".settings-sidebar-nav")).toBeVisible();
@@ -52,7 +52,6 @@ test.describe("Settings navigation", () => {
 				nodes: readRuleMask('.settings-nav-item[data-section="nodes"]::before'),
 				ssh: readRuleMask('.settings-nav-item[data-section="ssh"]::before'),
 				tools: readRuleMask('.settings-nav-item[data-section="tools"]::before'),
-				networkAudit: readRuleMask('.settings-nav-item[data-section="network-audit"]::before'),
 				mcp: readRuleMask('.settings-nav-item[data-section="mcp"]::before'),
 			};
 		});
@@ -67,7 +66,6 @@ test.describe("Settings navigation", () => {
 		}
 		expect(hasMask(masks.ssh)).toBeTruthy();
 		expect(hasMask(masks.tools)).toBeTruthy();
-		expect(hasMask(masks.networkAudit)).toBeTruthy();
 		expect(hasMask(masks.mcp)).toBeTruthy();
 
 		expect(pageErrors).toEqual([]);
@@ -82,7 +80,6 @@ test.describe("Settings navigation", () => {
 		{ id: "phone", heading: "Phone" },
 		{ id: "security", heading: "Security" },
 		{ id: "ssh", heading: "SSH" },
-		{ id: "network-audit", heading: "Network Audit" },
 		{ id: "notifications", heading: "Notifications" },
 		{ id: "providers", heading: "LLMs" },
 		{ id: "tools", heading: "Tools" },

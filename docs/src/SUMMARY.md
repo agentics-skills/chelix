@@ -27,7 +27,6 @@
   - [Memory Surfaces](memory-surfaces.md)
 - [Hooks](hooks.md)
 - [Sandbox](sandbox.md)
-  - [Trusted Network](trusted-network.md)
 - [Voice](voice.md)
 - [Channels](channels.md)
   - [Telegram](telegram.md)

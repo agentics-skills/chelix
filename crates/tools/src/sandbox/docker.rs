@@ -22,9 +22,9 @@ use {
             resolve_home_persistence_guest_path_on_host, resolve_workspace_guest_path_on_host,
         },
         types::{
-            BuildImageResult, DEFAULT_SANDBOX_IMAGE, NetworkPolicy, SANDBOX_HOME_DIR, Sandbox,
-            SandboxConfig, SandboxId, WorkspaceMount, WorkspaceSysmount,
-            canonical_sandbox_packages, tail_lines, truncate_output_for_display,
+            BuildImageResult, DEFAULT_SANDBOX_IMAGE, SANDBOX_HOME_DIR, Sandbox, SandboxConfig,
+            SandboxId, WorkspaceMount, WorkspaceSysmount, canonical_sandbox_packages, tail_lines,
+            truncate_output_for_display,
         },
     },
     crate::{
@@ -39,7 +39,7 @@ use {
 };
 
 /// Distinguishes Docker from Podman for behaviour that differs between the two
-/// OCI runtimes (hardening flags, host-gateway resolution, etc.).
+/// OCI runtimes (hardening flags, platform defaults, etc.).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BackendKind {
     Docker,
@@ -179,65 +179,7 @@ impl DockerSandbox {
     }
 
     pub(crate) fn network_run_args(&self) -> Vec<String> {
-        match self.config.network {
-            NetworkPolicy::Blocked => vec!["--network=none".to_string()],
-            NetworkPolicy::Trusted => {
-                // Ensure the container can reach the host proxy on all
-                // platforms (Linux needs --add-host; macOS Docker Desktop
-                // resolves host.docker.internal automatically).
-                let gateway = self.resolve_host_gateway();
-                vec![format!("--add-host=host.docker.internal:{gateway}")]
-            },
-            NetworkPolicy::Bypass => Vec::new(),
-        }
-    }
-
-    /// Resolve the IP that containers use to reach the host.
-    ///
-    /// Docker (and Podman >= 5.0) support the special `host-gateway` token in
-    /// `--add-host`.  Older Podman versions reject it with:
-    ///
-    ///   Error: invalid IP address in add-host: "host-gateway"
-    ///
-    /// For those we resolve the address ourselves: rootless Podman (< 5.0) uses
-    /// slirp4netns by default, which maps the host to `10.0.2.2`.  Rootful
-    /// Podman uses a bridge whose gateway we can query via
-    /// `podman network inspect`.
-    pub(crate) fn resolve_host_gateway(&self) -> String {
-        if self.kind != BackendKind::Podman {
-            return "host-gateway".to_string();
-        }
-
-        if podman_supports_host_gateway() {
-            return "host-gateway".to_string();
-        }
-
-        // Podman < 5.0 — resolve the address manually.
-        podman_resolve_host_ip().unwrap_or_else(|| {
-            debug!(
-                "could not resolve host gateway IP for podman; \
-                 falling back to host-gateway (may fail)"
-            );
-            "host-gateway".to_string()
-        })
-    }
-
-    pub(crate) fn proxy_command_env_args(&self) -> Vec<String> {
-        if self.config.network != NetworkPolicy::Trusted {
-            return Vec::new();
-        }
-        let proxy_url = format!(
-            "http://host.docker.internal:{}",
-            chelix_network_filter::DEFAULT_PROXY_PORT
-        );
-        let mut args = Vec::new();
-        for key in ["HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"] {
-            args.extend(["-e".to_string(), format!("{key}={proxy_url}")]);
-        }
-        for key in ["NO_PROXY", "no_proxy"] {
-            args.extend(["-e".to_string(), format!("{key}=localhost,127.0.0.1,::1")]);
-        }
-        args
+        vec![format!("--network={}", self.config.network)]
     }
 
     /// Security hardening flags for `docker run`.
@@ -710,10 +652,6 @@ impl Sandbox for DockerSandbox {
             args.extend(["-w".to_string(), dir.display().to_string()]);
         }
 
-        // Inject proxy env vars so traffic routes through the trusted-network
-        // proxy running on the host.
-        args.extend(self.proxy_command_env_args());
-
         for (k, v) in &opts.env {
             args.extend(["-e".to_string(), format!("{}={}", k, v)]);
         }
@@ -967,59 +905,4 @@ pub(crate) fn sysfs_paths_to_mask_from(sysfs_root: &str) -> Vec<&'static str> {
             root.join(rel).exists()
         })
         .collect()
-}
-
-/// Return `true` when the installed Podman version supports `host-gateway`
-/// in `--add-host` (added in Podman 5.0).
-pub(crate) fn podman_supports_host_gateway() -> bool {
-    let Ok(output) = std::process::Command::new("podman")
-        .args(["version", "--format", "{{.Client.Version}}"])
-        .output()
-    else {
-        return false;
-    };
-    let version_str = String::from_utf8_lossy(&output.stdout);
-    let major: u32 = version_str
-        .trim()
-        .split('.')
-        .next()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
-    major >= 5
-}
-
-/// Resolve the host IP that a Podman container (< 5.0) can use to reach the
-/// host.  Rootless Podman defaults to slirp4netns where the host is always
-/// `10.0.2.2`.  Rootful Podman uses a bridge network whose gateway we query
-/// with `podman network inspect`.
-pub(crate) fn podman_resolve_host_ip() -> Option<String> {
-    let rootless = std::process::Command::new("podman")
-        .args(["info", "--format", "{{.Host.Security.Rootless}}"])
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
-
-    if rootless.as_deref() == Some("true") {
-        // slirp4netns (default rootless network before Podman 5.0) maps the
-        // host to 10.0.2.2.
-        return Some("10.0.2.2".to_string());
-    }
-
-    // Rootful — ask for the gateway of the default "podman" network.
-    let output = std::process::Command::new("podman")
-        .args([
-            "network",
-            "inspect",
-            "podman",
-            "--format",
-            "{{(index .Subnets 0).Gateway}}",
-        ])
-        .output()
-        .ok()?;
-    let gateway = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if gateway.is_empty() {
-        None
-    } else {
-        Some(gateway)
-    }
 }

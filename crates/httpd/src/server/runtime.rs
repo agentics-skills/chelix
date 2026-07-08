@@ -17,10 +17,6 @@ pub(super) struct FinalizeGatewayArgs<'a> {
     pub method_count: usize,
     pub setup_code_display: Option<String>,
     pub webauthn_registry: Option<SharedWebAuthnRegistry>,
-    #[cfg(feature = "trusted-network")]
-    pub audit_buffer_for_broadcast: Option<chelix_gateway::network_audit::NetworkAuditBuffer>,
-    #[cfg(feature = "trusted-network")]
-    pub _proxy_shutdown_tx: Option<tokio::sync::watch::Sender<bool>>,
     pub app: Router,
 }
 #[cfg(feature = "mdns")]
@@ -81,10 +77,6 @@ pub(super) async fn finalize_prepared_gateway(
         method_count,
         setup_code_display,
         webauthn_registry,
-        #[cfg(feature = "trusted-network")]
-        audit_buffer_for_broadcast,
-        #[cfg(feature = "trusted-network")]
-        _proxy_shutdown_tx,
         app,
     } = args;
     #[cfg(not(feature = "tls"))]
@@ -624,35 +616,6 @@ pub(super) async fn finalize_prepared_gateway(
         });
     }
 
-    // Spawn network audit broadcast task: forwards audit entries to WS clients.
-    #[cfg(feature = "trusted-network")]
-    if let Some(ref audit_buf) = audit_buffer_for_broadcast {
-        let audit_state = Arc::clone(&state);
-        let mut audit_rx = audit_buf.subscribe();
-        tokio::spawn(async move {
-            loop {
-                match audit_rx.recv().await {
-                    Ok(entry) => {
-                        if let Ok(payload) = serde_json::to_value(&entry) {
-                            broadcast(
-                                &audit_state,
-                                "network.audit.entry",
-                                payload,
-                                BroadcastOpts {
-                                    drop_if_slow: true,
-                                    ..Default::default()
-                                },
-                            )
-                            .await;
-                        }
-                    },
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                    Err(_) => break,
-                }
-            }
-        });
-    }
-
     // Spawn log broadcast task: forwards captured tracing events to WS clients.
     if let Some(buf) = log_buffer {
         let log_state = Arc::clone(&state);
@@ -815,10 +778,6 @@ pub(super) async fn finalize_prepared_gateway(
             browser_tool_for_warmup,
             config,
         },
-        #[cfg(feature = "trusted-network")]
-        audit_buffer: audit_buffer_for_broadcast,
-        #[cfg(feature = "trusted-network")]
-        _proxy_shutdown_tx,
     })
 }
 

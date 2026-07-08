@@ -901,73 +901,7 @@ pub async fn prepare_gateway_core(
     }
     chelix_providers::init_shared_http_client(upstream_proxy);
 
-    // ── Trusted-network proxy + audit ────────────────────────────────────
-    #[cfg(feature = "trusted-network")]
-    let audit_buffer_for_broadcast: Option<crate::network_audit::NetworkAuditBuffer>;
-    #[cfg(feature = "trusted-network")]
-    let proxy_shutdown_tx: Option<tokio::sync::watch::Sender<bool>>;
-    #[cfg(feature = "trusted-network")]
-    {
-        use std::net::SocketAddr;
-        let (audit_tx, audit_rx) =
-            tokio::sync::mpsc::channel::<chelix_network_filter::NetworkAuditEntry>(1024);
-
-        info!(
-            network_policy = ?sandbox_config.network,
-            trusted_domains = ?sandbox_config.trusted_domains,
-            "trusted-network: evaluating network policy"
-        );
-
-        if sandbox_config.network == chelix_network_filter::NetworkPolicy::Trusted {
-            let domain_mgr = Arc::new(
-                chelix_network_filter::domain_approval::DomainApprovalManager::new(
-                    &sandbox_config.trusted_domains,
-                    std::time::Duration::from_secs(30),
-                ),
-            );
-            let proxy_addr: SocketAddr =
-                ([0, 0, 0, 0], chelix_network_filter::DEFAULT_PROXY_PORT).into();
-            let proxy = chelix_network_filter::proxy::NetworkProxyServer::new(
-                proxy_addr,
-                Arc::clone(&domain_mgr),
-                Some(audit_tx.clone()),
-            );
-            let (shutdown_tx, proxy_shutdown_rx) = tokio::sync::watch::channel(false);
-            tokio::spawn(async move {
-                if let Err(e) = proxy.run(proxy_shutdown_rx).await {
-                    tracing::warn!("network proxy exited: {e}");
-                }
-            });
-            let url = format!(
-                "http://127.0.0.1:{}",
-                chelix_network_filter::DEFAULT_PROXY_PORT
-            );
-            info!(
-                proxy_url = %url,
-                "trusted-network proxy started, routing all HTTP tools through proxy"
-            );
-            chelix_tools::init_shared_http_client(Some(&url));
-            proxy_shutdown_tx = Some(shutdown_tx);
-        } else {
-            info!(
-                network_policy = ?sandbox_config.network,
-                "trusted-network proxy not started (policy is not Trusted)"
-            );
-            chelix_tools::init_shared_http_client(upstream_proxy);
-            proxy_shutdown_tx = None;
-        }
-
-        let audit_log_path = data_dir.join("network-audit.jsonl");
-        let audit_service =
-            crate::network_audit::LiveNetworkAuditService::new(audit_rx, audit_log_path, 2048);
-        audit_buffer_for_broadcast = Some(audit_service.buffer().clone());
-        services = services.with_network_audit(Arc::new(audit_service));
-    }
-
-    #[cfg(not(feature = "trusted-network"))]
-    {
-        chelix_tools::init_shared_http_client(upstream_proxy);
-    }
+    chelix_tools::init_shared_http_client(upstream_proxy);
 
     // Spawn background sandbox tasks (image pre-build, host provisioning, container GC).
     sandbox::spawn_sandbox_background_tasks(&sandbox_router, &deferred_state);
@@ -1257,10 +1191,6 @@ pub async fn prepare_gateway_core(
         telephony_webhook_plugin,
         #[cfg(feature = "vault")]
         vault,
-        #[cfg(feature = "trusted-network")]
-        audit_buffer: audit_buffer_for_broadcast,
-        #[cfg(feature = "trusted-network")]
-        proxy_shutdown_tx,
         code_index,
         #[cfg(any(feature = "qmd", feature = "code-index-builtin"))]
         project_store: Arc::clone(&project_store),

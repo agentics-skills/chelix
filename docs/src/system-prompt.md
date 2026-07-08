@@ -121,7 +121,7 @@ Injected as compact key=value lines under a `## Runtime` heading:
 
 ```
 Host: host=chelix-devbox | os=macos | arch=aarch64 | shell=zsh | time=2026-02-17 16:18:00 CET | today=2026-02-17 | provider=openai | model=gpt-5 | session=main | sudo_non_interactive=true | timezone=Europe/Paris
-Sandbox(execute_command): enabled=true | mode=all | backend=docker | scope=session | image=chelix-sandbox:abc123 | workspace_mount=ro | network=disabled
+Sandbox(execute_command): enabled=true | mode=all | backend=docker | scope=session | image=chelix-sandbox:abc123 | workspace_mount=ro | network=bridge
 ```
 
 For channel-bound sessions, the host line also includes surface metadata so the

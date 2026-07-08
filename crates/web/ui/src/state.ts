@@ -102,9 +102,6 @@ export let sandboxInfo: unknown | null = null;
 
 // Logs
 export let logsEventHandler: ((payload?: unknown) => void) | null = null;
-
-// Network audit
-export let networkAuditEventHandler: ((payload?: unknown) => void) | null = null;
 export let unseenErrors = 0;
 export let unseenWarns = 0;
 
@@ -315,9 +312,6 @@ export function setChannelEventUnsub(v: (() => void) | null): void {
 }
 export function setLogsEventHandler(v: ((payload?: unknown) => void) | null): void {
 	logsEventHandler = v;
-}
-export function setNetworkAuditEventHandler(v: ((payload?: unknown) => void) | null): void {
-	networkAuditEventHandler = v;
 }
 export function setUnseenErrors(v: number): void {
 	unseenErrors = v;

@@ -121,7 +121,6 @@ export function setSessionSwitchInProgress(v) { state().setSessionSwitchInProgre
 export function setChatBatchLoading(v) { state().setChatBatchLoading?.(v); }
 export function setHostCommandIsRoot(v) { state().setHostCommandIsRoot?.(v); }
 export function setLogsEventHandler(v) { state().setLogsEventHandler?.(v); }
-export function setNetworkAuditEventHandler(v) { state().setNetworkAuditEventHandler?.(v); }
 export function setUnseenErrors(v) { state().setUnseenErrors?.(v); }
 export function setUnseenWarns(v) { state().setUnseenWarns?.(v); }
 export function setReconnectDelay(v) { state().setReconnectDelay?.(v); }
