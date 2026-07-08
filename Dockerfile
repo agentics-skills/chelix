@@ -123,8 +123,7 @@ RUN mkdir -p /home/chelix/.config/chelix /home/chelix/.chelix /home/chelix/.npm 
 # Volume mount points for persistence and container runtime
 VOLUME ["/home/chelix/.config/chelix", "/home/chelix/.chelix", "/home/chelix/.npm", "/var/run/docker.sock"]
 
-USER chelix
-WORKDIR /home/chelix
+USER root
 
 # Expose gateway port (HTTPS), HTTP port for CA certificate download (gateway port + 1),
 # and OAuth callback port (used by providers with pre-registered redirect URIs).
