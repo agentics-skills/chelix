@@ -4,8 +4,8 @@ use {
         model::{ContentPart, UserContent},
         prompt::{
             formatting::{
-                append_truncated_text_block, format_compact_tool_schema, format_host_runtime_line,
-                format_chelix_runtime_line, format_nodes_runtime_section,
+                append_truncated_text_block, format_chelix_runtime_line,
+                format_compact_tool_schema, format_host_runtime_line, format_nodes_runtime_section,
                 format_sandbox_runtime_line, tool_call_guidance, truncate_prompt_text,
             },
             types::{

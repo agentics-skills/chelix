@@ -11,8 +11,8 @@ use std::io::Cursor;
 use {
     async_trait::async_trait,
     base64::{Engine as _, engine::general_purpose::STANDARD as BASE64},
-    image::{ImageFormat, RgbaImage, imageops},
     chelix_agents::tool_registry::AgentTool,
+    image::{ImageFormat, RgbaImage, imageops},
     serde::Deserialize,
     tracing::{debug, warn},
 };

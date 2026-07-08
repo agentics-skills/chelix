@@ -8,9 +8,9 @@
 use std::collections::HashSet;
 
 use {
-    futures::StreamExt,
     chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent, ToolCall},
     chelix_providers::openai::OpenAiProvider,
+    futures::StreamExt,
     secrecy::{ExposeSecret, Secret},
 };
 

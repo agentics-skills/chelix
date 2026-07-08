@@ -9,7 +9,7 @@ use {
             build_system_prompt_with_session_runtime,
             build_system_prompt_with_session_runtime_details,
             formatting::{
-                format_compact_tool_schema, format_chelix_runtime_line, tool_call_guidance,
+                format_chelix_runtime_line, format_compact_tool_schema, tool_call_guidance,
             },
             prepend_datetime_to_user_content, runtime_datetime_message,
         },

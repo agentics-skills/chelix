@@ -7,8 +7,8 @@ use std::pin::Pin;
 
 use {
     async_trait::async_trait,
-    futures::StreamExt,
     chelix_oauth::{OAuthTokens, TokenStore, kimi_headers},
+    futures::StreamExt,
     secrecy::{ExposeSecret, Secret},
     tokio_stream::Stream,
     tracing::{debug, trace, warn},

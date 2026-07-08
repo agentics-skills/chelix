@@ -1,9 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use {
-    mockito::Matcher,
     chelix_oauth::{
         OAuthConfig, OAuthFlow, TokenStore, callback_port, load_oauth_config, pkce::generate_pkce,
     },
+    mockito::Matcher,
     secrecy::{ExposeSecret, Secret},
 };
 

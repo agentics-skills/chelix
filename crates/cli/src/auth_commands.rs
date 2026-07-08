@@ -1,10 +1,10 @@
 use {
     anyhow::Result,
-    clap::Subcommand,
     chelix_oauth::{
         CallbackServer, OAuthFlow, TokenStore, callback_port, device_flow, load_oauth_config,
         parse_callback_input,
     },
+    clap::Subcommand,
 };
 
 #[derive(Subcommand)]

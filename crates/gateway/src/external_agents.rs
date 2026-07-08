@@ -2,7 +2,6 @@ use std::{collections::HashMap, sync::Arc, time::SystemTime};
 
 use {
     async_trait::async_trait,
-    futures::StreamExt,
     chelix_config::schema::ExternalAgentsConfig,
     chelix_external_agents::{
         AcpPermissionHandler, AcpPermissionOptionKind, AcpPermissionRequest, AgentTransportKind,
@@ -16,6 +15,7 @@ use {
         SessionService,
     },
     chelix_sessions::{MessageContent, PersistedMessage},
+    futures::StreamExt,
     serde_json::Value,
     tokio::sync::Mutex,
     tracing::warn,
@@ -842,13 +842,13 @@ mod tests {
             auth::{AuthMode, ResolvedAuth},
             services::GatewayServices,
         },
-        futures::{Stream, stream},
         chelix_external_agents::{
             ExternalAgentTransport,
             types::{AcpPermissionOption, ExternalAgentStatus},
         },
         chelix_service_traits::{ExternalAgentService, NoopChatService},
         chelix_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
+        futures::{Stream, stream},
     };
 
     #[derive(Default)]

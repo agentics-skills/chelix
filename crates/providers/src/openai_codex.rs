@@ -3,9 +3,9 @@ use std::pin::Pin;
 use {
     async_trait::async_trait,
     base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD},
-    futures::StreamExt,
     chelix_config::schema::ProviderStreamTransport,
     chelix_oauth::{OAuthFlow, TokenStore, load_oauth_config},
+    futures::StreamExt,
     secrecy::ExposeSecret,
     tokio_stream::Stream,
     tracing::{debug, info, trace},

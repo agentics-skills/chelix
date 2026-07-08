@@ -9,8 +9,8 @@ use {
         response::IntoResponse,
         routing::{get, post},
     },
-    chrono::Utc,
     chelix_gateway::push::PushSubscription,
+    chrono::Utc,
     serde::{Deserialize, Serialize},
     std::net::SocketAddr,
 };

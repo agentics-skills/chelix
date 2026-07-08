@@ -8,6 +8,7 @@
 use std::{error::Error as StdError, fmt, path::PathBuf};
 
 use {
+    chelix_common::secret_serde,
     matrix_sdk::{
         Client,
         authentication::oauth::{
@@ -17,7 +18,6 @@ use {
         ruma::serde::Raw,
         store::RoomLoadSettings,
     },
-    chelix_common::secret_serde,
     secrecy::{ExposeSecret, Secret},
     serde::{Deserialize, Serialize},
     tracing::{debug, info, instrument, warn},
@@ -527,7 +527,7 @@ fn spawn_session_persistence_task(client: &Client, account_id: &str) {
 mod tests {
     use {
         crate::oidc::{
-            ClientRegistrationDiagnostics, CHELIX_CLIENT_URI, PersistedOidcSession,
+            CHELIX_CLIENT_URI, ClientRegistrationDiagnostics, PersistedOidcSession,
             build_client_metadata, is_loopback_uri, normalize_loopback_redirect, oidc_session_path,
         },
         matrix_sdk::{

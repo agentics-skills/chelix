@@ -7,4 +7,4 @@ pub mod secret_serde;
 pub mod ssrf;
 pub mod types;
 
-pub use error::{Error, FromMessage, ChelixError, Result};
+pub use error::{ChelixError, Error, FromMessage, Result};

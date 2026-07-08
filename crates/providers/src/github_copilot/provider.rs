@@ -10,8 +10,8 @@ use std::{collections::HashSet, pin::Pin, sync::mpsc, time::Duration};
 
 use {
     async_trait::async_trait,
-    futures::StreamExt,
     chelix_oauth::{OAuthTokens, TokenStore},
+    futures::StreamExt,
     secrecy::{ExposeSecret, Secret},
     tokio_stream::Stream,
     tracing::{debug, trace, warn},

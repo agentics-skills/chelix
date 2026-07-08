@@ -8,8 +8,8 @@ use std::{
 };
 
 use {
-    matrix_sdk::encryption::recovery::IdentityResetHandle,
     chelix_channels::{ChannelEventSink, message_log::MessageLog, otp::OtpState},
+    matrix_sdk::encryption::recovery::IdentityResetHandle,
     tokio_util::sync::CancellationToken,
 };
 

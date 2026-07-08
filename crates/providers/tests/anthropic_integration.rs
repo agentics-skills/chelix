@@ -11,9 +11,9 @@
 use std::collections::HashSet;
 
 use {
-    futures::StreamExt,
     chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent, ToolCall},
     chelix_providers::anthropic::AnthropicProvider,
+    futures::StreamExt,
     secrecy::{ExposeSecret, Secret},
 };
 

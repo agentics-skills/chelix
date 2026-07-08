@@ -5,13 +5,13 @@
 
 use {
     bytes::Bytes,
-    http::HeaderMap,
     chelix_channels::{
         channel_webhook_middleware::{
             ChannelWebhookRejection, ChannelWebhookVerifier, VerifiedChannelWebhook,
         },
         plugin::ChannelType,
     },
+    http::HeaderMap,
     secrecy::{ExposeSecret, Secret},
 };
 

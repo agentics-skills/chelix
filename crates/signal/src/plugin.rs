@@ -8,12 +8,12 @@ use std::{
 
 use {
     async_trait::async_trait,
-    futures::StreamExt,
     chelix_channels::{
         ChannelEventSink, ChannelHealthSnapshot, ChannelOtpProvider, ChannelOutbound,
         ChannelPlugin, ChannelStatus, ChannelStreamOutbound, Result as ChannelResult,
         config_view::ChannelConfigView, otp::OtpChallengeInfo,
     },
+    futures::StreamExt,
     serde_json::Value,
     tokio_util::sync::CancellationToken,
 };

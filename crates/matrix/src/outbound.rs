@@ -1093,6 +1093,7 @@ mod tests {
             location_body, location_geo_uri, matching_reaction_event_id, poll_relation_from_value,
             timeline_event_to_thread_message,
         },
+        chelix_common::types::{MediaAttachment, ReplyPayload},
         matrix_sdk::{
             deserialized_responses::TimelineEvent,
             ruma::{
@@ -1101,7 +1102,6 @@ mod tests {
                 serde::Raw,
             },
         },
-        chelix_common::types::{MediaAttachment, ReplyPayload},
         serde_json::json,
     };
 

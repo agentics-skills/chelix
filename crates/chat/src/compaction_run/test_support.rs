@@ -13,10 +13,10 @@
 use {
     anyhow::Result,
     async_trait::async_trait,
-    futures::Stream,
     chelix_agents::model::{
         ChatMessage, CompletionResponse, ContentPart, LlmProvider, StreamEvent, Usage, UserContent,
     },
+    futures::Stream,
     serde_json::Value,
     std::{
         pin::Pin,

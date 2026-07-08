@@ -1,6 +1,6 @@
 use {
     super::*,
-    crate::schema::{KNOWN_PROVIDER_NAMES, ChelixConfig, ToolChoice},
+    crate::schema::{ChelixConfig, KNOWN_PROVIDER_NAMES, ToolChoice},
     secrecy::ExposeSecret,
     std::path::Path,
 };

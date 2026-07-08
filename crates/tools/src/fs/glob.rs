@@ -8,9 +8,9 @@
 
 use {
     async_trait::async_trait,
+    chelix_agents::tool_registry::AgentTool,
     globset::{Glob as GlobPattern, GlobMatcher},
     ignore::WalkBuilder,
-    chelix_agents::tool_registry::AgentTool,
     serde_json::{Value, json},
     std::{
         path::{Path, PathBuf},

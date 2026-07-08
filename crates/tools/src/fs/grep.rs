@@ -14,12 +14,12 @@
 
 use {
     async_trait::async_trait,
+    chelix_agents::tool_registry::AgentTool,
     globset::{Glob as GlobPattern, GlobMatcher},
     grep_matcher::Matcher,
     grep_regex::RegexMatcherBuilder,
     grep_searcher::{BinaryDetection, Searcher, SearcherBuilder, Sink, SinkMatch},
     ignore::WalkBuilder,
-    chelix_agents::tool_registry::AgentTool,
     serde_json::{Value, json},
     std::{
         io,

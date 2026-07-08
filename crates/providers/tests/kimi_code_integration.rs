@@ -10,9 +10,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use {
-    futures::StreamExt,
     chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent, ToolCall},
     chelix_providers::openai::OpenAiProvider,
+    futures::StreamExt,
     secrecy::Secret,
 };
 

@@ -11,6 +11,11 @@ use {
         config::{AutoJoinPolicy, MatrixAccountConfig},
         state::{AccountState, AccountStateMap},
     },
+    chelix_channels::{
+        gating::{DmPolicy, GroupPolicy},
+        plugin::ChannelMessageKind,
+    },
+    chelix_common::types::ChatType,
     matrix_sdk::{
         Client,
         encryption::VerificationState,
@@ -22,11 +27,6 @@ use {
             serde::Raw,
         },
     },
-    chelix_channels::{
-        gating::{DmPolicy, GroupPolicy},
-        plugin::ChannelMessageKind,
-    },
-    chelix_common::types::ChatType,
     serde_json::json,
     std::{
         collections::HashMap,

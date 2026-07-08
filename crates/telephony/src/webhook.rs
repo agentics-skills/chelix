@@ -4,7 +4,6 @@
 
 use {
     bytes::Bytes,
-    http::HeaderMap,
     chelix_channels::{
         ChannelType,
         channel_webhook_middleware::{
@@ -12,6 +11,7 @@ use {
             VerifiedChannelWebhook,
         },
     },
+    http::HeaderMap,
     std::sync::Arc,
 };
 

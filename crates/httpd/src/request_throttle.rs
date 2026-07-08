@@ -14,8 +14,8 @@ use {
         middleware::Next,
         response::{IntoResponse, Json, Response},
     },
-    dashmap::{DashMap, mapref::entry::Entry},
     chelix_auth::locality::is_local_connection,
+    dashmap::{DashMap, mapref::entry::Entry},
 };
 
 use crate::server::AppState;
