@@ -109,12 +109,12 @@ priority_models = ["gpt-5.2"]
 
 See [Providers](providers.md) for the full list of supported providers and configuration options.
 
-## Remote Execution
+## Remote Command Execution
 
 Command execution can stay local, route to a paired node, or use SSH:
 
 ```toml
-[tools.exec]
+[tools.execute_command]
 host = "local"                 # "local", "node", or "ssh"
 # node = "mac-mini"            # default paired node when host = "node"
 # ssh_target = "deploy@box"    # default SSH target when host = "ssh"
@@ -137,9 +137,9 @@ When present, Moltis uses that pin instead of your global OpenSSH known-host
 policy for that target.
 
 Managed targets appear in the Nodes page and chat node picker, so users can see
-where `exec` will run without digging through config. If multiple managed
-targets exist, the default one is used when `tools.exec.host = "ssh"` and no
-session-specific route is selected. `moltis doctor` also reports remote-exec
+where `execute_command` will run without digging through config. If multiple managed
+targets exist, the default one is used when `tools.execute_command.host = "ssh"` and no
+session-specific route is selected. `moltis doctor` also reports remote command
 inventory, active backend mode, and obvious SSH setup problems from the CLI.
 
 `Settings -> Tools` shows the effective tool inventory for the active session
@@ -152,7 +152,7 @@ model or disabling MCP for a session changes what appears there.
 Commands run inside isolated containers for security:
 
 ```toml
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 mode = "all"                    # "off", "non-main", or "all"
 scope = "session"               # "command", "session", or "global"
 workspace_mount = "ro"          # "ro", "rw", or "none"
@@ -475,7 +475,7 @@ agent_max_iterations = 25
 [providers]
 offered = ["anthropic", "openai", "gemini"]
 
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 mode = "all"
 scope = "session"
 workspace_mount = "ro"

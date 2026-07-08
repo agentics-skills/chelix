@@ -65,10 +65,10 @@ pub struct PromptHostRuntimeContext {
     pub location: Option<String>,
 }
 
-/// Runtime context for sandbox execution routing used by the `exec` tool.
+/// Runtime context for sandbox execution routing used by the `execute_command` tool.
 #[derive(Debug, Clone, Default)]
 pub struct PromptSandboxRuntimeContext {
-    pub exec_sandboxed: bool,
+    pub command_sandboxed: bool,
     pub mode: Option<String>,
     pub backend: Option<String>,
     pub scope: Option<String>,

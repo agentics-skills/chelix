@@ -746,9 +746,9 @@ pub(super) fn write_default_config(path: &Path, config: &MoltisConfig) -> crate:
 ///
 /// Maps env vars to config fields using `__` as a section separator and
 /// lowercasing. For example:
-/// - `MOLTIS_AUTH_DISABLED=true` → `auth.disabled = true`
-/// - `MOLTIS_TOOLS_EXEC_DEFAULT_TIMEOUT_SECS=60` → `tools.exec.default_timeout_secs = 60`
-/// - `MOLTIS_CHAT_MESSAGE_QUEUE_MODE=collect` → `chat.message_queue_mode = "collect"`
+/// - `MOLTIS_AUTH__DISABLED=true` → `auth.disabled = true`
+/// - `MOLTIS_TOOLS__EXECUTE_COMMAND__DEFAULT_TIMEOUT_SECS=60` → `tools.execute_command.default_timeout_secs = 60`
+/// - `MOLTIS_CHAT__MESSAGE_QUEUE_MODE=collect` → `chat.message_queue_mode = "collect"`
 ///
 /// The config is serialized to a JSON value, env overrides are merged in,
 /// then deserialized back. Only env vars with the `MOLTIS_` prefix are
@@ -812,43 +812,43 @@ fn apply_env_overrides_with_options(
     const ENV_ALIASES: &[(&str, &[&str])] = &[
         ("VERCEL_TOKEN", &[
             "tools",
-            "exec",
+            "execute_command",
             "sandbox",
             "vercel_token",
         ]),
         ("VERCEL_OIDC_TOKEN", &[
             "tools",
-            "exec",
+            "execute_command",
             "sandbox",
             "vercel_token",
         ]),
         ("VERCEL_PROJECT_ID", &[
             "tools",
-            "exec",
+            "execute_command",
             "sandbox",
             "vercel_project_id",
         ]),
         ("VERCEL_TEAM_ID", &[
             "tools",
-            "exec",
+            "execute_command",
             "sandbox",
             "vercel_team_id",
         ]),
         ("DAYTONA_API_KEY", &[
             "tools",
-            "exec",
+            "execute_command",
             "sandbox",
             "daytona_api_key",
         ]),
         ("DAYTONA_API_URL", &[
             "tools",
-            "exec",
+            "execute_command",
             "sandbox",
             "daytona_api_url",
         ]),
         ("DAYTONA_TARGET", &[
             "tools",
-            "exec",
+            "execute_command",
             "sandbox",
             "daytona_target",
         ]),

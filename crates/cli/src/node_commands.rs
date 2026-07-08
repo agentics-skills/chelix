@@ -229,7 +229,7 @@ pub async fn handle_node(action: NodeAction) -> Result<()> {
                         "system.which".into(),
                         "system.providers".into(),
                     ],
-                    exec_timeout: Duration::from_secs(timeout),
+                    command_timeout: Duration::from_secs(timeout),
                     working_dir,
                 };
 
@@ -264,7 +264,7 @@ pub async fn handle_node(action: NodeAction) -> Result<()> {
                     "cannot load node config: {e}\nRun `moltis node add` first to register this machine."
                 ))?;
 
-            let exec_timeout = Duration::from_secs(timeout.unwrap_or(config.timeout));
+            let command_timeout = Duration::from_secs(timeout.unwrap_or(config.timeout));
 
             let key_dir = moltis_config::data_dir();
             let identity = moltis_node_host::identity::load_or_create(&key_dir).ok();
@@ -288,7 +288,7 @@ pub async fn handle_node(action: NodeAction) -> Result<()> {
                     "system.which".into(),
                     "system.providers".into(),
                 ],
-                exec_timeout,
+                command_timeout,
                 working_dir: config.working_dir,
             };
 
@@ -373,7 +373,7 @@ pub async fn handle_node(action: NodeAction) -> Result<()> {
                 platform: std::env::consts::OS.into(),
                 caps: vec!["system.run".into()],
                 commands: vec!["system.run".into()],
-                exec_timeout: Duration::from_secs(10),
+                command_timeout: Duration::from_secs(10),
                 working_dir: None,
             };
 

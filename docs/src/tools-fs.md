@@ -6,7 +6,7 @@ Their schemas match Claude Code exactly so LLMs trained on those tools
 work without adaptation. See [GitHub #657](https://github.com/agentics-skills/chelix/issues/657)
 for background.
 
-Prefer these over shelling out via the `exec` tool running `cat` / `sed` /
+Prefer these over shelling out via the `execute_command` tool running `cat` / `sed` /
 `rg` — the native tools give the model line-numbered reads, uniqueness-
 enforced edits, typed error payloads, and structured audit logs.
 
@@ -214,7 +214,7 @@ but can't touch anything outside it:
 
 ```toml
 [tools.policy]
-allow = ["exec", "browser", "memory", "Read", "Glob", "Grep"]
+allow = ["execute_command", "browser", "memory", "Read", "Glob", "Grep"]
 
 [tools.fs]
 workspace_root = "/home/user/project"

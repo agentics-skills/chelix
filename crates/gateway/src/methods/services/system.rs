@@ -658,14 +658,14 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
 
-    // Exec approvals
+    // Command approvals
     reg.register(
-        "exec.approvals.get",
+        "command.approvals.get",
         Box::new(|ctx| {
             Box::pin(async move {
                 ctx.state
                     .services
-                    .exec_approval
+                    .command_approval
                     .get()
                     .await
                     .map_err(ErrorShape::from)
@@ -673,12 +673,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
     reg.register(
-        "exec.approvals.set",
+        "command.approvals.set",
         Box::new(|ctx| {
             Box::pin(async move {
                 ctx.state
                     .services
-                    .exec_approval
+                    .command_approval
                     .set(ctx.params.clone())
                     .await
                     .map_err(ErrorShape::from)
@@ -686,12 +686,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
     reg.register(
-        "exec.approvals.node.get",
+        "command.approvals.node.get",
         Box::new(|ctx| {
             Box::pin(async move {
                 ctx.state
                     .services
-                    .exec_approval
+                    .command_approval
                     .node_get(ctx.params.clone())
                     .await
                     .map_err(ErrorShape::from)
@@ -699,12 +699,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
     reg.register(
-        "exec.approvals.node.set",
+        "command.approvals.node.set",
         Box::new(|ctx| {
             Box::pin(async move {
                 ctx.state
                     .services
-                    .exec_approval
+                    .command_approval
                     .node_set(ctx.params.clone())
                     .await
                     .map_err(ErrorShape::from)
@@ -712,12 +712,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
     reg.register(
-        "exec.approval.request",
+        "command.approval.request",
         Box::new(|ctx| {
             Box::pin(async move {
                 ctx.state
                     .services
-                    .exec_approval
+                    .command_approval
                     .request(ctx.params.clone())
                     .await
                     .map_err(ErrorShape::from)
@@ -725,12 +725,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
     reg.register(
-        "exec.approval.resolve",
+        "command.approval.resolve",
         Box::new(|ctx| {
             Box::pin(async move {
                 ctx.state
                     .services
-                    .exec_approval
+                    .command_approval
                     .resolve(ctx.params.clone())
                     .await
                     .map_err(ErrorShape::from)

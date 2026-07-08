@@ -365,7 +365,7 @@ mod tests {
     use {
         super::*,
         crate::{
-            exec::ExecResult,
+            command::CommandOutput,
             sandbox::{
                 SandboxConfig, SandboxMode, SandboxRouter,
                 file_system::{MAX_SANDBOX_LIST_FILES, test_helpers::MockSandbox},
@@ -591,7 +591,7 @@ mod tests {
             .map(|index| format!("/workspace/file-{index}.rs"))
             .collect::<Vec<_>>()
             .join("\n");
-        let mock = MockSandbox::new(vec![ExecResult {
+        let mock = MockSandbox::new(vec![CommandOutput {
             stdout,
             stderr: String::new(),
             exit_code: 0,

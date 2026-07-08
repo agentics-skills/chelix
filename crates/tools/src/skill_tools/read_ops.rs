@@ -659,7 +659,7 @@ fn read_bundled(
 
 /// Check skill requirements and return install instructions if binaries are
 /// missing. Does NOT run the install — the agent should run the commands via
-/// `exec` so they execute in the correct environment (sandbox or host).
+/// `execute_command` so they execute in the correct environment (sandbox or host).
 async fn auto_install_requirements(meta: &moltis_skills::types::SkillMetadata) -> Option<String> {
     use moltis_skills::requirements::{check_requirements, install_command_preview};
 

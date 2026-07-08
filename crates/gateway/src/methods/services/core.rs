@@ -1426,7 +1426,7 @@ mod tests {
             vec![serde_json::json!({
                 "runId": "run-1",
                 "toolCallId": "tool-1",
-                "toolName": "exec",
+                "toolName": "execute_command",
             })],
             true,
         );
@@ -1447,7 +1447,7 @@ mod tests {
             .expect("active tool call is included");
         assert_eq!(
             tool_call.get("toolName").and_then(|v| v.as_str()),
-            Some("exec")
+            Some("execute_command")
         );
     }
 
@@ -1459,7 +1459,7 @@ mod tests {
             &mut obj,
             false,
             Some("stale".to_string()),
-            vec![serde_json::json!({"toolName": "exec"})],
+            vec![serde_json::json!({"toolName": "execute_command"})],
             true,
         );
 

@@ -30,7 +30,7 @@ fn sync_persona_preserves_existing_preset_fields() {
         model: Some("haiku".into()),
         timeout_secs: Some(30),
         tools: PresetToolPolicy {
-            deny: vec!["exec".into()],
+            deny: vec!["execute_command".into()],
             ..Default::default()
         },
         ..Default::default()
@@ -55,5 +55,5 @@ fn sync_persona_preserves_existing_preset_fields() {
     assert_eq!(preset.identity.name.as_deref(), Some("Code Bot"));
     assert_eq!(preset.model.as_deref(), Some("haiku"));
     assert_eq!(preset.timeout_secs, Some(30));
-    assert_eq!(preset.tools.deny, vec!["exec".to_string()]);
+    assert_eq!(preset.tools.deny, vec!["execute_command".to_string()]);
 }

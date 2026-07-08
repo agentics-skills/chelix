@@ -20,9 +20,8 @@ use {
 use {
     crate::{
         Result,
-        approval::{ApprovalDecision, ApprovalManager},
+        approval::{ApprovalBroadcaster, ApprovalDecision, ApprovalManager},
         error::Error,
-        exec::ApprovalBroadcaster,
     },
     tracing::{info, warn},
 };

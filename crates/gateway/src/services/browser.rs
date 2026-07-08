@@ -35,7 +35,7 @@ impl RealBrowserService {
             container_prefix,
             config
                 .tools
-                .exec
+                .execute_command
                 .sandbox
                 .host_data_dir
                 .as_ref()

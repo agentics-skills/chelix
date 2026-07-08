@@ -385,7 +385,10 @@ mod tests {
 
     fn build_full_registry() -> ToolRegistry {
         let mut registry = ToolRegistry::new();
-        registry.register(Box::new(DummyTool::new("exec", "Execute a shell command")));
+        registry.register(Box::new(DummyTool::new(
+            "execute_command",
+            "Execute a shell command",
+        )));
         registry.register(Box::new(DummyTool::new(
             "web_fetch",
             "Fetch a URL and return its content",
@@ -467,7 +470,7 @@ mod tests {
 
         let results = result["results"].as_array().unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0]["name"], "exec");
+        assert_eq!(results[0]["name"], "execute_command");
     }
 
     #[tokio::test]
@@ -484,7 +487,7 @@ mod tests {
         assert!(result.get("error").is_none());
         let results = result["results"].as_array().unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0]["name"], "exec");
+        assert_eq!(results[0]["name"], "execute_command");
     }
 
     #[tokio::test]
@@ -508,30 +511,33 @@ mod tests {
 
         // Before schema reveal, only tool_search is visible, but allowed tools are executable.
         assert_eq!(lazy.list_schemas().len(), 1);
-        assert!(lazy.get("exec").is_some());
+        assert!(lazy.get("execute_command").is_some());
 
         let search_tool = lazy.get("tool_search").unwrap();
         let result = search_tool
-            .execute(serde_json::json!({ "name": "exec" }))
+            .execute(serde_json::json!({ "name": "execute_command" }))
             .await
             .unwrap();
 
         assert_eq!(result["schema_visible"], true);
-        assert_eq!(result["name"], "exec");
+        assert_eq!(result["name"], "execute_command");
         assert!(result["parameters"].is_object());
 
-        // After schema reveal, exec's schema is visible.
+        // After schema reveal, execute_command's schema is visible.
         assert_eq!(lazy.list_schemas().len(), 2);
-        assert!(lazy.get("exec").is_some());
+        assert!(lazy.get("execute_command").is_some());
     }
 
     #[test]
     fn wrap_registry_lazy_with_visible_restores_schema_visibility() {
         let full = build_full_registry();
-        let lazy = wrap_registry_lazy_with_visible(full, ["exec".to_string()]);
+        let lazy = wrap_registry_lazy_with_visible(full, ["execute_command".to_string()]);
 
         let names = lazy.list_names();
-        assert_eq!(names, vec!["exec".to_string(), "tool_search".to_string()]);
+        assert_eq!(
+            names,
+            vec!["execute_command".to_string(), "tool_search".to_string()]
+        );
         assert!(lazy.get("memory_search").is_some());
     }
 
@@ -689,12 +695,12 @@ mod tests {
 
         // When both name and query are provided, name (schema lookup) takes priority.
         let result = search_tool
-            .execute(serde_json::json!({ "name": "exec", "query": "memory" }))
+            .execute(serde_json::json!({ "name": "execute_command", "query": "memory" }))
             .await
             .unwrap();
 
         assert_eq!(result["schema_visible"], true);
-        assert_eq!(result["name"], "exec");
+        assert_eq!(result["name"], "execute_command");
     }
 
     #[tokio::test]
@@ -737,8 +743,8 @@ mod tests {
         let lazy = wrap_registry_lazy(full);
 
         // Tool execution is not gated by lazy schema visibility.
-        let exec_tool = lazy.get("exec").unwrap();
-        let result = exec_tool
+        let command_tool = lazy.get("execute_command").unwrap();
+        let result = command_tool
             .execute(serde_json::json!({ "input": "hello" }))
             .await
             .unwrap();

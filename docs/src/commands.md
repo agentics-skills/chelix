@@ -143,9 +143,9 @@ system.
 
 | Command | Description |
 |---------|-------------|
-| `/approvals` | List pending exec approvals |
-| `/approve [N]` | Approve a pending exec request |
-| `/deny [N]` | Deny a pending exec request |
+| `/approvals` | List pending command approvals |
+| `/approve [N]` | Approve a pending command request |
+| `/deny [N]` | Deny a pending command request |
 
 ## Help
 

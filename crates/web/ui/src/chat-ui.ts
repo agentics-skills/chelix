@@ -379,7 +379,7 @@ export function renderApprovalCard(requestId: string, command: string): void {
 export function resolveApproval(requestId: string, decision: string, command: string | null, card: HTMLElement): void {
 	const params: Record<string, string> = { requestId, decision };
 	if (command) params.command = command;
-	sendRpc("exec.approval.resolve", params).then(() => {
+	sendRpc("command.approval.resolve", params).then(() => {
 		card.classList.add("approval-resolved");
 		card.querySelectorAll<HTMLButtonElement>(".approval-btn").forEach((b) => {
 			b.disabled = true;
@@ -464,7 +464,7 @@ export function updateCommandInputUI(): void {
 	}
 	const prompt = S.$("chatCommandPrompt");
 	if (prompt) {
-		prompt.textContent = S.sessionExecPromptSymbol || "$";
+		prompt.textContent = S.sessionCommandPromptSymbol || "$";
 		prompt.classList.toggle("chat-command-prompt-hidden", !S.commandModeEnabled);
 		prompt.setAttribute("aria-hidden", S.commandModeEnabled ? "false" : "true");
 	}

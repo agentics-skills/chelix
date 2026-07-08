@@ -638,7 +638,7 @@ mod tests {
         let call = ActiveToolCall {
             run_id: "run-1".to_string(),
             id: "tool-1".to_string(),
-            name: "exec".to_string(),
+            name: "execute_command".to_string(),
             arguments: serde_json::json!({"command": "true"}),
             execution_mode: None,
             started_at: 42,
@@ -682,7 +682,7 @@ mod tests {
     fn tool_call_assistant_message_omits_cache_usage_fields() {
         let message = build_tool_call_assistant_message(
             "tool-1",
-            "exec",
+            "execute_command",
             Some(serde_json::json!({"cmd": "ls"})),
             None,
             Some(3),

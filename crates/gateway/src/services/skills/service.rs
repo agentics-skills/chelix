@@ -859,16 +859,17 @@ impl SkillsService for NoopSkillsService {
         }
 
         let config = moltis_config::discover_and_load();
-        if config.tools.exec.sandbox.mode == "off" && !allow_host_install {
+        if config.tools.execute_command.sandbox.mode == "off" && !allow_host_install {
             return Err("dependency install blocked because sandbox mode is off. Enable sandbox or re-run with allow_host_install=true and confirm=true".into());
         }
 
         let mut approval = ApprovalManager::default();
         approval.mode =
-            ApprovalMode::parse(&config.tools.exec.approval_mode).unwrap_or(ApprovalMode::OnMiss);
-        approval.security_level = SecurityLevel::parse(&config.tools.exec.security_level)
+            ApprovalMode::parse(&config.tools.execute_command.approval_mode)
+                .unwrap_or(ApprovalMode::OnMiss);
+        approval.security_level = SecurityLevel::parse(&config.tools.execute_command.security_level)
             .unwrap_or(SecurityLevel::Allowlist);
-        approval.allowlist = config.tools.exec.allowlist;
+        approval.allowlist = config.tools.execute_command.allowlist;
 
         match approval
             .check_command(&command_preview)

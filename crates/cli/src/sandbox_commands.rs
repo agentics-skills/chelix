@@ -94,7 +94,7 @@ async fn list() -> Result<()> {
 
 async fn build() -> Result<()> {
     let config = moltis_config::discover_and_load();
-    let mut sandbox_config = sandbox::SandboxConfig::from(&config.tools.exec.sandbox);
+    let mut sandbox_config = sandbox::SandboxConfig::from(&config.tools.execute_command.sandbox);
     sandbox_config.container_prefix = Some(instance_sandbox_prefix(&config));
 
     if let Some((line_one, line_two)) = image_build_not_supported_notice(&sandbox_config.backend) {
@@ -106,7 +106,7 @@ async fn build() -> Result<()> {
     let packages = sandbox_config.packages.clone();
     if packages.is_empty() {
         println!("No packages configured — nothing to build.");
-        println!("Add packages to [tools.exec.sandbox] in your config file.");
+        println!("Add packages to [tools.execute_command.sandbox] in your config file.");
         return Ok(());
     }
 

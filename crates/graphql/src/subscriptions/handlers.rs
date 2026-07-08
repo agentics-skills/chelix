@@ -100,7 +100,7 @@ impl SubscriptionRoot {
         let mut rx = c.subscribe();
         Ok(async_stream::stream! {
             while let Ok((event_name, payload)) = rx.recv().await {
-                if event_name.starts_with("exec.approval.") {
+                if event_name.starts_with("command.approval.") {
                     yield GenericEvent::from(payload);
                 }
             }

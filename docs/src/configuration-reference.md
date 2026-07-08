@@ -49,11 +49,11 @@
   - [`modes.presets.<name>`](#modespresetsname)
   - [`skills`](#skills)
 - **Tools — Execution**
-  - [`tools.exec`](#toolsexec)
-  - [`tools.exec.sandbox`](#toolsexecsandbox)
-  - [`tools.exec.sandbox.resource_limits`](#toolsexecsandboxresource-limits)
-  - [`tools.exec.sandbox.tools_policy`](#toolsexecsandboxtools-policy)
-  - [`tools.exec.sandbox.wasm_tool_limits`](#toolsexecsandboxwasm-tool-limits)
+  - [`tools.execute_command`](#toolsexecute_command)
+  - [`tools.execute_command.sandbox`](#toolsexecute_commandsandbox)
+  - [`tools.execute_command.sandbox.resource_limits`](#toolsexecute_commandsandboxresource-limits)
+  - [`tools.execute_command.sandbox.tools_policy`](#toolsexecute_commandsandboxtools-policy)
+  - [`tools.execute_command.sandbox.wasm_tool_limits`](#toolsexecute_commandsandboxwasm-tool-limits)
   - [`tools.browser`](#toolsbrowser)
 - **Tools — Web & Data**
   - [`tools.web.search`](#toolswebsearch)
@@ -343,7 +343,7 @@ not create chat agents, change memory, or affect `spawn_agent` presets.
 ## Tools — Execution
 
 
-### `tools.exec` — ExecConfig
+### `tools.execute_command` — ExecuteCommandConfig
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -357,7 +357,7 @@ not create chat agents, change memory, or affect `spawn_agent` presets.
 | `ssh_target` | optional string | `null` | Default SSH target for remote execution (when `host = "ssh"`). |
 
 
-### `tools.exec.sandbox` — SandboxConfig
+### `tools.execute_command.sandbox` — SandboxConfig
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -379,7 +379,7 @@ not create chat agents, change memory, or affect `spawn_agent` presets.
 | `wasm_epoch_interval_ms` | optional integer | `null` | Epoch interruption interval in milliseconds for WASM sandbox. |
 
 
-### `tools.exec.sandbox.resource_limits` — ResourceLimitsConfig
+### `tools.execute_command.sandbox.resource_limits` — ResourceLimitsConfig
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -388,7 +388,7 @@ not create chat agents, change memory, or affect `spawn_agent` presets.
 | `pids_max` | optional integer | `null` | Maximum number of PIDs allowed in the sandbox. |
 
 
-### `tools.exec.sandbox.tools_policy` — ToolPolicyConfig
+### `tools.execute_command.sandbox.tools_policy` — ToolPolicyConfig
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -397,7 +397,7 @@ not create chat agents, change memory, or affect `spawn_agent` presets.
 | `profile` | optional string | `null` | Named policy profile to apply (e.g. `"restricted"`). |
 
 
-### `tools.exec.sandbox.wasm_tool_limits` — WasmToolLimitsConfig
+### `tools.execute_command.sandbox.wasm_tool_limits` — WasmToolLimitsConfig
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -405,7 +405,7 @@ not create chat agents, change memory, or affect `spawn_agent` presets.
 | `default_fuel` | integer | `1000000` | Default WASM fuel limit (instructions). |
 | `tool_overrides` | map | *(see below)* | Per-tool overrides for WASM fuel and memory. |
 
-### tools.exec.sandbox.wasm_tool_limits.tool_overrides.<name> (ToolLimitOverrideConfig)
+### tools.execute_command.sandbox.wasm_tool_limits.tool_overrides.<name> (ToolLimitOverrideConfig)
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -729,7 +729,7 @@ Each channel account (`channels.<channel_type>.<account_name>`) is an arbitrary 
 | `to` | optional string | — | Destination chat/recipient id for heartbeat delivery. |
 | `sandbox_enabled` | bool | `true` | Whether heartbeat runs inside a sandbox. |
 | `sandbox_image` | optional string | — | Override sandbox image for heartbeat. |
-| `wake_cooldown` | string | `"5m"` | Minimum duration between exec-triggered heartbeat wakes. Use `"0"` to disable the guard. |
+| `wake_cooldown` | string | `"5m"` | Minimum duration between command-triggered heartbeat wakes. Use `"0"` to disable the guard. |
 
 
 ### `heartbeat.active_hours`

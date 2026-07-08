@@ -342,7 +342,7 @@ mod tests {
         let msg = serde_json::json!({
             "role": "assistant",
             "content": "",
-            "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "exec", "arguments": "{}"}}]
+            "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "execute_command", "arguments": "{}"}}]
         });
         assert!(assistant_message_is_visible(&msg));
     }
@@ -773,7 +773,7 @@ pub(crate) fn compress_summary_in_history(mut history: Vec<Value>) -> Vec<Value>
     history
 }
 
-pub(crate) fn shell_reply_text_from_exec_result(result: &Value) -> String {
+pub(crate) fn shell_reply_text_from_command_result(result: &Value) -> String {
     let stdout = result
         .get("stdout")
         .and_then(Value::as_str)
@@ -781,6 +781,15 @@ pub(crate) fn shell_reply_text_from_exec_result(result: &Value) -> String {
         .unwrap_or("");
     if !stdout.is_empty() {
         return stdout.to_string();
+    }
+
+    let output = result
+        .get("output")
+        .and_then(Value::as_str)
+        .map(str::trim_end)
+        .unwrap_or("");
+    if !output.is_empty() {
+        return output.to_string();
     }
 
     let stderr = result
@@ -792,12 +801,17 @@ pub(crate) fn shell_reply_text_from_exec_result(result: &Value) -> String {
         return stderr.to_string();
     }
 
-    let exit_code = result.get("exit_code").and_then(Value::as_i64).or_else(|| {
-        result
-            .get("exit_code")
-            .and_then(Value::as_u64)
-            .and_then(|code| i64::try_from(code).ok())
-    });
+    let exit_code = result
+        .get("exit_code")
+        .or_else(|| result.get("exitCode"))
+        .and_then(Value::as_i64)
+        .or_else(|| {
+            result
+                .get("exit_code")
+                .or_else(|| result.get("exitCode"))
+                .and_then(Value::as_u64)
+                .and_then(|code| i64::try_from(code).ok())
+        });
     match exit_code {
         Some(code) if code != 0 => format!("Command failed (exit {code})."),
         _ => String::new(),

@@ -669,6 +669,14 @@ pub(super) fn tool_result_text_for_share(msg: &Value) -> Option<String> {
     {
         sections.push(redact_share_secret_values(stdout));
     }
+    if let Some(output) = result
+        .and_then(|v| v.get("output"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|output| !output.is_empty())
+    {
+        sections.push(redact_share_secret_values(output));
+    }
     if let Some(stderr) = result
         .and_then(|v| v.get("stderr"))
         .and_then(|v| v.as_str())
@@ -686,7 +694,7 @@ pub(super) fn tool_result_text_for_share(msg: &Value) -> Option<String> {
         sections.push(format!("error: {}", redact_share_secret_values(error)));
     }
     if let Some(exit_code) = result
-        .and_then(|v| v.get("exit_code"))
+        .and_then(|v| v.get("exit_code").or_else(|| v.get("exitCode")))
         .and_then(|v| {
             v.as_i64()
                 .or_else(|| v.as_u64().and_then(|n| i64::try_from(n).ok()))
@@ -770,7 +778,7 @@ async fn to_shared_message(
     };
     let tool_command = match role {
         SharedMessageRole::ToolResult => {
-            if tool_name.as_deref() == Some("exec") {
+            if tool_name.as_deref() == Some("execute_command") {
                 msg.get("arguments")
                     .and_then(|v| v.get("command"))
                     .and_then(|v| v.as_str())

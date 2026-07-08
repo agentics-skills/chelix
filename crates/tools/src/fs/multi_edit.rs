@@ -18,10 +18,9 @@ use moltis_metrics::{counter, labels, tools as tools_metrics};
 
 use crate::{
     Result,
-    approval::ApprovalManager,
+    approval::{ApprovalBroadcaster, ApprovalManager},
     checkpoints::CheckpointManager,
     error::Error,
-    exec::ApprovalBroadcaster,
     fs::{
         edit::{apply_edit, persist_atomic},
         sandbox_bridge::SandboxReadResult,

@@ -74,7 +74,7 @@ mock_svc_struct!(MockSkills);
 mock_svc_struct!(MockMcp);
 mock_svc_struct!(MockBrowser);
 mock_svc_struct!(MockUsage);
-mock_svc_struct!(MockExecApproval);
+mock_svc_struct!(MockCommandApproval);
 mock_svc_struct!(MockOnboarding);
 mock_svc_struct!(MockUpdate);
 mock_svc_struct!(MockModel);
@@ -543,29 +543,29 @@ impl moltis_service_traits::UsageService for MockUsage {
 }
 
 #[async_trait::async_trait]
-impl moltis_service_traits::ExecApprovalService for MockExecApproval {
+impl moltis_service_traits::CommandApprovalService for MockCommandApproval {
     async fn get(&self) -> ServiceResult {
-        self.0.call("exec.approvals.get", json!({}))
+        self.0.call("command.approvals.get", json!({}))
     }
 
     async fn set(&self, p: Value) -> ServiceResult {
-        self.0.call("exec.approvals.set", p)
+        self.0.call("command.approvals.set", p)
     }
 
     async fn node_get(&self, p: Value) -> ServiceResult {
-        self.0.call("exec.approvals.node.get", p)
+        self.0.call("command.approvals.node.get", p)
     }
 
     async fn node_set(&self, p: Value) -> ServiceResult {
-        self.0.call("exec.approvals.node.set", p)
+        self.0.call("command.approvals.node.set", p)
     }
 
     async fn request(&self, p: Value) -> ServiceResult {
-        self.0.call("exec.approval.request", p)
+        self.0.call("command.approval.request", p)
     }
 
     async fn resolve(&self, p: Value) -> ServiceResult {
-        self.0.call("exec.approval.resolve", p)
+        self.0.call("command.approval.resolve", p)
     }
 }
 
@@ -831,7 +831,7 @@ fn build_mock_services(mock: &Arc<MockDispatch>) -> Arc<Services> {
         mcp: Arc::new(MockMcp(mock.clone())),
         browser: Arc::new(MockBrowser(mock.clone())),
         usage: Arc::new(MockUsage(mock.clone())),
-        exec_approval: Arc::new(MockExecApproval(mock.clone())),
+        command_approval: Arc::new(MockCommandApproval(mock.clone())),
         onboarding: Arc::new(MockOnboarding(mock.clone())),
         update: Arc::new(MockUpdate(mock.clone())),
         model: Arc::new(MockModel(mock.clone())),

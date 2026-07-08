@@ -1,4 +1,4 @@
-/* ══ Chat: Messages, Thinking, Exec Cards, Approval Cards, Token Bar ══ */
+/* == Chat: Messages, Thinking, Command Cards, Approval Cards, Token Bar == */
 
 .status-dot {
   background: var(--muted);
@@ -321,9 +321,9 @@
 .msg.tool-ok { color: var(--ok); }
 .msg.tool-err { color: var(--error); }
 
-/* ── Exec cards ── */
+/* ── Command cards ── */
 
-.msg.exec-card {
+.msg.command-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -337,10 +337,10 @@
   display: flex;
 }
 
-.msg.exec-card.exec-ok { border-color: var(--border); }
-.msg.exec-card.exec-err { border-color: var(--error); }
+.msg.command-card.command-ok { border-color: var(--border); }
+.msg.command-card.command-err { border-color: var(--error); }
 
-.exec-prompt {
+.command-prompt {
   /* Render the invoked command as a syntax-highlighted code block. */
   display: flex;
   align-items: flex-start;
@@ -356,7 +356,7 @@
   overflow-x: auto;
 }
 
-.exec-prompt-char {
+.command-prompt-char {
   color: var(--ok);
   -webkit-user-select: none;
   user-select: none;
@@ -364,16 +364,16 @@
   flex-shrink: 0;
 }
 
-.exec-card.exec-err .exec-prompt-char { color: var(--error); }
+.command-card.command-err .command-prompt-char { color: var(--error); }
 
 /* The command slot fills the remaining row width next to the prompt symbol. */
-.exec-prompt [data-cmd] {
+.command-prompt [data-cmd] {
   flex: 1 1 auto;
   min-width: 0;
 }
 
 /* Command text rendered as code: preserve formatting + allow highlighting. */
-.exec-cmd {
+.command-cmd {
   margin: 0;
   padding: 0;
   background: none;
@@ -387,19 +387,19 @@
   tab-size: 2;
 }
 
-.exec-cmd .shiki,
-.exec-cmd .shiki span {
+.command-cmd .shiki,
+.command-cmd .shiki span {
   background: transparent !important;
   font-family: inherit;
 }
 
-.exec-status {
+.command-status {
   color: var(--muted);
   font-size: 0.72rem;
   font-style: italic;
 }
 
-.exec-output {
+.command-output {
   font-family: var(--font-mono);
   color: var(--text);
   background: var(--bg);
@@ -414,15 +414,15 @@
   overflow: auto;
 }
 
-.exec-output.exec-stderr { color: var(--warn); }
+.command-output.command-stderr { color: var(--warn); }
 
-.exec-exit {
+.command-exit {
   font-family: var(--font-mono);
   color: var(--error);
   font-size: 0.72rem;
 }
 
-.exec-error-detail {
+.command-error-detail {
   color: var(--error);
   font-size: 0.78rem;
 }

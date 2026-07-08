@@ -423,7 +423,7 @@ pub fn generate_systemd_unit(moltis_bin: &Path, config: &ServiceConfig, log_path
     let bin = moltis_bin.display();
     let log = log_path.display();
 
-    let mut exec_args = format!(
+    let mut service_args = format!(
         "{bin} node run --host \"{}\" --token \"{}\" --timeout {}",
         config.gateway_url.replace('"', "\\\""),
         config.device_token.replace('"', "\\\""),
@@ -431,13 +431,13 @@ pub fn generate_systemd_unit(moltis_bin: &Path, config: &ServiceConfig, log_path
     );
 
     if let Some(ref id) = config.node_id {
-        exec_args.push_str(&format!(" --node-id \"{}\"", id.replace('"', "\\\"")));
+        service_args.push_str(&format!(" --node-id \"{}\"", id.replace('"', "\\\"")));
     }
     if let Some(ref name) = config.display_name {
-        exec_args.push_str(&format!(" --name \"{}\"", name.replace('"', "\\\"")));
+        service_args.push_str(&format!(" --name \"{}\"", name.replace('"', "\\\"")));
     }
     if let Some(ref dir) = config.working_dir {
-        exec_args.push_str(&format!(" --working-dir \"{}\"", dir.replace('"', "\\\"")));
+        service_args.push_str(&format!(" --working-dir \"{}\"", dir.replace('"', "\\\"")));
     }
 
     format!(
@@ -448,7 +448,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart={exec_args}
+ExecStart={service_args}
 Restart=on-failure
 RestartSec=10
 StandardOutput=append:{log}

@@ -997,12 +997,12 @@ impl ChatService for LiveChatService {
             .unwrap_or(false);
         let host_is_root = detect_host_root_user().await;
         // Sandbox containers currently run as root by default.
-        let exec_is_root = if sandbox_enabled {
+        let command_is_root = if sandbox_enabled {
             Some(true)
         } else {
             host_is_root
         };
-        let exec_prompt_symbol = exec_is_root.map(|is_root| {
+        let command_prompt_symbol = command_is_root.map(|is_root| {
             if is_root {
                 "#"
             } else {
@@ -1012,8 +1012,8 @@ impl ChatService for LiveChatService {
         let execution_info = serde_json::json!({
             "mode": if sandbox_enabled { "sandbox" } else { "host" },
             "hostIsRoot": host_is_root,
-            "isRoot": exec_is_root,
-            "promptSymbol": exec_prompt_symbol,
+            "isRoot": command_is_root,
+            "promptSymbol": command_prompt_symbol,
         });
 
         // Discover enabled skills/plugins (only if provider supports tools and

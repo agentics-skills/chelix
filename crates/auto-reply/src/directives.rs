@@ -1,4 +1,4 @@
-/// Parse inline directives from message text (e.g. #think, #exec, #reset).
+/// Parse inline directives from message text (e.g. #think, #command, #reset).
 pub struct Directive {
     pub kind: DirectiveKind,
     pub value: Option<String>,
@@ -6,7 +6,7 @@ pub struct Directive {
 
 pub enum DirectiveKind {
     Think,
-    Exec,
+    Command,
     Reset,
 }
 

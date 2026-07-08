@@ -2,7 +2,7 @@
 //!
 //! This provides a first-class file service for sandboxed tools so callers do
 //! not need to assemble shell snippets or juggle `(backend, sandbox_id)` pairs
-//! directly. The current implementation still uses `Sandbox::exec` under the
+//! directly. The current implementation still uses `Sandbox::run_command` under the
 //! hood, but the shell transport is now hidden behind a stable Rust interface.
 
 use {
@@ -21,8 +21,8 @@ use {
 
 use crate::{
     Result,
+    command::CommandOptions,
     error::Error,
-    exec::ExecOpts,
     sandbox::{Sandbox, SandboxId, SandboxRouter, containers::container_exec_shell_args},
 };
 
@@ -43,8 +43,8 @@ const EXIT_TOO_LARGE: i32 = 13;
 const EXIT_SYMLINK: i32 = 14;
 const EXIT_PARENT_MISSING: i32 = 20;
 
-fn default_opts() -> ExecOpts {
-    ExecOpts {
+fn default_opts() -> CommandOptions {
+    CommandOptions {
         timeout: DEFAULT_SANDBOX_TIMEOUT,
         max_output_bytes: DEFAULT_SANDBOX_OUTPUT_BYTES,
         working_dir: Some(PathBuf::from("/home/sandbox")),
@@ -169,7 +169,7 @@ pub trait SandboxFileSystem: Send + Sync {
     async fn grep(&self, opts: SandboxGrepOptions) -> Result<Value>;
 }
 
-/// Command-based [`SandboxFileSystem`] implementation backed by `Sandbox::exec`.
+/// Command-based [`SandboxFileSystem`] implementation backed by `Sandbox::run_command`.
 pub struct CommandSandboxFileSystem {
     backend: Arc<dyn Sandbox>,
     id: SandboxId,
@@ -215,7 +215,7 @@ pub async fn command_read_file<S: Sandbox + ?Sized>(
          base64 < \"$path\" | tr -d '\\n'"
     );
 
-    let result = backend.exec(id, &script, &default_opts()).await?;
+    let result = backend.run_command(id, &script, &default_opts()).await?;
     match result.exit_code {
         0 => {
             let bytes = BASE64.decode(result.stdout.trim()).map_err(|e| {
@@ -276,7 +276,7 @@ pub async fn command_write_file<S: Sandbox + ?Sized>(
          mv \"$tmp\" \"$path\""
     );
 
-    let result = backend.exec(id, &script, &default_opts()).await?;
+    let result = backend.run_command(id, &script, &default_opts()).await?;
     match result.exit_code {
         0 => Ok(None),
         EXIT_PARENT_MISSING => Err(Error::message(format!(
@@ -313,7 +313,7 @@ pub async fn command_list_files<S: Sandbox + ?Sized>(
         "find {quoted} -type f 2>/dev/null | head -n {}",
         MAX_SANDBOX_LIST_FILES + 1
     );
-    let result = backend.exec(id, &script, &default_opts()).await?;
+    let result = backend.run_command(id, &script, &default_opts()).await?;
     if result.exit_code != 0 && result.stdout.trim().is_empty() {
         let detail = if result.stderr.trim().is_empty() {
             format!("find exited with code {}", result.exit_code)
@@ -373,7 +373,7 @@ pub async fn command_grep<S: Sandbox + ?Sized>(
          fi; \
          if [ $rc -eq 1 ]; then exit 0; else exit $rc; fi"
     );
-    let result = backend.exec(id, &script, &default_opts()).await?;
+    let result = backend.run_command(id, &script, &default_opts()).await?;
     if result.exit_code != 0 {
         let detail = if result.stderr.trim().is_empty() {
             format!("grep exited with code {}", result.exit_code)
@@ -557,7 +557,7 @@ fn classify_container_copy_error(stderr: &str) -> Option<ContainerCopyErrorKind>
     None
 }
 
-async fn oci_exec_shell(
+async fn oci_run_shell_command(
     cli: &str,
     container_name: &str,
     shell_command: String,
@@ -595,7 +595,7 @@ async fn oci_probe_file_kind(
          if [ -d \"$path\" ]; then printf 'dir\\n'; exit 0; fi; \
          printf 'other\\n'; exit 0"
     );
-    let (exit_code, stdout, stderr) = oci_exec_shell(cli, container_name, script).await?;
+    let (exit_code, stdout, stderr) = oci_run_shell_command(cli, container_name, script).await?;
     match exit_code {
         0 => {
             let line = stdout.trim();
@@ -614,10 +614,10 @@ async fn oci_probe_file_kind(
         },
         EXIT_NOT_FOUND => Ok(OciPathKind::Missing),
         EXIT_PERMISSION_DENIED => Err(Error::message(format!(
-            "{cli} exec denied access to '{file_path}'"
+            "{cli} command denied access to '{file_path}'"
         ))),
         _ => Err(Error::message(format!(
-            "{cli} exec failed while probing '{file_path}': {}",
+            "{cli} command failed while probing '{file_path}': {}",
             stderr.trim()
         ))),
     }
@@ -651,7 +651,7 @@ async fn oci_probe_write_target(
          if [ ! -w \"$parent\" ]; then exit {EXIT_PERMISSION_DENIED}; fi; \
          echo missing-file"
     );
-    let (exit_code, stdout, stderr) = oci_exec_shell(cli, container_name, script).await?;
+    let (exit_code, stdout, stderr) = oci_run_shell_command(cli, container_name, script).await?;
 
     match exit_code {
         0 => {
@@ -684,7 +684,7 @@ async fn oci_probe_write_target(
             "OCI Write requires a regular file target",
         ))),
         _ => Err(Error::message(format!(
-            "{cli} exec failed while probing write target '{file_path}': {}",
+            "{cli} command failed while probing write target '{file_path}': {}",
             stderr.trim()
         ))),
     }
@@ -1168,7 +1168,8 @@ pub async fn oci_container_list_files(
                 "find {quoted} -type f 2>/dev/null | head -n {}",
                 MAX_SANDBOX_LIST_FILES + 1
             );
-            let (exit_code, stdout, stderr) = oci_exec_shell(cli, container_name, script).await?;
+            let (exit_code, stdout, stderr) =
+                oci_run_shell_command(cli, container_name, script).await?;
             if exit_code != 0 && stdout.trim().is_empty() {
                 let detail = stderr.trim();
                 return Err(Error::message(format!(
@@ -1185,17 +1186,17 @@ pub async fn oci_container_list_files(
 pub(crate) mod test_helpers {
     use {
         super::*,
-        crate::{exec::ExecResult, sandbox::types::BuildImageResult},
+        crate::{command::CommandOutput, sandbox::types::BuildImageResult},
         std::sync::Mutex,
     };
 
     pub struct MockSandbox {
         pub calls: Mutex<Vec<String>>,
-        pub responses: Mutex<Vec<ExecResult>>,
+        pub responses: Mutex<Vec<CommandOutput>>,
     }
 
     impl MockSandbox {
-        pub fn new(responses: Vec<ExecResult>) -> Arc<Self> {
+        pub fn new(responses: Vec<CommandOutput>) -> Arc<Self> {
             Arc::new(Self {
                 calls: Mutex::new(Vec::new()),
                 responses: Mutex::new(responses),
@@ -1225,16 +1226,16 @@ pub(crate) mod test_helpers {
             Ok(())
         }
 
-        async fn exec(
+        async fn run_command(
             &self,
             _id: &SandboxId,
             command: &str,
-            _opts: &ExecOpts,
-        ) -> Result<ExecResult> {
+            _opts: &CommandOptions,
+        ) -> Result<CommandOutput> {
             self.calls.lock().unwrap().push(command.to_string());
             let mut responses = self.responses.lock().unwrap();
             if responses.is_empty() {
-                Ok(ExecResult {
+                Ok(CommandOutput {
                     stdout: String::new(),
                     stderr: String::new(),
                     exit_code: 0,
@@ -1263,7 +1264,7 @@ pub(crate) mod test_helpers {
 mod tests {
     use {
         super::{test_helpers::MockSandbox, *},
-        crate::{exec::ExecResult, sandbox::types::SandboxScope},
+        crate::{command::CommandOutput, sandbox::types::SandboxScope},
     };
 
     fn test_id() -> SandboxId {
@@ -1276,7 +1277,7 @@ mod tests {
     #[tokio::test]
     async fn read_file_decodes_base64() {
         let encoded = BASE64.encode(b"hello sandbox");
-        let mock = MockSandbox::new(vec![ExecResult {
+        let mock = MockSandbox::new(vec![CommandOutput {
             stdout: encoded,
             stderr: String::new(),
             exit_code: 0,
@@ -1293,7 +1294,7 @@ mod tests {
 
     #[tokio::test]
     async fn read_file_maps_too_large() {
-        let mock = MockSandbox::new(vec![ExecResult {
+        let mock = MockSandbox::new(vec![CommandOutput {
             stdout: String::new(),
             stderr: "12345\n".to_string(),
             exit_code: EXIT_TOO_LARGE,
@@ -1306,7 +1307,7 @@ mod tests {
 
     #[tokio::test]
     async fn write_file_encodes_content() {
-        let mock = MockSandbox::new(vec![ExecResult {
+        let mock = MockSandbox::new(vec![CommandOutput {
             stdout: String::new(),
             stderr: String::new(),
             exit_code: 0,
@@ -1323,7 +1324,7 @@ mod tests {
 
     #[tokio::test]
     async fn list_files_reads_find_output() {
-        let mock = MockSandbox::new(vec![ExecResult {
+        let mock = MockSandbox::new(vec![CommandOutput {
             stdout: "/data/a.rs\n/data/b.rs\n".to_string(),
             stderr: String::new(),
             exit_code: 0,
@@ -1345,7 +1346,7 @@ mod tests {
 
     #[tokio::test]
     async fn grep_content_applies_paging() {
-        let mock = MockSandbox::new(vec![ExecResult {
+        let mock = MockSandbox::new(vec![CommandOutput {
             stdout: "/data/lib.rs:3:fn alpha()\n/data/lib.rs:9:fn beta()\n".to_string(),
             stderr: String::new(),
             exit_code: 0,

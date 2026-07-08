@@ -886,10 +886,10 @@ fn format_tool_result_message(
     result: &Option<Value>,
 ) -> String {
     let detail = match tool_name {
-        "exec" => {
+        "execute_command" => {
             let exit_code = result
                 .as_ref()
-                .and_then(|r| r.get("exitCode"))
+                .and_then(|r| r.get("exitCode").or_else(|| r.get("exit_code")))
                 .and_then(|v| v.as_i64());
             let stderr = result
                 .as_ref()
@@ -968,7 +968,7 @@ fn format_tool_status_message(tool_name: &str, arguments: &Value) -> String {
                 _ => format!("🌐 Browser: {}", action),
             }
         },
-        "exec" => {
+        "execute_command" => {
             let command = arguments.get("command").and_then(|v| v.as_str());
             if let Some(cmd) = command {
                 // Show first ~50 chars of command

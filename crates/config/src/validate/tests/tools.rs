@@ -3,14 +3,14 @@ use super::*;
 #[test]
 fn sandbox_mode_off_warned() {
     let toml = r#"
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 mode = "off"
 "#;
     let result = validate_toml_str(toml);
     let warning = result
         .diagnostics
         .iter()
-        .find(|d| d.path == "tools.exec.sandbox.mode");
+        .find(|d| d.path == "tools.execute_command.sandbox.mode");
     assert!(warning.is_some(), "expected warning for sandbox mode off");
 }
 
@@ -31,14 +31,14 @@ port = 0
 #[test]
 fn unknown_sandbox_backend_warned() {
     let toml = r#"
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 backend = "lxc"
 "#;
     let result = validate_toml_str(toml);
     let warning = result
         .diagnostics
         .iter()
-        .find(|d| d.path == "tools.exec.sandbox.backend");
+        .find(|d| d.path == "tools.execute_command.sandbox.backend");
     assert!(
         warning.is_some(),
         "expected warning for unknown sandbox backend"
@@ -48,14 +48,14 @@ backend = "lxc"
 #[test]
 fn podman_sandbox_backend_accepted() {
     let toml = r#"
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 backend = "podman"
 "#;
     let result = validate_toml_str(toml);
     let warning = result
         .diagnostics
         .iter()
-        .find(|d| d.path == "tools.exec.sandbox.backend");
+        .find(|d| d.path == "tools.execute_command.sandbox.backend");
     assert!(
         warning.is_none(),
         "podman should be accepted as a valid sandbox backend"
@@ -65,14 +65,14 @@ backend = "podman"
 #[test]
 fn unknown_security_level_warned() {
     let toml = r#"
-[tools.exec]
+[tools.execute_command]
 security_level = "paranoid"
 "#;
     let result = validate_toml_str(toml);
     let warning = result
         .diagnostics
         .iter()
-        .find(|d| d.path == "tools.exec.security_level");
+        .find(|d| d.path == "tools.execute_command.security_level");
     assert!(
         warning.is_some(),
         "expected warning for unknown security level"
@@ -80,9 +80,9 @@ security_level = "paranoid"
 }
 
 #[test]
-fn ssh_exec_host_accepted() {
+fn ssh_command_host_accepted() {
     let toml = r#"
-[tools.exec]
+[tools.execute_command]
 host = "ssh"
 ssh_target = "deploy@example"
 "#;
@@ -90,24 +90,24 @@ ssh_target = "deploy@example"
     let warning = result
         .diagnostics
         .iter()
-        .find(|d| d.path == "tools.exec.host");
+        .find(|d| d.path == "tools.execute_command.host");
     assert!(
         warning.is_none(),
-        "ssh should be accepted as a valid exec host"
+        "ssh should be accepted as a valid command host"
     );
 }
 
 #[test]
-fn ssh_exec_host_without_target_warned() {
+fn ssh_command_host_without_target_warned() {
     let toml = r#"
-[tools.exec]
+[tools.execute_command]
 host = "ssh"
 "#;
     let result = validate_toml_str(toml);
     let warning = result
         .diagnostics
         .iter()
-        .find(|d| d.path == "tools.exec.ssh_target");
+        .find(|d| d.path == "tools.execute_command.ssh_target");
     assert!(warning.is_some(), "expected warning for missing ssh target");
 }
 

@@ -11,31 +11,28 @@ use {
 use {
     moltis_channels::ChannelReplyTarget,
     moltis_sessions::metadata::SessionEntry,
-    moltis_tools::{
-        approval::{ApprovalDecision, ApprovalManager},
-        exec::ApprovalBroadcaster,
-    },
+    moltis_tools::approval::{ApprovalBroadcaster, ApprovalDecision, ApprovalManager},
 };
 
 use crate::{
     broadcast::{BroadcastOpts, broadcast},
-    services::{ExecApprovalService, ServiceResult},
+    services::{CommandApprovalService, ServiceResult},
     state::GatewayState,
 };
 
 /// Live approval service backed by an `ApprovalManager`.
-pub struct LiveExecApprovalService {
+pub struct LiveCommandApprovalService {
     manager: Arc<ApprovalManager>,
 }
 
-impl LiveExecApprovalService {
+impl LiveCommandApprovalService {
     pub fn new(manager: Arc<ApprovalManager>) -> Self {
         Self { manager }
     }
 }
 
 #[async_trait]
-impl ExecApprovalService for LiveExecApprovalService {
+impl CommandApprovalService for LiveCommandApprovalService {
     async fn get(&self) -> ServiceResult {
         Ok(serde_json::json!({
             "mode": self.manager.mode,
@@ -153,7 +150,7 @@ impl ApprovalBroadcaster for GatewayApprovalBroadcaster {
     ) -> moltis_tools::Result<()> {
         broadcast(
             &self.state,
-            "exec.approval.requested",
+            "command.approval.requested",
             serde_json::json!({
                 "requestId": request_id,
                 "command": command,
@@ -199,7 +196,7 @@ mod tests {
     #[tokio::test]
     async fn test_live_service_resolve() {
         let mgr = Arc::new(ApprovalManager::default());
-        let svc = LiveExecApprovalService::new(Arc::clone(&mgr));
+        let svc = LiveCommandApprovalService::new(Arc::clone(&mgr));
 
         // Create a pending request.
         let (id, mut rx) = mgr.create_request("rm -rf /", Some("session:test")).await;
@@ -221,7 +218,7 @@ mod tests {
     #[tokio::test]
     async fn test_live_service_get() {
         let mgr = Arc::new(ApprovalManager::default());
-        let svc = LiveExecApprovalService::new(mgr);
+        let svc = LiveCommandApprovalService::new(mgr);
         let result = svc.get().await.unwrap();
         // Default mode is on-miss.
         assert_eq!(result["mode"], "on-miss");
@@ -230,7 +227,7 @@ mod tests {
     #[tokio::test]
     async fn test_live_service_request_filters_by_session() {
         let mgr = Arc::new(ApprovalManager::default());
-        let svc = LiveExecApprovalService::new(Arc::clone(&mgr));
+        let svc = LiveCommandApprovalService::new(Arc::clone(&mgr));
         let _ = mgr.create_request("echo one", Some("session:a")).await;
         let _ = mgr.create_request("echo two", Some("session:b")).await;
 

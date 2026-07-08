@@ -7,8 +7,8 @@ use tracing::debug;
 use {
     super::types::{Sandbox, SandboxConfig, SandboxId, truncate_output_for_display},
     crate::{
+        command::{CommandOptions, CommandOutput},
         error::{Error, Result},
-        exec::{ExecOpts, ExecResult},
         sandbox::file_system::{
             SandboxGrepOptions, SandboxListFilesResult, SandboxReadResult, command_grep,
             native_host_list_files, native_host_read_file, native_host_write_file,
@@ -83,7 +83,12 @@ impl Sandbox for CgroupSandbox {
         }
     }
 
-    async fn exec(&self, id: &SandboxId, command: &str, opts: &ExecOpts) -> Result<ExecResult> {
+    async fn run_command(
+        &self,
+        id: &SandboxId,
+        command: &str,
+        opts: &CommandOptions,
+    ) -> Result<CommandOutput> {
         let scope = self.scope_name(id);
 
         let mut args = vec![
@@ -119,18 +124,18 @@ impl Sandbox for CgroupSandbox {
                 truncate_output_for_display(&mut stdout, opts.max_output_bytes);
                 truncate_output_for_display(&mut stderr, opts.max_output_bytes);
 
-                Ok(ExecResult {
+                Ok(CommandOutput {
                     stdout,
                     stderr,
                     exit_code: output.status.code().unwrap_or(-1),
                 })
             },
             Ok(Err(e)) => {
-                return Err(Error::message(format!("systemd-run exec failed: {e}")));
+                return Err(Error::message(format!("systemd-run command failed: {e}")));
             },
             Err(_) => {
                 return Err(Error::message(format!(
-                    "systemd-run exec timed out after {}s",
+                    "systemd-run command timed out after {}s",
                     opts.timeout.as_secs()
                 )));
             },
@@ -255,7 +260,12 @@ impl Sandbox for RestrictedHostSandbox {
         Ok(())
     }
 
-    async fn exec(&self, _id: &SandboxId, command: &str, opts: &ExecOpts) -> Result<ExecResult> {
+    async fn run_command(
+        &self,
+        _id: &SandboxId,
+        command: &str,
+        opts: &CommandOptions,
+    ) -> Result<CommandOutput> {
         // Wrap the command with shell ulimit calls for resource isolation.
         let wrapped = self.build_ulimit_wrapped_command(command);
 
@@ -294,7 +304,7 @@ impl Sandbox for RestrictedHostSandbox {
                 truncate_output_for_display(&mut stdout, opts.max_output_bytes);
                 truncate_output_for_display(&mut stderr, opts.max_output_bytes);
 
-                Ok(ExecResult {
+                Ok(CommandOutput {
                     stdout,
                     stderr,
                     exit_code: output.status.code().unwrap_or(-1),
@@ -302,12 +312,12 @@ impl Sandbox for RestrictedHostSandbox {
             },
             Ok(Err(e)) => {
                 return Err(Error::message(format!(
-                    "restricted-host sandbox exec failed: {e}"
+                    "restricted-host sandbox command failed: {e}"
                 )));
             },
             Err(_) => {
                 return Err(Error::message(format!(
-                    "restricted-host sandbox exec timed out after {}s",
+                    "restricted-host sandbox command timed out after {}s",
                     opts.timeout.as_secs()
                 )));
             },

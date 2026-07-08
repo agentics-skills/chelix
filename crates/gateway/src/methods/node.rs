@@ -9,11 +9,11 @@ use crate::{
 
 use super::MethodRegistry;
 
-fn configured_legacy_ssh_target() -> Option<String> {
+fn configured_ssh_target() -> Option<String> {
     let config = moltis_config::discover_and_load();
     config
         .tools
-        .exec
+        .execute_command
         .ssh_target
         .map(|target| target.trim().to_string())
         .filter(|target| !target.is_empty())
@@ -21,7 +21,7 @@ fn configured_legacy_ssh_target() -> Option<String> {
 
 fn ssh_summary_json(target: &str) -> serde_json::Value {
     serde_json::json!({
-        "nodeId": crate::node_exec::ssh_node_id(target),
+        "nodeId": crate::node_command::ssh_node_id(target),
         "displayName": format!("SSH: {target}"),
         "platform": "ssh",
         "version": serde_json::Value::Null,
@@ -76,7 +76,7 @@ fn ssh_target_summary_json(target: &SshTargetEntry) -> serde_json::Value {
 
 fn ssh_detail_json(target: &str) -> serde_json::Value {
     serde_json::json!({
-        "nodeId": crate::node_exec::ssh_node_id(target),
+        "nodeId": crate::node_command::ssh_node_id(target),
         "displayName": format!("SSH: {target}"),
         "platform": "ssh",
         "version": serde_json::Value::Null,
@@ -189,7 +189,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         Err(error) => tracing::warn!(%error, "failed to list managed ssh targets"),
                     }
                 }
-                if let Some(target) = configured_legacy_ssh_target() {
+                if let Some(target) = configured_ssh_target() {
                     list.push(ssh_summary_json(&target));
                 }
                 Ok(serde_json::json!(list))
@@ -218,8 +218,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         },
                     }
                 }
-                if let Some(target) = configured_legacy_ssh_target()
-                    && crate::node_exec::ssh_target_matches(node_id, &target)
+                if let Some(target) = configured_ssh_target()
+                    && crate::node_command::ssh_target_matches(node_id, &target)
                 {
                     return Ok(ssh_detail_json(&target));
                 }
@@ -318,10 +318,10 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e.to_string()))?
                     {
                         Some(target.node_id)
-                    } else if let Some(target) = configured_legacy_ssh_target()
-                        && crate::node_exec::ssh_target_matches(nid, &target)
+                    } else if let Some(target) = configured_ssh_target()
+                        && crate::node_command::ssh_target_matches(nid, &target)
                     {
-                        Some(crate::node_exec::ssh_node_id(&target))
+                        Some(crate::node_command::ssh_node_id(&target))
                     } else {
                         let inner = ctx.state.inner.read().await;
                         if inner.nodes.get(nid).is_none() {

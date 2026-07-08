@@ -28,7 +28,7 @@ VERCEL_TEAM_ID=team_your_team_id    # optional but recommended
 Or configure in `moltis.toml`:
 
 ```toml
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 backend = "vercel"  # or leave "auto" for auto-detection
 
 # Optional: customize Vercel sandbox settings
@@ -70,7 +70,7 @@ DAYTONA_API_URL=https://app.daytona.io/api  # default, change for self-hosted
 Or configure in `moltis.toml`:
 
 ```toml
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 backend = "daytona"  # or leave "auto" for auto-detection
 
 # Daytona API settings
@@ -84,7 +84,7 @@ If you run Daytona on your own infrastructure (Proxmox, bare-metal, etc.),
 point the API URL to your instance:
 
 ```toml
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 daytona_api_url = "https://daytona.your-server.local/api"
 ```
 
@@ -127,7 +127,7 @@ Firecracker backend boots microVMs directly using the Firecracker hypervisor.
 ### Configuration
 
 ```toml
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 backend = "firecracker"
 
 firecracker_bin = "/usr/local/bin/firecracker"

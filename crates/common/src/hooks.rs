@@ -771,7 +771,7 @@ mod tests {
     fn modifying_payload() -> HookPayload {
         HookPayload::BeforeToolCall {
             session_key: "test".into(),
-            tool_name: "exec".into(),
+            tool_name: "execute_command".into(),
             arguments: serde_json::json!({}),
             channel: None,
         }
@@ -1051,7 +1051,7 @@ mod tests {
             provider: "anthropic".into(),
             model: "claude-sonnet-4-20250514".into(),
             text: Some("Hello!".into()),
-            tool_calls: vec![serde_json::json!({"name": "exec"})],
+            tool_calls: vec![serde_json::json!({"name": "execute_command"})],
             input_tokens: 100,
             output_tokens: 50,
             iteration: 2,
@@ -1112,7 +1112,7 @@ mod tests {
         let binding = test_channel_binding();
         let before = HookPayload::BeforeToolCall {
             session_key: "s".into(),
-            tool_name: "exec".into(),
+            tool_name: "execute_command".into(),
             arguments: serde_json::json!({"command": "pwd"}),
             channel: Some(binding.clone()),
         };
@@ -1157,7 +1157,7 @@ mod tests {
 
         let after = HookPayload::AfterToolCall {
             session_key: "s".into(),
-            tool_name: "exec".into(),
+            tool_name: "execute_command".into(),
             success: true,
             result: Some(serde_json::json!({"cwd": "/tmp"})),
             channel: Some(test_channel_binding()),
@@ -1173,7 +1173,7 @@ mod tests {
 
         let persist = HookPayload::ToolResultPersist {
             session_key: "s".into(),
-            tool_name: "exec".into(),
+            tool_name: "execute_command".into(),
             result: serde_json::json!({"cwd": "/tmp"}),
             channel: Some(test_channel_binding()),
         };
@@ -1192,7 +1192,7 @@ mod tests {
         let json = serde_json::json!({
             "event": "BeforeToolCall",
             "session_key": "s",
-            "tool_name": "exec",
+            "tool_name": "execute_command",
             "arguments": {"command": "pwd"}
         });
         let payload: HookPayload = serde_json::from_value(json).unwrap();
@@ -1222,7 +1222,7 @@ mod tests {
         let json = serde_json::json!({
             "event": "AfterToolCall",
             "session_key": "s",
-            "tool_name": "exec",
+            "tool_name": "execute_command",
             "success": true,
             "result": {"cwd": "/tmp"}
         });

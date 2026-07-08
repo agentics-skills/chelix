@@ -22,9 +22,10 @@ use {
 
 #[test]
 fn test_parse_tool_call_basic() {
-    let text = "```tool_call\n{\"tool\": \"exec\", \"arguments\": {\"command\": \"ls\"}}\n```";
+    let text =
+        "```tool_call\n{\"tool\": \"execute_command\", \"arguments\": {\"command\": \"ls\"}}\n```";
     let (tc, remaining) = parse_tool_call_from_text(text).unwrap();
-    assert_eq!(tc.name, "exec");
+    assert_eq!(tc.name, "execute_command");
     assert_eq!(tc.arguments["command"], "ls");
     assert!(tc.id.len() <= 40);
     assert!(remaining.is_none() || remaining.as_deref() == Some(""));
@@ -32,9 +33,9 @@ fn test_parse_tool_call_basic() {
 
 #[test]
 fn test_parse_tool_call_with_surrounding_text() {
-    let text = "I'll run ls for you.\n```tool_call\n{\"tool\": \"exec\", \"arguments\": {\"command\": \"ls\"}}\n```\nHere you go.";
+    let text = "I'll run ls for you.\n```tool_call\n{\"tool\": \"execute_command\", \"arguments\": {\"command\": \"ls\"}}\n```\nHere you go.";
     let (tc, remaining) = parse_tool_call_from_text(text).unwrap();
-    assert_eq!(tc.name, "exec");
+    assert_eq!(tc.name, "execute_command");
     let remaining = remaining.unwrap();
     assert!(remaining.contains("I'll run ls"));
     assert!(remaining.contains("Here you go"));
@@ -862,13 +863,13 @@ async fn test_tool_call_loop() {
     assert_eq!(result.tool_calls_made, 1);
 }
 
-/// Mock provider that calls the "exec" tool (native) and verifies result fed back.
-struct ExecSimulatingProvider {
+/// Mock provider that calls the "execute_command" tool (native) and verifies result fed back.
+struct CommandSimulatingProvider {
     call_count: std::sync::atomic::AtomicUsize,
 }
 
 #[async_trait]
-impl LlmProvider for ExecSimulatingProvider {
+impl LlmProvider for CommandSimulatingProvider {
     fn name(&self) -> &str {
         "mock"
     }
@@ -893,8 +894,8 @@ impl LlmProvider for ExecSimulatingProvider {
             Ok(CompletionResponse {
                 text: None,
                 tool_calls: vec![ToolCall {
-                    id: "call_exec_1".into(),
-                    name: "exec".into(),
+                    id: "call_execute_command_1".into(),
+                    name: "execute_command".into(),
                     arguments: serde_json::json!({"command": "echo hello"}),
                     argument_diagnostic: None,
                     metadata: None,
@@ -941,12 +942,12 @@ impl LlmProvider for ExecSimulatingProvider {
 }
 
 #[tokio::test]
-async fn test_exec_tool_end_to_end() {
-    let provider = Arc::new(ExecSimulatingProvider {
+async fn test_execute_command_tool_end_to_end() {
+    let provider = Arc::new(CommandSimulatingProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
     let mut tools = ToolRegistry::new();
-    tools.register(Box::new(TestExecTool));
+    tools.register(Box::new(TestExecuteCommandTool));
 
     let events: Arc<std::sync::Mutex<Vec<RunnerEvent>>> =
         Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -990,23 +991,23 @@ async fn test_exec_tool_end_to_end() {
         .iter()
         .find(|e| matches!(e, RunnerEvent::ToolCallEnd { .. }));
     if let Some(RunnerEvent::ToolCallEnd { success, name, .. }) = tool_end {
-        assert!(success, "exec tool should succeed");
-        assert_eq!(name, "exec");
+        assert!(success, "execute_command tool should succeed");
+        assert_eq!(name, "execute_command");
     }
 }
 
-struct HookModifiedExecProvider {
+struct HookModifiedCommandProvider {
     call_count: std::sync::atomic::AtomicUsize,
 }
 
 #[async_trait]
-impl LlmProvider for HookModifiedExecProvider {
+impl LlmProvider for HookModifiedCommandProvider {
     fn name(&self) -> &str {
-        "hook-modified-exec"
+        "hook-modified-command"
     }
 
     fn id(&self) -> &str {
-        "hook-modified-exec-model"
+        "hook-modified-command-model"
     }
 
     fn supports_tools(&self) -> bool {
@@ -1025,8 +1026,8 @@ impl LlmProvider for HookModifiedExecProvider {
             Ok(CompletionResponse {
                 text: None,
                 tool_calls: vec![ToolCall {
-                    id: "call_exec_hook_1".into(),
-                    name: "exec".into(),
+                    id: "call_execute_command_hook_1".into(),
+                    name: "execute_command".into(),
                     arguments: serde_json::json!({"command": "echo should-not-run"}),
                     argument_diagnostic: None,
                     metadata: None,
@@ -1050,7 +1051,7 @@ impl LlmProvider for HookModifiedExecProvider {
             );
             assert!(
                 !tool_content.contains("should-not-run"),
-                "invalid hook args must be rejected before exec runs"
+                "invalid hook args must be rejected before execute_command runs"
             );
             Ok(CompletionResponse {
                 text: Some("Hook rewrite was rejected.".into()),
@@ -1070,11 +1071,11 @@ impl LlmProvider for HookModifiedExecProvider {
 
 #[tokio::test]
 async fn test_hook_modified_tool_args_are_revalidated_before_execute() {
-    let provider = Arc::new(HookModifiedExecProvider {
+    let provider = Arc::new(HookModifiedCommandProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
     let mut tools = ToolRegistry::new();
-    tools.register(Box::new(TestExecTool));
+    tools.register(Box::new(TestExecuteCommandTool));
 
     let mut hooks = HookRegistry::new();
     hooks.register(Arc::new(RewriteToolArgsHook {
@@ -1109,7 +1110,7 @@ async fn test_hook_modified_tool_args_are_revalidated_before_execute() {
     let start_index = evts
         .iter()
         .position(
-            |event| matches!(event, RunnerEvent::ToolCallStart { name, .. } if name == "exec"),
+            |event| matches!(event, RunnerEvent::ToolCallStart { name, .. } if name == "execute_command"),
         )
         .expect("hook-modified call should emit ToolCallStart before hook dispatch");
     let end_index = evts
@@ -1122,7 +1123,7 @@ async fn test_hook_modified_tool_args_are_revalidated_before_execute() {
                     success: false,
                     error: Some(error),
                     ..
-                } if name == "exec" && error.contains("Missing required field(s): `command`")
+                } if name == "execute_command" && error.contains("Missing required field(s): `command`")
             )
         })
         .expect("hook-modified validation failure should close the started tool span");
@@ -1145,7 +1146,7 @@ async fn test_text_based_tool_calling() {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
     let mut tools = ToolRegistry::new();
-    tools.register(Box::new(TestExecTool));
+    tools.register(Box::new(TestExecuteCommandTool));
 
     let events: Arc<std::sync::Mutex<Vec<RunnerEvent>>> =
         Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -1239,7 +1240,7 @@ impl LlmProvider for DirectCommandNoToolProvider {
                 .unwrap_or("");
             assert!(
                 !assistant_tool_text.is_empty(),
-                "forced exec should preserve assistant reasoning text"
+                "forced command should preserve assistant reasoning text"
             );
             let tool_content = messages
                 .iter()
@@ -1253,7 +1254,7 @@ impl LlmProvider for DirectCommandNoToolProvider {
                 .unwrap_or("");
             assert!(
                 !tool_content.is_empty(),
-                "forced exec should append a tool result message"
+                "forced command should append a tool result message"
             );
             Ok(CompletionResponse {
                 text: Some("done".into()),
@@ -1276,12 +1277,12 @@ impl LlmProvider for DirectCommandNoToolProvider {
 }
 
 #[tokio::test]
-async fn test_explicit_sh_command_forces_exec_non_streaming() {
+async fn test_explicit_sh_command_forces_execute_command_non_streaming() {
     let provider = Arc::new(DirectCommandNoToolProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
     let mut tools = ToolRegistry::new();
-    tools.register(Box::new(TestExecTool));
+    tools.register(Box::new(TestExecuteCommandTool));
 
     let events: Arc<std::sync::Mutex<Vec<RunnerEvent>>> =
         Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -1319,17 +1320,17 @@ async fn test_explicit_sh_command_forces_exec_non_streaming() {
     });
     assert!(tool_start.is_some(), "should emit ToolCallStart");
     let (name, args) = tool_start.unwrap();
-    assert_eq!(name, "exec");
+    assert_eq!(name, "execute_command");
     assert_eq!(args["command"], "pwd");
 }
 
 #[tokio::test]
-async fn test_unprefixed_command_like_text_does_not_force_exec_non_streaming() {
+async fn test_unprefixed_command_like_text_does_not_force_execute_command_non_streaming() {
     let provider = Arc::new(MockProvider {
         response_text: "plain response".to_string(),
     });
     let mut tools = ToolRegistry::new();
-    tools.register(Box::new(TestExecTool));
+    tools.register(Box::new(TestExecuteCommandTool));
 
     let events: Arc<std::sync::Mutex<Vec<RunnerEvent>>> =
         Arc::new(std::sync::Mutex::new(Vec::new()));

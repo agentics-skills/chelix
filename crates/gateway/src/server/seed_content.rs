@@ -153,9 +153,9 @@ fi
 
 INPUT=$(cat)
 
-# Only inspect exec tool calls.
+# Only inspect execute_command tool calls.
 TOOL_NAME=$(printf '%s' "$INPUT" | grep -o '"tool_name":"[^"]*"' | head -1 | cut -d'"' -f4)
-if [ "$TOOL_NAME" != "exec" ]; then
+if [ "$TOOL_NAME" != "execute_command" ]; then
     exit 0
 fi
 
@@ -217,7 +217,7 @@ giving you full control over TUI apps, REPLs, and background processes.
 - **Long-running commands**: tail -f, watch, servers, builds
 - **Programs that need keyboard input**: anything that waits for keypresses
 
-For simple one-shot commands (ls, cat, echo), use `exec` instead.
+For simple one-shot commands (ls, cat, echo), use `execute_command` instead.
 
 ## Workflow
 

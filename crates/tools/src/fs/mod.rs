@@ -1,7 +1,7 @@
 //! Native filesystem tools: `Read`, `Write`, `Edit`, `MultiEdit`, `Glob`, `Grep`.
 //!
 //! These are the structured, typed alternative to shell-based file I/O via
-//! `exec`. They match Claude Code's tool schemas exactly so LLMs trained on
+//! `execute_command`. They match Claude Code's tool schemas exactly so LLMs trained on
 //! those tools encounter the same shape of parameters and responses.
 //!
 //! See GH moltis-org/moltis#657 for context.

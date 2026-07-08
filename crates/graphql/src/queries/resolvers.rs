@@ -10,13 +10,14 @@ use crate::{
     scalars::Json,
     services,
     types::{
-        AgentIdentity, BoolResult, ChannelInfo, ChannelSendersResult, ChatRawPrompt, CronJob,
-        CronRunRecord, CronStatus, ExecApprovalConfig, ExecNodeConfig, HealthInfo, HeartbeatStatus,
-        HookInfo, LogListResult, LogStatus, LogTailResult, McpServer, McpTool, MemoryConfig,
-        MemoryStatus, ModelInfo, NodeDescription, NodeInfo, Project, ProjectContext, ProviderInfo,
-        SecurityScanResult, SecurityStatus, SessionActiveResult, SessionBranch, SessionEntry,
-        SessionShareResult, SkillInfo, SkillRepo, StatusInfo, SttStatus, SystemPresence, TtsStatus,
-        UsageCost, UsageStatus, VoiceConfig, VoicewakeConfig, VoxtralRequirements,
+        AgentIdentity, BoolResult, ChannelInfo, ChannelSendersResult, ChatRawPrompt,
+        CommandApprovalConfig, CommandNodeApprovalConfig, CronJob, CronRunRecord, CronStatus,
+        HealthInfo, HeartbeatStatus, HookInfo, LogListResult, LogStatus, LogTailResult, McpServer,
+        McpTool, MemoryConfig, MemoryStatus, ModelInfo, NodeDescription, NodeInfo, Project,
+        ProjectContext, ProviderInfo, SecurityScanResult, SecurityStatus, SessionActiveResult,
+        SessionBranch, SessionEntry, SessionShareResult, SkillInfo, SkillRepo, StatusInfo,
+        SttStatus, SystemPresence, TtsStatus, UsageCost, UsageStatus, VoiceConfig, VoicewakeConfig,
+        VoxtralRequirements,
     },
 };
 
@@ -125,9 +126,9 @@ impl QueryRoot {
         UsageQuery
     }
 
-    /// Execution approval queries.
-    async fn exec_approvals(&self) -> ExecApprovalQuery {
-        ExecApprovalQuery
+    /// Command approval queries.
+    async fn command_approvals(&self) -> CommandApprovalQuery {
+        CommandApprovalQuery
     }
 
     /// Project queries.
@@ -675,23 +676,23 @@ impl UsageQuery {
     }
 }
 
-// ── Exec Approvals ──────────────────────────────────────────────────────────
+// ── Command Approvals ───────────────────────────────────────────────────────
 
 #[derive(Default)]
-pub struct ExecApprovalQuery;
+pub struct CommandApprovalQuery;
 
 #[Object]
-impl ExecApprovalQuery {
+impl CommandApprovalQuery {
     /// Get execution approval settings.
-    async fn get(&self, ctx: &Context<'_>) -> Result<ExecApprovalConfig> {
+    async fn get(&self, ctx: &Context<'_>) -> Result<CommandApprovalConfig> {
         let s = services!(ctx);
-        from_service(s.exec_approval.get().await)
+        from_service(s.command_approval.get().await)
     }
 
     /// Get node-specific approval settings.
-    async fn node_config(&self, ctx: &Context<'_>) -> Result<ExecNodeConfig> {
+    async fn node_config(&self, ctx: &Context<'_>) -> Result<CommandNodeApprovalConfig> {
         let s = services!(ctx);
-        from_service(s.exec_approval.node_get(serde_json::json!({})).await)
+        from_service(s.command_approval.node_get(serde_json::json!({})).await)
     }
 }
 

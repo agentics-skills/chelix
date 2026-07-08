@@ -141,7 +141,7 @@ still fails, add this to `/home/moltis/.config/moltis/moltis.toml` inside the
 container:
 
 ```toml
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 host_data_dir = "/absolute/host/path/to/data"
 ```
 
@@ -220,7 +220,7 @@ Key points:
 - Keep Chelix in `--no-tls` mode behind Coolify's reverse proxy. If requests
   are redirected to `:13131`, check that TLS is disabled in Chelix.
 - Keep `/var/run/docker.sock:/var/run/docker.sock` mounted if you want sandbox
-  isolation for exec tools.
+  isolation for execute_command tools.
 
 Start with:
 
@@ -238,7 +238,7 @@ container is a sibling container on the host. By default, Chelix connects to
 The sibling browser also needs a host-visible mount for its Chrome profile. If
 your Chelix data directory is bind-mounted or stored somewhere that is not
 visible on the host as `/home/moltis/.moltis`, configure
-`[tools.exec.sandbox].host_data_dir` as described in
+`[tools.execute_command.sandbox].host_data_dir` as described in
 [Docker Socket Sandbox Execution](#docker-socket-sandbox-execution). Without
 that override, Chrome may fail with `SingletonLock: Permission denied` when the
 browser container tries to write `/data/browser-profile`.

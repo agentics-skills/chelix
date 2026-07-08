@@ -5,7 +5,7 @@ export enum WsEventName {
 	Chat = "chat",
 	Error = "error",
 	AuthCredentialsChanged = "auth.credentials_changed",
-	ExecApprovalRequested = "exec.approval.requested",
+	CommandApprovalRequested = "command.approval.requested",
 	LogsEntry = "logs.entry",
 	SandboxPrepare = "sandbox.prepare",
 	SandboxImageBuild = "sandbox.image.build",
@@ -252,7 +252,7 @@ export interface WsEventPayloadMap {
 	[WsEventName.Chat]: ChatPayload;
 	[WsEventName.Error]: WsErrorPayload;
 	[WsEventName.AuthCredentialsChanged]: AuthCredentialsPayload;
-	[WsEventName.ExecApprovalRequested]: ApprovalPayload;
+	[WsEventName.CommandApprovalRequested]: ApprovalPayload;
 	[WsEventName.LogsEntry]: LogEntryPayload;
 	[WsEventName.SandboxPrepare]: SandboxPhasePayload;
 	[WsEventName.SandboxImageBuild]: SandboxPhasePayload;

@@ -17,8 +17,8 @@ use {
 };
 
 use crate::{
+    command::{CommandOptions, CommandOutput},
     error::{Error, Result},
-    exec::{ExecOpts, ExecResult},
     sandbox::{
         file_system::SandboxReadResult,
         types::{Sandbox, SandboxConfig, SandboxId},
@@ -407,12 +407,12 @@ impl VercelSandbox {
     }
 
     /// Run a command and wait for completion via NDJSON streaming.
-    async fn run_command(
+    async fn run_remote_command(
         &self,
         sandbox_id: &str,
         command: &str,
-        opts: &ExecOpts,
-    ) -> Result<ExecResult> {
+        opts: &CommandOptions,
+    ) -> Result<CommandOutput> {
         let cwd = Self::translate_working_dir(opts.working_dir.as_ref().and_then(|p| p.to_str()));
         let mut body = serde_json::json!({
             "command": "bash",
@@ -459,7 +459,7 @@ impl VercelSandbox {
             (events.stdout, events.stderr)
         };
 
-        Ok(ExecResult {
+        Ok(CommandOutput {
             stdout,
             stderr,
             exit_code,
@@ -471,7 +471,7 @@ impl VercelSandbox {
         &self,
         sandbox_id: &str,
         cmd_id: &str,
-        opts: &ExecOpts,
+        opts: &CommandOptions,
     ) -> Result<(String, String)> {
         let resp = self
             .request(
@@ -687,11 +687,11 @@ impl Sandbox for VercelSandbox {
         }
         let pkg_list = mapped.join(" ");
         let cmd = format!("sudo dnf install -y -q {pkg_list}");
-        let opts = ExecOpts {
+        let opts = CommandOptions {
             timeout: Duration::from_secs(600),
             ..Default::default()
         };
-        let result = self.exec(id, &cmd, &opts).await?;
+        let result = self.run_command(id, &cmd, &opts).await?;
         if result.exit_code != 0 {
             tracing::warn!(
                 %id,
@@ -740,11 +740,11 @@ impl Sandbox for VercelSandbox {
         if !mapped.is_empty() {
             let pkg_list = mapped.join(" ");
             let cmd = format!("sudo dnf install -y -q {pkg_list}");
-            let opts = ExecOpts {
+            let opts = CommandOptions {
                 timeout: Duration::from_secs(600),
                 ..Default::default()
             };
-            let result = self.run_command(&sandbox_id, &cmd, &opts).await;
+            let result = self.run_remote_command(&sandbox_id, &cmd, &opts).await;
             if let Ok(r) = result
                 && r.exit_code != 0
             {
@@ -896,13 +896,18 @@ impl Sandbox for VercelSandbox {
         Ok(())
     }
 
-    async fn exec(&self, id: &SandboxId, command: &str, opts: &ExecOpts) -> Result<ExecResult> {
+    async fn run_command(
+        &self,
+        id: &SandboxId,
+        command: &str,
+        opts: &CommandOptions,
+    ) -> Result<CommandOutput> {
         let sandbox_id = self
             .session_sandbox_id(id)
             .await
             .ok_or_else(|| Error::message(format!("vercel: no active sandbox for {id}")))?;
 
-        self.run_command(&sandbox_id, command, opts).await
+        self.run_remote_command(&sandbox_id, command, opts).await
     }
 
     async fn read_file(
@@ -1078,7 +1083,7 @@ mod tests {
     }
 
     #[test]
-    fn test_env_object_includes_exec_env() {
+    fn test_env_object_includes_command_env() {
         let env = VercelSandbox::env_object(&[
             ("API_TOKEN".to_string(), "secret-value".to_string()),
             ("SESSION_ID".to_string(), "abc123".to_string()),
@@ -1309,8 +1314,8 @@ mod tests {
             scope: crate::sandbox::types::SandboxScope::Session,
             key: "test".into(),
         };
-        let opts = ExecOpts::default();
-        let result = sandbox.exec(&id, "echo hello", &opts).await;
+        let opts = CommandOptions::default();
+        let result = sandbox.run_command(&id, "echo hello", &opts).await;
         assert!(result.is_err());
         assert!(
             result

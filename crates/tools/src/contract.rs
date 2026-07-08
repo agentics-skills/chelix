@@ -1,21 +1,21 @@
-//! Contract tests for tool execution (`exec_command`).
+//! Contract tests for shell command execution.
 //!
 //! These tests validate the timeout, output truncation, and error handling
-//! invariants of the exec subsystem.
+//! invariants of the command subsystem.
 
 #![allow(clippy::unwrap_used)]
 
 use std::time::Duration;
 
-use crate::exec::{ExecOpts, exec_command};
+use crate::command::{CommandOptions, run_shell_command};
 
 /// A command that exceeds the timeout must be killed and return a structured error.
 pub async fn timeout_is_enforced() -> crate::Result<()> {
-    let opts = ExecOpts {
+    let opts = CommandOptions {
         timeout: Duration::from_secs(1),
         ..Default::default()
     };
-    let result = exec_command("sleep 60", &opts).await;
+    let result = run_shell_command("sleep 60", &opts).await;
     assert!(result.is_err(), "timed-out command must return Err");
     let err = result.unwrap_err().to_string();
     assert!(
@@ -27,13 +27,13 @@ pub async fn timeout_is_enforced() -> crate::Result<()> {
 
 /// Output exceeding the byte limit must be truncated with a marker.
 pub async fn output_is_truncated_at_limit() -> crate::Result<()> {
-    let opts = ExecOpts {
+    let opts = CommandOptions {
         timeout: Duration::from_secs(10),
         max_output_bytes: 100,
         ..Default::default()
     };
     // Generate ~1KB of output.
-    let result = exec_command("yes hello | head -200", &opts).await?;
+    let result = run_shell_command("yes hello | head -200", &opts).await?;
     // Output must be truncated.
     assert!(
         result.stdout.len() <= 200, // 100 bytes + truncation marker
@@ -47,12 +47,12 @@ pub async fn output_is_truncated_at_limit() -> crate::Result<()> {
     Ok(())
 }
 
-/// A failing command must return a structured `ExecResult` with non-zero exit code.
+/// A failing command must return a structured `CommandOutput` with non-zero exit code.
 pub async fn error_returns_structured_result() -> crate::Result<()> {
-    let opts = ExecOpts::default();
-    let result = exec_command("exit 42", &opts).await?;
+    let opts = CommandOptions::default();
+    let result = run_shell_command("exit 42", &opts).await?;
     assert_eq!(result.exit_code, 42, "exit code must be propagated");
-    // Must return ExecResult, not panic.
+    // Must return CommandOutput, not panic.
     assert!(result.stdout.is_empty() || !result.stdout.is_empty()); // just prove we got a result
     Ok(())
 }

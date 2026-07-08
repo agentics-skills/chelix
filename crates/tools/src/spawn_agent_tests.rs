@@ -495,7 +495,7 @@ async fn test_null_optional_array_params_are_treated_as_absent() {
     let spawn_tool = SpawnAgentTool::new(
         make_empty_provider_registry(),
         provider,
-        registry_with_tools(&["spawn_agent", "exec", "web_fetch", "task_list"]),
+        registry_with_tools(&["spawn_agent", "execute_command", "web_fetch", "task_list"]),
     );
 
     let params = serde_json::json!({
@@ -512,7 +512,7 @@ async fn test_null_optional_array_params_are_treated_as_absent() {
     let mut seen = seen_tool_names.lock().unwrap().clone();
     seen.sort();
     assert_eq!(seen, vec![
-        "exec".to_string(),
+        "execute_command".to_string(),
         "task_list".to_string(),
         "web_fetch".to_string(),
     ]);
@@ -538,19 +538,19 @@ async fn test_build_sub_tools_applies_allow_and_deny() {
     let spawn_tool = SpawnAgentTool::new(
         make_empty_provider_registry(),
         provider,
-        registry_with_tools(&["spawn_agent", "exec", "web_fetch", "task_list"]),
+        registry_with_tools(&["spawn_agent", "execute_command", "web_fetch", "task_list"]),
     );
 
     let filtered = spawn_tool.build_sub_tools(
         &[
-            "exec".to_string(),
+            "execute_command".to_string(),
             "task_list".to_string(),
             "spawn_agent".to_string(),
         ],
         &["task_list".to_string()],
         false,
     );
-    assert!(filtered.get("exec").is_some());
+    assert!(filtered.get("execute_command").is_some());
     assert!(filtered.get("task_list").is_none());
     assert!(filtered.get("spawn_agent").is_none());
     assert!(filtered.get("web_fetch").is_none());
@@ -572,7 +572,7 @@ async fn test_build_sub_tools_delegate_only_uses_delegate_set() {
             "sessions_history",
             "sessions_send",
             "task_list",
-            "exec",
+            "execute_command",
         ]),
     );
 
@@ -586,7 +586,7 @@ async fn test_build_sub_tools_delegate_only_uses_delegate_set() {
     assert!(filtered.get("sessions_history").is_some());
     assert!(filtered.get("sessions_send").is_some());
     assert!(filtered.get("task_list").is_some());
-    assert!(filtered.get("exec").is_none());
+    assert!(filtered.get("execute_command").is_none());
 }
 
 #[tokio::test]

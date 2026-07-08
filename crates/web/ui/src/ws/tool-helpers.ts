@@ -24,7 +24,7 @@ import {
 	appendToolCardError,
 	createToolCallCard,
 	getToolCardDetailsContainer,
-	isExecLikeToolName,
+	isCommandToolName,
 	renderToolCardError,
 	renderToolCardResult,
 	setToolCardExpanded,
@@ -112,7 +112,7 @@ export function completeToolCard(toolCard: HTMLElement, p: ChatPayload, eventSes
 	} else if (p.error) {
 		renderToolCardError(toolCard, p.error, isToolValidationErrorPayload(p));
 	}
-	setToolCardExpanded(toolCard, isExecLikeToolName(p.toolName));
+	setToolCardExpanded(toolCard, isCommandToolName(p.toolName));
 
 	// Show a hint below the card when a skill is created or updated.
 	if (p.success && (p.toolName === "create_skill" || p.toolName === "update_skill")) {
@@ -133,9 +133,9 @@ export function completeToolCard(toolCard: HTMLElement, p: ChatPayload, eventSes
 
 export function clearStaleRunningToolCards(): void {
 	if (!S.chatMsgBox) return;
-	const statusEls = S.chatMsgBox.querySelectorAll(".msg.exec-card .exec-status");
+	const statusEls = S.chatMsgBox.querySelectorAll(".msg.command-card .command-status");
 	for (const statusEl of statusEls) {
-		const card = statusEl.closest(".msg.exec-card") as HTMLElement | null;
+		const card = statusEl.closest(".msg.command-card") as HTMLElement | null;
 		if (!card) continue;
 		if (!card.classList.contains("running")) continue;
 		if (card.classList.contains("tool-call-card")) {
@@ -144,8 +144,8 @@ export function clearStaleRunningToolCards(): void {
 			continue;
 		}
 		statusEl.remove();
-		if (!(card.classList.contains("exec-ok") || card.classList.contains("exec-err"))) {
-			card.className = "msg exec-card exec-ok";
+		if (!(card.classList.contains("command-ok") || card.classList.contains("command-err"))) {
+			card.className = "msg command-card command-ok";
 		}
 	}
 }

@@ -4,31 +4,37 @@ use super::helpers::*;
 
 #[test]
 fn sanitize_tool_name_clean_input() {
-    assert_eq!(sanitize_tool_name("exec"), "exec");
+    assert_eq!(sanitize_tool_name("execute_command"), "execute_command");
 }
 
 #[test]
 fn sanitize_tool_name_trims_whitespace() {
-    assert_eq!(sanitize_tool_name("  exec  "), "exec");
-    assert_eq!(sanitize_tool_name("\texec\n"), "exec");
+    assert_eq!(
+        sanitize_tool_name("  execute_command  "),
+        "execute_command"
+    );
+    assert_eq!(
+        sanitize_tool_name("\texecute_command\n"),
+        "execute_command"
+    );
 }
 
 #[test]
 fn sanitize_tool_name_strips_quotes() {
-    assert_eq!(sanitize_tool_name("\"exec\""), "exec");
+    assert_eq!(sanitize_tool_name("\"execute_command\""), "execute_command");
     assert_eq!(sanitize_tool_name("  \"web_search\"  "), "web_search");
 }
 
 #[test]
 fn sanitize_tool_name_partial_quotes_unchanged() {
-    assert_eq!(sanitize_tool_name("\"exec"), "\"exec");
-    assert_eq!(sanitize_tool_name("exec\""), "exec\"");
+    assert_eq!(sanitize_tool_name("\"execute_command"), "\"execute_command");
+    assert_eq!(sanitize_tool_name("execute_command\""), "execute_command\"");
 }
 
 #[test]
 fn sanitize_tool_name_noop_on_real_tool_names() {
     let real_names = [
-        "exec",
+        "execute_command",
         "web_search",
         "web_fetch",
         "memory_save",
@@ -67,26 +73,38 @@ fn sanitize_tool_name_preserves_internal_quotes() {
 
 #[test]
 fn sanitize_tool_name_single_quotes_not_stripped() {
-    assert_eq!(sanitize_tool_name("'exec'"), "'exec'");
+    assert_eq!(sanitize_tool_name("'execute_command'"), "'execute_command'");
 }
 
 #[test]
 fn sanitize_tool_name_strips_numeric_suffix() {
-    assert_eq!(sanitize_tool_name("exec_2"), "exec");
+    assert_eq!(
+        sanitize_tool_name("execute_command_2"),
+        "execute_command"
+    );
     assert_eq!(sanitize_tool_name("browser_4"), "browser");
-    assert_eq!(sanitize_tool_name("exec_123"), "exec");
+    assert_eq!(
+        sanitize_tool_name("execute_command_123"),
+        "execute_command"
+    );
 }
 
 #[test]
 fn sanitize_tool_name_strips_functions_prefix() {
     assert_eq!(sanitize_tool_name("functions_spawn_agent"), "spawn_agent");
-    assert_eq!(sanitize_tool_name("functions_exec"), "exec");
+    assert_eq!(
+        sanitize_tool_name("functions_execute_command"),
+        "execute_command"
+    );
 }
 
 #[test]
 fn sanitize_tool_name_strips_prefix_and_suffix() {
     assert_eq!(sanitize_tool_name("functions_spawn_agent_6"), "spawn_agent");
-    assert_eq!(sanitize_tool_name("functions_exec_2"), "exec");
+    assert_eq!(
+        sanitize_tool_name("functions_execute_command_2"),
+        "execute_command"
+    );
 }
 
 #[test]

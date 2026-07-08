@@ -13,7 +13,7 @@ use {
         },
     },
     crate::{
-        approval::LiveExecApprovalService,
+        approval::LiveCommandApprovalService,
         auth,
         broadcast::{BroadcastOpts, broadcast},
         chat::LiveModelService,
@@ -225,7 +225,8 @@ pub async fn prepare_gateway_core(
         services.logs = Arc::new(crate::logs::LiveLogsService::new(buf.clone()));
     }
 
-    services.exec_approval = Arc::new(LiveExecApprovalService::new(Arc::clone(&approval_manager)));
+    services.command_approval =
+        Arc::new(LiveCommandApprovalService::new(Arc::clone(&approval_manager)));
 
     // Wire browser service if enabled.
     if let Some(browser_svc) =
@@ -879,7 +880,8 @@ pub async fn prepare_gateway_core(
     services = services.with_webhooks(live_webhooks);
 
     // Build sandbox router from config.
-    let sandbox_config = moltis_tools::sandbox::SandboxConfig::from(&config.tools.exec.sandbox);
+    let sandbox_config =
+        moltis_tools::sandbox::SandboxConfig::from(&config.tools.execute_command.sandbox);
     let sandbox_router = Arc::new(sandbox::build_sandbox_router(
         &sandbox_config,
         &sandbox_container_prefix,

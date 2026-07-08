@@ -64,14 +64,14 @@ The queue holds up to 20 events. Consecutive duplicate events are
 deduplicated. Events that arrive after the buffer is full are silently dropped
 (oldest events are preserved).
 
-### Exec Completion Events
+### Command Completion Events
 
-When a background command finishes (via the `exec` tool), Moltis automatically
+When a background command finishes (via the `execute_command` tool), Moltis automatically
 enqueues a summary event with the command name, exit code, and a short preview
 of stdout/stderr. If the heartbeat is idle, it is woken immediately so the
 agent can react to the result.
 
-Exec-triggered wakes have a cooldown guard so a heartbeat turn that runs `exec`
+Command-triggered wakes have a cooldown guard so a heartbeat turn that runs `execute_command`
 does not immediately re-wake itself in a loop. Configure it with
 `[heartbeat].wake_cooldown` in `moltis.toml`:
 
@@ -81,7 +81,7 @@ wake_cooldown = "5m" # default; set "0" to disable
 ```
 
 The value uses Moltis duration syntax such as `"30s"`, `"10m"`, or `"1h"`.
-The cooldown applies only to exec-completion wakes. Cron jobs with
+The cooldown applies only to command-completion wakes. Cron jobs with
 `wakeMode = "now"` still wake the heartbeat immediately.
 
 This means the agent learns about completed background tasks without polling

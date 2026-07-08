@@ -15,7 +15,7 @@ pub(super) struct CredentialEnvVarProvider {
 }
 
 #[async_trait]
-impl moltis_tools::exec::EnvVarProvider for CredentialEnvVarProvider {
+impl moltis_tools::command::EnvVarProvider for CredentialEnvVarProvider {
     async fn get_env_vars(&self) -> Vec<(String, Secret<String>)> {
         let mut vars = match self.store.get_all_env_values().await {
             Ok(values) => values

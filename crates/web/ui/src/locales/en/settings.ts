@@ -135,7 +135,7 @@ export default {
 		scopeOperatorWrite: "operator.write",
 		scopeOperatorWriteDesc: "\u2014 Create, update, delete",
 		scopeOperatorApprovals: "operator.approvals",
-		scopeOperatorApprovalsDesc: "\u2014 Handle exec approvals",
+		scopeOperatorApprovalsDesc: "\u2014 Handle command approvals",
 		scopeOperatorPairing: "operator.pairing",
 		scopeOperatorPairingDesc: "\u2014 Device/node pairing",
 		generateKey: "Generate key",

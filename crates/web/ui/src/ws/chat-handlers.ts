@@ -383,7 +383,7 @@ function handleChatFinal(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 			}
 		} else {
 			// Silent reply -- attach footer to the last visible assistant element
-			// (e.g. exec card). Never attach to a user message.
+			// (e.g. command card). Never attach to a user message.
 			let target = resolvedEl;
 			if (!target) {
 				const last = S.chatMsgBox?.lastElementChild as HTMLElement | null;

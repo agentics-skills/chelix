@@ -138,7 +138,7 @@ timeout_secs = 30
 
 [tools]
 allow = ["read_file", "grep", "glob"]
-deny = ["exec"]
+deny = ["execute_command"]
 
 # MCP server access: allow_servers OR deny_servers (not both)
 # [mcp]
@@ -807,7 +807,7 @@ function PresetForm({ preset, onSave, onCancel }: PresetFormProps): VNode {
 					className="provider-key-input"
 					value={toolsDeny}
 					onInput={(e) => setToolsDeny(targetValue(e))}
-					placeholder="exec, Write"
+					placeholder="execute_command, Write"
 				/>
 			</label>
 			<label className="flex items-center gap-2 text-xs text-[var(--text)]">

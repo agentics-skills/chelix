@@ -125,8 +125,8 @@ export function restoreSessionState(entry: SessionMeta, projectId?: string): voi
 	S.setSessionSandboxBackend(entry.sandbox_backend || null);
 	const sandboxRuntimeAvailable = ((S.sandboxInfo as SandboxInfoPayload | null)?.backend || "none") !== "none";
 	const effectiveSandboxRoute = entry.sandbox_enabled !== false && sandboxRuntimeAvailable;
-	S.setSessionExecMode(effectiveSandboxRoute ? "sandbox" : "host");
-	S.setSessionExecPromptSymbol(effectiveSandboxRoute || S.hostExecIsRoot ? "#" : "$");
+	S.setSessionCommandMode(effectiveSandboxRoute ? "sandbox" : "host");
+	S.setSessionCommandPromptSymbol(effectiveSandboxRoute || S.hostCommandIsRoot ? "#" : "$");
 	updateCommandInputUI();
 	restoreMcpToggle(!entry.mcpDisabled);
 	restoreNodeSelection(entry.node_id || null);

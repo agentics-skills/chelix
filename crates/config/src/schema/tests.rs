@@ -266,14 +266,14 @@ theme = "thorough"
 
 [agents.presets.research.tools]
 allow = ["web_search", "web_fetch"]
-deny = ["exec"]
+deny = ["execute_command"]
 "#;
     let config: MoltisConfig = toml::from_str(toml).unwrap();
     assert_eq!(config.agents.default_preset.as_deref(), Some("research"));
     let preset = config.agents.get_preset("research").unwrap();
     assert_eq!(preset.model.as_deref(), Some("openai/gpt-5.2"));
     assert_eq!(preset.tools.allow.len(), 2);
-    assert_eq!(preset.tools.deny, vec!["exec".to_string()]);
+    assert_eq!(preset.tools.deny, vec!["execute_command".to_string()]);
     assert!(!preset.delegate_only);
     assert_eq!(
         preset.system_prompt_suffix.as_deref(),

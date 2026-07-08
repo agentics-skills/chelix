@@ -19,8 +19,8 @@ use std::env;
 use {
     super::{containers::*, docker::*, host::*, paths::*, platform::*, router::*, types::*, *},
     crate::{
+        command::{CommandOptions, CommandOutput},
         error::{Error, Result},
-        exec::{ExecOpts, ExecResult},
         sandbox::file_system::SandboxReadResult,
     },
 };
@@ -85,14 +85,14 @@ impl RuntimeContainerGuard {
         })
     }
 
-    async fn exec(&self, command: &str) -> Result<String> {
+    async fn run_command(&self, command: &str) -> Result<String> {
         let output = tokio::process::Command::new(&self.cli)
             .args(["exec", &self.name, "bash", "-c", command])
             .output()
             .await?;
         if !output.status.success() {
             return Err(Error::message(format!(
-                "{} exec failed in runtime e2e container '{}': {}",
+                "{} command failed in runtime e2e container '{}': {}",
                 self.cli,
                 self.name,
                 String::from_utf8_lossy(&output.stderr).trim()
@@ -117,7 +117,7 @@ impl Drop for RuntimeContainerGuard {
 async fn assert_runtime_oci_file_transfers(cli: &str) -> Result<()> {
     let container = RuntimeContainerGuard::start(cli).await?;
     container
-        .exec(
+        .run_command(
             "mkdir -p /tmp/moltis-e2e/list && \
              printf 'hello runtime\\n' > /tmp/moltis-e2e/read.txt && \
              printf 'alpha\\n' > /tmp/moltis-e2e/list/a.txt && \
@@ -142,7 +142,9 @@ async fn assert_runtime_oci_file_transfers(cli: &str) -> Result<()> {
         .await?
         .is_none()
     );
-    let written = container.exec("cat /tmp/moltis-e2e/write.txt").await?;
+    let written = container
+        .run_command("cat /tmp/moltis-e2e/write.txt")
+        .await?;
     assert_eq!(written, "written from host");
 
     let files = oci_container_list_files(cli, &container.name, "/tmp/moltis-e2e/list").await?;
@@ -197,20 +199,24 @@ fn test_ensure_sandbox_home_persistence_host_dir_allows_translated_create_error(
 struct TestSandbox {
     name: &'static str,
     ensure_ready_error: Option<String>,
-    exec_error: Option<String>,
+    command_error: Option<String>,
     ensure_ready_calls: AtomicUsize,
-    exec_calls: AtomicUsize,
+    command_calls: AtomicUsize,
     cleanup_calls: AtomicUsize,
 }
 
 impl TestSandbox {
-    fn new(name: &'static str, ensure_ready_error: Option<&str>, exec_error: Option<&str>) -> Self {
+    fn new(
+        name: &'static str,
+        ensure_ready_error: Option<&str>,
+        command_error: Option<&str>,
+    ) -> Self {
         Self {
             name,
             ensure_ready_error: ensure_ready_error.map(ToOwned::to_owned),
-            exec_error: exec_error.map(ToOwned::to_owned),
+            command_error: command_error.map(ToOwned::to_owned),
             ensure_ready_calls: AtomicUsize::new(0),
-            exec_calls: AtomicUsize::new(0),
+            command_calls: AtomicUsize::new(0),
             cleanup_calls: AtomicUsize::new(0),
         }
     }
@@ -221,8 +227,8 @@ impl TestSandbox {
     }
 
     #[cfg(target_os = "macos")]
-    fn exec_calls(&self) -> usize {
-        self.exec_calls.load(Ordering::SeqCst)
+    fn command_calls(&self) -> usize {
+        self.command_calls.load(Ordering::SeqCst)
     }
 }
 
@@ -252,12 +258,17 @@ impl Sandbox for TestSandbox {
         Ok(())
     }
 
-    async fn exec(&self, _id: &SandboxId, _command: &str, _opts: &ExecOpts) -> Result<ExecResult> {
-        self.exec_calls.fetch_add(1, Ordering::SeqCst);
-        if let Some(ref msg) = self.exec_error {
+    async fn run_command(
+        &self,
+        _id: &SandboxId,
+        _command: &str,
+        _opts: &CommandOptions,
+    ) -> Result<CommandOutput> {
+        self.command_calls.fetch_add(1, Ordering::SeqCst);
+        if let Some(ref msg) = self.command_error {
             return Err(Error::message(msg));
         }
-        Ok(ExecResult {
+        Ok(CommandOutput {
             stdout: "ok".into(),
             stderr: String::new(),
             exit_code: 0,

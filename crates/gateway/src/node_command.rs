@@ -1,7 +1,7 @@
 //! Route command execution to a remote node or SSH target.
 //!
-//! When `tools.exec.host = "node"`, the gateway forwards shell commands to a
-//! connected headless node via `node.invoke`. When `tools.exec.host = "ssh"`,
+//! When `tools.execute_command.host = "node"`, the gateway forwards shell commands to a
+//! connected headless node via `node.invoke`. When `tools.execute_command.host = "ssh"`,
 //! it forwards commands through the system `ssh` client using a configured
 //! target alias or `user@host`.
 
@@ -28,11 +28,14 @@ use crate::{
     state::GatewayState,
 };
 
-use moltis_tools::nodes::{NodeInfo, NodeInfoProvider, NodeProviderInfo};
+use moltis_tools::{
+    command::{CommandNodeProvider, CommandOutput},
+    nodes::{NodeInfo, NodeInfoProvider, NodeProviderInfo},
+};
 
 /// Result of a remote command execution on a node.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct NodeExecResult {
+pub struct NodeCommandResult {
     pub stdout: String,
     pub stderr: String,
     pub exit_code: i32,
@@ -165,14 +168,14 @@ fn ssh_target_node_info(target: &SshResolvedTarget) -> NodeInfo {
 ///
 /// Uses `node.invoke` internally with `system.run` as the command.
 /// Returns the stdout/stderr/exit_code from the remote execution.
-pub async fn exec_on_node(
+pub async fn run_on_node(
     state: &Arc<GatewayState>,
     node_id: &str,
     command: &str,
     timeout_secs: u64,
     cwd: Option<&str>,
     env: Option<&HashMap<String, String>>,
-) -> anyhow::Result<NodeExecResult> {
+) -> anyhow::Result<NodeCommandResult> {
     // Build the args for system.run.
     let mut args = serde_json::json!({
         "command": command,
@@ -251,10 +254,10 @@ pub async fn exec_on_node(
     };
 
     // Parse the result.
-    parse_exec_result(&result)
+    parse_command_result(&result)
 }
 
-async fn exec_over_ssh(
+async fn run_over_ssh(
     target: &str,
     port: Option<u16>,
     identity_file: Option<&Path>,
@@ -264,7 +267,7 @@ async fn exec_over_ssh(
     cwd: Option<&str>,
     env: Option<&HashMap<String, String>>,
     max_output_bytes: usize,
-) -> anyhow::Result<NodeExecResult> {
+) -> anyhow::Result<NodeCommandResult> {
     let known_hosts_file = if let Some(known_host) = known_host {
         let mut file = tempfile::NamedTempFile::new()?;
         #[cfg(unix)]
@@ -333,7 +336,7 @@ async fn exec_over_ssh(
     truncate_output_for_display(&mut stdout, max_output_bytes);
     truncate_output_for_display(&mut stderr, max_output_bytes);
 
-    Ok(NodeExecResult {
+    Ok(NodeCommandResult {
         stdout,
         stderr,
         exit_code: status.code().unwrap_or(-1),
@@ -374,7 +377,7 @@ fn write_temp_ssh_private_key(
     Ok(file)
 }
 
-pub async fn exec_resolved_ssh_target(
+pub async fn run_resolved_ssh_target(
     credential_store: &CredentialStore,
     target: &SshResolvedTarget,
     command: &str,
@@ -382,10 +385,10 @@ pub async fn exec_resolved_ssh_target(
     cwd: Option<&str>,
     env: Option<&HashMap<String, String>>,
     max_output_bytes: usize,
-) -> anyhow::Result<NodeExecResult> {
+) -> anyhow::Result<NodeCommandResult> {
     match target.auth_mode {
         SshAuthMode::System => {
-            exec_over_ssh(
+            run_over_ssh(
                 &target.target,
                 target.port,
                 None,
@@ -407,7 +410,7 @@ pub async fn exec_resolved_ssh_target(
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("ssh key {key_id} not found"))?;
             let temp_key = write_temp_ssh_private_key(&private_key)?;
-            exec_over_ssh(
+            run_over_ssh(
                 &target.target,
                 target.port,
                 Some(temp_key.path()),
@@ -578,10 +581,10 @@ fn ssh_config_quote_path(path: &Path) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-fn parse_exec_result(value: &serde_json::Value) -> anyhow::Result<NodeExecResult> {
+fn parse_command_result(value: &serde_json::Value) -> anyhow::Result<NodeCommandResult> {
     // Try structured result first.
     if let Some(stdout) = value.get("stdout").and_then(|v| v.as_str()) {
-        return Ok(NodeExecResult {
+        return Ok(NodeCommandResult {
             stdout: stdout.to_string(),
             stderr: value
                 .get("stderr")
@@ -594,63 +597,59 @@ fn parse_exec_result(value: &serde_json::Value) -> anyhow::Result<NodeExecResult
 
     // Check for error.
     if let Some(error) = value.get("error").and_then(|v| v.as_str()) {
-        anyhow::bail!("node exec error: {error}");
+        anyhow::bail!("node command error: {error}");
     }
 
     // Return the raw value as stdout.
-    Ok(NodeExecResult {
+    Ok(NodeCommandResult {
         stdout: value.to_string(),
         stderr: String::new(),
         exit_code: 0,
     })
 }
 
-/// Bridge that implements [`moltis_tools::exec::NodeExecProvider`] by
-/// delegating to [`exec_on_node`] / [`resolve_node_id`] with a shared
-/// `GatewayState`.
-pub struct GatewayNodeExecProvider {
+/// Bridge that lets `execute_command` route commands to paired nodes and SSH targets.
+pub struct GatewayNodeCommandProvider {
     state: Arc<GatewayState>,
     node_count: Arc<AtomicUsize>,
     ssh_target_count: Arc<AtomicUsize>,
-    legacy_ssh_target: Option<String>,
+    configured_ssh_target: Option<String>,
     max_output_bytes: usize,
 }
 
-impl GatewayNodeExecProvider {
-    /// Create with the shared node counter from `GatewayState` so that
-    /// `has_connected_nodes()` reflects the real connection state.
+impl GatewayNodeCommandProvider {
     pub fn new(
         state: Arc<GatewayState>,
         node_count: Arc<AtomicUsize>,
         ssh_target_count: Arc<AtomicUsize>,
-        legacy_ssh_target: Option<String>,
+        configured_ssh_target: Option<String>,
         max_output_bytes: usize,
     ) -> Self {
         Self {
             state,
             node_count,
             ssh_target_count,
-            legacy_ssh_target,
+            configured_ssh_target,
             max_output_bytes,
         }
     }
 }
 
 #[async_trait]
-impl moltis_tools::exec::NodeExecProvider for GatewayNodeExecProvider {
-    async fn exec_on_node(
+impl CommandNodeProvider for GatewayNodeCommandProvider {
+    async fn run_on_node(
         &self,
         node_id: &str,
         command: &str,
         timeout_secs: u64,
         cwd: Option<&str>,
         env: Option<&HashMap<String, String>>,
-    ) -> anyhow::Result<moltis_tools::exec::ExecResult> {
-        if node_id.starts_with(SSH_ID_PREFIX) {
+    ) -> anyhow::Result<CommandOutput> {
+        let result = if node_id.starts_with(SSH_ID_PREFIX) {
             if let Some(store) = self.state.credential_store.as_ref()
                 && let Some(target) = store.resolve_ssh_target(node_id).await?
             {
-                let result = exec_resolved_ssh_target(
+                run_resolved_ssh_target(
                     store,
                     &target,
                     command,
@@ -659,16 +658,9 @@ impl moltis_tools::exec::NodeExecProvider for GatewayNodeExecProvider {
                     env,
                     self.max_output_bytes,
                 )
-                .await?;
-                return Ok(moltis_tools::exec::ExecResult {
-                    stdout: result.stdout,
-                    stderr: result.stderr,
-                    exit_code: result.exit_code,
-                });
-            }
-
-            if let Some(target) = node_id.strip_prefix(SSH_ID_PREFIX) {
-                let result = exec_over_ssh(
+                .await?
+            } else if let Some(target) = node_id.strip_prefix(SSH_ID_PREFIX) {
+                run_over_ssh(
                     target,
                     None,
                     None,
@@ -679,17 +671,31 @@ impl moltis_tools::exec::NodeExecProvider for GatewayNodeExecProvider {
                     env,
                     self.max_output_bytes,
                 )
-                .await?;
-                return Ok(moltis_tools::exec::ExecResult {
-                    stdout: result.stdout,
-                    stderr: result.stderr,
-                    exit_code: result.exit_code,
-                });
+                .await?
+            } else {
+                run_on_node(
+                    &self.state,
+                    node_id,
+                    command,
+                    timeout_secs,
+                    cwd,
+                    env,
+                )
+                .await?
             }
-        }
+        } else {
+            run_on_node(
+                &self.state,
+                node_id,
+                command,
+                timeout_secs,
+                cwd,
+                env,
+            )
+            .await?
+        };
 
-        let result = exec_on_node(&self.state, node_id, command, timeout_secs, cwd, env).await?;
-        Ok(moltis_tools::exec::ExecResult {
+        Ok(CommandOutput {
             stdout: result.stdout,
             stderr: result.stderr,
             exit_code: result.exit_code,
@@ -705,19 +711,18 @@ impl moltis_tools::exec::NodeExecProvider for GatewayNodeExecProvider {
             }
         }
 
-        if let Some(target) = &self.legacy_ssh_target
+        if let Some(target) = &self.configured_ssh_target
             && ssh_target_matches(node_ref, target)
         {
             return Some(ssh_node_id(target));
         }
-
         resolve_node_id(&self.state, node_ref).await
     }
 
     fn has_connected_nodes(&self) -> bool {
         self.node_count.load(Ordering::Relaxed) > 0
             || self.ssh_target_count.load(Ordering::Relaxed) > 0
-            || self.legacy_ssh_target.is_some()
+            || self.configured_ssh_target.is_some()
     }
 
     async fn default_node_ref(&self) -> Option<String> {
@@ -729,7 +734,7 @@ impl moltis_tools::exec::NodeExecProvider for GatewayNodeExecProvider {
             }
         }
 
-        self.legacy_ssh_target
+        self.configured_ssh_target
             .as_ref()
             .map(|target| ssh_node_id(target))
     }
@@ -773,14 +778,14 @@ fn node_to_info(n: &crate::nodes::NodeSession) -> NodeInfo {
 /// reading from the `NodeRegistry` and session metadata in `GatewayState`.
 pub struct GatewayNodeInfoProvider {
     state: Arc<GatewayState>,
-    legacy_ssh_target: Option<String>,
+    configured_ssh_target: Option<String>,
 }
 
 impl GatewayNodeInfoProvider {
-    pub fn new(state: Arc<GatewayState>, legacy_ssh_target: Option<String>) -> Self {
+    pub fn new(state: Arc<GatewayState>, configured_ssh_target: Option<String>) -> Self {
         Self {
             state,
-            legacy_ssh_target,
+            configured_ssh_target,
         }
     }
 }
@@ -813,7 +818,7 @@ impl NodeInfoProvider for GatewayNodeInfoProvider {
             }
         }
 
-        if let Some(target) = &self.legacy_ssh_target
+        if let Some(target) = &self.configured_ssh_target
             && !nodes.iter().any(|node| node.node_id == ssh_node_id(target))
         {
             nodes.push(ssh_node_info(target));
@@ -830,7 +835,7 @@ impl NodeInfoProvider for GatewayNodeInfoProvider {
             }
         }
 
-        if let Some(target) = &self.legacy_ssh_target
+        if let Some(target) = &self.configured_ssh_target
             && ssh_target_matches(node_ref, target)
         {
             return Some(ssh_node_info(target));
@@ -852,11 +857,11 @@ impl NodeInfoProvider for GatewayNodeInfoProvider {
                 {
                     Some(target.node_id)
                 } else if self
-                    .legacy_ssh_target
+                    .configured_ssh_target
                     .as_deref()
                     .is_some_and(|target| ssh_target_matches(r, target))
                 {
-                    self.legacy_ssh_target
+                    self.configured_ssh_target
                         .as_ref()
                         .map(|target| ssh_node_id(target))
                 } else {
@@ -891,7 +896,7 @@ impl NodeInfoProvider for GatewayNodeInfoProvider {
             }
         }
 
-        if let Some(target) = &self.legacy_ssh_target
+        if let Some(target) = &self.configured_ssh_target
             && ssh_target_matches(node_ref, target)
         {
             return Some(ssh_node_id(target));
@@ -940,7 +945,7 @@ mod tests {
             "stderr": "",
             "exitCode": 0,
         });
-        let result = parse_exec_result(&value).unwrap();
+        let result = parse_command_result(&value).unwrap();
         assert_eq!(result.stdout, "hello\n");
         assert_eq!(result.stderr, "");
         assert_eq!(result.exit_code, 0);
@@ -969,7 +974,7 @@ mod tests {
         let value = serde_json::json!({
             "error": "command not found",
         });
-        let result = parse_exec_result(&value);
+        let result = parse_command_result(&value);
         assert!(result.is_err());
     }
 

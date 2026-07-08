@@ -147,16 +147,16 @@ mod tests {
 
     #[test]
     fn valid_json_passes_through() {
-        let input = r#"{"tool": "exec", "arguments": {"command": "ls"}}"#;
+        let input = r#"{"tool": "execute_command", "arguments": {"command": "ls"}}"#;
         let v = repair_json(input).unwrap();
-        assert_eq!(v["tool"], "exec");
+        assert_eq!(v["tool"], "execute_command");
     }
 
     #[test]
     fn trailing_comma_object() {
-        let input = r#"{"tool": "exec", "arguments": {"command": "ls",}}"#;
+        let input = r#"{"tool": "execute_command", "arguments": {"command": "ls",}}"#;
         let v = repair_json(input).unwrap();
-        assert_eq!(v["tool"], "exec");
+        assert_eq!(v["tool"], "execute_command");
     }
 
     #[test]
@@ -169,18 +169,18 @@ mod tests {
     #[test]
     fn line_comments_stripped() {
         let input = r#"{
-            "tool": "exec", // this is the tool name
+            "tool": "execute_command", // this is the tool name
             "arguments": {"command": "pwd"}
         }"#;
         let v = repair_json(input).unwrap();
-        assert_eq!(v["tool"], "exec");
+        assert_eq!(v["tool"], "execute_command");
     }
 
     #[test]
     fn unbalanced_braces() {
-        let input = r#"{"tool": "exec", "arguments": {"command": "ls"}"#;
+        let input = r#"{"tool": "execute_command", "arguments": {"command": "ls"}"#;
         let v = repair_json(input).unwrap();
-        assert_eq!(v["tool"], "exec");
+        assert_eq!(v["tool"], "execute_command");
     }
 
     #[test]

@@ -361,7 +361,7 @@ You are a code reviewer. Focus on correctness.
         let content = r#"---
 name: scout
 tools: Read, Grep, Glob
-deny_tools: exec
+deny_tools: execute_command
 model: haiku
 emoji: 🦉
 theme: focused and efficient
@@ -375,7 +375,7 @@ Search thoroughly.
         let (name, preset) = parse_agent_md(content).unwrap();
         assert_eq!(name, "scout");
         assert_eq!(preset.tools.allow, vec!["Read", "Grep", "Glob"]);
-        assert_eq!(preset.tools.deny, vec!["exec"]);
+        assert_eq!(preset.tools.deny, vec!["execute_command"]);
         assert_eq!(preset.identity.emoji.as_deref(), Some("🦉"));
         assert_eq!(
             preset.identity.theme.as_deref(),
@@ -555,7 +555,7 @@ Search thoroughly.
             model: Some("haiku".into()),
             tools: PresetToolPolicy {
                 allow: vec!["Read".into(), "Grep".into()],
-                deny: vec!["exec".into()],
+                deny: vec!["execute_command".into()],
             },
             system_prompt_suffix: Some("Review for correctness.".into()),
             delegate_only: true,
@@ -571,7 +571,7 @@ Search thoroughly.
         assert_eq!(parsed.identity.emoji.as_deref(), Some("🔎"));
         assert_eq!(parsed.model.as_deref(), Some("haiku"));
         assert_eq!(parsed.tools.allow, vec!["Read", "Grep"]);
-        assert_eq!(parsed.tools.deny, vec!["exec"]);
+        assert_eq!(parsed.tools.deny, vec!["execute_command"]);
         assert!(parsed.delegate_only);
         assert_eq!(parsed.timeout_secs, Some(45));
         assert_eq!(

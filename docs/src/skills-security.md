@@ -77,7 +77,7 @@ dependency install attempts, and source drift detection.
 
 ## Recommended Production Policy
 
-1. Keep sandbox enabled (`tools.exec.sandbox.mode = "all"`).
+1. Keep sandbox enabled (`tools.execute_command.sandbox.mode = "all"`).
 2. Keep approval mode at least `on-miss`.
 3. Review SKILL.md and linked scripts before trust.
 4. Prefer pinned, known repos over ad-hoc installs.

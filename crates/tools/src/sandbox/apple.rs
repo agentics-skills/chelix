@@ -32,7 +32,7 @@ use super::types::{
 #[cfg(target_os = "macos")]
 use crate::error::{Error, Result};
 #[cfg(target_os = "macos")]
-use crate::exec::{ExecOpts, ExecResult};
+use crate::command::{CommandOptions, CommandOutput};
 #[cfg(target_os = "macos")]
 use crate::sandbox::file_system::{
     SandboxListFilesResult, SandboxReadResult, command_list_files, command_read_file,
@@ -978,7 +978,12 @@ impl Sandbox for AppleContainerSandbox {
         )));
     }
 
-    async fn exec(&self, id: &SandboxId, command: &str, opts: &ExecOpts) -> Result<ExecResult> {
+    async fn run_command(
+        &self,
+        id: &SandboxId,
+        command: &str,
+        opts: &CommandOptions,
+    ) -> Result<CommandOutput> {
         let name = self.container_name(id).await;
         info!(name, command, "apple container exec");
 
@@ -1044,7 +1049,7 @@ impl Sandbox for AppleContainerSandbox {
                     stderr_len = stderr.len(),
                     "apple container exec complete"
                 );
-                Ok(ExecResult {
+                Ok(CommandOutput {
                     stdout,
                     stderr,
                     exit_code,

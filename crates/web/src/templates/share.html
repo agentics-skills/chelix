@@ -336,7 +336,7 @@ main {
   border-radius: 8px;
   background: var(--surface2);
 }
-.msg.exec-card {
+.msg.command-card {
   white-space: normal;
   display: flex;
   flex-direction: column;
@@ -345,27 +345,27 @@ main {
   max-width: min(88%, 760px);
   padding: 8px 12px;
 }
-.msg.exec-card.exec-ok {
+.msg.command-card.command-ok {
   border-color: var(--border);
 }
-.msg.exec-card.exec-err {
+.msg.command-card.command-err {
   border-color: var(--danger);
 }
-.exec-prompt {
+.command-prompt {
   font-family: var(--font-mono);
   color: var(--text);
   font-size: 0.8rem;
   line-height: 1.4;
 }
-.exec-prompt-char {
+.command-prompt-char {
   color: var(--accent);
   user-select: none;
   font-weight: 600;
 }
-.msg.exec-card.exec-err .exec-prompt-char {
+.msg.command-card.command-err .command-prompt-char {
   color: var(--danger);
 }
-.exec-output {
+.command-output {
   margin: 0;
   font-family: var(--font-mono);
   color: var(--text);
@@ -604,7 +604,7 @@ main {
       <div class="empty">This shared snapshot has no displayable messages.</div>
     {% else %}
       {% for message in messages %}
-        <article class="msg msg-{{ message.role_class }}{% if message.is_exec_card %} exec-card{% match message.exec_card_class %}{% when Some with (exec_card_class) %} {{ exec_card_class }}{% when None %}{% endmatch %}{% else %}{% match message.tool_state_class %}{% when Some with (tool_state_class) %} {{ tool_state_class }}{% when None %}{% endmatch %}{% endif %}">
+        <article class="msg msg-{{ message.role_class }}{% if message.is_command_card %} command-card{% match message.command_card_class %}{% when Some with (command_card_class) %} {{ command_card_class }}{% when None %}{% endmatch %}{% else %}{% match message.tool_state_class %}{% when Some with (tool_state_class) %} {{ tool_state_class }}{% when None %}{% endmatch %}{% endif %}">
           <div class="msg-head">
             <div class="msg-role-wrap">
               <div class="msg-role">{{ message.role_label }}</div>
@@ -695,16 +695,16 @@ main {
             </div>
           {% endif %}
           {% if !message.content.is_empty() %}
-            {% if message.is_exec_card %}
-              {% match message.exec_command %}
-                {% when Some with (exec_command) %}
-                  <div class="exec-prompt">
-                    <span class="exec-prompt-char">$</span>
-                    <span data-cmd="">{{ exec_command }}</span>
+            {% if message.is_command_card %}
+              {% match message.command %}
+                {% when Some with (command) %}
+                  <div class="command-prompt">
+                    <span class="command-prompt-char">$</span>
+                    <span data-cmd="">{{ command }}</span>
                   </div>
                 {% when None %}
               {% endmatch %}
-              <pre class="exec-output">{{ message.content }}</pre>
+              <pre class="command-output">{{ message.content }}</pre>
             {% elif message.role_class == "tool" %}
               <pre class="msg-content msg-tool-content">{{ message.content }}</pre>
             {% else %}

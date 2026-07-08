@@ -914,8 +914,8 @@ test.describe("Chat input and slash commands", () => {
 				state.setSessionCurrentContextTokens(0);
 				state.setSessionContextWindow(0);
 				state.setSessionToolsEnabled(true);
-				state.setSessionExecMode("host");
-				state.setSessionExecPromptSymbol("$");
+				state.setSessionCommandMode("host");
+				state.setSessionCommandPromptSymbol("$");
 				state.setCommandModeEnabled(false);
 				chatUi.updateTokenBar();
 				var bar = document.querySelector("#tokenBar");

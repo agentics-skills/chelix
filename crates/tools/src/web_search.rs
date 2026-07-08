@@ -18,7 +18,7 @@ use {
     moltis_config::schema::{SearchProvider as ConfigSearchProvider, WebSearchConfig},
 };
 
-use crate::exec::EnvVarProvider;
+use crate::command::EnvVarProvider;
 
 /// Cached search result with expiry.
 struct CacheEntry {

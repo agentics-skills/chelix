@@ -77,7 +77,7 @@ fn configured_host_data_dir(host_data_dir: Option<&Path>) -> Option<PathBuf> {
     }
     warn!(
         path = %path.display(),
-        "tools.exec.sandbox.host_data_dir is a relative path; it must be an absolute host-visible path, ignoring and falling back to auto-detection"
+        "tools.execute_command.sandbox.host_data_dir is a relative path; it must be an absolute host-visible path, ignoring and falling back to auto-detection"
     );
     None
 }
@@ -171,7 +171,7 @@ fn browser_profile_permission_hint(
     }
     let mount_dir = profile_mount_dir?;
     Some(format!(
-        "Chrome could not write its browser profile at {CONTAINER_PROFILE_PATH}; Moltis mounted `{}` from the host. When Moltis runs inside Docker with the Docker socket mounted, add `host_data_dir = \"/absolute/host/path/to/moltis-data\"` under `[tools.exec.sandbox]` in moltis.toml to the host-visible path backing Moltis data, then restart Moltis",
+        "Chrome could not write its browser profile at {CONTAINER_PROFILE_PATH}; Moltis mounted `{}` from the host. When Moltis runs inside Docker with the Docker socket mounted, add `host_data_dir = \"/absolute/host/path/to/moltis-data\"` under `[tools.execute_command.sandbox]` in moltis.toml to the host-visible path backing Moltis data, then restart Moltis",
         mount_dir.display()
     ))
 }

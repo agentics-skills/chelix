@@ -81,8 +81,8 @@ function applySandboxControlAvailability(): boolean {
 export function updateSandboxUI(enabled: boolean): void {
 	S.setSessionSandboxEnabled(!!enabled);
 	const effectiveSandboxRoute = !!enabled && sandboxRuntimeAvailable();
-	S.setSessionExecMode(effectiveSandboxRoute ? "sandbox" : "host");
-	S.setSessionExecPromptSymbol(effectiveSandboxRoute || S.hostExecIsRoot ? "#" : "$");
+	S.setSessionCommandMode(effectiveSandboxRoute ? "sandbox" : "host");
+	S.setSessionCommandPromptSymbol(effectiveSandboxRoute || S.hostCommandIsRoot ? "#" : "$");
 	updateCommandInputUI();
 	updateTokenBar();
 	const label = S.sandboxLabel;

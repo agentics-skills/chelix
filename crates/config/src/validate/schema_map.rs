@@ -151,7 +151,7 @@ pub(super) fn build_schema_map() -> KnownKeys {
         ]))
     };
 
-    let exec = || {
+    let execute_command = || {
         Struct(HashMap::from([
             ("default_timeout_secs", Leaf),
             ("max_output_bytes", Leaf),
@@ -194,7 +194,7 @@ pub(super) fn build_schema_map() -> KnownKeys {
 
     let tools = || {
         Struct(HashMap::from([
-            ("exec", exec()),
+            ("execute_command", execute_command()),
             ("browser", browser()),
             (
                 "policy",

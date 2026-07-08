@@ -242,7 +242,7 @@ impl LlmProvider for TextToolCallingProvider {
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if count == 0 {
             Ok(CompletionResponse {
-                text: Some("```tool_call\n{\"tool\": \"exec\", \"arguments\": {\"command\": \"echo hello\"}}\n```".into()),
+                text: Some("```tool_call\n{\"tool\": \"execute_command\", \"arguments\": {\"command\": \"echo hello\"}}\n```".into()),
                 tool_calls: vec![],
                 usage: Usage { input_tokens: 10, output_tokens: 20, ..Default::default() },
             })
@@ -334,13 +334,13 @@ impl crate::tool_registry::AgentTool for LargeResultTool {
     }
 }
 
-/// A tool that actually runs shell commands (test-only, mirrors ExecTool).
-pub(super) struct TestExecTool;
+/// A tool that actually runs shell commands (test-only, mirrors execute_command).
+pub(super) struct TestExecuteCommandTool;
 
 #[async_trait]
-impl crate::tool_registry::AgentTool for TestExecTool {
+impl crate::tool_registry::AgentTool for TestExecuteCommandTool {
     fn name(&self) -> &str {
-        "exec"
+        "execute_command"
     }
 
     fn description(&self) -> &str {

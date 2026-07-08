@@ -368,8 +368,8 @@
     color: var(--error);
   }
 
-  /* Tool / exec card */
-  .msg.exec-card {
+  /* Tool / command card */
+  .msg.command-card {
     align-self: flex-start;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -384,35 +384,35 @@
     box-shadow: var(--shadow-sm);
     line-height: 1.2;
   }
-  .msg.exec-card.running {
+  .msg.command-card.running {
     border-color: var(--accent-dim);
   }
-  .msg.exec-card.exec-ok {
+  .msg.command-card.command-ok {
     border-color: var(--border);
   }
-  .msg.exec-card.exec-err {
+  .msg.command-card.command-err {
     border-color: var(--error);
   }
-  .exec-prompt {
+  .command-prompt {
     font-family: var(--font-mono);
     font-size: 0.8rem;
     color: var(--text);
     line-height: 1.4;
   }
-  .exec-prompt-char {
+  .command-prompt-char {
     color: var(--ok);
     font-weight: 600;
     user-select: none;
   }
-  .exec-card.exec-err .exec-prompt-char {
+  .command-card.command-err .command-prompt-char {
     color: var(--error);
   }
-  .exec-status {
+  .command-status {
     font-size: 0.62rem;
     color: var(--muted);
     white-space: nowrap;
   }
-  .exec-output {
+  .command-output {
     font-family: var(--font-mono);
     font-size: 0.78rem;
     color: var(--text);
@@ -427,30 +427,30 @@
     line-height: 1.45;
     white-space: pre;
   }
-  .exec-output.exec-stderr {
+  .command-output.command-stderr {
     color: var(--warn);
   }
-  .exec-exit {
+  .command-exit {
     font-family: var(--font-mono);
     font-size: 0.72rem;
     color: var(--muted);
   }
-  .exec-exit-error {
+  .command-exit-error {
     color: var(--error);
   }
-  .exec-exit-ok {
+  .command-exit-ok {
     color: var(--ok);
   }
-  .exec-error-detail {
+  .command-error-detail {
     font-size: 0.78rem;
     color: var(--error);
   }
   /* Muted style for validation/retry errors (expected, not alarming) */
-  .exec-card.exec-retry {
+  .command-card.command-retry {
     opacity: 0.6;
     border-left-color: var(--muted);
   }
-  .exec-retry-detail {
+  .command-retry-detail {
     font-size: 0.72rem;
     color: var(--muted);
     font-style: italic;
@@ -526,7 +526,7 @@
     user-select: text;
   }
   .tool-call-summary code,
-  .tool-call-summary .exec-cmd {
+  .tool-call-summary .command-cmd {
     display: block;
     background: none;
     border-radius: 0;
@@ -550,14 +550,14 @@
     border-color: var(--accent-dim);
     background: var(--accent-subtle);
   }
-  .tool-call-card.exec-ok .tool-call-status {
+  .tool-call-card.command-ok .tool-call-status {
     color: var(--ok);
   }
-  .tool-call-card.exec-err .tool-call-status {
+  .tool-call-card.command-err .tool-call-status {
     color: var(--error);
     border-color: var(--error);
   }
-  .tool-call-card.exec-retry .tool-call-status {
+  .tool-call-card.command-retry .tool-call-status {
     color: var(--muted);
   }
   .tool-call-details {
@@ -635,23 +635,23 @@
   .tool-call-params-details {
     color: var(--muted);
   }
-  .tool-call-card[data-tool-name="exec"] .tool-call-summary code,
-  .tool-call-card[data-tool-name="exec"] .tool-call-summary .exec-cmd {
+  .tool-call-card[data-tool-name="execute_command"] .tool-call-summary code,
+  .tool-call-card[data-tool-name="execute_command"] .tool-call-summary .command-cmd {
     white-space: pre-wrap;
     overflow: visible;
     text-overflow: clip;
     word-break: break-word;
   }
-  .msg.exec-card .tool-call-summary code,
-  .msg.exec-card .tool-call-summary .exec-cmd {
+  .msg.command-card .tool-call-summary code,
+  .msg.command-card .tool-call-summary .command-cmd {
     background: none;
     border-radius: 0;
     padding: 0;
     font-size: inherit;
     line-height: inherit;
   }
-  .msg.exec-card .tool-call-json,
-  .msg.exec-card .exec-output {
+  .msg.command-card .tool-call-json,
+  .msg.command-card .command-output {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 4px;

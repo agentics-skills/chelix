@@ -1,6 +1,6 @@
 //! In-memory event buffer that the heartbeat drains.
 //!
-//! Background processes (cron jobs, exec completions) enqueue events here.
+//! Background processes (cron jobs, command completions) enqueue events here.
 //! On the next heartbeat tick the queue is drained, and event summaries are
 //! prepended to the heartbeat prompt so the LLM can relay noteworthy items.
 
@@ -20,7 +20,7 @@ const MAX_EVENTS: usize = 20;
 pub struct SystemEvent {
     /// Human-readable event description.
     pub text: String,
-    /// Origin tag, e.g. `"exec-event"`, `"cron:<id>"`.
+    /// Origin tag, e.g. `"command-event"`, `"cron:<id>"`.
     pub reason: String,
     /// When the event was enqueued (epoch milliseconds).
     pub enqueued_at_ms: u64,

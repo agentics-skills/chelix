@@ -77,14 +77,14 @@ async fn test_wasm_sandbox_builtin_echo() {
     };
     sandbox.ensure_ready(&id, None).await.unwrap();
     let result = sandbox
-        .exec(&id, "echo hello world", &ExecOpts::default())
+        .run_command(&id, "echo hello world", &CommandOptions::default())
         .await
         .unwrap();
     assert_eq!(result.exit_code, 0);
     assert_eq!(result.stdout.trim(), "hello world");
     sandbox.cleanup(&id).await.unwrap();
 }
-
+/
 #[tokio::test]
 async fn test_wasm_sandbox_builtin_echo_no_newline() {
     let sandbox = WasmSandbox::new(test_config()).unwrap();
@@ -94,7 +94,7 @@ async fn test_wasm_sandbox_builtin_echo_no_newline() {
     };
     sandbox.ensure_ready(&id, None).await.unwrap();
     let result = sandbox
-        .exec(&id, "echo -n hello", &ExecOpts::default())
+        .run_command(&id, "echo -n hello", &CommandOptions::default())
         .await
         .unwrap();
     assert_eq!(result.exit_code, 0);
@@ -111,7 +111,7 @@ async fn test_wasm_sandbox_builtin_pwd() {
     };
     sandbox.ensure_ready(&id, None).await.unwrap();
     let result = sandbox
-        .exec(&id, "pwd", &ExecOpts::default())
+        .run_command(&id, "pwd", &CommandOptions::default())
         .await
         .unwrap();
     assert_eq!(result.exit_code, 0);
@@ -129,13 +129,13 @@ async fn test_wasm_sandbox_builtin_true_false() {
     sandbox.ensure_ready(&id, None).await.unwrap();
 
     let result = sandbox
-        .exec(&id, "true", &ExecOpts::default())
+        .run_command(&id, "true", &CommandOptions::default())
         .await
         .unwrap();
     assert_eq!(result.exit_code, 0);
 
     let result = sandbox
-        .exec(&id, "false", &ExecOpts::default())
+        .run_command(&id, "false", &CommandOptions::default())
         .await
         .unwrap();
     assert_eq!(result.exit_code, 1);
@@ -152,13 +152,13 @@ async fn test_wasm_sandbox_builtin_mkdir_ls() {
     sandbox.ensure_ready(&id, None).await.unwrap();
 
     let result = sandbox
-        .exec(&id, "mkdir /home/sandbox/testdir", &ExecOpts::default())
+        .run_command(&id, "mkdir /home/sandbox/testdir", &CommandOptions::default())
         .await
         .unwrap();
     assert_eq!(result.exit_code, 0);
 
     let result = sandbox
-        .exec(&id, "ls /home/sandbox", &ExecOpts::default())
+        .run_command(&id, "ls /home/sandbox", &CommandOptions::default())
         .await
         .unwrap();
     assert_eq!(result.exit_code, 0);
@@ -177,10 +177,10 @@ async fn test_wasm_sandbox_builtin_touch_cat() {
 
     // Write a file using echo with redirect.
     let result = sandbox
-        .exec(
+        .run_command(
             &id,
             "echo hello > /home/sandbox/test.txt",
-            &ExecOpts::default(),
+            &CommandOptions::default(),
         )
         .await
         .unwrap();
@@ -188,7 +188,7 @@ async fn test_wasm_sandbox_builtin_touch_cat() {
 
     // Read it back.
     let result = sandbox
-        .exec(&id, "cat /home/sandbox/test.txt", &ExecOpts::default())
+        .run_command(&id, "cat /home/sandbox/test.txt", &CommandOptions::default())
         .await
         .unwrap();
     assert_eq!(result.exit_code, 0);
@@ -206,22 +206,30 @@ async fn test_wasm_sandbox_builtin_rm() {
     sandbox.ensure_ready(&id, None).await.unwrap();
 
     sandbox
-        .exec(
+        .run_command(
             &id,
             "echo data > /home/sandbox/to_delete.txt",
-            &ExecOpts::default(),
+            &CommandOptions::default(),
         )
         .await
         .unwrap();
 
     let result = sandbox
-        .exec(&id, "rm /home/sandbox/to_delete.txt", &ExecOpts::default())
+        .run_command(
+            &id,
+            "rm /home/sandbox/to_delete.txt",
+            &CommandOptions::default(),
+        )
         .await
         .unwrap();
     assert_eq!(result.exit_code, 0);
 
     let result = sandbox
-        .exec(&id, "cat /home/sandbox/to_delete.txt", &ExecOpts::default())
+        .run_command(
+            &id,
+            "cat /home/sandbox/to_delete.txt",
+            &CommandOptions::default(),
+        )
         .await
         .unwrap();
     assert_eq!(result.exit_code, 1);
@@ -237,7 +245,7 @@ async fn test_wasm_sandbox_unknown_command_127() {
     };
     sandbox.ensure_ready(&id, None).await.unwrap();
     let result = sandbox
-        .exec(&id, "nonexistent_cmd", &ExecOpts::default())
+        .run_command(&id, "nonexistent_cmd", &CommandOptions::default())
         .await
         .unwrap();
     assert_eq!(result.exit_code, 127);
@@ -256,7 +264,7 @@ async fn test_wasm_sandbox_path_escape_blocked() {
 
     // Try to cat a file outside sandbox.
     let result = sandbox
-        .exec(&id, "cat /etc/passwd", &ExecOpts::default())
+        .run_command(&id, "cat /etc/passwd", &CommandOptions::default())
         .await
         .unwrap();
     assert_eq!(result.exit_code, 1);
@@ -273,14 +281,14 @@ async fn test_wasm_sandbox_and_connector() {
     };
     sandbox.ensure_ready(&id, None).await.unwrap();
     let result = sandbox
-        .exec(&id, "true && echo yes", &ExecOpts::default())
+        .run_command(&id, "true && echo yes", &CommandOptions::default())
         .await
         .unwrap();
     assert_eq!(result.exit_code, 0);
     assert_eq!(result.stdout.trim(), "yes");
 
     let result = sandbox
-        .exec(&id, "false && echo no", &ExecOpts::default())
+        .run_command(&id, "false && echo no", &CommandOptions::default())
         .await
         .unwrap();
     // The echo shouldn't run, so stdout should be empty.
@@ -297,7 +305,7 @@ async fn test_wasm_sandbox_or_connector() {
     };
     sandbox.ensure_ready(&id, None).await.unwrap();
     let result = sandbox
-        .exec(&id, "false || echo fallback", &ExecOpts::default())
+        .run_command(&id, "false || echo fallback", &CommandOptions::default())
         .await
         .unwrap();
     assert_eq!(result.exit_code, 0);
@@ -315,26 +323,30 @@ async fn test_wasm_sandbox_builtin_test_file() {
     sandbox.ensure_ready(&id, None).await.unwrap();
 
     sandbox
-        .exec(
+        .run_command(
             &id,
             "echo x > /home/sandbox/exists.txt",
-            &ExecOpts::default(),
+            &CommandOptions::default(),
         )
         .await
         .unwrap();
 
     let result = sandbox
-        .exec(
+        .run_command(
             &id,
             "test -f /home/sandbox/exists.txt",
-            &ExecOpts::default(),
+            &CommandOptions::default(),
         )
         .await
         .unwrap();
     assert_eq!(result.exit_code, 0);
 
     let result = sandbox
-        .exec(&id, "test -f /home/sandbox/nope.txt", &ExecOpts::default())
+        .run_command(
+            &id,
+            "test -f /home/sandbox/nope.txt",
+            &CommandOptions::default(),
+        )
         .await
         .unwrap();
     assert_eq!(result.exit_code, 1);
@@ -351,20 +363,20 @@ async fn test_wasm_sandbox_builtin_basename_dirname() {
     sandbox.ensure_ready(&id, None).await.unwrap();
 
     let result = sandbox
-        .exec(
+        .run_command(
             &id,
             "basename /home/sandbox/foo/bar.txt",
-            &ExecOpts::default(),
+            &CommandOptions::default(),
         )
         .await
         .unwrap();
     assert_eq!(result.stdout.trim(), "bar.txt");
 
     let result = sandbox
-        .exec(
+        .run_command(
             &id,
             "dirname /home/sandbox/foo/bar.txt",
-            &ExecOpts::default(),
+            &CommandOptions::default(),
         )
         .await
         .unwrap();
@@ -382,14 +394,14 @@ async fn test_wasm_sandbox_builtin_which() {
     sandbox.ensure_ready(&id, None).await.unwrap();
 
     let result = sandbox
-        .exec(&id, "which echo", &ExecOpts::default())
+        .run_command(&id, "which echo", &CommandOptions::default())
         .await
         .unwrap();
     assert_eq!(result.exit_code, 0);
     assert!(result.stdout.contains("built-in"));
 
     let result = sandbox
-        .exec(&id, "which nonexistent", &ExecOpts::default())
+        .run_command(&id, "which nonexistent", &CommandOptions::default())
         .await
         .unwrap();
     assert_eq!(result.exit_code, 1);

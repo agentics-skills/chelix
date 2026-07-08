@@ -47,7 +47,7 @@ this variable.
 
 ## Coolify (self-hosted, e.g. Hetzner)
 
-Coolify deployments can run Chelix with sandboxed exec tools, as long as the
+Coolify deployments can run Chelix with sandboxed execute_command tools, as long as the
 service mounts the host Docker socket.
 
 - Use [`examples/docker-compose.coolify.yml`](https://github.com/agentics-skills/chelix/blob/master/examples/docker-compose.coolify.yml)

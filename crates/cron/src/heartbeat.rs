@@ -461,7 +461,7 @@ mod tests {
         let events = vec![
             crate::system_events::SystemEvent {
                 text: "Command `ls` exited 0".into(),
-                reason: crate::service::WAKE_REASON_EXEC_EVENT.into(),
+                reason: crate::service::WAKE_REASON_COMMAND_EVENT.into(),
                 enqueued_at_ms: 1000,
             },
             crate::system_events::SystemEvent {
@@ -474,7 +474,7 @@ mod tests {
         assert!(prompt.starts_with(EVENTS_PROMPT_PREFIX));
         assert!(prompt.contains(&format!(
             "Command `ls` exited 0 [{}]",
-            crate::service::WAKE_REASON_EXEC_EVENT
+            crate::service::WAKE_REASON_COMMAND_EVENT
         )));
         assert!(prompt.contains("Cron job fired [cron:abc]"));
         assert!(prompt.ends_with("check inbox"));

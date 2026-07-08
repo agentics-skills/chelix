@@ -8,6 +8,9 @@ use {
     tracing::{debug, info, warn},
 };
 
+#[cfg(feature = "wasm")]
+use secrecy::ExposeSecret;
+
 mod credential_env;
 mod session_tools;
 
@@ -590,7 +593,7 @@ pub(super) async fn complete_startup(
     state.set_graphql_enabled(config.graphql.enabled);
 
     {
-        let broadcaster: Arc<dyn moltis_tools::exec::ApprovalBroadcaster> =
+        let broadcaster: Arc<dyn moltis_tools::approval::ApprovalBroadcaster> =
             Arc::new(GatewayApprovalBroadcaster::new(Arc::clone(&state)));
         // Build gateway URL for sandbox-to-gateway communication.
         // Only inject when the sandbox network policy allows host access
@@ -616,49 +619,28 @@ pub(super) async fn complete_startup(
             None
         };
 
-        let env_provider: Arc<dyn moltis_tools::exec::EnvVarProvider> =
+        let env_provider: Arc<dyn moltis_tools::command::EnvVarProvider> =
             Arc::new(CredentialEnvVarProvider {
                 store: Arc::clone(&credential_store),
                 gateway_url: sandbox_gateway_url,
                 sandbox_api_key: sandbox_api_key.map(Secret::new),
             });
-        let eq = cron_service.events_queue().clone();
-        let cs = Arc::clone(&cron_service);
-        let exec_cb: moltis_tools::exec::ExecCompletionFn = Arc::new(move |event| {
-            let summary = format!("Command `{}` exited {}", event.command, event.exit_code);
-            let eq = Arc::clone(&eq);
-            let cs = Arc::clone(&cs);
-            tokio::spawn(async move {
-                eq.enqueue(summary, moltis_cron::WAKE_REASON_EXEC_EVENT.into())
-                    .await;
-                cs.wake(moltis_cron::WAKE_REASON_EXEC_EVENT).await;
+        let events_queue = cron_service.events_queue().clone();
+        let cron_for_command_events = Arc::clone(&cron_service);
+        let command_completion_callback: moltis_tools::command::CommandCompletionFn =
+            Arc::new(move |event| {
+                let summary = format!("Command `{}` exited {}", event.command, event.exit_code);
+                let events_queue = Arc::clone(&events_queue);
+                let cron_for_command_events = Arc::clone(&cron_for_command_events);
+                tokio::spawn(async move {
+                    events_queue
+                        .enqueue(summary, moltis_cron::WAKE_REASON_COMMAND_EVENT.into())
+                        .await;
+                    cron_for_command_events
+                        .wake(moltis_cron::WAKE_REASON_COMMAND_EVENT)
+                        .await;
+                });
             });
-        });
-        let mut exec_tool = moltis_tools::exec::ExecTool::default()
-            .with_default_timeout(std::time::Duration::from_secs(
-                config.tools.exec.default_timeout_secs,
-            ))
-            .with_max_output_bytes(config.tools.exec.max_output_bytes)
-            .with_approval(Arc::clone(&approval_manager), Arc::clone(&broadcaster))
-            .with_sandbox_router(Arc::clone(&sandbox_router))
-            .with_env_provider(Arc::clone(&env_provider))
-            .with_completion_callback(exec_cb);
-
-        {
-            let provider = Arc::new(crate::node_exec::GatewayNodeExecProvider::new(
-                Arc::clone(&state),
-                Arc::clone(&state.node_count),
-                Arc::clone(&state.ssh_target_count),
-                config.tools.exec.ssh_target.clone(),
-                config.tools.exec.max_output_bytes,
-            ));
-            let default_node = match config.tools.exec.host.as_str() {
-                "node" => config.tools.exec.node.clone(),
-                "ssh" => config.tools.exec.ssh_target.clone(),
-                _ => None,
-            };
-            exec_tool = exec_tool.with_node_provider(provider, default_node);
-        }
 
         let cron_tool = moltis_tools::cron_tool::CronTool::new(Arc::clone(&cron_service));
 
@@ -671,18 +653,41 @@ pub(super) async fn complete_startup(
 
         let tmux_terminal_manager = Arc::new(moltis_tools::tmux_command::TmuxTerminalManager::new(
             Arc::clone(&sandbox_router),
-            config.tools.exec.max_output_bytes,
+            config.tools.execute_command.max_output_bytes,
         ));
+        let mut execute_command_tool =
+            moltis_tools::tmux_command::ExecuteCommandTool::new(Arc::clone(
+                &tmux_terminal_manager,
+            ))
+            .with_default_timeout(std::time::Duration::from_secs(
+                config.tools.execute_command.default_timeout_secs,
+            ))
+            .with_approval(Arc::clone(&approval_manager), Arc::clone(&broadcaster))
+            .with_env_provider(Arc::clone(&env_provider))
+            .with_completion_callback(command_completion_callback);
 
-        tool_registry.register(Box::new(
-            moltis_tools::tmux_command::ExecuteCommandTool::new(Arc::clone(&tmux_terminal_manager)),
-        ));
+        {
+            let provider = Arc::new(crate::node_command::GatewayNodeCommandProvider::new(
+                Arc::clone(&state),
+                Arc::clone(&state.node_count),
+                Arc::clone(&state.ssh_target_count),
+                config.tools.execute_command.ssh_target.clone(),
+                config.tools.execute_command.max_output_bytes,
+            ));
+            let default_node = match config.tools.execute_command.host.as_str() {
+                "node" => config.tools.execute_command.node.clone(),
+                "ssh" => config.tools.execute_command.ssh_target.clone(),
+                _ => None,
+            };
+            execute_command_tool = execute_command_tool.with_node_provider(provider, default_node);
+        }
+
+        tool_registry.register(Box::new(execute_command_tool));
         tool_registry.register(Box::new(
             moltis_tools::tmux_command::ReadTerminalOutputTool::new(Arc::clone(
                 &tmux_terminal_manager,
             )),
         ));
-        tool_registry.register(Box::new(exec_tool));
         tool_registry.register(Box::new(moltis_tools::calc::CalcTool::new()));
         #[cfg(feature = "fs-tools")]
         {
@@ -948,9 +953,9 @@ pub(super) async fn complete_startup(
 
         {
             let node_info_provider: Arc<dyn moltis_tools::nodes::NodeInfoProvider> =
-                Arc::new(crate::node_exec::GatewayNodeInfoProvider::new(
+                Arc::new(crate::node_command::GatewayNodeInfoProvider::new(
                     Arc::clone(&state),
-                    config.tools.exec.ssh_target.clone(),
+                    config.tools.execute_command.ssh_target.clone(),
                 ));
             tool_registry.register(Box::new(moltis_tools::nodes::NodesListTool::new(
                 Arc::clone(&node_info_provider),

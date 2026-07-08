@@ -240,7 +240,7 @@ allow = ["web_search", "web_fetch"]
 fn preset_tools_deny_with_main_policy_deny_does_not_warn() {
     let toml = r#"
 [tools.policy]
-deny = ["exec"]
+deny = ["execute_command"]
 
 [agents.presets.full]
 [agents.presets.full.tools]

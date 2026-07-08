@@ -299,21 +299,21 @@ pub async fn run_agent_loop_with_context(
         }
 
         // Final fallback: if the user turn is an explicit `/sh ...` command and
-        // the model returned plain text, force one exec tool call so this path
+        // the model returned plain text, force one execute_command tool call so this path
         // is deterministic in the UI.
         if response.tool_calls.is_empty()
             && iterations == 1
             && total_tool_calls == 0
             && let Some(command) = explicit_shell_command.as_ref()
-            && tools.get("exec").is_some()
+            && tools.get("execute_command").is_some()
         {
-            info!(command = %command, "forcing exec tool call from explicit /sh command");
+            info!(command = %command, "forcing execute_command tool call from explicit /sh command");
             // Preserve the model's planning/reasoning text on the assistant
             // tool-call message. Some providers (e.g. Moonshot thinking mode)
             // require this history field for follow-up tool turns.
             response.tool_calls = vec![ToolCall {
                 id: new_synthetic_tool_call_id("forced"),
-                name: "exec".to_string(),
+                name: "execute_command".to_string(),
                 arguments: serde_json::json!({ "command": command }),
                 argument_diagnostic: None,
                 metadata: None,

@@ -1,6 +1,6 @@
 // ── Tool call card renderer ──────────────────────────────────
 
-import { renderExecCommand } from "./code-highlight";
+import { renderCommand } from "./code-highlight";
 import { renderDocument, renderMapLinks, renderMapPointGroups, renderScreenshot, toolCallSummary } from "./helpers";
 import type { ToolError, ToolResult } from "./types/ws-events";
 
@@ -61,8 +61,8 @@ function buildToolSummary(toolName: string | undefined, args: unknown, execution
 	return `${normalizedName} ${compactArgs}`;
 }
 
-export function isExecLikeToolName(toolName: string | undefined): boolean {
-	return toolName === "exec" || toolName === "execute_command";
+export function isCommandToolName(toolName: string | undefined): boolean {
+	return toolName === "execute_command";
 }
 
 function makeLabeledPre(label: string, text: string, className: string): HTMLElement {
@@ -90,7 +90,7 @@ function getResultContent(card: HTMLElement): HTMLElement {
 }
 
 function getStatusEl(card: HTMLElement): HTMLElement | null {
-	return card.querySelector(".exec-status") as HTMLElement | null;
+	return card.querySelector(".command-status") as HTMLElement | null;
 }
 
 function appendRawPayload(
@@ -133,10 +133,10 @@ function resultExitCode(result: ToolResult): number | undefined {
 export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 	const toolName = options.toolName || "tool";
 	const status = options.status || "running";
-	const expanded = options.expanded ?? (status === "running" || isExecLikeToolName(toolName));
+	const expanded = options.expanded ?? (status === "running" || isCommandToolName(toolName));
 
 	const card = document.createElement("div");
-	card.className = "msg exec-card tool-call-card";
+	card.className = "msg command-card tool-call-card";
 	if (options.id) card.id = options.id;
 	card.setAttribute("data-tool-name", toolName);
 
@@ -163,7 +163,7 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 	metaRow.appendChild(nameEl);
 
 	const statusEl = document.createElement("span");
-	statusEl.className = "exec-status tool-call-status";
+	statusEl.className = "command-status tool-call-status";
 	metaRow.appendChild(statusEl);
 
 	if (options.executionMode) {
@@ -177,8 +177,8 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 	header.appendChild(toggle);
 
 	const summaryEl = document.createElement("span");
-	summaryEl.className = "exec-prompt tool-call-summary";
-	renderExecCommand(summaryEl, buildToolSummary(toolName, options.arguments, options.executionMode));
+	summaryEl.className = "command-prompt tool-call-summary";
+	renderCommand(summaryEl, buildToolSummary(toolName, options.arguments, options.executionMode));
 	header.appendChild(summaryEl);
 
 	card.appendChild(header);
@@ -192,7 +192,7 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 	}
 
 	appendRawPayload(details, "Parameters", options.arguments, {
-		open: !isExecLikeToolName(toolName),
+		open: !isCommandToolName(toolName),
 		className: "tool-call-params-details",
 	});
 
@@ -245,11 +245,11 @@ export function setToolCardExpanded(card: HTMLElement, expanded: boolean): void 
 }
 
 export function setToolCardStatus(card: HTMLElement, status: ToolCardStatus, label?: string): void {
-	card.classList.remove("running", "exec-ok", "exec-err", "exec-retry");
+	card.classList.remove("running", "command-ok", "command-err", "command-retry");
 	if (status === "running") card.classList.add("running");
-	if (status === "success") card.classList.add("exec-ok");
-	if (status === "error") card.classList.add("exec-err");
-	if (status === "retry") card.classList.add("exec-retry");
+	if (status === "success") card.classList.add("command-ok");
+	if (status === "error") card.classList.add("command-err");
+	if (status === "retry") card.classList.add("command-retry");
 	card.setAttribute("data-tool-status", status);
 	const statusEl = getStatusEl(card);
 	if (statusEl) statusEl.textContent = label || STATUS_LABELS[status];
@@ -265,7 +265,7 @@ export function appendToolOutputChunk(card: HTMLElement, stream: "stdout" | "std
 		const block = makeLabeledPre(
 			stream,
 			"",
-			stream === "stderr" ? "exec-output exec-stderr tool-call-output" : "exec-output tool-call-output",
+			stream === "stderr" ? "command-output command-stderr tool-call-output" : "command-output tool-call-output",
 		);
 		content.appendChild(block);
 		pre = block.querySelector("pre") as HTMLPreElement | null;
@@ -284,26 +284,26 @@ export function renderToolCardResult(
 	let renderedVisibleResult = false;
 	const stdout = (result.stdout || "").replace(/\n+$/, "");
 	if (stdout) {
-		content.appendChild(makeLabeledPre("stdout", stdout, "exec-output tool-call-output"));
+		content.appendChild(makeLabeledPre("stdout", stdout, "command-output tool-call-output"));
 		renderedVisibleResult = true;
 	}
 
 	const output = (result.output || "").replace(/\n+$/, "");
 	if (output) {
-		content.appendChild(makeLabeledPre("output", output, "exec-output tool-call-output"));
+		content.appendChild(makeLabeledPre("output", output, "command-output tool-call-output"));
 		renderedVisibleResult = true;
 	}
 
 	const stderr = (result.stderr || "").replace(/\n+$/, "");
 	if (stderr) {
-		content.appendChild(makeLabeledPre("stderr", stderr, "exec-output exec-stderr tool-call-output"));
+		content.appendChild(makeLabeledPre("stderr", stderr, "command-output command-stderr tool-call-output"));
 		renderedVisibleResult = true;
 	}
 
 	const exitCode = resultExitCode(result);
 	if (exitCode !== undefined && exitCode !== 0) {
 		const codeEl = document.createElement("div");
-		codeEl.className = "exec-exit exec-exit-error";
+		codeEl.className = "command-exit command-exit-error";
 		codeEl.textContent = `exit ${exitCode}`;
 		content.appendChild(codeEl);
 		renderedVisibleResult = true;
@@ -353,7 +353,7 @@ export function appendToolCardError(card: HTMLElement, error: ToolError | string
 
 	const message = typeof error === "string" ? error : error?.detail || error?.message || "Tool call failed.";
 	const errMsg = document.createElement("div");
-	errMsg.className = retry ? "exec-retry-detail" : "exec-error-detail";
+	errMsg.className = retry ? "command-retry-detail" : "command-error-detail";
 	errMsg.textContent = message;
 	content.appendChild(errMsg);
 

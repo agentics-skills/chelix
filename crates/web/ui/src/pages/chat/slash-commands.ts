@@ -258,9 +258,9 @@ export function shouldHandleSlashLocally(cmdName: string, args: string): boolean
 }
 
 function commandModeSummary(): string {
-	const execModeLabel = S.sessionExecMode === "sandbox" ? "sandboxed" : "host";
-	const promptSymbol = S.sessionExecPromptSymbol || "$";
-	return `${execModeLabel}, prompt ${promptSymbol}`;
+	const commandModeLabel = S.sessionCommandMode === "sandbox" ? "sandboxed" : "host";
+	const promptSymbol = S.sessionCommandPromptSymbol || "$";
+	return `${commandModeLabel}, prompt ${promptSymbol}`;
 }
 
 function setCommandMode(enabled: boolean): void {

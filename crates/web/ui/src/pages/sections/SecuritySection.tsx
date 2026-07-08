@@ -871,7 +871,7 @@ export function SecuritySection(): VNode {
 											onChange={() => toggleScope("operator.approvals")}
 										/>
 										<span className="text-xs text-[var(--text)]">operator.approvals</span>
-										<span className="text-xs text-[var(--muted)]">{"\u2014"} Handle exec approvals</span>
+										<span className="text-xs text-[var(--muted)]">{"\u2014"} Handle command approvals</span>
 									</label>
 									<label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
 										<input

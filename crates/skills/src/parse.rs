@@ -371,7 +371,7 @@ name: my-skill
 description: A test skill
 license: MIT
 allowed_tools:
-  - exec
+  - execute_command
   - read
 ---
 
@@ -383,7 +383,7 @@ Instructions here.
         assert_eq!(meta.name, "my-skill");
         assert_eq!(meta.description, "A test skill");
         assert_eq!(meta.license, Some("MIT".into()));
-        assert_eq!(meta.allowed_tools, vec!["exec", "read"]);
+        assert_eq!(meta.allowed_tools, vec!["execute_command", "read"]);
         assert_eq!(meta.path, Path::new("/tmp/my-skill"));
     }
 

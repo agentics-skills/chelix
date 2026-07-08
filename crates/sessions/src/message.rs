@@ -117,7 +117,7 @@ pub enum PersistedMessage {
     /// Tool execution result with structured output (stdout, stderr, exit_code).
     ///
     /// Persisted alongside user/assistant messages so that the UI can
-    /// reconstruct exec cards when a session is reloaded.
+    /// reconstruct command cards when a session is reloaded.
     #[serde(rename = "tool_result")]
     ToolResult {
         tool_call_id: String,
@@ -797,7 +797,7 @@ mod tests {
     fn tool_result_serializes_correctly() {
         let msg = PersistedMessage::ToolResult {
             tool_call_id: "call_1".to_string(),
-            tool_name: "exec".to_string(),
+            tool_name: "execute_command".to_string(),
             arguments: Some(serde_json::json!({"command": "ls -la"})),
             success: true,
             result: Some(serde_json::json!({"stdout": "file.txt", "exit_code": 0})),
@@ -809,7 +809,7 @@ mod tests {
         let json = serde_json::to_value(&msg).unwrap();
         assert_eq!(json["role"], "tool_result");
         assert_eq!(json["tool_call_id"], "call_1");
-        assert_eq!(json["tool_name"], "exec");
+        assert_eq!(json["tool_name"], "execute_command");
         assert_eq!(json["arguments"]["command"], "ls -la");
         assert!(json["success"].as_bool().unwrap());
         assert_eq!(json["result"]["stdout"], "file.txt");
@@ -820,7 +820,7 @@ mod tests {
     fn tool_result_error_serializes_correctly() {
         let msg = PersistedMessage::ToolResult {
             tool_call_id: "call_2".to_string(),
-            tool_name: "exec".to_string(),
+            tool_name: "execute_command".to_string(),
             arguments: Some(serde_json::json!({"command": "bad_cmd"})),
             success: false,
             result: None,
@@ -874,7 +874,7 @@ mod tests {
         let json = serde_json::json!({
             "role": "tool_result",
             "tool_call_id": "call_4",
-            "tool_name": "exec",
+            "tool_name": "execute_command",
             "success": true,
             "result": {"stdout": "hello", "stderr": "", "exit_code": 0},
             "created_at": 99999
@@ -889,7 +889,7 @@ mod tests {
                 ..
             } => {
                 assert_eq!(tool_call_id, "call_4");
-                assert_eq!(tool_name, "exec");
+                assert_eq!(tool_name, "execute_command");
                 assert!(success);
                 // Old sessions without reasoning field should deserialize as None.
                 assert!(reasoning.is_none());
@@ -933,7 +933,7 @@ mod tests {
     fn tool_result_without_reasoning_omits_field() {
         let msg = PersistedMessage::tool_result(
             "call_6",
-            "exec",
+            "execute_command",
             None,
             true,
             Some(serde_json::json!({"stdout": "ok"})),
@@ -952,7 +952,7 @@ mod tests {
         let json = serde_json::json!({
             "id": "call_1",
             "type": "function",
-            "function": {"name": "exec", "arguments": "{}"}
+            "function": {"name": "execute_command", "arguments": "{}"}
         });
         let tc: PersistedToolCall = serde_json::from_value(json).unwrap();
         assert!(tc.metadata.is_none());
@@ -964,7 +964,7 @@ mod tests {
             id: "call_1".into(),
             call_type: "function".into(),
             function: PersistedFunction {
-                name: "exec".into(),
+                name: "execute_command".into(),
                 arguments: "{}".into(),
             },
             metadata: None,
@@ -987,7 +987,7 @@ mod tests {
             id: "call_1".into(),
             call_type: "function".into(),
             function: PersistedFunction {
-                name: "exec".into(),
+                name: "execute_command".into(),
                 arguments: "{}".into(),
             },
             metadata: Some(meta),

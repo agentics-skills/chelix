@@ -103,12 +103,12 @@ pub fn all_commands() -> &'static [CommandDef] {
         // Control
         CommandDef {
             name: "approvals",
-            description: "List pending exec approvals",
+            description: "List pending command approvals",
             arg: None,
         },
         CommandDef {
             name: "approve",
-            description: "Approve a pending exec request",
+            description: "Approve a pending command request",
             arg: Some(CommandArg {
                 name: "id",
                 description: "Approval ID",
@@ -118,7 +118,7 @@ pub fn all_commands() -> &'static [CommandDef] {
         },
         CommandDef {
             name: "deny",
-            description: "Deny a pending exec request",
+            description: "Deny a pending command request",
             arg: Some(CommandArg {
                 name: "id",
                 description: "Approval ID",

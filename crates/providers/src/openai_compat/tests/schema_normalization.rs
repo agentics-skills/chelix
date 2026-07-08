@@ -290,7 +290,7 @@ fn streaming_tool_call_start_no_metadata_when_absent() {
                 "tool_calls": [{
                     "index": 0,
                     "id": "call_1",
-                    "function": { "name": "exec", "arguments": "" }
+                    "function": { "name": "execute_command", "arguments": "" }
                 }]
             }
         }]
@@ -315,7 +315,7 @@ fn parse_tool_calls_extracts_metadata() {
         "tool_calls": [{
             "id": "call_1",
             "thought_signature": "sig_abc",
-            "function": { "name": "exec", "arguments": "{}" }
+            "function": { "name": "execute_command", "arguments": "{}" }
         }]
     });
 

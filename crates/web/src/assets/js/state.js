@@ -38,8 +38,8 @@ export let sessionCurrentInputTokens = state().sessionCurrentInputTokens;
 export let sessionCurrentContextTokens = state().sessionCurrentContextTokens;
 export let sessionContextWindow = state().sessionContextWindow;
 export let sessionToolsEnabled = state().sessionToolsEnabled;
-export let sessionExecMode = state().sessionExecMode;
-export let sessionExecPromptSymbol = state().sessionExecPromptSymbol;
+export let sessionCommandMode = state().sessionCommandMode;
+export let sessionCommandPromptSymbol = state().sessionCommandPromptSymbol;
 export let commandModeEnabled = state().commandModeEnabled;
 export let streamEl = state().streamEl;
 export let streamText = state().streamText;
@@ -72,8 +72,8 @@ function _sync() {
 	sessionCurrentContextTokens = S.sessionCurrentContextTokens;
 	sessionContextWindow = S.sessionContextWindow;
 	sessionToolsEnabled = S.sessionToolsEnabled;
-	sessionExecMode = S.sessionExecMode;
-	sessionExecPromptSymbol = S.sessionExecPromptSymbol;
+	sessionCommandMode = S.sessionCommandMode;
+	sessionCommandPromptSymbol = S.sessionCommandPromptSymbol;
 	commandModeEnabled = S.commandModeEnabled;
 	streamEl = S.streamEl;
 	streamText = S.streamText;
@@ -110,8 +110,8 @@ export function setSessionCurrentInputTokens(v) { state().setSessionCurrentInput
 export function setSessionCurrentContextTokens(v) { state().setSessionCurrentContextTokens?.(v); sessionCurrentContextTokens = v; }
 export function setSessionContextWindow(v) { state().setSessionContextWindow?.(v); sessionContextWindow = v; }
 export function setSessionToolsEnabled(v) { state().setSessionToolsEnabled?.(v); sessionToolsEnabled = v; }
-export function setSessionExecMode(v) { state().setSessionExecMode?.(v); sessionExecMode = v; }
-export function setSessionExecPromptSymbol(v) { state().setSessionExecPromptSymbol?.(v); sessionExecPromptSymbol = v; }
+export function setSessionCommandMode(v) { state().setSessionCommandMode?.(v); sessionCommandMode = v; }
+export function setSessionCommandPromptSymbol(v) { state().setSessionCommandPromptSymbol?.(v); sessionCommandPromptSymbol = v; }
 export function setCommandModeEnabled(v) { state().setCommandModeEnabled?.(v); commandModeEnabled = v; }
 export function setSelectedModelId(v) { state().setSelectedModelId?.(v); selectedModelId = v; }
 export function setSandboxInfo(v) { state().setSandboxInfo?.(v); sandboxInfo = v; }
@@ -119,7 +119,7 @@ export function setCachedChannels(v) { state().setCachedChannels?.(v); cachedCha
 export function setLastHistoryIndex(v) { state().setLastHistoryIndex?.(v); }
 export function setSessionSwitchInProgress(v) { state().setSessionSwitchInProgress?.(v); }
 export function setChatBatchLoading(v) { state().setChatBatchLoading?.(v); }
-export function setHostExecIsRoot(v) { state().setHostExecIsRoot?.(v); }
+export function setHostCommandIsRoot(v) { state().setHostCommandIsRoot?.(v); }
 export function setLogsEventHandler(v) { state().setLogsEventHandler?.(v); }
 export function setNetworkAuditEventHandler(v) { state().setNetworkAuditEventHandler?.(v); }
 export function setUnseenErrors(v) { state().setUnseenErrors?.(v); }

@@ -8,7 +8,7 @@ source.
 
 Every registered tool has a `ToolSource` that identifies its origin:
 
-- **`Builtin`** — tools shipped with the binary (exec, web_fetch, etc.)
+- **`Builtin`** — tools shipped with the binary (`execute_command`, `web_fetch`, etc.)
 - **`Mcp { server }`** — tools provided by an MCP server, tagged with the
   server name
 
@@ -44,7 +44,7 @@ let removed_count = registry.unregister_mcp();
 
 ```json
 {
-  "name": "exec",
+  "name": "execute_command",
   "description": "Execute a command",
   "parameters": { ... },
   "source": "builtin"
@@ -64,14 +64,15 @@ let removed_count = registry.unregister_mcp();
 The `source` and `mcpServer` fields are available to the UI for rendering
 tools grouped by origin.
 
-## Sandbox terminal tools
+## Command execution tools
 
-Chelix registers tmux-backed sandbox terminal tools for agent command work:
+Chelix registers command execution tools for agent command work:
 
-- `execute_command` pastes a structured command into a real tmux pane inside
-  the current sandbox session. It accepts `command`, `customCwd`,
-  `newTerminal`, `destructiveFlag`, `background`, `timeout`, and an optional
-  `terminalId` for reusing a managed terminal.
+- `execute_command` runs through the active execution route: local host, paired
+  node, SSH target, or isolated sandbox. Isolated sandbox runs paste a
+  structured command into a real tmux pane. It accepts `command`, `customCwd`,
+  `newTerminal`, `destructiveFlag`, `background`, `timeout`, optional `node`,
+  and an optional `terminalId` for reusing a managed terminal.
 - `read_terminal_output` captures output from a managed tmux terminal by
   `terminalId`. Use it after a foreground timeout or for background commands
   that continue running after `execute_command` returns.

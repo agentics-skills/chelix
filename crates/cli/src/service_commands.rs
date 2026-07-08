@@ -387,13 +387,13 @@ fn generate_systemd_unit(moltis_bin: &Path, opts: &GatewayServiceOpts, log_path:
     let bin = moltis_bin.display();
     let log = log_path.display();
 
-    let mut exec_args = format!("{bin} --log-level {}", opts.log_level);
+    let mut service_args = format!("{bin} --log-level {}", opts.log_level);
 
     if let Some(ref bind) = opts.bind {
-        exec_args.push_str(&format!(" --bind {bind}"));
+        service_args.push_str(&format!(" --bind {bind}"));
     }
     if let Some(port) = opts.port {
-        exec_args.push_str(&format!(" --port {port}"));
+        service_args.push_str(&format!(" --port {port}"));
     }
 
     format!(
@@ -404,7 +404,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart={exec_args}
+ExecStart={service_args}
 Restart=on-failure
 RestartSec=10
 StandardOutput=append:{log}

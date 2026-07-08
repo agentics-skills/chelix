@@ -586,8 +586,8 @@ export function updateCountdown(el: HTMLElement, resetsAtMs: number): boolean {
 	return false;
 }
 
-function summarizeExecTool(args: ToolCallArgs): string {
-	const command = args.command || "exec";
+function summarizeCommandTool(args: ToolCallArgs): string {
+	const command = args.command || "execute_command";
 	const nodeRef = typeof args.node === "string" ? args.node.trim() : "";
 	if (!nodeRef) return command;
 	if (nodeRef.startsWith("ssh:target:")) {
@@ -617,9 +617,8 @@ export function toolCallSummary(
 ): string {
 	if (!args) return name || "tool";
 	switch (name) {
-		case "exec":
 		case "execute_command":
-			return summarizeExecTool(args);
+			return summarizeCommandTool(args);
 		case "web_fetch":
 			return `web_fetch ${args.url || ""}`.trim();
 		case "web_search":

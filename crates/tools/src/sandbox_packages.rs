@@ -24,7 +24,7 @@ use moltis_metrics::{counter, histogram};
 
 use moltis_agents::tool_registry::AgentTool;
 
-use crate::{exec::ExecOpts, sandbox::SandboxRouter};
+use crate::{command::CommandOptions, sandbox::SandboxRouter};
 
 // ── Category mapping ────────────────────────────────────────────────────────
 
@@ -257,7 +257,7 @@ fn categorize_packages(packages: &[String]) -> Vec<(&'static str, Vec<&str>)> {
 /// Returns `None` if the container is not reachable (not running, etc.).
 async fn query_sandbox_packages(router: &SandboxRouter, session_key: &str) -> Option<Vec<String>> {
     let id = router.sandbox_id_for(session_key);
-    let opts = ExecOpts {
+    let opts = CommandOptions {
         timeout: std::time::Duration::from_secs(5),
         ..Default::default()
     };
@@ -265,7 +265,7 @@ async fn query_sandbox_packages(router: &SandboxRouter, session_key: &str) -> Op
     // dpkg-query with a format string to get one package name per line.
     let cmd = "dpkg-query -W -f='${Package}\n'";
 
-    match router.backend().exec(&id, cmd, &opts).await {
+    match router.backend().run_command(&id, cmd, &opts).await {
         Ok(result) if result.exit_code == 0 => {
             let packages: Vec<String> = result
                 .stdout

@@ -132,7 +132,7 @@ Example `BeforeToolCall` payload excerpt:
 {
   "event": "BeforeToolCall",
   "session_key": "telegram:bot-main:-100123",
-  "tool_name": "exec",
+  "tool_name": "execute_command",
   "arguments": {
     "command": "pwd"
   },
@@ -162,7 +162,7 @@ if [ "$event" = "AfterLLMCall" ]; then
     for name in $tool_names; do
         # Block unexpected tool calls that might come from injection
         case "$name" in
-            exec|bash|shell)
+            execute_command|bash|shell)
                 text=$(echo "$payload" | jq -r '.text // ""')
                 if echo "$text" | grep -qi "ignore previous\|disregard\|new instructions"; then
                     echo "Blocked suspicious tool call after potential injection" >&2
@@ -265,7 +265,7 @@ The event payload is passed as JSON on stdin:
 {
   "event": "BeforeToolCall",
   "session_key": "abc123",
-  "tool_name": "exec",
+  "tool_name": "execute_command",
   "arguments": {
     "command": "ls -la"
   },
@@ -300,8 +300,8 @@ value becomes the new `arguments` object.
 payload=$(cat)
 tool=$(echo "$payload" | jq -r '.tool_name')
 
-if [ "$tool" = "exec" ]; then
-    # Add safety flag to shell commands executed by the exec tool
+if [ "$tool" = "execute_command" ]; then
+    # Add safety flag to shell commands executed by the execute_command tool
     modified_args=$(echo "$payload" | jq '.arguments.command = "set -e; " + .arguments.command | .arguments')
     echo "{\"action\":\"modify\",\"data\":$modified_args}"
 fi
@@ -485,7 +485,7 @@ cp -r examples/hooks/dcg-guard ~/.moltis/hooks/dcg-guard
 chmod +x ~/.moltis/hooks/dcg-guard/handler.sh
 ```
 
-The hook subscribes to `BeforeToolCall`, extracts exec commands, pipes them
+The hook subscribes to `BeforeToolCall`, extracts `execute_command` commands, pipes them
 through dcg, and blocks any command that dcg flags as destructive. See
 `examples/hooks/dcg-guard/HOOK.md` for details.
 
@@ -515,7 +515,7 @@ exit 0
 # redact-secrets.sh
 payload=$(cat)
 
-# Redact secrets from exec-tool command arguments before execution
+# Redact secrets from execute_command tool arguments before execution
 command=$(echo "$payload" | jq -r '.arguments.command // ""')
 redacted=$(printf '%s' "$command" | sed -E '
   s/sk-[a-zA-Z0-9]{32,}/[REDACTED]/g

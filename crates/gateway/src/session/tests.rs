@@ -473,6 +473,21 @@ mod tests {
     }
 
     #[test]
+    fn tool_result_text_for_share_includes_output_and_camel_exit_code() {
+        let msg = serde_json::json!({
+            "role": "tool_result",
+            "result": {
+                "output": "tmux command output",
+                "exitCode": 7,
+            }
+        });
+
+        let text = tool_result_text_for_share(&msg).expect("tool text should exist");
+        assert!(text.contains("tmux command output"));
+        assert!(text.contains("exit 7"));
+    }
+
+    #[test]
     fn redact_share_secret_values_masks_env_vars_and_api_tokens() {
         let input = "OPENAI_API_KEY=sk-openai BRAVE_API_KEY=brave-secret Authorization: Bearer bearer-secret https://api.example.com/search?q=test&api_key=url-secret";
         let redacted = redact_share_secret_values(input);
@@ -506,12 +521,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn to_shared_message_includes_exec_command_for_tool_result() {
+    async fn to_shared_message_includes_execute_command_for_tool_result() {
         let dir = tempfile::tempdir().unwrap();
         let store = SessionStore::new(dir.path().to_path_buf());
         let tool_msg = serde_json::json!({
             "role": "tool_result",
-            "tool_name": "exec",
+            "tool_name": "execute_command",
             "arguments": {
                 "command": "curl -s https://example.com"
             },
@@ -525,8 +540,8 @@ mod tests {
 
         let shared = to_shared_message(&tool_msg, "main", &store)
             .await
-            .expect("shared exec tool result");
-        assert_eq!(shared.tool_name.as_deref(), Some("exec"));
+            .expect("shared execute_command tool result");
+        assert_eq!(shared.tool_name.as_deref(), Some("execute_command"));
         assert_eq!(
             shared.tool_command.as_deref(),
             Some("curl -s https://example.com")
@@ -535,12 +550,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn to_shared_message_redacts_exec_command_and_output_secrets() {
+    async fn to_shared_message_redacts_execute_command_and_output_secrets() {
         let dir = tempfile::tempdir().unwrap();
         let store = SessionStore::new(dir.path().to_path_buf());
         let tool_msg = serde_json::json!({
             "role": "tool_result",
-            "tool_name": "exec",
+            "tool_name": "execute_command",
             "arguments": {
                 "command": "OPENAI_API_KEY=sk-openai curl -s -H 'Authorization: Bearer bearer-secret' 'https://api.example.com?q=test&api_key=url-secret'"
             },
@@ -554,9 +569,9 @@ mod tests {
 
         let shared = to_shared_message(&tool_msg, "main", &store)
             .await
-            .expect("shared exec tool result");
+            .expect("shared execute_command tool result");
 
-        assert_eq!(shared.tool_name.as_deref(), Some("exec"));
+        assert_eq!(shared.tool_name.as_deref(), Some("execute_command"));
         let command = shared.tool_command.unwrap_or_default();
         assert!(!command.contains("sk-openai"));
         assert!(!command.contains("bearer-secret"));

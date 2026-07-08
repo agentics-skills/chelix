@@ -384,7 +384,7 @@ mod tests {
     fn test_clone_without_prefix() {
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(DummyTool {
-            name: "exec".to_string(),
+            name: "execute_command".to_string(),
         }));
         registry.register(Box::new(DummyTool {
             name: "web_fetch".to_string(),
@@ -398,7 +398,7 @@ mod tests {
 
         let filtered = registry.clone_without_prefix("mcp__");
         assert_eq!(filtered.list_schemas().len(), 2);
-        assert!(filtered.get("exec").is_some());
+        assert!(filtered.get("execute_command").is_some());
         assert!(filtered.get("web_fetch").is_some());
         assert!(filtered.get("mcp__github_search").is_none());
         assert!(filtered.get("mcp__memory_store").is_none());
@@ -408,7 +408,7 @@ mod tests {
     fn test_clone_without_prefix_no_match() {
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(DummyTool {
-            name: "exec".to_string(),
+            name: "execute_command".to_string(),
         }));
         registry.register(Box::new(DummyTool {
             name: "web_fetch".to_string(),
@@ -422,7 +422,7 @@ mod tests {
     fn test_clone_without_mcp() {
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(DummyTool {
-            name: "exec".to_string(),
+            name: "execute_command".to_string(),
         }));
         registry.register_mcp(
             Box::new(DummyTool {
@@ -439,7 +439,7 @@ mod tests {
 
         let filtered = registry.clone_without_mcp();
         assert_eq!(filtered.list_schemas().len(), 1);
-        assert!(filtered.get("exec").is_some());
+        assert!(filtered.get("execute_command").is_some());
         assert!(filtered.get("mcp__github__search").is_none());
         assert!(filtered.get("mcp__memory__store").is_none());
     }
@@ -448,7 +448,7 @@ mod tests {
     fn test_unregister_mcp() {
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(DummyTool {
-            name: "exec".to_string(),
+            name: "execute_command".to_string(),
         }));
         registry.register_mcp(
             Box::new(DummyTool {
@@ -466,14 +466,14 @@ mod tests {
         let removed = registry.unregister_mcp();
         assert_eq!(removed, 2);
         assert_eq!(registry.list_schemas().len(), 1);
-        assert!(registry.get("exec").is_some());
+        assert!(registry.get("execute_command").is_some());
     }
 
     #[test]
     fn test_list_schemas_includes_source() {
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(DummyTool {
-            name: "exec".to_string(),
+            name: "execute_command".to_string(),
         }));
         registry.register_mcp(
             Box::new(DummyTool {
@@ -491,8 +491,8 @@ mod tests {
         let schemas = registry.list_schemas();
         let builtin = schemas
             .iter()
-            .find(|s| s["name"] == "exec")
-            .expect("exec should exist");
+            .find(|s| s["name"] == "execute_command")
+            .expect("execute_command should exist");
         assert_eq!(builtin["source"], "builtin");
         assert!(builtin.get("mcpServer").is_none() || builtin["mcpServer"].is_null());
 
@@ -508,21 +508,24 @@ mod tests {
     fn test_list_names() {
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(DummyTool {
-            name: "exec".to_string(),
+            name: "execute_command".to_string(),
         }));
         registry.register(Box::new(DummyTool {
             name: "web_fetch".to_string(),
         }));
 
         let names = registry.list_names();
-        assert_eq!(names, vec!["exec".to_string(), "web_fetch".to_string()]);
+        assert_eq!(
+            names,
+            vec!["execute_command".to_string(), "web_fetch".to_string()]
+        );
     }
 
     #[test]
     fn test_wasm_suffix_tools_are_hidden_from_public_lists() {
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(DummyTool {
-            name: "exec".to_string(),
+            name: "execute_command".to_string(),
         }));
         registry.register_wasm(
             Box::new(DummyTool {
@@ -531,7 +534,7 @@ mod tests {
             [0xAB; 32],
         );
 
-        assert_eq!(registry.list_names(), vec!["exec".to_string()]);
+        assert_eq!(registry.list_names(), vec!["execute_command".to_string()]);
         assert!(registry.get("web_search_wasm").is_some());
 
         let schemas = registry.list_schemas();
@@ -573,9 +576,9 @@ mod tests {
     fn test_get_returns_cloned_tool_handle() {
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(DummyTool {
-            name: "exec".to_string(),
+            name: "execute_command".to_string(),
         }));
-        assert!(registry.get("exec").is_some());
+        assert!(registry.get("execute_command").is_some());
         assert!(registry.get("missing").is_none());
     }
 
@@ -622,7 +625,7 @@ mod tests {
     fn test_clone_allowed_by() {
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(DummyTool {
-            name: "exec".to_string(),
+            name: "execute_command".to_string(),
         }));
         registry.register(Box::new(DummyTool {
             name: "web_fetch".to_string(),
@@ -631,8 +634,12 @@ mod tests {
             name: "session_state".to_string(),
         }));
 
-        let filtered = registry.clone_allowed_by(|name| name.starts_with("web") || name == "exec");
+        let filtered =
+            registry.clone_allowed_by(|name| name.starts_with("web") || name == "execute_command");
         let names = filtered.list_names();
-        assert_eq!(names, vec!["exec".to_string(), "web_fetch".to_string()]);
+        assert_eq!(
+            names,
+            vec!["execute_command".to_string(), "web_fetch".to_string()]
+        );
     }
 }

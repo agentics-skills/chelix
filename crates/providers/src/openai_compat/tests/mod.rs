@@ -93,9 +93,9 @@ fn parse_tool_calls_preserve_issue_693_examples() {
     let msg = serde_json::json!({
         "tool_calls": [
             {
-                "id": "call_exec",
+                "id": "call_execute_command",
                 "function": {
-                    "name": "exec",
+                    "name": "execute_command",
                     "arguments": {
                         "command": "echo hello",
                         "timeout": 0

@@ -35,7 +35,7 @@ identity.emoji = "🔍"
 identity.theme = "thorough and methodical"
 model = "anthropic/claude-haiku-3-5-20241022"
 tools.allow = ["Read", "Glob", "Grep", "web_search", "web_fetch"]
-tools.deny = ["exec", "Write"]
+tools.deny = ["execute_command", "Write"]
 system_prompt_suffix = "Gather facts and report clearly."
 
 [agents.presets.coordinator]

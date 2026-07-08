@@ -8,7 +8,7 @@ system. The sandbox backend controls which container technology is used.
 Configure in `moltis.toml`:
 
 ```toml
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 backend = "auto"          # default — picks the best available
 # backend = "podman"      # force Podman (daemonless, rootless)
 # backend = "docker"      # force Docker
@@ -134,7 +134,7 @@ With `workspace_sysmount = "rw"`, Moltis skips `--cap-drop ALL`,
 work against a writable root filesystem.
 
 ```toml
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 workspace_sysmount = "rw"   # default: "ro"
 ```
 
@@ -203,14 +203,14 @@ Home persistence is respected:
 ### Configuration
 
 ```toml
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 backend = "wasm"
 
 # WASM-specific settings
 wasm_fuel_limit = 1000000000       # instruction fuel (default: 1 billion)
 wasm_epoch_interval_ms = 100       # epoch interruption interval (default: 100ms)
 
-[tools.exec.sandbox.resource_limits]
+[tools.execute_command.sandbox.resource_limits]
 memory_limit = "512M"    # Wasmtime memory reservation
 ```
 
@@ -313,7 +313,7 @@ auth/config files survive container recreation. You can change this with
 `home_persistence`:
 
 ```toml
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 home_persistence = "session"   # "off", "session", or "shared" (default)
 # shared_home_dir = "/path/to/shared-home"  # optional, used when mode is "shared"
 ```
@@ -334,7 +334,7 @@ that lookup fails or you want to pin the value explicitly, set
 `host_data_dir`:
 
 ```toml
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 host_data_dir = "/srv/moltis/data"
 ```
 
@@ -351,7 +351,7 @@ For tasks that need filtered internet access, use
 lets containers reach approved domains while blocking everything else.
 
 ```toml
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 network = "trusted"
 trusted_domains = ["registry.npmjs.org", "github.com"]
 ```
@@ -366,7 +366,7 @@ network audit log.
 ## Resource limits
 
 ```toml
-[tools.exec.sandbox.resource_limits]
+[tools.execute_command.sandbox.resource_limits]
 memory_limit = "512M"
 cpu_quota = 1.0
 pids_max = 256

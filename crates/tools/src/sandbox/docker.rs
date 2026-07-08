@@ -28,8 +28,8 @@ use {
         },
     },
     crate::{
+        command::{CommandOptions, CommandOutput, run_shell_command},
         error::{Error, Result},
-        exec::{ExecOpts, ExecResult},
         sandbox::file_system::{
             SandboxListFilesResult, SandboxReadResult, native_host_list_files,
             native_host_read_file, native_host_write_file, oci_container_list_files,
@@ -60,7 +60,7 @@ pub struct DockerSandbox {
     /// Container names that have already been provisioned in this process.
     /// Prevents repeated `apt-get install` runs on the same container.
     pub(crate) provisioned: Mutex<HashSet<String>>,
-    /// Per-container startup gates. Parallel exec calls for the same session
+    /// Per-container startup gates. Parallel command calls for the same session
     /// must not race through inspect-then-run with the same OCI container name.
     startup_gates: Mutex<HashMap<String, Arc<Semaphore>>>,
 }
@@ -222,7 +222,7 @@ impl DockerSandbox {
         })
     }
 
-    pub(crate) fn proxy_exec_env_args(&self) -> Vec<String> {
+    pub(crate) fn proxy_command_env_args(&self) -> Vec<String> {
         if self.config.network != NetworkPolicy::Trusted {
             return Vec::new();
         }
@@ -696,7 +696,12 @@ impl Sandbox for DockerSandbox {
         Ok(Some(BuildImageResult { tag, built: true }))
     }
 
-    async fn exec(&self, id: &SandboxId, command: &str, opts: &ExecOpts) -> Result<ExecResult> {
+    async fn run_command(
+        &self,
+        id: &SandboxId,
+        command: &str,
+        opts: &CommandOptions,
+    ) -> Result<CommandOutput> {
         let name = self.container_name(id);
 
         let mut args = vec!["exec".to_string()];
@@ -707,7 +712,7 @@ impl Sandbox for DockerSandbox {
 
         // Inject proxy env vars so traffic routes through the trusted-network
         // proxy running on the host.
-        args.extend(self.proxy_exec_env_args());
+        args.extend(self.proxy_command_env_args());
 
         for (k, v) in &opts.env {
             args.extend(["-e".to_string(), format!("{}={}", k, v)]);
@@ -733,18 +738,18 @@ impl Sandbox for DockerSandbox {
                 truncate_output_for_display(&mut stdout, opts.max_output_bytes);
                 truncate_output_for_display(&mut stderr, opts.max_output_bytes);
 
-                Ok(ExecResult {
+                Ok(CommandOutput {
                     stdout,
                     stderr,
                     exit_code: output.status.code().unwrap_or(-1),
                 })
             },
             Ok(Err(e)) => {
-                return Err(Error::message(format!("{} exec failed: {e}", self.cli)));
+                return Err(Error::message(format!("{} command failed: {e}", self.cli)));
             },
             Err(_) => {
                 return Err(Error::message(format!(
-                    "{} exec timed out after {}s",
+                    "{} command timed out after {}s",
                     self.cli,
                     opts.timeout.as_secs()
                 )));
@@ -872,8 +877,13 @@ impl Sandbox for NoSandbox {
         Ok(())
     }
 
-    async fn exec(&self, _id: &SandboxId, command: &str, opts: &ExecOpts) -> Result<ExecResult> {
-        crate::exec::exec_command(command, opts).await
+    async fn run_command(
+        &self,
+        _id: &SandboxId,
+        command: &str,
+        opts: &CommandOptions,
+    ) -> Result<CommandOutput> {
+        run_shell_command(command, opts).await
     }
 
     async fn read_file(

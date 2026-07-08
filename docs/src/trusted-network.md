@@ -33,7 +33,7 @@ you explicitly trust.
 Enable trusted network mode in `moltis.toml`:
 
 ```toml
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 network = "trusted"
 trusted_domains = [
   # Package registries

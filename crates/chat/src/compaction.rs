@@ -1355,7 +1355,7 @@ mod tests {
         // Timeline alone can reach 8 entries × ~160 chars ≈ 1280 chars.
         let mut lines = vec!["<summary>".to_string(), "Conversation summary:".to_string()];
         lines.push("- Scope: 50 messages.".to_string());
-        lines.push("- Tools mentioned: exec, read_file, write_file.".to_string());
+        lines.push("- Tools mentioned: execute_command, read_file, write_file.".to_string());
         lines.push("- Key files referenced: src/main.rs, lib/core.ts.".to_string());
         lines.push("- Key timeline:".to_string());
         for i in 0..15 {

@@ -18,10 +18,9 @@ use std::sync::Arc;
 
 use crate::{
     Result,
-    approval::ApprovalManager,
+    approval::{ApprovalBroadcaster, ApprovalManager},
     checkpoints::CheckpointManager,
     error::Error,
-    exec::ApprovalBroadcaster,
     fs::shared::{
         FsPathPolicy, FsState, canonicalize_for_create, enforce_must_read_before_write,
         enforce_path_policy, host_mutation_queue_key, note_fs_mutation, reject_if_symlink,
@@ -113,7 +112,7 @@ impl WriteTool {
                 async {
                     // must-read-before-write: skip for sandbox Write because we
                     // can't cheaply check whether the file exists inside the
-                    // container (that would cost an extra exec round-trip). New
+                    // container (that would cost an extra command round-trip). New
                     // files would be falsely blocked. Edit/MultiEdit always read
                     // before writing so they get the check naturally.
                     require_fs_mutation_approval(

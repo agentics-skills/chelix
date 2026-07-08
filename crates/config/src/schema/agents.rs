@@ -606,7 +606,7 @@ pub struct AgentPreset {
     pub mcp: PresetMcpPolicy,
     /// Per-agent sandbox policy overrides.
     ///
-    /// Each set field overrides the global `[tools.exec.sandbox]` value.
+    /// Each set field overrides the global `[tools.execute_command.sandbox]` value.
     /// Unset fields inherit the global config.
     #[serde(default, skip_serializing_if = "PresetSandboxPolicy::is_empty")]
     pub sandbox: PresetSandboxPolicy,

@@ -260,11 +260,11 @@ pub fn recover_tool_calls_from_content(text: &str) -> (String, Vec<ToolCall>) {
 ///
 /// Accepts formats like:
 /// ```json
-/// {"name": "exec", "arguments": {"command": "ls"}}
+/// {"name": "execute_command", "arguments": {"command": "ls"}}
 /// ```
 /// or:
 /// ```json
-/// {"tool": "exec", "arguments": {"command": "ls"}}
+/// {"tool": "execute_command", "arguments": {"command": "ls"}}
 /// ```
 fn parse_tool_call_json(content: &str) -> Option<ToolCall> {
     let parsed: serde_json::Value = serde_json::from_str(content).ok()?;
@@ -401,11 +401,11 @@ mod tests {
 
     #[test]
     fn recover_tool_call_from_function_call_block() {
-        let input = r#"Some text <function_call>{"name": "exec", "arguments": {"command": "ls"}}</function_call> more text"#;
+        let input = r#"Some text <function_call>{"name": "execute_command", "arguments": {"command": "ls"}}</function_call> more text"#;
         let (cleaned, calls) = recover_tool_calls_from_content(input);
         assert_eq!(cleaned, "Some text  more text");
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "exec");
+        assert_eq!(calls[0].name, "execute_command");
         assert_eq!(calls[0].arguments, serde_json::json!({"command": "ls"}));
     }
 
@@ -449,7 +449,8 @@ mod tests {
 
     #[test]
     fn clean_response_strips_invoke_tags() {
-        let input = "Answer here<invoke name=\"exec\"><arg name=\"cmd\">ls</arg></invoke> done";
+        let input =
+            "Answer here<invoke name=\"execute_command\"><arg name=\"cmd\">ls</arg></invoke> done";
         let cleaned = clean_response(input);
         assert_eq!(cleaned, "Answer here done");
     }
@@ -472,18 +473,18 @@ mod tests {
     /// TOOL_CALL_TAGS ("function_call", "tool_call") are separate from INTERNAL_TAGS.
     #[test]
     fn recover_tool_calls_unaffected_by_new_internal_tags() {
-        let input = r#"<tool_call>{"name": "exec", "arguments": {"command": "ls"}}</tool_call>"#;
+        let input = r#"<tool_call>{"name": "execute_command", "arguments": {"command": "ls"}}</tool_call>"#;
         let (cleaned, calls) = recover_tool_calls_from_content(input);
         assert_eq!(cleaned, "");
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "exec");
+        assert_eq!(calls[0].name, "execute_command");
     }
 
     /// clean_response strips leaked <invoke> but does NOT interfere with
     /// proper tool call recovery (which runs separately in the runner).
     #[test]
     fn clean_response_strips_malformed_invoke_leftovers() {
-        let input = "Here is the result. <invoke name=\"exec\">leftover</invoke>";
+        let input = "Here is the result. <invoke name=\"execute_command\">leftover</invoke>";
         let cleaned = clean_response(input);
         assert_eq!(cleaned, "Here is the result.");
     }

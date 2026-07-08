@@ -321,24 +321,25 @@ pub(crate) async fn ensure_ollama_model(base_url: &str, model: &str) {
 pub fn approval_manager_from_config(config: &moltis_config::MoltisConfig) -> ApprovalManager {
     let mut manager = ApprovalManager::default();
 
-    manager.mode = ApprovalMode::parse(&config.tools.exec.approval_mode).unwrap_or_else(|| {
+    manager.mode =
+        ApprovalMode::parse(&config.tools.execute_command.approval_mode).unwrap_or_else(|| {
         warn!(
-            value = %config.tools.exec.approval_mode,
-            "invalid tools.exec.approval_mode; falling back to 'on-miss'"
+            value = %config.tools.execute_command.approval_mode,
+            "invalid tools.execute_command.approval_mode; falling back to 'on-miss'"
         );
         ApprovalMode::OnMiss
     });
 
-    manager.security_level = SecurityLevel::parse(&config.tools.exec.security_level)
+    manager.security_level = SecurityLevel::parse(&config.tools.execute_command.security_level)
         .unwrap_or_else(|| {
             warn!(
-                value = %config.tools.exec.security_level,
-                "invalid tools.exec.security_level; falling back to 'allowlist'"
+                value = %config.tools.execute_command.security_level,
+                "invalid tools.execute_command.security_level; falling back to 'allowlist'"
             );
             SecurityLevel::Allowlist
         });
 
-    manager.allowlist = config.tools.exec.allowlist.clone();
+    manager.allowlist = config.tools.execute_command.allowlist.clone();
     manager
 }
 

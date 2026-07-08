@@ -228,7 +228,8 @@ biome check --write      # Lint/format TS/TSX
 ## Sandbox Architecture
 
 Containers (Docker or Apple Container) in `crates/tools/src/sandbox.rs` (trait + impls),
-`exec.rs` (ExecTool), `crates/cli/src/sandbox_commands.rs` (CLI), `crates/config/src/schema.rs` (config).
+`command.rs` (shared command execution), `execute_command` tooling,
+`crates/cli/src/sandbox_commands.rs` (CLI), `crates/config/src/schema.rs` (config).
 
 Pre-built images use deterministic hash tags from base image + packages. Default packages
 in `default_sandbox_packages()`. CLI: `moltis sandbox {list,build,remove,clean}`.

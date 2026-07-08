@@ -9,8 +9,8 @@ use {
 };
 
 use crate::{
+    command::{CommandOptions, CommandOutput},
     error::Result,
-    exec::{ExecOpts, ExecResult},
     sandbox::file_system::{
         SandboxGrepOptions, SandboxListFilesResult, SandboxReadResult, command_grep,
         command_list_files, command_read_file, command_write_file,
@@ -447,8 +447,13 @@ pub trait Sandbox: Send + Sync {
     /// If `image_override` is provided, use that image instead of the configured default.
     async fn ensure_ready(&self, id: &SandboxId, image_override: Option<&str>) -> Result<()>;
 
-    /// Execute a command inside the sandbox.
-    async fn exec(&self, id: &SandboxId, command: &str, opts: &ExecOpts) -> Result<ExecResult>;
+    /// Run a command inside the sandbox.
+    async fn run_command(
+        &self,
+        id: &SandboxId,
+        command: &str,
+        opts: &CommandOptions,
+    ) -> Result<CommandOutput>;
 
     /// Read a file inside the sandbox.
     async fn read_file(
@@ -497,7 +502,7 @@ pub trait Sandbox: Send + Sync {
     /// resource limits (restricted-host, cgroup) or no isolation (none) keep
     /// the default.
     ///
-    /// Used by the exec flow to enforce approval gating and file-path
+    /// Used by command execution to enforce approval gating and file-path
     /// restrictions when true filesystem isolation is unavailable.
     fn provides_fs_isolation(&self) -> bool {
         false
@@ -548,11 +553,11 @@ pub trait Sandbox: Send + Sync {
         let cmd = format!(
             "apt-get update -qq && apt-get install -y -qq --no-install-recommends {pkg_list}"
         );
-        let opts = ExecOpts {
+        let opts = CommandOptions {
             timeout: std::time::Duration::from_secs(600),
             ..Default::default()
         };
-        let result = self.exec(id, &cmd, &opts).await?;
+        let result = self.run_command(id, &cmd, &opts).await?;
         if result.exit_code != 0 {
             tracing::warn!(
                 %id,

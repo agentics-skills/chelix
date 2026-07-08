@@ -895,7 +895,7 @@ async fn test_wake_noop_within_cooldown_after_last_run() {
 
     let next_before = get_hb_next_run(&svc).await;
 
-    svc.wake(WAKE_REASON_EXEC_EVENT).await;
+    svc.wake(WAKE_REASON_COMMAND_EVENT).await;
 
     // next_run_at_ms should NOT have been updated — wake was skipped.
     assert_eq!(get_hb_next_run(&svc).await, next_before);
@@ -912,7 +912,7 @@ async fn test_wake_allowed_after_cooldown_expires() {
     .await;
 
     let pre_wake = now_ms();
-    svc.wake(WAKE_REASON_EXEC_EVENT).await;
+    svc.wake(WAKE_REASON_COMMAND_EVENT).await;
     let post_wake = now_ms();
 
     let new_next = get_hb_next_run(&svc).await.unwrap();
@@ -927,7 +927,7 @@ async fn test_wake_allowed_when_no_last_run() {
     let svc = make_heartbeat_svc().await;
 
     // No last_run_at_ms set — first-ever wake should proceed.
-    svc.wake(WAKE_REASON_EXEC_EVENT).await;
+    svc.wake(WAKE_REASON_COMMAND_EVENT).await;
 
     assert!(get_hb_next_run(&svc).await.is_some());
 }
@@ -1019,7 +1019,7 @@ async fn test_custom_wake_cooldown_propagates_through_constructor() {
     .await;
 
     let next_before = get_hb_next_run(&svc).await;
-    svc.wake(WAKE_REASON_EXEC_EVENT).await;
+    svc.wake(WAKE_REASON_COMMAND_EVENT).await;
     assert_eq!(
         get_hb_next_run(&svc).await,
         next_before,
@@ -1033,7 +1033,7 @@ async fn test_custom_wake_cooldown_propagates_through_constructor() {
     .await;
 
     let pre_wake = now_ms();
-    svc.wake(WAKE_REASON_EXEC_EVENT).await;
+    svc.wake(WAKE_REASON_COMMAND_EVENT).await;
     let post_wake = now_ms();
     let new_next = get_hb_next_run(&svc).await.unwrap();
     assert!(
@@ -1053,7 +1053,7 @@ async fn test_zero_wake_cooldown_disables_guard() {
     .await;
 
     let pre_wake = now_ms();
-    svc.wake(WAKE_REASON_EXEC_EVENT).await;
+    svc.wake(WAKE_REASON_COMMAND_EVENT).await;
     let post_wake = now_ms();
 
     let new_next = get_hb_next_run(&svc).await.unwrap();

@@ -204,11 +204,11 @@ pub(super) fn check_semantic_warnings(config: &MoltisConfig, diagnostics: &mut V
     }
 
     // Sandbox mode off
-    if config.tools.exec.sandbox.mode == "off" {
+    if config.tools.execute_command.sandbox.mode == "off" {
         diagnostics.push(Diagnostic {
             severity: Severity::Warning,
             category: "security",
-            path: "tools.exec.sandbox.mode".into(),
+            path: "tools.execute_command.sandbox.mode".into(),
             message: "sandbox mode is disabled — commands run without isolation".into(),
         });
     }
@@ -591,30 +591,30 @@ pub(super) fn check_semantic_warnings(config: &MoltisConfig, diagnostics: &mut V
         "restricted-host",
         "wasm",
     ];
-    if !valid_sandbox_backends.contains(&config.tools.exec.sandbox.backend.as_str()) {
+    if !valid_sandbox_backends.contains(&config.tools.execute_command.sandbox.backend.as_str()) {
         diagnostics.push(Diagnostic {
             severity: Severity::Warning,
             category: "unknown-field",
-            path: "tools.exec.sandbox.backend".into(),
+            path: "tools.execute_command.sandbox.backend".into(),
             message: format!(
                 "unknown sandbox backend \"{}\"; expected one of: {}",
-                config.tools.exec.sandbox.backend,
+                config.tools.execute_command.sandbox.backend,
                 valid_sandbox_backends.join(", ")
             ),
         });
     }
 
     // Unknown sandbox network policy
-    if !config.tools.exec.sandbox.network.is_empty() {
+    if !config.tools.execute_command.sandbox.network.is_empty() {
         let valid_network_policies = ["blocked", "trusted", "bypass"];
-        if !valid_network_policies.contains(&config.tools.exec.sandbox.network.as_str()) {
+        if !valid_network_policies.contains(&config.tools.execute_command.sandbox.network.as_str()) {
             diagnostics.push(Diagnostic {
                 severity: Severity::Warning,
                 category: "unknown-field",
-                path: "tools.exec.sandbox.network".into(),
+                path: "tools.execute_command.sandbox.network".into(),
                 message: format!(
                     "unknown sandbox network policy \"{}\"; expected one of: {}",
-                    config.tools.exec.sandbox.network,
+                    config.tools.execute_command.sandbox.network,
                     valid_network_policies.join(", ")
                 ),
             });
@@ -622,7 +622,7 @@ pub(super) fn check_semantic_warnings(config: &MoltisConfig, diagnostics: &mut V
     }
 
     // Sandbox GPU passthrough validation
-    if let Some(ref gpus) = config.tools.exec.sandbox.gpus {
+    if let Some(ref gpus) = config.tools.execute_command.sandbox.gpus {
         let valid = gpus == "all"
             || gpus.starts_with("device=")
             || gpus.chars().all(|c| c.is_ascii_digit() || c == ',');
@@ -630,7 +630,7 @@ pub(super) fn check_semantic_warnings(config: &MoltisConfig, diagnostics: &mut V
             diagnostics.push(Diagnostic {
                 severity: Severity::Warning,
                 category: "unknown-field",
-                path: "tools.exec.sandbox.gpus".into(),
+                path: "tools.execute_command.sandbox.gpus".into(),
                 message: format!(
                     "unrecognized gpus value \"{gpus}\"; expected \"all\", \"device=0\", \"device=0,1\", or a device index",
                 ),
@@ -687,52 +687,52 @@ pub(super) fn check_semantic_warnings(config: &MoltisConfig, diagnostics: &mut V
         }
     }
 
-    // Unknown exec host
-    let valid_exec_hosts = ["local", "node", "ssh"];
-    if !valid_exec_hosts.contains(&config.tools.exec.host.as_str()) {
+    // Unknown command host
+    let valid_command_hosts = ["local", "node", "ssh"];
+    if !valid_command_hosts.contains(&config.tools.execute_command.host.as_str()) {
         diagnostics.push(Diagnostic {
             severity: Severity::Warning,
             category: "unknown-field",
-            path: "tools.exec.host".into(),
+            path: "tools.execute_command.host".into(),
             message: format!(
-                "unknown exec host \"{}\"; expected one of: {}",
-                config.tools.exec.host,
-                valid_exec_hosts.join(", ")
+                "unknown command host \"{}\"; expected one of: {}",
+                config.tools.execute_command.host,
+                valid_command_hosts.join(", ")
             ),
         });
     }
 
     // Warn if host=node but no node specified
-    if config.tools.exec.host == "node" && config.tools.exec.node.is_none() {
+    if config.tools.execute_command.host == "node" && config.tools.execute_command.node.is_none() {
         diagnostics.push(Diagnostic {
             severity: Severity::Warning,
             category: "unknown-field",
-            path: "tools.exec.node".into(),
-            message: "tools.exec.host is \"node\" but no default node is specified; commands will fail unless a node connects".into(),
+            path: "tools.execute_command.node".into(),
+            message: "tools.execute_command.host is \"node\" but no default node is specified; commands will fail unless a node connects".into(),
         });
     }
 
-    if config.tools.exec.host == "ssh" && config.tools.exec.ssh_target.is_none() {
+    if config.tools.execute_command.host == "ssh" && config.tools.execute_command.ssh_target.is_none() {
         diagnostics.push(Diagnostic {
             severity: Severity::Warning,
             category: "unknown-field",
-            path: "tools.exec.ssh_target".into(),
+            path: "tools.execute_command.ssh_target".into(),
             message:
-                "tools.exec.host is \"ssh\" but no SSH target is specified; commands will fail"
+                "tools.execute_command.host is \"ssh\" but no SSH target is specified; commands will fail"
                     .into(),
         });
     }
 
-    // Unknown exec security level
+    // Unknown command security level
     let valid_security_levels = ["allowlist", "permissive", "strict"];
-    if !valid_security_levels.contains(&config.tools.exec.security_level.as_str()) {
+    if !valid_security_levels.contains(&config.tools.execute_command.security_level.as_str()) {
         diagnostics.push(Diagnostic {
             severity: Severity::Warning,
             category: "unknown-field",
-            path: "tools.exec.security_level".into(),
+            path: "tools.execute_command.security_level".into(),
             message: format!(
                 "unknown security level \"{}\"; expected one of: {}",
-                config.tools.exec.security_level,
+                config.tools.execute_command.security_level,
                 valid_security_levels.join(", ")
             ),
         });

@@ -337,7 +337,7 @@ html {
   }
 
   /* Shell tool cards span the full width on mobile too. */
-  .msg.exec-card {
+  .msg.command-card {
     max-width: 100%;
     align-self: stretch;
   }

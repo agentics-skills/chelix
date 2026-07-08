@@ -15,7 +15,7 @@ use moltis_metrics::{counter, histogram, labels, tools as tools_metrics};
 use moltis_agents::tool_registry::AgentTool;
 
 use crate::{
-    exec::ExecOpts,
+    command::{CommandOptions, CommandOutput, run_shell_command},
     sandbox::{SandboxId, SandboxRouter},
 };
 
@@ -120,9 +120,9 @@ impl ProcessTool {
         session_key: &str,
         tmux_args: &str,
         timeout_secs: u64,
-    ) -> anyhow::Result<crate::exec::ExecResult> {
+    ) -> anyhow::Result<CommandOutput> {
         let command = format!("tmux {tmux_args}");
-        let opts = ExecOpts {
+        let opts = CommandOptions {
             timeout: std::time::Duration::from_secs(timeout_secs),
             working_dir: Some(std::path::PathBuf::from("/home/sandbox")),
             ..Default::default()
@@ -137,12 +137,12 @@ impl ProcessTool {
                     .resolve_image_for_backend_nowait(session_key, None, backend.backend_name())
                     .await;
                 backend.ensure_ready(&id, Some(&image)).await?;
-                return Ok(backend.exec(&id, &command, &opts).await?);
+                return Ok(backend.run_command(&id, &command, &opts).await?);
             }
         }
 
         // Fallback: run directly on host (for non-sandboxed or no router).
-        Ok(crate::exec::exec_command(&command, &opts).await?)
+        Ok(run_shell_command(&command, &opts).await?)
     }
 
     /// Resolve the sandbox ID for a session key (for logging).

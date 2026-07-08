@@ -14,7 +14,7 @@ use {
 
 use moltis_gateway::{
     auth::{SshAuthMode, SshKeyEntry, SshResolvedTarget, SshTargetEntry},
-    node_exec::exec_resolved_ssh_target,
+    node_command::run_resolved_ssh_target,
 };
 
 const SSH_STORE_UNAVAILABLE: &str = "SSH_STORE_UNAVAILABLE";
@@ -141,7 +141,7 @@ pub struct SshDoctorRoute {
 #[derive(Serialize)]
 pub struct SshDoctorResponse {
     ok: bool,
-    exec_host: String,
+    command_host: String,
     ssh_binary_available: bool,
     ssh_binary_version: Option<String>,
     paired_node_count: usize,
@@ -150,7 +150,7 @@ pub struct SshDoctorResponse {
     managed_target_count: usize,
     pinned_target_count: usize,
     configured_node: Option<String>,
-    legacy_target: Option<String>,
+    configured_ssh_target: Option<String>,
     active_route: Option<SshDoctorRoute>,
     checks: Vec<SshDoctorCheck>,
 }
@@ -435,7 +435,7 @@ pub async fn ssh_test_target(
         .ok_or_else(|| ApiError::bad_request(SSH_TARGET_TEST_FAILED, "ssh target not found"))?;
 
     let probe = "__moltis_ssh_probe__";
-    let result = exec_resolved_ssh_target(
+    let result = run_resolved_ssh_target(
         store,
         &target,
         &format!("printf '%s' {probe}"),
@@ -520,16 +520,16 @@ pub async fn ssh_doctor(
         .map_err(|err| ApiError::internal(SSH_LIST_FAILED, err))?;
 
     let config = moltis_config::discover_and_load();
-    let exec_host = config.tools.exec.host.trim().to_string();
+    let command_host = config.tools.execute_command.host.trim().to_string();
     let configured_node = config
         .tools
-        .exec
+        .execute_command
         .node
         .clone()
         .filter(|value: &String| !value.trim().is_empty());
-    let legacy_target = config
+    let configured_ssh_target = config
         .tools
-        .exec
+        .execute_command
         .ssh_target
         .clone()
         .filter(|value: &String| !value.trim().is_empty());
@@ -552,7 +552,7 @@ pub async fn ssh_doctor(
     #[cfg(not(feature = "vault"))]
     let vault_is_unsealed = false;
 
-    let active_route = if exec_host == "ssh" {
+    let active_route = if command_host == "ssh" {
         default_target
             .as_ref()
             .map(|target| SshDoctorRoute {
@@ -568,7 +568,7 @@ pub async fn ssh_doctor(
                 source: "managed",
             })
             .or_else(|| {
-                legacy_target
+                configured_ssh_target
                     .as_ref()
                     .map(|target: &String| SshDoctorRoute {
                         target_id: None,
@@ -577,7 +577,7 @@ pub async fn ssh_doctor(
                         port: None,
                         host_pinned: false,
                         auth_mode: "system",
-                        source: "legacy_config",
+                        source: "config",
                     })
             })
     } else {
@@ -585,7 +585,7 @@ pub async fn ssh_doctor(
     };
 
     let checks = build_doctor_checks(DoctorInputs {
-        exec_host: &exec_host,
+        command_host: &command_host,
         ssh_binary_available,
         paired_node_count,
         managed_target_count: targets.len(),
@@ -593,14 +593,14 @@ pub async fn ssh_doctor(
         managed_key_count: keys.len(),
         encrypted_key_count,
         configured_node: configured_node.as_deref(),
-        legacy_target: legacy_target.as_deref(),
+        configured_ssh_target: configured_ssh_target.as_deref(),
         default_target: default_target.as_ref(),
         vault_is_unsealed,
     });
 
     Ok(SshDoctorResponse {
         ok: true,
-        exec_host,
+        command_host,
         ssh_binary_available,
         ssh_binary_version,
         paired_node_count,
@@ -609,7 +609,7 @@ pub async fn ssh_doctor(
         managed_target_count: targets.len(),
         pinned_target_count,
         configured_node,
-        legacy_target,
+        configured_ssh_target,
         active_route,
         checks,
     })
@@ -623,10 +623,10 @@ pub async fn ssh_doctor_test_active(
     })?;
 
     let config = moltis_config::discover_and_load();
-    if config.tools.exec.host.trim() != "ssh" {
+    if config.tools.execute_command.host.trim() != "ssh" {
         return Err(ApiError::bad_request(
             SSH_TARGET_TEST_FAILED,
-            "remote exec is not configured to use ssh",
+            "remote command execution is not configured to use ssh",
         ));
     }
 
@@ -638,7 +638,7 @@ pub async fn ssh_doctor_test_active(
         target
     } else if let Some(target) = config
         .tools
-        .exec
+        .execute_command
         .ssh_target
         .clone()
         .filter(|value: &String| !value.trim().is_empty())
@@ -662,7 +662,7 @@ pub async fn ssh_doctor_test_active(
     };
 
     let probe = "__moltis_ssh_probe__";
-    let result = exec_resolved_ssh_target(
+    let result = run_resolved_ssh_target(
         store,
         &route,
         &format!("printf '%s' {probe}"),
@@ -733,7 +733,7 @@ fn classify_ssh_failure(stderr: &str) -> Option<(&'static str, String)> {
 fn build_ssh_test_response(
     route_label: Option<String>,
     probe: &str,
-    result: anyhow::Result<moltis_gateway::node_exec::NodeExecResult>,
+    result: anyhow::Result<moltis_gateway::node_command::NodeCommandResult>,
 ) -> SshTestResponse {
     match result {
         Ok(result) => {
@@ -1054,7 +1054,7 @@ async fn scan_target_known_host(
 }
 
 struct DoctorInputs<'a> {
-    exec_host: &'a str,
+    command_host: &'a str,
     ssh_binary_available: bool,
     paired_node_count: usize,
     managed_target_count: usize,
@@ -1062,7 +1062,7 @@ struct DoctorInputs<'a> {
     managed_key_count: usize,
     encrypted_key_count: usize,
     configured_node: Option<&'a str>,
-    legacy_target: Option<&'a str>,
+    configured_ssh_target: Option<&'a str>,
     default_target: Option<&'a SshTargetEntry>,
     vault_is_unsealed: bool,
 }
@@ -1071,15 +1071,19 @@ fn build_doctor_checks(input: DoctorInputs<'_>) -> Vec<SshDoctorCheck> {
     let mut checks = Vec::new();
 
     checks.push(SshDoctorCheck {
-        id: "exec-host",
+        id: "command-host",
         level: "ok",
         title: "Execution backend",
-        message: match input.exec_host {
-            "ssh" => "Remote exec is currently routed through SSH.".to_string(),
-            "node" => "Remote exec is currently routed through paired nodes.".to_string(),
-            _ => "Remote exec is currently running locally.".to_string(),
+        message: match input.command_host {
+            "ssh" => "Remote command execution is currently routed through SSH.".to_string(),
+            "node" => {
+                "Remote command execution is currently routed through paired nodes.".to_string()
+            },
+            _ => "Command execution is currently running locally.".to_string(),
         },
-        hint: Some("Change this in tools.exec.host or from the chat node picker.".to_string()),
+        hint: Some(
+            "Change this in tools.execute_command.host or from the chat node picker.".to_string(),
+        ),
     });
 
     if input.ssh_binary_available {
@@ -1102,7 +1106,7 @@ fn build_doctor_checks(input: DoctorInputs<'_>) -> Vec<SshDoctorCheck> {
         });
     }
 
-    match input.exec_host {
+    match input.command_host {
         "ssh" => {
             if let Some(target) = input.default_target {
                 checks.push(SshDoctorCheck {
@@ -1136,12 +1140,12 @@ fn build_doctor_checks(input: DoctorInputs<'_>) -> Vec<SshDoctorCheck> {
                         hint: Some("Unlock the vault in Settings → Encryption before testing or using this target.".to_string()),
                     });
                 }
-            } else if let Some(target) = input.legacy_target {
+            } else if let Some(target) = input.configured_ssh_target {
                 checks.push(SshDoctorCheck {
                     id: "ssh-route",
                     level: "warn",
                     title: "Active SSH route",
-                    message: format!("Using legacy config target '{target}'."),
+                    message: format!("Using configured SSH target '{target}'."),
                     hint: Some("Move this into Settings → SSH if you want named targets, testing, and managed deploy keys.".to_string()),
                 });
             } else {
@@ -1151,7 +1155,7 @@ fn build_doctor_checks(input: DoctorInputs<'_>) -> Vec<SshDoctorCheck> {
                     title: "Active SSH route",
                     message: "SSH execution is enabled, but no target is configured.".to_string(),
                     hint: Some(
-                        "Add a target in Settings → SSH or set tools.exec.ssh_target.".to_string(),
+                        "Add a target in Settings → SSH or set tools.execute_command.ssh_target.".to_string(),
                     ),
                 });
             }
@@ -1162,8 +1166,8 @@ fn build_doctor_checks(input: DoctorInputs<'_>) -> Vec<SshDoctorCheck> {
                     id: "paired-node-route",
                     level: "error",
                     title: "Paired node route",
-                    message: "Remote exec is set to use paired nodes, but none are connected.".to_string(),
-                    hint: Some("Generate a connection token from the Nodes page or switch tools.exec.host back to local.".to_string()),
+                    message: "Remote command execution is set to use paired nodes, but none are connected.".to_string(),
+                    hint: Some("Generate a connection token from the Nodes page or switch tools.execute_command.host back to local.".to_string()),
                 });
             } else if let Some(node) = input.configured_node {
                 checks.push(SshDoctorCheck {
@@ -1179,7 +1183,7 @@ fn build_doctor_checks(input: DoctorInputs<'_>) -> Vec<SshDoctorCheck> {
                     level: "warn",
                     title: "Paired node route",
                     message: "Paired nodes are available, but no default node is configured.".to_string(),
-                    hint: Some("Select a node from chat or set tools.exec.node if you want a fixed default.".to_string()),
+                    hint: Some("Select a node from chat or set tools.execute_command.node if you want a fixed default.".to_string()),
                 });
             }
         },
@@ -1187,16 +1191,19 @@ fn build_doctor_checks(input: DoctorInputs<'_>) -> Vec<SshDoctorCheck> {
             checks.push(SshDoctorCheck {
                 id: "local-route",
                 level: "warn",
-                title: "Remote exec route",
+                title: "Remote command route",
                 message: "The current backend is local, so SSH and node targets are only available when selected explicitly.".to_string(),
-                hint: Some("Switch tools.exec.host if you want remote execution by default.".to_string()),
+                hint: Some(
+                    "Switch tools.execute_command.host if you want remote execution by default."
+                        .to_string(),
+                ),
             });
         },
     }
 
     if input.managed_key_count == 0
         && input.managed_target_count == 0
-        && input.legacy_target.is_none()
+        && input.configured_ssh_target.is_none()
     {
         checks.push(SshDoctorCheck {
             id: "ssh-onboarding",
@@ -1358,7 +1365,7 @@ mod tests {
     #[test]
     fn doctor_checks_flag_missing_ssh_target() {
         let checks = build_doctor_checks(DoctorInputs {
-            exec_host: "ssh",
+            command_host: "ssh",
             ssh_binary_available: true,
             paired_node_count: 0,
             managed_target_count: 0,
@@ -1366,7 +1373,7 @@ mod tests {
             managed_key_count: 0,
             encrypted_key_count: 0,
             configured_node: None,
-            legacy_target: None,
+            configured_ssh_target: None,
             default_target: None,
             vault_is_unsealed: false,
         });
@@ -1394,7 +1401,7 @@ mod tests {
             updated_at: "2026-03-28T00:00:00Z".to_string(),
         };
         let checks = build_doctor_checks(DoctorInputs {
-            exec_host: "ssh",
+            command_host: "ssh",
             ssh_binary_available: true,
             paired_node_count: 0,
             managed_target_count: 1,
@@ -1402,7 +1409,7 @@ mod tests {
             managed_key_count: 1,
             encrypted_key_count: 1,
             configured_node: None,
-            legacy_target: None,
+            configured_ssh_target: None,
             default_target: Some(&default_target),
             vault_is_unsealed: false,
         });
@@ -1430,7 +1437,7 @@ mod tests {
             updated_at: "2026-03-28T00:00:00Z".to_string(),
         };
         let checks = build_doctor_checks(DoctorInputs {
-            exec_host: "ssh",
+            command_host: "ssh",
             ssh_binary_available: true,
             paired_node_count: 0,
             managed_target_count: 1,
@@ -1438,7 +1445,7 @@ mod tests {
             managed_key_count: 0,
             encrypted_key_count: 0,
             configured_node: None,
-            legacy_target: None,
+            configured_ssh_target: None,
             default_target: Some(&default_target),
             vault_is_unsealed: false,
         });

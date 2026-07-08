@@ -340,7 +340,7 @@ async fn check_database_valid_db() {
 }
 
 #[tokio::test]
-async fn read_remote_exec_inventory_reports_pinned_defaults() {
+async fn read_remote_command_inventory_reports_pinned_defaults() {
     let temp = tempfile::TempDir::new().unwrap();
     let db_path = temp.path().join("moltis.db");
     let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
@@ -398,7 +398,7 @@ async fn read_remote_exec_inventory_reports_pinned_defaults() {
     .unwrap();
     pool.close().await;
 
-    let inventory = read_remote_exec_inventory(temp.path())
+    let inventory = read_remote_command_inventory(temp.path())
         .await
         .unwrap()
         .unwrap();
@@ -411,7 +411,7 @@ async fn read_remote_exec_inventory_reports_pinned_defaults() {
 }
 
 #[tokio::test]
-async fn check_remote_exec_warns_for_unpinned_active_target() {
+async fn check_remote_command_warns_for_unpinned_active_target() {
     let temp = tempfile::TempDir::new().unwrap();
     let db_path = temp.path().join("moltis.db");
     let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
@@ -462,8 +462,8 @@ async fn check_remote_exec_warns_for_unpinned_active_target() {
     pool.close().await;
 
     let mut config = MoltisConfig::default();
-    config.tools.exec.host = "ssh".to_string();
-    let section = check_remote_exec(&config, temp.path()).await;
+    config.tools.execute_command.host = "ssh".to_string();
+    let section = check_remote_command(&config, temp.path()).await;
     assert!(
         section.items.iter().any(|item| {
             item.status == Status::Warn && item.message.contains("not host-pinned")

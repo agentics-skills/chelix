@@ -401,10 +401,10 @@ pub struct GatewayState {
     /// Domain services.
     pub services: GatewayServices,
     /// Credential store for authentication (password, passkeys, API keys).
-    /// `Arc` because it is shared cross-crate (e.g. `ExecTool` as `dyn EnvVarProvider`).
+    /// `Arc` because it is shared cross-crate for runtime credential injection.
     pub credential_store: Option<Arc<CredentialStore>>,
     /// Per-session sandbox router (None if sandbox is not configured).
-    /// `Arc` because it is shared with `ExecTool`/`ProcessTool` in `moltis-tools`.
+    /// `Arc` because it is shared with command/process tools in `moltis-tools`.
     pub sandbox_router: Option<Arc<SandboxRouter>>,
     /// SQLite-backed pairing store for device token persistence.
     /// `None` in tests that don't need pairing.
@@ -479,9 +479,7 @@ pub struct GatewayState {
 
     // ── Atomics (lock-free) ───────────────────────────────��─────────────────
     pub tts_phrase_counter: AtomicUsize,
-    /// Live count of connected nodes.  Shared with `ExecTool` via the
-    /// `GatewayNodeExecProvider` so `parameters_schema()` can check it
-    /// without awaiting the inner lock.
+    /// Live count of connected nodes.
     pub node_count: Arc<AtomicUsize>,
     /// Count of configured SSH targets exposed as remote execution options.
     pub ssh_target_count: Arc<AtomicUsize>,

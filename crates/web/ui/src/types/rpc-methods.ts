@@ -57,8 +57,8 @@ export interface RpcMethodMap {
 	// ── Device ──────────────────────────────────────────────────
 	"device.token.revoke": unknown;
 
-	// ── Exec ────────────────────────────────────────────────────
-	"exec.approval.resolve": unknown;
+	// ── Command Approvals ───────────────────────────────────────
+	"command.approval.resolve": unknown;
 	"external_agents.bind": unknown;
 	"external_agents.list": unknown;
 	"external_agents.status": unknown;

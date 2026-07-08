@@ -45,7 +45,7 @@ directly from Telegram or WhatsApp.
 Configure approval behavior in `moltis.toml`:
 
 ```toml
-[tools.exec]
+[tools.execute_command]
 approval_mode = "always"  # always require approval
 # approval_mode = "smart" # auto-approve safe commands (default)
 # approval_mode = "never" # dangerous: never require approval
@@ -98,7 +98,7 @@ before pasting the command.
 ### Resource Limits
 
 ```toml
-[tools.exec.sandbox.resource_limits]
+[tools.execute_command.sandbox.resource_limits]
 memory_limit = "512M"
 cpu_quota = 1.0
 pids_max = 256
@@ -592,7 +592,7 @@ disabled = false  # keep this false in production
 Always run with sandbox enabled in production:
 
 ```toml
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 enabled = true
 backend = "auto"  # uses strongest available
 ```

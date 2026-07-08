@@ -543,21 +543,21 @@ test.describe("WebSocket connection lifecycle", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
-	test("out-of-order tool events still resolve exec card", async ({ page }) => {
+	test("out-of-order tool events still resolve command card", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await page.goto("/chats/main");
 		await waitForWsConnected(page);
 
 		await expectRpcOk(page, "chat.clear", {});
 
-		const toolCallId = "reorder-exec-1";
+		const toolCallId = "reorder-command-1";
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
 			payload: {
 				sessionKey: "main",
 				state: "tool_call_end",
 				toolCallId,
-				toolName: "exec",
+				toolName: "execute_command",
 				success: true,
 				result: { stdout: "ok", stderr: "", exit_code: 0 },
 			},
@@ -569,16 +569,16 @@ test.describe("WebSocket connection lifecycle", () => {
 				sessionKey: "main",
 				state: "tool_call_start",
 				toolCallId,
-				toolName: "exec",
+				toolName: "execute_command",
 				arguments: { command: "df -h" },
 			},
 		});
 
 		const card = page.locator(`#tool-${toolCallId}`);
 		await expect(card).toBeVisible();
-		await expect(card).toHaveClass(/exec-ok/);
-		await expect(page.locator(`#tool-${toolCallId} .exec-status`)).toHaveCount(0);
-		await expect(page.locator(`#tool-${toolCallId} .exec-output`)).toContainText("ok");
+		await expect(card).toHaveClass(/command-ok/);
+		await expect(page.locator(`#tool-${toolCallId} .command-status`)).toHaveCount(0);
+		await expect(page.locator(`#tool-${toolCallId} .command-output`)).toContainText("ok");
 		expect(pageErrors).toEqual([]);
 	});
 
@@ -598,7 +598,7 @@ test.describe("WebSocket connection lifecycle", () => {
 				{
 					runId: "run-switch-tool",
 					toolCallId: "tc-switch-tool",
-					toolName: "exec",
+					toolName: "execute_command",
 					arguments: { command: "sleep 10" },
 				},
 			],
@@ -656,26 +656,26 @@ test.describe("WebSocket connection lifecycle", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
-	test("final event clears stale running exec status when tool end is missed", async ({ page }) => {
+	test("final event clears stale running command status when tool end is missed", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await page.goto("/chats/main");
 		await waitForWsConnected(page);
 
 		await expectRpcOk(page, "chat.clear", {});
 
-		const toolCallId = "stale-exec-1";
+		const toolCallId = "stale-command-1";
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
 			payload: {
 				sessionKey: "main",
 				state: "tool_call_start",
 				toolCallId,
-				toolName: "exec",
+				toolName: "execute_command",
 				arguments: { command: "df -h" },
 			},
 		});
 
-		await expect(page.locator(`#tool-${toolCallId} .exec-status`)).toBeVisible();
+		await expect(page.locator(`#tool-${toolCallId} .command-status`)).toBeVisible();
 
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
@@ -690,8 +690,8 @@ test.describe("WebSocket connection lifecycle", () => {
 			},
 		});
 
-		await expect(page.locator(`#tool-${toolCallId} .exec-status`)).toHaveCount(0);
-		await expect(page.locator(`#tool-${toolCallId}`)).toHaveClass(/exec-ok/);
+		await expect(page.locator(`#tool-${toolCallId} .command-status`)).toHaveCount(0);
+		await expect(page.locator(`#tool-${toolCallId}`)).toHaveClass(/command-ok/);
 		expect(pageErrors).toEqual([]);
 	});
 
@@ -913,7 +913,7 @@ test.describe("WebSocket connection lifecycle", () => {
 				state: "tool_call_start",
 				runId: "run-whitespace-tool",
 				toolCallId: "tc-empty-1",
-				toolName: "exec",
+				toolName: "execute_command",
 				arguments: { command: "echo $FOO" },
 			},
 		});

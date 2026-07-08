@@ -67,7 +67,7 @@ This is where the two systems differ most significantly in approach.
 | **memory_save** | Dedicated tool with path validation | No dedicated tool |
 | **memory_forget** | LLM-guided forget flow on top of exact deletes | No dedicated tool |
 | **memory_delete** | Dedicated tool for safe forget/delete flows | No dedicated tool |
-| **General file writing** | `exec` tool (shell commands) | Generic `write_file` tool |
+| **General file writing** | `execute_command` tool (shell commands) | Generic `write_file` tool |
 | **Silent memory turn** | Pre-compaction flush via `MemoryWriter` | Pre-compaction flush via `write_file` |
 
 #### How "Remember X" Works

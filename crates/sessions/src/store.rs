@@ -971,7 +971,7 @@ mod tests {
         store
             .append(
                 "main",
-                &json!({"role": "tool_result", "tool_name": "exec", "success": true}),
+                &json!({"role": "tool_result", "tool_name": "execute_command", "success": true}),
             )
             .await
             .unwrap();

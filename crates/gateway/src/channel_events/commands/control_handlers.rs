@@ -47,7 +47,7 @@ pub(in crate::channel_events) async fn handle_approvals(
 ) -> ChannelResult<String> {
     let response = state
         .services
-        .exec_approval
+        .command_approval
         .request(serde_json::json!({ "sessionKey": session_key }))
         .await
         .map_err(ChannelError::unavailable)?;
@@ -86,7 +86,7 @@ pub(in crate::channel_events) async fn handle_approve_deny(
 
     let response = state
         .services
-        .exec_approval
+        .command_approval
         .request(serde_json::json!({ "sessionKey": session_key }))
         .await
         .map_err(ChannelError::unavailable)?;
@@ -121,7 +121,7 @@ pub(in crate::channel_events) async fn handle_approve_deny(
 
     state
         .services
-        .exec_approval
+        .command_approval
         .resolve(params)
         .await
         .map_err(ChannelError::unavailable)?;
@@ -497,7 +497,7 @@ pub(in crate::channel_events) async fn handle_sandbox(
         // List available images.
         let cfg = moltis_config::discover_and_load();
         let builder = moltis_tools::image_cache::DockerImageBuilder::for_backend(
-            &cfg.tools.exec.sandbox.backend,
+            &cfg.tools.execute_command.sandbox.backend,
         );
         let cached = builder.list_cached().await.unwrap_or_default();
 
@@ -568,7 +568,7 @@ pub(in crate::channel_events) async fn handle_sandbox(
         let default_img = moltis_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string();
         let cfg = moltis_config::discover_and_load();
         let builder = moltis_tools::image_cache::DockerImageBuilder::for_backend(
-            &cfg.tools.exec.sandbox.backend,
+            &cfg.tools.execute_command.sandbox.backend,
         );
         let cached = builder.list_cached().await.unwrap_or_default();
         let mut images: Vec<String> = vec![default_img];

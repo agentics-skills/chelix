@@ -89,8 +89,8 @@ impl MutationRoot {
         ProjectMutation
     }
 
-    async fn exec_approvals(&self) -> ExecApprovalMutation {
-        ExecApprovalMutation
+    async fn command_approvals(&self) -> CommandApprovalMutation {
+        CommandApprovalMutation
     }
 
     async fn logs(&self) -> LogsMutation {
@@ -842,31 +842,31 @@ impl ProjectMutation {
     }
 }
 
-// ── Exec Approvals ──────────────────────────────────────────────────────────
+// ── Command Approvals ───────────────────────────────────────────────────────
 
 #[derive(Default)]
-pub struct ExecApprovalMutation;
+pub struct CommandApprovalMutation;
 
 #[Object]
-impl ExecApprovalMutation {
+impl CommandApprovalMutation {
     async fn set(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
         let s = services!(ctx);
-        from_service(s.exec_approval.set(input.0).await)
+        from_service(s.command_approval.set(input.0).await)
     }
 
     async fn set_node_config(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
         let s = services!(ctx);
-        from_service(s.exec_approval.node_set(input.0).await)
+        from_service(s.command_approval.node_set(input.0).await)
     }
 
     async fn request(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
         let s = services!(ctx);
-        from_service(s.exec_approval.request(input.0).await)
+        from_service(s.command_approval.request(input.0).await)
     }
 
     async fn resolve(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
         let s = services!(ctx);
-        from_service(s.exec_approval.resolve(input.0).await)
+        from_service(s.command_approval.resolve(input.0).await)
     }
 }
 

@@ -767,7 +767,7 @@ impl UsageService for NoopUsageService {
 }
 
 #[async_trait]
-pub trait ExecApprovalService: Send + Sync {
+pub trait CommandApprovalService: Send + Sync {
     async fn get(&self) -> ServiceResult;
     async fn set(&self, params: Value) -> ServiceResult;
     async fn node_get(&self, params: Value) -> ServiceResult;
@@ -776,10 +776,10 @@ pub trait ExecApprovalService: Send + Sync {
     async fn resolve(&self, params: Value) -> ServiceResult;
 }
 
-pub struct NoopExecApprovalService;
+pub struct NoopCommandApprovalService;
 
 #[async_trait]
-impl ExecApprovalService for NoopExecApprovalService {
+impl CommandApprovalService for NoopCommandApprovalService {
     async fn get(&self) -> ServiceResult {
         Ok(serde_json::json!({ "mode": "always" }))
     }

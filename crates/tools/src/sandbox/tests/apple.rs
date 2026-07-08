@@ -415,7 +415,7 @@ async fn test_failover_sandbox_does_not_switch_on_unrelated_error() {
 }
 
 #[tokio::test]
-async fn test_failover_sandbox_switches_exec_path() {
+async fn test_failover_sandbox_switches_command_path() {
     let primary = Arc::new(TestSandbox::new(
         "apple-container",
         None,
@@ -429,13 +429,13 @@ async fn test_failover_sandbox_switches_exec_path() {
     };
 
     let result = sandbox
-        .exec(&id, "uname -a", &ExecOpts::default())
+        .run_command(&id, "uname -a", &CommandOptions::default())
         .await
         .unwrap();
     assert_eq!(result.exit_code, 0);
-    assert_eq!(primary.exec_calls(), 1);
+    assert_eq!(primary.command_calls(), 1);
     assert_eq!(fallback.ensure_ready_calls(), 1);
-    assert_eq!(fallback.exec_calls(), 1);
+    assert_eq!(fallback.command_calls(), 1);
 }
 
 #[tokio::test]

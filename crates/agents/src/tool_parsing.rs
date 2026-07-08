@@ -349,7 +349,7 @@ fn collect_function_blocks(
 // ── XML <invoke> parser ─────────────────────────────────────────────────────
 
 /// Extract the value of a named attribute from an XML attribute string.
-/// E.g. `extract_xml_attr(r#"name="exec" id="1""#, "name")` → `Some("exec")`.
+/// E.g. `extract_xml_attr(r#"name="execute_command" id="1""#, "name")` → `Some("execute_command")`.
 fn extract_xml_attr<'a>(attr_str: &'a str, attr_name: &str) -> Option<&'a str> {
     let needle = format!("{attr_name}=\"");
     let start = attr_str.find(&needle)?;
@@ -461,7 +461,7 @@ fn collect_invoke_blocks(
 /// Shape (as emitted by Zhipu's `tool_mode = "text"`):
 ///
 /// ```xml
-/// <tool_call>exec<arg_key>command</arg_key><arg_value>ls -la</arg_value>
+/// <tool_call>execute_command<arg_key>command</arg_key><arg_value>ls -la</arg_value>
 /// <arg_key>timeout</arg_key><arg_value>10</arg_value></tool_call>
 /// ```
 ///
@@ -704,12 +704,12 @@ mod tests {
     fn parse_single_fenced_block() {
         let text = r#"Let me check that.
 ```tool_call
-{"tool": "exec", "arguments": {"command": "ls -la"}}
+{"tool": "execute_command", "arguments": {"command": "ls -la"}}
 ```
 Done."#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "exec");
+        assert_eq!(calls[0].name, "execute_command");
         assert_eq!(calls[0].arguments["command"], "ls -la");
         let rem = remaining.unwrap();
         assert!(rem.contains("Let me check that."));
@@ -720,11 +720,11 @@ Done."#;
     fn parse_multiple_fenced_blocks() {
         let text = r#"Step 1:
 ```tool_call
-{"tool": "exec", "arguments": {"command": "mkdir test"}}
+{"tool": "execute_command", "arguments": {"command": "mkdir test"}}
 ```
 Step 2:
 ```tool_call
-{"tool": "exec", "arguments": {"command": "cd test"}}
+{"tool": "execute_command", "arguments": {"command": "cd test"}}
 ```"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 2);
@@ -738,13 +738,13 @@ Step 2:
     #[test]
     fn parse_xml_function_call() {
         let text = r#"<tool_call>
-<function=exec>
+<function=execute_command>
 <parameter=command>pwd</parameter>
 </function>
 </tool_call>"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "exec");
+        assert_eq!(calls[0].name, "execute_command");
         assert_eq!(calls[0].arguments["command"], "pwd");
         // All text is inside the block, so remaining should be empty/None.
         assert!(
@@ -776,10 +776,10 @@ Step 2:
 
     #[test]
     fn parse_bare_json() {
-        let text = r#"I'll run that command now: {"tool": "exec", "arguments": {"command": "whoami"}} and report back."#;
+        let text = r#"I'll run that command now: {"tool": "execute_command", "arguments": {"command": "whoami"}} and report back."#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "exec");
+        assert_eq!(calls[0].name, "execute_command");
         let rem = remaining.unwrap();
         assert!(rem.contains("I'll run that command now:"));
         assert!(rem.contains("and report back."));
@@ -789,7 +789,7 @@ Step 2:
     fn does_not_parse_tool_json_inside_generic_markdown_code_fence() {
         let text = r#"Here is a documentation example:
 ```json
-{"tool": "exec", "arguments": {"command": "whoami"}}
+{"tool": "execute_command", "arguments": {"command": "whoami"}}
 ```
 This is quoted code, not an action."#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
@@ -820,10 +820,10 @@ This is quoted code, not an action."#;
     #[test]
     fn backward_compat_parse_tool_call_from_text() {
         let text = r#"```tool_call
-{"tool": "exec", "arguments": {"command": "ls"}}
+{"tool": "execute_command", "arguments": {"command": "ls"}}
 ```"#;
         let (tc, remaining) = parse_tool_call_from_text(text).unwrap();
-        assert_eq!(tc.name, "exec");
+        assert_eq!(tc.name, "execute_command");
         assert!(
             remaining.is_none() || remaining.as_deref() == Some(""),
             "remaining: {remaining:?}"
@@ -833,7 +833,7 @@ This is quoted code, not an action."#;
     #[test]
     fn looks_like_failed_tool_call_positive() {
         assert!(looks_like_failed_tool_call(&Some(
-            r#"Here's what I'll do: {"tool": "exec", "arguments": {BROKEN"#.into()
+            r#"Here's what I'll do: {"tool": "execute_command", "arguments": {BROKEN"#.into()
         )));
         assert!(looks_like_failed_tool_call(&Some(
             "```tool_call\nsomething broken".into()
@@ -859,7 +859,7 @@ detected malformed tool call in stream, requesting retry
 ```
 
 ```json
-{"tool": "exec", "arguments": {"command": "grep -rn tool_call crates"}}
+{"tool": "execute_command", "arguments": {"command": "grep -rn tool_call crates"}}
 ```
 
 The fix is to avoid treating quoted code as an executable tool call."#;
@@ -877,11 +877,11 @@ The fix is to avoid treating quoted code as an executable tool call."#;
     #[test]
     fn fenced_with_malformed_json_repaired() {
         let text = r#"```tool_call
-{"tool": "exec", "arguments": {"command": "ls",}}
+{"tool": "execute_command", "arguments": {"command": "ls",}}
 ```"#;
         let (calls, _) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "exec");
+        assert_eq!(calls[0].name, "execute_command");
     }
 
     #[test]
@@ -897,11 +897,11 @@ The fix is to avoid treating quoted code as an executable tool call."#;
     #[test]
     fn parse_single_invoke_block() {
         let text = r#"I'll execute the command.
-<invoke name="exec"><arg name="command">ls -la</arg></invoke>
+<invoke name="execute_command"><arg name="command">ls -la</arg></invoke>
 Done."#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "exec");
+        assert_eq!(calls[0].name, "execute_command");
         assert_eq!(calls[0].arguments["command"], "ls -la");
         let rem = remaining.unwrap();
         assert!(rem.contains("I'll execute the command."));
@@ -925,18 +925,24 @@ Done."#;
     #[test]
     fn looks_like_failed_invoke() {
         assert!(looks_like_failed_tool_call(&Some(
-            r#"<invoke name="exec"><arg name="command">ls"#.into()
+            r#"<invoke name="execute_command"><arg name="command">ls"#.into()
         )));
     }
 
     #[test]
     fn extract_xml_attr_basic() {
         assert_eq!(
-            extract_xml_attr(r#" name="exec" id="1""#, "name"),
-            Some("exec")
+            extract_xml_attr(r#" name="execute_command" id="1""#, "name"),
+            Some("execute_command")
         );
-        assert_eq!(extract_xml_attr(r#" name="exec" id="1""#, "id"), Some("1"));
-        assert_eq!(extract_xml_attr(r#" name="exec""#, "missing"), None);
+        assert_eq!(
+            extract_xml_attr(r#" name="execute_command" id="1""#, "id"),
+            Some("1")
+        );
+        assert_eq!(
+            extract_xml_attr(r#" name="execute_command""#, "missing"),
+            None
+        );
     }
 
     // ── Backward compatibility: existing formats unaffected by invoke parser ──
@@ -945,11 +951,11 @@ Done."#;
     #[test]
     fn backward_compat_fenced_still_works() {
         let text = r#"```tool_call
-{"tool": "exec", "arguments": {"command": "pwd"}}
+{"tool": "execute_command", "arguments": {"command": "pwd"}}
 ```"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "exec");
+        assert_eq!(calls[0].name, "execute_command");
         assert_eq!(calls[0].arguments["command"], "pwd");
         assert!(
             remaining.is_none() || remaining.as_deref() == Some(""),
@@ -960,12 +966,12 @@ Done."#;
     /// XML <function=...> format must still work identically.
     #[test]
     fn backward_compat_function_xml_still_works() {
-        let text = r#"<function=exec>
+        let text = r#"<function=execute_command>
 <parameter=command>ls</parameter>
 </function>"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "exec");
+        assert_eq!(calls[0].name, "execute_command");
         assert_eq!(calls[0].arguments["command"], "ls");
         assert!(
             remaining.is_none() || remaining.as_deref() == Some(""),
@@ -976,10 +982,10 @@ Done."#;
     /// Bare JSON must still work identically.
     #[test]
     fn backward_compat_bare_json_still_works() {
-        let text = r#"Let me run: {"tool": "exec", "arguments": {"command": "whoami"}}"#;
+        let text = r#"Let me run: {"tool": "execute_command", "arguments": {"command": "whoami"}}"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "exec");
+        assert_eq!(calls[0].name, "execute_command");
         let rem = remaining.unwrap();
         assert!(rem.contains("Let me run:"));
     }
@@ -989,7 +995,7 @@ Done."#;
     /// Invoke without any <arg> children should NOT produce a tool call.
     #[test]
     fn invoke_without_args_not_parsed() {
-        let text = r#"<invoke name="exec"></invoke>"#;
+        let text = r#"<invoke name="execute_command"></invoke>"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert!(
             calls.is_empty(),
@@ -1001,7 +1007,7 @@ Done."#;
     /// Invoke with missing closing tag is gracefully skipped.
     #[test]
     fn invoke_unclosed_skipped() {
-        let text = r#"before <invoke name="exec"><arg name="cmd">ls</arg> after"#;
+        let text = r#"before <invoke name="execute_command"><arg name="cmd">ls</arg> after"#;
         let (calls, _remaining) = parse_tool_calls_from_text(text);
         assert!(
             calls.is_empty(),
@@ -1028,7 +1034,7 @@ Done."#;
     /// Invoke with JSON value in arg body is parsed as structured value.
     #[test]
     fn invoke_json_arg_value() {
-        let text = r#"<invoke name="exec"><arg name="config">{"verbose": true}</arg></invoke>"#;
+        let text = r#"<invoke name="execute_command"><arg name="config">{"verbose": true}</arg></invoke>"#;
         let (calls, _) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].arguments["config"]["verbose"], true);
@@ -1037,7 +1043,7 @@ Done."#;
     /// Invoke with multiline arg value.
     #[test]
     fn invoke_multiline_arg_value() {
-        let text = r#"<invoke name="exec"><arg name="command">echo "hello
+        let text = r#"<invoke name="execute_command"><arg name="command">echo "hello
 world"</arg></invoke>"#;
         let (calls, _) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
@@ -1051,14 +1057,14 @@ world"</arg></invoke>"#;
     fn mixed_fenced_and_invoke() {
         let text = r#"Step 1:
 ```tool_call
-{"tool": "exec", "arguments": {"command": "mkdir test"}}
+{"tool": "execute_command", "arguments": {"command": "mkdir test"}}
 ```
 Step 2:
-<invoke name="exec"><arg name="command">cd test</arg></invoke>"#;
+<invoke name="execute_command"><arg name="command">cd test</arg></invoke>"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[0].arguments["command"], "mkdir test");
-        assert_eq!(calls[1].name, "exec");
+        assert_eq!(calls[1].name, "execute_command");
         assert_eq!(calls[1].arguments["command"], "cd test");
         let rem = remaining.unwrap();
         assert!(rem.contains("Step 1:"));
@@ -1068,11 +1074,11 @@ Step 2:
     /// Multiple invoke blocks in one text.
     #[test]
     fn multiple_invoke_blocks() {
-        let text = r#"<invoke name="exec"><arg name="command">ls</arg></invoke>
+        let text = r#"<invoke name="execute_command"><arg name="command">ls</arg></invoke>
 <invoke name="web_search"><arg name="query">rust</arg></invoke>"#;
         let (calls, _) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 2);
-        assert_eq!(calls[0].name, "exec");
+        assert_eq!(calls[0].name, "execute_command");
         assert_eq!(calls[1].name, "web_search");
     }
 
@@ -1092,7 +1098,7 @@ Step 2:
     fn looks_like_failed_invoke_valid_block_not_flagged() {
         // This is a well-formed invoke that parses successfully — parse_tool_call_from_text
         // returns Some, so looks_like_failed_tool_call returns false.
-        let valid = r#"<invoke name="exec"><arg name="command">ls</arg></invoke>"#;
+        let valid = r#"<invoke name="execute_command"><arg name="command">ls</arg></invoke>"#;
         assert!(!looks_like_failed_tool_call(&Some(valid.into())));
     }
 
@@ -1105,11 +1111,11 @@ Step 2:
     #[test]
     fn parse_single_zhipu_block() {
         let text = r#"I'll run the command.
-<tool_call>exec<arg_key>command</arg_key><arg_value>grep -A20 'hello' /tmp/test.txt</arg_value><arg_key>timeout</arg_key><arg_value>10</arg_value></tool_call>
+<tool_call>execute_command<arg_key>command</arg_key><arg_value>grep -A20 'hello' /tmp/test.txt</arg_value><arg_key>timeout</arg_key><arg_value>10</arg_value></tool_call>
 Done."#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "exec");
+        assert_eq!(calls[0].name, "execute_command");
         assert_eq!(
             calls[0].arguments["command"],
             "grep -A20 'hello' /tmp/test.txt"
@@ -1137,9 +1143,9 @@ Done."#;
 
     #[test]
     fn parse_multiple_zhipu_blocks() {
-        let text = r#"<tool_call>exec<arg_key>command</arg_key><arg_value>ls</arg_value></tool_call>
+        let text = r#"<tool_call>execute_command<arg_key>command</arg_key><arg_value>ls</arg_value></tool_call>
 between
-<tool_call>exec<arg_key>command</arg_key><arg_value>pwd</arg_value></tool_call>"#;
+<tool_call>execute_command<arg_key>command</arg_key><arg_value>pwd</arg_value></tool_call>"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[0].arguments["command"], "ls");
@@ -1152,7 +1158,7 @@ between
     #[test]
     fn zhipu_unclosed_block_skipped() {
         let text =
-            r#"before <tool_call>exec<arg_key>command</arg_key><arg_value>ls</arg_value> no-close"#;
+            r#"before <tool_call>execute_command<arg_key>command</arg_key><arg_value>ls</arg_value> no-close"#;
         let (calls, _remaining) = parse_tool_calls_from_text(text);
         assert!(calls.is_empty());
     }
@@ -1177,7 +1183,7 @@ between
     /// should be skipped rather than inventing a zero-argument call.
     #[test]
     fn zhipu_no_arg_pairs_skipped() {
-        let text = r#"<tool_call>exec</tool_call>"#;
+        let text = r#"<tool_call>execute_command</tool_call>"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert!(calls.is_empty());
         assert_eq!(remaining.as_deref(), Some(text));
@@ -1188,10 +1194,10 @@ between
     /// it, and the merge step de-overlaps so we don't double-count.
     #[test]
     fn zhipu_parser_defers_to_json_wrapper() {
-        let text = r#"<tool_call>{"tool": "exec", "arguments": {"command": "ls"}}</tool_call>"#;
+        let text = r#"<tool_call>{"tool": "execute_command", "arguments": {"command": "ls"}}</tool_call>"#;
         let (calls, _) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "exec");
+        assert_eq!(calls[0].name, "execute_command");
         assert_eq!(calls[0].arguments["command"], "ls");
     }
 
@@ -1199,7 +1205,7 @@ between
     /// values (matches sibling collector behavior via `parse_param_value`).
     #[test]
     fn zhipu_json_arg_value_promoted() {
-        let text = r#"<tool_call>exec<arg_key>config</arg_key><arg_value>{"verbose": true}</arg_value></tool_call>"#;
+        let text = r#"<tool_call>execute_command<arg_key>config</arg_key><arg_value>{"verbose": true}</arg_value></tool_call>"#;
         let (calls, _) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].arguments["config"]["verbose"], true);
@@ -1208,7 +1214,7 @@ between
     /// Zhipu block with a multiline arg value.
     #[test]
     fn zhipu_multiline_arg_value() {
-        let text = "<tool_call>exec<arg_key>command</arg_key><arg_value>echo \"hello\nworld\"</arg_value></tool_call>";
+        let text = "<tool_call>execute_command<arg_key>command</arg_key><arg_value>echo \"hello\nworld\"</arg_value></tool_call>";
         let (calls, _) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].arguments["command"], "echo \"hello\nworld\"");
@@ -1218,7 +1224,7 @@ between
     /// must be skipped entirely.
     #[test]
     fn zhipu_empty_arg_key_skipped() {
-        let text = r#"<tool_call>exec<arg_key>   </arg_key><arg_value>ls</arg_value></tool_call>"#;
+        let text = r#"<tool_call>execute_command<arg_key>   </arg_key><arg_value>ls</arg_value></tool_call>"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert!(calls.is_empty());
         assert_eq!(remaining.as_deref(), Some(text));
@@ -1226,7 +1232,7 @@ between
 
     #[test]
     fn zhipu_missing_arg_key_close_skipped() {
-        let text = r#"<tool_call>exec<arg_key>command<arg_value>ls</arg_value></tool_call>"#;
+        let text = r#"<tool_call>execute_command<arg_key>command<arg_value>ls</arg_value></tool_call>"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert!(calls.is_empty());
         assert_eq!(remaining.as_deref(), Some(text));
@@ -1234,7 +1240,7 @@ between
 
     #[test]
     fn zhipu_missing_arg_value_open_skipped() {
-        let text = r#"<tool_call>exec<arg_key>command</arg_key>ls</tool_call>"#;
+        let text = r#"<tool_call>execute_command<arg_key>command</arg_key>ls</tool_call>"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert!(calls.is_empty());
         assert_eq!(remaining.as_deref(), Some(text));
@@ -1242,7 +1248,7 @@ between
 
     #[test]
     fn zhipu_missing_arg_value_close_skipped() {
-        let text = r#"<tool_call>exec<arg_key>command</arg_key><arg_value>ls</tool_call>"#;
+        let text = r#"<tool_call>execute_command<arg_key>command</arg_key><arg_value>ls</tool_call>"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert!(calls.is_empty());
         assert_eq!(remaining.as_deref(), Some(text));
@@ -1251,10 +1257,10 @@ between
     /// Exact leaked output from issue #637 must round-trip cleanly.
     #[test]
     fn zhipu_regression_issue_637() {
-        let text = r#"<tool_call>exec<arg_key>command</arg_key><arg_value>grep -A20 'hello' /tmp/test.txt</arg_value><arg_key>timeout</arg_key><arg_value>10</arg_value></tool_call>"#;
+        let text = r#"<tool_call>execute_command<arg_key>command</arg_key><arg_value>grep -A20 'hello' /tmp/test.txt</arg_value><arg_key>timeout</arg_key><arg_value>10</arg_value></tool_call>"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1, "expected exactly one parsed tool call");
-        assert_eq!(calls[0].name, "exec");
+        assert_eq!(calls[0].name, "execute_command");
         assert_eq!(
             calls[0].arguments["command"],
             "grep -A20 'hello' /tmp/test.txt"
@@ -1272,10 +1278,10 @@ between
     fn mixed_fenced_and_zhipu() {
         let text = r#"Step 1:
 ```tool_call
-{"tool": "exec", "arguments": {"command": "mkdir test"}}
+{"tool": "execute_command", "arguments": {"command": "mkdir test"}}
 ```
 Step 2:
-<tool_call>exec<arg_key>command</arg_key><arg_value>cd test</arg_value></tool_call>"#;
+<tool_call>execute_command<arg_key>command</arg_key><arg_value>cd test</arg_value></tool_call>"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[0].arguments["command"], "mkdir test");
@@ -1292,15 +1298,14 @@ Step 2:
     #[test]
     fn looks_like_failed_zhipu_truncated() {
         assert!(looks_like_failed_tool_call(&Some(
-            r#"<tool_call>exec<arg_key>command</arg_key><arg_value>grep"#.into()
+            r#"<tool_call>execute_command<arg_key>command</arg_key><arg_value>grep"#.into()
         )));
     }
 
     /// A valid Zhipu block that parses successfully must NOT be flagged as failed.
     #[test]
     fn looks_like_failed_zhipu_valid_block_not_flagged() {
-        let valid =
-            r#"<tool_call>exec<arg_key>command</arg_key><arg_value>ls</arg_value></tool_call>"#;
+        let valid = r#"<tool_call>execute_command<arg_key>command</arg_key><arg_value>ls</arg_value></tool_call>"#;
         assert!(!looks_like_failed_tool_call(&Some(valid.into())));
     }
 }

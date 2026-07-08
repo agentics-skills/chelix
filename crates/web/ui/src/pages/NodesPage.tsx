@@ -54,7 +54,7 @@ interface PairingStatus {
 }
 
 interface DoctorSnapshot {
-	exec_host?: string;
+	command_host?: string;
 	active_route?: {
 		label?: string;
 		target?: string;
@@ -191,10 +191,10 @@ async function refreshDoctor(): Promise<void> {
 	doctorError.value = "";
 	try {
 		const response = await fetch("/api/ssh/doctor");
-		if (!response.ok) throw new Error("Failed to load remote exec status");
+		if (!response.ok) throw new Error("Failed to load remote command status");
 		doctor.value = await response.json();
 	} catch (err) {
-		doctorError.value = (err as Error).message || "Failed to load remote exec status";
+		doctorError.value = (err as Error).message || "Failed to load remote command status";
 	} finally {
 		doctorLoading.value = false;
 	}
@@ -514,9 +514,9 @@ function ConnectNodeForm(): VNode {
 	);
 }
 
-function RemoteExecStatusCard(): VNode {
+function RemoteCommandStatusCard(): VNode {
 	const snapshot = doctor.value;
-	const execHost = snapshot?.exec_host || "local";
+	const commandHost = snapshot?.command_host || "local";
 	const activeRoute = snapshot?.active_route || null;
 	const checkList = snapshot?.checks || [];
 	const canManageActivePin = Boolean(activeRoute?.target_id);
@@ -525,10 +525,10 @@ function RemoteExecStatusCard(): VNode {
 		<div className="rounded-lg border border-[var(--border)] bg-[var(--surface-alt)] p-4 flex flex-col gap-3">
 			<div className="flex items-start justify-between gap-3 flex-wrap">
 				<div>
-					<h3 className="text-sm font-medium text-[var(--text-strong)] mb-1">Remote Exec Status</h3>
+					<h3 className="text-sm font-medium text-[var(--text-strong)] mb-1">Remote Command Status</h3>
 					<p className="text-xs text-[var(--text-muted)] m-0">
 						Moltis is currently configured to run commands through{" "}
-						<strong className="text-[var(--text-strong)]"> {execHost}</strong>
+						<strong className="text-[var(--text-strong)]"> {commandHost}</strong>
 						{activeRoute ? (
 							<>
 								{" "}
@@ -543,7 +543,7 @@ function RemoteExecStatusCard(): VNode {
 								? "Active route is pinned to a stored host key."
 								: canManageActivePin
 									? "Active route is currently inheriting global known_hosts policy."
-									: "Active route is not directly manageable here because it comes from legacy config."}
+									: "Active route is not directly manageable here because it comes from configured ssh_target."}
 						</div>
 					) : null}
 				</div>
@@ -556,7 +556,7 @@ function RemoteExecStatusCard(): VNode {
 					>
 						{doctorLoading.value ? "Refreshing..." : "Refresh Doctor"}
 					</button>
-					{execHost === "ssh" && activeRoute ? (
+					{commandHost === "ssh" && activeRoute ? (
 						<button
 							type="button"
 							className="provider-btn provider-btn-secondary provider-btn-sm"
@@ -566,7 +566,7 @@ function RemoteExecStatusCard(): VNode {
 							{doctorTestLoading.value ? "Testing..." : "Test Active SSH Route"}
 						</button>
 					) : null}
-					{execHost === "ssh" && activeRoute && canManageActivePin ? (
+					{commandHost === "ssh" && activeRoute && canManageActivePin ? (
 						<button
 							type="button"
 							className="provider-btn provider-btn-secondary provider-btn-sm"
@@ -580,7 +580,7 @@ function RemoteExecStatusCard(): VNode {
 									: "Pin Active Route"}
 						</button>
 					) : null}
-					{execHost === "ssh" && activeRoute?.host_pinned && canManageActivePin ? (
+					{commandHost === "ssh" && activeRoute?.host_pinned && canManageActivePin ? (
 						<button
 							type="button"
 							className="provider-btn provider-btn-secondary provider-btn-sm"
@@ -602,7 +602,7 @@ function RemoteExecStatusCard(): VNode {
 			<div className="grid gap-2 md:grid-cols-5">
 				<div className="rounded border border-[var(--border)] bg-[var(--bg)] px-3 py-2">
 					<div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Backend</div>
-					<div className="text-sm text-[var(--text-strong)] mt-1">{execHost}</div>
+					<div className="text-sm text-[var(--text-strong)] mt-1">{commandHost}</div>
 				</div>
 				<div className="rounded border border-[var(--border)] bg-[var(--bg)] px-3 py-2">
 					<div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Paired Nodes</div>
@@ -682,7 +682,7 @@ function SshTargetCard({ node }: { node: NodeInfo }): VNode {
 					<code>{target}</code>
 				</div>
 				<p className="text-xs text-[var(--text-muted)] mt-2 mb-0">
-					Uses your local OpenSSH configuration for remote exec. This is an execution route, not a paired WebSocket
+					Uses your local OpenSSH configuration for remote commands. This is an execution route, not a paired WebSocket
 					node, so telemetry and presence are not available here.
 				</p>
 			</div>
@@ -900,7 +900,7 @@ function NodesPage(): VNode {
 						run commands based on what is available.
 					</p>
 				</div>
-				<RemoteExecStatusCard />
+				<RemoteCommandStatusCard />
 				<TabBar />
 				{activeTab.value === "connected" ? (
 					<>

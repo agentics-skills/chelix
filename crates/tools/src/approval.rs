@@ -15,6 +15,17 @@ use {
 
 use crate::Result;
 
+/// Broadcaster that notifies connected clients about pending approval requests.
+#[async_trait::async_trait]
+pub trait ApprovalBroadcaster: Send + Sync {
+    async fn broadcast_request(
+        &self,
+        request_id: &str,
+        command: &str,
+        session_key: Option<&str>,
+    ) -> Result<()>;
+}
+
 /// Outcome of an approval request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -51,7 +62,7 @@ impl ApprovalMode {
     }
 }
 
-/// Security level for exec commands.
+/// Security level for shell commands.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[derive(Default)]
@@ -494,7 +505,7 @@ pub struct PendingApprovalView {
     pub session_key: Option<String>,
 }
 
-/// The approval manager handles approval flow for exec commands.
+/// The approval manager handles approval flow for shell commands.
 pub struct ApprovalManager {
     pub mode: ApprovalMode,
     pub security_level: SecurityLevel,
@@ -535,7 +546,7 @@ impl ApprovalManager {
                         "dangerous command denied in approval_mode=off",
                     );
                     return Err(Error::message(format!(
-                        "exec denied: dangerous command pattern '{desc}' (approval_mode=off): \
+                        "command denied: dangerous command pattern '{desc}' (approval_mode=off): \
                          {command}"
                     )));
                 }
@@ -557,7 +568,7 @@ impl ApprovalManager {
                         "dangerous env-var prefix denied in approval_mode=off",
                     );
                     return Err(Error::message(format!(
-                        "exec denied: dangerous env-var prefix (approval_mode=off): {command}"
+                        "command denied: dangerous env-var prefix (approval_mode=off): {command}"
                     )));
                 }
                 warn!(
@@ -574,7 +585,7 @@ impl ApprovalManager {
 
         match self.security_level {
             SecurityLevel::Deny => {
-                return Err(Error::message("exec denied: security level is 'deny'"));
+                return Err(Error::message("command denied: security level is 'deny'"));
             },
             SecurityLevel::Full => return Ok(ApprovalAction::Proceed),
             SecurityLevel::Allowlist => {},
@@ -602,12 +613,12 @@ impl ApprovalManager {
                     // follow-up for an opt-in strict mode that gates safe bins).
                     warn!(
                         command,
-                        "exec safe-bin bypassed non-empty allowlist in approval_mode=off",
+                        "command safe-bin bypassed non-empty allowlist in approval_mode=off",
                     );
                     return Ok(ApprovalAction::Proceed);
                 }
                 Err(Error::message(format!(
-                    "exec denied: command not in allowlist (approval_mode=off): {command}"
+                    "command denied: command not in allowlist (approval_mode=off): {command}"
                 )))
             },
             ApprovalMode::Always => Ok(ApprovalAction::NeedsApproval),

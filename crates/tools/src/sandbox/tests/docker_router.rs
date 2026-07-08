@@ -24,14 +24,17 @@ fn test_create_sandbox_off_uses_no_sandbox() {
 }
 
 #[tokio::test]
-async fn test_no_sandbox_exec() {
+async fn test_no_sandbox_command() {
     let sandbox = NoSandbox;
     let id = SandboxId {
         scope: SandboxScope::Session,
         key: "test".into(),
     };
-    let opts = ExecOpts::default();
-    let result = sandbox.exec(&id, "echo sandbox-test", &opts).await.unwrap();
+    let opts = CommandOptions::default();
+    let result = sandbox
+        .run_command(&id, "echo sandbox-test", &opts)
+        .await
+        .unwrap();
     assert_eq!(result.stdout.trim(), "sandbox-test");
     assert_eq!(result.exit_code, 0);
 }
@@ -959,7 +962,7 @@ async fn test_failover_sandbox_to_restricted_host_does_not_claim_fs_isolation() 
 async fn test_failover_sandbox_read_file_enforces_path_allowlist() {
     // After failover to RestrictedHostSandbox, file operations must go through
     // the fallback's read_file (which checks the path allowlist), not through
-    // the default trait impl that calls self.exec() and bypasses the check.
+    // the default trait impl that calls self.run_command() and bypasses the check.
     let primary = Arc::new(TestSandbox::new(
         "docker",
         Some("cannot connect to the docker daemon"),

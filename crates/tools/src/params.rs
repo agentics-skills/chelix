@@ -156,17 +156,17 @@ mod tests {
 
     #[test]
     fn string_array_param_trims_values() {
-        let p = json!({"tools": [" exec ", "task_list"]});
+        let p = json!({"tools": [" execute_command ", "task_list"]});
         assert!(matches!(
             string_array_param(&p, "tools"),
-            Ok(values) if values == vec!["exec".to_string(), "task_list".to_string()]
+            Ok(values) if values == vec!["execute_command".to_string(), "task_list".to_string()]
         ));
     }
 
     #[test]
     fn string_array_param_rejects_wrong_types() {
         let not_array = json!({"tools": true});
-        let non_string = json!({"tools": ["exec", 42]});
+        let non_string = json!({"tools": ["execute_command", 42]});
         assert!(string_array_param(&not_array, "tools").is_err());
         assert!(string_array_param(&non_string, "tools").is_err());
     }

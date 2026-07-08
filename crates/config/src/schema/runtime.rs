@@ -249,7 +249,7 @@ pub const KNOWN_CHANNEL_TYPES: &[&str] = &[
 /// Example TOML:
 /// ```toml
 /// [channels.telegram.my-bot.tools.groups.group]
-/// deny = ["exec"]
+/// deny = ["execute_command"]
 ///
 /// [channels.telegram.my-bot.tools.groups.group.by_sender]
 /// "123456" = { allow = ["*"], deny = [] }

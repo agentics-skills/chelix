@@ -168,8 +168,8 @@ pub async fn handle_doctor() -> Result<()> {
     // 7. MCP server health
     sections.push(check_mcp_servers(&config));
 
-    // 8. Remote execution readiness
-    sections.push(check_remote_exec(&config, &data_dir).await);
+    // 8. Remote command execution readiness
+    sections.push(check_remote_command(&config, &data_dir).await);
 
     let (errors, warnings) = print_report(&sections);
 
@@ -690,7 +690,7 @@ fn check_mcp_servers(config: &MoltisConfig) -> Section {
     section
 }
 
-struct RemoteExecInventory {
+struct RemoteCommandInventory {
     managed_key_count: i64,
     encrypted_key_count: i64,
     managed_target_count: i64,
@@ -710,7 +710,7 @@ async fn detect_ssh_version() -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
-async fn read_remote_exec_inventory(data_dir: &Path) -> Result<Option<RemoteExecInventory>> {
+async fn read_remote_command_inventory(data_dir: &Path) -> Result<Option<RemoteCommandInventory>> {
     let db_path = data_dir.join("moltis.db");
     if !db_path.exists() {
         return Ok(None);
@@ -737,7 +737,7 @@ async fn read_remote_exec_inventory(data_dir: &Path) -> Result<Option<RemoteExec
 
     if !ssh_keys_exists && !ssh_targets_exists {
         pool.close().await;
-        return Ok(Some(RemoteExecInventory {
+        return Ok(Some(RemoteCommandInventory {
             managed_key_count: 0,
             encrypted_key_count: 0,
             managed_target_count: 0,
@@ -808,7 +808,7 @@ async fn read_remote_exec_inventory(data_dir: &Path) -> Result<Option<RemoteExec
 
     pool.close().await;
 
-    Ok(Some(RemoteExecInventory {
+    Ok(Some(RemoteCommandInventory {
         managed_key_count,
         encrypted_key_count,
         managed_target_count,
@@ -819,9 +819,9 @@ async fn read_remote_exec_inventory(data_dir: &Path) -> Result<Option<RemoteExec
     }))
 }
 
-async fn check_remote_exec(config: &MoltisConfig, data_dir: &Path) -> Section {
-    let mut section = Section::new("Remote Execution");
-    let exec_host = config.tools.exec.host.trim();
+async fn check_remote_command(config: &MoltisConfig, data_dir: &Path) -> Section {
+    let mut section = Section::new("Remote Command Execution");
+    let command_host = config.tools.execute_command.host.trim();
     let ssh_binary_path = which::which("ssh").ok();
     let ssh_version = if ssh_binary_path.is_some() {
         detect_ssh_version().await
@@ -830,20 +830,20 @@ async fn check_remote_exec(config: &MoltisConfig, data_dir: &Path) -> Section {
     };
     let configured_node = config
         .tools
-        .exec
+        .execute_command
         .node
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    let legacy_target = config
+    let configured_ssh_target = config
         .tools
-        .exec
+        .execute_command
         .ssh_target
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
-    section.push(Status::Ok, match exec_host {
+    section.push(Status::Ok, match command_host {
         "ssh" => "Backend mode: ssh",
         "node" => "Backend mode: node",
         _ => "Backend mode: local",
@@ -864,7 +864,7 @@ async fn check_remote_exec(config: &MoltisConfig, data_dir: &Path) -> Section {
             }
         },
         None => {
-            let status = if exec_host == "ssh" {
+            let status = if command_host == "ssh" {
                 Status::Fail
             } else {
                 Status::Warn
@@ -876,7 +876,7 @@ async fn check_remote_exec(config: &MoltisConfig, data_dir: &Path) -> Section {
         },
     }
 
-    let inventory = match read_remote_exec_inventory(data_dir).await {
+    let inventory = match read_remote_command_inventory(data_dir).await {
         Ok(inventory) => inventory,
         Err(error) => {
             section.push(
@@ -916,13 +916,15 @@ async fn check_remote_exec(config: &MoltisConfig, data_dir: &Path) -> Section {
             );
         }
 
-        if exec_host == "ssh" && legacy_target.is_none() && inventory.default_target_label.is_none()
+        if command_host == "ssh"
+            && configured_ssh_target.is_none()
+            && inventory.default_target_label.is_none()
         {
             section.push(
                 Status::Fail,
-                "SSH backend is active, but there is no default managed target and no legacy ssh_target configured".to_string(),
+                "SSH backend is active, but there is no default managed target and no tools.execute_command.ssh_target configured".to_string(),
             );
-        } else if exec_host == "ssh"
+        } else if command_host == "ssh"
             && inventory.default_target_label.is_some()
             && !inventory.default_target_is_pinned
         {
@@ -938,8 +940,8 @@ async fn check_remote_exec(config: &MoltisConfig, data_dir: &Path) -> Section {
         );
     }
 
-    if let Some(target) = legacy_target {
-        let status = if exec_host == "ssh" {
+    if let Some(target) = configured_ssh_target {
+        let status = if command_host == "ssh" {
             Status::Warn
         } else {
             Status::Info
@@ -947,12 +949,12 @@ async fn check_remote_exec(config: &MoltisConfig, data_dir: &Path) -> Section {
         section.push(
             status,
             format!(
-                "Legacy ssh_target is configured as '{target}', move it into Settings → SSH if you want named targets, host pinning, and managed keys"
+                "tools.execute_command.ssh_target is configured as '{target}', move it into Settings → SSH if you want named targets, host pinning, and managed keys"
             ),
         );
     }
 
-    match exec_host {
+    match command_host {
         "node" => {
             if let Some(node) = configured_node {
                 section.push(
@@ -962,7 +964,7 @@ async fn check_remote_exec(config: &MoltisConfig, data_dir: &Path) -> Section {
             } else {
                 section.push(
                     Status::Warn,
-                    "Node backend is active, but tools.exec.node is not set. Session picks or runtime routing will decide.".to_string(),
+                    "Node backend is active, but tools.execute_command.node is not set. Session picks or runtime routing will decide.".to_string(),
                 );
             }
             section.push(
@@ -974,16 +976,16 @@ async fn check_remote_exec(config: &MoltisConfig, data_dir: &Path) -> Section {
             if configured_node.is_some() {
                 section.push(
                     Status::Info,
-                    "tools.exec.node is set but ignored while the SSH backend is active"
+                    "tools.execute_command.node is set but ignored while the SSH backend is active"
                         .to_string(),
                 );
             }
         },
         _ => {
-            if legacy_target.is_some() || configured_node.is_some() {
+            if configured_ssh_target.is_some() || configured_node.is_some() {
                 section.push(
                     Status::Info,
-                    "Remote targets are configured, but local execution remains the default until you switch tools.exec.host or pick a route in chat".to_string(),
+                    "Remote targets are configured, but local execution remains the default until you switch tools.execute_command.host or pick a route in chat".to_string(),
                 );
             }
         },

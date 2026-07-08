@@ -8,8 +8,8 @@
 use {
     super::*,
     crate::{
-        approval::{ApprovalDecision, ApprovalManager},
-        exec::{ApprovalBroadcaster, ExecOpts, ExecResult},
+        approval::{ApprovalBroadcaster, ApprovalDecision, ApprovalManager},
+        command::{CommandOptions, CommandOutput},
         sandbox::{Sandbox, SandboxConfig, SandboxId, SandboxRouter, types::BuildImageResult},
     },
     async_trait::async_trait,
@@ -49,41 +49,41 @@ impl ApprovalBroadcaster for TestBroadcaster {
     }
 }
 
-struct ConcurrentExecProbeSandbox {
-    active_execs: AtomicUsize,
-    max_active_execs: AtomicUsize,
-    exec_calls: AtomicUsize,
-    first_exec_started: tokio::sync::Notify,
+struct ConcurrentCommandProbeSandbox {
+    active_commands: AtomicUsize,
+    max_active_commands: AtomicUsize,
+    command_calls: AtomicUsize,
+    first_command_started: tokio::sync::Notify,
 }
 
-impl ConcurrentExecProbeSandbox {
+impl ConcurrentCommandProbeSandbox {
     fn new() -> Arc<Self> {
         Arc::new(Self {
-            active_execs: AtomicUsize::new(0),
-            max_active_execs: AtomicUsize::new(0),
-            exec_calls: AtomicUsize::new(0),
-            first_exec_started: tokio::sync::Notify::new(),
+            active_commands: AtomicUsize::new(0),
+            max_active_commands: AtomicUsize::new(0),
+            command_calls: AtomicUsize::new(0),
+            first_command_started: tokio::sync::Notify::new(),
         })
     }
 
-    async fn wait_for_first_exec(&self) {
-        if self.exec_calls.load(Ordering::SeqCst) > 0 {
+    async fn wait_for_first_command(&self) {
+        if self.command_calls.load(Ordering::SeqCst) > 0 {
             return;
         }
-        self.first_exec_started.notified().await;
+        self.first_command_started.notified().await;
     }
 
-    fn max_active_execs(&self) -> usize {
-        self.max_active_execs.load(Ordering::SeqCst)
+    fn max_active_commands(&self) -> usize {
+        self.max_active_commands.load(Ordering::SeqCst)
     }
 
-    fn exec_calls(&self) -> usize {
-        self.exec_calls.load(Ordering::SeqCst)
+    fn command_calls(&self) -> usize {
+        self.command_calls.load(Ordering::SeqCst)
     }
 }
 
 #[async_trait]
-impl Sandbox for ConcurrentExecProbeSandbox {
+impl Sandbox for ConcurrentCommandProbeSandbox {
     fn backend_name(&self) -> &'static str {
         "probe"
     }
@@ -96,23 +96,23 @@ impl Sandbox for ConcurrentExecProbeSandbox {
         Ok(())
     }
 
-    async fn exec(
+    async fn run_command(
         &self,
         _id: &SandboxId,
         _command: &str,
-        _opts: &ExecOpts,
-    ) -> crate::Result<ExecResult> {
-        let call_index = self.exec_calls.fetch_add(1, Ordering::SeqCst);
+        _opts: &CommandOptions,
+    ) -> crate::Result<CommandOutput> {
+        let call_index = self.command_calls.fetch_add(1, Ordering::SeqCst);
         if call_index == 0 {
-            self.first_exec_started.notify_waiters();
+            self.first_command_started.notify_waiters();
         }
 
-        let active = self.active_execs.fetch_add(1, Ordering::SeqCst) + 1;
-        self.max_active_execs.fetch_max(active, Ordering::SeqCst);
+        let active = self.active_commands.fetch_add(1, Ordering::SeqCst) + 1;
+        self.max_active_commands.fetch_max(active, Ordering::SeqCst);
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        self.active_execs.fetch_sub(1, Ordering::SeqCst);
+        self.active_commands.fetch_sub(1, Ordering::SeqCst);
 
-        Ok(ExecResult {
+        Ok(CommandOutput {
             stdout: String::new(),
             stderr: String::new(),
             exit_code: 0,
@@ -605,7 +605,7 @@ async fn write_new_file_skips_checkpoint() {
 async fn sandbox_read_via_registry_round_trips_through_bridge() {
     use {
         crate::{
-            exec::ExecResult,
+            command::CommandOutput,
             fs::sandbox_bridge::test_helpers::MockSandbox,
             sandbox::{Sandbox, SandboxConfig, SandboxRouter},
         },
@@ -615,7 +615,7 @@ async fn sandbox_read_via_registry_round_trips_through_bridge() {
 
     // Pre-program a successful base64 response for the sandbox read.
     let content = b"hello from inside the sandbox";
-    let mock = MockSandbox::new(vec![ExecResult {
+    let mock = MockSandbox::new(vec![CommandOutput {
         stdout: BASE64.encode(content),
         stderr: String::new(),
         exit_code: 0,
@@ -750,14 +750,14 @@ async fn adaptive_read_cap_shrinks_output_for_small_context_window() {
 async fn sandbox_grep_via_registry_dispatches_through_bridge() {
     use {
         crate::{
-            exec::ExecResult,
+            command::CommandOutput,
             fs::sandbox_bridge::test_helpers::MockSandbox,
             sandbox::{Sandbox, SandboxConfig, SandboxRouter},
         },
         std::sync::Arc,
     };
 
-    let mock = MockSandbox::new(vec![ExecResult {
+    let mock = MockSandbox::new(vec![CommandOutput {
         stdout: "/data/lib.rs:3:fn alpha()\n/data/lib.rs:9:fn beta()\n".to_string(),
         stderr: String::new(),
         exit_code: 0,
@@ -801,14 +801,14 @@ async fn sandbox_grep_via_registry_dispatches_through_bridge() {
 async fn sandbox_grep_type_filter_expands_multi_extension_languages() {
     use {
         crate::{
-            exec::ExecResult,
+            command::CommandOutput,
             fs::sandbox_bridge::test_helpers::MockSandbox,
             sandbox::{Sandbox, SandboxConfig, SandboxRouter},
         },
         std::sync::Arc,
     };
 
-    let mock = MockSandbox::new(vec![ExecResult {
+    let mock = MockSandbox::new(vec![CommandOutput {
         stdout: "/data/app.ts:3:const x = 1\n".to_string(),
         stderr: String::new(),
         exit_code: 0,
@@ -847,7 +847,7 @@ async fn sandbox_grep_type_filter_expands_multi_extension_languages() {
 async fn sandbox_write_via_registry_sends_base64_to_bridge() {
     use {
         crate::{
-            exec::ExecResult,
+            command::CommandOutput,
             fs::sandbox_bridge::test_helpers::MockSandbox,
             sandbox::{Sandbox, SandboxConfig, SandboxRouter},
         },
@@ -855,7 +855,7 @@ async fn sandbox_write_via_registry_sends_base64_to_bridge() {
         std::sync::Arc,
     };
 
-    let mock = MockSandbox::new(vec![ExecResult {
+    let mock = MockSandbox::new(vec![CommandOutput {
         stdout: String::new(),
         stderr: String::new(),
         exit_code: 0,
@@ -891,7 +891,7 @@ async fn sandbox_write_via_registry_sends_base64_to_bridge() {
 
 #[tokio::test]
 async fn sandbox_write_serializes_same_file_mutations_via_registry() {
-    let probe = ConcurrentExecProbeSandbox::new();
+    let probe = ConcurrentCommandProbeSandbox::new();
     let backend: Arc<dyn Sandbox> = probe.clone();
     let router = Arc::new(SandboxRouter::with_backend(
         SandboxConfig::default(),
@@ -919,7 +919,7 @@ async fn sandbox_write_serializes_same_file_mutations_via_registry() {
         })
     };
 
-    probe.wait_for_first_exec().await;
+    probe.wait_for_first_command().await;
 
     let second = {
         let write = Arc::clone(&write);
@@ -940,11 +940,11 @@ async fn sandbox_write_serializes_same_file_mutations_via_registry() {
 
     assert_eq!(first["bytes_written"], 5);
     assert_eq!(second["bytes_written"], 6);
-    assert_eq!(probe.exec_calls(), 2);
+    assert_eq!(probe.command_calls(), 2);
     assert_eq!(
-        probe.max_active_execs(),
+        probe.max_active_commands(),
         1,
-        "same-path sandbox mutations should not overlap at the backend exec layer"
+        "same-path sandbox mutations should not overlap at the backend command layer"
     );
 }
 
@@ -952,7 +952,7 @@ async fn sandbox_write_serializes_same_file_mutations_via_registry() {
 async fn sandbox_read_denied_by_path_policy_before_bridge() {
     use {
         crate::{
-            exec::ExecResult,
+            command::CommandOutput,
             fs::sandbox_bridge::test_helpers::MockSandbox,
             sandbox::{Sandbox, SandboxConfig, SandboxRouter},
         },
@@ -960,7 +960,7 @@ async fn sandbox_read_denied_by_path_policy_before_bridge() {
     };
 
     let policy = FsPathPolicy::new(&[], &["/data/secrets/**".to_string()]).unwrap();
-    let mock = MockSandbox::new(vec![ExecResult {
+    let mock = MockSandbox::new(vec![CommandOutput {
         stdout: String::new(),
         stderr: String::new(),
         exit_code: 0,
@@ -996,7 +996,7 @@ async fn sandbox_read_denied_by_path_policy_before_bridge() {
 async fn sandbox_write_denied_by_path_policy_before_bridge() {
     use {
         crate::{
-            exec::ExecResult,
+            command::CommandOutput,
             fs::sandbox_bridge::test_helpers::MockSandbox,
             sandbox::{Sandbox, SandboxConfig, SandboxRouter},
         },
@@ -1004,7 +1004,7 @@ async fn sandbox_write_denied_by_path_policy_before_bridge() {
     };
 
     let policy = FsPathPolicy::new(&[], &["/data/secrets/**".to_string()]).unwrap();
-    let mock = MockSandbox::new(vec![ExecResult {
+    let mock = MockSandbox::new(vec![CommandOutput {
         stdout: String::new(),
         stderr: String::new(),
         exit_code: 0,
@@ -1041,7 +1041,7 @@ async fn sandbox_write_denied_by_path_policy_before_bridge() {
 async fn sandbox_write_requires_approval_before_bridge() {
     use {
         crate::{
-            exec::ExecResult,
+            command::CommandOutput,
             fs::sandbox_bridge::test_helpers::MockSandbox,
             sandbox::{Sandbox, SandboxConfig, SandboxRouter},
         },
@@ -1049,7 +1049,7 @@ async fn sandbox_write_requires_approval_before_bridge() {
         std::sync::Arc,
     };
 
-    let mock = MockSandbox::new(vec![ExecResult {
+    let mock = MockSandbox::new(vec![CommandOutput {
         stdout: String::new(),
         stderr: String::new(),
         exit_code: 0,

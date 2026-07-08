@@ -122,7 +122,7 @@ fn apply_env_overrides_deep_nesting() {
         "60".into(),
     )];
     let config = apply_env_overrides_with(MoltisConfig::default(), vars.into_iter());
-    assert_eq!(config.tools.exec.default_timeout_secs, 60);
+    assert_eq!(config.tools.execute_command.default_timeout_secs, 60);
 }
 
 #[test]
@@ -1067,14 +1067,14 @@ fn apply_env_overrides_vercel_token_alias() {
     assert_eq!(
         config
             .tools
-            .exec
+            .execute_command
             .sandbox
             .vercel_token
             .as_ref()
             .map(ExposeSecret::expose_secret)
             .map(String::as_str),
         Some("ver_test_123"),
-        "VERCEL_TOKEN env var should map to tools.exec.sandbox.vercel_token"
+        "VERCEL_TOKEN env var should map to tools.execute_command.sandbox.vercel_token"
     );
 }
 
@@ -1085,14 +1085,14 @@ fn apply_env_overrides_daytona_api_key_alias() {
     assert_eq!(
         config
             .tools
-            .exec
+            .execute_command
             .sandbox
             .daytona_api_key
             .as_ref()
             .map(ExposeSecret::expose_secret)
             .map(String::as_str),
         Some("dyt_test_456"),
-        "DAYTONA_API_KEY env var should map to tools.exec.sandbox.daytona_api_key"
+        "DAYTONA_API_KEY env var should map to tools.execute_command.sandbox.daytona_api_key"
     );
 }
 
@@ -1100,12 +1100,12 @@ fn apply_env_overrides_daytona_api_key_alias() {
 fn apply_env_overrides_alias_does_not_overwrite_explicit() {
     let vars = vec![("VERCEL_TOKEN".into(), "from_env".into())];
     let mut config = MoltisConfig::default();
-    config.tools.exec.sandbox.vercel_token = Some(Secret::new("from_config".into()));
+    config.tools.execute_command.sandbox.vercel_token = Some(Secret::new("from_config".into()));
     let config = apply_env_overrides_with(config, vars.into_iter());
     assert_eq!(
         config
             .tools
-            .exec
+            .execute_command
             .sandbox
             .vercel_token
             .as_ref()
@@ -1125,6 +1125,6 @@ fn apply_env_overrides_without_aliases_keeps_third_party_env_out() {
     ];
     let config = apply_env_overrides_without_aliases(MoltisConfig::default(), vars.into_iter());
     assert!(config.auth.disabled);
-    assert!(config.tools.exec.sandbox.vercel_token.is_none());
-    assert!(config.tools.exec.sandbox.daytona_api_key.is_none());
+    assert!(config.tools.execute_command.sandbox.vercel_token.is_none());
+    assert!(config.tools.execute_command.sandbox.daytona_api_key.is_none());
 }

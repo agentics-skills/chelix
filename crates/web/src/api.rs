@@ -90,22 +90,23 @@ struct RemoteBackendConfigUpdate {
 }
 
 fn shared_home_config_payload(config: &moltis_config::MoltisConfig) -> serde_json::Value {
-    let runtime_cfg = moltis_tools::sandbox::SandboxConfig::from(&config.tools.exec.sandbox);
-    let mode = match config.tools.exec.sandbox.home_persistence {
+    let runtime_cfg =
+        moltis_tools::sandbox::SandboxConfig::from(&config.tools.execute_command.sandbox);
+    let mode = match config.tools.execute_command.sandbox.home_persistence {
         moltis_config::schema::HomePersistenceConfig::Off => "off",
         moltis_config::schema::HomePersistenceConfig::Session => "session",
         moltis_config::schema::HomePersistenceConfig::Shared => "shared",
     };
     serde_json::json!({
         "enabled": matches!(
-            config.tools.exec.sandbox.home_persistence,
+            config.tools.execute_command.sandbox.home_persistence,
             moltis_config::schema::HomePersistenceConfig::Shared
         ),
         "mode": mode,
         "path": moltis_tools::sandbox::shared_home_dir_path(&runtime_cfg)
             .display()
             .to_string(),
-        "configured_path": config.tools.exec.sandbox.shared_home_dir.clone(),
+        "configured_path": config.tools.execute_command.sandbox.shared_home_dir.clone(),
     })
 }
 
@@ -723,7 +724,7 @@ pub async fn api_skills_search_handler(
 pub async fn api_cached_images_handler() -> impl IntoResponse {
     let config = moltis_config::discover_and_load();
     let builder = moltis_tools::image_cache::DockerImageBuilder::for_backend(
-        &config.tools.exec.sandbox.backend,
+        &config.tools.execute_command.sandbox.backend,
     );
     let (cached, sandbox) = tokio::join!(
         builder.list_cached(),
@@ -773,7 +774,7 @@ pub async fn api_delete_cached_image_handler(Path(tag): Path<String>) -> impl In
     } else {
         let cfg = moltis_config::discover_and_load();
         let builder = moltis_tools::image_cache::DockerImageBuilder::for_backend(
-            &cfg.tools.exec.sandbox.backend,
+            &cfg.tools.execute_command.sandbox.backend,
         );
         let full_tag = if tag.starts_with("moltis-cache/") {
             tag
@@ -795,7 +796,7 @@ pub async fn api_delete_cached_image_handler(Path(tag): Path<String>) -> impl In
 pub async fn api_prune_cached_images_handler() -> impl IntoResponse {
     let config = moltis_config::discover_and_load();
     let builder = moltis_tools::image_cache::DockerImageBuilder::for_backend(
-        &config.tools.exec.sandbox.backend,
+        &config.tools.execute_command.sandbox.backend,
     );
     let (tool_result, sandbox_result) = tokio::join!(
         builder.prune_all(),
@@ -854,7 +855,7 @@ pub async fn api_check_packages_handler(Json(body): Json<serde_json::Value>) -> 
 
     let config = moltis_config::discover_and_load();
     let cli = moltis_tools::image_cache::DockerImageBuilder::for_backend(
-        &config.tools.exec.sandbox.backend,
+        &config.tools.execute_command.sandbox.backend,
     )
     .cli_name();
     let output = tokio::process::Command::new(cli)
@@ -927,15 +928,15 @@ pub async fn api_set_shared_home_handler(
         .map(ToOwned::to_owned);
 
     let update_result = moltis_config::update_config(|cfg| {
-        cfg.tools.exec.sandbox.shared_home_dir = path.clone();
+        cfg.tools.execute_command.sandbox.shared_home_dir = path.clone();
         if body.enabled {
-            cfg.tools.exec.sandbox.home_persistence =
+            cfg.tools.execute_command.sandbox.home_persistence =
                 moltis_config::schema::HomePersistenceConfig::Shared;
         } else if matches!(
-            cfg.tools.exec.sandbox.home_persistence,
+            cfg.tools.execute_command.sandbox.home_persistence,
             moltis_config::schema::HomePersistenceConfig::Shared
         ) {
-            cfg.tools.exec.sandbox.home_persistence =
+            cfg.tools.execute_command.sandbox.home_persistence =
                 moltis_config::schema::HomePersistenceConfig::Off;
         }
     });
@@ -965,7 +966,7 @@ pub async fn api_set_shared_home_handler(
 /// Used by the UI to populate backend selectors.
 pub async fn api_available_backends_handler() -> impl IntoResponse {
     let config = moltis_config::discover_and_load();
-    let sb = &config.tools.exec.sandbox;
+    let sb = &config.tools.execute_command.sandbox;
 
     let mut backends: Vec<serde_json::Value> = Vec::new();
 
@@ -1045,7 +1046,7 @@ pub async fn api_available_backends_handler() -> impl IntoResponse {
 // ── Remote sandbox backend configuration ──────────────────────────────────────
 
 fn remote_backends_payload(config: &moltis_config::MoltisConfig) -> serde_json::Value {
-    let sb = &config.tools.exec.sandbox;
+    let sb = &config.tools.execute_command.sandbox;
     let vercel_configured = configured_secret(&sb.vercel_token);
     let vercel_from_env =
         std::env::var("VERCEL_TOKEN").is_ok() || std::env::var("VERCEL_OIDC_TOKEN").is_ok();
@@ -1080,7 +1081,7 @@ pub async fn api_set_remote_backend_handler(
     Json(body): Json<RemoteBackendUpdateRequest>,
 ) -> impl IntoResponse {
     let update_result = moltis_config::update_config(|cfg| {
-        let sb = &mut cfg.tools.exec.sandbox;
+        let sb = &mut cfg.tools.execute_command.sandbox;
         // Allow changing the default backend (auto/docker/podman/apple-container/vercel/daytona).
         if let Some(v) = body.config.backend.as_deref() {
             sb.backend = v.to_string();
@@ -1218,7 +1219,7 @@ WORKDIR /home/sandbox\n"
 
     let config = moltis_config::discover_and_load();
     let builder = moltis_tools::image_cache::DockerImageBuilder::for_backend(
-        &config.tools.exec.sandbox.backend,
+        &config.tools.execute_command.sandbox.backend,
     );
     tracing::debug!(
         name,

@@ -292,7 +292,7 @@ mod tests {
     fn to_openai_assistant_with_tools() {
         let msg = ChatMessage::assistant_with_tools(Some("thinking".into()), vec![ToolCall {
             id: "call_1".into(),
-            name: "exec".into(),
+            name: "execute_command".into(),
             arguments: serde_json::json!({"cmd": "ls"}),
             argument_diagnostic: None,
             metadata: None,
@@ -303,7 +303,7 @@ mod tests {
         let tcs = val["tool_calls"].as_array().unwrap();
         assert_eq!(tcs.len(), 1);
         assert_eq!(tcs[0]["id"], "call_1");
-        assert_eq!(tcs[0]["function"]["name"], "exec");
+        assert_eq!(tcs[0]["function"]["name"], "execute_command");
     }
 
     #[test]
@@ -431,7 +431,7 @@ mod tests {
                 "id": "call_1",
                 "type": "function",
                 "function": {
-                    "name": "exec",
+                    "name": "execute_command",
                     "arguments": "{\"cmd\":\"ls\"}"
                 }
             }]
@@ -446,7 +446,7 @@ mod tests {
             } => {
                 assert_eq!(content.as_deref(), Some("thinking"));
                 assert_eq!(tool_calls.len(), 1);
-                assert_eq!(tool_calls[0].name, "exec");
+                assert_eq!(tool_calls[0].name, "execute_command");
                 assert_eq!(tool_calls[0].arguments["cmd"], "ls");
                 assert!(reasoning.is_none());
             },
@@ -493,7 +493,7 @@ mod tests {
                 "content": null,
                 "tool_calls": [{
                     "id": "call_1",
-                    "function": {"name": "exec", "arguments": "{}"}
+                    "function": {"name": "execute_command", "arguments": "{}"}
                 }]
             }),
             serde_json::json!({
@@ -529,7 +529,7 @@ mod tests {
                 content: None,
                 tool_calls: vec![ToolCall {
                     id: "call_1".to_string(),
-                    name: "exec".to_string(),
+                    name: "execute_command".to_string(),
                     arguments: serde_json::json!({}),
                     argument_diagnostic: None,
                     metadata: None,
@@ -611,13 +611,13 @@ mod tests {
                 "content": null,
                 "tool_calls": [{
                     "id": "call_1",
-                    "function": {"name": "exec", "arguments": "{\"command\":\"ls\"}"}
+                    "function": {"name": "execute_command", "arguments": "{\"command\":\"ls\"}"}
                 }]
             }),
             serde_json::json!({
                 "role": "tool_result",
                 "tool_call_id": "call_1",
-                "tool_name": "exec",
+                "tool_name": "execute_command",
                 "success": true,
                 "result": {"stdout": "file.txt", "exit_code": 0}
             }),
@@ -639,7 +639,7 @@ mod tests {
             serde_json::json!({
                 "role": "tool_result",
                 "tool_call_id": "call_orphan",
-                "tool_name": "exec",
+                "tool_name": "execute_command",
                 "success": true,
                 "result": {"stdout": "file.txt", "exit_code": 0}
             }),
@@ -698,13 +698,13 @@ mod tests {
                 "content": null,
                 "tool_calls": [{
                     "id": "call_1",
-                    "function": {"name": "exec", "arguments": "{\"command\":\"ls\"}"}
+                    "function": {"name": "execute_command", "arguments": "{\"command\":\"ls\"}"}
                 }]
             }),
             serde_json::json!({
                 "role": "tool_result",
                 "tool_call_id": "call_1",
-                "tool_name": "exec",
+                "tool_name": "execute_command",
                 "success": true,
                 "result": {"stdout": "file.txt", "exit_code": 0}
             }),
@@ -731,13 +731,13 @@ mod tests {
                 "content": "",
                 "tool_calls": [{
                     "id": "call_1",
-                    "function": {"name": "exec", "arguments": "{\"command\":\"ls\"}"}
+                    "function": {"name": "execute_command", "arguments": "{\"command\":\"ls\"}"}
                 }]
             }),
             serde_json::json!({
                 "role": "tool_result",
                 "tool_call_id": "call_1",
-                "tool_name": "exec",
+                "tool_name": "execute_command",
                 "success": true,
                 "result": {"stdout": "file.txt"},
                 "reasoning": "I should inspect the directory first."
@@ -762,13 +762,13 @@ mod tests {
                 "content": null,
                 "tool_calls": [{
                     "id": "call_2",
-                    "function": {"name": "exec", "arguments": "{\"command\":\"bad_cmd\"}"}
+                    "function": {"name": "execute_command", "arguments": "{\"command\":\"bad_cmd\"}"}
                 }]
             }),
             serde_json::json!({
                 "role": "tool_result",
                 "tool_call_id": "call_2",
-                "tool_name": "exec",
+                "tool_name": "execute_command",
                 "success": false,
                 "error": "command not found"
             }),
@@ -975,7 +975,7 @@ mod tests {
         meta.insert("thought_signature".into(), "sig123".into());
         let msg = ChatMessage::assistant_with_tools(None, vec![ToolCall {
             id: "call_1".into(),
-            name: "exec".into(),
+            name: "execute_command".into(),
             arguments: serde_json::json!({"cmd": "ls"}),
             argument_diagnostic: None,
             metadata: Some(meta),
@@ -989,7 +989,7 @@ mod tests {
         // Without metadata: no extra fields.
         let msg2 = ChatMessage::assistant_with_tools(None, vec![ToolCall {
             id: "call_2".into(),
-            name: "exec".into(),
+            name: "execute_command".into(),
             arguments: serde_json::json!({}),
             argument_diagnostic: None,
             metadata: None,
@@ -1007,7 +1007,7 @@ mod tests {
         let with = vec![serde_json::json!({
             "role": "assistant", "content": null,
             "tool_calls": [{"id": "c1", "thought_signature": "sig_abc",
-                            "function": {"name": "exec", "arguments": "{}"}}]
+                            "function": {"name": "execute_command", "arguments": "{}"}}]
         })];
         let msgs = values_to_chat_messages(&with);
         match &msgs[0] {
@@ -1021,7 +1021,7 @@ mod tests {
         let persisted = vec![serde_json::json!({
             "role": "assistant", "content": null,
             "tool_calls": [{"id": "c1", "metadata": {"thought_signature": "sig_persisted"},
-                            "function": {"name": "exec", "arguments": "{}"}}]
+                            "function": {"name": "execute_command", "arguments": "{}"}}]
         })];
         match &values_to_chat_messages(&persisted)[0] {
             ChatMessage::Assistant { tool_calls, .. } => {
@@ -1033,7 +1033,7 @@ mod tests {
         // Absent: metadata is None.
         let without = vec![serde_json::json!({
             "role": "assistant",
-            "tool_calls": [{"id": "c1", "function": {"name": "exec", "arguments": "{}"}}]
+            "tool_calls": [{"id": "c1", "function": {"name": "execute_command", "arguments": "{}"}}]
         })];
         match &values_to_chat_messages(&without)[0] {
             ChatMessage::Assistant { tool_calls, .. } => assert!(tool_calls[0].metadata.is_none()),
@@ -1049,7 +1049,7 @@ mod tests {
             content: None,
             tool_calls: vec![ToolCall {
                 id: "call_1".into(),
-                name: "exec".into(),
+                name: "execute_command".into(),
                 arguments: serde_json::json!({}),
                 argument_diagnostic: None,
                 metadata: Some(meta),
@@ -1070,7 +1070,7 @@ mod tests {
     fn extract_tool_call_metadata_filters_unknown_keys() {
         let tc = serde_json::json!({
             "id": "call_1", "thought_signature": "sig",
-            "unknown_field": "ignored", "function": {"name": "exec"}
+            "unknown_field": "ignored", "function": {"name": "execute_command"}
         });
         let meta = extract_tool_call_metadata(&tc).expect("should extract");
         assert_eq!(meta.len(), 1);
@@ -1082,7 +1082,7 @@ mod tests {
         let tc = serde_json::json!({
             "id": "call_1",
             "extra_content": {"google": {"thought_signature": "sig_google"}},
-            "function": {"name": "exec"}
+            "function": {"name": "execute_command"}
         });
 
         let meta = extract_tool_call_metadata(&tc).expect("should extract");

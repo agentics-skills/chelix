@@ -118,7 +118,7 @@ async fn tick_approval_and_all_events_subscriptions_emit() {
         schema.execute_stream(Request::new("subscription { approvalEvent { data } }"));
     let _ = timeout(Duration::from_millis(20), approval.next()).await;
     tx.send((
-        "exec.approval.requested".to_string(),
+        "command.approval.requested".to_string(),
         json!({ "requestId": "a1" }),
     ))
     .expect("broadcast approval");

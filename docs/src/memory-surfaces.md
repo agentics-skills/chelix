@@ -129,7 +129,7 @@ Sandboxes have two separate persistence surfaces:
 - Workspace mount, this is how commands can read or write Moltis memory files
   when `workspace_mount` is not `none`
 - Sandbox home, this is `/home/sandbox` and is controlled by
-  `tools.exec.sandbox.home_persistence`
+  `tools.execute_command.sandbox.home_persistence`
 
 Those are not the same thing.
 

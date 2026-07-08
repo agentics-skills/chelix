@@ -236,9 +236,9 @@ Telegram supports the standard channel session commands:
 | `/agent` | List or switch chat agents |
 | `/mode` | List or switch temporary session modes |
 | `/model` | List or switch models |
-| `/approvals` | List pending exec approvals for the current session |
-| `/approve N` | Approve the numbered exec request from `/approvals` |
-| `/deny N` | Deny the numbered exec request from `/approvals` |
+| `/approvals` | List pending command approvals for the current session |
+| `/approve N` | Approve the numbered command request from `/approvals` |
+| `/deny N` | Deny the numbered command request from `/approvals` |
 
 `/sessions` is intentionally scoped to the current chat. If you want to bring a
 different existing session into the chat, use `/attach` instead. Reattaching a

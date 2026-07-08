@@ -16,8 +16,8 @@ use {
 };
 
 use crate::{
+    command::{CommandOptions, CommandOutput},
     error::{Error, Result},
-    exec::{ExecOpts, ExecResult},
     sandbox::{
         file_system::SandboxReadResult,
         types::{Sandbox, SandboxConfig, SandboxId},
@@ -197,13 +197,13 @@ impl DaytonaSandbox {
     }
 
     /// Run a command via the toolbox API.
-    async fn run_command(
+    async fn run_toolbox_command(
         &self,
         sandbox_id: &str,
         command: &str,
         cwd: &str,
-        opts: &ExecOpts,
-    ) -> Result<ExecResult> {
+        opts: &CommandOptions,
+    ) -> Result<CommandOutput> {
         // The Daytona toolbox API combines stdout and stderr in the `result`
         // field. To separate them, wrap the command to redirect stderr to a
         // temp file, then read it back in a second call.
@@ -272,7 +272,7 @@ impl DaytonaSandbox {
         stdout.truncate(stdout.floor_char_boundary(opts.max_output_bytes));
         stderr.truncate(stderr.floor_char_boundary(opts.max_output_bytes));
 
-        Ok(ExecResult {
+        Ok(CommandOutput {
             stdout,
             stderr,
             exit_code,
@@ -434,7 +434,12 @@ impl Sandbox for DaytonaSandbox {
         Ok(())
     }
 
-    async fn exec(&self, id: &SandboxId, command: &str, opts: &ExecOpts) -> Result<ExecResult> {
+    async fn run_command(
+        &self,
+        id: &SandboxId,
+        command: &str,
+        opts: &CommandOptions,
+    ) -> Result<CommandOutput> {
         let (sandbox_id, workspace_dir) = self
             .session_state(id)
             .await
@@ -446,7 +451,7 @@ impl Sandbox for DaytonaSandbox {
             &workspace_dir,
         );
 
-        self.run_command(&sandbox_id, command, &cwd, opts).await
+        self.run_toolbox_command(&sandbox_id, command, &cwd, opts).await
     }
 
     async fn read_file(
@@ -487,12 +492,12 @@ impl Sandbox for DaytonaSandbox {
         if let Some(parent) = std::path::Path::new(file_path).parent()
             && let Some(parent_str) = parent.to_str()
         {
-            let mkdir_opts = ExecOpts {
+            let mkdir_opts = CommandOptions {
                 timeout: Duration::from_secs(10),
                 ..Default::default()
             };
             let _ = self
-                .run_command(
+                .run_toolbox_command(
                     &sandbox_id,
                     &format!("mkdir -p '{}'", parent_str.replace('\'', "'\\''")),
                     "/",
@@ -574,7 +579,7 @@ mod tests {
     }
 
     #[test]
-    fn test_env_object_includes_exec_env() {
+    fn test_env_object_includes_command_env() {
         let env = DaytonaSandbox::env_object(&[
             ("API_TOKEN".to_string(), "secret-value".to_string()),
             ("SESSION_ID".to_string(), "abc123".to_string()),
@@ -608,8 +613,8 @@ mod tests {
             scope: crate::sandbox::types::SandboxScope::Session,
             key: "test".into(),
         };
-        let opts = ExecOpts::default();
-        let result = sandbox.exec(&id, "echo hello", &opts).await;
+        let opts = CommandOptions::default();
+        let result = sandbox.run_command(&id, "echo hello", &opts).await;
         assert!(result.is_err());
         assert!(
             result

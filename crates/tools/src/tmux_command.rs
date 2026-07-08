@@ -10,6 +10,7 @@ use std::{
 use {
     async_trait::async_trait,
     moltis_agents::tool_registry::AgentTool,
+    secrecy::ExposeSecret,
     serde::{Deserialize, Serialize},
     tokio::sync::{RwLock, Semaphore},
     tracing::{debug, info},
@@ -17,8 +18,12 @@ use {
 
 use crate::{
     Result,
+    approval::{ApprovalAction, ApprovalDecision, ApprovalManager},
+    command::{
+        CommandCompletionEvent, CommandCompletionFn, CommandNodeProvider, CommandOptions,
+        CommandOutput, EnvVarProvider, redact_command_output, run_shell_command,
+    },
     error::Error,
-    exec::{ExecOpts, ExecResult},
     params::without_null_params,
     sandbox::SandboxRouter,
 };
@@ -31,8 +36,9 @@ const DEFAULT_TMUX_COLS: u16 = 200;
 const DEFAULT_TMUX_ROWS: u16 = 50;
 const SANDBOX_WORKDIR: &str = "/home/sandbox";
 const FIELD_SEP: &str = "|moltis-tmux-field|";
-const START_PREFIX: &str = "__MOLTIS_EXEC_START__";
-const DONE_PREFIX: &str = "__MOLTIS_EXEC_DONE__";
+const START_PREFIX: &str = "__MOLTIS_COMMAND_START__";
+const DONE_PREFIX: &str = "__MOLTIS_COMMAND_DONE__";
+const MAX_SANDBOX_RECOVERY_RETRIES: usize = 1;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,6 +56,8 @@ struct ExecuteCommandParams {
     timeout: Option<u64>,
     #[serde(default)]
     terminal_id: Option<String>,
+    #[serde(default)]
+    node: Option<String>,
     #[serde(rename = "_session_key")]
     #[serde(default)]
     _session_key: Option<String>,
@@ -120,6 +128,7 @@ struct ManagedRun {
     marker_enabled: bool,
     completed: bool,
     exit_code: Option<i32>,
+    redaction_env: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone)]
@@ -170,6 +179,7 @@ impl TmuxTerminalManager {
         &self,
         session_key: &str,
         params: ExecuteCommandParams,
+        env: Vec<(String, String)>,
     ) -> Result<ExecuteCommandResponse> {
         let command = params.command.trim();
         if command.is_empty() {
@@ -177,7 +187,7 @@ impl TmuxTerminalManager {
         }
 
         if params.destructive_flag.unwrap_or(false) {
-            debug!("execute_command destructive_flag is accepted for compatibility");
+            debug!("execute_command destructive_flag provided for approval UI context");
         }
 
         let timeout_millis = params
@@ -220,6 +230,7 @@ impl TmuxTerminalManager {
             params.custom_cwd.as_deref(),
             &run_id,
             marker_enabled,
+            &env,
         );
 
         self.paste_text(&terminal, &paste_text).await?;
@@ -232,6 +243,7 @@ impl TmuxTerminalManager {
             marker_enabled,
             completed: false,
             exit_code: None,
+            redaction_env: env.clone(),
         });
         self.store_terminal(updated.clone()).await;
 
@@ -274,6 +286,7 @@ impl TmuxTerminalManager {
         let timed_out = !last_capture.completed;
         let mut output = last_capture.output;
         truncate_output_for_display(&mut output, self.max_output_bytes);
+        redact_text_output(&mut output, &env);
         let terminal_id = updated.id.clone();
         let message = if timed_out {
             format!(
@@ -320,12 +333,18 @@ impl TmuxTerminalManager {
                 .await;
         }
         let running = !capture.completed && terminal.is_running();
+        let redaction_env = terminal
+            .last_run
+            .as_ref()
+            .map(|run| run.redaction_env.as_slice())
+            .unwrap_or(&[]);
         let mut output = if terminal.last_run.is_some() {
             capture.output
         } else {
             raw
         };
         truncate_output_for_display(&mut output, self.max_output_bytes);
+        redact_text_output(&mut output, redaction_env);
 
         Ok(ReadTerminalOutputResponse {
             terminal_id: terminal.id,
@@ -695,7 +714,7 @@ impl TmuxTerminalManager {
         session_key: &str,
         tmux_args: &[String],
         timeout: Duration,
-    ) -> Result<ExecResult> {
+    ) -> Result<CommandOutput> {
         let backend = self.sandbox_router.resolve_backend(session_key).await;
         if !backend.provides_fs_isolation() || !self.sandbox_router.is_sandboxed(session_key).await
         {
@@ -704,25 +723,18 @@ impl TmuxTerminalManager {
             ));
         }
 
-        let id = self.sandbox_router.sandbox_id_for(session_key);
-        let image = self
-            .sandbox_router
-            .resolve_image_for_backend_nowait(session_key, None, backend.backend_name())
-            .await;
-        backend.ensure_ready(&id, Some(&image)).await?;
-
         let mut words = Vec::with_capacity(tmux_args.len() + 1);
         words.push("tmux".to_string());
         words.extend(tmux_args.iter().cloned());
         let command = shell_words::join(words);
-        let opts = ExecOpts {
+        let opts = CommandOptions {
             timeout,
             max_output_bytes: self.max_output_bytes,
             working_dir: Some(SANDBOX_WORKDIR.into()),
             env: Vec::new(),
         };
         debug!(session = session_key, command, "sandbox tmux command");
-        backend.exec(&id, &command, &opts).await
+        run_sandbox_command_with_recovery(&self.sandbox_router, session_key, &command, &opts).await
     }
 
     async fn store_terminal(&self, terminal: ManagedTerminal) {
@@ -746,14 +758,348 @@ impl TmuxTerminalManager {
     }
 }
 
+async fn run_sandbox_command_with_recovery(
+    router: &SandboxRouter,
+    session_key: &str,
+    command: &str,
+    opts: &CommandOptions,
+) -> Result<CommandOutput> {
+    let (mut backend, mut id) = router.prepare_command_session(session_key).await?;
+    let mut result = backend.run_command(&id, command, opts).await?;
+
+    for retry_idx in 1..=MAX_SANDBOX_RECOVERY_RETRIES {
+        if result.exit_code == 0 || !is_container_not_running_command_error(&result.stderr) {
+            break;
+        }
+
+        tracing::warn!(
+            session = session_key,
+            sandbox_id = %id,
+            command,
+            retry_idx,
+            max_retries = MAX_SANDBOX_RECOVERY_RETRIES,
+            "sandbox command failed because container is unavailable, reinitializing and retrying"
+        );
+        if let Err(error) = backend.cleanup(&id).await {
+            tracing::warn!(
+                session = session_key,
+                sandbox_id = %id,
+                %error,
+                "failed to clean up stale sandbox before retry, continuing"
+            );
+        }
+        router.clear_runtime_state(session_key).await;
+        (backend, id) = router.prepare_command_session(session_key).await?;
+        result = backend.run_command(&id, command, opts).await?;
+    }
+
+    Ok(result)
+}
+
+fn is_container_not_running_command_error(stderr: &str) -> bool {
+    let lower = stderr.to_ascii_lowercase();
+    lower.contains("cannot exec: container is not running")
+        || lower.contains("container is stopped")
+        || (lower.contains("no sandbox client exists") && lower.contains("container is stopped"))
+        || (lower.contains("failed to create process in container")
+            && lower.contains("container")
+            && lower.contains("not running"))
+        || (lower.contains("invalidstate")
+            && lower.contains("container")
+            && lower.contains("is not running"))
+        || (lower.contains("container")
+            && lower.contains("not running")
+            && lower.contains("failed to create process"))
+        || lower.contains("notfound")
+        || (lower.contains("not found") && lower.contains("container"))
+}
+
 pub struct ExecuteCommandTool {
     manager: Arc<TmuxTerminalManager>,
+    default_timeout: Duration,
+    approval_manager: Option<Arc<ApprovalManager>>,
+    broadcaster: Option<Arc<dyn crate::approval::ApprovalBroadcaster>>,
+    env_provider: Option<Arc<dyn EnvVarProvider>>,
+    completion_callback: Option<CommandCompletionFn>,
+    node_provider: Option<Arc<dyn CommandNodeProvider>>,
+    default_node: Option<String>,
 }
 
 impl ExecuteCommandTool {
     #[must_use]
     pub fn new(manager: Arc<TmuxTerminalManager>) -> Self {
-        Self { manager }
+        Self {
+            manager,
+            default_timeout: Duration::from_millis(DEFAULT_TIMEOUT_MILLIS),
+            approval_manager: None,
+            broadcaster: None,
+            env_provider: None,
+            completion_callback: None,
+            node_provider: None,
+            default_node: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_default_timeout(mut self, timeout: Duration) -> Self {
+        self.default_timeout = timeout;
+        self
+    }
+
+    #[must_use]
+    pub fn with_approval(
+        mut self,
+        manager: Arc<ApprovalManager>,
+        broadcaster: Arc<dyn crate::approval::ApprovalBroadcaster>,
+    ) -> Self {
+        self.approval_manager = Some(manager);
+        self.broadcaster = Some(broadcaster);
+        self
+    }
+
+    #[must_use]
+    pub fn with_env_provider(mut self, provider: Arc<dyn EnvVarProvider>) -> Self {
+        self.env_provider = Some(provider);
+        self
+    }
+
+    #[must_use]
+    pub fn with_completion_callback(mut self, callback: CommandCompletionFn) -> Self {
+        self.completion_callback = Some(callback);
+        self
+    }
+
+    #[must_use]
+    pub fn with_node_provider(
+        mut self,
+        provider: Arc<dyn CommandNodeProvider>,
+        default_node: Option<String>,
+    ) -> Self {
+        self.node_provider = Some(provider);
+        self.default_node = default_node;
+        self
+    }
+
+    fn has_connected_nodes(&self) -> bool {
+        self.node_provider
+            .as_ref()
+            .is_some_and(|provider| provider.has_connected_nodes())
+    }
+
+    fn command_timeout_millis(&self, params: &ExecuteCommandParams) -> u64 {
+        params
+            .timeout
+            .unwrap_or_else(|| u64::try_from(self.default_timeout.as_millis()).unwrap_or(u64::MAX))
+            .min(MAX_TIMEOUT_MILLIS)
+    }
+
+    async fn command_env(&self) -> Vec<(String, String)> {
+        let Some(provider) = self.env_provider.as_ref() else {
+            return Vec::new();
+        };
+        provider
+            .get_env_vars()
+            .await
+            .into_iter()
+            .map(|(key, value)| (key, value.expose_secret().clone()))
+            .collect()
+    }
+
+    fn fire_completion(&self, command: &str, result: &CommandOutput) {
+        if let Some(callback) = self.completion_callback.as_ref() {
+            let preview_len = 200;
+            callback(CommandCompletionEvent {
+                command: command.to_string(),
+                exit_code: result.exit_code,
+                stdout_preview: result.stdout.chars().take(preview_len).collect(),
+                stderr_preview: result.stderr.chars().take(preview_len).collect(),
+            });
+        }
+    }
+
+    async fn approval_check(&self, command: &str, session_key: &str) -> Result<()> {
+        let Some(manager) = self.approval_manager.as_ref() else {
+            return Ok(());
+        };
+        let action = manager.check_command(command).await?;
+        if action != ApprovalAction::NeedsApproval {
+            return Ok(());
+        }
+
+        info!(command, "command needs approval, waiting");
+        let (request_id, rx) = manager.create_request(command, Some(session_key)).await;
+
+        if let Some(broadcaster) = self.broadcaster.as_ref()
+            && let Err(error) = broadcaster
+                .broadcast_request(&request_id, command, Some(session_key))
+                .await
+        {
+            tracing::warn!(%error, "failed to broadcast approval request");
+        }
+
+        match manager.wait_for_decision(rx).await {
+            ApprovalDecision::Approved => Ok(()),
+            ApprovalDecision::Denied => Err(Error::message(format!(
+                "command denied by user: {command}"
+            ))),
+            ApprovalDecision::Timeout => Err(Error::message(format!(
+                "approval timed out for command: {command}"
+            ))),
+        }
+    }
+
+    async fn direct_working_dir(&self, custom_cwd: Option<&str>) -> Option<std::path::PathBuf> {
+        if let Some(cwd) = custom_cwd.filter(|cwd| !cwd.trim().is_empty()) {
+            let path = std::path::PathBuf::from(cwd);
+            if path.is_dir() {
+                return Some(path);
+            }
+            debug!(path = %path.display(), "customCwd does not exist on host, using default");
+        }
+
+        let default_dir = moltis_config::home_dir().unwrap_or_else(moltis_config::data_dir);
+        if let Err(error) = tokio::fs::create_dir_all(&default_dir).await {
+            tracing::warn!(
+                path = %default_dir.display(),
+                %error,
+                "failed to create default command working directory"
+            );
+            None
+        } else {
+            Some(default_dir)
+        }
+    }
+
+    async fn execute_on_node(
+        &self,
+        params: &ExecuteCommandParams,
+        command: &str,
+        timeout_millis: u64,
+    ) -> Result<Option<CommandOutput>> {
+        let Some(provider) = self.node_provider.as_ref() else {
+            return Ok(None);
+        };
+
+        let model_node = params
+            .node
+            .as_deref()
+            .map(str::trim)
+            .filter(|node| !node.is_empty())
+            .map(str::to_string);
+        let node_ref = if provider.has_connected_nodes() {
+            match model_node.clone().or_else(|| self.default_node.clone()) {
+                Some(node_ref) => Some(node_ref),
+                None => provider.default_node_ref().await,
+            }
+        } else if let Some(default_node) = self.default_node.as_ref() {
+            return Err(Error::message(format!(
+                "default node '{default_node}' is configured but no nodes are currently connected"
+            )));
+        } else {
+            if model_node.is_some() {
+                debug!("ignoring model-supplied node parameter because no nodes are connected");
+            }
+            None
+        };
+
+        let Some(node_ref) = node_ref else {
+            return Ok(None);
+        };
+        let node_id = provider
+            .resolve_node_id(&node_ref)
+            .await
+            .ok_or_else(|| Error::message(format!("node '{node_ref}' not found or not connected")))?;
+        let timeout_secs = timeout_millis.div_ceil(1_000).max(1);
+        info!(
+            command,
+            node_id = %node_id,
+            timeout_secs,
+            "execute_command forwarding to remote node"
+        );
+        let result = provider
+            .run_on_node(
+                &node_id,
+                command,
+                timeout_secs,
+                params.custom_cwd.as_deref(),
+                None,
+            )
+            .await
+            .map_err(|error| Error::message(format!("node command failed: {error}")))?;
+        self.fire_completion(command, &result);
+        Ok(Some(result))
+    }
+
+    async fn execute_direct(
+        &self,
+        session_key: &str,
+        params: &ExecuteCommandParams,
+        command: &str,
+        timeout_millis: u64,
+    ) -> Result<CommandOutput> {
+        self.approval_check(command, session_key).await?;
+        let env = self.command_env().await;
+        let opts = CommandOptions {
+            timeout: Duration::from_millis(timeout_millis),
+            max_output_bytes: self.manager.max_output_bytes,
+            working_dir: self.direct_working_dir(params.custom_cwd.as_deref()).await,
+            env: env.clone(),
+        };
+
+        let router = &self.manager.sandbox_router;
+        let mut result = if router.is_sandboxed(session_key).await {
+            debug!(session = session_key, command, "sandbox running command");
+            run_sandbox_command_with_recovery(router, session_key, command, &opts).await?
+        } else {
+            debug!(session = session_key, command, "running command on host");
+            run_shell_command(command, &opts).await?
+        };
+        redact_command_output(&mut result, &env);
+        self.fire_completion(command, &result);
+        Ok(result)
+    }
+
+    async fn execute_routed(
+        &self,
+        session_key: &str,
+        mut params: ExecuteCommandParams,
+    ) -> Result<serde_json::Value> {
+        let command = params.command.trim().to_string();
+        if command.is_empty() {
+            return Err(Error::message("command cannot be empty"));
+        }
+
+        let timeout_millis = self.command_timeout_millis(&params);
+        params.timeout = Some(timeout_millis);
+
+        if let Some(result) = self
+            .execute_on_node(&params, &command, timeout_millis)
+            .await?
+        {
+            return Ok(serde_json::to_value(result)?);
+        }
+
+        let router = &self.manager.sandbox_router;
+        let backend = router.resolve_backend(session_key).await;
+        let use_tmux = router.is_sandboxed(session_key).await && backend.provides_fs_isolation();
+        if !use_tmux {
+            let result = self
+                .execute_direct(session_key, &params, &command, timeout_millis)
+                .await?;
+            return Ok(serde_json::to_value(result)?);
+        }
+
+        let env = self.command_env().await;
+        let response = self.manager.execute_command(session_key, params, env).await?;
+        if response.completed {
+            let result = CommandOutput {
+                stdout: response.output.clone(),
+                stderr: String::new(),
+                exit_code: response.exit_code.unwrap_or(0),
+            };
+            self.fire_completion(&command, &result);
+        }
+        Ok(serde_json::to_value(response)?)
     }
 }
 
@@ -764,28 +1110,29 @@ impl AgentTool for ExecuteCommandTool {
     }
 
     fn description(&self) -> &str {
-        "Execute a shell command by pasting it into a real tmux terminal inside the current sandbox. Returns terminalId for follow-up read_terminal_output calls."
+        "Execute a shell command through the active command route. Isolated sandbox runs use a real tmux terminal and return terminalId for follow-up read_terminal_output calls."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
-        serde_json::json!({
+        let timeout_default = self.default_timeout.as_millis();
+        let mut schema = serde_json::json!({
             "type": "object",
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "Shell command to execute in the sandbox tmux terminal"
+                    "description": "Shell command to execute"
                 },
                 "customCwd": {
                     "type": "string",
-                    "description": "Working directory inside the sandbox terminal"
+                    "description": "Working directory for the command"
                 },
                 "newTerminal": {
                     "type": "boolean",
-                    "description": "If true, create a new tmux window/terminal for this command"
+                    "description": "If true, create a new tmux window/terminal for isolated sandbox execution"
                 },
                 "destructiveFlag": {
                     "type": "boolean",
-                    "description": "Compatibility hint for command approval UIs"
+                    "description": "Approval UI hint for potentially destructive commands"
                 },
                 "background": {
                     "type": "boolean",
@@ -793,24 +1140,34 @@ impl AgentTool for ExecuteCommandTool {
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Milliseconds to wait for completion before returning partial output"
+                    "description": format!("Milliseconds to wait for completion before returning partial output (default {timeout_default}, max {MAX_TIMEOUT_MILLIS})")
                 },
                 "terminalId": {
                     "type": "string",
-                    "description": "Managed tmux terminal id returned by a previous execute_command call"
+                    "description": "Managed tmux terminal id returned by a previous isolated sandbox execute_command call"
                 }
             },
             "required": ["command"]
-        })
+        });
+        if self.has_connected_nodes()
+            && let Some(properties) = schema.get_mut("properties").and_then(|value| value.as_object_mut())
+        {
+            properties.insert(
+                "node".to_string(),
+                serde_json::json!({
+                    "type": "string",
+                    "description": "Node name or ID to run on. Omit to use the configured default route."
+                }),
+            );
+        }
+        schema
     }
 
     async fn execute(&self, params: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let parsed: ExecuteCommandParams = serde_json::from_value(without_null_params(params))?;
         let session_key = parsed._session_key.as_deref().unwrap_or("main").to_string();
-        info!(session = session_key, "execute_command tmux tool invoked");
-        Ok(serde_json::to_value(
-            self.manager.execute_command(&session_key, parsed).await?,
-        )?)
+        info!(session = session_key, "execute_command tool invoked");
+        Ok(self.execute_routed(&session_key, parsed).await?)
     }
 }
 
@@ -897,15 +1254,26 @@ fn build_paste_payload(
     cwd: Option<&str>,
     run_id: &str,
     marker_enabled: bool,
+    env: &[(String, String)],
 ) -> String {
     let mut statements = Vec::new();
     if let Some(cwd) = cwd.filter(|value| !value.trim().is_empty()) {
         statements.push(format!("cd {}", shell_words::quote(cwd).as_ref()));
     }
+    let mut env_keys = Vec::new();
+    for (key, value) in env {
+        if is_shell_env_key(key) {
+            env_keys.push(key.as_str());
+            statements.push(env_export_statement(key, value));
+        }
+    }
     if marker_enabled {
         statements.push(format!("printf '\\n{START_PREFIX}{run_id}\\n'"));
         statements.push(format!("eval {}", shell_words::quote(command).as_ref()));
         statements.push("__moltis_exit=$?".to_string());
+        if let Some(restore) = restore_shell_env_statement(&env_keys) {
+            statements.push(restore);
+        }
         statements.push(format!(
             "printf '\\n{DONE_PREFIX}{run_id}:%s\\n' \"$__moltis_exit\""
         ));
@@ -914,9 +1282,54 @@ fn build_paste_payload(
         return payload;
     }
     statements.push(command.to_string());
+    if let Some(restore) = restore_shell_env_statement(&env_keys) {
+        statements.push(restore);
+    }
     let mut payload = statements.join("\n");
     payload.push('\n');
     payload
+}
+
+fn is_shell_env_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    matches!(chars.next(), Some(ch) if ch.is_ascii_alphabetic() || ch == '_')
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+fn env_export_statement(key: &str, value: &str) -> String {
+    let backup_set = shell_backup_set_var(key);
+    let backup_value = shell_backup_value_var(key);
+    format!(
+        "{backup_set}=${{{key}+x}}; {backup_value}=${{{key}-}}; export {key}={}",
+        shell_words::quote(value).as_ref()
+    )
+}
+
+fn restore_shell_env_statement(keys: &[&str]) -> Option<String> {
+    if keys.is_empty() {
+        return None;
+    }
+
+    Some(
+        keys.iter()
+            .map(|key| {
+                let backup_set = shell_backup_set_var(key);
+                let backup_value = shell_backup_value_var(key);
+                format!(
+                    "if [ -n \"${{{backup_set}}}\" ]; then export {key}=\"${{{backup_value}}}\"; else unset {key}; fi; unset {backup_set} {backup_value}"
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; "),
+    )
+}
+
+fn shell_backup_set_var(key: &str) -> String {
+    format!("__moltis_env_{key}_was_set")
+}
+
+fn shell_backup_value_var(key: &str) -> String {
+    format!("__moltis_env_{key}_value")
 }
 
 fn extract_run_capture(raw: &str, run: Option<&ManagedRun>) -> CaptureResult {
@@ -1044,7 +1457,7 @@ fn default_session_name(session_key: &str) -> String {
     name
 }
 
-fn command_error_text(output: &ExecResult) -> String {
+fn command_error_text(output: &CommandOutput) -> String {
     let stderr = output.stderr.trim();
     if !stderr.is_empty() {
         return stderr.to_string();
@@ -1054,6 +1467,16 @@ fn command_error_text(output: &ExecResult) -> String {
         return stdout.to_string();
     }
     format!("exit {}", output.exit_code)
+}
+
+fn redact_text_output(output: &mut String, env: &[(String, String)]) {
+    let mut result = CommandOutput {
+        stdout: std::mem::take(output),
+        stderr: String::new(),
+        exit_code: 0,
+    };
+    redact_command_output(&mut result, env);
+    *output = result.stdout;
 }
 
 fn is_tmux_no_server(message: &str) -> bool {
@@ -1123,11 +1546,31 @@ mod tests {
 
     #[test]
     fn paste_payload_adds_marker_for_foreground_commands() {
-        let payload = build_paste_payload("echo true", Some("/home/sandbox"), "abc", true);
+        let payload = build_paste_payload("echo true", Some("/home/sandbox"), "abc", true, &[]);
         assert!(payload.contains("cd /home/sandbox"));
-        assert!(payload.contains("__MOLTIS_EXEC_START__abc"));
+        assert!(payload.contains("__MOLTIS_COMMAND_START__abc"));
         assert!(payload.contains("eval 'echo true'"));
-        assert!(payload.contains("__MOLTIS_EXEC_DONE__abc"));
+        assert!(payload.contains("__MOLTIS_COMMAND_DONE__abc"));
+    }
+
+    #[test]
+    fn paste_payload_exports_env_before_start_marker() {
+        let env = vec![
+            ("TOKEN".to_string(), "value with spaces".to_string()),
+            ("BAD-NAME".to_string(), "ignored".to_string()),
+        ];
+        let payload = build_paste_payload("printenv TOKEN", None, "abc", true, &env);
+
+        assert!(payload.contains("export TOKEN='value with spaces'"));
+        assert!(payload.contains("__moltis_env_TOKEN_was_set=${TOKEN+x}"));
+        assert!(payload.contains("__moltis_env_TOKEN_value=${TOKEN-}"));
+        assert!(payload.contains("export TOKEN=\"${__moltis_env_TOKEN_value}\""));
+        assert!(!payload.contains("BAD-NAME"));
+        assert!(!payload.contains("ignored"));
+        assert!(matches!(
+            (payload.find("export TOKEN"), payload.find(START_PREFIX)),
+            (Some(export), Some(start)) if export < start
+        ));
     }
 
     #[test]
@@ -1137,6 +1580,7 @@ mod tests {
             Some("/home/sandbox"),
             "abc",
             true,
+            &[],
         );
 
         assert_eq!(payload.lines().count(), 1);
@@ -1145,14 +1589,14 @@ mod tests {
                 .contains("; eval 'apt-get update -qq && apt-get install -y -qq iputils-ping'; ")
         );
         assert!(payload.contains("; __moltis_exit=$?; "));
-        assert!(payload.contains("__MOLTIS_EXEC_DONE__abc:%s"));
+        assert!(payload.contains("__MOLTIS_COMMAND_DONE__abc:%s"));
     }
 
     #[test]
     fn paste_payload_can_omit_marker_when_requested() {
-        let payload = build_paste_payload("sleep 100", None, "abc", false);
+        let payload = build_paste_payload("sleep 100", None, "abc", false, &[]);
         assert!(payload.contains("sleep 100"));
-        assert!(!payload.contains("__MOLTIS_EXEC_DONE__abc"));
+        assert!(!payload.contains("__MOLTIS_COMMAND_DONE__abc"));
     }
 
     #[test]
@@ -1164,8 +1608,9 @@ mod tests {
             marker_enabled: true,
             completed: false,
             exit_code: None,
+            redaction_env: Vec::new(),
         };
-        let raw = "old\nold2\n$ printf '\\n__MOLTIS_EXEC_START__abc\\n'\n__MOLTIS_EXEC_START__abc\n$ echo true\ntrue\n__moltis_exit=$?\nprintf '\\n__MOLTIS_EXEC_DONE__abc:%s\\n' \"$__moltis_exit\"\n__MOLTIS_EXEC_DONE__abc:0\n$ ";
+        let raw = "old\nold2\n$ printf '\\n__MOLTIS_COMMAND_START__abc\\n'\n__MOLTIS_COMMAND_START__abc\n$ echo true\ntrue\n__moltis_exit=$?\nprintf '\\n__MOLTIS_COMMAND_DONE__abc:%s\\n' \"$__moltis_exit\"\n__MOLTIS_COMMAND_DONE__abc:0\n$ ";
         let capture = extract_run_capture(raw, Some(&run));
         assert!(capture.completed);
         assert_eq!(capture.exit_code, Some(0));
@@ -1181,6 +1626,7 @@ mod tests {
             marker_enabled: true,
             completed: false,
             exit_code: None,
+            redaction_env: Vec::new(),
         };
         let raw = "line one\nline two\nline three";
         let capture = extract_run_capture(raw, Some(&run));

@@ -499,7 +499,7 @@ pub(crate) async fn run_with_tools(
                     if let Some(ref res) = result {
                         // Cap output sent to the UI to avoid huge WS frames.
                         let mut capped = res.clone();
-                        for field in &["stdout", "stderr"] {
+                        for field in &["stdout", "output", "stderr"] {
                             if let Some(s) = capped.get(*field).and_then(|v| v.as_str())
                                 && s.len() > 10_000
                             {
@@ -657,7 +657,7 @@ pub(crate) async fn run_with_tools(
                                 }
                                 obj.remove("screenshot_scale");
                             }
-                            for field in &["stdout", "stderr"] {
+                            for field in &["stdout", "output", "stderr"] {
                                 if let Some(s) = r.get(*field).and_then(|v| v.as_str())
                                     && s.len() > 10_000
                                 {

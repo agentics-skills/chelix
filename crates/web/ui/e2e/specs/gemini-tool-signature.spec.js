@@ -55,7 +55,7 @@ function toolCallStartEvent() {
 							id: "gemini_call_1",
 							thought_signature: SIGNATURE,
 							function: {
-								name: "exec",
+								name: "execute_command",
 								arguments: "",
 							},
 						},
@@ -217,7 +217,7 @@ test.describe("Gemini tool-call thought signatures", () => {
 				sendResponse = await sendRpcFromPage(page, "chat.send", {
 					sessionKey: "main",
 					model: model.id,
-					text: "Use the exec tool to print the sentinel.",
+					text: "Use the execute_command tool to print the sentinel.",
 				});
 				if (sendResponse?.ok && sendResponse.payload?.runId) break;
 				// Message was queued — cancel it and retry after a short wait.

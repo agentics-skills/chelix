@@ -738,11 +738,11 @@ pub struct HookInfo {
     pub failure_count: Option<u64>,
 }
 
-// ── Exec Approvals ──────────────────────────────────────────────────────────
+// ── Command Approvals ───────────────────────────────────────────────────────
 
 #[derive(Debug, SimpleObject, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ExecApprovalConfig {
+pub struct CommandApprovalConfig {
     #[serde(default)]
     pub mode: Option<String>,
     #[serde(default)]
@@ -751,7 +751,7 @@ pub struct ExecApprovalConfig {
 
 #[derive(Debug, SimpleObject, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ExecNodeConfig {
+pub struct CommandNodeApprovalConfig {
     #[serde(default)]
     pub mode: Option<String>,
 }

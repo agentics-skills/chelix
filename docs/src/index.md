@@ -38,7 +38,7 @@ curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/insta
 - **Long-Term Memory** — Embeddings-powered knowledge base with hybrid search
 - **Cross-Session Recall** — Search earlier sessions for relevant snippets and prior decisions
 - **Automatic Checkpoints** — Restore built-in skill and memory mutations without touching git history
-- **Remote Exec Targets** — Route command execution locally, through a paired node, or over SSH
+- **Remote Command Targets** — Route command execution locally, through a paired node, or over SSH
 - **Context Hardening** — Load `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, and rule directories with safety scanning
 - **Hook System** — Observe, modify, or block actions at any lifecycle point
 - **Compile-Time Safety** — Misconfigurations caught by `cargo check`, not runtime crashes

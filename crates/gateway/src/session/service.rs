@@ -645,16 +645,16 @@ impl SessionService for LiveSessionService {
             // Notify the LLM when sandbox state actually changes.
             if old_sandbox != sandbox_enabled_opt {
                 let notification = if sandbox_enabled_opt == Some(false) {
-                    "Sandbox has been disabled for this session. The `exec` tool now runs \
+                    "Sandbox has been disabled for this session. The `execute_command` tool now runs \
                      commands directly on the host machine. Previous command outputs in this \
                      conversation may have come from a sandboxed Linux container with a \
                      different OS, filesystem, and environment."
                 } else if sandbox_enabled_opt == Some(true) {
-                    "Sandbox has been enabled for this session. The `exec` tool will now run \
+                    "Sandbox has been enabled for this session. The `execute_command` tool will now run \
                      commands inside a sandboxed container. The container has a different \
                      filesystem and environment than the host machine."
                 } else {
-                    "Sandbox override has been cleared for this session. The `exec` tool will \
+                    "Sandbox override has been cleared for this session. The `execute_command` tool will \
                      use the global sandbox setting."
                 };
                 let msg = PersistedMessage::system(notification);

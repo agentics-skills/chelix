@@ -105,9 +105,9 @@ pub(crate) struct ShareMessageView {
     pub tool_state_class: Option<&'static str>,
     pub tool_state_label: Option<&'static str>,
     pub tool_state_badge_class: Option<&'static str>,
-    pub is_exec_card: bool,
-    pub exec_card_class: Option<&'static str>,
-    pub exec_command: Option<String>,
+    pub is_command_card: bool,
+    pub command_card_class: Option<&'static str>,
+    pub command: Option<String>,
     pub map_link_google: Option<String>,
     pub map_link_apple: Option<String>,
     pub map_link_openstreetmap: Option<String>,
@@ -277,12 +277,12 @@ pub(crate) fn map_share_message_views(
                 | SharedMessageRole::System
                 | SharedMessageRole::Notice => (None, None, None),
             };
-            let (is_exec_card, exec_card_class, exec_command) = match msg.role {
+            let (is_command_card, command_card_class, command) = match msg.role {
                 SharedMessageRole::ToolResult => {
-                    if msg.tool_name.as_deref() == Some("exec") {
+                    if msg.tool_name.as_deref() == Some("execute_command") {
                         let card_class = match msg.tool_success {
-                            Some(true) => Some("exec-ok"),
-                            Some(false) => Some("exec-err"),
+                            Some(true) => Some("command-ok"),
+                            Some(false) => Some("command-err"),
                             None => None,
                         };
                         (true, card_class, msg.tool_command.clone())
@@ -354,9 +354,9 @@ pub(crate) fn map_share_message_views(
                 tool_state_class,
                 tool_state_label,
                 tool_state_badge_class,
-                is_exec_card,
-                exec_card_class,
-                exec_command,
+                is_command_card,
+                command_card_class,
+                command,
                 map_link_google: msg
                     .map_links
                     .as_ref()
@@ -676,9 +676,9 @@ mod tests {
             tool_state_class: None,
             tool_state_label: None,
             tool_state_badge_class: None,
-            is_exec_card: false,
-            exec_card_class: None,
-            exec_command: None,
+            is_command_card: false,
+            command_card_class: None,
+            command: None,
             map_link_google: Some(
                 "https://www.google.com/maps/search/?api=1&query=Tartine+Bakery".to_string(),
             ),
@@ -864,20 +864,20 @@ mod tests {
         assert_eq!(views[0].tool_state_class, Some("msg-tool-success"));
         assert_eq!(views[0].tool_state_label, Some("Success"));
         assert_eq!(views[0].tool_state_badge_class, Some("ok"));
-        assert!(!views[0].is_exec_card);
-        assert!(views[0].exec_card_class.is_none());
-        assert!(views[0].exec_command.is_none());
+        assert!(!views[0].is_command_card);
+        assert!(views[0].command_card_class.is_none());
+        assert!(views[0].command.is_none());
         assert!(views[0].map_link_google.is_some());
         assert!(views[0].map_link_apple.is_some());
         assert!(views[0].map_link_openstreetmap.is_none());
     }
 
     #[test]
-    fn map_share_message_views_marks_exec_tool_cards() {
+    fn map_share_message_views_marks_execute_command_tool_cards() {
         let identity = default_identity();
         let mut msg = shared_msg(SharedMessageRole::ToolResult, "{\n  \"ok\": true\n}");
         msg.tool_success = Some(false);
-        msg.tool_name = Some("exec".to_string());
+        msg.tool_name = Some("execute_command".to_string());
         msg.tool_command = Some("curl -s https://example.com".to_string());
 
         let snapshot = ShareSnapshot {
@@ -890,10 +890,10 @@ mod tests {
 
         let views = map_share_message_views(&snapshot, &identity);
         assert_eq!(views.len(), 1);
-        assert!(views[0].is_exec_card);
-        assert_eq!(views[0].exec_card_class, Some("exec-err"));
+        assert!(views[0].is_command_card);
+        assert_eq!(views[0].command_card_class, Some("command-err"));
         assert_eq!(
-            views[0].exec_command.as_deref(),
+            views[0].command.as_deref(),
             Some("curl -s https://example.com")
         );
     }

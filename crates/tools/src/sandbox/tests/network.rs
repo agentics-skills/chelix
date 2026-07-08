@@ -77,13 +77,13 @@ fn test_docker_network_run_args_bypass() {
 }
 
 #[test]
-fn test_docker_proxy_exec_env_args_trusted() {
+fn test_docker_proxy_command_env_args_trusted() {
     let config = SandboxConfig {
         network: NetworkPolicy::Trusted,
         ..Default::default()
     };
     let docker = DockerSandbox::new(config);
-    let args = docker.proxy_exec_env_args();
+    let args = docker.proxy_command_env_args();
     let expected_url = format!(
         "http://host.docker.internal:{}",
         moltis_network_filter::DEFAULT_PROXY_PORT
@@ -98,23 +98,23 @@ fn test_docker_proxy_exec_env_args_trusted() {
 }
 
 #[test]
-fn test_docker_proxy_exec_env_args_blocked() {
+fn test_docker_proxy_command_env_args_blocked() {
     let config = SandboxConfig {
         network: NetworkPolicy::Blocked,
         ..Default::default()
     };
     let docker = DockerSandbox::new(config);
-    assert!(docker.proxy_exec_env_args().is_empty());
+    assert!(docker.proxy_command_env_args().is_empty());
 }
 
 #[test]
-fn test_docker_proxy_exec_env_args_bypass() {
+fn test_docker_proxy_command_env_args_bypass() {
     let config = SandboxConfig {
         network: NetworkPolicy::Bypass,
         ..Default::default()
     };
     let docker = DockerSandbox::new(config);
-    assert!(docker.proxy_exec_env_args().is_empty());
+    assert!(docker.proxy_command_env_args().is_empty());
 }
 
 #[test]
@@ -150,7 +150,7 @@ fn test_podman_network_run_args_trusted_contains_add_host() {
 #[cfg(target_os = "macos")]
 #[test]
 fn test_apple_container_proxy_prefix_trusted() {
-    // Build the same prefix that exec() would build for Trusted mode,
+    // Build the same prefix that run_command() would build for Trusted mode,
     // but using the helper logic directly.
     let gateway = "192.168.64.1";
     let proxy_url = format!(

@@ -557,7 +557,7 @@ mod tests {
                 system_prompt_suffix: None,
                 tool_policy: Some(moltis_webhooks::types::ToolPolicy {
                     allow: vec!["web_fetch".into()],
-                    deny: vec!["exec".into()],
+                    deny: vec!["execute_command".into()],
                 }),
                 auth_mode: AuthMode::GithubHmacSha256,
                 auth_config: Some(serde_json::json!({ "secret": "super-secret-value" })),
@@ -578,7 +578,10 @@ mod tests {
             .unwrap();
 
         let raw_webhook = raw.get_webhook(webhook.id).await.unwrap();
-        assert_eq!(raw_webhook.tool_policy.clone().unwrap().deny, vec!["exec"]);
+        assert_eq!(
+            raw_webhook.tool_policy.clone().unwrap().deny,
+            vec!["execute_command"]
+        );
         assert_ne!(
             raw_webhook.auth_config,
             Some(serde_json::json!({ "secret": "super-secret-value" }))

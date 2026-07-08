@@ -419,7 +419,7 @@ export function SshSection(): VNode {
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
 			<h2 className="text-lg font-medium text-[var(--text-strong)]">SSH</h2>
 			<p className="text-xs text-[var(--muted)] leading-relaxed max-w-[760px]" style={{ margin: 0 }}>
-				Manage outbound SSH keys and named remote exec targets. Current auth path:
+				Manage outbound SSH keys and named remote command targets. Current auth path:
 				<strong className="text-[var(--text)]">
 					{vaultStatus === "unsealed"
 						? " vault-backed managed keys are available"

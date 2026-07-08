@@ -1,6 +1,6 @@
 //! Tool implementations and policy enforcement.
 //!
-//! Tools: bash/exec, browser, canvas, message, nodes, cron, sessions,
+//! Tools: command execution, browser, canvas, message, nodes, cron, sessions,
 //! web fetch/search, memory, image gen, plus channel and plugin tools.
 //!
 //! Policy: multi-layered allow/deny (global, per-agent, per-provider,
@@ -13,13 +13,13 @@ pub mod browser;
 pub mod calc;
 pub mod checkpoints;
 mod client;
+pub mod command;
 #[cfg(test)]
 pub mod contract;
 pub mod cron_tool;
 #[cfg(feature = "wasm")]
 pub mod embedded_wasm;
 pub mod error;
-pub mod exec;
 pub mod file_io;
 #[cfg(feature = "firecrawl")]
 pub mod firecrawl;

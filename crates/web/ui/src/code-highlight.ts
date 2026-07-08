@@ -125,17 +125,17 @@ export async function highlightCodeBlocks(containerEl: HTMLElement | null): Prom
  * apply Shiki bash highlighting once the highlighter is ready. Safe to call
  * during streaming -- highlighting is a fire-and-forget no-op until then.
  */
-export function renderExecCommand(container: HTMLElement, command: string): void {
+export function renderCommand(container: HTMLElement, command: string): void {
 	container.textContent = "";
 	const code = document.createElement("code");
-	code.className = "exec-cmd";
+	code.className = "command-cmd";
 	code.setAttribute("data-lang", "bash");
 	code.textContent = command;
 	container.appendChild(code);
-	void highlightExecCommand(code);
+	void highlightCommand(code);
 }
 
-async function highlightExecCommand(codeEl: HTMLElement): Promise<void> {
+async function highlightCommand(codeEl: HTMLElement): Promise<void> {
 	await initHighlighter();
 	if (!highlighter) return;
 	await highlightCodeElement(codeEl);

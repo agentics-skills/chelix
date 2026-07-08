@@ -251,7 +251,7 @@ mod tests {
             mk_user("u0"),
             mk_assistant("a0"),
             mk_user("u1"),
-            mk_assistant_with_tool_call("mid-a", "orphan_call", "exec"),
+            mk_assistant_with_tool_call("mid-a", "orphan_call", "execute_command"),
             mk_tool_result("orphan_call", "mid tool out"),
             mk_user("u2"),
             mk_assistant("mid-a2"),
@@ -288,7 +288,7 @@ mod tests {
         // the call_id is satisfied.
         let history = vec![
             mk_user("start"),
-            mk_assistant_with_tool_call("running", "head_call", "exec"),
+            mk_assistant_with_tool_call("running", "head_call", "execute_command"),
             mk_tool_result("head_call", "result body"),
             mk_user("filler 1"),
             mk_assistant("filler reply 1"),

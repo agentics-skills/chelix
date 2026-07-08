@@ -282,7 +282,7 @@ const WRITE_METHODS: &[&str] = &[
     "channel.leave",
 ];
 
-const APPROVAL_METHODS: &[&str] = &["exec.approval.request", "exec.approval.resolve"];
+const APPROVAL_METHODS: &[&str] = &["command.approval.request", "command.approval.resolve"];
 
 const PAIRING_METHODS: &[&str] = &[
     "node.pair.request",

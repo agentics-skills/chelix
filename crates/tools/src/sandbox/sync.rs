@@ -21,8 +21,8 @@ use flate2::{Compression, write::GzEncoder};
 use tracing::{debug, warn};
 
 use crate::{
+    command::CommandOptions,
     error::{Error, Result},
-    exec::ExecOpts,
     sandbox::{
         file_system::SandboxReadResult,
         types::{Sandbox, SandboxId},
@@ -74,11 +74,11 @@ pub async fn sync_in(
     let cmd = format!(
         "mkdir -p {sandbox_workspace} && tar -xzf {tar_path} -C {sandbox_workspace} && rm -f {tar_path}"
     );
-    let opts = ExecOpts {
+    let opts = CommandOptions {
         timeout: std::time::Duration::from_secs(120),
         ..Default::default()
     };
-    let result = backend.exec(id, &cmd, &opts).await?;
+    let result = backend.run_command(id, &cmd, &opts).await?;
     if result.exit_code != 0 {
         return Err(Error::message(format!(
             "sync-in: extraction failed (exit {}): {}",
@@ -101,7 +101,7 @@ pub async fn sync_out(
     host_workspace: &Path,
     sandbox_workspace: &str,
 ) -> Result<()> {
-    let opts = ExecOpts {
+    let opts = CommandOptions {
         timeout: std::time::Duration::from_secs(120),
         ..Default::default()
     };
@@ -111,7 +111,7 @@ pub async fn sync_out(
     let check_cmd = format!(
         "if [ -d {sandbox_workspace_shell} ] && [ \"$(ls -A {sandbox_workspace_shell} 2>/dev/null)\" ]; then echo non-empty; fi"
     );
-    let check = backend.exec(id, &check_cmd, &opts).await?;
+    let check = backend.run_command(id, &check_cmd, &opts).await?;
     if !check.stdout.contains("non-empty") {
         debug!(%id, "sync-out: sandbox workspace empty, skipping");
         return Ok(());
@@ -127,7 +127,7 @@ pub async fn sync_out(
     // Create tarball in sandbox.
     let tar_path = "/tmp/moltis-sync-out.tar.gz";
     let tar_cmd = format!("tar -czf {tar_path} -C {sandbox_workspace_shell} .");
-    let tar_result = backend.exec(id, &tar_cmd, &opts).await?;
+    let tar_result = backend.run_command(id, &tar_cmd, &opts).await?;
     if tar_result.exit_code != 0 {
         return Err(Error::message(format!(
             "sync-out: tar creation failed (exit {}): {}",

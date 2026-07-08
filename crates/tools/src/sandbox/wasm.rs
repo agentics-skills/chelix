@@ -13,7 +13,7 @@ use super::types::{
 #[cfg(feature = "wasm")]
 use crate::error::{Context, Error, Result};
 #[cfg(feature = "wasm")]
-use crate::exec::{ExecOpts, ExecResult};
+use crate::command::{CommandOptions, CommandOutput};
 #[cfg(feature = "wasm")]
 use crate::wasm_engine::WasmComponentEngine;
 #[cfg(feature = "wasm")]
@@ -98,14 +98,14 @@ impl WasmSandbox {
         self.sandbox_root(id).join("tmp")
     }
 
-    /// Execute a `.wasm` module via Wasmtime + WASI with full isolation.
-    async fn exec_wasm_module(
+    /// Run a `.wasm` module via Wasmtime + WASI with full isolation.
+    async fn run_wasm_module(
         &self,
         wasm_path: &std::path::Path,
         args: &[String],
         id: &SandboxId,
-        opts: &ExecOpts,
-    ) -> Result<ExecResult> {
+        opts: &CommandOptions,
+    ) -> Result<CommandOutput> {
         let wasm_engine = Arc::clone(&self.wasm_engine);
         let fuel_limit = self.fuel_limit();
         let epoch_interval_ms = self.epoch_interval_ms();
@@ -117,7 +117,7 @@ impl WasmSandbox {
         let max_output_bytes = opts.max_output_bytes;
         let env_vars: Vec<(String, String)> = opts.env.clone().into_iter().collect();
 
-        let result = tokio::task::spawn_blocking(move || -> Result<ExecResult> {
+        let result = tokio::task::spawn_blocking(move || -> Result<CommandOutput> {
             use wasmtime_wasi::p2::pipe::MemoryOutputPipe;
 
             let engine = wasm_engine.engine().clone();
@@ -207,7 +207,7 @@ impl WasmSandbox {
                             stderr_str.push_str(&format!("\nWASM execution limit exceeded: {msg}"));
                             truncate_output_for_display(&mut stderr_str, max_output_bytes);
                             drop(epoch_handle);
-                            return Ok(ExecResult {
+                            return Ok(CommandOutput {
                                 stdout: stdout_str,
                                 stderr: stderr_str,
                                 exit_code: 137,
@@ -217,7 +217,7 @@ impl WasmSandbox {
                         stderr_str.push_str(&format!("\nWASM error: {msg}"));
                         truncate_output_for_display(&mut stderr_str, max_output_bytes);
                         drop(epoch_handle);
-                        return Ok(ExecResult {
+                        return Ok(CommandOutput {
                             stdout: stdout_str,
                             stderr: stderr_str,
                             exit_code: 1,
@@ -232,7 +232,7 @@ impl WasmSandbox {
             truncate_output_for_display(&mut stdout, max_output_bytes);
             truncate_output_for_display(&mut stderr, max_output_bytes);
 
-            Ok(ExecResult {
+            Ok(CommandOutput {
                 stdout,
                 stderr,
                 exit_code,
@@ -267,14 +267,19 @@ impl Sandbox for WasmSandbox {
         Ok(())
     }
 
-    async fn exec(&self, id: &SandboxId, command: &str, opts: &ExecOpts) -> Result<ExecResult> {
+    async fn run_command(
+        &self,
+        id: &SandboxId,
+        command: &str,
+        opts: &CommandOptions,
+    ) -> Result<CommandOutput> {
         let sandbox_root = self.sandbox_root(id);
         let env_map: HashMap<String, String> = opts.env.iter().cloned().collect();
 
         // Parse the command string.
         let segments = WasmBuiltins::parse_command_line(command);
 
-        let mut last_result = ExecResult {
+        let mut last_result = CommandOutput {
             stdout: String::new(),
             stderr: String::new(),
             exit_code: 0,
@@ -308,10 +313,10 @@ impl Sandbox for WasmSandbox {
                     WasmBuiltins::resolve_guest_path(&sandbox_root, cmd_name, "/home/sandbox");
                 if let Some(wasm_path) = wasm_path {
                     last_result = self
-                        .exec_wasm_module(&wasm_path, &cmd_args, id, opts)
+                        .run_wasm_module(&wasm_path, &cmd_args, id, opts)
                         .await?;
                 } else {
-                    last_result = ExecResult {
+                    last_result = CommandOutput {
                         stdout: String::new(),
                         stderr: format!("{cmd_name}: path outside sandbox or not found\n"),
                         exit_code: 1,
@@ -570,7 +575,7 @@ impl WasmBuiltins {
         args: &[String],
         sandbox_root: &std::path::Path,
         env: &HashMap<String, String>,
-    ) -> ExecResult {
+    ) -> CommandOutput {
         match name {
             "echo" => Self::cmd_echo(args),
             "cat" => Self::cmd_cat(args, sandbox_root),
@@ -579,7 +584,7 @@ impl WasmBuiltins {
             "rm" => Self::cmd_rm(args, sandbox_root),
             "cp" => Self::cmd_cp(args, sandbox_root),
             "mv" => Self::cmd_mv(args, sandbox_root),
-            "pwd" => ExecResult {
+            "pwd" => CommandOutput {
                 stdout: "/home/sandbox\n".into(),
                 stderr: String::new(),
                 exit_code: 0,
@@ -591,12 +596,12 @@ impl WasmBuiltins {
             "sort" => Self::cmd_sort(args, sandbox_root),
             "touch" => Self::cmd_touch(args, sandbox_root),
             "which" => Self::cmd_which(args),
-            "true" => ExecResult {
+            "true" => CommandOutput {
                 stdout: String::new(),
                 stderr: String::new(),
                 exit_code: 0,
             },
-            "false" => ExecResult {
+            "false" => CommandOutput {
                 stdout: String::new(),
                 stderr: String::new(),
                 exit_code: 1,
@@ -604,7 +609,7 @@ impl WasmBuiltins {
             "test" | "[" => Self::cmd_test(args, sandbox_root),
             "basename" => Self::cmd_basename(args),
             "dirname" => Self::cmd_dirname(args),
-            _ => ExecResult {
+            _ => CommandOutput {
                 stdout: String::new(),
                 stderr: format!("{name}: command not found in WASM sandbox\n"),
                 exit_code: 127,
@@ -614,7 +619,7 @@ impl WasmBuiltins {
 
     // --- Built-in command implementations ---
 
-    fn cmd_echo(args: &[String]) -> ExecResult {
+    fn cmd_echo(args: &[String]) -> CommandOutput {
         // Handle -n flag.
         let (no_newline, text_args) = if args.first().is_some_and(|a| a == "-n") {
             (true, &args[1..])
@@ -627,14 +632,14 @@ impl WasmBuiltins {
         } else {
             format!("{text}\n")
         };
-        ExecResult {
+        CommandOutput {
             stdout,
             stderr: String::new(),
             exit_code: 0,
         }
     }
 
-    fn cmd_cat(args: &[String], sandbox_root: &std::path::Path) -> ExecResult {
+    fn cmd_cat(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
         let mut stdout = String::new();
         let mut stderr = String::new();
         let mut exit_code = 0;
@@ -655,14 +660,14 @@ impl WasmBuiltins {
             }
         }
 
-        ExecResult {
+        CommandOutput {
             stdout,
             stderr,
             exit_code,
         }
     }
 
-    fn cmd_ls(args: &[String], sandbox_root: &std::path::Path) -> ExecResult {
+    fn cmd_ls(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
         let mut show_long = false;
         let mut show_all = false;
         let mut paths = Vec::new();
@@ -747,14 +752,14 @@ impl WasmBuiltins {
             }
         }
 
-        ExecResult {
+        CommandOutput {
             stdout,
             stderr,
             exit_code,
         }
     }
 
-    fn cmd_mkdir(args: &[String], sandbox_root: &std::path::Path) -> ExecResult {
+    fn cmd_mkdir(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
         let mut stderr = String::new();
         let mut exit_code = 0;
         let create_parents = args.iter().any(|a| a == "-p");
@@ -779,14 +784,14 @@ impl WasmBuiltins {
             }
         }
 
-        ExecResult {
+        CommandOutput {
             stdout: String::new(),
             stderr,
             exit_code,
         }
     }
 
-    fn cmd_rm(args: &[String], sandbox_root: &std::path::Path) -> ExecResult {
+    fn cmd_rm(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
         let mut stderr = String::new();
         let mut exit_code = 0;
         let recursive = args.iter().any(|a| a == "-r" || a == "-rf" || a == "-fr");
@@ -823,17 +828,17 @@ impl WasmBuiltins {
             }
         }
 
-        ExecResult {
+        CommandOutput {
             stdout: String::new(),
             stderr,
             exit_code,
         }
     }
 
-    fn cmd_cp(args: &[String], sandbox_root: &std::path::Path) -> ExecResult {
+    fn cmd_cp(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
         let non_flag_args: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
         if non_flag_args.len() < 2 {
-            return ExecResult {
+            return CommandOutput {
                 stdout: String::new(),
                 stderr: "cp: missing operand\n".into(),
                 exit_code: 1,
@@ -846,7 +851,7 @@ impl WasmBuiltins {
         let src = match Self::resolve_guest_path(sandbox_root, src_path, "/home/sandbox") {
             Some(p) => p,
             None => {
-                return ExecResult {
+                return CommandOutput {
                     stdout: String::new(),
                     stderr: format!("cp: {src_path}: path outside sandbox\n"),
                     exit_code: 1,
@@ -856,7 +861,7 @@ impl WasmBuiltins {
         let dst = match Self::resolve_guest_path(sandbox_root, dst_path, "/home/sandbox") {
             Some(p) => p,
             None => {
-                return ExecResult {
+                return CommandOutput {
                     stdout: String::new(),
                     stderr: format!("cp: {dst_path}: path outside sandbox\n"),
                     exit_code: 1,
@@ -875,12 +880,12 @@ impl WasmBuiltins {
         };
 
         match std::fs::copy(&src, &actual_dst) {
-            Ok(_) => ExecResult {
+            Ok(_) => CommandOutput {
                 stdout: String::new(),
                 stderr: String::new(),
                 exit_code: 0,
             },
-            Err(e) => ExecResult {
+            Err(e) => CommandOutput {
                 stdout: String::new(),
                 stderr: format!("cp: {e}\n"),
                 exit_code: 1,
@@ -888,10 +893,10 @@ impl WasmBuiltins {
         }
     }
 
-    fn cmd_mv(args: &[String], sandbox_root: &std::path::Path) -> ExecResult {
+    fn cmd_mv(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
         let non_flag_args: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
         if non_flag_args.len() < 2 {
-            return ExecResult {
+            return CommandOutput {
                 stdout: String::new(),
                 stderr: "mv: missing operand\n".into(),
                 exit_code: 1,
@@ -904,7 +909,7 @@ impl WasmBuiltins {
         let src = match Self::resolve_guest_path(sandbox_root, src_path, "/home/sandbox") {
             Some(p) => p,
             None => {
-                return ExecResult {
+                return CommandOutput {
                     stdout: String::new(),
                     stderr: format!("mv: {src_path}: path outside sandbox\n"),
                     exit_code: 1,
@@ -914,7 +919,7 @@ impl WasmBuiltins {
         let dst = match Self::resolve_guest_path(sandbox_root, dst_path, "/home/sandbox") {
             Some(p) => p,
             None => {
-                return ExecResult {
+                return CommandOutput {
                     stdout: String::new(),
                     stderr: format!("mv: {dst_path}: path outside sandbox\n"),
                     exit_code: 1,
@@ -933,12 +938,12 @@ impl WasmBuiltins {
         };
 
         match std::fs::rename(&src, &actual_dst) {
-            Ok(()) => ExecResult {
+            Ok(()) => CommandOutput {
                 stdout: String::new(),
                 stderr: String::new(),
                 exit_code: 0,
             },
-            Err(e) => ExecResult {
+            Err(e) => CommandOutput {
                 stdout: String::new(),
                 stderr: format!("mv: {e}\n"),
                 exit_code: 1,
@@ -946,7 +951,7 @@ impl WasmBuiltins {
         }
     }
 
-    fn cmd_env(env: &HashMap<String, String>) -> ExecResult {
+    fn cmd_env(env: &HashMap<String, String>) -> CommandOutput {
         let mut stdout = String::new();
         stdout.push_str("PATH=/usr/local/bin:/usr/bin:/bin\n");
         stdout.push_str("HOME=/home/sandbox\n");
@@ -958,14 +963,14 @@ impl WasmBuiltins {
                 stdout.push_str(&format!("{key}={val}\n"));
             }
         }
-        ExecResult {
+        CommandOutput {
             stdout,
             stderr: String::new(),
             exit_code: 0,
         }
     }
 
-    fn cmd_head(args: &[String], sandbox_root: &std::path::Path) -> ExecResult {
+    fn cmd_head(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
         let mut lines = 10usize;
         let mut files = Vec::new();
 
@@ -1008,14 +1013,14 @@ impl WasmBuiltins {
             }
         }
 
-        ExecResult {
+        CommandOutput {
             stdout,
             stderr,
             exit_code,
         }
     }
 
-    fn cmd_tail(args: &[String], sandbox_root: &std::path::Path) -> ExecResult {
+    fn cmd_tail(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
         let mut lines = 10usize;
         let mut files = Vec::new();
 
@@ -1060,14 +1065,14 @@ impl WasmBuiltins {
             }
         }
 
-        ExecResult {
+        CommandOutput {
             stdout,
             stderr,
             exit_code,
         }
     }
 
-    fn cmd_wc(args: &[String], sandbox_root: &std::path::Path) -> ExecResult {
+    fn cmd_wc(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
         let files: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
         let mut stdout = String::new();
         let mut stderr = String::new();
@@ -1096,14 +1101,14 @@ impl WasmBuiltins {
             }
         }
 
-        ExecResult {
+        CommandOutput {
             stdout,
             stderr,
             exit_code,
         }
     }
 
-    fn cmd_sort(args: &[String], sandbox_root: &std::path::Path) -> ExecResult {
+    fn cmd_sort(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
         let files: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
         let reverse = args.iter().any(|a| a == "-r");
         let mut all_lines = Vec::new();
@@ -1139,14 +1144,14 @@ impl WasmBuiltins {
             stdout.push('\n');
         }
 
-        ExecResult {
+        CommandOutput {
             stdout,
             stderr,
             exit_code,
         }
     }
 
-    fn cmd_touch(args: &[String], sandbox_root: &std::path::Path) -> ExecResult {
+    fn cmd_touch(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
         let mut stderr = String::new();
         let mut exit_code = 0;
 
@@ -1171,14 +1176,14 @@ impl WasmBuiltins {
             }
         }
 
-        ExecResult {
+        CommandOutput {
             stdout: String::new(),
             stderr,
             exit_code,
         }
     }
 
-    fn cmd_which(args: &[String]) -> ExecResult {
+    fn cmd_which(args: &[String]) -> CommandOutput {
         let builtins = [
             "echo", "cat", "ls", "mkdir", "rm", "cp", "mv", "pwd", "env", "head", "tail", "wc",
             "sort", "touch", "which", "true", "false", "test", "[", "basename", "dirname",
@@ -1196,14 +1201,14 @@ impl WasmBuiltins {
             }
         }
 
-        ExecResult {
+        CommandOutput {
             stdout,
             stderr,
             exit_code,
         }
     }
 
-    fn cmd_test(args: &[String], sandbox_root: &std::path::Path) -> ExecResult {
+    fn cmd_test(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
         // Strip trailing ] if present (for [ ... ] syntax).
         let args: Vec<&String> = if args.last().is_some_and(|a| a == "]") {
             args[..args.len() - 1].iter().collect()
@@ -1254,7 +1259,7 @@ impl WasmBuiltins {
             _ => false,
         };
 
-        ExecResult {
+        CommandOutput {
             stdout: String::new(),
             stderr: String::new(),
             exit_code: if result {
@@ -1265,9 +1270,9 @@ impl WasmBuiltins {
         }
     }
 
-    fn cmd_basename(args: &[String]) -> ExecResult {
+    fn cmd_basename(args: &[String]) -> CommandOutput {
         if args.is_empty() {
-            return ExecResult {
+            return CommandOutput {
                 stdout: String::new(),
                 stderr: "basename: missing operand\n".into(),
                 exit_code: 1,
@@ -1278,16 +1283,16 @@ impl WasmBuiltins {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        ExecResult {
+        CommandOutput {
             stdout: format!("{name}\n"),
             stderr: String::new(),
             exit_code: 0,
         }
     }
 
-    fn cmd_dirname(args: &[String]) -> ExecResult {
+    fn cmd_dirname(args: &[String]) -> CommandOutput {
         if args.is_empty() {
-            return ExecResult {
+            return CommandOutput {
                 stdout: String::new(),
                 stderr: "dirname: missing operand\n".into(),
                 exit_code: 1,
@@ -1298,7 +1303,7 @@ impl WasmBuiltins {
             .parent()
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_else(|| ".".into());
-        ExecResult {
+        CommandOutput {
             stdout: format!("{parent}\n"),
             stderr: String::new(),
             exit_code: 0,

@@ -17,7 +17,7 @@ but deny entries accumulate across all of them.
 | 3 | Per-agent preset | `[agents.presets.<id>.tools]` | Sub-agents spawned with that preset |
 | 4 | Per-channel group | `[channels.<type>.<account>.tools.groups.<chat_type>]` | Channel sessions matching that chat type |
 | 5 | Per-sender | `...groups.<chat_type>.by_sender.<sender_id>` | Messages from that sender in that group |
-| 6 | Sandbox | `[tools.exec.sandbox.tools_policy]` | Commands running inside a sandbox container |
+| 6 | Sandbox | `[tools.execute_command.sandbox.tools_policy]` | Commands running inside a sandbox container |
 
 **Web UI sessions** see layers 1-3 (no channel context), plus layer 6 if sandboxed.
 **Channel sessions** can see all 6 layers.
@@ -41,7 +41,7 @@ Both `allow` and `deny` entries support glob-style patterns:
 
 - `"*"` — matches every tool name
 - `"browser*"` — matches any tool whose name starts with `browser`
-- `"exec"` — matches only the exact tool name `exec`
+- `"execute_command"` — matches only the exact tool name `execute_command`
 
 ## Profiles
 
@@ -51,8 +51,8 @@ are applied.
 
 | Profile | Allow list |
 |---------|-----------|
-| `"minimal"` | `exec` |
-| `"coding"` | `exec`, `browser`, `memory` |
+| `"minimal"` | `execute_command` |
+| `"coding"` | `execute_command`, `browser`, `memory` |
 | `"full"` | `*` (everything) |
 
 When a profile is set, its allow list is applied first, then the explicit
@@ -78,10 +78,10 @@ through that provider, the policy is merged on top of the global layer.
 ```toml
 [providers.openai]
 # ... api_key, models, etc.
-policy.deny = ["exec"]
+policy.deny = ["execute_command"]
 ```
 
-This denies `exec` whenever OpenAI is the active provider, regardless of
+This denies `execute_command` whenever OpenAI is the active provider, regardless of
 what the global layer allows. Other providers are unaffected.
 
 ## Layer 3 — Per-Agent Preset
@@ -92,11 +92,11 @@ Agent presets (used by `spawn_agent`) can restrict their sub-agent's tools.
 [agents.presets.researcher]
 model = "anthropic/claude-haiku-3-5-20241022"
 tools.allow = ["read_file", "glob", "grep", "web_search", "web_fetch"]
-tools.deny  = ["exec", "write_file"]
+tools.deny  = ["execute_command", "write_file"]
 ```
 
 When the `researcher` preset is active, only the five listed tools are
-allowed, and `exec`/`write_file` are explicitly denied. See
+allowed, and `execute_command`/`write_file` are explicitly denied. See
 [Agent Presets](agent-presets.md) for the full preset reference.
 
 > **Note:** Preset tool policies apply only to sub-agents spawned via
@@ -111,10 +111,10 @@ is exposed to untrusted users.
 
 ```toml
 [channels.telegram.my-bot.tools.groups.group]
-deny = ["exec", "browser"]
+deny = ["execute_command", "browser"]
 ```
 
-In this example, `exec` and `browser` are denied in Telegram group chats
+In this example, `execute_command` and `browser` are denied in Telegram group chats
 handled by the `my-bot` account. Private chats and web UI sessions are
 unaffected.
 
@@ -125,20 +125,20 @@ you trust specific users in an otherwise restricted group.
 
 ```toml
 [channels.telegram.my-bot.tools.groups.group]
-deny = ["exec", "browser"]
+deny = ["execute_command", "browser"]
 
 [channels.telegram.my-bot.tools.groups.group.by_sender."123456"]
 allow = ["*"]
 ```
 
 Sender `123456` gets `allow = ["*"]`, which replaces the previous allow
-list. However, because **deny always accumulates**, the `exec` and
+list. However, because **deny always accumulates**, the `execute_command` and
 `browser` denials from the group layer still apply. The sender override
 is useful for widening the allow list (e.g., granting access to tools that
 were not in the previous allow set) or for applying a different profile.
 
-If you need a trusted sender to have `exec` access in a group, avoid
-denying `exec` at the group layer. Instead, use a restrictive allow list
+If you need a trusted sender to have `execute_command` access in a group, avoid
+denying `execute_command` at the group layer. Instead, use a restrictive allow list
 at the group level and widen it per-sender:
 
 ```toml
@@ -160,8 +160,8 @@ all other layers. It lets you restrict tools for sandboxed execution without
 affecting non-sandboxed sessions.
 
 ```toml
-[tools.exec.sandbox.tools_policy]
-allow = ["exec"]         # only exec inside sandbox
+[tools.execute_command.sandbox.tools_policy]
+allow = ["execute_command"]         # only execute_command inside sandbox
 deny = ["browser"]       # never allow browser in sandbox
 ```
 
@@ -169,11 +169,11 @@ This layer is skipped entirely when the session is not sandboxed.
 
 ## Examples
 
-### Deny exec for a specific provider
+### Deny execute_command for a specific provider
 
 ```toml
 [providers.openai]
-policy.deny = ["exec"]
+policy.deny = ["execute_command"]
 ```
 
 When using OpenAI, the agent cannot run shell commands. All other
@@ -183,10 +183,10 @@ providers retain their normal tool access.
 
 ```toml
 [channels.telegram.my-bot.tools.groups.group]
-deny = ["exec", "browser*"]
+deny = ["execute_command", "browser*"]
 ```
 
-Group chats cannot use `exec` or any tool starting with `browser`.
+Group chats cannot use `execute_command` or any tool starting with `browser`.
 Private chats are unaffected.
 
 ### Trust a sender in a restricted group
@@ -207,11 +207,11 @@ every tool (nothing was denied at the group layer, so nothing accumulates).
 ```toml
 [agents.presets.researcher]
 tools.allow = ["read_file", "glob", "grep"]
-tools.deny  = ["exec"]
+tools.deny  = ["execute_command"]
 ```
 
 The `researcher` sub-agent can only read files and search. Even if a
-higher layer allows `exec`, it is denied here and the denial carries
+higher layer allows `execute_command`, it is denied here and the denial carries
 through.
 
 ### Use a profile for the global policy
@@ -222,8 +222,8 @@ profile = "coding"
 deny = ["web_fetch"]
 ```
 
-The `coding` profile expands to `allow = ["exec", "browser", "memory"]`.
-Then `web_fetch` is denied. The effective policy allows `exec`, `browser`,
+The `coding` profile expands to `allow = ["execute_command", "browser", "memory"]`.
+Then `web_fetch` is denied. The effective policy allows `execute_command`, `browser`,
 and `memory`, and denies `web_fetch`. All other tools are not in the allow
 list and are therefore blocked.
 

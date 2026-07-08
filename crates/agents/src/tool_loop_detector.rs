@@ -389,15 +389,15 @@ mod tests {
     fn window_zero_disables_detection() {
         let mut d = ToolLoopDetector::new(0, true);
         assert!(matches!(
-            d.record(fp("exec", json!({}), Some("missing"))),
+            d.record(fp("execute_command", json!({}), Some("missing"))),
             LoopDetectorAction::None
         ));
         assert!(matches!(
-            d.record(fp("exec", json!({}), Some("missing"))),
+            d.record(fp("execute_command", json!({}), Some("missing"))),
             LoopDetectorAction::None
         ));
         assert!(matches!(
-            d.record(fp("exec", json!({}), Some("missing"))),
+            d.record(fp("execute_command", json!({}), Some("missing"))),
             LoopDetectorAction::None
         ));
     }
@@ -406,15 +406,15 @@ mod tests {
     fn three_identical_failures_fire_nudge() {
         let mut d = ToolLoopDetector::new(3, true);
         assert_eq!(
-            d.record(fp("exec", json!({}), Some("missing 'command'"))),
+            d.record(fp("execute_command", json!({}), Some("missing 'command'"))),
             LoopDetectorAction::None
         );
         assert_eq!(
-            d.record(fp("exec", json!({}), Some("missing 'command'"))),
+            d.record(fp("execute_command", json!({}), Some("missing 'command'"))),
             LoopDetectorAction::None
         );
         assert_eq!(
-            d.record(fp("exec", json!({}), Some("missing 'command'"))),
+            d.record(fp("execute_command", json!({}), Some("missing 'command'"))),
             LoopDetectorAction::InjectNudge
         );
         assert_eq!(d.stage(), InterventionStage::Nudged);
@@ -424,11 +424,11 @@ mod tests {
     fn fourth_failure_after_nudge_strips_tools() {
         let mut d = ToolLoopDetector::new(3, true);
         for _ in 0..3 {
-            let _ = d.record(fp("exec", json!({}), Some("missing")));
+            let _ = d.record(fp("execute_command", json!({}), Some("missing")));
         }
         assert_eq!(d.stage(), InterventionStage::Nudged);
         assert_eq!(
-            d.record(fp("exec", json!({}), Some("missing"))),
+            d.record(fp("execute_command", json!({}), Some("missing"))),
             LoopDetectorAction::StripTools
         );
         assert_eq!(d.stage(), InterventionStage::StripTools);
@@ -438,10 +438,10 @@ mod tests {
     fn strip_tools_disabled_stays_in_nudged() {
         let mut d = ToolLoopDetector::new(3, false);
         for _ in 0..3 {
-            let _ = d.record(fp("exec", json!({}), Some("missing")));
+            let _ = d.record(fp("execute_command", json!({}), Some("missing")));
         }
         assert_eq!(
-            d.record(fp("exec", json!({}), Some("missing"))),
+            d.record(fp("execute_command", json!({}), Some("missing"))),
             LoopDetectorAction::None
         );
         assert_eq!(d.stage(), InterventionStage::Nudged);
@@ -451,22 +451,22 @@ mod tests {
     fn success_resets_state() {
         let mut d = ToolLoopDetector::new(3, true);
         for _ in 0..2 {
-            let _ = d.record(fp("exec", json!({}), Some("missing")));
+            let _ = d.record(fp("execute_command", json!({}), Some("missing")));
         }
-        let _ = d.record(fp("exec", json!({"command": "ls"}), None));
+        let _ = d.record(fp("execute_command", json!({"command": "ls"}), None));
         assert_eq!(d.stage(), InterventionStage::None);
 
         // Need 3 more failures to fire.
         assert_eq!(
-            d.record(fp("exec", json!({}), Some("missing"))),
+            d.record(fp("execute_command", json!({}), Some("missing"))),
             LoopDetectorAction::None
         );
         assert_eq!(
-            d.record(fp("exec", json!({}), Some("missing"))),
+            d.record(fp("execute_command", json!({}), Some("missing"))),
             LoopDetectorAction::None
         );
         assert_eq!(
-            d.record(fp("exec", json!({}), Some("missing"))),
+            d.record(fp("execute_command", json!({}), Some("missing"))),
             LoopDetectorAction::InjectNudge
         );
     }
@@ -477,10 +477,10 @@ mod tests {
         // `all_match` accepts "all same error".
         let mut d = ToolLoopDetector::new(3, true);
         let err = Some("missing 'command' parameter");
-        let _ = d.record(fp("exec", json!({}), err));
-        let _ = d.record(fp("exec", json!({"cmd": ""}), err));
+        let _ = d.record(fp("execute_command", json!({}), err));
+        let _ = d.record(fp("execute_command", json!({"cmd": ""}), err));
         assert_eq!(
-            d.record(fp("exec", json!({"cmd": " "}), err)),
+            d.record(fp("execute_command", json!({"cmd": " "}), err)),
             LoopDetectorAction::InjectNudge
         );
     }
@@ -488,10 +488,10 @@ mod tests {
     #[test]
     fn different_tools_do_not_fire() {
         let mut d = ToolLoopDetector::new(3, true);
-        let _ = d.record(fp("exec", json!({}), Some("e")));
+        let _ = d.record(fp("execute_command", json!({}), Some("e")));
         let _ = d.record(fp("browser", json!({}), Some("e")));
         assert_eq!(
-            d.record(fp("exec", json!({}), Some("e"))),
+            d.record(fp("execute_command", json!({}), Some("e"))),
             LoopDetectorAction::None
         );
     }
@@ -500,8 +500,12 @@ mod tests {
     fn legitimate_retry_pattern_does_not_fire() {
         // Fail → retry with new args → succeed. This should NOT fire.
         let mut d = ToolLoopDetector::new(3, true);
-        let _ = d.record(fp("exec", json!({"command": "ls"}), Some("no such dir")));
-        let _ = d.record(fp("exec", json!({"command": "ls /tmp"}), None));
+        let _ = d.record(fp(
+            "execute_command",
+            json!({"command": "ls"}),
+            Some("no such dir"),
+        ));
+        let _ = d.record(fp("execute_command", json!({"command": "ls /tmp"}), None));
         assert_eq!(d.stage(), InterventionStage::None);
     }
 
@@ -509,9 +513,9 @@ mod tests {
     fn clear_strip_tools_resets_state_fully() {
         let mut d = ToolLoopDetector::new(3, true);
         for _ in 0..3 {
-            let _ = d.record(fp("exec", json!({}), Some("missing")));
+            let _ = d.record(fp("execute_command", json!({}), Some("missing")));
         }
-        let _ = d.record(fp("exec", json!({}), Some("missing")));
+        let _ = d.record(fp("execute_command", json!({}), Some("missing")));
         assert_eq!(d.stage(), InterventionStage::StripTools);
         d.clear_strip_tools();
         // A hard reset — not just a stage transition — so the next reflex
@@ -530,10 +534,10 @@ mod tests {
         let mut d = ToolLoopDetector::new(3, true);
         // Build up and fire both stages.
         for _ in 0..3 {
-            let _ = d.record(fp("exec", json!({}), Some("missing")));
+            let _ = d.record(fp("execute_command", json!({}), Some("missing")));
         }
         assert_eq!(d.stage(), InterventionStage::Nudged);
-        let _ = d.record(fp("exec", json!({}), Some("missing")));
+        let _ = d.record(fp("execute_command", json!({}), Some("missing")));
         assert_eq!(d.stage(), InterventionStage::StripTools);
 
         // Runner processes the forced-text turn and resets state.
@@ -541,17 +545,17 @@ mod tests {
 
         // One fresh failure must not re-escalate.
         assert_eq!(
-            d.record(fp("exec", json!({}), Some("missing"))),
+            d.record(fp("execute_command", json!({}), Some("missing"))),
             LoopDetectorAction::None
         );
         assert_eq!(d.stage(), InterventionStage::None);
         assert_eq!(
-            d.record(fp("exec", json!({}), Some("missing"))),
+            d.record(fp("execute_command", json!({}), Some("missing"))),
             LoopDetectorAction::None
         );
         // Third identical failure since reset → fresh nudge, not StripTools.
         assert_eq!(
-            d.record(fp("exec", json!({}), Some("missing"))),
+            d.record(fp("execute_command", json!({}), Some("missing"))),
             LoopDetectorAction::InjectNudge
         );
         assert_eq!(d.stage(), InterventionStage::Nudged);
@@ -574,7 +578,7 @@ mod tests {
     fn consume_pending_action_returns_nudge_once_then_none() {
         let mut d = ToolLoopDetector::new(3, true);
         for _ in 0..3 {
-            let _ = d.record(fp("exec", json!({}), Some("err")));
+            let _ = d.record(fp("execute_command", json!({}), Some("err")));
         }
         // Runner calls consume at end of batch — expect nudge.
         assert_eq!(d.consume_pending_action(), LoopDetectorAction::InjectNudge);
@@ -587,11 +591,11 @@ mod tests {
     fn consume_pending_action_strip_only_after_nudge_delivered() {
         let mut d = ToolLoopDetector::new(3, true);
         for _ in 0..3 {
-            let _ = d.record(fp("exec", json!({}), Some("err")));
+            let _ = d.record(fp("execute_command", json!({}), Some("err")));
         }
         assert_eq!(d.consume_pending_action(), LoopDetectorAction::InjectNudge);
         // Next batch: another identical failure advances stage to StripTools.
-        let _ = d.record(fp("exec", json!({}), Some("err")));
+        let _ = d.record(fp("execute_command", json!({}), Some("err")));
         assert_eq!(d.stage(), InterventionStage::StripTools);
         // Nudge WAS delivered in the prior cycle, so we progress to strip.
         assert_eq!(d.consume_pending_action(), LoopDetectorAction::StripTools);
@@ -606,13 +610,13 @@ mod tests {
         // same batch immediately resets the detector. The runner must not
         // apply an intervention that the detector has already abandoned.
         let mut d = ToolLoopDetector::new(3, true);
-        let _ = d.record(fp("exec", json!({}), Some("err"))); // 1/3
-        let _ = d.record(fp("exec", json!({}), Some("err"))); // 2/3
+        let _ = d.record(fp("execute_command", json!({}), Some("err"))); // 1/3
+        let _ = d.record(fp("execute_command", json!({}), Some("err"))); // 2/3
         // Start of a new batch:
-        let action_on_third = d.record(fp("exec", json!({}), Some("err")));
+        let action_on_third = d.record(fp("execute_command", json!({}), Some("err")));
         assert_eq!(action_on_third, LoopDetectorAction::InjectNudge);
         // ...but the next record in the same batch is a success (reset).
-        let _ = d.record(fp("exec", json!({"command": "ls"}), None));
+        let _ = d.record(fp("execute_command", json!({"command": "ls"}), None));
         assert_eq!(d.stage(), InterventionStage::None);
         // At end-of-batch the runner queries consume_pending_action — must
         // return None because the success already abandoned the intervention.
@@ -627,10 +631,10 @@ mod tests {
         // consume_pending_action must demote the stage back to Nudged and
         // return InjectNudge so the nudge lands first.
         let mut d = ToolLoopDetector::new(3, true);
-        let r1 = d.record(fp("exec", json!({}), Some("err")));
-        let r2 = d.record(fp("exec", json!({}), Some("err")));
-        let r3 = d.record(fp("exec", json!({}), Some("err"))); // → Nudged
-        let r4 = d.record(fp("exec", json!({}), Some("err"))); // → StripTools
+        let r1 = d.record(fp("execute_command", json!({}), Some("err")));
+        let r2 = d.record(fp("execute_command", json!({}), Some("err")));
+        let r3 = d.record(fp("execute_command", json!({}), Some("err"))); // → Nudged
+        let r4 = d.record(fp("execute_command", json!({}), Some("err"))); // → StripTools
         assert_eq!(r1, LoopDetectorAction::None);
         assert_eq!(r2, LoopDetectorAction::None);
         assert_eq!(r3, LoopDetectorAction::InjectNudge);
@@ -646,7 +650,7 @@ mod tests {
 
         // Next batch with another identical failure → promotes to StripTools
         // again, this time the runner applies it (nudge already delivered).
-        let _ = d.record(fp("exec", json!({}), Some("err")));
+        let _ = d.record(fp("execute_command", json!({}), Some("err")));
         assert_eq!(d.stage(), InterventionStage::StripTools);
         assert_eq!(d.consume_pending_action(), LoopDetectorAction::StripTools);
     }
@@ -671,13 +675,13 @@ mod tests {
     #[test]
     fn intervention_message_contains_evidence() {
         let window = vec![
-            fp("exec", json!({}), Some("missing 'command'")),
-            fp("exec", json!({}), Some("missing 'command'")),
-            fp("exec", json!({}), Some("missing 'command'")),
+            fp("execute_command", json!({}), Some("missing 'command'")),
+            fp("execute_command", json!({}), Some("missing 'command'")),
+            fp("execute_command", json!({}), Some("missing 'command'")),
         ];
         let msg = format_intervention_message(&window);
         assert!(msg.contains("LOOP DETECTED"));
-        assert!(msg.contains("exec"));
+        assert!(msg.contains("execute_command"));
         assert!(msg.contains("missing 'command'"));
         assert!(msg.contains("Do NOT"));
         assert!(msg.contains("plain text"));

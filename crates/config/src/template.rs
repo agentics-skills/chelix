@@ -150,7 +150,7 @@ port = {port}                           # Port number (auto-generated for this i
 # base_url = "https://api.anthropic.com"     # API endpoint
 # alias = "anthropic"                         # Custom name for metrics
 # cache_retention = "short"                    # Prompt caching: "none" | "short" | "long"
-# policy.deny = ["exec"]                       # Deny specific tools when using this provider
+# policy.deny = ["execute_command"]            # Deny specific tools when using this provider
 # policy.allow = []                            # Restrict to only these tools (empty = all allowed)
 # [providers.anthropic.model_overrides.claude-opus-4-6]
 # context_window = 1_000_000                   # Provider-scoped model override
@@ -412,7 +412,7 @@ port = {port}                           # Port number (auto-generated for this i
 
 # ── Command Execution ─────────────────────────────────────────────────────────
 
-# [tools.exec]
+# [tools.execute_command]
 # default_timeout_secs = 30         # Default timeout for commands
 # max_output_bytes = 204800         # Max command output bytes (200KB)
 # approval_mode = "on-miss"         # "always" | "on-miss" | "never"
@@ -425,7 +425,7 @@ port = {port}                           # Port number (auto-generated for this i
 # ── Sandbox Configuration ─────────────────────────────────────────────────────
 # Commands run inside isolated containers for security.
 
-# [tools.exec.sandbox]
+# [tools.execute_command.sandbox]
 # mode = "all"                      # "off" | "non-main" | "all" (recommended)
 # scope = "session"                 # "command" | "session" (recommended) | "global"
 # workspace_mount = "ro"            # "ro" | "rw" | "none"
@@ -439,7 +439,7 @@ port = {port}                           # Port number (auto-generated for this i
 # gpus = "all"                      # GPU passthrough: "all", "device=0", "device=0,1"
                                     # (Docker/Podman only, ignored for other backends)
 
-# [tools.exec.sandbox.resource_limits]
+# [tools.execute_command.sandbox.resource_limits]
 # memory_limit = "512M"             # Memory limit (e.g., "512M", "1G")
 # cpu_quota = 0.5                   # CPU quota as fraction
 # pids_max = 100                    # Maximum number of processes
@@ -453,10 +453,10 @@ port = {port}                           # Port number (auto-generated for this i
 #   3. Per-agent     — [agents.presets.<id>.tools]
 #   4. Per-channel   — [channels.<type>.<account>.tools.groups.<chat_type>]
 #   5. Per-sender    — [...groups.<chat_type>.by_sender.<sender_id>]
-#   6. Sandbox       — [tools.exec.sandbox.tools_policy]
+#   6. Sandbox       — [tools.execute_command.sandbox.tools_policy]
 
 # [tools.policy]
-# allow = []                        # Tools to always allow (e.g., ["exec", "web_fetch"])
+# allow = []                        # Tools to always allow (e.g., ["execute_command", "web_fetch"])
 # deny = []                         # Tools to always deny (e.g., ["browser"])
 
 # ── Web Search ────────────────────────────────────────────────────────────────
@@ -568,7 +568,7 @@ port = {port}                           # Port number (auto-generated for this i
 # ack_max_chars = 300               # Max characters for acknowledgment reply
 # deliver = false                   # Deliver heartbeat replies to a channel
 # sandbox_enabled = true            # Run heartbeat commands in sandbox
-# wake_cooldown = "5m"              # Min duration between exec-triggered heartbeat wakes (0 to disable)
+# wake_cooldown = "5m"              # Min duration between command-triggered heartbeat wakes (0 to disable)
 
 # [heartbeat.active_hours]
 # start = "08:00"

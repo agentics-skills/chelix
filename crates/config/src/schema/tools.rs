@@ -5,11 +5,11 @@ use {
     std::collections::HashMap,
 };
 
-/// Tools configuration (exec, sandbox, policy, web, browser).
+/// Tools configuration (command execution, sandbox, policy, web, browser).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ToolsConfig {
-    pub exec: ExecConfig,
+    pub execute_command: ExecuteCommandConfig,
     pub policy: ToolPolicyConfig,
     pub web: WebConfig,
     pub maps: MapsConfig,
@@ -67,7 +67,7 @@ pub struct ToolsConfig {
 impl Default for ToolsConfig {
     fn default() -> Self {
         Self {
-            exec: ExecConfig::default(),
+            execute_command: ExecuteCommandConfig::default(),
             policy: ToolPolicyConfig::default(),
             web: WebConfig::default(),
             maps: MapsConfig::default(),
@@ -80,8 +80,7 @@ impl Default for ToolsConfig {
             max_tool_result_bytes: default_max_tool_result_bytes(),
             registry_mode: ToolRegistryMode::default(),
             agent_loop_detector_window: default_agent_loop_detector_window(),
-            agent_loop_detector_strip_tools_on_second_fire: default_agent_loop_detector_strip_tools(
-            ),
+            agent_loop_detector_strip_tools_on_second_fire: default_agent_loop_detector_strip_tools(),
             tool_result_compaction_ratio: default_tool_result_compaction_ratio(),
             preemptive_overflow_ratio: default_preemptive_overflow_ratio(),
             compaction_min_iterations: default_compaction_min_iterations(),
@@ -552,10 +551,10 @@ impl Default for BrowserConfig {
     }
 }
 
-/// Exec tool configuration.
+/// `execute_command` tool configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
-pub struct ExecConfig {
+pub struct ExecuteCommandConfig {
     pub default_timeout_secs: u64,
     pub max_output_bytes: usize,
     pub approval_mode: String,
@@ -572,7 +571,7 @@ pub struct ExecConfig {
     pub ssh_target: Option<String>,
 }
 
-impl Default for ExecConfig {
+impl Default for ExecuteCommandConfig {
     fn default() -> Self {
         Self {
             default_timeout_secs: 30,

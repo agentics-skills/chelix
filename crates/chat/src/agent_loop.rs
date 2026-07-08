@@ -24,6 +24,8 @@ use crate::{
     types::*,
 };
 
+const EXECUTE_COMMAND_TOOL_NAME: &str = "execute_command";
+
 pub(crate) async fn mark_unsupported_model(
     state: &Arc<dyn ChatRuntime>,
     model_store: &Arc<RwLock<DisabledModelsStore>>,
@@ -342,7 +344,7 @@ pub(crate) async fn run_explicit_shell_command(
     let tool_call_id = format!("sh_{}", uuid::Uuid::new_v4().simple());
     let tool_args = serde_json::json!({ "command": command });
 
-    send_tool_status_to_channels(state, session_key, "exec", &tool_args).await;
+    send_tool_status_to_channels(state, session_key, EXECUTE_COMMAND_TOOL_NAME, &tool_args).await;
 
     broadcast(
         state,
@@ -352,7 +354,7 @@ pub(crate) async fn run_explicit_shell_command(
             "sessionKey": session_key,
             "state": "tool_call_start",
             "toolCallId": tool_call_id,
-            "toolName": "exec",
+            "toolName": EXECUTE_COMMAND_TOOL_NAME,
             "arguments": tool_args,
             "seq": client_seq,
         }),
@@ -360,27 +362,27 @@ pub(crate) async fn run_explicit_shell_command(
     )
     .await;
 
-    let mut exec_params = serde_json::json!({
+    let mut command_params = serde_json::json!({
         "command": command,
         "_session_key": session_key,
     });
     if let Some(lang) = accept_language.as_deref() {
-        exec_params["_accept_language"] = serde_json::json!(lang);
+        command_params["_accept_language"] = serde_json::json!(lang);
     }
     if let Some(cid) = conn_id.as_deref() {
-        exec_params["_conn_id"] = serde_json::json!(cid);
+        command_params["_conn_id"] = serde_json::json!(cid);
     }
 
-    let exec_tool = {
+    let command_tool = {
         let registry = tool_registry.read().await;
-        registry.get("exec")
+        registry.get(EXECUTE_COMMAND_TOOL_NAME)
     };
 
-    let exec_result = match exec_tool {
-        Some(tool) => tool.execute(exec_params).await,
+    let command_result = match command_tool {
+        Some(tool) => tool.execute(command_params).await,
         None => Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            "exec tool is not registered",
+            "execute_command tool is not registered",
         )
         .into()),
     };
@@ -388,12 +390,12 @@ pub(crate) async fn run_explicit_shell_command(
     let has_channel_targets = !state.peek_channel_replies(session_key).await.is_empty();
     let mut final_text = String::new();
 
-    match exec_result {
+    match command_result {
         Ok(result) => {
             let capped = capped_tool_result_payload(&result, 10_000);
             let assistant_tool_call_msg = build_tool_call_assistant_message(
                 tool_call_id.clone(),
-                "exec",
+                EXECUTE_COMMAND_TOOL_NAME,
                 Some(tool_args.clone()),
                 None,
                 client_seq,
@@ -401,7 +403,7 @@ pub(crate) async fn run_explicit_shell_command(
             );
             let tool_result_msg = PersistedMessage::tool_result(
                 tool_call_id.clone(),
-                "exec",
+                EXECUTE_COMMAND_TOOL_NAME,
                 Some(serde_json::json!({ "command": command })),
                 true,
                 Some(capped.clone()),
@@ -425,7 +427,7 @@ pub(crate) async fn run_explicit_shell_command(
                     "sessionKey": session_key,
                     "state": "tool_call_end",
                     "toolCallId": tool_call_id,
-                    "toolName": "exec",
+                    "toolName": EXECUTE_COMMAND_TOOL_NAME,
                     "success": true,
                     "result": capped,
                     "seq": client_seq,
@@ -435,7 +437,7 @@ pub(crate) async fn run_explicit_shell_command(
             .await;
 
             if has_channel_targets {
-                final_text = shell_reply_text_from_exec_result(&result);
+                final_text = shell_reply_text_from_command_result(&result);
                 if final_text.is_empty() {
                     final_text = "Command completed.".to_string();
                 }
@@ -446,7 +448,7 @@ pub(crate) async fn run_explicit_shell_command(
             let parsed_error = parse_chat_error(&error_text, None);
             let assistant_tool_call_msg = build_tool_call_assistant_message(
                 tool_call_id.clone(),
-                "exec",
+                EXECUTE_COMMAND_TOOL_NAME,
                 Some(tool_args.clone()),
                 None,
                 client_seq,
@@ -454,7 +456,7 @@ pub(crate) async fn run_explicit_shell_command(
             );
             let tool_result_msg = PersistedMessage::tool_result(
                 tool_call_id.clone(),
-                "exec",
+                EXECUTE_COMMAND_TOOL_NAME,
                 Some(serde_json::json!({ "command": command })),
                 false,
                 None,
@@ -478,7 +480,7 @@ pub(crate) async fn run_explicit_shell_command(
                     "sessionKey": session_key,
                     "state": "tool_call_end",
                     "toolCallId": tool_call_id,
-                    "toolName": "exec",
+                    "toolName": EXECUTE_COMMAND_TOOL_NAME,
                     "success": false,
                     "error": parsed_error,
                     "seq": client_seq,

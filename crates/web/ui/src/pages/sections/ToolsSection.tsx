@@ -29,7 +29,7 @@ interface NodeInventoryEntry {
 	[key: string]: unknown;
 }
 
-interface RemoteExecSummary {
+interface RemoteCommandSummary {
 	pairedNodes: number;
 	sshTargets: number;
 }
@@ -41,7 +41,12 @@ function pluralizeToolsCount(count: number, noun: string): string {
 export function toolsOverviewCategory(name: string | undefined): string {
 	if (typeof name !== "string" || !name) return "Core";
 	if (name.startsWith("mcp__")) return "MCP";
-	if (name === "exec" || name.startsWith("node") || name.startsWith("sandbox") || name.includes("checkpoint")) {
+	if (
+		name === "execute_command" ||
+		name.startsWith("node") ||
+		name.startsWith("sandbox") ||
+		name.includes("checkpoint")
+	) {
 		return "Execution";
 	}
 	if (name.startsWith("session") || name.startsWith("sessions_")) return "Sessions";
@@ -73,8 +78,8 @@ export function groupToolsForOverview(tools: ToolEntry[]): ToolGroup[] {
 		}));
 }
 
-function summarizeRemoteExecInventory(entries: NodeInventoryEntry[]): RemoteExecSummary {
-	const summary: RemoteExecSummary = { pairedNodes: 0, sshTargets: 0 };
+function summarizeRemoteCommandInventory(entries: NodeInventoryEntry[]): RemoteCommandSummary {
+	const summary: RemoteCommandSummary = { pairedNodes: 0, sshTargets: 0 };
 	(entries || []).forEach((entry) => {
 		if (!entry || typeof entry !== "object") return;
 		if (entry.platform === "ssh") {
@@ -130,16 +135,16 @@ export function ToolsSection(): VNode {
 	const sandbox = data.sandbox || {};
 	const tools: ToolEntry[] = Array.isArray(data.tools) ? data.tools : [];
 	const toolGroups = groupToolsForOverview(tools);
-	const remoteExecInventory = summarizeRemoteExecInventory(nodeInventory);
+	const remoteCommandInventory = summarizeRemoteCommandInventory(nodeInventory);
 	const routeDetails: string[] = [];
 	routeDetails.push(execution.mode === "sandbox" ? "sandboxed commands" : "host commands");
-	if (remoteExecInventory.pairedNodes > 0) {
-		routeDetails.push(pluralizeToolsCount(remoteExecInventory.pairedNodes, "paired node"));
+	if (remoteCommandInventory.pairedNodes > 0) {
+		routeDetails.push(pluralizeToolsCount(remoteCommandInventory.pairedNodes, "paired node"));
 	}
-	if (remoteExecInventory.sshTargets > 0) {
-		routeDetails.push(pluralizeToolsCount(remoteExecInventory.sshTargets, "SSH target"));
+	if (remoteCommandInventory.sshTargets > 0) {
+		routeDetails.push(pluralizeToolsCount(remoteCommandInventory.sshTargets, "SSH target"));
 	}
-	if (remoteExecInventory.pairedNodes === 0 && remoteExecInventory.sshTargets === 0) {
+	if (remoteCommandInventory.pairedNodes === 0 && remoteCommandInventory.sshTargets === 0) {
 		routeDetails.push("local only");
 	}
 
@@ -200,8 +205,8 @@ export function ToolsSection(): VNode {
 					<div className="text-xs text-[var(--muted)] mt-2 leading-relaxed">
 						{sandbox.enabled ? `Sandbox backend: ${sandbox.backend || "configured"}. ` : ""}
 						{execution.promptSymbol ? `Prompt symbol: ${execution.promptSymbol}. ` : ""}
-						The <code className="text-[var(--text)]">exec</code> tool uses these routes rather than exposing SSH as a
-						separate command runner.
+						The <code className="text-[var(--text)]">execute_command</code> tool uses these routes rather than exposing
+						SSH as a separate command runner.
 					</div>
 				</div>
 			</div>

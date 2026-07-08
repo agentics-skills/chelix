@@ -40,7 +40,7 @@ pub struct NodeConfig {
     /// Commands this node supports (e.g. "system.run", "system.which").
     pub commands: Vec<String>,
     /// Maximum time for a single command execution.
-    pub exec_timeout: Duration,
+    pub command_timeout: Duration,
     /// Working directory for commands (defaults to $HOME).
     pub working_dir: Option<String>,
 }
@@ -64,7 +64,7 @@ impl Default for NodeConfig {
                 "system.which".into(),
                 "system.providers".into(),
             ],
-            exec_timeout: Duration::from_secs(300),
+            command_timeout: Duration::from_secs(300),
             working_dir: None,
         }
     }
@@ -493,7 +493,7 @@ impl NodeHost {
         let timeout_ms = args
             .get("timeout")
             .and_then(|v| v.as_u64())
-            .unwrap_or(self.config.exec_timeout.as_millis() as u64);
+            .unwrap_or(self.config.command_timeout.as_millis() as u64);
         let timeout = Duration::from_millis(timeout_ms);
 
         let cwd = args

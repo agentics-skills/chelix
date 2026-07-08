@@ -24,7 +24,7 @@ async fn test_restricted_host_sandbox_ensure_ready_noop() {
 }
 
 #[tokio::test]
-async fn test_restricted_host_sandbox_exec_simple_echo() {
+async fn test_restricted_host_sandbox_run_command_simple_echo() {
     let sandbox = RestrictedHostSandbox::new(SandboxConfig::default());
     let id = SandboxId {
         scope: SandboxScope::Session,
@@ -32,7 +32,7 @@ async fn test_restricted_host_sandbox_exec_simple_echo() {
     };
     sandbox.ensure_ready(&id, None).await.unwrap();
     let result = sandbox
-        .exec(&id, "echo hello", &ExecOpts::default())
+        .run_command(&id, "echo hello", &CommandOptions::default())
         .await
         .unwrap();
     assert_eq!(result.exit_code, 0);
@@ -139,7 +139,7 @@ async fn test_restricted_host_sandbox_restricted_env() {
         key: "test-rh-env".into(),
     };
     let result = sandbox
-        .exec(&id, "echo $HOME", &ExecOpts::default())
+        .run_command(&id, "echo $HOME", &CommandOptions::default())
         .await
         .unwrap();
     assert_eq!(result.exit_code, 0);

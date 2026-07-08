@@ -22,7 +22,7 @@ async function startDocumentToolCall(page, sessionKey, toolCallId, filename) {
 						arguments: JSON.stringify({ path: `/tmp/${filename}` }),
 					},
 				});
-				return page.locator(`#tool-${toolCallId} .exec-status`).count();
+				return page.locator(`#tool-${toolCallId} .command-status`).count();
 			},
 			{ timeout: 10_000 },
 		)

@@ -36,7 +36,7 @@ import {
 	appendToolCardError,
 	createToolCallCard,
 	getToolCardDetailsContainer,
-	isExecLikeToolName,
+	isCommandToolName,
 	renderToolCardError,
 	renderToolCardResult,
 } from "../tool-call-card";
@@ -330,7 +330,7 @@ function renderHistoryToolResult(msg: ToolResultMsg): HTMLElement {
 		toolName: msg.tool_name,
 		arguments: msg.arguments,
 		status: success ? "success" : "error",
-		expanded: isExecLikeToolName(msg.tool_name),
+		expanded: isCommandToolName(msg.tool_name),
 	});
 
 	if (msg.result) {
@@ -412,9 +412,9 @@ export function postHistoryLoadActions(
 			if (typeof isRoot !== "boolean") {
 				isRoot = mode === "sandbox" ? true : hostIsRoot;
 			}
-			S.setHostExecIsRoot(hostIsRoot);
-			S.setSessionExecMode(mode);
-			S.setSessionExecPromptSymbol(isRoot ? "#" : "$");
+			S.setHostCommandIsRoot(hostIsRoot);
+			S.setSessionCommandMode(mode);
+			S.setSessionCommandPromptSymbol(isRoot ? "#" : "$");
 		}
 		updateCommandInputUI();
 		updateTokenBar();

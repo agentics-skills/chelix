@@ -31,8 +31,8 @@ use {
 };
 
 use crate::{
+    command::{CommandOptions, CommandOutput},
     error::{Error, Result},
-    exec::{ExecOpts, ExecResult},
     sandbox::types::{Sandbox, SandboxConfig, SandboxId},
 };
 
@@ -456,8 +456,8 @@ impl FirecrackerSandbox {
         guest_ip: &str,
         ssh_key: &Path,
         command: &str,
-        opts: &ExecOpts,
-    ) -> Result<ExecResult> {
+        opts: &CommandOptions,
+    ) -> Result<CommandOutput> {
         let cwd = opts
             .working_dir
             .as_ref()
@@ -536,7 +536,7 @@ impl FirecrackerSandbox {
         stdout.truncate(stdout.floor_char_boundary(opts.max_output_bytes));
         stderr.truncate(stderr.floor_char_boundary(opts.max_output_bytes));
 
-        Ok(ExecResult {
+        Ok(CommandOutput {
             stdout,
             stderr,
             exit_code: status.code().unwrap_or(-1),
@@ -746,7 +746,7 @@ impl Sandbox for FirecrackerSandbox {
         let install_cmd = format!(
             "apt-get update -qq && apt-get install -y -qq --no-install-recommends {pkg_list}"
         );
-        let opts = ExecOpts {
+        let opts = CommandOptions {
             timeout: Duration::from_secs(600),
             ..Default::default()
         };
@@ -881,7 +881,12 @@ impl Sandbox for FirecrackerSandbox {
         Ok(())
     }
 
-    async fn exec(&self, id: &SandboxId, command: &str, opts: &ExecOpts) -> Result<ExecResult> {
+    async fn run_command(
+        &self,
+        id: &SandboxId,
+        command: &str,
+        opts: &CommandOptions,
+    ) -> Result<CommandOutput> {
         let (guest_ip, ssh_key) = self
             .session_vm(id)
             .await
@@ -909,7 +914,7 @@ impl Sandbox for FirecrackerSandbox {
              if [ ! -d \"$parent\" ]; then exit {EXIT_PARENT_MISSING}; fi; \
              if [ -L \"$path\" ]; then exit {EXIT_SYMLINK}; fi"
         );
-        let opts = ExecOpts {
+        let opts = CommandOptions {
             timeout: Duration::from_secs(30),
             ..Default::default()
         };
@@ -990,7 +995,7 @@ impl Sandbox for FirecrackerSandbox {
         };
 
         // Take ownership and drop the lock immediately so concurrent
-        // exec()/ensure_ready() calls for other sessions are not blocked
+        // run_command()/ensure_ready() calls for other sessions are not blocked
         // during the async teardown below.
         let vm = self.active.write().await.remove(&id.key);
         self.creation_permits.write().await.remove(&id.key);
@@ -1090,7 +1095,7 @@ mod tests {
     }
 
     #[test]
-    fn test_remote_shell_command_quotes_exec_env() -> Result<()> {
+    fn test_remote_shell_command_quotes_command_env() -> Result<()> {
         let command = FirecrackerSandbox::remote_shell_command(
             "/home/sandbox/project dir",
             "printf '%s' \"$API_TOKEN\"",
@@ -1135,10 +1140,10 @@ mod tests {
             scope: crate::sandbox::types::SandboxScope::Session,
             key: "test".into(),
         };
-        let opts = ExecOpts::default();
-        let result = sandbox.exec(&id, "echo hello", &opts).await;
+        let opts = CommandOptions::default();
+        let result = sandbox.run_command(&id, "echo hello", &opts).await;
         let Err(error) = result else {
-            return Err(Error::message("expected exec without active VM to fail"));
+            return Err(Error::message("expected command without active VM to fail"));
         };
         assert!(error.to_string().contains("no active VM"));
         Ok(())

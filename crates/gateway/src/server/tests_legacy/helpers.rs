@@ -51,9 +51,9 @@ fn summarize_model_ids_for_logs_truncates_to_head_and_tail() {
 #[test]
 fn approval_manager_uses_config_values() {
     let mut cfg = moltis_config::MoltisConfig::default();
-    cfg.tools.exec.approval_mode = "always".into();
-    cfg.tools.exec.security_level = "strict".into();
-    cfg.tools.exec.allowlist = vec!["git*".into()];
+    cfg.tools.execute_command.approval_mode = "always".into();
+    cfg.tools.execute_command.security_level = "strict".into();
+    cfg.tools.execute_command.allowlist = vec!["git*".into()];
 
     let manager = crate::server::helpers::approval_manager_from_config(&cfg);
     assert_eq!(manager.mode, ApprovalMode::Always);
@@ -64,8 +64,8 @@ fn approval_manager_uses_config_values() {
 #[test]
 fn approval_manager_falls_back_for_invalid_values() {
     let mut cfg = moltis_config::MoltisConfig::default();
-    cfg.tools.exec.approval_mode = "bogus".into();
-    cfg.tools.exec.security_level = "bogus".into();
+    cfg.tools.execute_command.approval_mode = "bogus".into();
+    cfg.tools.execute_command.security_level = "bogus".into();
 
     let manager = crate::server::helpers::approval_manager_from_config(&cfg);
     assert_eq!(manager.mode, ApprovalMode::OnMiss);
@@ -77,7 +77,7 @@ fn approval_manager_falls_back_for_invalid_values() {
 fn fs_tools_host_warning_message_only_triggers_without_real_backend() {
     use {
         moltis_tools::{
-            exec::{ExecOpts, ExecResult},
+            command::{CommandOptions, CommandOutput},
             sandbox::{Sandbox, SandboxId},
         },
         std::sync::Arc,
@@ -99,13 +99,13 @@ fn fs_tools_host_warning_message_only_triggers_without_real_backend() {
             Ok(())
         }
 
-        async fn exec(
+        async fn run_command(
             &self,
             _id: &SandboxId,
             _command: &str,
-            _opts: &ExecOpts,
-        ) -> moltis_tools::Result<ExecResult> {
-            Ok(ExecResult {
+            _opts: &CommandOptions,
+        ) -> moltis_tools::Result<CommandOutput> {
+            Ok(CommandOutput {
                 stdout: String::new(),
                 stderr: String::new(),
                 exit_code: 0,

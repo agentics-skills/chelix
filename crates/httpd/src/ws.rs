@@ -993,7 +993,7 @@ pub async fn handle_connection(
             let prov_state = Arc::clone(&state);
             let prov_node_id = params.client.id.clone();
             tokio::spawn(async move {
-                match moltis_gateway::node_exec::query_node_providers(&prov_state, &prov_node_id)
+                match moltis_gateway::node_command::query_node_providers(&prov_state, &prov_node_id)
                     .await
                 {
                     Ok(providers) => {

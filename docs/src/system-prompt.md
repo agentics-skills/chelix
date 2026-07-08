@@ -121,7 +121,7 @@ Injected as compact key=value lines under a `## Runtime` heading:
 
 ```
 Host: host=moltis-devbox | os=macos | arch=aarch64 | shell=zsh | time=2026-02-17 16:18:00 CET | today=2026-02-17 | provider=openai | model=gpt-5 | session=main | sudo_non_interactive=true | timezone=Europe/Paris
-Sandbox(exec): enabled=true | mode=all | backend=docker | scope=session | image=moltis-sandbox:abc123 | workspace_mount=ro | network=disabled
+Sandbox(execute_command): enabled=true | mode=all | backend=docker | scope=session | image=moltis-sandbox:abc123 | workspace_mount=ro | network=disabled
 ```
 
 For channel-bound sessions, the host line also includes surface metadata so the
@@ -131,7 +131,7 @@ LLM knows where it is operating, for example:
 Host: ... | session=telegram:bot-main:123456 | surface=telegram | session_kind=channel | channel_type=telegram | channel_account=bot-main | channel_chat_id=123456 | channel_chat_type=private
 ```
 
-When tools are included, an **Execution routing** block explains how `exec`
+When tools are included, an **Execution routing** block explains how `execute_command`
 routes commands between sandbox and host.
 
 The runtime context is populated at request time in `chat.rs` by detecting:
@@ -210,7 +210,7 @@ tool calling:
 
 The final section contains:
 
-- Tool usage guidelines (conversation first, when to use exec/browser, `/sh`
+- Tool usage guidelines (conversation first, when to use execute_command/browser, `/sh`
   explicit shell prefix)
 - A reminder not to parrot raw tool output
 - **Silent reply protocol**: when tool output speaks for itself, the LLM should

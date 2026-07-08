@@ -374,7 +374,7 @@ fn test_runtime_context_injected_when_provided() {
             location: None,
         },
         sandbox: Some(PromptSandboxRuntimeContext {
-            exec_sandboxed: true,
+            command_sandboxed: true,
             mode: Some("all".into()),
             backend: Some("docker".into()),
             scope: Some("session".into()),
@@ -421,7 +421,7 @@ fn test_runtime_context_injected_when_provided() {
     assert!(prompt.contains("timezone=Europe/Paris"));
     assert!(prompt.contains("accept_language=en-US,fr;q=0.9"));
     assert!(prompt.contains("remote_ip=203.0.113.42"));
-    assert!(prompt.contains("Sandbox(exec): enabled=true"));
+    assert!(prompt.contains("Sandbox(execute_command): enabled=true"));
     assert!(prompt.contains("backend=docker"));
     assert!(prompt.contains("home=/home/sandbox"));
     assert!(prompt.contains("workspace_path=/home/moltis/.moltis"));
@@ -441,7 +441,7 @@ fn test_runtime_context_sandbox_without_sudo_omits_sudo_hint() {
             ..Default::default()
         },
         sandbox: Some(PromptSandboxRuntimeContext {
-            exec_sandboxed: true,
+            command_sandboxed: true,
             mode: Some("all".into()),
             backend: Some("docker".into()),
             home: Some("/home/sandbox".into()),
@@ -467,7 +467,7 @@ fn test_runtime_context_sandbox_without_sudo_omits_sudo_hint() {
         None,
     );
 
-    assert!(prompt.contains("Sandbox(exec): enabled=true"));
+    assert!(prompt.contains("Sandbox(execute_command): enabled=true"));
     assert!(prompt.contains("Execution routing:"));
     assert!(prompt.contains("runs inside sandbox"));
     assert!(prompt.contains("Sandbox/host routing changes are expected runtime behavior"));
@@ -506,9 +506,9 @@ fn test_runtime_context_no_sandbox_uses_host_only_routing() {
 
     assert!(prompt.contains("## Runtime"));
     assert!(prompt.contains("Host: host=container-host"));
-    assert!(!prompt.contains("Sandbox(exec)"));
+    assert!(!prompt.contains("Sandbox(execute_command)"));
     assert!(prompt.contains("Execution routing:"));
-    assert!(prompt.contains("`exec` runs on the host"));
+    assert!(prompt.contains("`execute_command` runs on the host"));
     assert!(!prompt.contains("runs inside sandbox"));
     assert!(!prompt.contains("Sandbox/host routing changes"));
     assert!(!prompt.contains("sudo_non_interactive"));
@@ -544,7 +544,7 @@ fn test_runtime_context_no_sandbox_with_sudo_includes_sudo_hint() {
         None,
     );
 
-    assert!(prompt.contains("`exec` runs on the host"));
+    assert!(prompt.contains("`execute_command` runs on the host"));
     assert!(!prompt.contains("runs inside sandbox"));
     assert!(prompt.contains("sudo_non_interactive=true` means non-interactive sudo"));
 }
@@ -659,7 +659,7 @@ fn test_runtime_context_omits_location_when_none() {
 }
 
 #[test]
-fn test_minimal_prompt_runtime_does_not_add_exec_routing_block() {
+fn test_minimal_prompt_runtime_does_not_add_command_routing_block() {
     let runtime = PromptRuntimeContext {
         host: PromptHostRuntimeContext {
             host: Some("moltis-devbox".into()),
@@ -685,7 +685,7 @@ fn test_minimal_prompt_runtime_does_not_add_exec_routing_block() {
 
     assert!(prompt.contains("## Runtime"));
     assert!(prompt.contains("Host: host=moltis-devbox"));
-    assert!(!prompt.contains("Sandbox(exec)"));
+    assert!(!prompt.contains("Sandbox(execute_command)"));
     assert!(!prompt.contains("Execution routing:"));
 }
 
@@ -697,7 +697,7 @@ fn test_silent_replies_section_in_tool_prompt() {
     assert!(prompt.contains("empty response"));
     assert!(prompt.contains("Do not call tools for greetings"));
     assert!(prompt.contains("`/sh `"));
-    assert!(prompt.contains("run it with `exec` exactly as written"));
+    assert!(prompt.contains("run it with `execute_command` exactly as written"));
     assert!(prompt.contains("Do not express surprise about sandbox vs host execution"));
     assert!(!prompt.contains("__SILENT__"));
 }
@@ -1131,7 +1131,7 @@ fn model_family_unknown_for_unrecognized() {
 #[test]
 fn compact_schema_formats_required_and_optional_params() {
     let schema = serde_json::json!({
-        "name": "exec",
+        "name": "execute_command",
         "description": "Run a shell command",
         "parameters": {
             "type": "object",
@@ -1143,7 +1143,7 @@ fn compact_schema_formats_required_and_optional_params() {
         }
     });
     let out = format_compact_tool_schema(&schema);
-    assert!(out.contains("### exec"));
+    assert!(out.contains("### execute_command"));
     assert!(out.contains("Run a shell command"));
     assert!(out.contains("command (string, required)"));
     assert!(out.contains("timeout (integer)"));
@@ -1183,7 +1183,7 @@ fn text_mode_prompt_uses_compact_schema() {
     #[async_trait::async_trait]
     impl crate::tool_registry::AgentTool for ParamTool {
         fn name(&self) -> &str {
-            "exec"
+            "execute_command"
         }
 
         fn description(&self) -> &str {
@@ -1208,7 +1208,7 @@ fn text_mode_prompt_uses_compact_schema() {
     tools.register(Box::new(ParamTool));
 
     let prompt = build_system_prompt(&tools, false, None);
-    assert!(prompt.contains("### exec"));
+    assert!(prompt.contains("### execute_command"));
     assert!(prompt.contains("Params: command (string, required)"));
     assert!(prompt.contains("## How to call tools"));
     assert!(prompt.contains("```tool_call"));

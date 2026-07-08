@@ -461,9 +461,9 @@ fn validate_config(config: &moltis_config::MoltisConfig) -> Vec<String> {
 
     // Check browser config
     if config.tools.browser.enabled {
-        // Browser sandbox mode follows session sandbox mode (controlled by exec.sandbox.mode).
+        // Browser sandbox mode follows session sandbox mode (controlled by execute_command.sandbox.mode).
         // If sandbox mode is available, check if container runtime exists.
-        if config.tools.exec.sandbox.mode != "off"
+        if config.tools.execute_command.sandbox.mode != "off"
             && !moltis_browser::container::is_container_available()
         {
             warnings.push(
@@ -489,8 +489,8 @@ fn validate_config(config: &moltis_config::MoltisConfig) -> Vec<String> {
         }
     }
 
-    // Check exec config
-    if config.tools.exec.sandbox.mode == "off" {
+    // Check command execution sandbox config
+    if config.tools.execute_command.sandbox.mode == "off" {
         warnings.push(
             "Sandbox mode is off. Commands will run directly on host without isolation."
                 .to_string(),

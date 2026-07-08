@@ -198,11 +198,11 @@ test.describe("Settings navigation", () => {
 		await expect(content).not.toBeEmpty();
 	});
 
-	test("nodes page shows remote exec status doctor", async ({ page }) => {
+	test("nodes page shows remote command status doctor", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await navigateAndWait(page, "/settings/nodes");
 
-		await expect(page.getByRole("heading", { name: "Remote Exec Status", exact: true })).toBeVisible();
+		await expect(page.getByRole("heading", { name: "Remote Command Status", exact: true })).toBeVisible();
 		await expect(page.getByRole("button", { name: "SSH Settings", exact: true })).toBeVisible();
 		await expect(page.getByText("Backend", { exact: true })).toBeVisible();
 
@@ -275,7 +275,7 @@ test.describe("Settings navigation", () => {
 				contentType: "application/json",
 				body: JSON.stringify({
 					ok: true,
-					exec_host: "ssh",
+					command_host: "ssh",
 					ssh_binary_available: true,
 					ssh_binary_version: "OpenSSH_9.9",
 					paired_node_count: 0,
@@ -284,7 +284,7 @@ test.describe("Settings navigation", () => {
 					managed_target_count: 1,
 					pinned_target_count: hostPinned ? 1 : 0,
 					configured_node: null,
-					legacy_target: null,
+					configured_ssh_target: null,
 					active_route: {
 						target_id: 42,
 						label: "SSH: prod-box",
@@ -347,7 +347,7 @@ test.describe("Settings navigation", () => {
 				contentType: "application/json",
 				body: JSON.stringify({
 					ok: true,
-					exec_host: "ssh",
+					command_host: "ssh",
 					ssh_binary_available: true,
 					ssh_binary_version: "OpenSSH_9.9",
 					paired_node_count: 0,
@@ -356,7 +356,7 @@ test.describe("Settings navigation", () => {
 					managed_target_count: 1,
 					pinned_target_count: 1,
 					configured_node: null,
-					legacy_target: null,
+					configured_ssh_target: null,
 					active_route: {
 						target_id: 42,
 						label: "SSH: prod-box",

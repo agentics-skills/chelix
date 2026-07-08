@@ -28,11 +28,11 @@ pub struct PolicyContext {
 pub fn profile_tools(profile: &str) -> ToolPolicy {
     match profile {
         "minimal" => ToolPolicy {
-            allow: vec!["exec".into()],
+            allow: vec!["execute_command".into()],
             deny: Vec::new(),
         },
         "coding" => ToolPolicy {
-            allow: vec!["exec".into(), "browser".into(), "memory".into()],
+            allow: vec!["execute_command".into(), "browser".into(), "memory".into()],
             deny: Vec::new(),
         },
         "full" => ToolPolicy {
@@ -123,7 +123,7 @@ fn policy_from_config(cfg: &moltis_config::schema::ToolPolicyConfig) -> ToolPoli
 /// 3. Per-agent preset — `[agents.presets.<agent_id>.tools]`
 /// 4. Per-channel-group — `[channels.<type>.<account>.tools.groups.<chat_type>]`
 /// 5. Per-sender in group — `[channels.<type>.<account>.tools.groups.<chat_type>.by_sender.<id>]`
-/// 6. Sandbox overrides — `[tools.exec.sandbox.tools_policy]` (only when `context.sandboxed`)
+/// 6. Sandbox overrides — `[tools.execute_command.sandbox.tools_policy]` (only when `context.sandboxed`)
 pub fn resolve_effective_policy(
     config: &moltis_config::MoltisConfig,
     context: &PolicyContext,
@@ -216,9 +216,9 @@ pub fn resolve_effective_policy(
         }
     }
 
-    // Layer 6: Sandbox overrides — [tools.exec.sandbox.tools_policy]
+    // Layer 6: Sandbox overrides — [tools.execute_command.sandbox.tools_policy]
     if context.sandboxed
-        && let Some(ref sandbox_policy) = config.tools.exec.sandbox.tools_policy
+        && let Some(ref sandbox_policy) = config.tools.execute_command.sandbox.tools_policy
     {
         let p = policy_from_config(sandbox_policy);
         if !p.allow.is_empty() || !p.deny.is_empty() {
@@ -245,7 +245,7 @@ mod tests {
             allow: vec!["*".into()],
             deny: Vec::new(),
         };
-        assert!(policy.is_allowed("exec"));
+        assert!(policy.is_allowed("execute_command"));
         assert!(policy.is_allowed("browser"));
     }
 
@@ -253,9 +253,9 @@ mod tests {
     fn test_deny_wins() {
         let policy = ToolPolicy {
             allow: vec!["*".into()],
-            deny: vec!["exec".into()],
+            deny: vec!["execute_command".into()],
         };
-        assert!(!policy.is_allowed("exec"));
+        assert!(!policy.is_allowed("execute_command"));
         assert!(policy.is_allowed("browser"));
     }
 
@@ -267,7 +267,7 @@ mod tests {
         };
         assert!(policy.is_allowed("browser"));
         assert!(policy.is_allowed("browser.fetch"));
-        assert!(!policy.is_allowed("exec"));
+        assert!(!policy.is_allowed("execute_command"));
     }
 
     #[test]
@@ -276,7 +276,7 @@ mod tests {
             allow: Vec::new(),
             deny: Vec::new(),
         };
-        assert!(policy.is_allowed("exec"));
+        assert!(policy.is_allowed("execute_command"));
     }
 
     #[test]
@@ -287,22 +287,22 @@ mod tests {
         };
         let overlay = ToolPolicy {
             allow: Vec::new(),
-            deny: vec!["exec".into()],
+            deny: vec!["execute_command".into()],
         };
         let merged = base.merge_with(&overlay);
         assert!(!merged.is_allowed("dangerous"));
-        assert!(!merged.is_allowed("exec"));
+        assert!(!merged.is_allowed("execute_command"));
         assert!(merged.is_allowed("browser"));
     }
 
     #[test]
     fn test_profiles() {
         let minimal = profile_tools("minimal");
-        assert!(minimal.is_allowed("exec"));
+        assert!(minimal.is_allowed("execute_command"));
         assert!(!minimal.is_allowed("browser"));
 
         let coding = profile_tools("coding");
-        assert!(coding.is_allowed("exec"));
+        assert!(coding.is_allowed("execute_command"));
         assert!(!coding.is_allowed("Read"));
         assert!(!coding.is_allowed("Write"));
 
@@ -313,7 +313,7 @@ mod tests {
     #[test]
     fn test_resolve_global_policy() {
         let mut cfg = moltis_config::MoltisConfig::default();
-        cfg.tools.policy.allow = vec!["exec".into()];
+        cfg.tools.policy.allow = vec!["execute_command".into()];
         cfg.tools.policy.deny = vec!["dangerous".into()];
 
         let ctx = PolicyContext {
@@ -321,7 +321,7 @@ mod tests {
             ..Default::default()
         };
         let policy = resolve_effective_policy(&cfg, &ctx);
-        assert!(policy.is_allowed("exec"));
+        assert!(policy.is_allowed("execute_command"));
         assert!(!policy.is_allowed("dangerous"));
         assert!(!policy.is_allowed("browser"));
     }
@@ -336,7 +336,7 @@ mod tests {
             .insert("openai".into(), moltis_config::schema::ProviderEntry {
                 policy: Some(moltis_config::schema::ToolPolicyConfig {
                     allow: Vec::new(),
-                    deny: vec!["exec".into()],
+                    deny: vec!["execute_command".into()],
                     profile: None,
                 }),
                 ..Default::default()
@@ -348,7 +348,7 @@ mod tests {
             ..Default::default()
         };
         let policy = resolve_effective_policy(&cfg, &ctx);
-        assert!(!policy.is_allowed("exec"));
+        assert!(!policy.is_allowed("execute_command"));
         assert!(policy.is_allowed("browser"));
     }
 
@@ -373,7 +373,7 @@ mod tests {
         let policy = resolve_effective_policy(&cfg, &ctx);
         assert!(policy.is_allowed("web_search"));
         assert!(policy.is_allowed("web_fetch"));
-        assert!(!policy.is_allowed("exec"));
+        assert!(!policy.is_allowed("execute_command"));
     }
 
     #[test]
@@ -387,7 +387,7 @@ mod tests {
             "tools": {
                 "groups": {
                     "group": {
-                        "deny": ["exec", "browser"],
+                        "deny": ["execute_command", "browser"],
                         "by_sender": {
                             "trusted_user_123": {
                                 "allow": ["*"],
@@ -402,7 +402,7 @@ mod tests {
             .telegram
             .insert("my-bot".into(), account_config);
 
-        // Group chat, untrusted sender — exec should be denied.
+        // Group chat, untrusted sender — execute_command should be denied.
         let ctx = PolicyContext {
             agent_id: "main".into(),
             channel: Some("telegram".into()),
@@ -412,19 +412,19 @@ mod tests {
             ..Default::default()
         };
         let policy = resolve_effective_policy(&cfg, &ctx);
-        assert!(!policy.is_allowed("exec"));
+        assert!(!policy.is_allowed("execute_command"));
         assert!(!policy.is_allowed("browser"));
         assert!(policy.is_allowed("web_search"));
 
-        // Trusted sender — exec allowed via by_sender override.
+        // Trusted sender — execute_command allowed via by_sender override.
         let ctx_trusted = PolicyContext {
             sender_id: Some("trusted_user_123".into()),
             ..ctx.clone()
         };
         let policy_trusted = resolve_effective_policy(&cfg, &ctx_trusted);
         // Deny from group layer accumulates, but sender layer replaces allow.
-        // Deny always wins: group denied exec+browser, sender can't override denies.
-        assert!(!policy_trusted.is_allowed("exec"));
+        // Deny always wins: group denied execute_command+browser, sender can't override denies.
+        assert!(!policy_trusted.is_allowed("execute_command"));
         assert!(!policy_trusted.is_allowed("browser"));
         // But a new allow pattern from sender layer works for non-denied tools.
         assert!(policy_trusted.is_allowed("web_search"));
@@ -461,7 +461,7 @@ mod tests {
             ..Default::default()
         };
         let policy = resolve_effective_policy(&cfg, &ctx);
-        assert!(policy.is_allowed("exec"));
+        assert!(policy.is_allowed("execute_command"));
         assert!(policy.is_allowed("browser"));
         assert!(policy.is_allowed("web_search"));
     }
@@ -476,7 +476,7 @@ mod tests {
             "tools": {
                 "groups": {
                     "group": {
-                        "deny": ["exec"]
+                        "deny": ["execute_command"]
                     }
                 }
             }
@@ -489,7 +489,7 @@ mod tests {
             ..Default::default()
         };
         let policy = resolve_effective_policy(&cfg, &ctx);
-        assert!(policy.is_allowed("exec")); // Not denied — channel layers skipped.
+        assert!(policy.is_allowed("execute_command")); // Not denied — channel layers skipped.
     }
 
     #[test]
@@ -498,11 +498,12 @@ mod tests {
         cfg.tools.policy.allow = vec!["*".into()];
 
         // Configure sandbox-specific tool policy that denies browser.
-        cfg.tools.exec.sandbox.tools_policy = Some(moltis_config::schema::ToolPolicyConfig {
-            allow: vec!["exec".into()],
-            deny: vec!["browser".into()],
-            profile: None,
-        });
+        cfg.tools.execute_command.sandbox.tools_policy =
+            Some(moltis_config::schema::ToolPolicyConfig {
+                allow: vec!["execute_command".into()],
+                deny: vec!["browser".into()],
+                profile: None,
+            });
 
         // Without sandboxed flag — layer 6 is skipped.
         let ctx = PolicyContext {
@@ -511,7 +512,7 @@ mod tests {
             ..Default::default()
         };
         let policy = resolve_effective_policy(&cfg, &ctx);
-        assert!(policy.is_allowed("exec"));
+        assert!(policy.is_allowed("execute_command"));
         assert!(policy.is_allowed("browser")); // Not denied — sandbox layer skipped.
 
         // With sandboxed flag — layer 6 applies.
@@ -521,7 +522,7 @@ mod tests {
             ..Default::default()
         };
         let policy_sandboxed = resolve_effective_policy(&cfg, &ctx_sandboxed);
-        assert!(policy_sandboxed.is_allowed("exec"));
+        assert!(policy_sandboxed.is_allowed("execute_command"));
         assert!(!policy_sandboxed.is_allowed("browser")); // Denied by sandbox layer.
         assert!(!policy_sandboxed.is_allowed("web_search")); // Not in sandbox allow list.
     }
@@ -543,7 +544,7 @@ mod tests {
         };
         let policy = resolve_effective_policy(&cfg, &ctx);
         // Regular tools still allowed.
-        assert!(policy.is_allowed("exec"));
+        assert!(policy.is_allowed("execute_command"));
         assert!(policy.is_allowed("web_search"));
         // MCP tools from allowed servers still work.
         assert!(policy.is_allowed("mcp__github__list_repos"));
@@ -580,7 +581,7 @@ mod tests {
         let policy = resolve_effective_policy(&cfg, &ctx);
         // Policy layer allows everything — actual filtering happens at
         // the tool registry level in apply_runtime_tool_filters.
-        assert!(policy.is_allowed("exec"));
+        assert!(policy.is_allowed("execute_command"));
         assert!(policy.is_allowed("mcp__github__list_repos"));
         assert!(policy.is_allowed("mcp__home-assistant__turn_on"));
     }
@@ -626,7 +627,7 @@ mod tests {
             ..Default::default()
         };
         let policy = resolve_effective_policy(&cfg, &ctx);
-        assert!(policy.is_allowed("exec"));
+        assert!(policy.is_allowed("execute_command"));
         // Policy passes — actual MCP blocking in apply_runtime_tool_filters
         assert!(policy.is_allowed("mcp__github__list_repos"));
     }
@@ -654,8 +655,8 @@ mod tests {
             ..Default::default()
         };
         let policy = resolve_effective_policy(&cfg, &ctx);
-        // "full" profile expands to allow = ["*"], so exec is now allowed.
-        assert!(policy.is_allowed("exec"));
+        // "full" profile expands to allow = ["*"], so execute_command is now allowed.
+        assert!(policy.is_allowed("execute_command"));
         assert!(policy.is_allowed("web_search"));
 
         // Layer 5: sender with profile = "full" in a restricted group.
@@ -686,7 +687,7 @@ mod tests {
         };
         let policy2 = resolve_effective_policy(&cfg2, &ctx2);
         // Sender's "full" profile expands to allow = ["*"].
-        assert!(policy2.is_allowed("exec"));
+        assert!(policy2.is_allowed("execute_command"));
         assert!(policy2.is_allowed("browser"));
     }
 }

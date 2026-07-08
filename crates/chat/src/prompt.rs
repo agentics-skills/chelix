@@ -440,7 +440,7 @@ pub(crate) async fn build_prompt_runtime_context(
             let workspace_mount = config.workspace_mount.to_string();
             let workspace_path = (workspace_mount != "none").then(|| data_dir_display.clone());
             Some(PromptSandboxRuntimeContext {
-                exec_sandboxed: true,
+                command_sandboxed: true,
                 mode: Some(config.mode.to_string()),
                 backend: Some(backend_name.to_string()),
                 scope: Some(config.scope.to_string()),
@@ -625,7 +625,7 @@ pub(crate) fn build_policy_context(
         sender_id,
         sandboxed: runtime_context
             .and_then(|rc| rc.sandbox.as_ref())
-            .is_some_and(|s| s.exec_sandboxed),
+            .is_some_and(|s| s.command_sandboxed),
     }
 }
 
@@ -656,7 +656,7 @@ mod tests {
 
     fn registry_with_mcp_tools() -> moltis_agents::tool_registry::ToolRegistry {
         let mut registry = moltis_agents::tool_registry::ToolRegistry::new();
-        registry.register(Box::new(DummyTool("exec")));
+        registry.register(Box::new(DummyTool("execute_command")));
         registry.register(Box::new(DummyTool("mcp__github__builtin_named_like_mcp")));
         registry.register_mcp(Box::new(DummyTool("mcp__github__search")), "github".into());
         registry.register_mcp(Box::new(DummyTool("mcp__memory__store")), "memory".into());
@@ -690,7 +690,7 @@ mod tests {
             &unrestricted_policy_context("locked"),
         );
 
-        assert!(filtered.get("exec").is_some());
+        assert!(filtered.get("execute_command").is_some());
         assert!(
             filtered
                 .get("mcp__github__builtin_named_like_mcp")
@@ -720,7 +720,7 @@ mod tests {
             &unrestricted_policy_context("github-only"),
         );
 
-        assert!(filtered.get("exec").is_some());
+        assert!(filtered.get("execute_command").is_some());
         assert!(filtered.get("mcp__github__search").is_some());
         assert!(filtered.get("mcp__memory__store").is_none());
     }

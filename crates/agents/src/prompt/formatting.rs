@@ -26,7 +26,7 @@ pub(crate) fn tool_call_guidance(model_id: Option<&str>) -> String {
     g.push_str("User: What files are in the current directory?\n");
     g.push_str("Assistant: I'll list the files for you.\n");
     g.push_str("```tool_call\n");
-    g.push_str("{\"tool\": \"exec\", \"arguments\": {\"command\": \"ls -la\"}}\n");
+    g.push_str("{\"tool\": \"execute_command\", \"arguments\": {\"command\": \"ls -la\"}}\n");
     g.push_str("```\n\n");
     g
 }
@@ -231,7 +231,7 @@ pub(crate) fn format_nodes_runtime_section(
 }
 
 pub(crate) fn format_sandbox_runtime_line(sandbox: &PromptSandboxRuntimeContext) -> String {
-    let mut parts = vec![format!("enabled={}", sandbox.exec_sandboxed)];
+    let mut parts = vec![format!("enabled={}", sandbox.command_sandboxed)];
 
     for (key, value) in [
         ("mode", sandbox.mode.as_deref()),
@@ -256,5 +256,5 @@ pub(crate) fn format_sandbox_runtime_line(sandbox: &PromptSandboxRuntimeContext)
         parts.push(format!("session_override={session_override}"));
     }
 
-    format!("Sandbox(exec): {}", parts.join(" | "))
+    format!("Sandbox(execute_command): {}", parts.join(" | "))
 }

@@ -75,14 +75,14 @@ impl BrowserTool {
     }
 
     /// Create from the full tools config so browser sandbox containers can
-    /// share exec sandbox host path resolution.
+    /// share command sandbox host path resolution.
     pub fn from_tools_config(config: &moltis_config::schema::ToolsConfig) -> Option<Self> {
         if !config.browser.enabled {
             return None;
         }
         let mut browser_config = moltis_browser::BrowserConfig::from(&config.browser);
         browser_config.host_data_dir = config
-            .exec
+            .execute_command
             .sandbox
             .host_data_dir
             .as_ref()
@@ -361,10 +361,10 @@ mod tests {
     }
 
     #[test]
-    fn from_tools_config_carries_exec_sandbox_host_data_dir() {
+    fn from_tools_config_carries_command_sandbox_host_data_dir() {
         let mut config = moltis_config::schema::ToolsConfig::default();
         config.browser.enabled = true;
-        config.exec.sandbox.host_data_dir = Some("/host/moltis-data".to_string());
+        config.execute_command.sandbox.host_data_dir = Some("/host/moltis-data".to_string());
 
         let tool = BrowserTool::from_tools_config(&config).unwrap();
 

@@ -97,10 +97,10 @@ disabled = false
 enabled = true
 auto_generate = true
 
-[tools.exec]
+[tools.execute_command]
 default_timeout_secs = 30
 
-[tools.exec.sandbox]
+[tools.execute_command.sandbox]
 mode = "all"
 backend = "auto"
 

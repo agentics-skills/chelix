@@ -285,7 +285,7 @@ When the `metrics` feature is enabled, the browser module records:
 ## Sandbox Mode
 
 Browser sandbox mode **automatically follows the session's sandbox mode**. When
-a chat session uses sandbox mode (controlled by `[tools.exec.sandbox]`), the
+a chat session uses sandbox mode (controlled by `[tools.execute_command.sandbox]`), the
 browser tool will also run in a sandboxed container. When the session is not
 sandboxed, the browser runs directly on the host.
 
@@ -312,7 +312,7 @@ sandbox_image = "docker.io/browserless/chrome"  # Container image for sandboxed 
 Requirements:
 - Docker or Apple Container must be installed and running
 - The container image is pulled automatically on first use
-- Session sandbox mode must be enabled (`[tools.exec.sandbox] mode = "all"`)
+- Session sandbox mode must be enabled (`[tools.execute_command.sandbox] mode = "all"`)
 
 ### Moltis Inside Docker (Sibling Containers)
 
@@ -334,18 +334,18 @@ On Linux, `host.docker.internal` is not available by default. Use the Docker
 bridge gateway IP (typically `172.17.0.1`) or add `--add-host=host.docker.internal:host-gateway`
 to the Moltis container's `docker run` command.
 
-### Exec Tool Scripts
+### Execute Command Scripts
 
 If agents need to run browser automation **scripts** (Puppeteer, Playwright,
 Selenium) inside the command sandbox, Chromium is included in the default
 sandbox packages:
 
 ```bash
-# Inside sandbox (via exec tool)
+# Inside sandbox (via execute_command tool)
 chromium --headless --no-sandbox --dump-dom https://example.com
 ```
 
-Or use Puppeteer/Playwright in a Node.js script executed via the `exec` tool.
+Or use Puppeteer/Playwright in a Node.js script executed via the `execute_command` tool.
 
 ## Security Considerations
 
@@ -384,7 +384,7 @@ malicious sites could attempt to inject instructions.
    sandbox mode, the browser can reach the internet but not local services.
    Use firewall rules for additional restrictions.
 
-5. **Sandbox scripts**: Browser scripts running in the exec sandbox (Puppeteer,
+5. **Sandbox scripts**: Browser scripts running in the command sandbox (Puppeteer,
    Playwright) inherit sandbox network restrictions (`no_network: true` by default).
 
 ## Browser Detection

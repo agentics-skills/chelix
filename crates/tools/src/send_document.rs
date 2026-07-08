@@ -235,8 +235,8 @@ mod tests {
     use {
         super::*,
         crate::{
+            command::{CommandOptions, CommandOutput},
             Result,
-            exec::{ExecOpts, ExecResult},
             sandbox::{Sandbox, SandboxConfig, SandboxId},
         },
         std::io::Write,
@@ -254,21 +254,21 @@ mod tests {
             Ok(())
         }
 
-        async fn exec(
+        async fn run_command(
             &self,
             _id: &SandboxId,
             command: &str,
-            _opts: &ExecOpts,
-        ) -> Result<ExecResult> {
+            _opts: &CommandOptions,
+        ) -> Result<CommandOutput> {
             if command.contains("/tmp/report.pdf") {
-                return Ok(ExecResult {
+                return Ok(CommandOutput {
                     stdout: BASE64.encode(b"%PDF-1.4"),
                     stderr: String::new(),
                     exit_code: 0,
                 });
             }
 
-            Ok(ExecResult {
+            Ok(CommandOutput {
                 stdout: String::new(),
                 stderr: "path is not a regular file".to_string(),
                 exit_code: 2,
