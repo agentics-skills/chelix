@@ -625,7 +625,7 @@ fn test_docker_image_tag_normalizes_whitespace_and_duplicates() {
 fn test_sandbox_image_dockerfile_creates_home_in_install_layer() {
     let dockerfile = sandbox_image_dockerfile("ubuntu:26.04", &["curl".into()]);
     assert!(dockerfile.contains(
-        "RUN apt-get update -qq && apt-get install -y -qq curl && mkdir -p /home/sandbox"
+        "RUN apt-get update -qq && apt-get install -y -qq curl && mkdir -p /home/sandbox && sed -i 's#^\\(root:[^:]*:[^:]*:[^:]*:[^:]*:\\)[^:]*:#\\1/home/sandbox:#' /etc/passwd"
     ));
     assert!(!dockerfile.contains("RUN mkdir -p /home/sandbox\n"));
 }

@@ -82,7 +82,8 @@ pub(crate) fn sandbox_image_dockerfile(base: &str, packages: &[String]) -> Strin
 {nodesource_setup}\
 {gh_setup}\
 RUN apt-get update -qq && apt-get install -y -qq {pkg_str} \
-    && mkdir -p {SANDBOX_HOME_DIR}\n\
+    && mkdir -p {SANDBOX_HOME_DIR} \
+    && sed -i 's#^\\(root:[^:]*:[^:]*:[^:]*:[^:]*:\\)[^:]*:#\\1{SANDBOX_HOME_DIR}:#' /etc/passwd\n\
 RUN if command -v corepack >/dev/null 2>&1; then corepack enable; fi\n\
 RUN if command -v go >/dev/null 2>&1; then \
         GOBIN=/usr/local/bin go install {GOGCLI_MODULE_PATH}@{GOGCLI_VERSION} \
