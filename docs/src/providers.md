@@ -174,9 +174,6 @@ cannot reach the server, authenticate via the CLI instead:
 ~~~bash
 # Docker
 docker exec -it moltis moltis auth login --provider openai-codex
-
-# Fly.io
-fly ssh console -C "moltis auth login --provider openai-codex"
 ~~~
 
 The CLI opens a browser on your machine and handles the callback locally. If

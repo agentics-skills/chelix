@@ -146,13 +146,7 @@ async fn build_webauthn_registry(
     let explicit_rp_id = external_rp_id
         .or_else(|| std::env::var("MOLTIS_WEBAUTHN_RP_ID").ok())
         .or_else(|| std::env::var("APP_DOMAIN").ok())
-        .or_else(|| std::env::var("RENDER_EXTERNAL_HOSTNAME").ok())
-        .or_else(|| {
-            std::env::var("FLY_APP_NAME")
-                .ok()
-                .map(|name| format!("{name}.fly.dev"))
-        })
-        .or_else(|| std::env::var("RAILWAY_PUBLIC_DOMAIN").ok());
+        .or_else(|| std::env::var("RENDER_EXTERNAL_HOSTNAME").ok());
     let explicit_origin = external_origin
         .or_else(|| std::env::var("MOLTIS_WEBAUTHN_ORIGIN").ok())
         .or_else(|| std::env::var("APP_URL").ok())

@@ -97,7 +97,7 @@ Verify releases with `gh attestation verify <artifact> -R agentics-skills/chelix
 - **Safer Agent Editing** — Automatic checkpoints before built-in skill and memory mutations, restore tooling, session branching
 - **Extensibility** — MCP servers (stdio + HTTP/SSE), skill system, 15 lifecycle hook events with circuit breaker, destructive command guard
 - **Security** — Encryption-at-rest vault (XChaCha20-Poly1305 + Argon2id), password + passkey + API key auth, sandbox isolation, SSRF/CSWSH protection
-- **Operations** — Cron scheduling, OpenTelemetry tracing, Prometheus metrics, cloud deploy (Fly.io, Render), managed SSH deploy keys, host-pinned remote targets, live tool inventory in Settings, and CLI/web remote command doctor flows
+- **Operations** — Cron scheduling, OpenTelemetry tracing, Prometheus metrics, cloud deploy, managed SSH deploy keys, host-pinned remote targets, live tool inventory in Settings, and CLI/web remote command doctor flows
 
 ## How It Works
 
@@ -190,15 +190,12 @@ for Podman, OrbStack, TLS trust, and persistence details.
 
 ### Cloud Deployment
 
-**Fly.io** (CLI):
-
-```bash
-fly launch --image ghcr.io/moltis-org/moltis:latest
-fly secrets set MOLTIS_PASSWORD="your-password"
-```
+Chelix publishes `ghcr.io/moltis-org/moltis:latest` and includes deployment
+examples for supported container platforms.
 
 All cloud configs use `--no-tls` because the provider handles TLS termination.
-See [Cloud Deploy docs](docs/src/cloud-deploy.md) for details.
+See [Cloud Deploy docs](docs/src/cloud-deploy.md) for generic settings and
+current platform examples.
 
 ## Star History
 
