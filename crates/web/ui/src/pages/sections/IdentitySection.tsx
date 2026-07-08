@@ -164,9 +164,6 @@ export function IdentitySection(): VNode {
 						>
 							<option value="auto">Browser default</option>
 							<option value="en">English</option>
-							<option value="fr">French</option>
-							<option value="zh">{"\u7B80\u4F53\u4E2D\u6587"}</option>
-							<option value="zh-TW">{"\u6B63\u9AD4\u4E2D\u6587\uFF08\u81FA\u7063\uFF09"}</option>
 						</select>
 						<button
 							type="button"

@@ -1,13 +1,13 @@
 // ── i18n core module ────────────────────────────────────────
 //
 // Single entry point for all translations. Uses i18next under the hood.
-// English is loaded eagerly; other locales are lazy-loaded on demand.
+// English is loaded eagerly; unsupported locales normalize back to English.
 //
 // Exports:
 //   locale       – reactive Preact signal for current locale
 //   t(key, opts) – global translation function for imperative DOM code
 //   useTranslation(ns) – Preact hook that subscribes to locale signal
-//   setLocale(lng)     – switch language, persist to localStorage
+//   setLocale(lng)     – switch language preference, persist to localStorage
 //   init()             – initialise i18next, load English bundles
 //   translateStaticElements(root) – translate static data-i18n elements/attrs
 
@@ -17,26 +17,13 @@ import i18next from "i18next";
 
 const STORAGE_KEY = "moltis-locale";
 let initPromise: Promise<void> | null = null;
-const SUPPORTED_LOCALES = new Set(["en", "fr", "zh", "zh-TW"]);
-export const supportedLocales: readonly string[] = Object.freeze(["en", "fr", "zh", "zh-TW"]);
+const SUPPORTED_LOCALES = new Set(["en"]);
+export const supportedLocales: readonly string[] = Object.freeze(["en"]);
 
 function normalizeLocaleTag(value: string | null | undefined): string {
 	if (!value) return "en";
 	let tag = String(value).trim().replace("_", "-");
 	if (!tag) return "en";
-	const lower = tag.toLowerCase();
-	if (
-		lower === "zh-tw" ||
-		lower.startsWith("zh-tw-") ||
-		lower === "zh-hk" ||
-		lower.startsWith("zh-hk-") ||
-		lower === "zh-mo" ||
-		lower.startsWith("zh-mo-") ||
-		lower === "zh-hant" ||
-		lower.startsWith("zh-hant-")
-	) {
-		return "zh-TW";
-	}
 	const idx = tag.indexOf("-");
 	if (idx !== -1) {
 		tag = tag.slice(0, idx);
@@ -53,7 +40,11 @@ function resolveSupportedLocale(value: string | null | undefined): string {
 export function getPreferredLocale(): string {
 	const stored = localStorage.getItem(STORAGE_KEY);
 	if (stored) {
-		return resolveSupportedLocale(stored);
+		const resolved = resolveSupportedLocale(stored);
+		if (resolved !== stored) {
+			localStorage.setItem(STORAGE_KEY, resolved);
+		}
+		return resolved;
 	}
 	return resolveSupportedLocale(navigator.language || "en");
 }
@@ -64,8 +55,8 @@ export function getPreferredLocale(): string {
 export const locale = signal<string>(getPreferredLocale());
 
 // ── Namespace registry ──────────────────────────────────────
-// Maps namespace name → lazy loader. English bundles are loaded eagerly
-// at init(); other locales load on demand via setLocale().
+// Maps namespace name → bundle loader. English bundles are loaded eagerly
+// at init().
 const namespaces: Record<string, (lng: string) => Promise<{ default?: Record<string, unknown> }>> = {
 	common: (lng: string) => import(`./locales/${lng}/common.ts`),
 	errors: (lng: string) => import(`./locales/${lng}/errors.ts`),
@@ -127,12 +118,6 @@ export function init(): Promise<void> {
 			resources: {},
 		})
 		.then(() => loadLanguage("en"))
-		.then(() => {
-			// If the detected locale isn't English, load it too.
-			if (locale.value !== "en") {
-				return loadLanguage(locale.value);
-			}
-		})
 		.then(() => {
 			// Ensure i18next is set to the detected locale after bundles load.
 			if (i18next.language !== locale.value) {
