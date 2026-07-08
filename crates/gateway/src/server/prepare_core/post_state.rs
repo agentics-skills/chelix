@@ -145,12 +145,10 @@ async fn build_webauthn_registry(
 
     let explicit_rp_id = external_rp_id
         .or_else(|| std::env::var("MOLTIS_WEBAUTHN_RP_ID").ok())
-        .or_else(|| std::env::var("APP_DOMAIN").ok())
-        .or_else(|| std::env::var("RENDER_EXTERNAL_HOSTNAME").ok());
+        .or_else(|| std::env::var("APP_DOMAIN").ok());
     let explicit_origin = external_origin
         .or_else(|| std::env::var("MOLTIS_WEBAUTHN_ORIGIN").ok())
-        .or_else(|| std::env::var("APP_URL").ok())
-        .or_else(|| std::env::var("RENDER_EXTERNAL_URL").ok());
+        .or_else(|| std::env::var("APP_URL").ok());
 
     let mut wa_registry = crate::auth_webauthn::WebAuthnRegistry::new();
     let mut any_ok = false;

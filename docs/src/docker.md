@@ -206,29 +206,6 @@ accept the mount but Chelix cannot auto-unseal from an empty file. After you
 initialize the vault in **Settings > Encryption**, copy the one-time recovery
 key into this file before relying on unattended auto-unseal.
 
-### Coolify (Hetzner/VPS)
-
-For Coolify service stacks, use
-[`examples/docker-compose.coolify.yml`](https://github.com/agentics-skills/chelix/blob/master/examples/docker-compose.coolify.yml).
-It is preconfigured for reverse-proxy deployments (`--no-tls`) and includes
-the Docker socket mount for sandboxed command execution.
-
-Key points:
-
-- Set `MOLTIS_TOKEN` in the Coolify UI before first deploy.
-- Set `SERVICE_FQDN_MOLTIS_13131` to your app domain.
-- Keep Chelix in `--no-tls` mode behind Coolify's reverse proxy. If requests
-  are redirected to `:13131`, check that TLS is disabled in Chelix.
-- Keep `/var/run/docker.sock:/var/run/docker.sock` mounted if you want sandbox
-  isolation for execute_command tools.
-
-Start with:
-
-```bash
-docker compose up -d
-docker compose logs -f moltis  # watch for startup messages
-```
-
 ## Browser Sandbox in Docker
 
 When Chelix runs inside Docker and launches a sandboxed browser, the browser

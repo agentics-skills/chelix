@@ -36,41 +36,10 @@ deployment target with a local container runtime available to Chelix.
 
 ### `MOLTIS_DEPLOY_PLATFORM`
 
-Set this to the name of your cloud provider (e.g. `render`,
-`coolify`). When set, Chelix hides local-only LLM providers
+Set this to a non-empty label for your deployment target when Chelix runs on a
+remote container platform. When set, Chelix hides local-only LLM providers
 such as Ollama from the provider setup page since they cannot run
-on cloud VMs. The included Render blueprint and Coolify example already set
-this variable.
-
-## Coolify (self-hosted, e.g. Hetzner)
-
-Coolify deployments can run Chelix with sandboxed execute_command tools, as long as the
-service mounts the host Docker socket.
-
-- Use [`examples/docker-compose.coolify.yml`](https://github.com/agentics-skills/chelix/blob/master/examples/docker-compose.coolify.yml)
-  as a starting point.
-- Run Chelix with `--no-tls` (Coolify terminates HTTPS at the proxy).
-- Set `MOLTIS_BEHIND_PROXY=true` so client IP/auth behavior is correct behind
-  reverse proxying.
-- Mount `/var/run/docker.sock:/var/run/docker.sock` to enable container-backed
-  sandbox execution.
-
-## Render
-
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/agentics-skills/chelix)
-
-The repository includes a `render.yaml` blueprint. Click the button above or:
-
-1. Go to **Dashboard** > **New** > **Blueprint**
-2. Connect your fork of the Chelix repository
-3. Render will detect `render.yaml` and configure the service
-
-### Configuration details
-
-- **Port**: Render uses port 10000 by default
-- **Persistent disk**: 1 GB mounted at `/data` (included in the blueprint)
-- **Environment**: set `MOLTIS_PASSWORD` in the Render dashboard under
-  **Environment** > **Secret Files** or **Environment Variables**
+on cloud VMs.
 
 ## OAuth Providers (OpenAI Codex, GitHub Copilot)
 
@@ -103,9 +72,8 @@ deployments the easiest approach is to set the `MOLTIS_PASSWORD` environment
 variable (or secret) before deploying. This pre-configures the password so the
 setup code flow is skipped.
 
-For Render, set the variable in the dashboard's environment settings. On other
-platforms, add the same variable through the platform's secret or environment
-variable configuration.
+Add the variable through your platform's secret or environment variable
+configuration.
 
 ## Health checks
 

@@ -430,7 +430,7 @@ pub struct GatewayState {
     pub graphql_enabled: AtomicBool,
     /// Session event bus for cross-UI synchronisation (macOS ↔ web).
     pub session_event_bus: SessionEventBus,
-    /// Cloud deploy platform (e.g. "render", "coolify"), read from
+    /// Cloud deploy platform label, read from
     /// `MOLTIS_DEPLOY_PLATFORM`. `None` when running locally.
     pub deploy_platform: Option<String>,
     /// Whether new node pairing requests are accepted. Disabled by default

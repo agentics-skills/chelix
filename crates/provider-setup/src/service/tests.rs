@@ -773,7 +773,7 @@ async fn available_hides_local_providers_on_cloud() {
     let svc = LiveProviderSetupService::new(
         registry,
         ProvidersConfig::default(),
-        Some("render".to_string()),
+        Some("cloud".to_string()),
     );
     let result = svc.available().await.unwrap();
     let arr = result.as_array().unwrap();
