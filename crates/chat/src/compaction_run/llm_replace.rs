@@ -65,8 +65,7 @@ pub(super) async fn run(
         }
     }
 
-    // `config.summary_model` / `max_summary_tokens` aren't wired yet —
-    // tracked by beads issue moltis-8me.
+    // `config.summary_model` / `max_summary_tokens` aren't wired yet.
     let _ = config;
 
     if summary.is_empty() {

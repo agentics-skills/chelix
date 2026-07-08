@@ -1,41 +1,7 @@
 # Skills: ship a native `read_skill` tool
 
-## Beads tracking
-
-**This plan is tracked in beads. Before starting, read the issues and claim the
-one you're about to work on.** Run these commands from the repo root:
-
-```bash
-bd show moltis-1sk    # epic
-bd show moltis-6p0    # 1. Add ReadSkillTool
-bd show moltis-0vb    # 2. Register in gateway
-bd show moltis-hjy    # 3. Rewrite generate_skills_prompt
-bd show moltis-5xp    # 4. Prompt-injection scanner (safety)
-bd show moltis-mcv    # 5. E2E test
-bd show moltis-avv    # 6. (follow-up) Token-budget fallback
-bd ready              # to see what's unblocked right now
-```
-
-The dependency chain is:
-
-```
-moltis-1sk (epic)
- ├── moltis-6p0  Add ReadSkillTool               ──┐
- │                                                 ├─► moltis-0vb  Register in gateway ──► moltis-mcv  E2E test
- │                                                 └─► moltis-hjy  Rewrite prompt
- ├── moltis-5xp  Prompt-injection scanner (parallel with 6p0)
- └── moltis-avv  Token-budget fallback (follow-up, optional for the bug fix)
-```
-
-Claim with `bd update <id> --status=in_progress` before writing code, close with
-`bd close <id> --reason "..."` when done. Do **not** use TodoWrite or markdown
-checklists for progress tracking — the beads issues are the source of truth.
-
-If you discover new work while implementing, create a linked issue:
-
-```bash
-bd create --title="..." --description="..." -t task -p 2 --deps discovered-from:<parent-id>
-```
+This plan captures the original work breakdown and implementation order for the
+native `read_skill` tool.
 
 ## Problem
 
@@ -195,7 +161,7 @@ SkillDiscoverer>` (or a `DiscoveredSkills` snapshot) at construction time from
 
 ## Implementation steps
 
-Do the work in this order. Each step corresponds to a beads issue.
+Do the work in this order.
 
 ### 1. `moltis-6p0` — Add `ReadSkillTool`
 
@@ -401,9 +367,8 @@ Before opening the PR:
 Per CLAUDE.md's "Landing the Plane" section, work is not complete until
 `git push` succeeds. At the end of each work session on this plan:
 
-1. `bd close <id> --reason "..."` for each finished issue.
+1. Close out each finished work item.
 2. `git add -p && git commit -m "feat(skills): ..."` (conventional commit, no
    `Co-Authored-By` trailer).
-3. `git pull --rebase && bd dolt commit && git push && git status`.
-4. If any follow-up work was discovered, create linked issues with
-   `--deps discovered-from:<parent-id>` before closing the parent.
+3. `git pull --rebase && git push && git status`.
+4. If any follow-up work was discovered, record it before closing the parent.

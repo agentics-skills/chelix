@@ -240,12 +240,12 @@ tail-budget math inside recency-preserving and structured modes.
 ### Picking a summary model
 
 > ⚠️ **`summary_model` / `max_summary_tokens` are reserved for a
-> follow-up** — beads issue **moltis-8me**. They're present in the
+> follow-up**. They're present in the
 > config schema so you can start setting them today, but the
 > `structured` and `llm_replace` strategies currently **ignore** them
 > and always use the session's primary provider. Setting either field
 > to a non-default value triggers a one-shot runtime WARN that names
-> the fields and the tracking issue so you're not billed for the wrong
+> the fields so you're not billed for the wrong
 > model without warning.
 
 When the auxiliary-model subsystem lands, `summary_model` will take

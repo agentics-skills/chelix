@@ -200,7 +200,6 @@ static WARNED_UNUSED_AUXILIARY_CONFIG: std::sync::OnceLock<
 /// or a non-default `max_summary_tokens` but the `structured` strategy
 /// doesn't wire them yet.
 ///
-/// The auxiliary-model subsystem is tracked by beads issue `moltis-8me`.
 /// Until that ships, `structured` always uses the session's primary
 /// provider regardless of these fields. Users who configured a cheap
 /// auxiliary model (e.g. "openrouter/google/gemini-2.5-flash") would
@@ -284,9 +283,7 @@ pub(super) async fn run(
 ) -> Result<CompactionOutcome, CompactionRunError> {
     // Warn once if the user configured `summary_model` or a non-default
     // `max_summary_tokens`: those fields are reserved for the auxiliary
-    // model subsystem tracked by beads issue moltis-8me and will not
-    // affect this run. The warning points at the tracking issue so users
-    // aren't misled by the field appearing in the config template.
+    // model subsystem and will not affect this run.
     warn_if_unused_auxiliary_model_config(config);
 
     let bounds = compute_boundaries(history, config, context_window);
@@ -362,10 +359,9 @@ pub(super) async fn run(
     }
 
     // `config.max_summary_tokens` / `config.summary_model` aren't wired
-    // into the provider stream yet — tracked by beads issue moltis-8me.
-    // The warn-on-configured check runs at the top of this function so
-    // users don't silently get default behaviour when they expected a
-    // cheaper auxiliary model.
+    // into the provider stream yet. The warn-on-configured check runs at
+    // the top of this function so users don't silently get default
+    // behaviour when they expected a cheaper auxiliary model.
     let _ = config.max_summary_tokens;
     let _ = config.summary_model.as_deref();
 

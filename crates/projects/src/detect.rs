@@ -173,22 +173,6 @@ fn scan_dirs_from_home(home: &Path) -> Vec<PathBuf> {
             }
         }
     }
-    // Superset worktrees: ~/.superset/worktrees/<project>/<branch>/
-    let superset_wt = home.join(".superset").join("worktrees");
-    if let Ok(projects) = fs::read_dir(&superset_wt) {
-        for project in projects.flatten() {
-            if project.path().is_dir()
-                && let Ok(branches) = fs::read_dir(project.path())
-            {
-                for branch in branches.flatten() {
-                    let path = branch.path();
-                    if path.is_dir() {
-                        out.push(path);
-                    }
-                }
-            }
-        }
-    }
     out
 }
 

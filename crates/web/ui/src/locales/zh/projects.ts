@@ -5,7 +5,7 @@ export default {
 	description:
 		"项目将会话绑定到代码库目录。当会话关联到项目时，上下文文件（CLAUDE.md、AGENTS.md、.cursorrules 以及规则目录）会自动加载，先扫描明显的提示注入风险，再注入系统提示。启用自动工作树可为每个会话创建独立的 git 分支进行隔离工作。",
 	autoDetectDescription:
-		'<strong class="text-[var(--text)]">自动检测</strong> 扫描你主目录下的常见目录（<code class="font-mono text-xs">~/Projects</code>、<code class="font-mono text-xs">~/Developer</code>、<code class="font-mono text-xs">~/src</code>、<code class="font-mono text-xs">~/code</code>、<code class="font-mono text-xs">~/repos</code>、<code class="font-mono text-xs">~/workspace</code>、<code class="font-mono text-xs">~/dev</code>、<code class="font-mono text-xs">~/git</code>）和 Superset 工作树（<code class="font-mono text-xs">~/.superset/worktrees</code>）中的 git 仓库并添加为项目。',
+		'<strong class="text-[var(--text)]">自动检测</strong> 扫描你主目录下的常见目录（<code class="font-mono text-xs">~/Projects</code>、<code class="font-mono text-xs">~/Developer</code>、<code class="font-mono text-xs">~/src</code>、<code class="font-mono text-xs">~/code</code>、<code class="font-mono text-xs">~/repos</code>、<code class="font-mono text-xs">~/workspace</code>、<code class="font-mono text-xs">~/dev</code>、<code class="font-mono text-xs">~/git</code>）中的 git 仓库并添加为项目。',
 	clearAllHint: "清除全部仅从 Moltis 中移除仓库条目，不会删除磁盘上的任何内容。",
 	noProjectsConfigured: "未配置项目。在上方添加目录或使用自动检测。",
 	confirmClearAll: "从 Moltis 清除所有仓库？这仅从列表中移除，不会删除磁盘上的文件。",

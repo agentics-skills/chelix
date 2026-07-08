@@ -1594,7 +1594,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [msteams] Prevent streaming retry storm and URL injection in search
 - [web] Disambiguate OAuth E2E selector for model picker
 - [web] Keep new chats at top of sidebar
-- Auto-allow direnv in superset worktree setup
+- Auto-allow direnv in worktree setup
 - Load BOOT.md per-session via system prompt instead of broken hook (#594)
 - Remove stale boot-md assertion from discover_hooks test
 - Update model count assertion for gemini-3 reasoning variants
@@ -1639,7 +1639,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [agents] Keep auto-continue nudge as user message
 - [provider-setup] Include lmstudio in known_providers and replace ollama name checks
 - [provider-setup] Add dedicated local_only field to KnownProvider
-- Harden superset setup envrc handling
+- Harden worktree setup envrc handling
 
 ## [20260408.01] - 2026-04-08
 ### Added

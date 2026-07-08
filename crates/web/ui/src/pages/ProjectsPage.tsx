@@ -435,9 +435,8 @@ function ProjectsPageComponent(): VNode {
 				<code className="font-mono text-xs">~/Projects</code>, <code className="font-mono text-xs">~/Developer</code>,{" "}
 				<code className="font-mono text-xs">~/src</code>, <code className="font-mono text-xs">~/code</code>,{" "}
 				<code className="font-mono text-xs">~/repos</code>, <code className="font-mono text-xs">~/workspace</code>,{" "}
-				<code className="font-mono text-xs">~/dev</code>, <code className="font-mono text-xs">~/git</code>) and Superset
-				worktrees (<code className="font-mono text-xs">~/.superset/worktrees</code>) for git repositories and adds them
-				as projects.
+				<code className="font-mono text-xs">~/dev</code>, <code className="font-mono text-xs">~/git</code>) for git
+				repositories and adds them as projects.
 			</p>
 			<div className="project-form-row">
 				<PathInput onAdd={onAdd} />
