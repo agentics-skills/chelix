@@ -14,8 +14,8 @@ requires:
       module: "github.com/steipete/wacrawl/cmd/wacrawl@latest"
       bins: [wacrawl]
 origin:
-  source: moltis
-  url: https://github.com/moltis-org/moltis
+  source: chelix
+  url: https://github.com/agentics-skills/chelix
 ---
 
 # wacrawl — WhatsApp Desktop Archive (Read-Only)
@@ -78,7 +78,7 @@ Creates age-encrypted JSONL.gz shards suitable for Git-backed storage.
 
 ## Saving to Memory
 
-To save search results or chat exports to Moltis memory for future reference:
+To save search results or chat exports to Chelix memory for future reference:
 
 1. Run wacrawl with `--json` output
 2. Summarize the relevant conversations into a daily digest

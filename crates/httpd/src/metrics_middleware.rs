@@ -10,17 +10,17 @@ use std::time::Instant;
 use axum::{body::Body, http::Request, middleware::Next, response::Response};
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, gauge, histogram};
+use chelix_metrics::{counter, gauge, histogram};
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{http as http_metrics, labels};
+use chelix_metrics::{http as http_metrics, labels};
 
 /// Middleware that collects HTTP request metrics.
 ///
 /// This records:
-/// - `moltis_http_requests_total`: Counter of total requests by endpoint, method, and status
-/// - `moltis_http_request_duration_seconds`: Histogram of request durations
-/// - `moltis_http_requests_in_flight`: Gauge of currently processing requests
+/// - `chelix_http_requests_total`: Counter of total requests by endpoint, method, and status
+/// - `chelix_http_request_duration_seconds`: Histogram of request durations
+/// - `chelix_http_requests_in_flight`: Gauge of currently processing requests
 #[cfg(feature = "metrics")]
 pub async fn http_metrics_middleware(request: Request<Body>, next: Next) -> Response {
     let start = Instant::now();

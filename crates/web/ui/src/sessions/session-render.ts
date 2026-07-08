@@ -540,7 +540,7 @@ function showWelcomeCard(): void {
 	const card = (tpl.content.cloneNode(true) as DocumentFragment).firstElementChild as HTMLElement;
 	const identity = gon.get("identity");
 	const userName = identity?.user_name;
-	const botName = identity?.name || "moltis";
+	const botName = identity?.name || "chelix";
 	const botEmoji = identity?.emoji || "";
 
 	const greetingEl = card.querySelector("[data-welcome-greeting]") as HTMLElement | null;

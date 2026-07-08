@@ -18,7 +18,7 @@ use crate::{
 };
 
 /// Fixed salt for recovery key derivation (domain separation).
-const RECOVERY_SALT: &[u8] = b"moltis-vault-recovery-key-salt!!"; // 32 bytes
+const RECOVERY_SALT: &[u8] = b"chelix-vault-recovery-key-salt!!"; // 32 bytes
 
 /// Recovery KDF params: lighter than password KDF since the recovery key
 /// already has 128 bits of entropy.

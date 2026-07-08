@@ -8,7 +8,7 @@ use {
         http::StatusCode,
         response::{Html, IntoResponse},
     },
-    moltis_httpd::AppState,
+    chelix_httpd::AppState,
 };
 
 pub async fn oauth_callback_handler(

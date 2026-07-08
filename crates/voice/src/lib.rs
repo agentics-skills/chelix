@@ -1,4 +1,4 @@
-//! Voice capabilities for moltis: Text-to-Speech (TTS) and Speech-to-Text (STT).
+//! Voice capabilities for chelix: Text-to-Speech (TTS) and Speech-to-Text (STT).
 //!
 //! This crate provides provider-agnostic abstractions for voice services,
 //! with implementations for popular providers like ElevenLabs, OpenAI, and Whisper.

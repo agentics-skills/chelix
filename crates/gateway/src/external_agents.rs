@@ -3,32 +3,32 @@ use std::{collections::HashMap, sync::Arc, time::SystemTime};
 use {
     async_trait::async_trait,
     futures::StreamExt,
-    moltis_config::schema::ExternalAgentsConfig,
-    moltis_external_agents::{
+    chelix_config::schema::ExternalAgentsConfig,
+    chelix_external_agents::{
         AcpPermissionHandler, AcpPermissionOptionKind, AcpPermissionRequest, AgentTransportKind,
         ContextSnapshot, ExternalAgentEvent, ExternalAgentRegistry, ExternalAgentSession,
         ExternalAgentSpec,
         runtimes::{acp::AcpTransport, claude_code::ClaudeCodeTransport, codex::CodexTransport},
         types::ContextTurn,
     },
-    moltis_service_traits::{
+    chelix_service_traits::{
         ChatService, ExternalAgentService, ServiceError, ServiceResult, SessionBusyReason,
         SessionService,
     },
-    moltis_sessions::{MessageContent, PersistedMessage},
+    chelix_sessions::{MessageContent, PersistedMessage},
     serde_json::Value,
     tokio::sync::Mutex,
     tracing::warn,
 };
 
-use moltis_tools::approval::{ApprovalDecision, ApprovalManager};
+use chelix_tools::approval::{ApprovalDecision, ApprovalManager};
 
 use crate::{broadcast::BroadcastOpts, state::GatewayState};
 
 pub struct GatewayExternalAgentService {
     registry: ExternalAgentRegistry,
     config: ExternalAgentsConfig,
-    session_metadata: Arc<moltis_sessions::metadata::SqliteSessionMetadata>,
+    session_metadata: Arc<chelix_sessions::metadata::SqliteSessionMetadata>,
     live_sessions: Mutex<HashMap<LiveSessionKey, LiveSessionEntry>>,
 }
 
@@ -70,12 +70,12 @@ impl AcpPermissionHandler for GatewayAcpPermissionHandler {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        let session_key = request.moltis_session_key.as_deref();
+        let session_key = request.chelix_session_key.as_deref();
         let (request_id, decision_rx) = self
             .approval_manager
             .create_request(&command, session_key)
             .await;
-        if let Some(session_key) = request.moltis_session_key.as_deref() {
+        if let Some(session_key) = request.chelix_session_key.as_deref() {
             tracing::info!(request_id, session_key, "ACP permission request is pending");
         }
         match self.approval_manager.wait_for_decision(decision_rx).await {
@@ -118,7 +118,7 @@ fn select_rejected_acp_option(request: &AcpPermissionRequest) -> Option<String> 
 impl GatewayExternalAgentService {
     pub fn new(
         config: ExternalAgentsConfig,
-        session_metadata: Arc<moltis_sessions::metadata::SqliteSessionMetadata>,
+        session_metadata: Arc<chelix_sessions::metadata::SqliteSessionMetadata>,
         approval_manager: Arc<ApprovalManager>,
     ) -> Self {
         let mut registry = ExternalAgentRegistry::new();
@@ -140,7 +140,7 @@ impl GatewayExternalAgentService {
     #[cfg(test)]
     fn with_registry(
         config: ExternalAgentsConfig,
-        session_metadata: Arc<moltis_sessions::metadata::SqliteSessionMetadata>,
+        session_metadata: Arc<chelix_sessions::metadata::SqliteSessionMetadata>,
         registry: ExternalAgentRegistry,
     ) -> Self {
         Self {
@@ -417,8 +417,8 @@ pub struct ExternalAgentChatService {
     inner: Arc<dyn ChatService>,
     external_agents: Arc<GatewayExternalAgentService>,
     state: Arc<GatewayState>,
-    session_store: Arc<moltis_sessions::store::SessionStore>,
-    session_metadata: Arc<moltis_sessions::metadata::SqliteSessionMetadata>,
+    session_store: Arc<chelix_sessions::store::SessionStore>,
+    session_metadata: Arc<chelix_sessions::metadata::SqliteSessionMetadata>,
 }
 
 impl ExternalAgentChatService {
@@ -426,8 +426,8 @@ impl ExternalAgentChatService {
         inner: Arc<dyn ChatService>,
         external_agents: Arc<GatewayExternalAgentService>,
         state: Arc<GatewayState>,
-        session_store: Arc<moltis_sessions::store::SessionStore>,
-        session_metadata: Arc<moltis_sessions::metadata::SqliteSessionMetadata>,
+        session_store: Arc<chelix_sessions::store::SessionStore>,
+        session_metadata: Arc<chelix_sessions::metadata::SqliteSessionMetadata>,
     ) -> Self {
         Self {
             inner,
@@ -813,8 +813,8 @@ fn message_content_text(content: &MessageContent) -> String {
         MessageContent::Multimodal(blocks) => blocks
             .iter()
             .filter_map(|block| match block {
-                moltis_sessions::ContentBlock::Text { text } => Some(text.as_str()),
-                moltis_sessions::ContentBlock::ImageUrl { .. } => None,
+                chelix_sessions::ContentBlock::Text { text } => Some(text.as_str()),
+                chelix_sessions::ContentBlock::ImageUrl { .. } => None,
             })
             .collect::<Vec<_>>()
             .join("\n"),
@@ -843,12 +843,12 @@ mod tests {
             services::GatewayServices,
         },
         futures::{Stream, stream},
-        moltis_external_agents::{
+        chelix_external_agents::{
             ExternalAgentTransport,
             types::{AcpPermissionOption, ExternalAgentStatus},
         },
-        moltis_service_traits::{ExternalAgentService, NoopChatService},
-        moltis_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
+        chelix_service_traits::{ExternalAgentService, NoopChatService},
+        chelix_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
     };
 
     #[derive(Default)]
@@ -923,7 +923,7 @@ mod tests {
                 ExternalAgentEvent::TextDelta(format!("reply to {prompt}")),
                 ExternalAgentEvent::Done {
                     usage: (prompt == "usage").then_some(
-                        moltis_external_agents::types::TokenUsage {
+                        chelix_external_agents::types::TokenUsage {
                             input_tokens: 7,
                             output_tokens: 11,
                         },
@@ -953,7 +953,7 @@ mod tests {
 
     async fn sqlite_pool() -> sqlx::SqlitePool {
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-        moltis_projects::run_migrations(&pool).await.unwrap();
+        chelix_projects::run_migrations(&pool).await.unwrap();
         SqliteSessionMetadata::init(&pool).await.unwrap();
         pool
     }
@@ -1157,7 +1157,7 @@ mod tests {
     #[test]
     fn acp_permission_selection_prefers_matching_decision_kind() {
         let request = AcpPermissionRequest {
-            moltis_session_key: Some("main".to_string()),
+            chelix_session_key: Some("main".to_string()),
             acp_session_id: "acp-1".to_string(),
             tool_call: "run tool".to_string(),
             options: vec![

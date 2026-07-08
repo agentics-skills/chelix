@@ -106,12 +106,12 @@ export function restoreSessionState(entry: SessionMeta, projectId?: string): voi
 	const effectiveProjectId = entry.projectId || projectId || "";
 	projectStore.setActiveProjectId(effectiveProjectId);
 	S.setActiveProjectId(effectiveProjectId);
-	localStorage.setItem("moltis-project", effectiveProjectId);
+	localStorage.setItem("chelix-project", effectiveProjectId);
 	updateSessionProjectSelect(effectiveProjectId);
 	if (entry.model) {
 		modelStore.select(entry.model);
 		S.setSelectedModelId(entry.model);
-		localStorage.setItem("moltis-model", entry.model);
+		localStorage.setItem("chelix-model", entry.model);
 		const found = modelStore.getById(entry.model);
 		if (S.modelComboLabel) {
 			const label = found ? modelDisplayLabel(found) : entry.model;
@@ -273,7 +273,7 @@ export function clearActiveSession(): Promise<RpcResponse> {
 export function switchSession(key: string, searchContext?: SearchContext | null, projectId?: string): void {
 	sessionStore.setActive(key);
 	S.setActiveSessionKey(key);
-	localStorage.setItem("moltis-session", key);
+	localStorage.setItem("chelix-session", key);
 	history.replaceState(null, "", sessionPath(key));
 	resetSwitchViewState();
 	const cachedEntry = sessionStore.getByKey(key);

@@ -6,7 +6,7 @@
 
 use serde::Deserialize;
 
-use {crate::services::ServiceError, moltis_sessions::store::UserMessageTarget};
+use {crate::services::ServiceError, chelix_sessions::store::UserMessageTarget};
 
 /// Params for `session.patch`.
 ///

@@ -182,11 +182,11 @@ mod tests {
             location: Some("Room A".into()),
             description: Some("Weekly sync".into()),
         };
-        let ical = build_vevent(&event, "test-uid-123@moltis");
+        let ical = build_vevent(&event, "test-uid-123@chelix");
         assert!(ical.contains("BEGIN:VCALENDAR"));
         assert!(ical.contains("BEGIN:VEVENT"));
         assert!(ical.contains("SUMMARY:Team meeting"));
-        assert!(ical.contains("test-uid-123@moltis"));
+        assert!(ical.contains("test-uid-123@chelix"));
         assert!(ical.contains("LOCATION:Room A"));
         assert!(ical.contains("DESCRIPTION:Weekly sync"));
         assert!(ical.contains("DTSTART:20250615T100000"));
@@ -203,7 +203,7 @@ mod tests {
             location: None,
             description: None,
         };
-        let ical = build_vevent(&event, "holiday-uid@moltis");
+        let ical = build_vevent(&event, "holiday-uid@chelix");
         assert!(ical.contains("DTSTART;VALUE=DATE:20251225"));
         assert!(ical.contains("DTEND;VALUE=DATE:20251226"));
     }

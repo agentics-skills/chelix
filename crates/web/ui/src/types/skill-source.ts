@@ -1,5 +1,5 @@
 // ── Skill source constants ───────────────────────────────────
-// Mirrors moltis_skills::types::SkillSource on the Rust side.
+// Mirrors chelix_skills::types::SkillSource on the Rust side.
 // Uses a const object instead of an enum to produce cleaner JS output.
 
 export const SkillSource = {

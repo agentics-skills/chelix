@@ -19,7 +19,7 @@ pub struct SqliteStore {
 impl SqliteStore {
     /// Create a new store with its own connection pool and run migrations.
     ///
-    /// Use this for standalone cron databases. For shared pools (e.g., moltis.db),
+    /// Use this for standalone cron databases. For shared pools (e.g., chelix.db),
     /// use [`SqliteStore::with_pool`] after calling [`crate::run_migrations`].
     pub async fn new(database_url: &str) -> Result<Self> {
         let pool = SqlitePoolOptions::new()

@@ -20,11 +20,11 @@ function updateThemeButtons(activeMode: string): void {
 }
 
 export function initTheme(): void {
-	const saved = localStorage.getItem("moltis-theme") || "system";
+	const saved = localStorage.getItem("chelix-theme") || "system";
 	applyTheme(saved);
 	const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
 	const onSystemThemeChange = (): void => {
-		const current = localStorage.getItem("moltis-theme") || "system";
+		const current = localStorage.getItem("chelix-theme") || "system";
 		if (current === "system") applyTheme("system");
 	};
 	if (typeof mediaQuery.addEventListener === "function") {
@@ -43,7 +43,7 @@ export function initTheme(): void {
 		if (!btn) return;
 		const mode = btn.getAttribute("data-theme-val");
 		if (!mode) return;
-		localStorage.setItem("moltis-theme", mode);
+		localStorage.setItem("chelix-theme", mode);
 		applyTheme(mode);
 	});
 }

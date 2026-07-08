@@ -1,8 +1,8 @@
-//! External CLI Agent Bridge for Moltis.
+//! External CLI Agent Bridge for Chelix.
 //!
-//! Connects Moltis chat sessions to external CLI coding agents (Claude Code,
+//! Connects Chelix chat sessions to external CLI coding agents (Claude Code,
 //! opencode, Codex CLI, Pi agent, ACP agents). The CLI agent owns its own
-//! session state; Moltis acts as orchestrator and source of truth for
+//! session state; Chelix acts as orchestrator and source of truth for
 //! conversation history. Delta sync on reattach, compaction reconciliation
 //! handled gracefully.
 

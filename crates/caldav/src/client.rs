@@ -220,7 +220,7 @@ impl CalDavClient for LibDavCalDavClient {
     }
 
     async fn create_event(&self, calendar_href: &str, event: NewEvent) -> Result<CreatedEvent> {
-        let uid = format!("{}@moltis", uuid::Uuid::new_v4());
+        let uid = format!("{}@chelix", uuid::Uuid::new_v4());
         let ical_data = crate::ical::build_vevent(&event, &uid);
 
         let event_href = format!("{}/{}.ics", calendar_href.trim_end_matches('/'), uid);

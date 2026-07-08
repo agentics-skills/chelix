@@ -3,39 +3,39 @@ description       = "Personal AI gateway"
 edition.workspace = true
 homepage          = "https://github.com/agentics-skills/chelix"
 license           = "MIT"
-name              = "moltis"
-repository        = "https://github.com/moltis-org/moltis"
+name              = "chelix"
+repository        = "https://github.com/agentics-skills/chelix"
 version.workspace = true
 
 [[bin]]
-name = "moltis"
+name = "chelix"
 path = "src/main.rs"
 
 [dependencies]
 anyhow                 = { workspace = true }
 clap                   = { workspace = true }
 dotenvy                = { workspace = true }
-moltis-agents          = { workspace = true }
-moltis-browser         = { workspace = true }
-moltis-claude-import   = { optional = true, workspace = true }
-moltis-codex-import    = { optional = true, workspace = true }
-moltis-common          = { workspace = true }
-moltis-config          = { workspace = true }
-moltis-cron            = { workspace = true }
-moltis-gateway         = { workspace = true }
-moltis-httpd           = { workspace = true }
-moltis-import-core     = { workspace = true }
-moltis-memory          = { workspace = true }
-moltis-node-host       = { workspace = true }
-moltis-oauth           = { workspace = true }
-moltis-onboarding      = { workspace = true }
-moltis-plugins         = { workspace = true }
-moltis-portable        = { workspace = true }
-moltis-projects        = { workspace = true }
-moltis-sessions        = { workspace = true }
-moltis-skills          = { workspace = true }
-moltis-tools           = { workspace = true }
-moltis-web             = { optional = true, workspace = true }
+chelix-agents          = { workspace = true }
+chelix-browser         = { workspace = true }
+chelix-claude-import   = { optional = true, workspace = true }
+chelix-codex-import    = { optional = true, workspace = true }
+chelix-common          = { workspace = true }
+chelix-config          = { workspace = true }
+chelix-cron            = { workspace = true }
+chelix-gateway         = { workspace = true }
+chelix-httpd           = { workspace = true }
+chelix-import-core     = { workspace = true }
+chelix-memory          = { workspace = true }
+chelix-node-host       = { workspace = true }
+chelix-oauth           = { workspace = true }
+chelix-onboarding      = { workspace = true }
+chelix-plugins         = { workspace = true }
+chelix-portable        = { workspace = true }
+chelix-projects        = { workspace = true }
+chelix-sessions        = { workspace = true }
+chelix-skills          = { workspace = true }
+chelix-tools           = { workspace = true }
+chelix-web             = { optional = true, workspace = true }
 open                   = { workspace = true }
 rand                   = { workspace = true }
 reqwest                = { workspace = true }
@@ -56,9 +56,9 @@ tikv-jemallocator = { optional = true, workspace = true }
 tempfile = { workspace = true }
 
 [features]
-agent             = ["moltis-gateway/agent", "moltis-web?/agent"]
-caldav            = ["moltis-gateway/caldav"]
-home-assistant    = ["moltis-gateway/home-assistant"]
+agent             = ["chelix-gateway/agent", "chelix-web?/agent"]
+caldav            = ["chelix-gateway/caldav"]
+home-assistant    = ["chelix-gateway/home-assistant"]
 # User-facing integrations stay default-on in the CLI crate per workspace policy,
 # even when the underlying implementation remains feature-gated in lower crates.
 #
@@ -66,7 +66,7 @@ home-assistant    = ["moltis-gateway/home-assistant"]
 # container builds. It intentionally excludes build-mode toggles (`embedded-*`)
 # and accelerator-specific features that require host SDKs/toolchains not
 # present on every target.
-bundled-skills = ["moltis-gateway/bundled-skills", "moltis-web?/bundled-skills"]
+bundled-skills = ["chelix-gateway/bundled-skills", "chelix-web?/bundled-skills"]
 default = ["full"]
 full = [
   "agent",
@@ -121,60 +121,60 @@ full = [
   "web-ui",
   "whatsapp",
 ]
-llm-compaction = ["moltis-gateway/llm-compaction"]
+llm-compaction = ["chelix-gateway/llm-compaction"]
 # Minimal build for memory-constrained devices (Raspberry Pi, etc.).
 # Build with: cargo build --release --no-default-features --features lightweight
-code-index-builtin = ["moltis-gateway/code-index-builtin"]
-code-splitter      = ["moltis-memory/code-splitter"]
-discord            = ["moltis-httpd/discord"]
-embedded-assets    = ["moltis-web?/embedded-assets"]
-embedded-wasm      = ["moltis-tools/embedded-wasm"]
-file-watcher       = ["moltis-gateway/file-watcher"]
-firecrawl          = ["moltis-gateway/firecrawl"]
-fs-tools           = ["moltis-gateway/fs-tools"]
-graphql            = ["moltis-httpd/graphql", "moltis-web?/graphql"]
+code-index-builtin = ["chelix-gateway/code-index-builtin"]
+code-splitter      = ["chelix-memory/code-splitter"]
+discord            = ["chelix-httpd/discord"]
+embedded-assets    = ["chelix-web?/embedded-assets"]
+embedded-wasm      = ["chelix-tools/embedded-wasm"]
+file-watcher       = ["chelix-gateway/file-watcher"]
+firecrawl          = ["chelix-gateway/firecrawl"]
+fs-tools           = ["chelix-gateway/fs-tools"]
+graphql            = ["chelix-httpd/graphql", "chelix-web?/graphql"]
 jemalloc           = ["dep:tikv-jemallocator"]
-lang-bash          = ["moltis-memory/lang-bash"]
-lang-c             = ["moltis-memory/lang-c"]
-lang-cpp           = ["moltis-memory/lang-cpp"]
-lang-css           = ["moltis-memory/lang-css"]
-lang-go            = ["moltis-memory/lang-go"]
-lang-html          = ["moltis-memory/lang-html"]
-lang-java          = ["moltis-memory/lang-java"]
-lang-javascript    = ["moltis-memory/lang-javascript"]
-lang-json          = ["moltis-memory/lang-json"]
-lang-markdown      = ["moltis-memory/lang-markdown"]
-lang-python        = ["moltis-memory/lang-python"]
-lang-ruby          = ["moltis-memory/lang-ruby"]
-lang-rust          = ["moltis-memory/lang-rust"]
-lang-toml          = ["moltis-memory/lang-toml"]
-lang-typescript    = ["moltis-memory/lang-typescript"]
+lang-bash          = ["chelix-memory/lang-bash"]
+lang-c             = ["chelix-memory/lang-c"]
+lang-cpp           = ["chelix-memory/lang-cpp"]
+lang-css           = ["chelix-memory/lang-css"]
+lang-go            = ["chelix-memory/lang-go"]
+lang-html          = ["chelix-memory/lang-html"]
+lang-java          = ["chelix-memory/lang-java"]
+lang-javascript    = ["chelix-memory/lang-javascript"]
+lang-json          = ["chelix-memory/lang-json"]
+lang-markdown      = ["chelix-memory/lang-markdown"]
+lang-python        = ["chelix-memory/lang-python"]
+lang-ruby          = ["chelix-memory/lang-ruby"]
+lang-rust          = ["chelix-memory/lang-rust"]
+lang-toml          = ["chelix-memory/lang-toml"]
+lang-typescript    = ["chelix-memory/lang-typescript"]
 # jemalloc is intentionally unavailable on linux/aarch64 to avoid runtime
 # crashes on 16 KiB page kernels (e.g. Raspberry Pi OS variants).
-claude-import         = ["dep:moltis-claude-import", "moltis-gateway/claude-import"]
-codex-import          = ["dep:moltis-codex-import", "moltis-gateway/codex-import"]
+claude-import         = ["dep:chelix-claude-import", "chelix-gateway/claude-import"]
+codex-import          = ["dep:chelix-codex-import", "chelix-gateway/codex-import"]
 lightweight           = ["jemalloc", "tls", "web-ui"]
-local-embeddings      = ["moltis-gateway/local-embeddings"]
-matrix                = ["moltis-httpd/matrix"]
-mdns                  = ["moltis-gateway/mdns"]
-metrics               = ["moltis-httpd/metrics", "moltis-web?/metrics"]
-msteams               = ["moltis-httpd/msteams"]
-nostr                 = ["moltis-httpd/nostr"]
-prometheus            = ["moltis-httpd/prometheus"]
-provider-openai-codex = ["moltis-gateway/provider-openai-codex"]
-push-notifications    = ["moltis-httpd/push-notifications", "moltis-web?/push-notifications"]
-qmd                   = ["moltis-gateway/qmd"]
-signal                = ["moltis-httpd/signal"]
-slack                 = ["moltis-httpd/slack"]
-telegram              = ["moltis-gateway/telegram"]
-telephony             = ["moltis-httpd/telephony"]
-tls                   = ["moltis-httpd/tls"]
-trusted-network       = ["moltis-httpd/trusted-network"]
-vault                 = ["moltis-httpd/vault", "moltis-web?/vault"]
-voice                 = ["moltis-gateway/voice", "moltis-web?/voice"]
-wasm                  = ["moltis-tools/wasm"]
-web-ui                = ["dep:moltis-web", "moltis-httpd/web-ui"]
-whatsapp              = ["moltis-gateway/whatsapp"]
+local-embeddings      = ["chelix-gateway/local-embeddings"]
+matrix                = ["chelix-httpd/matrix"]
+mdns                  = ["chelix-gateway/mdns"]
+metrics               = ["chelix-httpd/metrics", "chelix-web?/metrics"]
+msteams               = ["chelix-httpd/msteams"]
+nostr                 = ["chelix-httpd/nostr"]
+prometheus            = ["chelix-httpd/prometheus"]
+provider-openai-codex = ["chelix-gateway/provider-openai-codex"]
+push-notifications    = ["chelix-httpd/push-notifications", "chelix-web?/push-notifications"]
+qmd                   = ["chelix-gateway/qmd"]
+signal                = ["chelix-httpd/signal"]
+slack                 = ["chelix-httpd/slack"]
+telegram              = ["chelix-gateway/telegram"]
+telephony             = ["chelix-httpd/telephony"]
+tls                   = ["chelix-httpd/tls"]
+trusted-network       = ["chelix-httpd/trusted-network"]
+vault                 = ["chelix-httpd/vault", "chelix-web?/vault"]
+voice                 = ["chelix-gateway/voice", "chelix-web?/voice"]
+wasm                  = ["chelix-tools/wasm"]
+web-ui                = ["dep:chelix-web", "chelix-httpd/web-ui"]
+whatsapp              = ["chelix-gateway/whatsapp"]
 
 [lints]
 workspace = true

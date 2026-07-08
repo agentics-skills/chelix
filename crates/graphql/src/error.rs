@@ -1,11 +1,11 @@
 //! Error mapping from service errors to GraphQL errors.
 
-use moltis_service_traits::ServiceResult;
+use chelix_service_traits::ServiceResult;
 
 use crate::scalars::Json;
 
 /// Convert a service error into an `async_graphql::Error`.
-pub fn gql_err(error: moltis_service_traits::ServiceError) -> async_graphql::Error {
+pub fn gql_err(error: chelix_service_traits::ServiceError) -> async_graphql::Error {
     async_graphql::Error::new(error.to_string())
 }
 

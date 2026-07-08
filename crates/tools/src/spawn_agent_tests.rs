@@ -1,7 +1,7 @@
 use {
     super::*,
-    moltis_agents::model::{ChatMessage, CompletionResponse, StreamEvent, Usage},
-    moltis_config::schema::{AgentIdentity, PresetToolPolicy},
+    chelix_agents::model::{ChatMessage, CompletionResponse, StreamEvent, Usage},
+    chelix_config::schema::{AgentIdentity, PresetToolPolicy},
     std::{pin::Pin, sync::Mutex},
     tokio::sync::Notify,
     tokio_stream::Stream,

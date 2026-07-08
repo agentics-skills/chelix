@@ -1,6 +1,6 @@
 # Slack
 
-Moltis can connect to Slack as a bot, letting you chat with your agent from any
+Chelix can connect to Slack as a bot, letting you chat with your agent from any
 Slack workspace. The integration supports both **Socket Mode** (default, no
 public URL needed) and **Events API** (webhook-based).
 
@@ -15,7 +15,7 @@ public URL needed) and **Events API** (webhook-based).
                    │  or HTTP POST (Events API)
                    ▼
 ┌──────────────────────────────────────────────────────┐
-│                moltis-slack crate                     │
+│                chelix-slack crate                     │
 │  ┌────────────┐  ┌────────────┐  ┌────────────────┐  │
 │  │  Handler   │  │  Outbound  │  │     Plugin     │  │
 │  │ (inbound)  │  │ (replies)  │  │  (lifecycle)   │  │
@@ -24,7 +24,7 @@ public URL needed) and **Events API** (webhook-based).
                    │
                    ▼
 ┌──────────────────────────────────────────────────────┐
-│                 Moltis Gateway                        │
+│                 Chelix Gateway                        │
 │         (chat dispatch, tools, memory)                │
 └──────────────────────────────────────────────────────┘
 ```
@@ -36,7 +36,7 @@ requiring a publicly reachable endpoint.
 
 ## Prerequisites
 
-Before configuring Moltis, create a Slack app:
+Before configuring Chelix, create a Slack app:
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) and click **Create New App**
 2. Choose **From scratch**, name the app, and select your workspace
@@ -52,7 +52,7 @@ Before configuring Moltis, create a Slack app:
    - Generate an **App-Level Token** (`xapp-...`) with the `connections:write` scope
 6. For Events API mode:
    - Go to **Event Subscriptions** and enable it
-   - Set the Request URL to your Moltis instance endpoint
+   - Set the Request URL to your Chelix instance endpoint
    - Copy the **Signing Secret** from **Basic Information**
 7. Under **Event Subscriptions > Subscribe to bot events**, add:
    - `app_mention` — when someone @mentions the bot
@@ -60,13 +60,13 @@ Before configuring Moltis, create a Slack app:
 
 ```admonish warning
 The bot token and app token are secrets — treat them like passwords. Never
-commit them to version control. Moltis stores them with `secrecy::Secret` and
+commit them to version control. Chelix stores them with `secrecy::Secret` and
 redacts them from logs.
 ```
 
 ## Configuration
 
-Add a `[channels.slack.<account-id>]` section to your `moltis.toml`:
+Add a `[channels.slack.<account-id>]` section to your `chelix.toml`:
 
 ```toml
 [channels.slack.my-bot]
@@ -149,7 +149,7 @@ connection_mode = "events_api"
 signing_secret = "abc123..."
 ```
 
-This requires your Moltis instance to be reachable from the internet.
+This requires your Chelix instance to be reachable from the internet.
 
 ## Access Control
 
@@ -214,7 +214,7 @@ in the channel.
 - Check `dm_policy` — if set to `"allowlist"`, make sure your Slack user ID
   is in `allowlist`
 - Ensure the bot has been invited to channels you want it to respond in
-- Look at logs: `RUST_LOG=moltis_slack=debug moltis`
+- Look at logs: `RUST_LOG=chelix_slack=debug chelix`
 
 ### Bot doesn't respond in channels
 

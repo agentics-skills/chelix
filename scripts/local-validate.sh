@@ -191,7 +191,7 @@ else
   test_cmd="cargo +${nightly_toolchain} nextest run --all-features --profile ci"
 fi
 e2e_cmd="${LOCAL_VALIDATE_E2E_CMD:-cd crates/web/ui && if [ ! -d node_modules ]; then npm ci; fi && npm run e2e:install && npm run e2e}"
-ollama_qwen_e2e_cmd="${LOCAL_VALIDATE_OLLAMA_QWEN_E2E_CMD:-cd crates/web/ui && if [ ! -d node_modules ]; then npm ci; fi && npm run e2e:install && MOLTIS_E2E_OLLAMA_QWEN_LIVE=1 npx playwright test --project=ollama-qwen-live e2e/specs/ollama-qwen-live.spec.js}"
+ollama_qwen_e2e_cmd="${LOCAL_VALIDATE_OLLAMA_QWEN_E2E_CMD:-cd crates/web/ui && if [ ! -d node_modules ]; then npm ci; fi && npm run e2e:install && CHELIX_E2E_OLLAMA_QWEN_LIVE=1 npx playwright test --project=ollama-qwen-live e2e/specs/ollama-qwen-live.spec.js}"
 coverage_cmd="${LOCAL_VALIDATE_COVERAGE_CMD:-cargo +${nightly_toolchain} llvm-cov --workspace --all-features --html}"
 build_cmd="${LOCAL_VALIDATE_BUILD_CMD:-cargo +${nightly_toolchain} build --workspace --all-features --all-targets}"
 
@@ -279,14 +279,14 @@ cleanup_e2e_ports() {
   fi
 
   local ports=(
-    "${MOLTIS_E2E_PORT:-18789}"
-    "${MOLTIS_E2E_ONBOARDING_PORT:-18790}"
-    "${MOLTIS_E2E_ONBOARDING_AUTH_PORT:-18791}"
-    "${MOLTIS_E2E_OAUTH_PORT:-18792}"
-    "${MOLTIS_E2E_ONBOARDING_ANTHROPIC_PORT:-18793}"
-    "${MOLTIS_E2E_OPENAI_LIVE_PORT:-18794}"
-    "${MOLTIS_E2E_OLLAMA_QWEN_LIVE_PORT:-18795}"
-    "${MOLTIS_E2E_OLLAMA_QWEN_API_PORT:-11435}"
+    "${CHELIX_E2E_PORT:-18789}"
+    "${CHELIX_E2E_ONBOARDING_PORT:-18790}"
+    "${CHELIX_E2E_ONBOARDING_AUTH_PORT:-18791}"
+    "${CHELIX_E2E_OAUTH_PORT:-18792}"
+    "${CHELIX_E2E_ONBOARDING_ANTHROPIC_PORT:-18793}"
+    "${CHELIX_E2E_OPENAI_LIVE_PORT:-18794}"
+    "${CHELIX_E2E_OLLAMA_QWEN_LIVE_PORT:-18795}"
+    "${CHELIX_E2E_OLLAMA_QWEN_API_PORT:-11435}"
   )
 
   local port
@@ -562,8 +562,8 @@ run_check "local/lint" "$lint_cmd"
 # Release-profile builds embed `.cwasm` artifacts via include_bytes!.
 if rustup target list --installed 2>/dev/null | grep -q wasm32-wasip2; then
   echo "Building WASM tool components..."
-  cargo build --target wasm32-wasip2 -p moltis-wasm-calc -p moltis-wasm-web-fetch -p moltis-wasm-web-search --release
-  cargo run -p moltis-wasm-precompile --release
+  cargo build --target wasm32-wasip2 -p chelix-wasm-calc -p chelix-wasm-web-fetch -p chelix-wasm-web-search --release
+  cargo run -p chelix-wasm-precompile --release
 fi
 
 # Compile all workspace targets (bin + test harnesses) using the same nightly

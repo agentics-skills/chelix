@@ -17,14 +17,14 @@ use {
         ruma::serde::Raw,
         store::RoomLoadSettings,
     },
-    moltis_common::secret_serde,
+    chelix_common::secret_serde,
     secrecy::{ExposeSecret, Secret},
     serde::{Deserialize, Serialize},
     tracing::{debug, info, instrument, warn},
     url::Url,
 };
 
-use moltis_channels::{Error as ChannelError, Result as ChannelResult};
+use chelix_channels::{Error as ChannelError, Result as ChannelResult};
 
 use crate::client::AuthenticatedMatrixAccount;
 
@@ -68,7 +68,7 @@ impl fmt::Debug for PersistedOidcSession {
 }
 
 fn oidc_session_path(account_id: &str) -> PathBuf {
-    moltis_config::data_dir().join("matrix").join(format!(
+    chelix_config::data_dir().join("matrix").join(format!(
         "{}-oidc-session.json",
         sanitize_account_id(account_id)
     ))
@@ -148,7 +148,7 @@ async fn load_oidc_session(account_id: &str) -> ChannelResult<Option<PersistedOi
 
 /// Project URL used as `client_uri` during OIDC dynamic client registration.
 /// MAS validates this URL and rejects loopback addresses.
-const MOLTIS_CLIENT_URI: &str = "https://github.com/agentics-skills/chelix";
+const CHELIX_CLIENT_URI: &str = "https://github.com/agentics-skills/chelix";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct ClientRegistrationDiagnostics {
@@ -243,7 +243,7 @@ fn is_loopback_uri(uri: &Url) -> bool {
 /// Rewrite loopback redirect URIs from `https://` to `http://`.
 ///
 /// MAS follows RFC 8252 §7.3 and requires native/loopback redirect URIs to
-/// use `http://`. When Moltis serves over TLS on localhost, the browser's
+/// use `http://`. When Chelix serves over TLS on localhost, the browser's
 /// HTTP-to-HTTPS redirect (or HSTS) will still deliver the callback to the
 /// HTTPS server, so the OAuth code+state arrive correctly.
 fn normalize_loopback_redirect(redirect_uri: &Url) -> Url {
@@ -261,7 +261,7 @@ fn normalize_loopback_redirect(redirect_uri: &Url) -> Url {
 /// `redirect_uri` must already be normalized (loopback https -> http) via
 /// [`normalize_loopback_redirect`] before calling this.
 fn build_client_metadata(redirect_uri: &Url) -> ChannelResult<ClientMetadata> {
-    let client_uri_url: Url = MOLTIS_CLIENT_URI
+    let client_uri_url: Url = CHELIX_CLIENT_URI
         .parse()
         .map_err(|error| ChannelError::external("matrix oidc parse client uri", error))?;
     let client_uri = Localized::new(client_uri_url, std::iter::empty());
@@ -527,7 +527,7 @@ fn spawn_session_persistence_task(client: &Client, account_id: &str) {
 mod tests {
     use {
         crate::oidc::{
-            ClientRegistrationDiagnostics, MOLTIS_CLIENT_URI, PersistedOidcSession,
+            ClientRegistrationDiagnostics, CHELIX_CLIENT_URI, PersistedOidcSession,
             build_client_metadata, is_loopback_uri, normalize_loopback_redirect, oidc_session_path,
         },
         matrix_sdk::{
@@ -594,7 +594,7 @@ mod tests {
         }
         assert_eq!(
             metadata.client_uri.get(None).map(|u| u.as_str()),
-            Some(MOLTIS_CLIENT_URI),
+            Some(CHELIX_CLIENT_URI),
             "client_uri should be the project URL"
         );
     }
@@ -612,12 +612,12 @@ mod tests {
 
     #[test]
     fn normalize_loopback_redirect_preserves_non_loopback() {
-        let url: Url = "https://moltis.example.com/auth/callback"
+        let url: Url = "https://chelix.example.com/auth/callback"
             .parse()
             .unwrap_or_else(|error| panic!("{error}"));
         assert_eq!(
             normalize_loopback_redirect(&url).as_str(),
-            "https://moltis.example.com/auth/callback"
+            "https://chelix.example.com/auth/callback"
         );
     }
 
@@ -634,7 +634,7 @@ mod tests {
 
     #[test]
     fn build_client_metadata_uses_web_application_type_for_reverse_proxy() {
-        let redirect: Url = "https://moltis.example.com/auth/callback"
+        let redirect: Url = "https://chelix.example.com/auth/callback"
             .parse()
             .unwrap_or_else(|error| panic!("{error}"));
         let metadata = build_client_metadata(&redirect).unwrap_or_else(|error| panic!("{error}"));
@@ -647,7 +647,7 @@ mod tests {
             OAuthGrantType::AuthorizationCode { redirect_uris } => {
                 assert_eq!(
                     redirect_uris[0].as_str(),
-                    "https://moltis.example.com/auth/callback",
+                    "https://chelix.example.com/auth/callback",
                     "non-loopback redirect_uri must be preserved as-is"
                 );
             },
@@ -727,7 +727,7 @@ mod tests {
 
     #[test]
     fn registration_failure_display_includes_source_and_diagnostics() {
-        let original_redirect: Url = "https://moltis.example.com/auth/callback"
+        let original_redirect: Url = "https://chelix.example.com/auth/callback"
             .parse()
             .unwrap_or_else(|error| panic!("{error}"));
         let metadata =
@@ -752,9 +752,9 @@ mod tests {
 
         let display = failure.to_string();
         assert!(display.contains("invalid_redirect_uri: invalid redirect_uri"));
-        assert!(display.contains("original_redirect_uri=https://moltis.example.com/auth/callback"));
+        assert!(display.contains("original_redirect_uri=https://chelix.example.com/auth/callback"));
         assert!(
-            display.contains("registration_redirect_uri=https://moltis.example.com/auth/callback")
+            display.contains("registration_redirect_uri=https://chelix.example.com/auth/callback")
         );
         assert!(display.contains("is_loopback=false"));
         assert!(display.contains("application_type=web"));

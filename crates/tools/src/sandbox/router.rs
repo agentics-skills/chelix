@@ -348,7 +348,7 @@ pub(crate) fn select_backend(config: SandboxConfig) -> Arc<dyn Sandbox> {
             if !ensure_apple_container_service() {
                 tracing::warn!(
                     "apple container service could not be started; \
-                     run `container system start` manually, then restart moltis"
+                     run `container system start` manually, then restart chelix"
                 );
             }
             let apple_backend: Arc<dyn Sandbox> =

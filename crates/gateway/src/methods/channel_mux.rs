@@ -1,4 +1,4 @@
-use moltis_protocol::{ErrorShape, error_codes};
+use chelix_protocol::{ErrorShape, error_codes};
 
 use super::MethodRegistry;
 

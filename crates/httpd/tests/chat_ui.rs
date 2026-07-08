@@ -10,17 +10,17 @@ use {
 };
 
 use {
-    moltis_gateway::{
+    chelix_gateway::{
         auth,
         chat::{DisabledModelsStore, LiveChatService, LiveModelService},
         methods::MethodRegistry,
         services::GatewayServices,
         state::GatewayState,
     },
-    moltis_httpd::server::{build_gateway_base, finalize_gateway_app},
+    chelix_httpd::server::{build_gateway_base, finalize_gateway_app},
 };
 
-use moltis_providers::ProviderRegistry;
+use chelix_providers::ProviderRegistry;
 
 struct TestServer {
     addr: SocketAddr,
@@ -32,8 +32,8 @@ struct TestServer {
 async fn start_test_server() -> TestServer {
     let config_dir = tempfile::tempdir().unwrap();
     let data_dir = tempfile::tempdir().unwrap();
-    moltis_config::set_config_dir(config_dir.path().to_path_buf());
-    moltis_config::set_data_dir(data_dir.path().to_path_buf());
+    chelix_config::set_config_dir(config_dir.path().to_path_buf());
+    chelix_config::set_data_dir(data_dir.path().to_path_buf());
 
     let resolved_auth = auth::resolve_auth(None, None);
     let services = GatewayServices::noop();
@@ -44,7 +44,7 @@ async fn start_test_server() -> TestServer {
     #[cfg(not(feature = "push-notifications"))]
     let (router, app_state) = build_gateway_base(state, methods, None);
 
-    let router = router.merge(moltis_web::web_routes());
+    let router = router.merge(chelix_web::web_routes());
     let app = finalize_gateway_app(router, app_state, false);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -74,7 +74,7 @@ async fn root_redirects_to_onboarding_when_not_onboarded() {
         .unwrap();
     assert_eq!(resp.status(), 200);
     let body = resp.text().await.unwrap();
-    assert!(body.contains("<title>moltis onboarding</title>"));
+    assert!(body.contains("<title>chelix onboarding</title>"));
     assert!(body.contains("id=\"onboardingRoot\""));
 }
 
@@ -255,7 +255,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
 
     // This is the call that used to panic with blocking_write inside async.
     let tmp1 = tempfile::tempdir().unwrap();
-    let session_store1 = Arc::new(moltis_sessions::store::SessionStore::new(
+    let session_store1 = Arc::new(chelix_sessions::store::SessionStore::new(
         tmp1.path().to_path_buf(),
     ));
     let db_pool1 = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -263,17 +263,17 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
         .execute(&db_pool1)
         .await
         .unwrap();
-    moltis_sessions::metadata::SqliteSessionMetadata::init(&db_pool1)
+    chelix_sessions::metadata::SqliteSessionMetadata::init(&db_pool1)
         .await
         .unwrap();
-    let session_metadata1 = Arc::new(moltis_sessions::metadata::SqliteSessionMetadata::new(
+    let session_metadata1 = Arc::new(chelix_sessions::metadata::SqliteSessionMetadata::new(
         db_pool1,
     ));
     if !registry.read().await.is_empty() {
         state.set_chat(Arc::new(LiveChatService::new(
             Arc::clone(&registry),
             Arc::new(tokio::sync::RwLock::new(DisabledModelsStore::default())),
-            moltis_gateway::chat::GatewayChatRuntime::from_state(Arc::clone(&state)),
+            chelix_gateway::chat::GatewayChatRuntime::from_state(Arc::clone(&state)),
             Arc::clone(&session_store1),
             Arc::clone(&session_metadata1),
         )));
@@ -285,7 +285,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
     let registry2 = Arc::new(tokio::sync::RwLock::new(ProviderRegistry::from_env()));
     let state2 = GatewayState::new(resolved_auth2, GatewayServices::noop());
     let tmp2 = tempfile::tempdir().unwrap();
-    let session_store2 = Arc::new(moltis_sessions::store::SessionStore::new(
+    let session_store2 = Arc::new(chelix_sessions::store::SessionStore::new(
         tmp2.path().to_path_buf(),
     ));
     let db_pool2 = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -293,16 +293,16 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
         .execute(&db_pool2)
         .await
         .unwrap();
-    moltis_sessions::metadata::SqliteSessionMetadata::init(&db_pool2)
+    chelix_sessions::metadata::SqliteSessionMetadata::init(&db_pool2)
         .await
         .unwrap();
-    let session_metadata2 = Arc::new(moltis_sessions::metadata::SqliteSessionMetadata::new(
+    let session_metadata2 = Arc::new(chelix_sessions::metadata::SqliteSessionMetadata::new(
         db_pool2,
     ));
     state2.set_chat(Arc::new(LiveChatService::new(
         Arc::clone(&registry2),
         Arc::new(tokio::sync::RwLock::new(DisabledModelsStore::default())),
-        moltis_gateway::chat::GatewayChatRuntime::from_state(Arc::clone(&state2)),
+        chelix_gateway::chat::GatewayChatRuntime::from_state(Arc::clone(&state2)),
         Arc::clone(&session_store2),
         Arc::clone(&session_metadata2),
     )));

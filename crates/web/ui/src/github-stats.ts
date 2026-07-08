@@ -4,8 +4,8 @@
 // (unauthenticated, public repo) and caches them in localStorage
 // for one hour. Badges are rendered next to the header links.
 
-const REPO = "moltis-org/moltis";
-const CACHE_KEY = "moltis-github-stats";
+const REPO = "agentics-skills/chelix";
+const CACHE_KEY = "chelix-github-stats";
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 interface GitHubStats {

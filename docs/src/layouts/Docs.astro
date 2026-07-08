@@ -13,7 +13,7 @@ const currentPath = Astro.url.pathname === "/" ? "/index.html" : Astro.url.pathn
 const searchPages = sections.flatMap((section) => section.pages)
 ---
 
-<Base title={`${page.title} - Moltis Docs`}>
+<Base title={`${page.title} - Chelix Docs`}>
   <div class="site-shell">
     <header class="topbar">
       <button class="nav-toggle" type="button" aria-label="Open navigation" aria-expanded="false">
@@ -21,15 +21,15 @@ const searchPages = sections.flatMap((section) => section.pages)
         <span></span>
         <span></span>
       </button>
-      <a class="brand" href="/index.html" aria-label="Moltis documentation home">
-        <img class="brand-mark" src="/moltis-icon.svg" alt="" width="30" height="30" aria-hidden="true" />
-        <span>Moltis</span>
+      <a class="brand" href="/index.html" aria-label="Chelix documentation home">
+        <img class="brand-mark" src="/chelix-icon.svg" alt="" width="30" height="30" aria-hidden="true" />
+        <span>Chelix</span>
       </a>
       <nav class="topnav" aria-label="Primary">
         <a href="/quickstart.html">Quickstart</a>
         <a href="/providers.html">Providers</a>
         <a href="/security.html">Security</a>
-        <a href="https://github.com/moltis-org/moltis">GitHub</a>
+        <a href="https://github.com/agentics-skills/chelix">GitHub</a>
       </nav>
       <div class="theme-toggle" role="group" aria-label="Theme">
         <button type="button" data-theme-option="auto" aria-label="Use system theme">A</button>
@@ -102,17 +102,17 @@ const searchPages = sections.flatMap((section) => section.pages)
       })
     }
 
-    const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+    const storedTheme = localStorage.getItem('chelix-docs-theme') || 'auto'
     applyTheme(storedTheme)
     themeButtons.forEach((button) => {
       button.addEventListener('click', () => {
         const choice = button.dataset.themeOption || 'auto'
-        localStorage.setItem('moltis-docs-theme', choice)
+        localStorage.setItem('chelix-docs-theme', choice)
         applyTheme(choice)
       })
     })
     themeMedia.addEventListener('change', () => {
-      if ((localStorage.getItem('moltis-docs-theme') || 'auto') === 'auto') {
+      if ((localStorage.getItem('chelix-docs-theme') || 'auto') === 'auto') {
         applyTheme('auto')
       }
     })

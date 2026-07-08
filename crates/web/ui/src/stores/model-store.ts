@@ -9,8 +9,8 @@ import type { ModelInfo, RpcResponse } from "../types";
 
 // ── Signals ──────────────────────────────────────────────────
 export const models = signal<ModelInfo[]>([]);
-export const selectedModelId = signal<string>(localStorage.getItem("moltis-model") || "");
-export const reasoningEffort = signal<string>(localStorage.getItem("moltis-reasoning-effort") || "");
+export const selectedModelId = signal<string>(localStorage.getItem("chelix-model") || "");
+export const reasoningEffort = signal<string>(localStorage.getItem("chelix-reasoning-effort") || "");
 
 export const selectedModel = computed<ModelInfo | null>(() => {
 	const id = selectedModelId.value;
@@ -37,11 +37,11 @@ export function fetch(): Promise<void> {
 		if (!res?.ok) return;
 		setAll(res.payload || []);
 		if (models.value.length === 0) return;
-		const saved = localStorage.getItem("moltis-model") || "";
+		const saved = localStorage.getItem("chelix-model") || "";
 		const found = models.value.find((m) => m.id === saved);
 		const model = found || models.value[0];
 		select(model.id);
-		if (!found) localStorage.setItem("moltis-model", model.id);
+		if (!found) localStorage.setItem("chelix-model", model.id);
 	});
 }
 
@@ -53,7 +53,7 @@ export function select(id: string): void {
 /** Set the reasoning effort level. Empty string means off. */
 export function setReasoningEffort(effort: string): void {
 	reasoningEffort.value = effort || "";
-	localStorage.setItem("moltis-reasoning-effort", effort || "");
+	localStorage.setItem("chelix-reasoning-effort", effort || "");
 }
 
 /** Look up a model by id. */

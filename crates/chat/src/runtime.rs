@@ -1,13 +1,13 @@
 //! Trait abstracting the gateway runtime operations that the chat engine needs.
 //!
-//! This decouples `moltis-chat` from `GatewayState` so the crate can be compiled
-//! independently without a circular dependency on `moltis-gateway`.
+//! This decouples `chelix-chat` from `GatewayState` so the crate can be compiled
+//! independently without a circular dependency on `chelix-gateway`.
 
 use std::sync::Arc;
 
 use serde_json::Value;
 
-use {moltis_channels::ChannelReplyTarget, moltis_tools::sandbox::SandboxRouter};
+use {chelix_channels::ChannelReplyTarget, chelix_tools::sandbox::SandboxRouter};
 
 /// TTS runtime override configuration (provider/voice/model).
 ///
@@ -90,12 +90,12 @@ pub trait ChatRuntime: Send + Sync {
     fn sandbox_router(&self) -> Option<&Arc<SandboxRouter>>;
 
     /// Memory runtime for long-term memory search.
-    fn memory_manager(&self) -> Option<&moltis_memory::runtime::DynMemoryRuntime>;
+    fn memory_manager(&self) -> Option<&chelix_memory::runtime::DynMemoryRuntime>;
 
     // ── Cached location ──────────────────────────────────────────────────
 
     /// Cached user geolocation from browser.
-    async fn cached_location(&self) -> Option<moltis_config::GeoLocation>;
+    async fn cached_location(&self) -> Option<chelix_config::GeoLocation>;
 
     // ── TTS overrides ────────────────────────────────────────────────────
 
@@ -110,22 +110,22 @@ pub trait ChatRuntime: Send + Sync {
     // ── Services ─────────────────────────────────────────────────────────
 
     /// Channel outbound service for delivering replies.
-    fn channel_outbound(&self) -> Option<Arc<dyn moltis_channels::ChannelOutbound>>;
+    fn channel_outbound(&self) -> Option<Arc<dyn chelix_channels::ChannelOutbound>>;
 
     /// Channel stream outbound for edit-in-place streaming.
-    fn channel_stream_outbound(&self) -> Option<Arc<dyn moltis_channels::ChannelStreamOutbound>>;
+    fn channel_stream_outbound(&self) -> Option<Arc<dyn chelix_channels::ChannelStreamOutbound>>;
 
     /// TTS service for voice synthesis.
-    fn tts_service(&self) -> &dyn moltis_service_traits::TtsService;
+    fn tts_service(&self) -> &dyn chelix_service_traits::TtsService;
 
     /// Project service for loading project context.
-    fn project_service(&self) -> &dyn moltis_service_traits::ProjectService;
+    fn project_service(&self) -> &dyn chelix_service_traits::ProjectService;
 
     /// MCP service for listing MCP servers.
-    fn mcp_service(&self) -> &dyn moltis_service_traits::McpService;
+    fn mcp_service(&self) -> &dyn chelix_service_traits::McpService;
 
     /// Get the active chat service (for draining queued messages recursively).
-    async fn chat_service(&self) -> Arc<dyn moltis_service_traits::ChatService>;
+    async fn chat_service(&self) -> Arc<dyn chelix_service_traits::ChatService>;
 
     /// Take (and remove) the last error for a run_id.
     async fn last_run_error(&self, run_id: &str) -> Option<String>;

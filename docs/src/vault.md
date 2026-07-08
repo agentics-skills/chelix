@@ -1,6 +1,6 @@
 # Encryption at Rest (Vault)
 
-Moltis includes an encryption-at-rest vault that protects sensitive data
+Chelix includes an encryption-at-rest vault that protects sensitive data
 stored in the SQLite database. Environment variables (provider API keys,
 tokens, etc.) are encrypted with **XChaCha20-Poly1305** AEAD using keys
 derived from your password via **Argon2id**.
@@ -68,7 +68,7 @@ Uninitialized ──────────────► Unsealed
 
 After a server restart, the vault is normally in the **Sealed** state until
 the user logs in (which provides the password needed to derive the KEK and
-unwrap the DEK). For unattended deployments, Moltis can also auto-unseal at
+unwrap the DEK). For unattended deployments, Chelix can also auto-unseal at
 startup from an explicitly configured recovery key.
 
 ## Lifecycle Integration
@@ -114,24 +114,24 @@ of these environment variables:
 
 | Variable | Purpose |
 |----------|---------|
-| `MOLTIS_VAULT_AUTO_UNSEAL_KEY_FILE` | Path to a file containing the vault recovery key. Preferred for Docker/Kubernetes secrets. |
-| `MOLTIS_VAULT_AUTO_UNSEAL_KEY` | Vault recovery key value directly in the process environment. |
+| `CHELIX_VAULT_AUTO_UNSEAL_KEY_FILE` | Path to a file containing the vault recovery key. Preferred for Docker/Kubernetes secrets. |
+| `CHELIX_VAULT_AUTO_UNSEAL_KEY` | Vault recovery key value directly in the process environment. |
 
-If both are set, Moltis logs a warning and uses
-`MOLTIS_VAULT_AUTO_UNSEAL_KEY_FILE`.
+If both are set, Chelix logs a warning and uses
+`CHELIX_VAULT_AUTO_UNSEAL_KEY_FILE`.
 
 Auto-unseal runs immediately after the vault is opened from SQLite and before
-Moltis loads persisted environment variables, MCP server configuration, cron
+Chelix loads persisted environment variables, MCP server configuration, cron
 runtime environment, and stored channel accounts. That means encrypted env vars
 and channel credentials are available during normal startup rather than only
 after a manual browser unlock.
 
 ```admonish warning
 Auto-unseal trades manual recovery for unattended availability. If an attacker
-can read both the Moltis database and the configured recovery-key env/file, they
+can read both the Chelix database and the configured recovery-key env/file, they
 can decrypt vault-protected secrets. Prefer a Docker/Kubernetes secret file over
 a plain env var, restrict file permissions, and keep the recovery key out of
-`moltis.toml`.
+`chelix.toml`.
 ```
 
 ## Recovery Key
@@ -181,13 +181,13 @@ SSH keys are decrypted during import and then stored under the vault-managed
 key hierarchy. When sealed or
 uninitialized, they are written as plaintext.
 
-On the first successful vault unseal after enabling the feature, Moltis also
+On the first successful vault unseal after enabling the feature, Chelix also
 migrates any previously stored plaintext env vars and managed SSH private keys
 to encrypted storage in-place. Provider API keys (`provider_keys.json`) are
 encrypted to a `.enc` copy alongside the original; the plaintext file is kept
 for backward compatibility until all consumers use the vault-aware read path.
 Voice provider API keys are now stored in `provider_keys.json` (same as LLM
-keys), not in `moltis.toml`.
+keys), not in `chelix.toml`.
 
 ```admonish info title="Planned"
 TokenStore (OAuth tokens in `credentials.json`) is currently sync/file-based
@@ -236,11 +236,11 @@ Disabling the vault requires an authenticated session.
 ## Disabling The Vault
 
 Use **Settings > Encryption > Disable encryption at rest** to opt out of the
-vault while keeping password login. Moltis decrypts all known vault-backed data
+vault while keeping password login. Chelix decrypts all known vault-backed data
 before writing `auth.vault_enabled = false`; if any decrypt step fails, the flag
 is not changed.
 
-After disabling, restart Moltis so startup no longer wires the vault into auth,
+After disabling, restart Chelix so startup no longer wires the vault into auth,
 channel, webhook, env-var, and SSH secret storage. The running process also
 stops encrypting new secret writes immediately after a successful disable, so
 secrets added before the restart remain readable in no-vault mode. Local secrets
@@ -258,7 +258,7 @@ Error responses:
 
 ## Frontend Integration
 
-The vault status is included in the gon data (`window.__MOLTIS__`) on
+The vault status is included in the gon data (`window.__CHELIX__`) on
 every page load:
 
 ```js

@@ -1,6 +1,6 @@
 use {anyhow::Result, clap::Subcommand};
 
-use moltis_config::validate::{self, Severity};
+use chelix_config::validate::{self, Severity};
 
 #[derive(Subcommand)]
 pub enum ConfigAction {
@@ -10,7 +10,7 @@ pub enum ConfigAction {
         #[arg(long)]
         verbose: bool,
     },
-    /// Strip default values from moltis.toml, keeping only user overrides.
+    /// Strip default values from chelix.toml, keeping only user overrides.
     Compact,
     /// Get a config value (not yet implemented).
     Get { key: Option<String> },
@@ -39,7 +39,7 @@ const BOLD: &str = "\x1b[1m";
 const RESET: &str = "\x1b[0m";
 
 fn compact() -> Result<()> {
-    let (before, after) = moltis_config::compact_config()?;
+    let (before, after) = chelix_config::compact_config()?;
     if before == after {
         eprintln!("Already compact — no default values to strip.");
     } else {

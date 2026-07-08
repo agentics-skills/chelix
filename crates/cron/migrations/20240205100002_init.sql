@@ -1,5 +1,5 @@
 -- Cron tables schema
--- Owned by: moltis-cron crate
+-- Owned by: chelix-cron crate
 
 CREATE TABLE IF NOT EXISTS cron_jobs (
     id   TEXT PRIMARY KEY,

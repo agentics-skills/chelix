@@ -28,7 +28,7 @@ use crate::{
     state::GatewayState,
 };
 
-use moltis_tools::{
+use chelix_tools::{
     command::{CommandNodeProvider, CommandOutput},
     nodes::{NodeInfo, NodeInfoProvider, NodeProviderInfo},
 };
@@ -57,7 +57,7 @@ pub const BLOCKED_ENV_PREFIXES: &[&str] = &[
     "RUBYOPT",
     "SHELLOPTS",
     "PS4",
-    "MOLTIS_",
+    "CHELIX_",
     "OPENAI_",
     "ANTHROPIC_",
     "AWS_",
@@ -206,7 +206,7 @@ pub async fn run_on_node(
 
     // Build and send the invoke request.
     let invoke_id = uuid::Uuid::new_v4().to_string();
-    let invoke_event = moltis_protocol::EventFrame::new(
+    let invoke_event = chelix_protocol::EventFrame::new(
         "node.invoke.request",
         serde_json::json!({
             "invokeId": invoke_id,
@@ -442,7 +442,7 @@ pub async fn query_node_providers(
     };
 
     let invoke_id = uuid::Uuid::new_v4().to_string();
-    let invoke_event = moltis_protocol::EventFrame::new(
+    let invoke_event = chelix_protocol::EventFrame::new(
         "node.invoke.request",
         serde_json::json!({
             "invokeId": invoke_id,
@@ -906,7 +906,7 @@ mod tests {
         env.insert("LD_PRELOAD".into(), "/evil.so".into());
         env.insert("NODE_OPTIONS".into(), "--inspect".into());
         env.insert("OPENAI_API_KEY".into(), "sk-secret".into());
-        env.insert("MOLTIS_AUTH_TOKEN".into(), "token".into());
+        env.insert("CHELIX_AUTH_TOKEN".into(), "token".into());
         env.insert("CUSTOM_VAR".into(), "value".into());
 
         let filtered = filter_env(&env);
@@ -918,7 +918,7 @@ mod tests {
         assert!(!filtered.contains_key("LD_PRELOAD"));
         assert!(!filtered.contains_key("NODE_OPTIONS"));
         assert!(!filtered.contains_key("OPENAI_API_KEY"));
-        assert!(!filtered.contains_key("MOLTIS_AUTH_TOKEN"));
+        assert!(!filtered.contains_key("CHELIX_AUTH_TOKEN"));
         assert!(!filtered.contains_key("CUSTOM_VAR"));
     }
 

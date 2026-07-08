@@ -15,7 +15,7 @@ use crate::{
     identity::NodeIdentity,
 };
 
-use moltis_protocol::{
+use chelix_protocol::{
     ClientInfo, ConnectAuth, ConnectParamsV4, GatewayFrame, PROTOCOL_VERSION, ProtocolRange,
     RequestFrame, ResponseFrame, roles,
 };
@@ -164,7 +164,7 @@ impl NodeHost {
             client: ClientInfo {
                 id: self.config.node_id.clone(),
                 display_name: self.config.display_name.clone(),
-                version: moltis_config::VERSION.into(),
+                version: chelix_config::VERSION.into(),
                 platform: self.config.platform.clone(),
                 device_family: None,
                 model_identifier: None,
@@ -193,7 +193,7 @@ impl NodeHost {
             extensions: {
                 let mut ext = std::collections::HashMap::new();
                 ext.insert(
-                    "moltis".into(),
+                    "chelix".into(),
                     serde_json::json!({
                         "caps": self.config.caps,
                         "commands": self.config.commands,

@@ -10,12 +10,12 @@ use std::{
 };
 
 use {
-    moltis_config::schema::{ProviderStreamTransport, ProvidersConfig},
+    chelix_config::schema::{ProviderStreamTransport, ProvidersConfig},
     secrecy::ExposeSecret,
     tokio_stream::Stream,
 };
 
-use moltis_agents::model::{ChatMessage, LlmProvider, StreamEvent};
+use chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent};
 
 #[cfg(feature = "provider-github-copilot")]
 use crate::github_copilot;
@@ -88,7 +88,7 @@ impl ProviderRegistry {
             let cache_retention = config
                 .get("anthropic")
                 .map(|e| e.cache_retention)
-                .unwrap_or(moltis_config::CacheRetention::Short);
+                .unwrap_or(chelix_config::CacheRetention::Short);
             let models = Self::desired_anthropic_models(config, fetched);
             let provider_cw = config
                 .get("anthropic")
@@ -247,7 +247,7 @@ impl ProviderRegistry {
             let cache_retention = config
                 .get(def.config_name)
                 .map(|e| e.cache_retention)
-                .unwrap_or(moltis_config::CacheRetention::Short);
+                .unwrap_or(chelix_config::CacheRetention::Short);
             let config_tool_mode = config
                 .get(def.config_name)
                 .map(|e| e.tool_mode)
@@ -276,10 +276,10 @@ impl ProviderRegistry {
                         &model.id,
                         ollama_probes.get(&model.id),
                     )
-                } else if !matches!(config_tool_mode, moltis_config::ToolMode::Auto) {
+                } else if !matches!(config_tool_mode, chelix_config::ToolMode::Auto) {
                     config_tool_mode
                 } else {
-                    moltis_config::ToolMode::Auto
+                    chelix_config::ToolMode::Auto
                 };
 
                 let mut oai = openai::OpenAiProvider::new_with_name(
@@ -300,7 +300,7 @@ impl ProviderRegistry {
                         .unwrap_or_default(),
                 );
 
-                if !matches!(effective_tool_mode, moltis_config::ToolMode::Auto) {
+                if !matches!(effective_tool_mode, chelix_config::ToolMode::Auto) {
                     oai = oai.with_tool_mode(effective_tool_mode);
                 }
                 if let Some(strict) = config.get(def.config_name).and_then(|e| e.strict_tools) {
@@ -373,10 +373,10 @@ impl ProviderRegistry {
                     self.global_cw_overrides.clone(),
                     extract_cw_overrides(&entry.model_overrides),
                 );
-                if !matches!(entry.wire_api, moltis_config::WireApi::ChatCompletions) {
+                if !matches!(entry.wire_api, chelix_config::WireApi::ChatCompletions) {
                     oai = oai.with_wire_api(entry.wire_api);
                 }
-                if !matches!(custom_tool_mode, moltis_config::ToolMode::Auto) {
+                if !matches!(custom_tool_mode, chelix_config::ToolMode::Auto) {
                     oai = oai.with_tool_mode(custom_tool_mode);
                 }
                 if let Some(strict) = entry.strict_tools {
@@ -713,7 +713,7 @@ impl ProviderRegistry {
             let cache_retention = config
                 .get("anthropic")
                 .map(|e| e.cache_retention)
-                .unwrap_or(moltis_config::CacheRetention::Short);
+                .unwrap_or(chelix_config::CacheRetention::Short);
             let models = Self::desired_anthropic_models(config, prefetched);
             let provider_cw = config
                 .get("anthropic")
@@ -846,7 +846,7 @@ impl ProviderRegistry {
             let cache_retention = config
                 .get(def.config_name)
                 .map(|e| e.cache_retention)
-                .unwrap_or(moltis_config::CacheRetention::Short);
+                .unwrap_or(chelix_config::CacheRetention::Short);
             let stream_transport = config
                 .get(def.config_name)
                 .map(|entry| entry.stream_transport)
@@ -928,11 +928,11 @@ impl ProviderRegistry {
                         &model_id,
                         ollama_probes.get(&model_id),
                     )
-                } else if !matches!(config_tool_mode, moltis_config::ToolMode::Auto) {
+                } else if !matches!(config_tool_mode, chelix_config::ToolMode::Auto) {
                     config_tool_mode
                 } else {
                     // Non-Ollama providers: let OpenAiProvider use its default logic.
-                    moltis_config::ToolMode::Auto
+                    chelix_config::ToolMode::Auto
                 };
 
                 let mut oai = openai::OpenAiProvider::new_with_name(
@@ -953,7 +953,7 @@ impl ProviderRegistry {
                         .unwrap_or_default(),
                 );
 
-                if !matches!(effective_tool_mode, moltis_config::ToolMode::Auto) {
+                if !matches!(effective_tool_mode, chelix_config::ToolMode::Auto) {
                     oai = oai.with_tool_mode(effective_tool_mode);
                 }
                 if let Some(strict) = config.get(def.config_name).and_then(|e| e.strict_tools) {
@@ -1062,10 +1062,10 @@ impl ProviderRegistry {
                     self.global_cw_overrides.clone(),
                     extract_cw_overrides(&entry.model_overrides),
                 );
-                if !matches!(entry.wire_api, moltis_config::WireApi::ChatCompletions) {
+                if !matches!(entry.wire_api, chelix_config::WireApi::ChatCompletions) {
                     oai = oai.with_wire_api(entry.wire_api);
                 }
-                if !matches!(custom_tool_mode, moltis_config::ToolMode::Auto) {
+                if !matches!(custom_tool_mode, chelix_config::ToolMode::Auto) {
                     oai = oai.with_tool_mode(custom_tool_mode);
                 }
                 if let Some(strict) = entry.strict_tools {

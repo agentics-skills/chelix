@@ -120,9 +120,9 @@ GBrain gives the agent a persistent knowledge graph with hybrid search \
    bun install -g gbrain
    ```
 
-2. **Reuse Moltis provider keys.** GBrain needs an OpenAI API key for \
+2. **Reuse Chelix provider keys.** GBrain needs an OpenAI API key for \
 embeddings and optionally an Anthropic key for enrichment. Check which keys \
-Moltis already has:
+Chelix already has:
    ```json
    // RPC: providers.available
    ```
@@ -144,7 +144,7 @@ the user to enter the same keys twice.
      \"display_name\": \"GBrain Knowledge Base\"
    }
    ```
-   If the OpenAI key is not configured in Moltis, ask the user for it.
+   If the OpenAI key is not configured in Chelix, ask the user for it.
 
 4. **Verify** the server is connected:
    ```json

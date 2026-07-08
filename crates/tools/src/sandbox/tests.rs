@@ -26,7 +26,7 @@ use {
 };
 
 #[cfg(target_os = "macos")]
-const OCI_RUNTIME_E2E_ENV: &str = "MOLTIS_SANDBOX_RUNTIME_E2E";
+const OCI_RUNTIME_E2E_ENV: &str = "CHELIX_SANDBOX_RUNTIME_E2E";
 #[cfg(target_os = "macos")]
 const OCI_RUNTIME_E2E_IMAGE: &str = "alpine:3.21";
 
@@ -59,7 +59,7 @@ struct RuntimeContainerGuard {
 #[cfg(target_os = "macos")]
 impl RuntimeContainerGuard {
     async fn start(cli: &str) -> Result<Self> {
-        let name = format!("moltis-runtime-e2e-{}", uuid::Uuid::new_v4().simple());
+        let name = format!("chelix-runtime-e2e-{}", uuid::Uuid::new_v4().simple());
         let output = tokio::process::Command::new(cli)
             .args([
                 "run",
@@ -118,15 +118,15 @@ async fn assert_runtime_oci_file_transfers(cli: &str) -> Result<()> {
     let container = RuntimeContainerGuard::start(cli).await?;
     container
         .run_command(
-            "mkdir -p /tmp/moltis-e2e/list && \
-             printf 'hello runtime\\n' > /tmp/moltis-e2e/read.txt && \
-             printf 'alpha\\n' > /tmp/moltis-e2e/list/a.txt && \
-             printf 'beta\\n' > /tmp/moltis-e2e/list/b.txt",
+            "mkdir -p /tmp/chelix-e2e/list && \
+             printf 'hello runtime\\n' > /tmp/chelix-e2e/read.txt && \
+             printf 'alpha\\n' > /tmp/chelix-e2e/list/a.txt && \
+             printf 'beta\\n' > /tmp/chelix-e2e/list/b.txt",
         )
         .await?;
 
     let read_result =
-        oci_container_read_file(cli, &container.name, "/tmp/moltis-e2e/read.txt", 1024).await?;
+        oci_container_read_file(cli, &container.name, "/tmp/chelix-e2e/read.txt", 1024).await?;
     match read_result {
         SandboxReadResult::Ok(bytes) => assert_eq!(bytes, b"hello runtime\n"),
         other => panic!("expected Ok from runtime OCI read, got {other:?}"),
@@ -136,21 +136,21 @@ async fn assert_runtime_oci_file_transfers(cli: &str) -> Result<()> {
         oci_container_write_file(
             cli,
             &container.name,
-            "/tmp/moltis-e2e/write.txt",
+            "/tmp/chelix-e2e/write.txt",
             b"written from host"
         )
         .await?
         .is_none()
     );
     let written = container
-        .run_command("cat /tmp/moltis-e2e/write.txt")
+        .run_command("cat /tmp/chelix-e2e/write.txt")
         .await?;
     assert_eq!(written, "written from host");
 
-    let files = oci_container_list_files(cli, &container.name, "/tmp/moltis-e2e/list").await?;
+    let files = oci_container_list_files(cli, &container.name, "/tmp/chelix-e2e/list").await?;
     assert_eq!(files.files, vec![
-        "/tmp/moltis-e2e/list/a.txt".to_string(),
-        "/tmp/moltis-e2e/list/b.txt".to_string(),
+        "/tmp/chelix-e2e/list/a.txt".to_string(),
+        "/tmp/chelix-e2e/list/b.txt".to_string(),
     ]);
     assert!(!files.truncated);
 

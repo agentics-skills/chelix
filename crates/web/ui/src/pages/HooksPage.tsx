@@ -291,7 +291,7 @@ function HookCard({ hook }: { hook: Hook }): VNode {
 								<p>{hook.description}</p>
 								<p className="mt-2">
 									<a
-										href={`https://github.com/moltis-org/moltis/blob/main/${hook.source_path}`}
+										href={`https://github.com/agentics-skills/chelix/blob/main/${hook.source_path}`}
 										target="_blank"
 										rel="noopener noreferrer"
 										className="text-[var(--accent)] hover:underline"
@@ -379,7 +379,7 @@ function HooksPageComponent(): VNode {
 					<p className="text-sm text-[var(--text)] mb-2.5">
 						<strong className="text-[var(--text-strong)]">Hooks</strong> run shell commands in response to lifecycle
 						events (tool calls, messages, sessions, etc.). They live in{" "}
-						<code className="font-mono text-xs">.moltis/hooks/</code> directories.
+						<code className="font-mono text-xs">.chelix/hooks/</code> directories.
 					</p>
 					<div className="flex items-center gap-2 my-3 px-3.5 py-2.5 bg-[var(--surface)] rounded-[var(--radius-sm)] font-mono text-xs text-[var(--text-strong)]">
 						<span className="opacity-50">Event</span>
@@ -398,8 +398,8 @@ function HooksPageComponent(): VNode {
 				{hooks.value.length === 0 && !loading.value ? (
 					<div className="max-w-[600px] text-sm text-[var(--muted)] px-1">
 						No hooks discovered. Create a <code className="font-mono text-xs">HOOK.md</code> file in{" "}
-						<code className="font-mono text-xs">.moltis/hooks/my-hook/</code> or{" "}
-						<code className="font-mono text-xs">~/.moltis/hooks/my-hook/</code> to get started.
+						<code className="font-mono text-xs">.chelix/hooks/my-hook/</code> or{" "}
+						<code className="font-mono text-xs">~/.chelix/hooks/my-hook/</code> to get started.
 					</div>
 				) : null}
 

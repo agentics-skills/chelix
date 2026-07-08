@@ -31,7 +31,7 @@ impl MetricsHandle {
 pub struct MetricsRecorderConfig {
     /// Whether metrics collection is enabled
     pub enabled: bool,
-    /// Prefix for all metric names (default: "moltis")
+    /// Prefix for all metric names (default: "chelix")
     pub prefix: Option<String>,
     /// Global labels to add to all metrics
     pub global_labels: Vec<(String, String)>,
@@ -92,7 +92,7 @@ fn init_prometheus(
         )?
         // LLM-specific durations (longer tail)
         .set_buckets_for_metric(
-            metrics_exporter_prometheus::Matcher::Prefix("moltis_llm_completion".to_string()),
+            metrics_exporter_prometheus::Matcher::Prefix("chelix_llm_completion".to_string()),
             &buckets::LLM_DURATION,
         )?
         // Time to first token

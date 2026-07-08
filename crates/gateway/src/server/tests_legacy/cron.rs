@@ -8,7 +8,7 @@ async fn maybe_deliver_cron_output_sends_to_configured_channel() {
     let req = cron_delivery_request();
 
     crate::server::helpers::maybe_deliver_cron_output(
-        Some(outbound.clone() as Arc<dyn moltis_channels::ChannelOutbound>),
+        Some(outbound.clone() as Arc<dyn chelix_channels::ChannelOutbound>),
         &req,
         "Daily digest ready",
     )
@@ -29,7 +29,7 @@ async fn maybe_deliver_cron_output_skips_blank_messages() {
     let req = cron_delivery_request();
 
     crate::server::helpers::maybe_deliver_cron_output(
-        Some(outbound.clone() as Arc<dyn moltis_channels::ChannelOutbound>),
+        Some(outbound.clone() as Arc<dyn chelix_channels::ChannelOutbound>),
         &req,
         "   ",
     )
@@ -45,7 +45,7 @@ async fn maybe_deliver_cron_output_skips_when_deliver_is_false() {
     req.deliver = false;
 
     crate::server::helpers::maybe_deliver_cron_output(
-        Some(outbound.clone() as Arc<dyn moltis_channels::ChannelOutbound>),
+        Some(outbound.clone() as Arc<dyn chelix_channels::ChannelOutbound>),
         &req,
         "should not be sent",
     )

@@ -1,4 +1,4 @@
-//! Error types for Moltis Home Assistant integration.
+//! Error types for Chelix Home Assistant integration.
 
 /// Errors produced by the Home Assistant client.
 #[derive(Debug, thiserror::Error)]

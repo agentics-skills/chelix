@@ -17,7 +17,7 @@ This downloads the latest release for your platform and installs it to `~/.local
 Multi-architecture images (amd64/arm64) are published to GitHub Container Registry:
 
 ```bash
-docker pull ghcr.io/moltis-org/moltis:latest
+docker pull ghcr.io/agentics-skills/chelix:latest
 ```
 
 See [Docker Deployment](docker.md) for full instructions on running Chelix in a container.
@@ -27,7 +27,7 @@ See [Docker Deployment](docker.md) for full instructions on running Chelix in a 
 After installation, start Chelix:
 
 ```bash
-moltis
+chelix
 ```
 
 On first launch:
@@ -47,7 +47,7 @@ Authentication is only required when accessing Chelix from a non-localhost addre
 ## Verify Installation
 
 ```bash
-moltis --version
+chelix --version
 ```
 
 ## Uninstalling
@@ -58,10 +58,10 @@ Chelix stores data in two directories:
 
 ```bash
 # Configuration
-rm -rf ~/.config/moltis
+rm -rf ~/.config/chelix
 
 # Data (sessions, databases, memory)
-rm -rf ~/.moltis
+rm -rf ~/.chelix
 ```
 
 ```admonish warning

@@ -1,3 +1,3 @@
-//! Re-exported from [`moltis_chat::chat_error`].
+//! Re-exported from [`chelix_chat::chat_error`].
 
-pub use moltis_chat::chat_error::*;
+pub use chelix_chat::chat_error::*;

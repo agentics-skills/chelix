@@ -104,7 +104,7 @@ pub enum BinaryPolicy {
 /// Typed error kinds that fs tools surface to the LLM as structured `Ok`
 /// payloads rather than plain `Err` strings.
 ///
-/// These are the expected failure modes the issue (moltis-org/moltis#657)
+/// These are the expected failure modes the issue (agentics-skills/chelix#657)
 /// asks for: *"structured response for binary / nonexistent / permission-
 /// denied"*. Returning them as `Ok(value_with_kind_field)` means the chat
 /// loop's `err.to_string()` conversion doesn't strip the structure — the
@@ -251,7 +251,7 @@ const BINARY_SNIFF_BYTES: usize = 8192;
 ///
 /// Claude Code's fs tools require absolute paths. We enforce the same to
 /// avoid silent resolution against the gateway's process cwd, which is
-/// almost never what the LLM means. See `moltis-ung` for context.
+/// almost never what the LLM means. See `chelix-ung` for context.
 pub fn require_absolute(path: &str, field: &str) -> Result<()> {
     if path.is_empty() {
         return Err(Error::message(format!("{field} must not be empty")));

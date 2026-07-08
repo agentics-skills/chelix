@@ -168,11 +168,11 @@ async fn probe_ollama_model_info(
 /// - Fall back to the hardcoded family whitelist only when capabilities are
 ///   unavailable (pre-0.5.x Ollama).
 pub(crate) fn resolve_ollama_tool_mode(
-    config_tool_mode: moltis_config::ToolMode,
+    config_tool_mode: chelix_config::ToolMode,
     model_name: &str,
     probe_result: Option<&OllamaShowResponse>,
-) -> moltis_config::ToolMode {
-    use moltis_config::ToolMode;
+) -> chelix_config::ToolMode {
+    use chelix_config::ToolMode;
 
     match config_tool_mode {
         ToolMode::Native | ToolMode::Text | ToolMode::Off => config_tool_mode,
@@ -326,7 +326,7 @@ mod tests {
 
     #[test]
     fn resolve_ollama_tool_mode_explicit_override() {
-        use moltis_config::ToolMode;
+        use chelix_config::ToolMode;
         // Explicit modes are passed through regardless of probe result.
         assert_eq!(
             resolve_ollama_tool_mode(ToolMode::Native, "anything", None),
@@ -344,7 +344,7 @@ mod tests {
 
     #[test]
     fn resolve_ollama_tool_mode_auto_with_probe() {
-        use moltis_config::ToolMode;
+        use chelix_config::ToolMode;
         let show_resp = OllamaShowResponse {
             details: OllamaModelDetails {
                 family: Some("llama3.1".into()),
@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn resolve_ollama_tool_mode_auto_unknown_model() {
-        use moltis_config::ToolMode;
+        use chelix_config::ToolMode;
         let show_resp = OllamaShowResponse {
             details: OllamaModelDetails {
                 family: Some("starcoder2".into()),
@@ -396,7 +396,7 @@ mod tests {
 
     #[test]
     fn resolve_ollama_tool_mode_capabilities_override_family() {
-        use moltis_config::ToolMode;
+        use chelix_config::ToolMode;
         // Model is NOT in the family whitelist but Ollama reports "tools" capability.
         let show_resp = OllamaShowResponse {
             details: OllamaModelDetails {
@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn resolve_ollama_tool_mode_capabilities_no_tools() {
-        use moltis_config::ToolMode;
+        use chelix_config::ToolMode;
         // Model has capabilities but "tools" is not among them.
         let show_resp = OllamaShowResponse {
             details: OllamaModelDetails {
@@ -431,7 +431,7 @@ mod tests {
 
     #[test]
     fn resolve_ollama_tool_mode_empty_capabilities_falls_back_to_family() {
-        use moltis_config::ToolMode;
+        use chelix_config::ToolMode;
         // Empty capabilities (pre-0.5.x Ollama) — falls back to family whitelist.
         let show_resp = OllamaShowResponse {
             details: OllamaModelDetails {
@@ -448,7 +448,7 @@ mod tests {
 
     #[test]
     fn resolve_ollama_tool_mode_no_probe_result_falls_back_to_name_heuristic() {
-        use moltis_config::ToolMode;
+        use chelix_config::ToolMode;
         // No probe result at all — falls back to model name matching.
         assert_eq!(
             resolve_ollama_tool_mode(ToolMode::Auto, "llama3.1:8b", None),
@@ -462,7 +462,7 @@ mod tests {
 
     #[test]
     fn resolve_ollama_tool_mode_explicit_overrides_capabilities() {
-        use moltis_config::ToolMode;
+        use chelix_config::ToolMode;
         // Even with capabilities saying "tools", explicit Text override wins.
         let show_resp = OllamaShowResponse {
             details: OllamaModelDetails {

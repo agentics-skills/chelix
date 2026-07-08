@@ -5,10 +5,10 @@ use super::seed_content::{
 };
 
 pub fn sync_persona_into_preset(
-    agents: &mut moltis_config::AgentsConfig,
+    agents: &mut chelix_config::AgentsConfig,
     persona: &crate::agent_persona::AgentPersona,
 ) {
-    let soul = moltis_config::load_soul_for_agent(&persona.id);
+    let soul = chelix_config::load_soul_for_agent(&persona.id);
 
     let entry = agents.presets.entry(persona.id.clone()).or_default();
 
@@ -24,7 +24,7 @@ pub fn sync_persona_into_preset(
 }
 
 pub(crate) fn seed_default_workspace_markdown_files() {
-    let data_dir = moltis_config::data_dir();
+    let data_dir = chelix_config::data_dir();
     seed_file_if_missing(data_dir.join("BOOT.md"), DEFAULT_BOOT_MD);
     seed_file_if_missing(data_dir.join("AGENTS.md"), DEFAULT_WORKSPACE_AGENTS_MD);
     seed_file_if_missing(data_dir.join("TOOLS.md"), DEFAULT_TOOLS_MD);
@@ -32,10 +32,10 @@ pub(crate) fn seed_default_workspace_markdown_files() {
 }
 
 pub(crate) fn warn_on_workspace_prompt_file_truncation() {
-    let limit_chars = moltis_config::discover_and_load()
+    let limit_chars = chelix_config::discover_and_load()
         .chat
         .workspace_file_max_chars;
-    let data_dir = moltis_config::data_dir();
+    let data_dir = chelix_config::data_dir();
     let mut paths = vec![data_dir.join("AGENTS.md"), data_dir.join("TOOLS.md")];
     let agents_dir = data_dir.join("agents");
     if let Ok(entries) = std::fs::read_dir(&agents_dir) {
@@ -53,7 +53,7 @@ pub(crate) fn warn_on_workspace_prompt_file_truncation() {
         let Ok(content) = std::fs::read_to_string(&path) else {
             continue;
         };
-        let Some(normalized) = moltis_config::normalize_workspace_markdown_content(&content) else {
+        let Some(normalized) = chelix_config::normalize_workspace_markdown_content(&content) else {
             continue;
         };
         let char_count = normalized.chars().count();

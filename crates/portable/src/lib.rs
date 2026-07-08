@@ -1,4 +1,4 @@
-//! Portable import/export of Moltis configuration, databases, and session data.
+//! Portable import/export of Chelix configuration, databases, and session data.
 //!
 //! Archives are `.tar.gz` files containing a manifest, config files, workspace
 //! markdown, SQLite databases, and optionally session media.
@@ -25,7 +25,7 @@ mod integration_tests {
 
         // Create some config files.
         std::fs::write(
-            src_config.path().join("moltis.toml"),
+            src_config.path().join("chelix.toml"),
             "[server]\nport = 8080\n",
         )
         .unwrap();
@@ -37,7 +37,7 @@ mod integration_tests {
 
         // Create workspace files.
         std::fs::write(src_data.path().join("SOUL.md"), "# Soul\nBe helpful.").unwrap();
-        std::fs::write(src_data.path().join("IDENTITY.md"), "name: Moltis").unwrap();
+        std::fs::write(src_data.path().join("IDENTITY.md"), "name: Chelix").unwrap();
 
         // Create a session JSONL file.
         let sessions_dir = src_data.path().join("sessions");
@@ -63,7 +63,7 @@ mod integration_tests {
             manifest
                 .inventory
                 .config_files
-                .contains(&"moltis.toml".to_owned())
+                .contains(&"chelix.toml".to_owned())
         );
         assert!(
             manifest
@@ -102,14 +102,14 @@ mod integration_tests {
         .unwrap();
 
         // Verify files were created.
-        assert!(dst_config.path().join("moltis.toml").exists());
+        assert!(dst_config.path().join("chelix.toml").exists());
         assert!(dst_config.path().join("provider_keys.json").exists());
         assert!(dst_data.path().join("SOUL.md").exists());
         assert!(dst_data.path().join("IDENTITY.md").exists());
         assert!(dst_data.path().join("sessions/main.jsonl").exists());
 
         // Verify content.
-        let toml = std::fs::read_to_string(dst_config.path().join("moltis.toml")).unwrap();
+        let toml = std::fs::read_to_string(dst_config.path().join("chelix.toml")).unwrap();
         assert!(toml.contains("port = 8080"));
 
         let soul = std::fs::read_to_string(dst_data.path().join("SOUL.md")).unwrap();
@@ -124,7 +124,7 @@ mod integration_tests {
         let src_config = tempfile::tempdir().unwrap();
         let src_data = tempfile::tempdir().unwrap();
 
-        std::fs::write(src_config.path().join("moltis.toml"), "original").unwrap();
+        std::fs::write(src_config.path().join("chelix.toml"), "original").unwrap();
         std::fs::write(src_data.path().join("SOUL.md"), "original soul").unwrap();
 
         // Export.
@@ -141,7 +141,7 @@ mod integration_tests {
         // Create destination with pre-existing files.
         let dst_config = tempfile::tempdir().unwrap();
         let dst_data = tempfile::tempdir().unwrap();
-        std::fs::write(dst_config.path().join("moltis.toml"), "modified").unwrap();
+        std::fs::write(dst_config.path().join("chelix.toml"), "modified").unwrap();
         std::fs::write(dst_data.path().join("SOUL.md"), "modified soul").unwrap();
 
         // Import with Skip strategy.
@@ -158,7 +158,7 @@ mod integration_tests {
         .unwrap();
 
         // Existing files should NOT be overwritten.
-        let toml = std::fs::read_to_string(dst_config.path().join("moltis.toml")).unwrap();
+        let toml = std::fs::read_to_string(dst_config.path().join("chelix.toml")).unwrap();
         assert_eq!(toml, "modified");
         assert!(!result.skipped.is_empty());
     }
@@ -168,7 +168,7 @@ mod integration_tests {
         let src_config = tempfile::tempdir().unwrap();
         let src_data = tempfile::tempdir().unwrap();
 
-        std::fs::write(src_config.path().join("moltis.toml"), "from-export").unwrap();
+        std::fs::write(src_config.path().join("chelix.toml"), "from-export").unwrap();
 
         let mut buf = Vec::new();
         export_archive(
@@ -182,7 +182,7 @@ mod integration_tests {
 
         let dst_config = tempfile::tempdir().unwrap();
         let dst_data = tempfile::tempdir().unwrap();
-        std::fs::write(dst_config.path().join("moltis.toml"), "local-version").unwrap();
+        std::fs::write(dst_config.path().join("chelix.toml"), "local-version").unwrap();
 
         let result = import_archive(
             dst_config.path(),
@@ -197,7 +197,7 @@ mod integration_tests {
         .unwrap();
 
         // File should be overwritten.
-        let toml = std::fs::read_to_string(dst_config.path().join("moltis.toml")).unwrap();
+        let toml = std::fs::read_to_string(dst_config.path().join("chelix.toml")).unwrap();
         assert_eq!(toml, "from-export");
         assert!(result.imported.iter().any(|i| i.action == "overwritten"));
     }
@@ -207,7 +207,7 @@ mod integration_tests {
         let src_config = tempfile::tempdir().unwrap();
         let src_data = tempfile::tempdir().unwrap();
 
-        std::fs::write(src_config.path().join("moltis.toml"), "content").unwrap();
+        std::fs::write(src_config.path().join("chelix.toml"), "content").unwrap();
 
         let mut buf = Vec::new();
         export_archive(
@@ -235,7 +235,7 @@ mod integration_tests {
         .unwrap();
 
         // Nothing should be written.
-        assert!(!dst_config.path().join("moltis.toml").exists());
+        assert!(!dst_config.path().join("chelix.toml").exists());
         assert!(result.imported.is_empty());
         assert!(!result.skipped.is_empty());
     }

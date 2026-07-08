@@ -1,7 +1,7 @@
 [package]
-description       = "Metrics collection and export for moltis"
+description       = "Metrics collection and export for chelix"
 edition.workspace = true
-name              = "moltis-metrics"
+name              = "chelix-metrics"
 version.workspace = true
 
 [dependencies]

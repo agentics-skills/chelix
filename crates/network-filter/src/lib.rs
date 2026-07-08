@@ -3,7 +3,7 @@
 //! Feature flags:
 //! - `proxy`   — domain approval manager and HTTP CONNECT proxy server
 //! - `service` — in-memory audit buffer with broadcast and file persistence
-//! - `metrics` — counters/histograms via `moltis-metrics`
+//! - `metrics` — counters/histograms via `chelix-metrics`
 
 pub mod error;
 pub mod types;

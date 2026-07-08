@@ -4,13 +4,13 @@ use std::path::PathBuf;
 
 use {
     async_trait::async_trait,
-    moltis_agents::tool_registry::AgentTool,
-    moltis_skills::usage::SkillUsageStore,
+    chelix_agents::tool_registry::AgentTool,
+    chelix_skills::usage::SkillUsageStore,
     serde_json::{Value, json},
 };
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, labels, skills as skills_metrics};
+use chelix_metrics::{counter, labels, skills as skills_metrics};
 
 use {
     super::helpers::{build_skill_md, write_skill},
@@ -108,7 +108,7 @@ impl AgentTool for CreateSkillTool {
             })
             .unwrap_or_default();
 
-        if !moltis_skills::parse::validate_name(name) {
+        if !chelix_skills::parse::validate_name(name) {
             return Err(Error::message(format!(
                 "invalid skill name '{name}': must be 1-64 lowercase alphanumeric/hyphen chars"
             ))
@@ -234,7 +234,7 @@ impl AgentTool for UpdateSkillTool {
             })
             .unwrap_or_default();
 
-        if !moltis_skills::parse::validate_name(name) {
+        if !chelix_skills::parse::validate_name(name) {
             return Err(Error::message(format!(
                 "invalid skill name '{name}': must be 1-64 lowercase alphanumeric/hyphen chars"
             ))
@@ -330,7 +330,7 @@ impl AgentTool for DeleteSkillTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| Error::message("missing 'name'"))?;
 
-        if !moltis_skills::parse::validate_name(name) {
+        if !chelix_skills::parse::validate_name(name) {
             return Err(Error::message(format!("invalid skill name '{name}'")).into());
         }
 

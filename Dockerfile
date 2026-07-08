@@ -1,7 +1,7 @@
-# Multi-stage Dockerfile for moltis
-# Builds a minimal debian-based image with the moltis gateway
+# Multi-stage Dockerfile for chelix
+# Builds a minimal debian-based image with the chelix gateway
 #
-# Moltis uses Docker/Podman for sandboxed command execution. To enable this,
+# Chelix uses Docker/Podman for sandboxed command execution. To enable this,
 # mount the container runtime socket when running:
 #
 #   Docker:    -v /var/run/docker.sock:/var/run/docker.sock
@@ -26,7 +26,7 @@ COPY crates ./crates
 COPY apps/courier ./apps/courier
 COPY scripts ./scripts
 COPY wit ./wit
-# docs/src is embedded into moltis-agents via include_dir! (crates/agents/src/docs.rs).
+# docs/src is embedded into chelix-agents via include_dir! (crates/agents/src/docs.rs).
 # CHANGELOG.md is the target of the docs/src/changelog.md symlink, so it must be
 # present at the repo root for that symlink to resolve during the embed.
 COPY CHANGELOG.md ./CHANGELOG.md
@@ -54,13 +54,13 @@ RUN ARCH=$(uname -m) && \
 
 # Install WASM target and build WASM components (embedded via include_bytes!)
 RUN rustup target add wasm32-wasip2 && \
-    cargo build --target wasm32-wasip2 -p moltis-wasm-calc -p moltis-wasm-web-fetch -p moltis-wasm-web-search --release
+    cargo build --target wasm32-wasip2 -p chelix-wasm-calc -p chelix-wasm-web-fetch -p chelix-wasm-web-search --release
 
 # Build release binary with the same portable production feature set used by
 # release/package builds.
-ARG MOLTIS_VERSION
-ENV MOLTIS_VERSION=${MOLTIS_VERSION}
-RUN ./scripts/cargo-build-moltis.sh --release
+ARG CHELIX_VERSION
+ENV CHELIX_VERSION=${CHELIX_VERSION}
+RUN ./scripts/cargo-build-chelix.sh --release
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -103,34 +103,34 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user and add to docker group for socket access.
-# Grant passwordless sudo so moltis can install host packages at startup.
+# Grant passwordless sudo so chelix can install host packages at startup.
 RUN groupadd -f docker && \
-    useradd --create-home --user-group moltis && \
-    usermod -aG docker moltis && \
-    echo "moltis ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/moltis
+    useradd --create-home --user-group chelix && \
+    usermod -aG docker chelix && \
+    echo "chelix ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/chelix
 
 # Copy binary from builder
-COPY --from=builder /build/target/release/moltis /usr/local/bin/moltis
-COPY --from=builder /build/crates/web/src/assets /usr/share/moltis/web
-COPY --from=builder /build/target/wasm32-wasip2/release/moltis_wasm_calc.wasm /usr/share/moltis/wasm/
-COPY --from=builder /build/target/wasm32-wasip2/release/moltis_wasm_web_fetch.wasm /usr/share/moltis/wasm/
-COPY --from=builder /build/target/wasm32-wasip2/release/moltis_wasm_web_search.wasm /usr/share/moltis/wasm/
+COPY --from=builder /build/target/release/chelix /usr/local/bin/chelix
+COPY --from=builder /build/crates/web/src/assets /usr/share/chelix/web
+COPY --from=builder /build/target/wasm32-wasip2/release/chelix_wasm_calc.wasm /usr/share/chelix/wasm/
+COPY --from=builder /build/target/wasm32-wasip2/release/chelix_wasm_web_fetch.wasm /usr/share/chelix/wasm/
+COPY --from=builder /build/target/wasm32-wasip2/release/chelix_wasm_web_search.wasm /usr/share/chelix/wasm/
 
 # Create config and data directories
-RUN mkdir -p /home/moltis/.config/moltis /home/moltis/.moltis /home/moltis/.npm && \
-    chown -R moltis:moltis /home/moltis/.config /home/moltis/.moltis /home/moltis/.npm
+RUN mkdir -p /home/chelix/.config/chelix /home/chelix/.chelix /home/chelix/.npm && \
+    chown -R chelix:chelix /home/chelix/.config /home/chelix/.chelix /home/chelix/.npm
 
 # Volume mount points for persistence and container runtime
-VOLUME ["/home/moltis/.config/moltis", "/home/moltis/.moltis", "/home/moltis/.npm", "/var/run/docker.sock"]
+VOLUME ["/home/chelix/.config/chelix", "/home/chelix/.chelix", "/home/chelix/.npm", "/var/run/docker.sock"]
 
-USER moltis
-WORKDIR /home/moltis
+USER chelix
+WORKDIR /home/chelix
 
 # Expose gateway port (HTTPS), HTTP port for CA certificate download (gateway port + 1),
 # and OAuth callback port (used by providers with pre-registered redirect URIs).
-EXPOSE 13131 13132 1455
+# EXPOSE 13131 13132 1455
 
 # Bind 0.0.0.0 so Docker port forwarding works (localhost only binds to
 # the container's loopback, making the port unreachable from the host).
-ENTRYPOINT ["moltis"]
+ENTRYPOINT ["chelix"]
 CMD ["--bind", "0.0.0.0", "--port", "13131"]

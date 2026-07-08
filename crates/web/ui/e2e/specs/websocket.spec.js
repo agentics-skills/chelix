@@ -204,10 +204,10 @@ test.describe("WebSocket connection lifecycle", () => {
 			const helpers = await import(`${prefix}js/helpers.js`);
 			const state = await import(`${prefix}js/state.js`);
 			const originalWs = state.ws;
-			const originalTimeout = window.__moltisTestRpcTimeoutMs;
+			const originalTimeout = window.__chelixTestRpcTimeoutMs;
 
 			try {
-				window.__moltisTestRpcTimeoutMs = 1_000;
+				window.__chelixTestRpcTimeoutMs = 1_000;
 				state.setWs({
 					readyState: WebSocket.OPEN,
 					send() {
@@ -218,7 +218,7 @@ test.describe("WebSocket connection lifecycle", () => {
 				return await helpers.sendRpc("test.slow_method", {});
 			} finally {
 				state.setWs(originalWs);
-				window.__moltisTestRpcTimeoutMs = originalTimeout;
+				window.__chelixTestRpcTimeoutMs = originalTimeout;
 			}
 		});
 
@@ -243,9 +243,9 @@ test.describe("WebSocket connection lifecycle", () => {
 
 		await expectRpcOk(page, "chat.clear", {});
 
-		const toolOutput = "Linux moltis-moltis-sandbox-main 6.12.28 #1 SMP Tue May 20 15:19:05 UTC 2025 aarch64 GNU/Linux";
+		const toolOutput = "Linux chelix-chelix-sandbox-main 6.12.28 #1 SMP Tue May 20 15:19:05 UTC 2025 aarch64 GNU/Linux";
 		const finalText =
-			"The command executed successfully. The output shows:\n- Kernel name: Linux\n- Hostname: moltis-moltis-sandbox-main\n\n" +
+			"The command executed successfully. The output shows:\n- Kernel name: Linux\n- Hostname: chelix-chelix-sandbox-main\n\n" +
 			toolOutput;
 
 		await expectRpcOk(page, "system-event", {
@@ -285,7 +285,7 @@ test.describe("WebSocket connection lifecycle", () => {
 			page.locator("#messages .msg.assistant").filter({ hasText: "command executed successfully" }),
 		).toBeVisible();
 		await expect(
-			page.locator("#messages .msg.assistant").filter({ hasText: "moltis-moltis-sandbox-main" }),
+			page.locator("#messages .msg.assistant").filter({ hasText: "chelix-chelix-sandbox-main" }),
 		).toBeVisible();
 		expect(pageErrors).toEqual([]);
 	});
@@ -1022,7 +1022,7 @@ test.describe("WebSocket connection lifecycle", () => {
 			const originalWebSocket = window.WebSocket;
 			window.WebSocket = FakeWebSocket;
 			window.__authChangedEvents = 0;
-			window.addEventListener("moltis:auth-status-changed", () => {
+			window.addEventListener("chelix:auth-status-changed", () => {
 				window.__authChangedEvents += 1;
 			});
 
@@ -1059,7 +1059,7 @@ test.describe("WebSocket connection lifecycle", () => {
 				ws.onmessage({ data: unauthorizedFrame });
 				const afterBurst = window.__authChangedEvents;
 
-				window.dispatchEvent(new CustomEvent("moltis:auth-status-sync-complete"));
+				window.dispatchEvent(new CustomEvent("chelix:auth-status-sync-complete"));
 
 				ws.onmessage({ data: unauthorizedFrame });
 				return {

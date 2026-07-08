@@ -565,7 +565,7 @@ mod tests {
                 Some(serde_json::json!({
                     "protocolVersion": "2024-11-05",
                     "capabilities": {},
-                    "clientInfo": {"name": "moltis", "version": "test"}
+                    "clientInfo": {"name": "chelix", "version": "test"}
                 })),
             )
             .await
@@ -611,7 +611,7 @@ mod tests {
                 Some(serde_json::json!({
                     "protocolVersion": "2024-11-05",
                     "capabilities": {},
-                    "clientInfo": {"name": "moltis", "version": "test"}
+                    "clientInfo": {"name": "chelix", "version": "test"}
                 })),
             )
             .await

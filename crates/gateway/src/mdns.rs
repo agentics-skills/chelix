@@ -1,15 +1,15 @@
-//! mDNS/DNS-SD service advertisement for `_moltis._tcp`.
+//! mDNS/DNS-SD service advertisement for `_chelix._tcp`.
 //!
 //! Allows iOS (and other) clients on the same LAN to discover this gateway
 //! automatically via Bonjour / mDNS browse.
 
 use mdns_sd::{ServiceDaemon, ServiceInfo};
 
-const SERVICE_TYPE: &str = "_moltis._tcp.local.";
+const SERVICE_TYPE: &str = "_chelix._tcp.local.";
 
 fn alias_service_type(alias_slug: &str) -> Option<String> {
     let mut slug = alias_slug.trim().trim_matches('-').to_ascii_lowercase();
-    if slug.is_empty() || slug == "moltis" {
+    if slug.is_empty() || slug == "chelix" {
         return None;
     }
 
@@ -25,7 +25,7 @@ fn alias_service_type(alias_slug: &str) -> Option<String> {
     Some(format!("_{slug}._tcp.local."))
 }
 
-/// Register this gateway as a `_moltis._tcp` mDNS service.
+/// Register this gateway as a `_chelix._tcp` mDNS service.
 ///
 /// Returns the [`ServiceDaemon`] handle — keep it alive for as long as the
 /// service should be discoverable. Dropping it or calling [`shutdown`] will
@@ -50,9 +50,9 @@ pub fn register(
     let host = hostname::get()
         .ok()
         .and_then(|h| h.into_string().ok())
-        .unwrap_or_else(|| "moltis-gateway".to_string());
+        .unwrap_or_else(|| "chelix-gateway".to_string());
 
-    let host_label = "moltis-gateway.local.".to_string();
+    let host_label = "chelix-gateway.local.".to_string();
 
     let port_value = port.to_string();
     let properties = [
@@ -119,8 +119,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn service_type_is_moltis_tcp() {
-        assert_eq!(SERVICE_TYPE, "_moltis._tcp.local.");
+    fn service_type_is_chelix_tcp() {
+        assert_eq!(SERVICE_TYPE, "_chelix._tcp.local.");
     }
 
     #[test]
@@ -134,7 +134,7 @@ mod tests {
     #[test]
     fn alias_service_type_ignores_empty_or_default() {
         assert!(alias_service_type("").is_none());
-        assert!(alias_service_type("moltis").is_none());
+        assert!(alias_service_type("chelix").is_none());
     }
 
     #[test]
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn register_with_unicode_instance_name() {
-        let daemon = register("moltis-тест", 0, "0.0.0-test", Some("my-bot"))
+        let daemon = register("chelix-тест", 0, "0.0.0-test", Some("my-bot"))
             .expect("mDNS register should handle unicode");
         shutdown(&daemon);
     }

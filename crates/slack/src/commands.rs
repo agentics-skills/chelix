@@ -15,9 +15,9 @@ pub struct SlackCommandDef {
 
 /// Returns the list of channel control commands.
 ///
-/// Derives from the centralized registry in `moltis_channels::commands`.
+/// Derives from the centralized registry in `chelix_channels::commands`.
 pub fn command_definitions() -> Vec<SlackCommandDef> {
-    moltis_channels::commands::all_commands()
+    chelix_channels::commands::all_commands()
         .iter()
         .map(|c| {
             let usage_hint = match &c.arg {

@@ -14,12 +14,12 @@ use {
 };
 
 use {
-    moltis_agents::{
+    chelix_agents::{
         ChatMessage, UserContent,
         model::{StreamEvent, push_capped_provider_raw_event, values_to_chat_messages},
         prompt::{PromptRuntimeContext, build_system_prompt_minimal_runtime_details},
     },
-    moltis_sessions::store::SessionStore,
+    chelix_sessions::store::SessionStore,
 };
 
 use crate::{
@@ -115,7 +115,7 @@ pub(crate) async fn run_streaming(
     state: &Arc<dyn ChatRuntime>,
     model_store: &Arc<RwLock<DisabledModelsStore>>,
     run_id: &str,
-    provider: Arc<dyn moltis_agents::model::LlmProvider>,
+    provider: Arc<dyn chelix_agents::model::LlmProvider>,
     model_id: &str,
     user_content: &UserContent,
     provider_name: &str,
@@ -126,7 +126,7 @@ pub(crate) async fn run_streaming(
     desired_reply_medium: ReplyMedium,
     project_context: Option<&str>,
     user_message_index: usize,
-    _skills: &[moltis_skills::types::SkillMetadata],
+    _skills: &[chelix_skills::types::SkillMetadata],
     runtime_context: Option<&PromptRuntimeContext>,
     sender_name: Option<String>,
     session_store: Option<&Arc<SessionStore>>,
@@ -142,7 +142,7 @@ pub(crate) async fn run_streaming(
         let query_text = match user_content {
             UserContent::Text(t) => Some(t.as_str()),
             UserContent::Multimodal(parts) => parts.iter().find_map(|p| match p {
-                moltis_agents::model::ContentPart::Text(t) => Some(t.as_str()),
+                chelix_agents::model::ContentPart::Text(t) => Some(t.as_str()),
                 _ => None,
             }),
         };
@@ -205,7 +205,7 @@ pub(crate) async fn run_streaming(
     // local LLMs (Ollama, LM Studio) and prompt-cache hits for
     // cloud providers.
     let effective_user_content =
-        moltis_agents::prompt::prepend_datetime_to_user_content(user_content, runtime_context)
+        chelix_agents::prompt::prepend_datetime_to_user_content(user_content, runtime_context)
             .unwrap_or_else(|| user_content.clone());
 
     let mut messages: Vec<ChatMessage> = Vec::new();

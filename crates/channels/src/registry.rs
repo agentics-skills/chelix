@@ -17,10 +17,10 @@ use {
     crate::{Error, Result, config_view::ChannelConfigView, plugin::ChannelHealthSnapshot},
 };
 
-use moltis_common::types::ReplyPayload;
+use chelix_common::types::ReplyPayload;
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{channels as ch_metrics, gauge};
+use chelix_metrics::{channels as ch_metrics, gauge};
 
 /// Production channel registry with O(1) account→plugin routing.
 ///

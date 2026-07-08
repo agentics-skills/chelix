@@ -1,7 +1,7 @@
 use {
     anyhow::Result,
     async_trait::async_trait,
-    moltis_config::schema::McpServerId,
+    chelix_config::schema::McpServerId,
     std::{
         collections::{HashMap, HashSet},
         sync::{Arc, Mutex},

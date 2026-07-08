@@ -18,18 +18,18 @@ use crate::{
 };
 
 use {
-    moltis_agents::{
+    chelix_agents::{
         AgentRunError,
         model::LlmProvider,
         runner::{AgentLoopLimits, RunnerEvent, run_agent_loop_with_context_and_limits},
         tool_registry::{AgentTool, ToolRegistry},
     },
-    moltis_config::{
+    chelix_config::{
         AgentRuntimeLimits,
         schema::{AgentPreset, AgentsConfig},
     },
-    moltis_providers::ProviderRegistry,
-    moltis_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
+    chelix_providers::ProviderRegistry,
+    chelix_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
 };
 
 use crate::sessions_communicate::{
@@ -253,18 +253,18 @@ fn default_spawn_task_store() -> Arc<SpawnTaskStore> {
 /// Resolve the memory directory for a preset based on its scope.
 fn resolve_memory_dir(
     preset_name: &str,
-    scope: &moltis_config::schema::MemoryScope,
+    scope: &chelix_config::schema::MemoryScope,
 ) -> std::path::PathBuf {
-    use moltis_config::schema::MemoryScope;
+    use chelix_config::schema::MemoryScope;
     match scope {
         MemoryScope::User => {
-            let data_dir = moltis_config::data_dir();
+            let data_dir = chelix_config::data_dir();
             data_dir.join("agent-memory").join(preset_name)
         },
-        MemoryScope::Project => std::path::PathBuf::from(".moltis")
+        MemoryScope::Project => std::path::PathBuf::from(".chelix")
             .join("agent-memory")
             .join(preset_name),
-        MemoryScope::Local => std::path::PathBuf::from(".moltis")
+        MemoryScope::Local => std::path::PathBuf::from(".chelix")
             .join("agent-memory-local")
             .join(preset_name),
     }
@@ -274,7 +274,7 @@ fn resolve_memory_dir(
 /// Returns `None` if the file doesn't exist or is empty.
 fn load_memory_context(
     preset_name: &str,
-    config: &moltis_config::schema::PresetMemoryConfig,
+    config: &chelix_config::schema::PresetMemoryConfig,
 ) -> Option<String> {
     let dir = resolve_memory_dir(preset_name, &config.scope);
     load_memory_from_dir(&dir, config.max_lines)
@@ -432,7 +432,7 @@ impl AgentTool for SpawnAgentTool {
             .ok_or_else(|| Error::message("missing required parameter: task"))?;
         let context = str_param(&params, "context").unwrap_or("");
         let (preset_name, preset) = self.resolve_preset(&params).await?;
-        let config = moltis_config::discover_and_load();
+        let config = chelix_config::discover_and_load();
         let runtime_limits =
             AgentRuntimeLimits::resolve_for_spawned_agent(&config.tools, preset.as_ref());
         let explicit_model = str_param(&params, "model").map(String::from);
@@ -583,7 +583,7 @@ impl AgentTool for SpawnAgentTool {
         if nonblocking {
             #[cfg(feature = "metrics")]
             {
-                use moltis_metrics::{counter, gauge, labels, spawn as spawn_metrics};
+                use chelix_metrics::{counter, gauge, labels, spawn as spawn_metrics};
                 counter!(spawn_metrics::SPAWNED_TOTAL, labels::MODE => "nonblocking").increment(1);
                 gauge!(spawn_metrics::TASKS_IN_FLIGHT).increment(1.0);
             }
@@ -634,7 +634,7 @@ impl AgentTool for SpawnAgentTool {
 
                         #[cfg(feature = "metrics")]
                         {
-                            use moltis_metrics::{counter, gauge, labels, spawn as spawn_metrics};
+                            use chelix_metrics::{counter, gauge, labels, spawn as spawn_metrics};
                             counter!(
                                 spawn_metrics::COMPLETED_TOTAL,
                                 labels::STATUS => "cancelled"
@@ -722,7 +722,7 @@ impl AgentTool for SpawnAgentTool {
 
                 #[cfg(feature = "metrics")]
                 {
-                    use moltis_metrics::{counter, gauge, labels, spawn as spawn_metrics};
+                    use chelix_metrics::{counter, gauge, labels, spawn as spawn_metrics};
                     counter!(
                         spawn_metrics::COMPLETED_TOTAL,
                         labels::STATUS => status_label.to_string()
@@ -753,7 +753,7 @@ impl AgentTool for SpawnAgentTool {
 
         #[cfg(feature = "metrics")]
         {
-            use moltis_metrics::{counter, labels, spawn as spawn_metrics};
+            use chelix_metrics::{counter, labels, spawn as spawn_metrics};
             counter!(spawn_metrics::SPAWNED_TOTAL, labels::MODE => "blocking").increment(1);
         }
 
@@ -782,7 +782,7 @@ impl AgentTool for SpawnAgentTool {
 
         #[cfg(feature = "metrics")]
         {
-            use moltis_metrics::{counter, labels, spawn as spawn_metrics};
+            use chelix_metrics::{counter, labels, spawn as spawn_metrics};
             let status = if result.is_ok() {
                 "completed"
             } else {
@@ -824,8 +824,8 @@ async fn run_spawned_agent(
     task: String,
     tool_context: serde_json::Value,
     runtime_limits: AgentRuntimeLimits,
-) -> Result<moltis_agents::runner::AgentRunResult, AgentRunError> {
-    let user_content = moltis_agents::UserContent::text(&task);
+) -> Result<chelix_agents::runner::AgentRunResult, AgentRunError> {
+    let user_content = chelix_agents::UserContent::text(&task);
     let agent_future = run_agent_loop_with_context_and_limits(
         provider,
         &sub_tools,

@@ -587,13 +587,13 @@ mod tests {
     }
 
     /// Cross-validate that every provider registered in this crate appears in
-    /// the canonical `KNOWN_PROVIDER_NAMES` list in `moltis-config`.
+    /// the canonical `KNOWN_PROVIDER_NAMES` list in `chelix-config`.
     ///
-    /// If this test fails, you added a provider to `moltis-providers` without
+    /// If this test fails, you added a provider to `chelix-providers` without
     /// updating `crates/config/src/schema/providers.rs::KNOWN_PROVIDER_NAMES`.
     #[test]
     fn all_registered_providers_in_canonical_known_list() {
-        use moltis_config::schema::KNOWN_PROVIDER_NAMES;
+        use chelix_config::schema::KNOWN_PROVIDER_NAMES;
 
         // Built-in providers
         let mut provider_names: Vec<&str> = vec!["anthropic", "openai"];
@@ -622,7 +622,7 @@ mod tests {
         for name in &provider_names {
             assert!(
                 KNOWN_PROVIDER_NAMES.contains(name),
-                "provider \"{name}\" is registered in moltis-providers but missing from \
+                "provider \"{name}\" is registered in chelix-providers but missing from \
                  KNOWN_PROVIDER_NAMES in crates/config/src/schema/providers.rs — add it there"
             );
         }
@@ -631,7 +631,7 @@ mod tests {
     /// Ensure `KNOWN_PROVIDER_NAMES` has no duplicates.
     #[test]
     fn canonical_known_list_has_no_duplicates() {
-        use moltis_config::schema::KNOWN_PROVIDER_NAMES;
+        use chelix_config::schema::KNOWN_PROVIDER_NAMES;
 
         let mut sorted: Vec<&str> = KNOWN_PROVIDER_NAMES.to_vec();
         sorted.sort();

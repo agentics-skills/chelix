@@ -5,13 +5,13 @@
 use std::path::Path;
 
 use {
-    moltis_import_core::report::{CategoryReport, ImportCategory, ImportStatus},
+    chelix_import_core::report::{CategoryReport, ImportCategory, ImportStatus},
     tracing::debug,
 };
 
 use crate::detect::ClaudeDetection;
 
-/// Import Claude memory file (`CLAUDE.md`) into Moltis data directory.
+/// Import Claude memory file (`CLAUDE.md`) into Chelix data directory.
 pub fn import_memory(detection: &ClaudeDetection, dest_dir: &Path) -> CategoryReport {
     let Some(ref source) = detection.user_memory_path else {
         return CategoryReport::skipped(ImportCategory::Memory);

@@ -37,14 +37,14 @@ use {
 };
 
 use {
-    moltis_channels::{
+    chelix_channels::{
         Error as ChannelError, Result as ChannelResult,
         plugin::{
             ChannelOutbound, ChannelStreamOutbound, ChannelThreadContext, InteractiveMessage,
             StreamEvent, StreamReceiver, ThreadMessage,
         },
     },
-    moltis_common::types::{MediaAttachment, ReplyPayload},
+    chelix_common::types::{MediaAttachment, ReplyPayload},
 };
 
 use crate::{config::StreamMode, state::AccountStateMap};
@@ -909,9 +909,9 @@ fn poll_relation_from_value(
 
 fn record_message_sent() {
     #[cfg(feature = "metrics")]
-    moltis_metrics::counter!(
-        moltis_metrics::channels::MESSAGES_SENT_TOTAL,
-        moltis_metrics::labels::CHANNEL => "matrix"
+    chelix_metrics::counter!(
+        chelix_metrics::channels::MESSAGES_SENT_TOTAL,
+        chelix_metrics::labels::CHANNEL => "matrix"
     )
     .increment(1);
 }
@@ -1101,7 +1101,7 @@ mod tests {
                 serde::Raw,
             },
         },
-        moltis_common::types::{MediaAttachment, ReplyPayload},
+        chelix_common::types::{MediaAttachment, ReplyPayload},
         serde_json::json,
     };
 
@@ -1279,15 +1279,15 @@ mod tests {
 
     #[test]
     fn interactive_poll_plain_text_numbers_choices() {
-        let text = interactive_poll_plain_text(&moltis_channels::plugin::InteractiveMessage {
+        let text = interactive_poll_plain_text(&chelix_channels::plugin::InteractiveMessage {
             text: "Pick one".into(),
             button_rows: vec![vec![
-                moltis_channels::plugin::InteractiveButton {
+                chelix_channels::plugin::InteractiveButton {
                     label: "Alpha".into(),
                     callback_data: "alpha".into(),
                     style: Default::default(),
                 },
-                moltis_channels::plugin::InteractiveButton {
+                chelix_channels::plugin::InteractiveButton {
                     label: "Beta".into(),
                     callback_data: "beta".into(),
                     style: Default::default(),

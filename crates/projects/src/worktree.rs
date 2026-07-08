@@ -10,7 +10,7 @@ use {
 // operations (`worktree add/remove/list`, branch delete) because these flows are
 // not yet practical with stable in-process gitoxide APIs in this code path.
 
-const WORKTREE_DIR: &str = ".moltis-worktrees";
+const WORKTREE_DIR: &str = ".chelix-worktrees";
 
 /// Information about an active worktree.
 #[derive(Debug, Clone)]
@@ -27,7 +27,7 @@ impl WorktreeManager {
     pub async fn create(project_dir: &Path, session_id: &str) -> Result<PathBuf> {
         Self::ensure_git_repo(project_dir).await?;
 
-        let branch = format!("moltis/{session_id}");
+        let branch = format!("chelix/{session_id}");
         let wt_dir = project_dir.join(WORKTREE_DIR).join(session_id);
 
         if wt_dir.exists() {
@@ -90,7 +90,7 @@ impl WorktreeManager {
     /// If not pushed, the branch is also deleted.
     pub async fn cleanup(project_dir: &Path, session_id: &str) -> Result<()> {
         let wt_dir = project_dir.join(WORKTREE_DIR).join(session_id);
-        let branch = format!("moltis/{session_id}");
+        let branch = format!("chelix/{session_id}");
 
         if wt_dir.exists() {
             let output = Command::new("git")
@@ -169,7 +169,7 @@ impl WorktreeManager {
                 current_branch = Some(branch.to_string());
             } else if line.is_empty() {
                 if let (Some(path), Some(branch)) = (current_path.take(), current_branch.take())
-                    && branch.starts_with("moltis/")
+                    && branch.starts_with("chelix/")
                 {
                     worktrees.push(WorktreeInfo { path, branch });
                 }
@@ -179,7 +179,7 @@ impl WorktreeManager {
         }
         // Handle last entry (no trailing blank line)
         if let (Some(path), Some(branch)) = (current_path, current_branch)
-            && branch.starts_with("moltis/")
+            && branch.starts_with("chelix/")
         {
             worktrees.push(WorktreeInfo { path, branch });
         }
@@ -189,7 +189,7 @@ impl WorktreeManager {
 
     /// Run the project's setup command in a worktree directory.
     ///
-    /// Injects `MOLTIS_WORKSPACE_NAME` (session id) and `MOLTIS_ROOT_PATH`
+    /// Injects `CHELIX_WORKSPACE_NAME` (session id) and `CHELIX_ROOT_PATH`
     /// (project root) as environment variables.
     pub async fn run_setup(
         wt_dir: &Path,
@@ -201,8 +201,8 @@ impl WorktreeManager {
         let output = Command::new("sh")
             .args(["-c", setup_command])
             .current_dir(wt_dir)
-            .env("MOLTIS_WORKSPACE_NAME", session_id)
-            .env("MOLTIS_ROOT_PATH", project_dir.as_os_str())
+            .env("CHELIX_WORKSPACE_NAME", session_id)
+            .env("CHELIX_ROOT_PATH", project_dir.as_os_str())
             .output()
             .await
             .map_err(|source| Error::command_execution("setup command", source))?;
@@ -225,8 +225,8 @@ impl WorktreeManager {
         let output = Command::new("sh")
             .args(["-c", teardown_command])
             .current_dir(wt_dir)
-            .env("MOLTIS_WORKSPACE_NAME", session_id)
-            .env("MOLTIS_ROOT_PATH", project_dir.as_os_str())
+            .env("CHELIX_WORKSPACE_NAME", session_id)
+            .env("CHELIX_ROOT_PATH", project_dir.as_os_str())
             .output()
             .await
             .map_err(|source| Error::command_execution("teardown command", source))?;
@@ -290,7 +290,7 @@ impl WorktreeManager {
     ) -> Result<PathBuf> {
         Self::ensure_git_repo(project_dir).await?;
 
-        let branch = format!("moltis/{session_id}");
+        let branch = format!("chelix/{session_id}");
         let wt_dir = project_dir.join(WORKTREE_DIR).join(session_id);
 
         if wt_dir.exists() {
@@ -340,11 +340,11 @@ impl WorktreeManager {
     }
 }
 
-/// Copy `.moltis/` config directory from project root to a worktree, if it
+/// Copy `.chelix/` config directory from project root to a worktree, if it
 /// exists in the project but not in the worktree.
 pub fn copy_project_config(project_dir: &Path, wt_dir: &Path) -> Result<()> {
-    let src = project_dir.join(".moltis");
-    let dst = wt_dir.join(".moltis");
+    let src = project_dir.join(".chelix");
+    let dst = wt_dir.join(".chelix");
 
     if !src.exists() || dst.exists() {
         return Ok(());
@@ -420,7 +420,7 @@ mod tests {
 
         let list = WorktreeManager::list(dir.path()).await.unwrap();
         assert_eq!(list.len(), 1);
-        assert_eq!(list[0].branch, "moltis/test-session");
+        assert_eq!(list[0].branch, "chelix/test-session");
     }
 
     #[tokio::test]
@@ -457,7 +457,7 @@ mod tests {
         // Write a setup script that dumps env vars to a file.
         let marker = wt.join("env_check.txt");
         let cmd = format!(
-            "echo \"$MOLTIS_WORKSPACE_NAME:$MOLTIS_ROOT_PATH\" > {}",
+            "echo \"$CHELIX_WORKSPACE_NAME:$CHELIX_ROOT_PATH\" > {}",
             marker.display()
         );
         WorktreeManager::run_setup(&wt, &cmd, dir.path(), "env-test")
@@ -491,15 +491,15 @@ mod tests {
             .await
             .unwrap();
 
-        // Create .moltis/config.toml in project root.
-        let config_dir = dir.path().join(".moltis");
+        // Create .chelix/config.toml in project root.
+        let config_dir = dir.path().join(".chelix");
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(config_dir.join("config.toml"), "key = 'value'").unwrap();
 
         copy_project_config(dir.path(), &wt).unwrap();
 
-        assert!(wt.join(".moltis/config.toml").exists());
-        let content = std::fs::read_to_string(wt.join(".moltis/config.toml")).unwrap();
+        assert!(wt.join(".chelix/config.toml").exists());
+        let content = std::fs::read_to_string(wt.join(".chelix/config.toml")).unwrap();
         assert_eq!(content, "key = 'value'");
     }
 
@@ -510,16 +510,16 @@ mod tests {
             .await
             .unwrap();
 
-        // Create .moltis in both project and worktree.
-        std::fs::create_dir_all(dir.path().join(".moltis")).unwrap();
-        std::fs::write(dir.path().join(".moltis/config.toml"), "original").unwrap();
-        std::fs::create_dir_all(wt.join(".moltis")).unwrap();
-        std::fs::write(wt.join(".moltis/config.toml"), "existing").unwrap();
+        // Create .chelix in both project and worktree.
+        std::fs::create_dir_all(dir.path().join(".chelix")).unwrap();
+        std::fs::write(dir.path().join(".chelix/config.toml"), "original").unwrap();
+        std::fs::create_dir_all(wt.join(".chelix")).unwrap();
+        std::fs::write(wt.join(".chelix/config.toml"), "existing").unwrap();
 
         copy_project_config(dir.path(), &wt).unwrap();
 
         // Should not overwrite.
-        let content = std::fs::read_to_string(wt.join(".moltis/config.toml")).unwrap();
+        let content = std::fs::read_to_string(wt.join(".chelix/config.toml")).unwrap();
         assert_eq!(content, "existing");
     }
 
@@ -564,6 +564,6 @@ mod tests {
 
         let list = WorktreeManager::list(dir.path()).await.unwrap();
         assert_eq!(list.len(), 1);
-        assert_eq!(list[0].branch, "moltis/base-test");
+        assert_eq!(list[0].branch, "chelix/base-test");
     }
 }

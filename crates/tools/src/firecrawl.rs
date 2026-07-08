@@ -20,8 +20,8 @@ use {
 };
 
 use {
-    crate::error::Error, moltis_agents::tool_registry::AgentTool,
-    moltis_config::schema::FirecrawlConfig,
+    crate::error::Error, chelix_agents::tool_registry::AgentTool,
+    chelix_config::schema::FirecrawlConfig,
 };
 
 /// Default Firecrawl API base URL.

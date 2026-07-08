@@ -424,8 +424,8 @@ function DoctorBadge({ level }: { level: string }): VNode {
 
 function ConnectNodeForm(): VNode {
 	const wsUrl = gatewayWsUrl();
-	const addCmd = `moltis node add --host ${wsUrl}`;
-	const enableCmd = `moltis node pairing enable --host ${location.origin}`;
+	const addCmd = `chelix node add --host ${wsUrl}`;
+	const enableCmd = `chelix node pairing enable --host ${location.origin}`;
 	const isPairingEnabled = pairingEnabled.value;
 	return (
 		<div className="rounded-lg border border-[var(--border)] bg-[var(--surface-alt)] p-4">
@@ -527,7 +527,7 @@ function RemoteCommandStatusCard(): VNode {
 				<div>
 					<h3 className="text-sm font-medium text-[var(--text-strong)] mb-1">Remote Command Status</h3>
 					<p className="text-xs text-[var(--text-muted)] m-0">
-						Moltis is currently configured to run commands through{" "}
+						Chelix is currently configured to run commands through{" "}
 						<strong className="text-[var(--text-strong)]"> {commandHost}</strong>
 						{activeRoute ? (
 							<>

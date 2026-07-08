@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use {
     async_trait::async_trait,
-    moltis_agents::tool_registry::AgentTool,
-    moltis_sessions::state_store::SessionStateStore,
+    chelix_agents::tool_registry::AgentTool,
+    chelix_sessions::state_store::SessionStateStore,
     serde_json::{Value, json},
 };
 

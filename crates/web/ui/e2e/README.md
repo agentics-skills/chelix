@@ -1,6 +1,6 @@
 # Gateway UI E2E Tests
 
-These tests use Playwright against a real `moltis` server process.
+These tests use Playwright against a real `chelix` server process.
 
 ## Why this setup
 
@@ -31,9 +31,9 @@ npm run e2e
 
 1. Creates `target/e2e-runtime/{config,data}`.
 2. Seeds `IDENTITY.md` and `USER.md` so onboarding is completed.
-3. Sets `MOLTIS_CONFIG_DIR`, `MOLTIS_DATA_DIR`, and `MOLTIS_SERVER__PORT`.
-4. Checks for a pre-built binary (`target/debug/moltis` or `target/release/moltis`)
-   before falling back to `cargo run`. Set `MOLTIS_BINARY` to override.
+3. Sets `CHELIX_CONFIG_DIR`, `CHELIX_DATA_DIR`, and `CHELIX_SERVER__PORT`.
+4. Checks for a pre-built binary (`target/debug/chelix` or `target/release/chelix`)
+   before falling back to `cargo run`. Set `CHELIX_BINARY` to override.
 
 ### Onboarding server (`start-gateway-onboarding.sh`)
 
@@ -44,8 +44,8 @@ app enters onboarding mode. Uses a random free port by default.
 
 The local test suite keeps a single `default` project for targeted debugging.
 CI uses `e2e/run-ci.sh` to launch four independent default-suite Playwright
-processes by default, controlled by `MOLTIS_E2E_SHARDS`. Each process runs with
-one worker against its own Moltis process, port, config dir, and data dir. That
+processes by default, controlled by `CHELIX_E2E_SHARDS`. Each process runs with
+one worker against its own Chelix process, port, config dir, and data dir. That
 gives parallelism without letting two stateful spec files talk to the same
 gateway at the same time. CI also runs special projects (`agents`, `auth`,
 onboarding variants, OAuth, and optional live-provider suites) as separate
@@ -53,14 +53,14 @@ single-project processes so each one starts only its own web server.
 
 | Project | Port | Spec files | Notes |
 |---------|------|------------|-------|
-| `default` | Random free port (`MOLTIS_E2E_PORT`) | All except isolated project specs, or one CI shard when `MOLTIS_E2E_PROCESS_SHARD_INDEX` is set | Seeded identity, no password |
-| `agents` | Local: same as `default`; CI: random free port (`MOLTIS_E2E_AGENTS_PORT`) | `agents.spec.js` | CI uses isolated runtime state |
-| `auth` | Local: same as `default`; CI: random free port (`MOLTIS_E2E_AUTH_PORT`) | `auth.spec.js` | CI uses isolated runtime state |
-| `onboarding` | Random free port (`MOLTIS_E2E_ONBOARDING_PORT`) | `onboarding.spec.js` | Separate server without seeded identity |
-| `onboarding-auth` | Random free port (`MOLTIS_E2E_ONBOARDING_AUTH_PORT`) | `onboarding-auth.spec.js` | Separate server with remote-auth simulation |
-| `onboarding-anthropic` | Random free port (`MOLTIS_E2E_ONBOARDING_ANTHROPIC_PORT`) | `onboarding-anthropic.spec.js` | Separate server proving first-run Anthropic onboarding with zero providers at startup |
-| `openai-live` | Random free port (`MOLTIS_E2E_OPENAI_LIVE_PORT`) | `openai-live.spec.js` | Separate server that preserves only the existing OpenAI env and proves a real OpenAI chat turn works |
-| `ollama-qwen-live` | Random free port (`MOLTIS_E2E_OLLAMA_QWEN_LIVE_PORT`) + Ollama API port (`MOLTIS_E2E_OLLAMA_QWEN_API_PORT`, default `11435`) | `ollama-qwen-live.spec.js` | Opt-in server that starts a local Ollama instance, seeds a custom OpenAI-compatible Qwen provider, and proves the multiple-system-message regression is fixed |
+| `default` | Random free port (`CHELIX_E2E_PORT`) | All except isolated project specs, or one CI shard when `CHELIX_E2E_PROCESS_SHARD_INDEX` is set | Seeded identity, no password |
+| `agents` | Local: same as `default`; CI: random free port (`CHELIX_E2E_AGENTS_PORT`) | `agents.spec.js` | CI uses isolated runtime state |
+| `auth` | Local: same as `default`; CI: random free port (`CHELIX_E2E_AUTH_PORT`) | `auth.spec.js` | CI uses isolated runtime state |
+| `onboarding` | Random free port (`CHELIX_E2E_ONBOARDING_PORT`) | `onboarding.spec.js` | Separate server without seeded identity |
+| `onboarding-auth` | Random free port (`CHELIX_E2E_ONBOARDING_AUTH_PORT`) | `onboarding-auth.spec.js` | Separate server with remote-auth simulation |
+| `onboarding-anthropic` | Random free port (`CHELIX_E2E_ONBOARDING_ANTHROPIC_PORT`) | `onboarding-anthropic.spec.js` | Separate server proving first-run Anthropic onboarding with zero providers at startup |
+| `openai-live` | Random free port (`CHELIX_E2E_OPENAI_LIVE_PORT`) | `openai-live.spec.js` | Separate server that preserves only the existing OpenAI env and proves a real OpenAI chat turn works |
+| `ollama-qwen-live` | Random free port (`CHELIX_E2E_OLLAMA_QWEN_LIVE_PORT`) + Ollama API port (`CHELIX_E2E_OLLAMA_QWEN_API_PORT`, default `11435`) | `ollama-qwen-live.spec.js` | Opt-in server that starts a local Ollama instance, seeds a custom OpenAI-compatible Qwen provider, and proves the multiple-system-message regression is fixed |
 
 ## Spec Files
 
@@ -106,7 +106,7 @@ cd crates/web/ui && npx playwright test e2e/specs/sessions.spec.js
 npx playwright test --project=auth
 
 # Run the opt-in Ollama/Qwen live project
-MOLTIS_E2E_OLLAMA_QWEN_LIVE=1 npx playwright test --project=ollama-qwen-live e2e/specs/ollama-qwen-live.spec.js
+CHELIX_E2E_OLLAMA_QWEN_LIVE=1 npx playwright test --project=ollama-qwen-live e2e/specs/ollama-qwen-live.spec.js
 
 # Run with visible browser
 just ui-e2e-headed
@@ -121,8 +121,8 @@ npx playwright show-report
 ## Tips
 
 - **Build the binary first** (`cargo build`) to avoid recompilation on every
-  test run. The startup script auto-detects `target/debug/moltis`.
-- Set `MOLTIS_BINARY=/path/to/moltis` to use a specific binary.
-- Each Playwright process runs serially (`workers: 1`) because a Moltis runtime
+  test run. The startup script auto-detects `target/debug/chelix`.
+- Set `CHELIX_BINARY=/path/to/chelix` to use a specific binary.
+- Each Playwright process runs serially (`workers: 1`) because a Chelix runtime
   is stateful. CI gets parallelism by running multiple single-worker processes.
 - On failure, traces, screenshots, and videos are saved in `test-results/`.

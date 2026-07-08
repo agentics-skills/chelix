@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::state::GatewayState;
 
-/// Gateway implementation of [`moltis_tools::location::LocationRequester`].
+/// Gateway implementation of [`chelix_tools::location::LocationRequester`].
 ///
 /// Uses the `PendingInvoke` + oneshot pattern to request the user's browser
 /// geolocation and waits for `location.result` RPC to resolve it.
@@ -11,19 +11,19 @@ pub(crate) struct GatewayLocationRequester {
 }
 
 #[async_trait::async_trait]
-impl moltis_tools::location::LocationRequester for GatewayLocationRequester {
+impl chelix_tools::location::LocationRequester for GatewayLocationRequester {
     async fn request_location(
         &self,
         conn_id: &str,
-        precision: moltis_tools::location::LocationPrecision,
-    ) -> moltis_tools::Result<moltis_tools::location::LocationResult> {
-        use moltis_tools::location::{LocationError, LocationResult};
+        precision: chelix_tools::location::LocationPrecision,
+    ) -> chelix_tools::Result<chelix_tools::location::LocationResult> {
+        use chelix_tools::location::{LocationError, LocationResult};
 
         let request_id = uuid::Uuid::new_v4().to_string();
 
         // Send a location.request event to the browser client, including
         // the requested precision so JS can adjust geolocation options.
-        let event = moltis_protocol::EventFrame::new(
+        let event = chelix_protocol::EventFrame::new(
             "location.request",
             serde_json::json!({ "requestId": request_id, "precision": precision }),
             self.state.next_seq(),
@@ -33,10 +33,10 @@ impl moltis_tools::location::LocationRequester for GatewayLocationRequester {
         {
             let registry = self.state.client_registry.read().await;
             let client = registry.clients.get(conn_id).ok_or_else(|| {
-                moltis_tools::Error::message(format!("no client connection for conn_id {conn_id}"))
+                chelix_tools::Error::message(format!("no client connection for conn_id {conn_id}"))
             })?;
             if !client.send(&event_json) {
-                return Err(moltis_tools::Error::message(format!(
+                return Err(chelix_tools::Error::message(format!(
                     "failed to send location request to client {conn_id}"
                 )));
             }
@@ -91,7 +91,7 @@ impl moltis_tools::location::LocationRequester for GatewayLocationRequester {
             let lon = loc.get("longitude").and_then(|v| v.as_f64()).unwrap_or(0.0);
             let accuracy = loc.get("accuracy").and_then(|v| v.as_f64()).unwrap_or(0.0);
             Ok(LocationResult {
-                location: Some(moltis_tools::location::BrowserLocation {
+                location: Some(chelix_tools::location::BrowserLocation {
                     latitude: lat,
                     longitude: lon,
                     accuracy,
@@ -118,15 +118,15 @@ impl moltis_tools::location::LocationRequester for GatewayLocationRequester {
         }
     }
 
-    fn cached_location(&self) -> Option<moltis_config::GeoLocation> {
+    fn cached_location(&self) -> Option<chelix_config::GeoLocation> {
         self.state.inner.try_read().ok()?.cached_location.clone()
     }
 
     async fn request_channel_location(
         &self,
         session_key: &str,
-    ) -> moltis_tools::Result<moltis_tools::location::LocationResult> {
-        use moltis_tools::location::{LocationError, LocationResult};
+    ) -> chelix_tools::Result<chelix_tools::location::LocationResult> {
+        use chelix_tools::location::{LocationError, LocationResult};
 
         // Look up channel binding from session metadata.
         let session_meta = self
@@ -134,14 +134,14 @@ impl moltis_tools::location::LocationRequester for GatewayLocationRequester {
             .services
             .session_metadata
             .as_ref()
-            .ok_or_else(|| moltis_tools::Error::message("session metadata not available"))?;
+            .ok_or_else(|| chelix_tools::Error::message("session metadata not available"))?;
         let entry = session_meta.get(session_key).await.ok_or_else(|| {
-            moltis_tools::Error::message(format!("no session metadata for key {session_key}"))
+            chelix_tools::Error::message(format!("no session metadata for key {session_key}"))
         })?;
         let binding_json = entry.channel_binding.ok_or_else(|| {
-            moltis_tools::Error::message(format!("no channel binding for session {session_key}"))
+            chelix_tools::Error::message(format!("no channel binding for session {session_key}"))
         })?;
-        let reply_target: moltis_channels::ChannelReplyTarget =
+        let reply_target: chelix_channels::ChannelReplyTarget =
             serde_json::from_str(&binding_json)?;
 
         // Send a message asking the user to share their location.
@@ -149,7 +149,7 @@ impl moltis_tools::location::LocationRequester for GatewayLocationRequester {
             .state
             .services
             .channel_outbound_arc()
-            .ok_or_else(|| moltis_tools::Error::message("no channel outbound available"))?;
+            .ok_or_else(|| chelix_tools::Error::message("no channel outbound available"))?;
         outbound
             .send_text(
                 &reply_target.account_id,
@@ -158,7 +158,7 @@ impl moltis_tools::location::LocationRequester for GatewayLocationRequester {
                 None,
             )
             .await
-            .map_err(|e| moltis_tools::Error::external("send location request", e))?;
+            .map_err(|e| chelix_tools::Error::external("send location request", e))?;
 
         // Create a pending invoke keyed by session.
         let pending_key = format!("channel_location:{session_key}");
@@ -209,7 +209,7 @@ impl moltis_tools::location::LocationRequester for GatewayLocationRequester {
             let lon = loc.get("longitude").and_then(|v| v.as_f64()).unwrap_or(0.0);
             let accuracy = loc.get("accuracy").and_then(|v| v.as_f64()).unwrap_or(0.0);
             Ok(LocationResult {
-                location: Some(moltis_tools::location::BrowserLocation {
+                location: Some(chelix_tools::location::BrowserLocation {
                     latitude: lat,
                     longitude: lon,
                     accuracy,

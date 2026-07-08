@@ -2,7 +2,7 @@
 //!
 //! Implementations handle path validation, size limits, and the actual I/O.
 //! This trait exists to DRY the duplicate logic that previously lived in both
-//! `moltis-memory::tools::MemorySaveTool` and `agents::silent_turn::MemoryWriteFileTool`,
+//! `chelix-memory::tools::MemorySaveTool` and `agents::silent_turn::MemoryWriteFileTool`,
 //! and to ensure the silent turn gets the same path-traversal checks as the save tool.
 
 /// Result of a successful memory write.

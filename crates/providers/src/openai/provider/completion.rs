@@ -14,7 +14,7 @@ use crate::{
     },
 };
 
-use moltis_agents::model::{
+use chelix_agents::model::{
     AgentToolControls, ChatMessage, CompletionResponse, Usage, decode_tool_call_arguments_from_str,
 };
 
@@ -528,7 +528,7 @@ impl OpenAiProvider {
             Some(text_buf)
         };
 
-        let tool_calls: Vec<moltis_agents::model::ToolCall> = fn_call_ids
+        let tool_calls: Vec<chelix_agents::model::ToolCall> = fn_call_ids
             .into_iter()
             .zip(fn_call_names)
             .zip(fn_call_args)
@@ -537,7 +537,7 @@ impl OpenAiProvider {
                 if name.is_empty() {
                     return None;
                 }
-                Some(moltis_agents::model::ToolCall {
+                Some(chelix_agents::model::ToolCall {
                     id,
                     name,
                     arguments: decoded.arguments,

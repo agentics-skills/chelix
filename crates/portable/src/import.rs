@@ -1,4 +1,4 @@
-//! Import a `.tar.gz` archive into a Moltis instance.
+//! Import a `.tar.gz` archive into a Chelix instance.
 
 use std::{
     io::Read,
@@ -87,7 +87,7 @@ pub async fn import_archive<R: Read>(
         let mut entry = entry?;
         let raw_path = entry.path()?.to_path_buf();
 
-        // Strip the top-level prefix directory (moltis-backup-YYYYMMDD-HHMMSS/).
+        // Strip the top-level prefix directory (chelix-backup-YYYYMMDD-HHMMSS/).
         let stripped = strip_archive_prefix(&raw_path);
 
         // Validate path safety — reject traversal attacks.
@@ -173,21 +173,21 @@ pub async fn import_archive<R: Read>(
     // ── Merge SQLite databases ───────────────────────────────────────
     if !opts.dry_run {
         for (archive_path, data) in &db_snapshots {
-            if archive_path == "db/moltis.db" {
-                match merge_moltis_db(data_dir, data, opts.conflict).await {
+            if archive_path == "db/chelix.db" {
+                match merge_chelix_db(data_dir, data, opts.conflict).await {
                     Ok(counts) => {
                         for (table, n) in &counts {
                             if *n > 0 {
                                 imported.push(ImportedItem {
                                     category: "database".into(),
-                                    path: format!("moltis.db/{table}"),
+                                    path: format!("chelix.db/{table}"),
                                     action: format!("merged {n} rows"),
                                 });
                             }
                         }
                     },
                     Err(e) => {
-                        warnings.push(format!("failed to merge moltis.db: {e}"));
+                        warnings.push(format!("failed to merge chelix.db: {e}"));
                     },
                 }
             } else if archive_path == "db/memory.db" {
@@ -324,7 +324,7 @@ fn record_action(
     }
 }
 
-/// Tables to merge from the imported moltis.db, in dependency order.
+/// Tables to merge from the imported chelix.db, in dependency order.
 /// Auth tables are intentionally excluded.
 const MERGE_TABLES: &[&str] = &[
     "projects",
@@ -338,13 +338,13 @@ const MERGE_TABLES: &[&str] = &[
     "message_log",
 ];
 
-/// Merge rows from an imported moltis.db into the live database.
-async fn merge_moltis_db(
+/// Merge rows from an imported chelix.db into the live database.
+async fn merge_chelix_db(
     data_dir: &Path,
     imported_data: &[u8],
     conflict: ConflictStrategy,
 ) -> anyhow::Result<Vec<(String, u64)>> {
-    let live_db = data_dir.join("moltis.db");
+    let live_db = data_dir.join("chelix.db");
     if !live_db.exists() {
         // No live DB — just write the imported one directly.
         std::fs::write(&live_db, imported_data)?;
@@ -353,7 +353,7 @@ async fn merge_moltis_db(
 
     // Write imported data to a temporary file, with a drop guard so it is
     // cleaned up even if an error occurs during the merge sequence.
-    let import_path = data_dir.join("moltis.db.import-tmp");
+    let import_path = data_dir.join("chelix.db.import-tmp");
     std::fs::write(&import_path, imported_data)?;
     let _guard = TempFileGuard(import_path.clone());
 
@@ -448,8 +448,8 @@ mod tests {
 
     #[test]
     fn safe_path_rejects_traversal() {
-        assert!(is_safe_path(Path::new("config/moltis.toml")));
-        assert!(is_safe_path(Path::new("db/moltis.db")));
+        assert!(is_safe_path(Path::new("config/chelix.toml")));
+        assert!(is_safe_path(Path::new("db/chelix.db")));
         assert!(!is_safe_path(Path::new("../etc/passwd")));
         assert!(!is_safe_path(Path::new("/absolute/path")));
         assert!(!is_safe_path(Path::new("config/../../etc/passwd")));
@@ -457,9 +457,9 @@ mod tests {
 
     #[test]
     fn strip_prefix_works() {
-        let path = Path::new("moltis-backup-20260501-143022/config/moltis.toml");
+        let path = Path::new("chelix-backup-20260501-143022/config/chelix.toml");
         let stripped = strip_archive_prefix(path);
-        assert_eq!(stripped, Path::new("config/moltis.toml"));
+        assert_eq!(stripped, Path::new("config/chelix.toml"));
     }
 
     #[test]

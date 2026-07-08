@@ -16,13 +16,13 @@ pub struct PreparedGatewayCore {
     pub webauthn_registry: Option<SharedWebAuthnRegistry>,
     /// MS Teams webhook plugin.
     #[cfg(feature = "msteams")]
-    pub msteams_webhook_plugin: Arc<tokio::sync::RwLock<moltis_msteams::MsTeamsPlugin>>,
+    pub msteams_webhook_plugin: Arc<tokio::sync::RwLock<chelix_msteams::MsTeamsPlugin>>,
     /// Slack webhook plugin.
     #[cfg(feature = "slack")]
-    pub slack_webhook_plugin: Arc<tokio::sync::RwLock<moltis_slack::SlackPlugin>>,
+    pub slack_webhook_plugin: Arc<tokio::sync::RwLock<chelix_slack::SlackPlugin>>,
     /// Telephony webhook plugin.
     #[cfg(feature = "telephony")]
-    pub telephony_webhook_plugin: Arc<tokio::sync::RwLock<moltis_telephony::TelephonyPlugin>>,
+    pub telephony_webhook_plugin: Arc<tokio::sync::RwLock<chelix_telephony::TelephonyPlugin>>,
     /// Push notification service.
     #[cfg(feature = "push-notifications")]
     pub push_service: Option<Arc<crate::push::PushService>>,
@@ -30,19 +30,19 @@ pub struct PreparedGatewayCore {
     #[cfg(feature = "trusted-network")]
     pub audit_buffer: Option<crate::network_audit::NetworkAuditBuffer>,
     /// Sandbox router for container backends.
-    pub sandbox_router: Arc<moltis_tools::sandbox::SandboxRouter>,
+    pub sandbox_router: Arc<chelix_tools::sandbox::SandboxRouter>,
     /// Browser service for lifecycle management.
     pub browser_for_lifecycle: Arc<dyn crate::services::BrowserService>,
     /// Cron scheduler service. **Callers must invoke
     /// [`CronService::start()`] to activate the scheduler**; without it,
     /// scheduled jobs will not execute.
-    pub cron_service: Arc<moltis_cron::service::CronService>,
+    pub cron_service: Arc<chelix_cron::service::CronService>,
     /// Log buffer for real-time log streaming.
     pub log_buffer: Option<crate::logs::LogBuffer>,
     /// Browser tool for warmup after listener is ready.
-    pub browser_tool_for_warmup: Option<Arc<dyn moltis_agents::tool_registry::AgentTool>>,
+    pub browser_tool_for_warmup: Option<Arc<dyn chelix_agents::tool_registry::AgentTool>>,
     /// Loaded configuration snapshot.
-    pub config: moltis_config::schema::MoltisConfig,
+    pub config: chelix_config::schema::ChelixConfig,
     /// Resolved data directory.
     pub data_dir: PathBuf,
     /// Human-readable provider summary for the startup banner.

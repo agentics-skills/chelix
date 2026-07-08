@@ -1,13 +1,13 @@
 [package]
 edition.workspace = true
-name              = "moltis-media"
+name              = "chelix-media"
 version.workspace = true
 
 [dependencies]
 image          = { workspace = true }
 mime_guess     = { workspace = true }
-moltis-common  = { workspace = true }
-moltis-metrics = { optional = true, workspace = true }
+chelix-common  = { workspace = true }
+chelix-metrics = { optional = true, workspace = true }
 reqwest        = { workspace = true }
 thiserror      = { workspace = true }
 tokio          = { workspace = true }
@@ -16,7 +16,7 @@ uuid           = { workspace = true }
 
 [features]
 default = []
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 
 [lints]
 workspace = true

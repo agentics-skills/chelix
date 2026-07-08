@@ -150,7 +150,7 @@ mod tests {
 
     #[test]
     fn allows_root_memory_files() {
-        let root = Path::new("/tmp/moltis");
+        let root = Path::new("/tmp/chelix");
 
         assert_eq!(
             validate_memory_path(root, "MEMORY.md").unwrap(),
@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn allows_single_level_memory_files() {
-        let root = Path::new("/tmp/moltis");
+        let root = Path::new("/tmp/chelix");
 
         assert_eq!(
             validate_memory_path(root, "memory/notes.md").unwrap(),
@@ -178,7 +178,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_paths() {
-        let root = Path::new("/tmp/moltis");
+        let root = Path::new("/tmp/chelix");
         let invalid = [
             "",
             " ",

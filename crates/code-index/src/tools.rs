@@ -8,7 +8,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use {
-    async_trait::async_trait, moltis_agents::tool_registry::AgentTool, moltis_tools::params,
+    async_trait::async_trait, chelix_agents::tool_registry::AgentTool, chelix_tools::params,
     serde_json::json,
 };
 
@@ -282,7 +282,7 @@ impl AgentTool for CodebaseStatusTool {
 /// Tools gracefully degrade to `BackendUnavailable` errors if
 /// the backend is config-only.
 pub fn register_tools(
-    registry: &mut moltis_agents::tool_registry::ToolRegistry,
+    registry: &mut chelix_agents::tool_registry::ToolRegistry,
     index: Arc<CodeIndex>,
 ) {
     registry.register(Box::new(CodebaseSearchTool::new(Arc::clone(&index))));
@@ -295,7 +295,7 @@ pub fn register_tools(
 /// This allows callers to wrap tools with project-aware gating or other
 /// middleware without duplicating the tool list.
 pub fn register_tools_wrapped<W>(
-    registry: &mut moltis_agents::tool_registry::ToolRegistry,
+    registry: &mut chelix_agents::tool_registry::ToolRegistry,
     index: Arc<CodeIndex>,
     wrap: W,
 ) where
@@ -335,10 +335,10 @@ mod tests {
         let result = tool
             .execute(json!({ "project_dir": repo_dir }))
             .await
-            .expect("peek should succeed on moltis repo");
+            .expect("peek should succeed on chelix repo");
 
         let total = result["total_files"].as_u64().unwrap();
-        assert!(total > 0, "moltis repo has indexable files");
+        assert!(total > 0, "chelix repo has indexable files");
     }
 
     #[tokio::test]
@@ -401,7 +401,7 @@ mod tests {
                 "project_dir": repo_dir,
             }))
             .await
-            .expect("status should succeed on moltis repo");
+            .expect("status should succeed on chelix repo");
 
         // Config-only should report search unavailable (BackendUnavailable error path).
         let search_available = result["search_available"].as_bool().unwrap_or(true);

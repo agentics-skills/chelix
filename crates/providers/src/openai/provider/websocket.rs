@@ -19,7 +19,7 @@ use crate::{
     ws_pool,
 };
 
-use moltis_agents::model::{AgentToolControls, ChatMessage, StreamEvent, Usage};
+use chelix_agents::model::{AgentToolControls, ChatMessage, StreamEvent, Usage};
 
 use {super::OpenAiProvider, crate::openai::ResponsesWebSocketPolicy};
 

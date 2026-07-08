@@ -12,7 +12,7 @@ use std::{
 use {
     anyhow::{Context, Result, bail},
     async_trait::async_trait,
-    moltis_agents::tool_registry::AgentTool,
+    chelix_agents::tool_registry::AgentTool,
     serde_json::Value,
 };
 
@@ -475,7 +475,7 @@ impl AgentTool for CachingWasmToolRunner {
 /// Individual tool failures are logged but do not abort the entire registration.
 #[cfg(feature = "wasm")]
 pub fn register_wasm_tools(
-    registry: &mut moltis_agents::tool_registry::ToolRegistry,
+    registry: &mut chelix_agents::tool_registry::ToolRegistry,
     wasm_limits: &crate::wasm_limits::WasmToolLimits,
     epoch_interval_ms: u64,
     fetch_timeout_secs: u64,
@@ -868,7 +868,7 @@ mod tests {
             wasm_engine::WasmComponentEngine,
             wasm_limits::WasmToolLimits,
         },
-        moltis_agents::tool_registry::{AgentTool, ToolRegistry},
+        chelix_agents::tool_registry::{AgentTool, ToolRegistry},
         std::{
             sync::{
                 Arc,

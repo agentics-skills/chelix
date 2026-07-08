@@ -597,7 +597,7 @@ test.describe("Session management", () => {
 			.poll(
 				() =>
 					page.evaluate(() => {
-						const store = window.__moltis_stores?.sessionStore;
+						const store = window.__chelix_stores?.sessionStore;
 						const main = store?.getByKey?.("main");
 						if (!main) return null;
 						return {
@@ -728,7 +728,7 @@ test.describe("Session management", () => {
 			.poll(
 				() =>
 					page.evaluate(() => {
-						const store = window.__moltis_stores?.sessionStore;
+						const store = window.__chelix_stores?.sessionStore;
 						const session = store?.activeSession?.value;
 						if (!session) return false;
 						session.forkPoint = 3;
@@ -955,7 +955,7 @@ test.describe("Session management", () => {
 			.poll(
 				() =>
 					page.evaluate(async (key) => {
-						var store = window.__moltis_stores?.sessionStore;
+						var store = window.__chelix_stores?.sessionStore;
 						if (!store) return 1;
 						if (!store.getByKey(key)) return 0;
 						// Session still in store — kick a manual refresh

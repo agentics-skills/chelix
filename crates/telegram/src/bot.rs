@@ -11,7 +11,7 @@ use {
     tracing::{debug, error, info, warn},
 };
 
-use moltis_channels::{ChannelEventSink, message_log::MessageLog};
+use chelix_channels::{ChannelEventSink, message_log::MessageLog};
 
 use crate::{
     config::TelegramAccountConfig,
@@ -37,7 +37,7 @@ pub async fn start_polling(
     // NOTE: teloxide bundles reqwest 0.11 internally, so we cannot inject the
     // reqwest 0.12 upstream proxy directly. Teloxide's reqwest 0.11 honours
     // the standard HTTPS_PROXY / ALL_PROXY env vars, so users behind a proxy
-    // should set those in addition to `upstream_proxy` in moltis.toml.
+    // should set those in addition to `upstream_proxy` in chelix.toml.
     let client = teloxide::net::default_reqwest_settings()
         .timeout(std::time::Duration::from_secs(45))
         .build()
@@ -52,7 +52,7 @@ pub async fn start_polling(
     bot.delete_webhook().send().await?;
 
     // Register slash commands for autocomplete in Telegram clients.
-    let commands: Vec<BotCommand> = moltis_channels::commands::all_commands()
+    let commands: Vec<BotCommand> = chelix_channels::commands::all_commands()
         .iter()
         .map(|c| BotCommand::new(c.name, c.description))
         .collect();

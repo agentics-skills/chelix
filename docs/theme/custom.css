@@ -1,4 +1,4 @@
-/* Moltis Documentation - Custom Theme */
+/* Chelix Documentation - Custom Theme */
 
 /* ===== Google Fonts ===== */
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
@@ -387,7 +387,7 @@
 }
 
 /* ============================================
-   LIGHT THEME - Matches moltis.org light mode
+   LIGHT THEME - Matches chelix.org light mode
    ============================================ */
 .light {
     --bg: #ffffff;
@@ -428,7 +428,7 @@
 }
 
 /* ============================================
-   DARK THEME (Navy) - Matches moltis.org dark mode
+   DARK THEME (Navy) - Matches chelix.org dark mode
    ============================================ */
 .navy, .coal, .ayu {
     --bg: #111827;  /* gray-900 */

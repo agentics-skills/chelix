@@ -17,7 +17,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 /// # Example
 ///
 /// ```rust,ignore
-/// use moltis_metrics::tracing_integration::init_tracing;
+/// use chelix_metrics::tracing_integration::init_tracing;
 ///
 /// init_tracing();
 /// // Spans will now propagate labels to metrics

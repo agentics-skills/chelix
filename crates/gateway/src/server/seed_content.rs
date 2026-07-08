@@ -22,7 +22,7 @@ This is a skeleton hook to help you get started. It subscribes to
 
 1. Uncomment the `command` line above and point it at your script
 2. Create `handler.sh` (or any executable) in this directory
-3. Click **Reload** in the Hooks UI (or restart moltis)
+3. Click **Reload** in the Hooks UI (or restart chelix)
 
 ## How hooks work
 
@@ -42,7 +42,7 @@ its decision via **exit code** and **stdout**:
 # handler.sh — log every tool call to a file
 payload=$(cat)
 tool=$(echo "$payload" | jq -r '.tool_name // "unknown"')
-echo "$(date -Iseconds) tool=$tool" >> /tmp/moltis-hook.log
+echo "$(date -Iseconds) tool=$tool" >> /tmp/chelix-hook.log
 # Exit 0 with no stdout = Continue
 ```
 
@@ -101,7 +101,7 @@ Uses the external [dcg](https://github.com/Dicklesworthstone/destructive_command
 tool to scan shell commands before execution. dcg ships 49+ pattern categories
 covering filesystem, git, database, cloud, and infrastructure commands.
 
-This hook is **seeded by default** into `~/.moltis/hooks/dcg-guard/` on first
+This hook is **seeded by default** into `~/.chelix/hooks/dcg-guard/` on first
 run. When `dcg` is not installed the hook fails open (all commands pass
 through) and writes a loud warning to stderr on every invocation — check the
 gateway log if the guard appears inert.
@@ -117,7 +117,7 @@ uv tool install destructive-command-guard
 pipx install destructive-command-guard
 ```
 
-> **Important:** this hook runs inside the **Moltis service environment**,
+> **Important:** this hook runs inside the **Chelix service environment**,
 > not your interactive shell. `dcg` must be resolvable on the service's
 > `PATH`. The handler already prepends `$HOME/.local/bin`, `/usr/local/bin`
 > and `/opt/homebrew/bin`, which covers the default install locations of
@@ -125,23 +125,23 @@ pipx install destructive-command-guard
 > that directory is on the gateway process `PATH` (e.g. via the systemd
 > unit's `Environment=PATH=...`).
 
-Once installed, restart Moltis. The startup log will print either
+Once installed, restart Chelix. The startup log will print either
 `dcg-guard: dcg <version> detected, guard active` or
 `dcg-guard: 'dcg' not found on PATH; destructive command guard is INACTIVE`.
 "#;
 
 pub(crate) const DCG_GUARD_HANDLER_SH: &str = r#"#!/usr/bin/env bash
-# Hook handler: translates Moltis BeforeToolCall payload to dcg format.
+# Hook handler: translates Chelix BeforeToolCall payload to dcg format.
 # When dcg is not installed the hook is a fail-open no-op (all commands pass
 # through) but a loud warning is written to stderr so the gateway log makes
 # it obvious that the guard is inert.
 
 set -euo pipefail
 
-# Hooks run in the Moltis gateway process environment, which under systemd
+# Hooks run in the Chelix gateway process environment, which under systemd
 # often strips `$HOME/.local/bin` and friends. Prepend the usual user/local
 # bin directories so `dcg` installed via `uv tool install` / `pipx` / brew is
-# resolvable regardless of how Moltis was launched.
+# resolvable regardless of how Chelix was launched.
 export PATH="${HOME:-/root}/.local/bin:/usr/local/bin:/opt/homebrew/bin:${PATH:-/usr/bin:/bin}"
 
 # Warn loudly (but do not block) when dcg is not installed.
@@ -293,7 +293,7 @@ keystrokes, prefer `send_keys`.
 pub(crate) const DEFAULT_BOOT_MD: &str = r#"<!--
 BOOT.md is optional startup context.
 
-How Moltis uses this file:
+How Chelix uses this file:
 - Loaded per session and injected into the system prompt.
 - Missing/empty/comment-only file = no startup injection.
 - Agent-specific overrides: place in agents/<id>/BOOT.md.
@@ -306,7 +306,7 @@ Recommended usage:
 pub(crate) const DEFAULT_WORKSPACE_AGENTS_MD: &str = r#"<!--
 Workspace AGENTS.md contains global instructions for this workspace.
 
-How Moltis uses this file:
+How Chelix uses this file:
 - Loaded from data_dir/AGENTS.md when present.
 - Injected as workspace context in the system prompt.
 - Separate from project AGENTS.md/CLAUDE.md discovery.
@@ -317,7 +317,7 @@ Use this for cross-project rules that should apply everywhere in this workspace.
 pub(crate) const DEFAULT_TOOLS_MD: &str = r#"<!--
 TOOLS.md contains workspace-specific tool notes and constraints.
 
-How Moltis uses this file:
+How Chelix uses this file:
 - Loaded from data_dir/TOOLS.md when present.
 - Injected as workspace context in the system prompt.
 
@@ -335,5 +335,5 @@ Prompt precedence:
 
 Cost guard:
 - If HEARTBEAT.md exists but is empty/comment-only and there is no explicit
-  heartbeat.prompt override, Moltis skips heartbeat LLM turns to avoid token use.
+  heartbeat.prompt override, Chelix skips heartbeat LLM turns to avoid token use.
 -->"#;

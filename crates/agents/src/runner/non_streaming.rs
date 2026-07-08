@@ -7,7 +7,7 @@ use {
     tracing::{debug, info, trace, warn},
 };
 
-use moltis_common::hooks::{HookAction, HookPayload, HookRegistry};
+use chelix_common::hooks::{HookAction, HookPayload, HookRegistry};
 
 use crate::{
     model::{AgentToolControls, ChatMessage, LlmProvider, ToolCall, ToolChoice, UserContent},
@@ -106,7 +106,7 @@ pub async fn run_agent_loop_with_context_and_limits(
     limits: AgentLoopLimits,
 ) -> Result<AgentRunResult, AgentRunError> {
     let native_tools = provider.supports_tools();
-    let config = moltis_config::discover_and_load();
+    let config = chelix_config::discover_and_load();
     let max_tool_result_bytes = config.tools.max_tool_result_bytes;
     let max_auto_continues = config.tools.agent_max_auto_continues;
     let auto_continue_min_tool_calls = config.tools.agent_auto_continue_min_tool_calls;
@@ -118,7 +118,7 @@ pub async fn run_agent_loop_with_context_and_limits(
         .unwrap_or(config.tools.agent_max_iterations);
     let base_max_iterations = resolve_agent_max_iterations(configured_max_iterations);
     // Lazy mode needs extra iterations for tool_search discovery round-trips.
-    let max_iterations = if config.tools.registry_mode == moltis_config::ToolRegistryMode::Lazy {
+    let max_iterations = if config.tools.registry_mode == chelix_config::ToolRegistryMode::Lazy {
         base_max_iterations * 3
     } else {
         base_max_iterations

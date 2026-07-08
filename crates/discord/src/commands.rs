@@ -18,9 +18,9 @@ use crate::state::AccountStateMap;
 
 /// Build the set of global slash commands to register.
 ///
-/// Derives from the centralized command registry in `moltis_channels::commands`.
+/// Derives from the centralized command registry in `chelix_channels::commands`.
 pub fn build_commands() -> Vec<CreateCommand> {
-    moltis_channels::commands::all_commands()
+    chelix_channels::commands::all_commands()
         .iter()
         .map(|c| {
             let mut cmd = CreateCommand::new(c.name).description(c.description);
@@ -106,8 +106,8 @@ async fn handle_slash_command(
         return;
     };
 
-    let reply_to = moltis_channels::plugin::ChannelReplyTarget {
-        channel_type: moltis_channels::ChannelType::Discord,
+    let reply_to = chelix_channels::plugin::ChannelReplyTarget {
+        channel_type: chelix_channels::ChannelType::Discord,
         account_id: account_id.to_string(),
         chat_id: command.channel_id.to_string(),
         message_id: None,
@@ -165,8 +165,8 @@ async fn handle_component_interaction(
         return;
     };
 
-    let reply_to = moltis_channels::plugin::ChannelReplyTarget {
-        channel_type: moltis_channels::ChannelType::Discord,
+    let reply_to = chelix_channels::plugin::ChannelReplyTarget {
+        channel_type: chelix_channels::ChannelType::Discord,
         account_id: account_id.to_string(),
         chat_id: component.channel_id.to_string(),
         message_id: None,
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn build_commands_matches_registry_count() {
         let commands = build_commands();
-        let registry_count = moltis_channels::commands::all_commands().len();
+        let registry_count = chelix_channels::commands::all_commands().len();
         assert_eq!(
             commands.len(),
             registry_count,
@@ -300,7 +300,7 @@ mod tests {
                     .and_then(|v| v["name"].as_str().map(String::from))
             })
             .collect();
-        for cmd in moltis_channels::commands::all_commands() {
+        for cmd in chelix_channels::commands::all_commands() {
             assert!(
                 names.contains(&cmd.name.to_string()),
                 "missing slash command from registry: {}",
@@ -349,7 +349,7 @@ mod tests {
     #[test]
     fn commands_with_arg_have_options() {
         let commands = build_commands();
-        let registry = moltis_channels::commands::all_commands();
+        let registry = chelix_channels::commands::all_commands();
 
         for reg_cmd in registry {
             let json = commands
@@ -475,7 +475,7 @@ mod tests {
     #[test]
     fn option_descriptions_within_discord_limit() {
         // Discord enforces a 100-character limit on option descriptions too.
-        for cmd in moltis_channels::commands::all_commands() {
+        for cmd in chelix_channels::commands::all_commands() {
             if let Some(arg) = &cmd.arg {
                 assert!(
                     arg.description.len() <= 100,
@@ -491,7 +491,7 @@ mod tests {
     #[test]
     fn arg_names_are_valid_discord_option_names() {
         // Discord option names: lowercase, 1-32 chars, alphanumeric + hyphens.
-        for cmd in moltis_channels::commands::all_commands() {
+        for cmd in chelix_channels::commands::all_commands() {
             if let Some(arg) = &cmd.arg {
                 assert!(
                     !arg.name.is_empty() && arg.name.len() <= 32,
@@ -515,7 +515,7 @@ mod tests {
     #[test]
     fn choices_within_discord_limits() {
         // Discord allows max 25 choices, each name ≤ 100 chars, each value ≤ 100 chars.
-        for cmd in moltis_channels::commands::all_commands() {
+        for cmd in chelix_channels::commands::all_commands() {
             if let Some(arg) = &cmd.arg {
                 assert!(
                     arg.choices.len() <= 25,

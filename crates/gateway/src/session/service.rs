@@ -1,6 +1,6 @@
 use super::*;
 
-fn default_channel_session_key(target: &moltis_channels::ChannelReplyTarget) -> String {
+fn default_channel_session_key(target: &chelix_channels::ChannelReplyTarget) -> String {
     match &target.thread_id {
         Some(thread_id) => format!(
             "{}:{}:{}:{}",
@@ -15,12 +15,12 @@ fn default_channel_session_key(target: &moltis_channels::ChannelReplyTarget) -> 
 
 async fn is_current_channel_session(
     metadata: &SqliteSessionMetadata,
-    entry: &moltis_sessions::metadata::SessionEntry,
+    entry: &chelix_sessions::metadata::SessionEntry,
 ) -> bool {
     let Some(binding_json) = entry.channel_binding.as_deref() else {
         return false;
     };
-    let Ok(target) = serde_json::from_str::<moltis_channels::ChannelReplyTarget>(binding_json)
+    let Ok(target) = serde_json::from_str::<chelix_channels::ChannelReplyTarget>(binding_json)
     else {
         return false;
     };
@@ -39,7 +39,7 @@ async fn is_current_channel_session(
 
 async fn is_archivable_entry(
     metadata: &SqliteSessionMetadata,
-    entry: &moltis_sessions::metadata::SessionEntry,
+    entry: &chelix_sessions::metadata::SessionEntry,
 ) -> bool {
     entry.key != "main" && !is_current_channel_session(metadata, entry).await
 }
@@ -231,7 +231,7 @@ impl LiveSessionService {
 
     pub(super) async fn resolve_agent_id_for_entry(
         &self,
-        entry: &moltis_sessions::metadata::SessionEntry,
+        entry: &chelix_sessions::metadata::SessionEntry,
         patch_if_invalid: bool,
     ) -> String {
         let fallback = self.default_agent_id().await;
@@ -284,7 +284,7 @@ impl LiveSessionService {
         &self,
         key: &str,
         inherit_from_key: Option<&str>,
-    ) -> Option<moltis_sessions::metadata::SessionEntry> {
+    ) -> Option<chelix_sessions::metadata::SessionEntry> {
         let entry = self.metadata.get(key).await?;
         if entry
             .agent_id
@@ -468,7 +468,7 @@ impl SessionService for LiveSessionService {
                 && let Some(ref hooks) = self.hook_registry
             {
                 let channel = resolve_hook_channel_binding(key, Some(&entry));
-                let payload = moltis_common::hooks::HookPayload::SessionStart {
+                let payload = chelix_common::hooks::HookPayload::SessionStart {
                     session_key: key.to_string(),
                     channel,
                 };
@@ -527,7 +527,7 @@ impl SessionService for LiveSessionService {
             && let Some(ref hooks) = self.hook_registry
         {
             let channel = resolve_hook_channel_binding(key, Some(&entry));
-            let payload = moltis_common::hooks::HookPayload::SessionStart {
+            let payload = chelix_common::hooks::HookPayload::SessionStart {
                 session_key: key.to_string(),
                 channel,
             };

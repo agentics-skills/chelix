@@ -59,13 +59,13 @@ fn skills_config_sidecar_files_default_disabled() {
 [skills]
 enabled = true
 "#;
-    let parsed: MoltisConfig = toml::from_str(toml).unwrap();
+    let parsed: ChelixConfig = toml::from_str(toml).unwrap();
     assert!(!parsed.skills.enable_agent_sidecar_files);
 }
 
 #[test]
 fn tools_loop_detector_window_defaults_to_two() {
-    let config: MoltisConfig = toml::from_str("").unwrap();
+    let config: ChelixConfig = toml::from_str("").unwrap();
     assert_eq!(config.tools.agent_loop_detector_window, 2);
 }
 
@@ -76,7 +76,7 @@ fn env_section_parses() {
 BRAVE_API_KEY = "test-key"
 OPENROUTER_API_KEY = "sk-or-test"
 "#;
-    let config: MoltisConfig = toml::from_str(toml).unwrap();
+    let config: ChelixConfig = toml::from_str(toml).unwrap();
     assert_eq!(config.env.len(), 2);
     assert_eq!(config.env.get("BRAVE_API_KEY").unwrap(), "test-key");
     assert_eq!(config.env.get("OPENROUTER_API_KEY").unwrap(), "sk-or-test");
@@ -84,13 +84,13 @@ OPENROUTER_API_KEY = "sk-or-test"
 
 #[test]
 fn env_section_defaults_to_empty() {
-    let config: MoltisConfig = toml::from_str("").unwrap();
+    let config: ChelixConfig = toml::from_str("").unwrap();
     assert!(config.env.is_empty());
 }
 
 #[test]
 fn agents_config_defaults_include_builtin_presets() {
-    let config: MoltisConfig = toml::from_str("").unwrap();
+    let config: ChelixConfig = toml::from_str("").unwrap();
     assert_eq!(config.agents.default_preset.as_deref(), Some("research"));
     for name in [
         "research",
@@ -118,7 +118,7 @@ fn agents_config_defaults_include_builtin_presets() {
 
 #[test]
 fn modes_config_defaults_include_builtin_presets() {
-    let config: MoltisConfig = toml::from_str("").unwrap();
+    let config: ChelixConfig = toml::from_str("").unwrap();
     for name in [
         "concise",
         "technical",
@@ -139,7 +139,7 @@ fn modes_config_defaults_include_builtin_presets() {
 
 #[test]
 fn modes_config_parses_and_overrides_presets() {
-    let config: MoltisConfig = toml::from_str(
+    let config: ChelixConfig = toml::from_str(
         r#"
 [modes.presets.concise]
 name = "Tiny"
@@ -169,13 +169,13 @@ prompt = "Use the custom overlay."
 
 #[test]
 fn mcp_config_defaults_request_timeout() {
-    let config: MoltisConfig = toml::from_str("").unwrap();
+    let config: ChelixConfig = toml::from_str("").unwrap();
     assert_eq!(config.mcp.request_timeout_secs, 30);
 }
 
 #[test]
 fn mcp_server_entry_parses_request_timeout_override() {
-    let config: MoltisConfig = toml::from_str(
+    let config: ChelixConfig = toml::from_str(
         r#"
 [mcp.servers.memory]
 command = "npx"
@@ -196,7 +196,7 @@ request_timeout_secs = 75
 
 #[test]
 fn mcp_server_entry_parses_env_values_as_secrets() {
-    let config: MoltisConfig = toml::from_str(
+    let config: ChelixConfig = toml::from_str(
         r#"
 [mcp.servers.github]
 command = "npx"
@@ -221,7 +221,7 @@ GITHUB_PERSONAL_ACCESS_TOKEN = "ghp-secret"
 
 #[test]
 fn mcp_oauth_override_parses_client_secret_as_secret() {
-    let config: MoltisConfig = toml::from_str(
+    let config: ChelixConfig = toml::from_str(
         r#"
 [mcp.servers.hubspot]
 url = "https://mcp.hubspot.com"
@@ -268,7 +268,7 @@ theme = "thorough"
 allow = ["web_search", "web_fetch"]
 deny = ["execute_command"]
 "#;
-    let config: MoltisConfig = toml::from_str(toml).unwrap();
+    let config: ChelixConfig = toml::from_str(toml).unwrap();
     assert_eq!(config.agents.default_preset.as_deref(), Some("research"));
     let preset = config.agents.get_preset("research").unwrap();
     assert_eq!(preset.model.as_deref(), Some("openai/gpt-5.2"));
@@ -304,7 +304,7 @@ system_prompt_suffix = "User research override."
 [agents.presets.research.identity]
 name = "Scout"
 "#;
-    let config: MoltisConfig = toml::from_str(toml).unwrap();
+    let config: ChelixConfig = toml::from_str(toml).unwrap();
 
     assert_eq!(config.agents.default_preset.as_deref(), Some("custom"));
     assert!(config.agents.presets.contains_key("coder"));
@@ -597,7 +597,7 @@ mode = "all"
 scope = "session"
 workspace_mount = "ro"
 workspace_sysmount = "rw"
-host_data_dir = "/host/moltis-data"
+host_data_dir = "/host/chelix-data"
 
 [wasm_tool_limits]
 default_memory = 2048
@@ -610,7 +610,7 @@ memory = 300
     )
     .unwrap();
 
-    assert_eq!(config.host_data_dir.as_deref(), Some("/host/moltis-data"));
+    assert_eq!(config.host_data_dir.as_deref(), Some("/host/chelix-data"));
     assert_eq!(config.workspace_sysmount, "rw");
     let limits = config.wasm_tool_limits.unwrap();
     assert_eq!(limits.default_memory, 2048);
@@ -734,11 +734,11 @@ url = "http://192.168.0.9:11434"
 
 #[test]
 fn memory_embedding_legacy_aliases_map_to_current_fields() {
-    let config: MoltisConfig = toml::from_str(
+    let config: ChelixConfig = toml::from_str(
         r#"
 [memory]
 embedding_provider = "custom"
-embedding_base_url = "http://moltis-embeddings:7997/v1"
+embedding_base_url = "http://chelix-embeddings:7997/v1"
 embedding_model = "intfloat/multilingual-e5-small"
 embedding_api_key = "secret-key"
 "#,
@@ -748,7 +748,7 @@ embedding_api_key = "secret-key"
     assert_eq!(config.memory.provider, Some(MemoryProvider::Custom));
     assert_eq!(
         config.memory.base_url.as_deref(),
-        Some("http://moltis-embeddings:7997/v1")
+        Some("http://chelix-embeddings:7997/v1")
     );
     assert_eq!(
         config.memory.model.as_deref(),
@@ -776,7 +776,7 @@ tool_mode = "text"
 enabled = true
 tool_mode = "native"
 "#;
-    let config: MoltisConfig = toml::from_str(toml_str).unwrap();
+    let config: ChelixConfig = toml::from_str(toml_str).unwrap();
     assert_eq!(
         config.providers.get("ollama").unwrap().tool_mode,
         ToolMode::Text
@@ -821,7 +821,7 @@ base_url = "https://gmn.example.com/v1"
 wire_api = "responses"
 models = ["gpt-5.3-codex"]
 "#;
-    let config: MoltisConfig = toml::from_str(toml_str).unwrap();
+    let config: ChelixConfig = toml::from_str(toml_str).unwrap();
     let entry = config.providers.get("custom-mn").unwrap();
     assert_eq!(entry.wire_api, WireApi::Responses);
 }
@@ -832,7 +832,7 @@ fn provider_entry_wire_api_defaults_to_chat_completions() {
 [providers.openai]
 enabled = true
 "#;
-    let config: MoltisConfig = toml::from_str(toml_str).unwrap();
+    let config: ChelixConfig = toml::from_str(toml_str).unwrap();
     let entry = config.providers.get("openai").unwrap();
     assert_eq!(entry.wire_api, WireApi::ChatCompletions);
 }
@@ -862,21 +862,21 @@ fn provider_entry_wire_api_serializes_responses() {
 
 #[test]
 fn terminal_enabled_defaults_to_true() {
-    let cfg: MoltisConfig = toml::from_str("").unwrap();
+    let cfg: ChelixConfig = toml::from_str("").unwrap();
     assert!(cfg.server.terminal_enabled);
     // Note: is_terminal_enabled() is NOT tested here because it reads
-    // the MOLTIS_TERMINAL_DISABLED env var, which may be set in CI.
+    // the CHELIX_TERMINAL_DISABLED env var, which may be set in CI.
 }
 
 #[test]
 fn terminal_enabled_parsed_from_config() {
-    let cfg: MoltisConfig = toml::from_str("[server]\nterminal_enabled = false\n").unwrap();
+    let cfg: ChelixConfig = toml::from_str("[server]\nterminal_enabled = false\n").unwrap();
     assert!(!cfg.server.terminal_enabled);
 }
 
 #[test]
 fn terminal_disabled_via_config_reflects_in_helper() {
-    let cfg: MoltisConfig = toml::from_str("[server]\nterminal_enabled = false\n").unwrap();
+    let cfg: ChelixConfig = toml::from_str("[server]\nterminal_enabled = false\n").unwrap();
     // When the env var is not set, the helper returns the config value.
     // (We cannot test the env-var override here because workspace lints
     // deny unsafe code, and `std::env::set_var` is unsafe.)
@@ -892,7 +892,7 @@ base_url = "http://127.0.0.1:8003/v1"
 [voice.stt.whisper]
 base_url = "http://127.0.0.1:8001/v1"
 "#;
-    let config: MoltisConfig = toml::from_str(toml_str).unwrap();
+    let config: ChelixConfig = toml::from_str(toml_str).unwrap();
 
     assert_eq!(
         config.voice.tts.openai.base_url.as_deref(),
@@ -906,25 +906,25 @@ base_url = "http://127.0.0.1:8001/v1"
 
 #[test]
 fn external_url_defaults_to_none() {
-    let cfg: MoltisConfig = toml::from_str("").unwrap();
+    let cfg: ChelixConfig = toml::from_str("").unwrap();
     assert!(cfg.server.external_url.is_none());
 }
 
 #[test]
 fn external_url_parses_from_toml() {
-    let cfg: MoltisConfig =
-        toml::from_str("[server]\nexternal_url = \"https://moltis.example.com\"\n").unwrap();
+    let cfg: ChelixConfig =
+        toml::from_str("[server]\nexternal_url = \"https://chelix.example.com\"\n").unwrap();
     assert_eq!(
         cfg.server.external_url.as_deref(),
-        Some("https://moltis.example.com")
+        Some("https://chelix.example.com")
     );
 }
 
 #[test]
 fn effective_external_url_returns_config_value() {
-    let cfg: MoltisConfig =
+    let cfg: ChelixConfig =
         toml::from_str("[server]\nexternal_url = \"https://from-config.example.com\"\n").unwrap();
-    // When MOLTIS_EXTERNAL_URL is not set, the config value is returned.
+    // When CHELIX_EXTERNAL_URL is not set, the config value is returned.
     // (We cannot test the env-var override here because set_var is unsafe.)
     let effective = cfg.server.effective_external_url();
     assert!(effective.is_some());
@@ -933,7 +933,7 @@ fn effective_external_url_returns_config_value() {
 
 #[test]
 fn effective_external_url_strips_trailing_slash() {
-    let cfg: MoltisConfig =
+    let cfg: ChelixConfig =
         toml::from_str("[server]\nexternal_url = \"https://example.com/\"\n").unwrap();
     assert_eq!(
         cfg.server.effective_external_url().as_deref(),
@@ -943,7 +943,7 @@ fn effective_external_url_strips_trailing_slash() {
 
 #[test]
 fn effective_external_url_returns_none_when_unset() {
-    let cfg: MoltisConfig = toml::from_str("").unwrap();
+    let cfg: ChelixConfig = toml::from_str("").unwrap();
     assert!(cfg.server.effective_external_url().is_none());
 }
 
@@ -989,7 +989,7 @@ fn mcp_policy_empty_toml_is_all() {
     let toml_str = r#"
 [agents.presets.test]
 "#;
-    let config: MoltisConfig = toml::from_str(toml_str).unwrap();
+    let config: ChelixConfig = toml::from_str(toml_str).unwrap();
     let preset = config.agents.presets.get("test").unwrap();
     assert!(preset.mcp.is_all());
 }
@@ -1001,7 +1001,7 @@ fn mcp_policy_empty_allow_is_not_all() {
 [agents.presets.test.mcp]
 allow_servers = []
 "#;
-    let config: MoltisConfig = toml::from_str(toml_str).unwrap();
+    let config: ChelixConfig = toml::from_str(toml_str).unwrap();
     let preset = config.agents.presets.get("test").unwrap();
     assert!(!preset.mcp.is_all());
     assert_eq!(preset.mcp, PresetMcpPolicy::Allow(vec![]));
@@ -1014,7 +1014,7 @@ fn mcp_policy_both_fields_is_error() {
 allow_servers = ["github"]
 deny_servers = ["home-assistant"]
 "#;
-    let result: Result<MoltisConfig, _> = toml::from_str(toml_str);
+    let result: Result<ChelixConfig, _> = toml::from_str(toml_str);
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(
@@ -1053,7 +1053,7 @@ fn preset_sandbox_mode_parses_typed_values() {
 [agents.presets.test.sandbox]
 mode = "non-main"
 "#;
-    let config: MoltisConfig = toml::from_str(toml_str).unwrap();
+    let config: ChelixConfig = toml::from_str(toml_str).unwrap();
     let preset = config.agents.presets.get("test").unwrap();
     assert_eq!(preset.sandbox.mode, Some(PresetSandboxMode::NonMain));
 }
@@ -1064,6 +1064,6 @@ fn preset_sandbox_mode_rejects_unknown_values() {
 [agents.presets.test.sandbox]
 mode = "sometimes"
 "#;
-    let result: Result<MoltisConfig, _> = toml::from_str(toml_str);
+    let result: Result<ChelixConfig, _> = toml::from_str(toml_str);
     assert!(result.is_err());
 }

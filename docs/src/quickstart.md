@@ -11,7 +11,7 @@ curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/insta
 ## 2. Start
 
 ```bash
-moltis
+chelix
 ```
 
 You'll see output like:
@@ -98,7 +98,7 @@ Chat with your agent from anywhere:
 Extend capabilities with [MCP servers](mcp.md):
 
 ```toml
-# In moltis.toml
+# In chelix.toml
 [mcp]
 [mcp.servers.github]
 command = "npx"
@@ -111,13 +111,13 @@ env = { GITHUB_TOKEN = "ghp_..." }
 Enable long-term memory for context across sessions:
 
 ```toml
-# In moltis.toml
+# In chelix.toml
 [memory]
 provider = "openai"
 model = "text-embedding-3-small"
 ```
 
-Add knowledge by placing Markdown files in `~/.moltis/memory/`.
+Add knowledge by placing Markdown files in `~/.chelix/memory/`.
 
 ## Useful Commands
 
@@ -134,9 +134,9 @@ Add knowledge by placing Markdown files in `~/.moltis/memory/`.
 
 | Path | Contents |
 |------|----------|
-| `~/.config/moltis/moltis.toml` | Configuration |
-| `~/.config/moltis/provider_keys.json` | API keys |
-| `~/.moltis/` | Data (sessions, memory, logs) |
+| `~/.config/chelix/chelix.toml` | Configuration |
+| `~/.config/chelix/provider_keys.json` | API keys |
+| `~/.chelix/` | Data (sessions, memory, logs) |
 
 ## Getting Help
 

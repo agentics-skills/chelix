@@ -2,7 +2,7 @@ use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use tracing::{info, warn};
 
-use moltis_sessions::store::SessionStore;
+use chelix_sessions::store::SessionStore;
 
 use super::seed_content::{
     DCG_GUARD_HANDLER_SH, DCG_GUARD_HOOK_MD, EXAMPLE_HOOK_MD, EXAMPLE_SKILL_MD, TMUX_SKILL_MD,
@@ -10,9 +10,9 @@ use super::seed_content::{
 
 // ── Hook seeding helpers ─────────────────────────────────────────────────────
 
-/// Seed a skeleton example hook into `~/.moltis/hooks/example/` on first run.
+/// Seed a skeleton example hook into `~/.chelix/hooks/example/` on first run.
 pub(crate) fn seed_example_hook() {
-    let hook_dir = moltis_config::data_dir().join("hooks/example");
+    let hook_dir = chelix_config::data_dir().join("hooks/example");
     let hook_md = hook_dir.join("HOOK.md");
     if hook_md.exists() {
         return;
@@ -32,10 +32,10 @@ pub(crate) const DCG_GUARD_HANDLER_FINGERPRINT: &str = "export PATH=";
 /// Marker string that must be present in an up-to-date seeded `HOOK.md`.
 pub(crate) const DCG_GUARD_HOOK_MD_FINGERPRINT: &str = "uv tool install destructive-command-guard";
 
-/// Seed the `dcg-guard` hook into `~/.moltis/hooks/dcg-guard/` on first run,
+/// Seed the `dcg-guard` hook into `~/.chelix/hooks/dcg-guard/` on first run,
 /// and refresh on-disk files that predate the PATH-fix in #626.
 pub(crate) async fn seed_dcg_guard_hook() {
-    let hook_dir = moltis_config::data_dir().join("hooks/dcg-guard");
+    let hook_dir = chelix_config::data_dir().join("hooks/dcg-guard");
     let hook_md = hook_dir.join("HOOK.md");
     let handler = hook_dir.join("handler.sh");
 
@@ -161,14 +161,14 @@ async fn log_dcg_guard_status() {
     );
 }
 
-/// Seed built-in personal skills into `~/.moltis/skills/`.
+/// Seed built-in personal skills into `~/.chelix/skills/`.
 pub(crate) fn seed_example_skill() {
     seed_skill_if_missing("template-skill", EXAMPLE_SKILL_MD);
     seed_skill_if_missing("tmux", TMUX_SKILL_MD);
 }
 
 fn seed_skill_if_missing(name: &str, content: &str) {
-    let skill_dir = moltis_config::data_dir().join(format!("skills/{name}"));
+    let skill_dir = chelix_config::data_dir().join(format!("skills/{name}"));
     let skill_md = skill_dir.join("SKILL.md");
     if skill_md.exists() {
         return;
@@ -188,14 +188,14 @@ fn seed_skill_if_missing(name: &str, content: &str) {
 fn builtin_hook_metadata() -> Vec<(
     &'static str,
     &'static str,
-    Vec<moltis_common::hooks::HookEvent>,
+    Vec<chelix_common::hooks::HookEvent>,
     &'static str,
 )> {
-    use moltis_common::hooks::HookEvent;
+    use chelix_common::hooks::HookEvent;
     vec![
         (
             "command-logger",
-            "Logs all slash-command invocations to a JSONL audit file at ~/.moltis/logs/commands.log.",
+            "Logs all slash-command invocations to a JSONL audit file at ~/.chelix/logs/commands.log.",
             vec![HookEvent::Command],
             "crates/plugins/src/bundled/command_logger.rs",
         ),
@@ -220,22 +220,22 @@ pub(crate) async fn discover_and_build_hooks(
     disabled: &HashSet<String>,
     session_store: Option<&Arc<SessionStore>>,
 ) -> (
-    Option<Arc<moltis_common::hooks::HookRegistry>>,
+    Option<Arc<chelix_common::hooks::HookRegistry>>,
     Vec<crate::state::DiscoveredHookInfo>,
 ) {
-    use moltis_plugins::{
+    use chelix_plugins::{
         bundled::{command_logger::CommandLoggerHook, session_memory::SessionMemoryHook},
         hook_discovery::{FsHookDiscoverer, HookDiscoverer, HookSource},
         hook_eligibility::check_hook_eligibility,
         shell_hook::ShellHookHandler,
     };
 
-    let config = moltis_config::discover_and_load();
+    let config = chelix_config::discover_and_load();
     let discoverer = FsHookDiscoverer::new(FsHookDiscoverer::default_paths());
     let discovered = discoverer.discover().await.unwrap_or_default();
     let session_export_mode = config.memory.session_export;
 
-    let mut registry = moltis_common::hooks::HookRegistry::new();
+    let mut registry = chelix_common::hooks::HookRegistry::new();
     let mut info_list = Vec::with_capacity(discovered.len());
 
     for (parsed, source) in &discovered {
@@ -304,9 +304,9 @@ pub(crate) async fn discover_and_build_hooks(
         .map(|(parsed, _source)| parsed.metadata.name.as_str())
         .collect::<HashSet<_>>();
     let mut config_hook_count = 0;
-    let config_path = moltis_config::config_dir()
-        .map(|path| path.join("moltis.toml").display().to_string())
-        .unwrap_or_else(|| "moltis.toml".to_string());
+    let config_path = chelix_config::config_dir()
+        .map(|path| path.join("chelix.toml").display().to_string())
+        .unwrap_or_else(|| "chelix.toml".to_string());
     let mut config_hook_names = HashSet::new();
 
     if let Some(hooks_config) = config.hooks.as_ref() {
@@ -330,7 +330,7 @@ pub(crate) async fn discover_and_build_hooks(
             let events = hook
                 .events
                 .iter()
-                .filter_map(|event| match event.parse::<moltis_common::hooks::HookEvent>() {
+                .filter_map(|event| match event.parse::<chelix_common::hooks::HookEvent>() {
                     Ok(event) => Some(event),
                     Err(e) => {
                         warn!(hook = %hook.name, event = %event, error = %e, "skipping invalid config hook event");
@@ -358,7 +358,7 @@ pub(crate) async fn discover_and_build_hooks(
                 missing_env: vec![],
                 enabled: is_enabled,
                 body: String::new(),
-                body_html: "<p><em>Shell hook declared in moltis.toml.</em></p>".to_string(),
+                body_html: "<p><em>Shell hook declared in chelix.toml.</em></p>".to_string(),
                 call_count: 0,
                 failure_count: 0,
                 avg_latency_ms: 0,
@@ -380,7 +380,7 @@ pub(crate) async fn discover_and_build_hooks(
 
     // ── Built-in hooks (compiled Rust, always active) ──────────────────
     {
-        let data = moltis_config::data_dir();
+        let data = chelix_config::data_dir();
 
         let log_path =
             CommandLoggerHook::default_path().unwrap_or_else(|| data.join("logs/commands.log"));
@@ -388,21 +388,21 @@ pub(crate) async fn discover_and_build_hooks(
         registry.register(Arc::new(logger));
 
         if let Some(store) = session_store
-            && !matches!(session_export_mode, moltis_config::SessionExportMode::Off)
+            && !matches!(session_export_mode, chelix_config::SessionExportMode::Off)
         {
             let memory_hook = SessionMemoryHook::new(data.clone(), Arc::clone(store));
             registry.register(Arc::new(memory_hook));
         }
 
         // Auto-checkpoint: snapshot files before Write/Edit/MultiEdit tool calls.
-        let checkpoint_manager = Arc::new(moltis_tools::checkpoints::CheckpointManager::new(data));
-        let auto_cp = moltis_tools::auto_checkpoint::AutoCheckpointHook::new(checkpoint_manager);
+        let checkpoint_manager = Arc::new(chelix_tools::checkpoints::CheckpointManager::new(data));
+        let auto_cp = chelix_tools::auto_checkpoint::AutoCheckpointHook::new(checkpoint_manager);
         registry.register(Arc::new(auto_cp));
     }
 
     for (name, description, events, source_file) in builtin_hook_metadata() {
         let enabled = if name == "session-memory" {
-            !matches!(session_export_mode, moltis_config::SessionExportMode::Off)
+            !matches!(session_export_mode, chelix_config::SessionExportMode::Off)
         } else {
             true
         };

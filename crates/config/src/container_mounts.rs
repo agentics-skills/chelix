@@ -260,19 +260,19 @@ mod tests {
         let mounts = parse_container_mounts_from_inspect(
             r#"[{
             "Mounts": [
-                {"Source": "/host/data", "Destination": "/home/moltis/.moltis"},
-                {"Source": "/host/config", "Destination": "/home/moltis/.config/moltis"}
+                {"Source": "/host/data", "Destination": "/home/chelix/.chelix"},
+                {"Source": "/host/config", "Destination": "/home/chelix/.config/chelix"}
             ]
         }]"#,
         );
         assert_eq!(mounts, vec![
             ContainerMount {
                 source: PathBuf::from("/host/data"),
-                destination: PathBuf::from("/home/moltis/.moltis"),
+                destination: PathBuf::from("/home/chelix/.chelix"),
             },
             ContainerMount {
                 source: PathBuf::from("/host/config"),
-                destination: PathBuf::from("/home/moltis/.config/moltis"),
+                destination: PathBuf::from("/home/chelix/.config/chelix"),
             },
         ]);
     }
@@ -286,11 +286,11 @@ mod tests {
             },
             ContainerMount {
                 source: PathBuf::from("/host/data"),
-                destination: PathBuf::from("/home/moltis/.moltis"),
+                destination: PathBuf::from("/home/chelix/.chelix"),
             },
         ];
         let resolved = resolve_host_path_from_mounts(
-            &PathBuf::from("/home/moltis/.moltis/sandbox/home/shared"),
+            &PathBuf::from("/home/chelix/.chelix/sandbox/home/shared"),
             &mounts,
         );
         assert_eq!(
@@ -301,19 +301,19 @@ mod tests {
 
     #[test]
     fn detects_host_data_dir_from_mount_sets() {
-        let guest_data_dir = PathBuf::from("/home/moltis/.moltis");
+        let guest_data_dir = PathBuf::from("/home/chelix/.chelix");
         let detected =
             detect_host_data_dir_from_mount_sets(&guest_data_dir, [vec![ContainerMount {
-                source: PathBuf::from("/home/user/moltis/data"),
+                source: PathBuf::from("/home/user/chelix/data"),
                 destination: guest_data_dir.clone(),
             }]]);
 
-        assert_eq!(detected, Some(PathBuf::from("/home/user/moltis/data")));
+        assert_eq!(detected, Some(PathBuf::from("/home/user/chelix/data")));
     }
 
     #[test]
     fn detects_ambiguous_mount_sets() {
-        let guest_data_dir = PathBuf::from("/home/moltis/.moltis");
+        let guest_data_dir = PathBuf::from("/home/chelix/.chelix");
         let detected = detect_host_data_dir_from_mount_sets(&guest_data_dir, [
             vec![ContainerMount {
                 source: PathBuf::from("/host/one"),

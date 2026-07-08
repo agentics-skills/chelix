@@ -1,7 +1,7 @@
 # Voice Services
 
-Moltis provides text-to-speech (TTS) and speech-to-text (STT) capabilities
-through the `moltis-voice` crate and gateway integration.
+Chelix provides text-to-speech (TTS) and speech-to-text (STT) capabilities
+through the `chelix-voice` crate and gateway integration.
 
 ## Feature Flag
 
@@ -11,7 +11,7 @@ Voice services are behind the `voice` cargo feature, enabled by default:
 # Cargo.toml (gateway crate)
 [features]
 default = ["voice", ...]
-voice = ["dep:moltis-voice"]
+voice = ["dep:chelix-voice"]
 ```
 
 To disable voice features at compile time:
@@ -66,7 +66,7 @@ When disabled:
 
 ### Supported Providers
 
-Moltis supports multiple TTS providers across cloud and local backends.
+Chelix supports multiple TTS providers across cloud and local backends.
 
 | Category | Notes |
 |----------|-------|
@@ -84,7 +84,7 @@ export ELEVENLABS_API_KEY=your-key-here
 export OPENAI_API_KEY=your-key-here
 ```
 
-Or configure in `moltis.toml`:
+Or configure in `chelix.toml`:
 
 ```toml
 [voice.tts]
@@ -119,8 +119,8 @@ speaking_rate = 1.0
 
 [voice.tts.piper]
 # binary_path = "/usr/local/bin/piper"  # optional, searches PATH
-model_path = "~/.moltis/models/en_US-lessac-medium.onnx"  # required
-# config_path = "~/.moltis/models/en_US-lessac-medium.onnx.json"  # optional
+model_path = "~/.chelix/models/en_US-lessac-medium.onnx"  # required
+# config_path = "~/.chelix/models/en_US-lessac-medium.onnx.json"  # optional
 # speaker_id = 0  # for multi-speaker models
 # length_scale = 1.0  # speaking rate (lower = faster)
 
@@ -146,21 +146,21 @@ Piper is a fast, local neural text-to-speech system that runs entirely offline.
 
 2. Download a voice model from [Piper Voices](https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/VOICES.md):
    ```bash
-   mkdir -p ~/.moltis/models
-   curl -L -o ~/.moltis/models/en_US-lessac-medium.onnx \
+   mkdir -p ~/.chelix/models
+   curl -L -o ~/.chelix/models/en_US-lessac-medium.onnx \
      https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx
-   curl -L -o ~/.moltis/models/en_US-lessac-medium.onnx.json \
+   curl -L -o ~/.chelix/models/en_US-lessac-medium.onnx.json \
      https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
    ```
 
-3. Configure in `moltis.toml`:
+3. Configure in `chelix.toml`:
    ```toml
    [voice.tts]
    provider = "piper"
 
    [voice.tts.piper]
-   model_path = "~/.moltis/models/en_US-lessac-medium.onnx"
-   config_path = "~/.moltis/models/en_US-lessac-medium.onnx.json"
+   model_path = "~/.chelix/models/en_US-lessac-medium.onnx"
+   config_path = "~/.chelix/models/en_US-lessac-medium.onnx.json"
    ```
 
 #### Coqui TTS
@@ -181,7 +181,7 @@ the [`coqui-tts` PyPI package](https://pypi.org/project/coqui-tts/).
      -lc 'python3 TTS/server/server.py --model_name tts_models/en/ljspeech/tacotron2-DDC'
    ```
 
-2. Configure in `moltis.toml`:
+2. Configure in `chelix.toml`:
    ```toml
    [voice.tts]
    provider = "coqui"
@@ -399,7 +399,7 @@ to auto-switch the active voice persona when switching agents.
 
 ### Supported Providers
 
-Moltis supports multiple STT providers across cloud and local backends.
+Chelix supports multiple STT providers across cloud and local backends.
 
 | Category | Notes |
 |----------|-------|
@@ -455,17 +455,17 @@ language = "en"
 
 [voice.stt.whisper_cli]
 # binary_path = "/usr/local/bin/whisper-cli"  # optional, searches PATH
-model_path = "~/.moltis/models/ggml-base.en.bin"  # required
+model_path = "~/.chelix/models/ggml-base.en.bin"  # required
 language = "en"
 
 [voice.stt.sherpa_onnx]
 # binary_path = "/usr/local/bin/sherpa-onnx-offline"  # optional
-model_dir = "~/.moltis/models/sherpa-onnx-whisper-tiny.en"  # required
+model_dir = "~/.chelix/models/sherpa-onnx-whisper-tiny.en"  # required
 language = "en"
 ```
 
 OpenAI's `gpt-realtime-2`, `gpt-realtime-translate`, and `gpt-realtime-whisper`
-models are Realtime API models. The current Moltis OpenAI STT provider records a
+models are Realtime API models. The current Chelix OpenAI STT provider records a
 clip and sends it to `/audio/transcriptions`, so those Realtime model IDs are
 shown in voice settings as Realtime-only references rather than selectable clip
 transcription defaults.
@@ -499,7 +499,7 @@ It supports 13 languages with fast transcription.
 
    The server exposes an OpenAI-compatible endpoint at `http://localhost:8000`.
 
-3. Configure in `moltis.toml`:
+3. Configure in `chelix.toml`:
    ```toml
    [voice.stt]
    provider = "voxtral-local"
@@ -529,18 +529,18 @@ automatically on first vLLM startup.
 
 2. Download a model from [Hugging Face](https://huggingface.co/ggerganov/whisper.cpp):
    ```bash
-   mkdir -p ~/.moltis/models
-   curl -L -o ~/.moltis/models/ggml-base.en.bin \
+   mkdir -p ~/.chelix/models
+   curl -L -o ~/.chelix/models/ggml-base.en.bin \
      https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
    ```
 
-3. Configure in `moltis.toml`:
+3. Configure in `chelix.toml`:
    ```toml
    [voice.stt]
    provider = "whisper-cli"
 
    [voice.stt.whisper_cli]
-   model_path = "~/.moltis/models/ggml-base.en.bin"
+   model_path = "~/.chelix/models/ggml-base.en.bin"
    ```
 
 #### sherpa-onnx
@@ -549,13 +549,13 @@ automatically on first vLLM startup.
 
 2. Download a model from the [model list](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/index.html)
 
-3. Configure in `moltis.toml`:
+3. Configure in `chelix.toml`:
    ```toml
    [voice.stt]
    provider = "sherpa-onnx"
 
    [voice.stt.sherpa_onnx]
-   model_dir = "~/.moltis/models/sherpa-onnx-whisper-tiny.en"
+   model_dir = "~/.chelix/models/sherpa-onnx-whisper-tiny.en"
    ```
 
 ### RPC Methods
@@ -700,7 +700,7 @@ pub trait SttProvider: Send + Sync {
 
 - `VoicePersonaStore`: SQLite-backed CRUD for named voice identities
 - `apply_persona_to_request()`: Merges persona bindings and instructions into `SynthesizeRequest`
-- Types: `VoicePersona`, `VoicePersonaPrompt`, `VoicePersonaProviderBinding`, `FallbackPolicy` (in `moltis-voice`)
+- Types: `VoicePersona`, `VoicePersonaPrompt`, `VoicePersonaProviderBinding`, `FallbackPolicy` (in `chelix-voice`)
 
 ## Security
 

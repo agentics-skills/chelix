@@ -1,4 +1,4 @@
-const M = (window.__moltis_modules || {})["stores/model-store"] || {};
+const M = (window.__chelix_modules || {})["stores/model-store"] || {};
 export default M;
 export const models = M.models;
 export const selectedModelId = M.selectedModelId;

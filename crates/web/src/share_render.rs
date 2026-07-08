@@ -7,7 +7,7 @@ use {
     chrono::{Local, TimeZone, Utc},
 };
 
-use moltis_gateway::share_store::{ShareSnapshot, ShareVisibility, SharedMessageRole};
+use chelix_gateway::share_store::{ShareSnapshot, ShareVisibility, SharedMessageRole};
 
 // ---------------------------------------------------------------------------
 // Public entry points
@@ -20,7 +20,7 @@ use moltis_gateway::share_store::{ShareSnapshot, ShareVisibility, SharedMessageR
 /// SVG for this share (e.g. `/share/{id}/og-image.svg`).
 pub fn render_share_html(
     snapshot: &ShareSnapshot,
-    identity: &moltis_config::ResolvedIdentity,
+    identity: &chelix_config::ResolvedIdentity,
     share_id: &str,
     visibility: ShareVisibility,
     view_count: u64,
@@ -66,7 +66,7 @@ pub fn render_share_html(
 /// Render the OG social-image SVG for a share.
 pub fn render_share_og_svg(
     snapshot: &ShareSnapshot,
-    identity: &moltis_config::ResolvedIdentity,
+    identity: &chelix_config::ResolvedIdentity,
 ) -> String {
     build_share_social_image_svg(snapshot, identity)
 }
@@ -127,10 +127,10 @@ pub(crate) struct ShareMeta {
 // Helper functions
 // ---------------------------------------------------------------------------
 
-pub(crate) fn identity_name(identity: &moltis_config::ResolvedIdentity) -> &str {
+pub(crate) fn identity_name(identity: &chelix_config::ResolvedIdentity) -> &str {
     let name = identity.name.trim();
     if name.is_empty() {
-        "moltis"
+        "chelix"
     } else {
         name
     }
@@ -160,14 +160,14 @@ fn first_share_message_preview(snapshot: &ShareSnapshot) -> String {
     }
 
     if out.is_empty() {
-        "Shared conversation snapshot from Moltis".to_string()
+        "Shared conversation snapshot from Chelix".to_string()
     } else {
         truncate_for_meta(&out, 220)
     }
 }
 
 pub(crate) fn build_session_share_meta(
-    identity: &moltis_config::ResolvedIdentity,
+    identity: &chelix_config::ResolvedIdentity,
     snapshot: &ShareSnapshot,
 ) -> ShareMeta {
     let agent_name = identity_name(identity);
@@ -202,7 +202,7 @@ pub(crate) fn human_share_time(ts_ms: u64) -> String {
         .unwrap_or_else(|| "1970-01-01 00:00".to_string())
 }
 
-fn share_user_label(identity: &moltis_config::ResolvedIdentity) -> String {
+fn share_user_label(identity: &chelix_config::ResolvedIdentity) -> String {
     identity
         .user_name
         .as_deref()
@@ -212,7 +212,7 @@ fn share_user_label(identity: &moltis_config::ResolvedIdentity) -> String {
         .to_string()
 }
 
-fn share_assistant_label(identity: &moltis_config::ResolvedIdentity) -> String {
+fn share_assistant_label(identity: &chelix_config::ResolvedIdentity) -> String {
     let name = identity_name(identity);
     match identity
         .emoji
@@ -233,13 +233,13 @@ fn image_dimensions_from_data_url(data_url: &str) -> Option<(u32, u32)> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(body.trim())
         .ok()?;
-    let metadata = moltis_media::image_ops::get_image_metadata(&bytes).ok()?;
+    let metadata = chelix_media::image_ops::get_image_metadata(&bytes).ok()?;
     Some((metadata.width, metadata.height))
 }
 
 pub(crate) fn map_share_message_views(
     snapshot: &ShareSnapshot,
-    identity: &moltis_config::ResolvedIdentity,
+    identity: &chelix_config::ResolvedIdentity,
 ) -> Vec<ShareMessageView> {
     let user_label = share_user_label(identity);
     let assistant_label = share_assistant_label(identity);
@@ -454,7 +454,7 @@ fn wrap_share_social_line(text: &str, max_chars: usize) -> Vec<String> {
 
 fn build_share_social_text_lines(
     snapshot: &ShareSnapshot,
-    identity: &moltis_config::ResolvedIdentity,
+    identity: &chelix_config::ResolvedIdentity,
     max_chars: usize,
     max_lines: usize,
 ) -> Vec<String> {
@@ -499,7 +499,7 @@ fn build_share_social_text_lines(
 
 fn build_share_social_image_svg(
     snapshot: &ShareSnapshot,
-    identity: &moltis_config::ResolvedIdentity,
+    identity: &chelix_config::ResolvedIdentity,
 ) -> String {
     const MAX_CHARS_PER_LINE: usize = 64;
     const MAX_LINES: usize = 6;
@@ -559,7 +559,7 @@ fn build_share_social_image_svg(
 <text x=\"98\" y=\"164\" fill=\"#93c5fd\" font-size=\"25\" font-family=\"Inter, system-ui, sans-serif\">{}</text>\
 <line x1=\"74\" y1=\"210\" x2=\"1126\" y2=\"210\" stroke=\"#334155\" stroke-width=\"1\"/>\
 {}\
-<text x=\"1122\" y=\"584\" text-anchor=\"end\" fill=\"#9ca3af\" font-size=\"22\" font-family=\"Inter, system-ui, sans-serif\">By Moltis</text>\
+<text x=\"1122\" y=\"584\" text-anchor=\"end\" fill=\"#9ca3af\" font-size=\"22\" font-family=\"Inter, system-ui, sans-serif\">By Chelix</text>\
 </svg>",
         SHARE_SOCIAL_BRAND_ICON_DATA_URL.as_str(),
         escape_svg_text(&title),
@@ -576,12 +576,12 @@ fn build_share_social_image_svg(
 mod tests {
     use {
         super::*,
-        moltis_gateway::share_store::{SharedMessage, SharedMessageRole},
+        chelix_gateway::share_store::{SharedMessage, SharedMessageRole},
     };
 
-    fn default_identity() -> moltis_config::ResolvedIdentity {
-        moltis_config::ResolvedIdentity {
-            name: "Moltis".to_owned(),
+    fn default_identity() -> chelix_config::ResolvedIdentity {
+        chelix_config::ResolvedIdentity {
+            name: "Chelix".to_owned(),
             user_name: Some("Tester".to_owned()),
             emoji: Some("\u{1F916}".to_owned()),
             ..Default::default()
@@ -657,14 +657,14 @@ mod tests {
 
         assert!(svg.starts_with("<svg"));
         assert!(svg.contains("My chat"));
-        assert!(svg.contains("By Moltis"));
+        assert!(svg.contains("By Chelix"));
     }
 
     #[test]
     fn share_template_renders_theme_toggle_and_audio() {
         let messages = vec![ShareMessageView {
             role_class: "assistant",
-            role_label: "\u{1F916} Moltis".to_string(),
+            role_label: "\u{1F916} Chelix".to_string(),
             content: "Audio response".to_string(),
             reasoning: Some("Step 1\nStep 2".to_string()),
             audio_data_url: Some("data:audio/ogg;base64,T2dnUw==".to_string()),
@@ -697,7 +697,7 @@ mod tests {
             share_site_name: "site",
             share_image_url: "https://raw.githubusercontent.com/agentics-skills/chelix/master/crates/web/src/assets/icons/icon-512.png",
             share_image_alt: "alt",
-            assistant_name: "Moltis",
+            assistant_name: "Chelix",
             assistant_emoji: "\u{1F916}",
             view_count: 7,
             share_visibility: "public",
@@ -729,8 +729,8 @@ mod tests {
 
     #[test]
     fn map_share_message_views_skips_system_and_notice() {
-        let identity = moltis_config::ResolvedIdentity {
-            name: "Moltis".to_owned(),
+        let identity = chelix_config::ResolvedIdentity {
+            name: "Chelix".to_owned(),
             user_name: Some("Fabien".to_owned()),
             emoji: Some("\u{1F916}".to_owned()),
             ..Default::default()
@@ -753,32 +753,32 @@ mod tests {
 
     #[test]
     fn share_labels_use_identity_user_and_emoji() {
-        let identity = moltis_config::ResolvedIdentity {
-            name: "Moltis".to_owned(),
+        let identity = chelix_config::ResolvedIdentity {
+            name: "Chelix".to_owned(),
             emoji: Some("\u{1F916}".to_owned()),
             user_name: Some("Fabien".to_owned()),
             ..Default::default()
         };
         assert_eq!(share_user_label(&identity), "Fabien");
-        assert_eq!(share_assistant_label(&identity), "\u{1F916} Moltis");
+        assert_eq!(share_assistant_label(&identity), "\u{1F916} Chelix");
     }
 
     #[test]
     fn share_labels_fallback_when_identity_fields_missing() {
-        let identity = moltis_config::ResolvedIdentity {
+        let identity = chelix_config::ResolvedIdentity {
             name: "   ".to_owned(),
             user_name: Some("   ".to_owned()),
             emoji: Some("   ".to_owned()),
             ..Default::default()
         };
         assert_eq!(share_user_label(&identity), "User");
-        assert_eq!(share_assistant_label(&identity), "moltis");
+        assert_eq!(share_assistant_label(&identity), "chelix");
     }
 
     #[test]
     fn share_social_image_svg_uses_session_content_and_escapes() {
-        let identity = moltis_config::ResolvedIdentity {
-            name: "Moltis".to_owned(),
+        let identity = chelix_config::ResolvedIdentity {
+            name: "Chelix".to_owned(),
             user_name: Some("Fabien".to_owned()),
             emoji: Some("\u{1F916}".to_owned()),
             ..Default::default()
@@ -803,12 +803,12 @@ mod tests {
         assert!(!svg.contains("Need to validate <script>alert(1)</script> path"));
         assert!(svg.contains("Fabien: Need to validate"));
         assert!(svg.contains("data:image/png;base64,"));
-        assert!(svg.contains("By Moltis"));
+        assert!(svg.contains("By Chelix"));
     }
 
     #[test]
     fn map_share_message_views_includes_tool_result_media_and_links() {
-        use moltis_gateway::share_store::{SharedImageAsset, SharedImageSet, SharedMapLinks};
+        use chelix_gateway::share_store::{SharedImageAsset, SharedImageSet, SharedMapLinks};
 
         let identity = default_identity();
         let snapshot = ShareSnapshot {

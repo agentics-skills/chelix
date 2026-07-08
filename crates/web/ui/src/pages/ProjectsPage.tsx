@@ -422,7 +422,7 @@ function ProjectsPageComponent(): VNode {
 				</button>
 			</div>
 			<p className="text-xs text-[var(--muted)] max-w-form">
-				Clear All only removes repository entries from Moltis, it does not delete anything from disk.
+				Clear All only removes repository entries from Chelix, it does not delete anything from disk.
 			</p>
 			<p className="text-sm text-[var(--muted)]" style={{ maxWidth: "600px", margin: 0 }}>
 				Projects bind sessions to a codebase directory. When a session is linked to a project, context files (CLAUDE.md,

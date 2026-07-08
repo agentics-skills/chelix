@@ -1,14 +1,14 @@
 [package]
 edition.workspace = true
-name              = "moltis-auto-reply"
+name              = "chelix-auto-reply"
 version.workspace = true
 
 [dependencies]
-moltis-agents   = { workspace = true }
-moltis-common   = { workspace = true }
-moltis-metrics  = { optional = true, workspace = true }
-moltis-routing  = { workspace = true }
-moltis-sessions = { workspace = true }
+chelix-agents   = { workspace = true }
+chelix-common   = { workspace = true }
+chelix-metrics  = { optional = true, workspace = true }
+chelix-routing  = { workspace = true }
+chelix-sessions = { workspace = true }
 serde           = { workspace = true }
 serde_json      = { workspace = true }
 tokio           = { workspace = true }
@@ -16,7 +16,7 @@ tracing         = { workspace = true }
 
 [features]
 default = []
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 
 [lints]
 workspace = true

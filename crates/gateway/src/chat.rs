@@ -1,20 +1,20 @@
-//! Chat execution engine — re-exported from [`moltis_chat`] with the gateway
+//! Chat execution engine — re-exported from [`chelix_chat`] with the gateway
 //! runtime adapter.
 
-pub use moltis_chat::*;
+pub use chelix_chat::*;
 
 use std::sync::Arc;
 
 use {async_trait::async_trait, serde_json::Value};
 
-use {moltis_channels::ChannelReplyTarget, moltis_tools::sandbox::SandboxRouter};
+use {chelix_channels::ChannelReplyTarget, chelix_tools::sandbox::SandboxRouter};
 
 use crate::state::GatewayState;
 
 // ── GatewayChatRuntime ──────────────────────────────────────────────────────
 
 /// Adapts [`GatewayState`] to the [`ChatRuntime`] trait expected by
-/// `moltis-chat`.
+/// `chelix-chat`.
 pub struct GatewayChatRuntime {
     state: Arc<GatewayState>,
 }
@@ -103,13 +103,13 @@ impl ChatRuntime for GatewayChatRuntime {
         self.state.sandbox_router.as_ref()
     }
 
-    fn memory_manager(&self) -> Option<&moltis_memory::runtime::DynMemoryRuntime> {
+    fn memory_manager(&self) -> Option<&chelix_memory::runtime::DynMemoryRuntime> {
         self.state.memory_manager.as_ref()
     }
 
     // ── Cached location ─────────────────────────────────────────────────────
 
-    async fn cached_location(&self) -> Option<moltis_config::GeoLocation> {
+    async fn cached_location(&self) -> Option<chelix_config::GeoLocation> {
         self.state.inner.read().await.cached_location.clone()
     }
 
@@ -142,27 +142,27 @@ impl ChatRuntime for GatewayChatRuntime {
 
     // ── Services ────────────────────────────────────────────────────────────
 
-    fn channel_outbound(&self) -> Option<Arc<dyn moltis_channels::ChannelOutbound>> {
+    fn channel_outbound(&self) -> Option<Arc<dyn chelix_channels::ChannelOutbound>> {
         self.state.services.channel_outbound_arc()
     }
 
-    fn channel_stream_outbound(&self) -> Option<Arc<dyn moltis_channels::ChannelStreamOutbound>> {
+    fn channel_stream_outbound(&self) -> Option<Arc<dyn chelix_channels::ChannelStreamOutbound>> {
         self.state.services.channel_stream_outbound_arc()
     }
 
-    fn tts_service(&self) -> &dyn moltis_service_traits::TtsService {
+    fn tts_service(&self) -> &dyn chelix_service_traits::TtsService {
         &*self.state.services.tts
     }
 
-    fn project_service(&self) -> &dyn moltis_service_traits::ProjectService {
+    fn project_service(&self) -> &dyn chelix_service_traits::ProjectService {
         &*self.state.services.project
     }
 
-    fn mcp_service(&self) -> &dyn moltis_service_traits::McpService {
+    fn mcp_service(&self) -> &dyn chelix_service_traits::McpService {
         &*self.state.services.mcp
     }
 
-    async fn chat_service(&self) -> Arc<dyn moltis_service_traits::ChatService> {
+    async fn chat_service(&self) -> Arc<dyn chelix_service_traits::ChatService> {
         self.state.chat()
     }
 

@@ -1,8 +1,8 @@
 use {
     anyhow::{Result, anyhow},
     async_trait::async_trait,
-    moltis_agents::tool_registry::AgentTool,
-    moltis_channels::{
+    chelix_agents::tool_registry::AgentTool,
+    chelix_channels::{
         gating::{DmPolicy, GroupPolicy, MentionMode},
         plugin::ChannelType,
         store::{ChannelStore, StoredChannel},
@@ -794,7 +794,7 @@ mod tests {
 
     #[async_trait]
     impl ChannelStore for MemoryChannelStore {
-        async fn list(&self) -> moltis_channels::Result<Vec<StoredChannel>> {
+        async fn list(&self) -> chelix_channels::Result<Vec<StoredChannel>> {
             Ok(self.channels.lock().await.values().cloned().collect())
         }
 
@@ -802,7 +802,7 @@ mod tests {
             &self,
             channel_type: &str,
             account_id: &str,
-        ) -> moltis_channels::Result<Option<StoredChannel>> {
+        ) -> chelix_channels::Result<Option<StoredChannel>> {
             Ok(self
                 .channels
                 .lock()
@@ -811,7 +811,7 @@ mod tests {
                 .cloned())
         }
 
-        async fn upsert(&self, channel: StoredChannel) -> moltis_channels::Result<()> {
+        async fn upsert(&self, channel: StoredChannel) -> chelix_channels::Result<()> {
             self.channels.lock().await.insert(
                 (channel.channel_type.clone(), channel.account_id.clone()),
                 channel,
@@ -823,7 +823,7 @@ mod tests {
             &self,
             channel_type: &str,
             account_id: &str,
-        ) -> moltis_channels::Result<()> {
+        ) -> chelix_channels::Result<()> {
             self.channels
                 .lock()
                 .await

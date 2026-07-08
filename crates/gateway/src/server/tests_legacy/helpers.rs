@@ -1,14 +1,14 @@
 use std::{collections::HashMap, path::Path as FsPath};
 
-use moltis_tools::approval::{ApprovalMode, SecurityLevel};
+use chelix_tools::approval::{ApprovalMode, SecurityLevel};
 
 #[cfg(feature = "qmd")]
 #[test]
 fn sanitize_qmd_index_name_normalizes_non_alphanumeric_segments() {
-    let path = FsPath::new("/Users/Penso/.moltis/data///");
+    let path = FsPath::new("/Users/Penso/.chelix/data///");
     assert_eq!(
         crate::server::helpers::sanitize_qmd_index_name(path),
-        "moltis-users_penso_moltis_data"
+        "chelix-users_penso_chelix_data"
     );
 }
 
@@ -17,7 +17,7 @@ fn sanitize_qmd_index_name_normalizes_non_alphanumeric_segments() {
 fn sanitize_qmd_index_name_falls_back_for_empty_root() {
     assert_eq!(
         crate::server::helpers::sanitize_qmd_index_name(FsPath::new("///")),
-        "moltis"
+        "chelix"
     );
 }
 
@@ -50,7 +50,7 @@ fn summarize_model_ids_for_logs_truncates_to_head_and_tail() {
 
 #[test]
 fn approval_manager_uses_config_values() {
-    let mut cfg = moltis_config::MoltisConfig::default();
+    let mut cfg = chelix_config::ChelixConfig::default();
     cfg.tools.execute_command.approval_mode = "always".into();
     cfg.tools.execute_command.security_level = "strict".into();
     cfg.tools.execute_command.allowlist = vec!["git*".into()];
@@ -63,7 +63,7 @@ fn approval_manager_uses_config_values() {
 
 #[test]
 fn approval_manager_falls_back_for_invalid_values() {
-    let mut cfg = moltis_config::MoltisConfig::default();
+    let mut cfg = chelix_config::ChelixConfig::default();
     cfg.tools.execute_command.approval_mode = "bogus".into();
     cfg.tools.execute_command.security_level = "bogus".into();
 
@@ -76,7 +76,7 @@ fn approval_manager_falls_back_for_invalid_values() {
 #[test]
 fn fs_tools_host_warning_message_only_triggers_without_real_backend() {
     use {
-        moltis_tools::{
+        chelix_tools::{
             command::{CommandOptions, CommandOutput},
             sandbox::{Sandbox, SandboxId},
         },
@@ -95,7 +95,7 @@ fn fs_tools_host_warning_message_only_triggers_without_real_backend() {
             &self,
             _id: &SandboxId,
             _image_override: Option<&str>,
-        ) -> moltis_tools::Result<()> {
+        ) -> chelix_tools::Result<()> {
             Ok(())
         }
 
@@ -104,7 +104,7 @@ fn fs_tools_host_warning_message_only_triggers_without_real_backend() {
             _id: &SandboxId,
             _command: &str,
             _opts: &CommandOptions,
-        ) -> moltis_tools::Result<CommandOutput> {
+        ) -> chelix_tools::Result<CommandOutput> {
             Ok(CommandOutput {
                 stdout: String::new(),
                 stderr: String::new(),
@@ -112,21 +112,21 @@ fn fs_tools_host_warning_message_only_triggers_without_real_backend() {
             })
         }
 
-        async fn cleanup(&self, _id: &SandboxId) -> moltis_tools::Result<()> {
+        async fn cleanup(&self, _id: &SandboxId) -> chelix_tools::Result<()> {
             Ok(())
         }
     }
 
     let real_backend: Arc<dyn Sandbox> = Arc::new(TestRealSandbox);
-    let real_router = moltis_tools::sandbox::SandboxRouter::with_backend(
-        moltis_tools::sandbox::SandboxConfig::default(),
+    let real_router = chelix_tools::sandbox::SandboxRouter::with_backend(
+        chelix_tools::sandbox::SandboxConfig::default(),
         real_backend,
     );
     assert!(crate::server::helpers::fs_tools_host_warning_message(&real_router).is_none());
 
-    let no_backend: Arc<dyn Sandbox> = Arc::new(moltis_tools::sandbox::NoSandbox);
-    let no_router = moltis_tools::sandbox::SandboxRouter::with_backend(
-        moltis_tools::sandbox::SandboxConfig::default(),
+    let no_backend: Arc<dyn Sandbox> = Arc::new(chelix_tools::sandbox::NoSandbox);
+    let no_router = chelix_tools::sandbox::SandboxRouter::with_backend(
+        chelix_tools::sandbox::SandboxConfig::default(),
         no_backend,
     );
     let warning =
@@ -139,19 +139,19 @@ fn fs_tools_host_warning_message_only_triggers_without_real_backend() {
 fn prebuild_runs_only_when_mode_enabled_and_packages_present() {
     let packages = vec!["curl".to_string()];
     assert!(crate::server::helpers::should_prebuild_sandbox_image(
-        &moltis_tools::sandbox::SandboxMode::All,
+        &chelix_tools::sandbox::SandboxMode::All,
         &packages
     ));
     assert!(crate::server::helpers::should_prebuild_sandbox_image(
-        &moltis_tools::sandbox::SandboxMode::NonMain,
+        &chelix_tools::sandbox::SandboxMode::NonMain,
         &packages
     ));
     assert!(!crate::server::helpers::should_prebuild_sandbox_image(
-        &moltis_tools::sandbox::SandboxMode::Off,
+        &chelix_tools::sandbox::SandboxMode::Off,
         &packages
     ));
     assert!(!crate::server::helpers::should_prebuild_sandbox_image(
-        &moltis_tools::sandbox::SandboxMode::All,
+        &chelix_tools::sandbox::SandboxMode::All,
         &[]
     ));
 }
@@ -161,7 +161,7 @@ fn proxy_tls_validation_rejects_common_misconfiguration() {
     let err = crate::server::helpers::validate_proxy_tls_configuration(true, true, false)
         .expect_err("behind proxy with TLS should fail without explicit override");
     let message = err.to_string();
-    assert!(message.contains("MOLTIS_BEHIND_PROXY=true"));
+    assert!(message.contains("CHELIX_BEHIND_PROXY=true"));
     assert!(message.contains("--no-tls"));
 }
 
@@ -177,7 +177,7 @@ fn proxy_tls_validation_allows_explicit_tls_override() {
 
 #[test]
 fn env_value_with_overrides_uses_override_when_process_env_missing() {
-    let unique_key = format!("MOLTIS_TEST_LOOKUP_{}", std::process::id());
+    let unique_key = format!("CHELIX_TEST_LOOKUP_{}", std::process::id());
     let overrides = HashMap::from([(unique_key.clone(), "override-value".to_string())]);
     assert_eq!(
         crate::server::helpers::env_value_with_overrides(&overrides, &unique_key).as_deref(),

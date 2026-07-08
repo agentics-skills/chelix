@@ -19,9 +19,9 @@ use {
 };
 
 use {
-    moltis_config::schema::ProvidersConfig,
-    moltis_providers::ProviderRegistry,
-    moltis_service_traits::{ProviderSetupService, ServiceResult},
+    chelix_config::schema::ProvidersConfig,
+    chelix_providers::ProviderRegistry,
+    chelix_service_traits::{ProviderSetupService, ServiceResult},
 };
 
 pub use super::support::ErrorParser;
@@ -39,7 +39,7 @@ use {
     },
 };
 
-use moltis_oauth::TokenStore;
+use chelix_oauth::TokenStore;
 
 // ── LiveProviderSetupService ───────────────────────────────────────────────
 
@@ -275,7 +275,7 @@ impl LiveProviderSetupService {
             return true;
         }
         if provider.auth_type == AuthType::ApiKey
-            && moltis_config::generic_provider_api_key_from_env(provider.name, &self.env_overrides)
+            && chelix_config::generic_provider_api_key_from_env(provider.name, &self.env_overrides)
                 .is_some()
         {
             return true;

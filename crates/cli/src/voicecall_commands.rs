@@ -19,7 +19,7 @@ pub enum VoiceCallAction {
         #[arg(long, default_value = "http://localhost:9090")]
         host: String,
         /// API key for authenticating with the gateway.
-        #[arg(long, env = "MOLTIS_API_KEY")]
+        #[arg(long, env = "CHELIX_API_KEY")]
         api_key: Option<String>,
     },
     /// Check the status of an active call.
@@ -30,7 +30,7 @@ pub enum VoiceCallAction {
         #[arg(long, default_value = "http://localhost:9090")]
         host: String,
         /// API key for authenticating with the gateway.
-        #[arg(long, env = "MOLTIS_API_KEY")]
+        #[arg(long, env = "CHELIX_API_KEY")]
         api_key: Option<String>,
     },
     /// End an active call.
@@ -41,7 +41,7 @@ pub enum VoiceCallAction {
         #[arg(long, default_value = "http://localhost:9090")]
         host: String,
         /// API key for authenticating with the gateway.
-        #[arg(long, env = "MOLTIS_API_KEY")]
+        #[arg(long, env = "CHELIX_API_KEY")]
         api_key: Option<String>,
     },
     /// Verify telephony setup (credentials, webhook reachability).
@@ -142,8 +142,8 @@ pub async fn handle_voicecall(action: VoiceCallAction) -> Result<()> {
             println!("  1. Open Settings > Phone and choose a provider");
             println!("  2. Save provider credentials and a caller phone number");
             println!("  3. Set webhook_url or server.external_url to a public HTTPS URL");
-            println!("  4. Start the gateway: moltis gateway");
-            println!("  5. Use: moltis voice-call call --to +15559876543");
+            println!("  4. Start the gateway: chelix gateway");
+            println!("  5. Use: chelix voice-call call --to +15559876543");
             Ok(())
         },
     }

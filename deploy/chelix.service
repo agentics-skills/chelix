@@ -1,24 +1,24 @@
 [Unit]
-Description=Moltis Agent Server
+Description=Chelix Agent Server
 After=network-online.target
 Wants=network-online.target
 Documentation=https://github.com/agentics-skills/chelix
 
 [Service]
 Type=simple
-User=moltis
-Group=moltis
-ExecStart=/usr/local/bin/moltis --bind 0.0.0.0
+User=chelix
+Group=chelix
+ExecStart=/usr/local/bin/chelix --bind 0.0.0.0
 Restart=on-failure
 RestartSec=5
-Environment=MOLTIS_DATA_DIR=/var/lib/moltis
-Environment=MOLTIS_CONFIG_DIR=/etc/moltis
+Environment=CHELIX_DATA_DIR=/var/lib/chelix
+Environment=CHELIX_CONFIG_DIR=/etc/chelix
 
 # Harden the service
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/moltis /etc/moltis
+ReadWritePaths=/var/lib/chelix /etc/chelix
 PrivateTmp=true
 
 # Allow binding to privileged ports if needed (e.g. 443)

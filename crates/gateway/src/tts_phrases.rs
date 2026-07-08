@@ -94,10 +94,10 @@ mod tests {
 
     #[test]
     fn test_static_phrases_settings() {
-        let phrases = static_phrases("Bob", "Moltis", "settings");
+        let phrases = static_phrases("Bob", "Chelix", "settings");
         assert_eq!(phrases.len(), 10);
         assert!(phrases[0].contains("Bob"));
-        assert!(phrases[0].contains("Moltis"));
+        assert!(phrases[0].contains("Chelix"));
     }
 
     #[test]

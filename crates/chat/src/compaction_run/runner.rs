@@ -4,8 +4,8 @@
 //! [`run_compaction`], and related helpers.
 
 use {
-    moltis_agents::model::LlmProvider,
-    moltis_config::{CompactionConfig, CompactionMode},
+    chelix_agents::model::LlmProvider,
+    chelix_config::{CompactionConfig, CompactionMode},
     serde_json::Value,
     thiserror::Error,
 };
@@ -132,8 +132,8 @@ pub(crate) fn compaction_mode_key(mode: CompactionMode) -> &'static str {
 /// Kept as a single constant so UI, broadcast events, and any future
 /// doc links share the same wording. The reference to
 /// `chat.compaction.mode` matches the TOML key so users can paste it
-/// straight into `moltis.toml`.
-pub(crate) const SETTINGS_HINT: &str = "Change chat.compaction.mode in moltis.toml (or the web UI settings panel) \
+/// straight into `chelix.toml`.
+pub(crate) const SETTINGS_HINT: &str = "Change chat.compaction.mode in chelix.toml (or the web UI settings panel) \
      to pick a different compaction strategy. See \
     https://github.com/agentics-skills/chelix/blob/master/docs/src/compaction.md for a comparison of the four modes.";
 
@@ -358,7 +358,7 @@ mod tests {
     #[test]
     fn compaction_mode_key_matches_toml_serialization() {
         // The keys must match exactly what users would paste into
-        // `chat.compaction.mode` in moltis.toml, so UI consumers can
+        // `chat.compaction.mode` in chelix.toml, so UI consumers can
         // display them and offer a "copy to clipboard" action.
         assert_eq!(
             compaction_mode_key(CompactionMode::Deterministic),

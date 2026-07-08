@@ -1,6 +1,6 @@
 use {
-    moltis_channels::gating::{self, DmPolicy, GroupPolicy, MentionMode},
-    moltis_common::types::ChatType,
+    chelix_channels::gating::{self, DmPolicy, GroupPolicy, MentionMode},
+    chelix_common::types::ChatType,
 };
 
 use crate::config::MatrixAccountConfig;

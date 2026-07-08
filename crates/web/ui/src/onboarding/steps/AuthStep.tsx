@@ -431,7 +431,7 @@ export function AuthStep({ onNext, skippable }: { onNext: () => void; skippable:
 						onInput={(e) => setSetupCode(targetValue(e))}
 						placeholder="6-digit code from terminal"
 					/>
-					<div className="text-xs text-[var(--muted)] mt-1">Find this code in the moltis process log (stdout).</div>
+					<div className="text-xs text-[var(--muted)] mt-1">Find this code in the chelix process log (stdout).</div>
 				</div>
 			)}
 

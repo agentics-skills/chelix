@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hook handler: translates Moltis BeforeToolCall payload to dcg format.
+# Hook handler: translates Chelix BeforeToolCall payload to dcg format.
 # When dcg is not installed the hook is a no-op (all commands pass through).
 
 set -euo pipefail

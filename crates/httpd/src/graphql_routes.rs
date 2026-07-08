@@ -1,6 +1,6 @@
 //! GraphQL HTTP handlers for the gateway.
 //!
-//! These handlers bridge `AppState` to the `moltis-graphql` schema, providing
+//! These handlers bridge `AppState` to the `chelix-graphql` schema, providing
 //! GraphiQL on GET `/graphql`, query/mutation execution on POST `/graphql`,
 //! and WebSocket subscriptions on GET `/graphql`.
 
@@ -18,7 +18,7 @@ use {
     serde_json::Value,
 };
 
-use moltis_gateway::{
+use chelix_gateway::{
     services::{ChatService, ServiceResult},
     state::GatewayState,
 };
@@ -113,7 +113,7 @@ impl ChatService for GraphqlChatServiceProxy {
     }
 }
 
-pub fn build_graphql_schema(state: Arc<GatewayState>) -> moltis_graphql::MoltisSchema {
+pub fn build_graphql_schema(state: Arc<GatewayState>) -> chelix_graphql::ChelixSchema {
     let system_info = Arc::new(GatewaySystemInfoService {
         state: Arc::clone(&state),
     });
@@ -121,11 +121,11 @@ pub fn build_graphql_schema(state: Arc<GatewayState>) -> moltis_graphql::MoltisS
         state: Arc::clone(&state),
     });
     let services = state.services.to_services_with_chat(system_info, chat);
-    moltis_graphql::build_schema(services, state.broadcaster.graphql_broadcast.clone())
+    chelix_graphql::build_schema(services, state.broadcaster.graphql_broadcast.clone())
 }
 
 #[async_trait::async_trait]
-impl moltis_service_traits::SystemInfoService for GatewaySystemInfoService {
+impl chelix_service_traits::SystemInfoService for GatewaySystemInfoService {
     async fn health(&self) -> ServiceResult {
         let count = self.state.client_count().await;
         Ok(serde_json::json!({
@@ -313,7 +313,7 @@ fn graphql_ws_response(
 
 fn graphiql_response() -> Response {
     let asset_guard_plugin = GraphiQLPlugin {
-        name: "MoltisGraphiQLAssetGuard",
+        name: "ChelixGraphiQLAssetGuard",
         constructor: "",
         head_assets: Some(
             r##"<script>

@@ -1,16 +1,16 @@
 [package]
 edition.workspace = true
-name              = "moltis-discord"
+name              = "chelix-discord"
 version.workspace = true
 
 [dependencies]
 anyhow          = { workspace = true }
 async-trait     = { workspace = true }
 base64          = { workspace = true }
-moltis-channels = { workspace = true }
-moltis-common   = { workspace = true }
-moltis-media    = { workspace = true }
-moltis-metrics  = { optional = true, workspace = true }
+chelix-channels = { workspace = true }
+chelix-common   = { workspace = true }
+chelix-media    = { workspace = true }
+chelix-metrics  = { optional = true, workspace = true }
 reqwest         = { workspace = true }
 secrecy         = { workspace = true }
 serde           = { workspace = true }
@@ -22,7 +22,7 @@ tokio-util      = { workspace = true }
 tracing         = { workspace = true }
 
 [features]
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 
 [lints]
 workspace = true

@@ -14,9 +14,9 @@
 use {
     async_trait::async_trait,
     base64::{Engine as _, engine::general_purpose::STANDARD as BASE64},
-    moltis_agents::tool_registry::AgentTool,
-    moltis_media::mime::mime_from_extension,
-    moltis_sessions::store::SessionStore,
+    chelix_agents::tool_registry::AgentTool,
+    chelix_media::mime::mime_from_extension,
+    chelix_sessions::store::SessionStore,
     serde_json::{Value, json},
     std::{path::Path, sync::Arc},
     tracing::debug,

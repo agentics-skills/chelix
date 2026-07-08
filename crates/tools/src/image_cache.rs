@@ -4,7 +4,7 @@
 //! directory. When a skill with a Dockerfile is invoked, the image is built
 //! (if not already cached) and used as the sandbox container image.
 //!
-//! Images are tagged as `moltis-cache/<skill-name>:<content-hash>` where
+//! Images are tagged as `chelix-cache/<skill-name>:<content-hash>` where
 //! the hash is the first 12 hex chars of the SHA-256 of the Dockerfile contents.
 
 use std::path::Path;
@@ -96,7 +96,7 @@ impl DockerImageBuilder {
     }
 
     /// Compute the image tag for a skill's Dockerfile.
-    /// Format: `moltis-cache/<skill-name>:<first-12-of-sha256>`
+    /// Format: `chelix-cache/<skill-name>:<first-12-of-sha256>`
     pub fn image_tag(skill_name: &str, dockerfile_contents: &[u8]) -> String {
         use std::hash::Hasher;
         // Use a simple hash for the tag — not cryptographic, just for cache keying.
@@ -110,7 +110,7 @@ impl DockerImageBuilder {
         let hash2 = h2.finish();
         let combined = format!("{:016x}{:016x}", hash1, hash2);
         let short = &combined[..12];
-        format!("moltis-cache/{skill_name}:{short}")
+        format!("chelix-cache/{skill_name}:{short}")
     }
 
     /// Check whether a container image exists locally.
@@ -255,7 +255,7 @@ impl ImageBuilder for DockerImageBuilder {
             .args([
                 "images",
                 "--filter",
-                "reference=moltis-cache/*",
+                "reference=chelix-cache/*",
                 "--format",
                 "{{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}",
             ])
@@ -277,14 +277,14 @@ impl ImageBuilder for DockerImageBuilder {
                     return None;
                 }
                 // Podman prefixes local repos with "localhost/", normalize
-                // so tags are always "moltis-cache/<skill>:<hash>".
+                // so tags are always "chelix-cache/<skill>:<hash>".
                 let tag = parts[0]
                     .strip_prefix("localhost/")
                     .unwrap_or(parts[0])
                     .to_string();
-                // Extract skill name from "moltis-cache/<skill-name>:<hash>"
+                // Extract skill name from "chelix-cache/<skill-name>:<hash>"
                 let skill_name = tag
-                    .strip_prefix("moltis-cache/")
+                    .strip_prefix("chelix-cache/")
                     .and_then(|s| s.split(':').next())
                     .unwrap_or("")
                     .to_string();
@@ -301,8 +301,8 @@ impl ImageBuilder for DockerImageBuilder {
     }
 
     async fn remove_cached(&self, tag: &str) -> Result<()> {
-        // Only allow removing moltis-cache images.
-        if !tag.starts_with("moltis-cache/") {
+        // Only allow removing chelix-cache images.
+        if !tag.starts_with("chelix-cache/") {
             return Err(Error::message(format!(
                 "refusing to remove non-cache image: {tag}"
             )));
@@ -348,9 +348,9 @@ mod tests {
     fn test_image_tag_format() {
         let tag =
             DockerImageBuilder::image_tag("my-skill", b"FROM ubuntu:26.04\nRUN apt-get update\n");
-        assert!(tag.starts_with("moltis-cache/my-skill:"));
+        assert!(tag.starts_with("chelix-cache/my-skill:"));
         // Hash portion is 12 hex chars
-        let hash_part = tag.strip_prefix("moltis-cache/my-skill:").unwrap();
+        let hash_part = tag.strip_prefix("chelix-cache/my-skill:").unwrap();
         assert_eq!(hash_part.len(), 12);
         assert!(hash_part.chars().all(|c| c.is_ascii_hexdigit()));
     }
@@ -375,14 +375,14 @@ mod tests {
         let b = DockerImageBuilder::image_tag("skill-b", b"FROM alpine\n");
         // Same hash, different skill name prefix
         assert_ne!(a, b);
-        assert!(a.starts_with("moltis-cache/skill-a:"));
-        assert!(b.starts_with("moltis-cache/skill-b:"));
+        assert!(a.starts_with("chelix-cache/skill-a:"));
+        assert!(b.starts_with("chelix-cache/skill-b:"));
     }
 
     #[test]
     fn test_cached_image_serde() {
         let img = CachedImage {
-            tag: "moltis-cache/my-skill:abc123def456".into(),
+            tag: "chelix-cache/my-skill:abc123def456".into(),
             skill_name: "my-skill".into(),
             size: "150MB".into(),
             created: "2 hours ago".into(),

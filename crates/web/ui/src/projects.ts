@@ -39,7 +39,7 @@ function selectFilter(id: string): void {
 	const p = projectStore.getById(id);
 	label.textContent = p ? (p as ProjectInfo & { label?: string }).label || p.id : t("common:sessions.allSessions");
 	closeDropdown();
-	document.dispatchEvent(new CustomEvent("moltis:render-session-list"));
+	document.dispatchEvent(new CustomEvent("chelix:render-session-list"));
 }
 
 function closeDropdown(): void {
@@ -176,7 +176,7 @@ document.addEventListener("click", (e: MouseEvent) => {
 	}
 });
 
-window.addEventListener("moltis:locale-changed", () => {
+window.addEventListener("chelix:locale-changed", () => {
 	renderProjectSelect();
 	if (!dropdown.classList.contains("hidden")) {
 		const query = searchInput ? searchInput.value.trim() : "";

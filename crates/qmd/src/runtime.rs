@@ -2,8 +2,8 @@ use std::{path::Path, sync::Arc};
 
 use {
     async_trait::async_trait,
-    moltis_agents::memory_writer::{MemoryWriteResult, MemoryWriter},
-    moltis_memory::{
+    chelix_agents::memory_writer::{MemoryWriteResult, MemoryWriter},
+    chelix_memory::{
         Result as MemoryResult,
         manager::{MemoryManager, MemoryStatus, SyncReport},
         runtime::MemoryRuntime,
@@ -155,7 +155,7 @@ impl MemoryRuntime for QmdMemoryRuntime {
         !self.disable_rag
     }
 
-    fn citation_mode(&self) -> moltis_memory::config::CitationMode {
+    fn citation_mode(&self) -> chelix_memory::config::CitationMode {
         self.fallback.citation_mode()
     }
 
@@ -167,7 +167,7 @@ impl MemoryRuntime for QmdMemoryRuntime {
         let report = self.fallback.sync().await?;
         self.refresh_qmd_index()
             .await
-            .map_err(|e| moltis_memory::Error::Validation(e.to_string()))?;
+            .map_err(|e| chelix_memory::Error::Validation(e.to_string()))?;
         Ok(report)
     }
 
@@ -175,7 +175,7 @@ impl MemoryRuntime for QmdMemoryRuntime {
         let changed = self.fallback.sync_path(path).await?;
         self.refresh_qmd_index()
             .await
-            .map_err(|e| moltis_memory::Error::Validation(e.to_string()))?;
+            .map_err(|e| chelix_memory::Error::Validation(e.to_string()))?;
         Ok(changed)
     }
 
@@ -183,7 +183,7 @@ impl MemoryRuntime for QmdMemoryRuntime {
         let removed = self.fallback.remove_path(path).await?;
         self.refresh_qmd_index()
             .await
-            .map_err(|e| moltis_memory::Error::Validation(e.to_string()))?;
+            .map_err(|e| chelix_memory::Error::Validation(e.to_string()))?;
         Ok(removed)
     }
 
@@ -193,17 +193,17 @@ impl MemoryRuntime for QmdMemoryRuntime {
                 .manager
                 .keyword_search(query, limit)
                 .await
-                .map_err(|e| moltis_memory::Error::Validation(e.to_string()))?,
+                .map_err(|e| chelix_memory::Error::Validation(e.to_string()))?,
             SearchMode::Vector => self
                 .manager
                 .vector_search(query, limit)
                 .await
-                .map_err(|e| moltis_memory::Error::Validation(e.to_string()))?,
+                .map_err(|e| chelix_memory::Error::Validation(e.to_string()))?,
             SearchMode::Hybrid { rerank } => self
                 .manager
                 .hybrid_search(query, limit, rerank)
                 .await
-                .map_err(|e| moltis_memory::Error::Validation(e.to_string()))?,
+                .map_err(|e| chelix_memory::Error::Validation(e.to_string()))?,
         };
 
         let mut results = Vec::with_capacity(qmd_results.len());
@@ -211,7 +211,7 @@ impl MemoryRuntime for QmdMemoryRuntime {
             results.push(
                 self.convert_result(result)
                     .await
-                    .map_err(|e| moltis_memory::Error::Validation(e.to_string()))?,
+                    .map_err(|e| chelix_memory::Error::Validation(e.to_string()))?,
             );
         }
         Ok(results)
@@ -232,7 +232,7 @@ impl MemoryRuntime for QmdMemoryRuntime {
             .manager
             .get_document(&docid, Some(start_line), Some(DEFAULT_QMD_GET_LINES))
             .await
-            .map_err(|e| moltis_memory::Error::Validation(e.to_string()))?;
+            .map_err(|e| chelix_memory::Error::Validation(e.to_string()))?;
         let text = strip_qmd_context_header(&body).trim().to_string();
         let line_count = text.lines().count().max(1) as i64;
 
@@ -359,30 +359,30 @@ exit 0
 
     #[test]
     fn classifies_memory_paths_case_insensitively() {
-        assert_eq!(qmd_source_for_path("/tmp/moltis/MEMORY.md"), "longterm");
+        assert_eq!(qmd_source_for_path("/tmp/chelix/MEMORY.md"), "longterm");
         assert_eq!(
-            qmd_source_for_path("/tmp/moltis/agents/ops/memory/notes.md"),
+            qmd_source_for_path("/tmp/chelix/agents/ops/memory/notes.md"),
             "longterm"
         );
         assert_eq!(
-            qmd_source_for_path("/tmp/moltis/agents/ops/Memory/notes.md"),
+            qmd_source_for_path("/tmp/chelix/agents/ops/Memory/notes.md"),
             "longterm"
         );
-        assert_eq!(qmd_source_for_path("/tmp/moltis/daily/journal.md"), "daily");
+        assert_eq!(qmd_source_for_path("/tmp/chelix/daily/journal.md"), "daily");
     }
 
     #[tokio::test]
     async fn search_mode_matches_rag_and_rerank_flags() {
         let tmp = TempDir::new().unwrap();
         let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
-        moltis_memory::schema::run_migrations(&pool).await.unwrap();
-        let config = moltis_memory::config::MemoryConfig {
+        chelix_memory::schema::run_migrations(&pool).await.unwrap();
+        let config = chelix_memory::config::MemoryConfig {
             db_path: ":memory:".into(),
             data_dir: Some(tmp.path().to_path_buf()),
             llm_reranking: true,
             ..Default::default()
         };
-        let store = Box::new(moltis_memory::store_sqlite::SqliteMemoryStore::new(pool));
+        let store = Box::new(chelix_memory::store_sqlite::SqliteMemoryStore::new(pool));
         let fallback = Arc::new(MemoryManager::keyword_only(config, store));
         let manager = Arc::new(QmdManager::new(crate::manager::QmdManagerConfig::default()));
 
@@ -403,14 +403,14 @@ exit 0
         fs::write(&file_path, content).unwrap();
 
         let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
-        moltis_memory::schema::run_migrations(&pool).await.unwrap();
-        let config = moltis_memory::config::MemoryConfig {
+        chelix_memory::schema::run_migrations(&pool).await.unwrap();
+        let config = chelix_memory::config::MemoryConfig {
             db_path: ":memory:".into(),
             data_dir: Some(tmp.path().to_path_buf()),
             memory_dirs: vec![memory_dir.clone()],
             ..Default::default()
         };
-        let store = Box::new(moltis_memory::store_sqlite::SqliteMemoryStore::new(pool));
+        let store = Box::new(chelix_memory::store_sqlite::SqliteMemoryStore::new(pool));
         let fallback = Arc::new(MemoryManager::keyword_only(config, store));
         fallback.sync().await.unwrap();
 
@@ -454,14 +454,14 @@ exit 0
         fs::write(&file_path, content).unwrap();
 
         let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
-        moltis_memory::schema::run_migrations(&pool).await.unwrap();
-        let config = moltis_memory::config::MemoryConfig {
+        chelix_memory::schema::run_migrations(&pool).await.unwrap();
+        let config = chelix_memory::config::MemoryConfig {
             db_path: ":memory:".into(),
             data_dir: Some(tmp.path().to_path_buf()),
             memory_dirs: vec![memory_dir.clone()],
             ..Default::default()
         };
-        let store = Box::new(moltis_memory::store_sqlite::SqliteMemoryStore::new(pool));
+        let store = Box::new(chelix_memory::store_sqlite::SqliteMemoryStore::new(pool));
         let fallback = Arc::new(MemoryManager::keyword_only(config, store));
 
         let manager = Arc::new(QmdManager::new(crate::manager::QmdManagerConfig {
@@ -476,7 +476,7 @@ exit 0
             max_results: 5,
             timeout_ms: 60_000,
             work_dir: tmp.path().to_path_buf(),
-            index_name: "moltis-live-runtime".into(),
+            index_name: "chelix-live-runtime".into(),
             env_overrides: real_qmd_env(&tmp),
         }));
         let runtime = QmdMemoryRuntime::new(manager, fallback, true);

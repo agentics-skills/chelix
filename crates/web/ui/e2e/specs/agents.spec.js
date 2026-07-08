@@ -97,7 +97,7 @@ async function expectActiveSessionExternalAgent(page, kind) {
 		.poll(
 			async () =>
 				page.evaluate((nextKind) => {
-					const session = window.__moltis_stores?.sessionStore?.activeSession?.value;
+					const session = window.__chelix_stores?.sessionStore?.activeSession?.value;
 					if (!session) return undefined;
 					session.external_agent_kind = nextKind;
 					session.dataVersion.value++;
@@ -336,7 +336,7 @@ test.describe("Agents settings page", () => {
 		// the session store to reflect the agent switch (RPC round-trip)
 		// before asserting the DOM value.
 		await expect
-			.poll(async () => page.evaluate(() => window.__moltis_stores?.sessionStore?.activeSession?.value?.agent_id), {
+			.poll(async () => page.evaluate(() => window.__chelix_stores?.sessionStore?.activeSession?.value?.agent_id), {
 				timeout: 15_000,
 			})
 			.toBe("selector-test");
@@ -371,7 +371,7 @@ test.describe("Agents settings page", () => {
 		await waitForWsConnected(page);
 		await createSession(page);
 
-		const sessionKey = await page.evaluate(() => window.__moltis_stores?.sessionStore?.activeSessionKey?.value || "");
+		const sessionKey = await page.evaluate(() => window.__chelix_stores?.sessionStore?.activeSessionKey?.value || "");
 		const bindResponse = await sendRpcFromPage(page, "external_agents.bind", { sessionKey, kind: "codex" });
 		expect(bindResponse?.ok).toBe(true);
 		await expect

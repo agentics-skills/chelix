@@ -123,7 +123,7 @@ export function AddTeamsModal(): VNode {
 					<div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs flex flex-col gap-2">
 						<span className="font-medium text-[var(--text-strong)]">Public URL required</span>
 						<span className="text-[var(--muted)]">
-							Teams sends messages to your server via webhook. Your Moltis instance must be reachable over HTTPS.
+							Teams sends messages to your server via webhook. Your Chelix instance must be reachable over HTTPS.
 						</span>
 						<span className="text-[var(--muted)]">Enter your public HTTPS base URL manually.</span>
 					</div>

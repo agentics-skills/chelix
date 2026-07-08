@@ -2,7 +2,7 @@
 
 use {super::*, crate::channel_events::commands::formatting::unique_providers};
 
-use moltis_channels::ChannelType;
+use chelix_channels::ChannelType;
 
 #[test]
 fn channel_event_serialization() {

@@ -2,8 +2,8 @@ use {
     super::{ProviderRegistry, registration::openai_builtin_capabilities},
     crate::openai::ResponsesWebSocketPolicy,
     anyhow::Context as _,
-    moltis_agents::model::{ChatMessage, ToolCall},
-    moltis_config::schema::{ProviderEntry, ProvidersConfig},
+    chelix_agents::model::{ChatMessage, ToolCall},
+    chelix_config::schema::{ProviderEntry, ProvidersConfig},
     secrecy::Secret,
     serde_json::Value,
     std::{

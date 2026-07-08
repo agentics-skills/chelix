@@ -412,12 +412,12 @@ pub struct PresetToolPolicy {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MemoryScope {
-    /// User-global: `~/.moltis/agent-memory/<preset>/`
+    /// User-global: `~/.chelix/agent-memory/<preset>/`
     #[default]
     User,
-    /// Project-local: `.moltis/agent-memory/<preset>/`
+    /// Project-local: `.chelix/agent-memory/<preset>/`
     Project,
-    /// Untracked local: `.moltis/agent-memory-local/<preset>/`
+    /// Untracked local: `.chelix/agent-memory-local/<preset>/`
     Local,
 }
 

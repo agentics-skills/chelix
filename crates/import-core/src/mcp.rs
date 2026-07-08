@@ -1,7 +1,7 @@
 //! Shared MCP server import utilities.
 //!
 //! Provides a common merge function used by all import sources to write
-//! MCP server entries into Moltis's `mcp-servers.json`.
+//! MCP server entries into Chelix's `mcp-servers.json`.
 
 use std::{collections::HashMap, path::Path};
 
@@ -42,7 +42,7 @@ fn default_true() -> bool {
     true
 }
 
-/// Merge a set of MCP servers into Moltis's `mcp-servers.json`.
+/// Merge a set of MCP servers into Chelix's `mcp-servers.json`.
 ///
 /// Skips servers whose name already exists in the destination file.
 /// Creates parent directories and the file if they don't exist.

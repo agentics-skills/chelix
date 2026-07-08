@@ -524,7 +524,7 @@ export function SessionHeader({
 
 	const shouldShowNodePicker = !isCron && (nodeOptions.length > 0 || Boolean(currentNodeId));
 	const externalAgentSelectOptions: SelectOption[] = [
-		{ value: "", label: "Moltis agent" },
+		{ value: "", label: "Chelix agent" },
 		...externalAgentOptions.map((agent) => ({
 			value: agent.kind,
 			label: `${agent.name}${agent.installed ? "" : " (unavailable)"}`,

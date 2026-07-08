@@ -1,4 +1,4 @@
-//! Microsoft Teams channel plugin for moltis.
+//! Microsoft Teams channel plugin for chelix.
 //!
 //! Implements a Bot Framework adapter with inbound webhook handling and
 //! outbound message delivery via OAuth client-credentials.

@@ -60,7 +60,7 @@ impl fmt::Display for MergeStrategy {
 pub struct MemoryConfig {
     /// Path to the SQLite database file (or `:memory:` for tests).
     pub db_path: String,
-    /// Root data directory for writing memory files (e.g. `~/.moltis/`).
+    /// Root data directory for writing memory files (e.g. `~/.chelix/`).
     /// Required for `MemoryWriter` support. `None` disables writes.
     pub data_dir: Option<PathBuf>,
     /// Directories to scan for markdown files.

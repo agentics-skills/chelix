@@ -93,7 +93,7 @@ pub enum BlockReason {
 pub struct LoginGuard {
     ips: Arc<DashMap<IpAddr, IpRecord>>,
     /// Keyed by "account identifier" — for password auth this is a fixed
-    /// sentinel (`"__password__"`) because moltis has a single admin account.
+    /// sentinel (`"__password__"`) because chelix has a single admin account.
     accounts: Arc<DashMap<String, AccountRecord>>,
     calls: Arc<AtomicU64>,
 }

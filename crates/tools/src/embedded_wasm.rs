@@ -20,17 +20,17 @@ use crate::Result;
 #[cfg(all(feature = "wasm", feature = "embedded-wasm", not(debug_assertions)))]
 const CALC_COMPONENT_RELEASE_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../target/wasm32-wasip2/release/moltis_wasm_calc.wasm"
+    "/../../target/wasm32-wasip2/release/chelix_wasm_calc.wasm"
 ));
 #[cfg(all(feature = "wasm", feature = "embedded-wasm", not(debug_assertions)))]
 const WEB_FETCH_COMPONENT_RELEASE_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../target/wasm32-wasip2/release/moltis_wasm_web_fetch.wasm"
+    "/../../target/wasm32-wasip2/release/chelix_wasm_web_fetch.wasm"
 ));
 #[cfg(all(feature = "wasm", feature = "embedded-wasm", not(debug_assertions)))]
 const WEB_SEARCH_COMPONENT_RELEASE_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../target/wasm32-wasip2/release/moltis_wasm_web_search.wasm"
+    "/../../target/wasm32-wasip2/release/chelix_wasm_web_search.wasm"
 ));
 
 // ── Debug path helper ───────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ fn component_debug_path(file_name: &str) -> PathBuf {
 /// Try to load a WASM component from the external share directory.
 #[cfg(feature = "wasm")]
 fn load_from_share_dir(file_name: &str) -> Option<Cow<'static, [u8]>> {
-    let share = moltis_config::share_dir()?;
+    let share = chelix_config::share_dir()?;
     let path = share.join("wasm").join(file_name);
     std::fs::read(&path).ok().map(Cow::Owned)
 }
@@ -83,13 +83,13 @@ fn load_component(file_name: &str, tool_name: &str) -> Result<Cow<'static, [u8]>
 pub fn calc_component_bytes() -> Result<Cow<'static, [u8]>> {
     #[cfg(debug_assertions)]
     {
-        load_component("moltis_wasm_calc.wasm", "calc")
+        load_component("chelix_wasm_calc.wasm", "calc")
     }
 
     #[cfg(not(debug_assertions))]
     {
         // External share dir first
-        if let Some(bytes) = load_from_share_dir("moltis_wasm_calc.wasm") {
+        if let Some(bytes) = load_from_share_dir("chelix_wasm_calc.wasm") {
             return Ok(bytes);
         }
         // Embedded fallback
@@ -113,12 +113,12 @@ pub fn calc_component_bytes() -> Result<Cow<'static, [u8]>> {
 pub fn web_fetch_component_bytes() -> Result<Cow<'static, [u8]>> {
     #[cfg(debug_assertions)]
     {
-        load_component("moltis_wasm_web_fetch.wasm", "web_fetch")
+        load_component("chelix_wasm_web_fetch.wasm", "web_fetch")
     }
 
     #[cfg(not(debug_assertions))]
     {
-        if let Some(bytes) = load_from_share_dir("moltis_wasm_web_fetch.wasm") {
+        if let Some(bytes) = load_from_share_dir("chelix_wasm_web_fetch.wasm") {
             return Ok(bytes);
         }
         #[cfg(feature = "embedded-wasm")]
@@ -141,12 +141,12 @@ pub fn web_fetch_component_bytes() -> Result<Cow<'static, [u8]>> {
 pub fn web_search_component_bytes() -> Result<Cow<'static, [u8]>> {
     #[cfg(debug_assertions)]
     {
-        load_component("moltis_wasm_web_search.wasm", "web_search")
+        load_component("chelix_wasm_web_search.wasm", "web_search")
     }
 
     #[cfg(not(debug_assertions))]
     {
-        if let Some(bytes) = load_from_share_dir("moltis_wasm_web_search.wasm") {
+        if let Some(bytes) = load_from_share_dir("chelix_wasm_web_search.wasm") {
             return Ok(bytes);
         }
         #[cfg(feature = "embedded-wasm")]

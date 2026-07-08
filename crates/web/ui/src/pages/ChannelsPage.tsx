@@ -305,7 +305,7 @@ function MatrixOwnershipCard({ channel, matrixStatus }: MatrixOwnershipCardProps
 	const ownershipError = String(matrixStatus?.ownership_error || "").trim();
 	const approvalMatch = ownershipError.match(/https?:\/\/\S+/);
 	const ownershipIssue =
-		ownershipMode !== "moltis_owned" || ownershipError.length === 0
+		ownershipMode !== "chelix_owned" || ownershipError.length === 0
 			? "none"
 			: ownershipError.includes("requires browser approval to reset cross-signing")
 				? "approval_required"
@@ -316,20 +316,20 @@ function MatrixOwnershipCard({ channel, matrixStatus }: MatrixOwnershipCardProps
 		ownershipIssue === "approval_required"
 			? "Ownership approval required"
 			: ownershipIssue !== "none"
-				? "Moltis ownership blocked"
-				: ownershipMode === "moltis_owned"
-					? "Managed by Moltis"
+				? "Chelix ownership blocked"
+				: ownershipMode === "chelix_owned"
+					? "Managed by Chelix"
 					: "User-managed in Element";
 	const modeText =
 		ownershipIssue === "approval_required"
-			? "This existing Matrix account can already chat, but Matrix needs one browser approval before Moltis can take over encryption ownership. Open the approval page, approve the reset, then retry ownership setup."
+			? "This existing Matrix account can already chat, but Matrix needs one browser approval before Chelix can take over encryption ownership. Open the approval page, approve the reset, then retry ownership setup."
 			: ownershipIssue === "incomplete_secret_storage"
 				? "This account already has partial Matrix secure-backup state. Finish or repair it in Element, or switch this channel to user-managed mode."
 				: ownershipIssue === "generic_blocked"
-					? "Moltis could not take ownership of this Matrix account automatically. Repair the account in Element or switch this channel to user-managed mode."
+					? "Chelix could not take ownership of this Matrix account automatically. Repair the account in Element or switch this channel to user-managed mode."
 					: authMode === "password" || authMode === "oidc"
 						? matrixOwnershipModeGuidance(authMode, ownershipMode)
-						: "Access token auth is always user-managed. If you want encrypted Matrix chats, reconnect this channel with OIDC or password auth so Moltis can create its own device.";
+						: "Access token auth is always user-managed. If you want encrypted Matrix chats, reconnect this channel with OIDC or password auth so Chelix can create its own device.";
 	const detailTitle =
 		ownershipIssue === "approval_required"
 			? "Browser approval pending"
@@ -338,7 +338,7 @@ function MatrixOwnershipCard({ channel, matrixStatus }: MatrixOwnershipCardProps
 				: "";
 	const detailText =
 		ownershipIssue === "approval_required"
-			? `Approve the reset while signed into ${matrixStatus?.user_id || "this Matrix account"} in the browser, then use the retry button here so Moltis can finish taking ownership.`
+			? `Approve the reset while signed into ${matrixStatus?.user_id || "this Matrix account"} in the browser, then use the retry button here so Chelix can finish taking ownership.`
 			: ownershipError;
 	const approvalUrl = approvalMatch ? approvalMatch[0].replace(/[;),.]+$/, "") : "";
 	const verificationText = deviceVerified ? "Device verified by owner" : "Device not yet verified by owner";

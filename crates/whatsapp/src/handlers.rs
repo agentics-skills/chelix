@@ -8,7 +8,7 @@ use {
     whatsapp_rust::client::Client,
 };
 
-use moltis_channels::{
+use chelix_channels::{
     ChannelAttachment, ChannelEvent, ChannelMessageKind, ChannelMessageMeta, ChannelReplyTarget,
     ChannelType,
     config_view::ChannelConfigView,
@@ -177,9 +177,9 @@ async fn handle_message(
     accounts: &AccountStateMap,
 ) {
     #[cfg(feature = "metrics")]
-    moltis_metrics::counter!(
-        moltis_metrics::channels::MESSAGES_RECEIVED_TOTAL,
-        moltis_metrics::labels::CHANNEL => "whatsapp"
+    chelix_metrics::counter!(
+        chelix_metrics::channels::MESSAGES_RECEIVED_TOTAL,
+        chelix_metrics::labels::CHANNEL => "whatsapp"
     )
     .increment(1);
 
@@ -533,7 +533,7 @@ async fn handle_photo(
         Ok(image_data) => {
             debug!(account_id, size = image_data.len(), %mime, "downloaded WhatsApp image");
 
-            let (final_data, media_type) = match moltis_media::image_ops::optimize_for_llm(
+            let (final_data, media_type) = match chelix_media::image_ops::optimize_for_llm(
                 &image_data,
                 None,
             ) {

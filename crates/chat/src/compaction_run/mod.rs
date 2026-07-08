@@ -15,7 +15,7 @@
 //! - `test_support` — `#[cfg(test)]`-only stub provider for the LLM modes.
 //!
 //! See `docs/src/compaction.md` for the full mode comparison and trade-off
-//! guidance, and the rustdoc on [`moltis_config::CompactionMode`] for
+//! guidance, and the rustdoc on [`chelix_config::CompactionMode`] for
 //! per-variant semantics.
 
 mod deterministic;

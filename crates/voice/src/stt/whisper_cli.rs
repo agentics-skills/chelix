@@ -238,7 +238,7 @@ mod tests {
     fn test_with_options() {
         let provider = WhisperCliStt::with_options(
             Some("/usr/local/bin/whisper-cli".into()),
-            Some("~/.moltis/models/ggml-base.en.bin".into()),
+            Some("~/.chelix/models/ggml-base.en.bin".into()),
             Some("en".into()),
         );
         assert_eq!(
@@ -247,7 +247,7 @@ mod tests {
         );
         assert_eq!(
             provider.model_path,
-            Some("~/.moltis/models/ggml-base.en.bin".into())
+            Some("~/.chelix/models/ggml-base.en.bin".into())
         );
         assert_eq!(provider.language, Some("en".into()));
     }

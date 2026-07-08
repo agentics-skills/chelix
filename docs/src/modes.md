@@ -33,7 +33,7 @@ regular slash commands:
 ## Configure Modes
 
 Built-in modes are available on every install. Add or override modes in
-`moltis.toml`:
+`chelix.toml`:
 
 ```toml
 [modes.presets.incident]

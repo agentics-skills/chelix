@@ -14,7 +14,7 @@ use {
 };
 
 use {
-    moltis_agents::{
+    chelix_agents::{
         AgentRunError, UserContent,
         model::{AgentToolControls, values_to_chat_messages},
         prompt::{
@@ -26,8 +26,8 @@ use {
         },
         tool_registry::ToolRegistry,
     },
-    moltis_config::ToolMode,
-    moltis_sessions::{PersistedMessage, store::SessionStore},
+    chelix_config::ToolMode,
+    chelix_sessions::{PersistedMessage, store::SessionStore},
 };
 
 use crate::{
@@ -73,7 +73,7 @@ pub(crate) async fn run_with_tools(
     state: &Arc<dyn ChatRuntime>,
     model_store: &Arc<RwLock<DisabledModelsStore>>,
     run_id: &str,
-    provider: Arc<dyn moltis_agents::model::LlmProvider>,
+    provider: Arc<dyn chelix_agents::model::LlmProvider>,
     model_id: &str,
     tool_registry: &Arc<RwLock<ToolRegistry>>,
     user_content: &UserContent,
@@ -86,8 +86,8 @@ pub(crate) async fn run_with_tools(
     project_context: Option<&str>,
     runtime_context: Option<&PromptRuntimeContext>,
     user_message_index: usize,
-    skills: &[moltis_skills::types::SkillMetadata],
-    hook_registry: Option<Arc<moltis_common::hooks::HookRegistry>>,
+    skills: &[chelix_skills::types::SkillMetadata],
+    hook_registry: Option<Arc<chelix_common::hooks::HookRegistry>>,
     accept_language: Option<String>,
     conn_id: Option<String>,
     session_store: Option<&Arc<SessionStore>>,
@@ -144,11 +144,11 @@ pub(crate) async fn run_with_tools(
     if tools_enabled
         && matches!(
             persona.config.tools.registry_mode,
-            moltis_config::ToolRegistryMode::Lazy
+            chelix_config::ToolRegistryMode::Lazy
         )
     {
-        let visible_tools = moltis_agents::lazy_tools::visible_tool_names_from_history(history_raw);
-        filtered_registry = moltis_agents::lazy_tools::wrap_registry_lazy_with_visible(
+        let visible_tools = chelix_agents::lazy_tools::visible_tool_names_from_history(history_raw);
+        filtered_registry = chelix_agents::lazy_tools::wrap_registry_lazy_with_visible(
             filtered_registry,
             visible_tools,
         );
@@ -162,7 +162,7 @@ pub(crate) async fn run_with_tools(
         let query_text = match user_content {
             UserContent::Text(t) => Some(t.as_str()),
             UserContent::Multimodal(parts) => parts.iter().find_map(|p| match p {
-                moltis_agents::model::ContentPart::Text(t) => Some(t.as_str()),
+                chelix_agents::model::ContentPart::Text(t) => Some(t.as_str()),
                 _ => None,
             }),
         };
@@ -266,10 +266,10 @@ pub(crate) async fn run_with_tools(
         // - absent     → remove any stale override from a previous agent
         if let Some(preset) = persona.config.agents.get_preset(agent_id) {
             match preset.sandbox.mode {
-                Some(moltis_config::schema::PresetSandboxMode::All) => {
+                Some(chelix_config::schema::PresetSandboxMode::All) => {
                     router.set_agent_override(session_key, true).await
                 },
-                Some(moltis_config::schema::PresetSandboxMode::Off) => {
+                Some(chelix_config::schema::PresetSandboxMode::Off) => {
                     router.set_agent_override(session_key, false).await
                 },
                 _ => router.remove_agent_override(session_key).await,
@@ -895,7 +895,7 @@ pub(crate) async fn run_with_tools(
     // local LLMs (Ollama, LM Studio) and prompt-cache hits for
     // cloud providers.
     let effective_user_content =
-        moltis_agents::prompt::prepend_datetime_to_user_content(user_content, runtime_context)
+        chelix_agents::prompt::prepend_datetime_to_user_content(user_content, runtime_context)
             .unwrap_or_else(|| user_content.clone());
 
     // Inject session key and accept-language into tool call params so tools can
@@ -920,7 +920,7 @@ pub(crate) async fn run_with_tools(
 
     // Create a shared steer inbox that the gateway can push steering text into.
     // A background task polls the ChatRuntime and forwards any `/steer` text.
-    let steer_inbox: moltis_agents::runner::SteerInbox = Arc::new(Mutex::new(Vec::new()));
+    let steer_inbox: chelix_agents::runner::SteerInbox = Arc::new(Mutex::new(Vec::new()));
     let steer_inbox_writer = steer_inbox.clone();
     let steer_state = state.clone();
     let steer_session_key = session_key.to_string();
@@ -1296,7 +1296,7 @@ where
 ///
 /// XML metacharacters in paths and text are escaped to prevent prompt
 /// injection via crafted memory content.
-pub(crate) fn format_recalled_context(results: &[moltis_memory::search::SearchResult]) -> String {
+pub(crate) fn format_recalled_context(results: &[chelix_memory::search::SearchResult]) -> String {
     if results.is_empty() {
         return String::new();
     }
@@ -1321,7 +1321,7 @@ pub(crate) fn format_recalled_context(results: &[moltis_memory::search::SearchRe
 
 #[cfg(feature = "metrics")]
 fn record_prefetch_metric(status: &'static str, start: Instant) {
-    use moltis_metrics::{counter, histogram, labels, memory as mem_metrics};
+    use chelix_metrics::{counter, histogram, labels, memory as mem_metrics};
     counter!(mem_metrics::PREFETCH_TOTAL, labels::STATUS => status).increment(1);
     histogram!(mem_metrics::PREFETCH_DURATION_SECONDS).record(start.elapsed().as_secs_f64());
 }
@@ -1337,8 +1337,8 @@ fn escape_xml(s: &str) -> String {
 mod tests {
     use super::*;
 
-    fn mock_result(path: &str, text: &str) -> moltis_memory::search::SearchResult {
-        moltis_memory::search::SearchResult {
+    fn mock_result(path: &str, text: &str) -> chelix_memory::search::SearchResult {
+        chelix_memory::search::SearchResult {
             chunk_id: "c1".into(),
             path: path.into(),
             source: "test".into(),

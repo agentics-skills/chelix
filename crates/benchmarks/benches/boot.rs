@@ -8,41 +8,41 @@ fn main() {
 /// Benchmark generating the default TOML config template.
 #[divan::bench]
 fn config_template_generation() -> String {
-    divan::black_box(moltis_config::template::default_config_template(8080))
+    divan::black_box(chelix_config::template::default_config_template(8080))
 }
 
-/// Benchmark constructing a `MoltisConfig` with all defaults.
+/// Benchmark constructing a `ChelixConfig` with all defaults.
 #[divan::bench]
-fn config_default_construction() -> moltis_config::MoltisConfig {
-    divan::black_box(moltis_config::MoltisConfig::default())
+fn config_default_construction() -> chelix_config::ChelixConfig {
+    divan::black_box(chelix_config::ChelixConfig::default())
 }
 
 /// Benchmark loading + parsing a TOML config from disk (the full boot path).
 #[divan::bench]
 fn config_load_toml(bencher: divan::Bencher) {
-    let toml_content = moltis_config::template::default_config_template(8080);
+    let toml_content = chelix_config::template::default_config_template(8080);
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("moltis.toml");
+    let path = dir.path().join("chelix.toml");
     std::fs::write(&path, &toml_content).unwrap();
 
-    bencher.bench_local(|| divan::black_box(moltis_config::loader::load_config(&path).unwrap()));
+    bencher.bench_local(|| divan::black_box(chelix_config::loader::load_config(&path).unwrap()));
 }
 
-/// Benchmark config round-trip: serialize MoltisConfig to TOML, then deserialize.
+/// Benchmark config round-trip: serialize ChelixConfig to TOML, then deserialize.
 #[divan::bench]
 fn config_serde_roundtrip() {
-    let config = moltis_config::MoltisConfig::default();
+    let config = chelix_config::ChelixConfig::default();
     let toml_str = divan::black_box(toml::to_string_pretty(&config).unwrap());
-    let _: moltis_config::MoltisConfig = divan::black_box(toml::from_str(&toml_str).unwrap());
+    let _: chelix_config::ChelixConfig = divan::black_box(toml::from_str(&toml_str).unwrap());
 }
 
 /// Benchmark validating a TOML config string (schema checks, semantic warnings).
 #[divan::bench]
 fn config_validate_toml(bencher: divan::Bencher) {
-    let toml_content = moltis_config::template::default_config_template(8080);
+    let toml_content = chelix_config::template::default_config_template(8080);
 
     bencher.bench_local(|| {
-        divan::black_box(moltis_config::validate::validate_toml_str(&toml_content))
+        divan::black_box(chelix_config::validate::validate_toml_str(&toml_content))
     });
 }
 
@@ -62,17 +62,17 @@ const MODEL_IDS: &[&str] = &[
 
 #[divan::bench(args = MODEL_IDS)]
 fn context_window_lookup(model_id: &str) -> u32 {
-    divan::black_box(moltis_providers::context_window_for_model(model_id))
+    divan::black_box(chelix_providers::context_window_for_model(model_id))
 }
 
 #[divan::bench(args = MODEL_IDS)]
 fn vision_support_lookup(model_id: &str) -> bool {
-    divan::black_box(moltis_providers::supports_vision_for_model(model_id))
+    divan::black_box(chelix_providers::supports_vision_for_model(model_id))
 }
 
 #[divan::bench]
 fn namespaced_model_id() -> String {
-    divan::black_box(moltis_providers::model_id::namespaced_model_id(
+    divan::black_box(chelix_providers::model_id::namespaced_model_id(
         "openai", "gpt-4o",
     ))
 }
@@ -88,7 +88,7 @@ const SESSION_KEYS: &[&str] = &[
 
 #[divan::bench(args = SESSION_KEYS)]
 fn session_key_to_filename(key: &str) -> String {
-    divan::black_box(moltis_sessions::store::SessionStore::key_to_filename(key))
+    divan::black_box(chelix_sessions::store::SessionStore::key_to_filename(key))
 }
 
 fn build_sanitize_input(payload_bytes: usize) -> String {
@@ -101,7 +101,7 @@ fn build_sanitize_input(payload_bytes: usize) -> String {
 fn sanitize_tool_result(bencher: divan::Bencher, payload_bytes: usize) {
     let input = build_sanitize_input(payload_bytes);
     bencher.bench_local(|| {
-        divan::black_box(moltis_agents::runner::sanitize_tool_result(&input, 50_000))
+        divan::black_box(chelix_agents::runner::sanitize_tool_result(&input, 50_000))
     });
 }
 
@@ -109,7 +109,7 @@ fn sanitize_tool_result(bencher: divan::Bencher, payload_bytes: usize) {
 fn tool_result_to_content_vision(bencher: divan::Bencher, payload_bytes: usize) {
     let input = build_sanitize_input(payload_bytes);
     bencher.bench_local(|| {
-        divan::black_box(moltis_agents::runner::tool_result_to_content(
+        divan::black_box(chelix_agents::runner::tool_result_to_content(
             &input, 50_000, true,
         ))
     });
@@ -140,7 +140,7 @@ fn build_persisted_messages(n: usize) -> Vec<serde_json::Value> {
                     "type": "function",
                     "function": {
                         "name": "web.search",
-                        "arguments": r#"{"q":"moltis release notes"}"#,
+                        "arguments": r#"{"q":"chelix release notes"}"#,
                     }
                 }],
             })),
@@ -174,7 +174,7 @@ fn build_persisted_messages(n: usize) -> Vec<serde_json::Value> {
 fn values_to_chat_messages(bencher: divan::Bencher, n: usize) {
     let values = build_persisted_messages(n);
     bencher
-        .bench_local(|| divan::black_box(moltis_agents::model::values_to_chat_messages(&values)));
+        .bench_local(|| divan::black_box(chelix_agents::model::values_to_chat_messages(&values)));
 }
 
 // ── Env substitution ────────────────────────────────────────────────────────
@@ -182,13 +182,13 @@ fn values_to_chat_messages(bencher: divan::Bencher, n: usize) {
 #[divan::bench]
 fn env_substitution(bencher: divan::Bencher) {
     let input = r#"
-        api_key = "${MOLTIS_API_KEY}"
-        base_url = "${MOLTIS_BASE_URL:-https://api.example.com}"
+        api_key = "${CHELIX_API_KEY}"
+        base_url = "${CHELIX_BASE_URL:-https://api.example.com}"
         name = "no-vars-here"
         port = 8080
     "#;
 
-    bencher.bench_local(|| divan::black_box(moltis_config::env_subst::substitute_env(input)));
+    bencher.bench_local(|| divan::black_box(chelix_config::env_subst::substitute_env(input)));
 }
 
 // ── Config load from disk (simulated boot) ──────────────────────────────────
@@ -196,14 +196,14 @@ fn env_substitution(bencher: divan::Bencher) {
 /// Full boot-path simulation: generate template, write to disk, load, validate.
 #[divan::bench]
 fn full_config_boot_path(bencher: divan::Bencher) {
-    let toml_content = moltis_config::template::default_config_template(8080);
+    let toml_content = chelix_config::template::default_config_template(8080);
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("moltis.toml");
+    let path = dir.path().join("chelix.toml");
     std::fs::write(&path, &toml_content).unwrap();
 
     bencher.bench_local(|| {
-        let config = moltis_config::loader::load_config(&path).unwrap();
-        let _ = moltis_config::validate::validate_toml_str(&toml_content);
+        let config = chelix_config::loader::load_config(&path).unwrap();
+        let _ = chelix_config::validate::validate_toml_str(&toml_content);
         divan::black_box(config)
     });
 }

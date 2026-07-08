@@ -1,6 +1,6 @@
 # GraphQL API
 
-Moltis exposes a GraphQL API that mirrors gateway RPC methods with typed query
+Chelix exposes a GraphQL API that mirrors gateway RPC methods with typed query
 and mutation responses where the data shape is known.
 
 ## Availability
@@ -10,7 +10,7 @@ GraphQL is compile-time feature gated:
 - Gateway feature: `graphql`
 - CLI feature: `graphql` (enabled in default feature set)
 
-If Moltis is built without this feature, `/graphql` is not registered.
+If Chelix is built without this feature, `/graphql` is not registered.
 
 When built with the feature, GraphQL is runtime-toggleable:
 
@@ -47,11 +47,11 @@ When GraphQL is runtime-disabled, `/graphql` returns `503`
 
 Supported auth methods:
 
-- Valid session cookie (`moltis_session`)
+- Valid session cookie (`chelix_session`)
 - `Authorization: Bearer <api_key>`
 
 ```admonish warning
-Do not expose Moltis to untrusted networks with authentication disabled.
+Do not expose Chelix to untrusted networks with authentication disabled.
 ```
 
 ## Schema Layout

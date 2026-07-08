@@ -8,7 +8,7 @@ current chat session, while agent presets configure delegated sub-agents.
 
 ## Built-In Presets
 
-Moltis ships with these presets on every install:
+Chelix ships with these presets on every install:
 
 | Preset | Role |
 |--------|------|
@@ -102,9 +102,9 @@ Each preset can have persistent memory loaded from a `MEMORY.md` file at spawn
 time. The memory content is injected into the sub-agent system prompt.
 
 - `memory.scope` determines where the file is stored:
-  - `user` (default): `~/.moltis/agent-memory/<preset>/MEMORY.md`
-  - `project`: `.moltis/agent-memory/<preset>/MEMORY.md`
-  - `local`: `.moltis/agent-memory-local/<preset>/MEMORY.md`
+  - `user` (default): `~/.chelix/agent-memory/<preset>/MEMORY.md`
+  - `project`: `.chelix/agent-memory/<preset>/MEMORY.md`
+  - `local`: `.chelix/agent-memory-local/<preset>/MEMORY.md`
 - `memory.max_lines` limits how much is injected (default: 200).
 
 The directory is created automatically so agents can write to it.
@@ -175,8 +175,8 @@ When `spawn_agent` runs, model choice is:
 
 Presets can also be defined as markdown files with YAML frontmatter, discovered from:
 
-- `~/.moltis/agents/*.md` (user-global)
-- `.moltis/agents/*.md` (project-local)
+- `~/.chelix/agents/*.md` (user-global)
+- `.chelix/agents/*.md` (project-local)
 
 Project-local files override user-global files with the same `name`.
 TOML presets always take precedence over markdown definitions.
@@ -184,15 +184,15 @@ TOML presets always take precedence over markdown definitions.
 The web UI uses the user-global markdown location for sub-agent preset edits:
 
 - Open **Settings → Agents → Sub-Agents**.
-- Choose **New Sub-Agent** to create `~/.moltis/agents/<id>.md`.
+- Choose **New Sub-Agent** to create `~/.chelix/agents/<id>.md`.
 - Choose **Edit** on a built-in preset to create a user-global markdown override.
 - Choose **Delete** on a custom/overridden preset to remove that markdown file.
 
-This keeps `moltis.toml` small while still leaving every web-created sub-agent
-editable on disk. If a preset with the same name exists in `moltis.toml`, the
+This keeps `chelix.toml` small while still leaving every web-created sub-agent
+editable on disk. If a preset with the same name exists in `chelix.toml`, the
 TOML preset wins over the markdown file.
 
-Example `~/.moltis/agents/reviewer.md`:
+Example `~/.chelix/agents/reviewer.md`:
 
 ```markdown
 ---

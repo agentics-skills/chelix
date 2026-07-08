@@ -6,10 +6,10 @@ use {
 };
 
 use {
-    moltis_agents::{
+    chelix_agents::{
         ContentPart, UserContent, multimodal::parse_data_uri, prompt::VOICE_REPLY_SUFFIX,
     },
-    moltis_sessions::{ContentBlock, MessageContent, UserDocument, store::SessionStore},
+    chelix_sessions::{ContentBlock, MessageContent, UserDocument, store::SessionStore},
 };
 
 use crate::types::{

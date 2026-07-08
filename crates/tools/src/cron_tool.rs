@@ -10,8 +10,8 @@ use {
 use crate::{Result, error::Error};
 
 use {
-    moltis_agents::tool_registry::AgentTool,
-    moltis_cron::{
+    chelix_agents::tool_registry::AgentTool,
+    chelix_cron::{
         parse::{parse_absolute_time_ms, parse_duration_ms},
         service::CronService,
         types::{CronJobCreate, CronJobPatch},

@@ -278,19 +278,19 @@ fn update_categories(categories: &mut MetricCategories, metric: &MetricSnapshot)
     let value = metric.value.unwrap_or(0.0) as u64;
 
     // HTTP metrics
-    if name.starts_with("moltis_http_requests_total") {
+    if name.starts_with("chelix_http_requests_total") {
         categories.http.total += value;
-    } else if name.starts_with("moltis_http_requests_in_flight") {
+    } else if name.starts_with("chelix_http_requests_in_flight") {
         categories.http.active = value;
     }
     // WebSocket metrics
-    else if name.starts_with("moltis_websocket_connections_total") {
+    else if name.starts_with("chelix_websocket_connections_total") {
         categories.websocket.total += value;
-    } else if name.starts_with("moltis_websocket_connections_active") {
+    } else if name.starts_with("chelix_websocket_connections_active") {
         categories.websocket.active = value;
     }
     // LLM metrics
-    else if name.starts_with("moltis_llm_completions_total") {
+    else if name.starts_with("chelix_llm_completions_total") {
         categories.llm.completions_total += value;
 
         // Track by provider and model
@@ -306,9 +306,9 @@ fn update_categories(categories: &mut MetricCategories, metric: &MetricSnapshot)
             let entry = categories.llm.by_model.entry(model.clone()).or_default();
             entry.completions += value;
         }
-    } else if name.starts_with("moltis_llm_completion_errors_total") {
+    } else if name.starts_with("chelix_llm_completion_errors_total") {
         categories.llm.errors += value;
-    } else if name.starts_with("moltis_llm_input_tokens_total") {
+    } else if name.starts_with("chelix_llm_input_tokens_total") {
         categories.llm.input_tokens += value;
         if let Some(provider) = metric.labels.get("provider") {
             let entry = categories
@@ -322,7 +322,7 @@ fn update_categories(categories: &mut MetricCategories, metric: &MetricSnapshot)
             let entry = categories.llm.by_model.entry(model.clone()).or_default();
             entry.input_tokens += value;
         }
-    } else if name.starts_with("moltis_llm_output_tokens_total") {
+    } else if name.starts_with("chelix_llm_output_tokens_total") {
         categories.llm.output_tokens += value;
         if let Some(provider) = metric.labels.get("provider") {
             let entry = categories
@@ -336,42 +336,42 @@ fn update_categories(categories: &mut MetricCategories, metric: &MetricSnapshot)
             let entry = categories.llm.by_model.entry(model.clone()).or_default();
             entry.output_tokens += value;
         }
-    } else if name.starts_with("moltis_llm_cache_read_tokens_total") {
+    } else if name.starts_with("chelix_llm_cache_read_tokens_total") {
         categories.llm.cache_read_tokens += value;
-    } else if name.starts_with("moltis_llm_cache_write_tokens_total") {
+    } else if name.starts_with("chelix_llm_cache_write_tokens_total") {
         categories.llm.cache_write_tokens += value;
     }
     // Session metrics
-    else if name.starts_with("moltis_sessions_created_total") {
+    else if name.starts_with("chelix_sessions_created_total") {
         categories.session.total += value;
-    } else if name.starts_with("moltis_sessions_active") {
+    } else if name.starts_with("chelix_sessions_active") {
         categories.session.active = value;
         categories.system.active_sessions = value;
     }
     // Tool metrics
-    else if name.starts_with("moltis_tool_executions_total") {
+    else if name.starts_with("chelix_tool_executions_total") {
         categories.tools.total += value;
-    } else if name.starts_with("moltis_tool_execution_errors_total") {
+    } else if name.starts_with("chelix_tool_execution_errors_total") {
         categories.tools.errors += value;
-    } else if name.starts_with("moltis_tool_executions_in_flight") {
+    } else if name.starts_with("chelix_tool_executions_in_flight") {
         categories.tools.active = value;
     }
     // MCP metrics
-    else if name.starts_with("moltis_mcp_tool_calls_total") {
+    else if name.starts_with("chelix_mcp_tool_calls_total") {
         categories.mcp.total += value;
-    } else if name.starts_with("moltis_mcp_tool_call_errors_total") {
+    } else if name.starts_with("chelix_mcp_tool_call_errors_total") {
         categories.mcp.errors += value;
-    } else if name.starts_with("moltis_mcp_servers_connected") {
+    } else if name.starts_with("chelix_mcp_servers_connected") {
         categories.mcp.active = value;
     }
     // Memory metrics
-    else if name.starts_with("moltis_memory_searches_total") {
+    else if name.starts_with("chelix_memory_searches_total") {
         categories.memory.total += value;
     }
     // System metrics
-    else if name.starts_with("moltis_uptime_seconds") {
+    else if name.starts_with("chelix_uptime_seconds") {
         categories.system.uptime_seconds = metric.value.unwrap_or(0.0);
-    } else if name.starts_with("moltis_connected_clients") {
+    } else if name.starts_with("chelix_connected_clients") {
         categories.system.connected_clients = value;
     }
 }
@@ -383,8 +383,8 @@ mod tests {
 
     #[test]
     fn test_parse_prometheus_line_simple() {
-        let metric = parse_prometheus_line("moltis_http_requests_total 42").unwrap();
-        assert_eq!(metric.name, "moltis_http_requests_total");
+        let metric = parse_prometheus_line("chelix_http_requests_total 42").unwrap();
+        assert_eq!(metric.name, "chelix_http_requests_total");
         assert_eq!(metric.value, Some(42.0));
         assert!(metric.labels.is_empty());
     }
@@ -392,9 +392,9 @@ mod tests {
     #[test]
     fn test_parse_prometheus_line_with_labels() {
         let metric =
-            parse_prometheus_line(r#"moltis_http_requests_total{method="GET",status="200"} 100"#)
+            parse_prometheus_line(r#"chelix_http_requests_total{method="GET",status="200"} 100"#)
                 .unwrap();
-        assert_eq!(metric.name, "moltis_http_requests_total");
+        assert_eq!(metric.name, "chelix_http_requests_total");
         assert_eq!(metric.value, Some(100.0));
         assert_eq!(metric.labels.get("method"), Some(&"GET".to_string()));
         assert_eq!(metric.labels.get("status"), Some(&"200".to_string()));
@@ -403,11 +403,11 @@ mod tests {
     #[test]
     fn test_snapshot_from_prometheus_text() {
         let text = r#"
-# HELP moltis_http_requests_total Total HTTP requests
-# TYPE moltis_http_requests_total counter
-moltis_http_requests_total{method="GET"} 100
-moltis_http_requests_total{method="POST"} 50
-moltis_llm_completions_total{provider="anthropic",model="claude-3"} 25
+# HELP chelix_http_requests_total Total HTTP requests
+# TYPE chelix_http_requests_total counter
+chelix_http_requests_total{method="GET"} 100
+chelix_http_requests_total{method="POST"} 50
+chelix_llm_completions_total{provider="anthropic",model="claude-3"} 25
 "#;
 
         let snapshot = MetricsSnapshot::from_prometheus_text(text);

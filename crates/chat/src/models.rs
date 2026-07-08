@@ -18,8 +18,8 @@ use {
 };
 
 use {
-    moltis_providers::{ProviderRegistry, model_id::raw_model_id},
-    moltis_service_traits::{ModelService, ServiceError, ServiceResult},
+    chelix_providers::{ProviderRegistry, model_id::raw_model_id},
+    chelix_service_traits::{ModelService, ServiceError, ServiceResult},
 };
 
 use crate::{
@@ -150,7 +150,7 @@ async fn run_single_probe(
     model_id: String,
     display_name: String,
     provider_name: String,
-    provider: Arc<dyn moltis_agents::model::LlmProvider>,
+    provider: Arc<dyn chelix_agents::model::LlmProvider>,
     limiter: Arc<Semaphore>,
     provider_limiter: Arc<ProbeProviderLimiter>,
     rate_limiter: Arc<ProbeRateLimiter>,
@@ -307,7 +307,7 @@ pub struct UnsupportedModelInfo {
 
 impl DisabledModelsStore {
     fn config_path() -> Option<PathBuf> {
-        moltis_config::config_dir().map(|d| d.join("disabled-models.json"))
+        chelix_config::config_dir().map(|d| d.join("disabled-models.json"))
     }
 
     /// Load disabled models from config file.
@@ -390,7 +390,7 @@ pub struct LiveModelService {
     priority_models: Arc<RwLock<Vec<String>>>,
     show_legacy_models: bool,
     /// Provider config for runtime model rediscovery.
-    providers_config: moltis_config::schema::ProvidersConfig,
+    providers_config: chelix_config::schema::ProvidersConfig,
     /// Environment variable overrides for runtime model rediscovery.
     /// Shared so the gateway can update it after loading UI-stored keys.
     env_overrides: Arc<RwLock<HashMap<String, String>>>,
@@ -410,7 +410,7 @@ impl LiveModelService {
             detect_cancel: Arc::new(RwLock::new(None)),
             priority_models: Arc::new(RwLock::new(priority_models)),
             show_legacy_models: false,
-            providers_config: moltis_config::schema::ProvidersConfig::default(),
+            providers_config: chelix_config::schema::ProvidersConfig::default(),
             env_overrides: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -424,7 +424,7 @@ impl LiveModelService {
     /// model rediscovery when "Detect All Models" is triggered.
     pub fn with_discovery_config(
         mut self,
-        providers_config: moltis_config::schema::ProvidersConfig,
+        providers_config: chelix_config::schema::ProvidersConfig,
         env_overrides: HashMap<String, String>,
     ) -> Self {
         self.providers_config = providers_config;
@@ -456,7 +456,7 @@ impl LiveModelService {
         order
     }
 
-    fn priority_rank(order: &HashMap<String, usize>, model: &moltis_providers::ModelInfo) -> usize {
+    fn priority_rank(order: &HashMap<String, usize>, model: &chelix_providers::ModelInfo) -> usize {
         let full = normalize_model_key(&model.id);
         if let Some(rank) = order.get(&full) {
             return *rank;
@@ -474,9 +474,9 @@ impl LiveModelService {
 
     fn prioritize_models<'a>(
         order: &HashMap<String, usize>,
-        models: impl Iterator<Item = &'a moltis_providers::ModelInfo>,
-    ) -> Vec<&'a moltis_providers::ModelInfo> {
-        let mut ordered: Vec<(usize, &'a moltis_providers::ModelInfo)> =
+        models: impl Iterator<Item = &'a chelix_providers::ModelInfo>,
+    ) -> Vec<&'a chelix_providers::ModelInfo> {
+        let mut ordered: Vec<(usize, &'a chelix_providers::ModelInfo)> =
             models.enumerate().collect();
         ordered.sort_by(|(idx_a, a), (idx_b, b)| {
             let rank_a = Self::priority_rank(order, a);
@@ -567,7 +567,7 @@ impl ModelService for LiveModelService {
             &order,
             all_models
                 .iter()
-                .filter(|m| moltis_providers::is_chat_capable_model(&m.id))
+                .filter(|m| chelix_providers::is_chat_capable_model(&m.id))
                 .filter(|m| !disabled.is_disabled(&m.id))
                 .filter(|m| disabled.unsupported_info(&m.id).is_none()),
         );
@@ -616,7 +616,7 @@ impl ModelService for LiveModelService {
             &order,
             all_models
                 .iter()
-                .filter(|m| moltis_providers::is_chat_capable_model(&m.id)),
+                .filter(|m| chelix_providers::is_chat_capable_model(&m.id)),
         );
         info!(model_count = prioritized.len(), "models.list_all response");
         let models: Vec<_> = prioritized
@@ -745,7 +745,7 @@ impl ModelService for LiveModelService {
         // are found before probing.
         {
             let env_snapshot = self.env_overrides.read().await.clone();
-            let result = moltis_providers::fetch_discoverable_models(
+            let result = chelix_providers::fetch_discoverable_models(
                 &self.providers_config,
                 &env_snapshot,
                 provider_filter.as_deref(),

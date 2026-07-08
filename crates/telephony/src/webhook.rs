@@ -5,7 +5,7 @@
 use {
     bytes::Bytes,
     http::HeaderMap,
-    moltis_channels::{
+    chelix_channels::{
         ChannelType,
         channel_webhook_middleware::{
             ChannelWebhookRatePolicy, ChannelWebhookRejection, ChannelWebhookVerifier,

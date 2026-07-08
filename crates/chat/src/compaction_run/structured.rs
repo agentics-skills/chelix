@@ -19,8 +19,8 @@
 //! be compressed into a lossy stub.
 
 use {
-    moltis_agents::model::{ChatMessage, LlmProvider, StreamEvent, Usage, values_to_chat_messages},
-    moltis_config::{CompactionConfig, CompactionMode},
+    chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent, Usage, values_to_chat_messages},
+    chelix_config::{CompactionConfig, CompactionMode},
     serde_json::Value,
     tokio_stream::StreamExt,
     tracing::info,
@@ -183,7 +183,7 @@ fn iterative_instructions(previous_summary: &str) -> String {
 }
 
 /// Default value of `max_summary_tokens` the user can leave untouched.
-/// Mirrors `default_compaction_max_summary_tokens` in `moltis_config::schema`
+/// Mirrors `default_compaction_max_summary_tokens` in `chelix_config::schema`
 /// so we can detect when the user has explicitly set something different.
 const DEFAULT_MAX_SUMMARY_TOKENS: u32 = 8_192;
 
@@ -414,7 +414,7 @@ pub(super) async fn run(
 mod tests {
     use {
         super::{super::test_support::StubProvider, *},
-        moltis_config::CompactionMode,
+        chelix_config::CompactionMode,
         serde_json::json,
     };
 

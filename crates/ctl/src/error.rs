@@ -1,4 +1,4 @@
-//! Error types for `moltis-ctl`.
+//! Error types for `chelix-ctl`.
 
 #[derive(Debug, thiserror::Error)]
 pub enum CtlError {

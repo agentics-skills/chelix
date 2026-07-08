@@ -7,14 +7,14 @@
 
 use {
     async_trait::async_trait,
-    moltis_agents::tool_registry::AgentTool,
+    chelix_agents::tool_registry::AgentTool,
     serde_json::{Value, json},
     std::sync::Arc,
     tracing::instrument,
 };
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, labels, tools as tools_metrics};
+use chelix_metrics::{counter, labels, tools as tools_metrics};
 
 use crate::{
     Result,

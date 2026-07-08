@@ -4,11 +4,11 @@
 
 use {
     async_trait::async_trait,
-    moltis_channels::{
+    chelix_channels::{
         Result,
         plugin::{ChannelOutbound, ChannelStreamOutbound, StreamReceiver},
     },
-    moltis_common::types::ReplyPayload,
+    chelix_common::types::ReplyPayload,
     std::sync::Arc,
     tokio::sync::RwLock,
     tracing::debug,

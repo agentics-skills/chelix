@@ -1,6 +1,6 @@
 use std::{future::Future, sync::Arc, time::Duration};
 
-use {moltis_protocol::EventFrame, serde_json::json, tracing::warn};
+use {chelix_protocol::EventFrame, serde_json::json, tracing::warn};
 
 use crate::state::GatewayState;
 

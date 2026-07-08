@@ -1,4 +1,4 @@
-//! Home Assistant integration crate for Moltis.
+//! Home Assistant integration crate for Chelix.
 //!
 //! Provides REST and WebSocket API clients for controlling Home Assistant
 //! instances, plus an [`AgentTool`] implementation for LLM-driven automation.

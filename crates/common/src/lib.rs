@@ -1,4 +1,4 @@
-//! Shared types, error definitions, and utilities used across all moltis crates.
+//! Shared types, error definitions, and utilities used across all chelix crates.
 
 pub mod error;
 pub mod hooks;
@@ -7,4 +7,4 @@ pub mod secret_serde;
 pub mod ssrf;
 pub mod types;
 
-pub use error::{Error, FromMessage, MoltisError, Result};
+pub use error::{Error, FromMessage, ChelixError, Result};

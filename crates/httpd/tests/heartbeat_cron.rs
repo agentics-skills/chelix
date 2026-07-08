@@ -15,16 +15,16 @@ use {
 };
 
 use {
-    moltis_gateway::{
+    chelix_gateway::{
         auth,
         methods::MethodRegistry,
         services::{CronService, GatewayServices, ServiceResult},
         state::GatewayState,
     },
-    moltis_httpd::server::{build_gateway_base, finalize_gateway_app},
+    chelix_httpd::server::{build_gateway_base, finalize_gateway_app},
 };
 
-use moltis_cron::types::{CronJob, CronJobCreate, CronJobPatch};
+use chelix_cron::types::{CronJob, CronJobCreate, CronJobPatch};
 
 /// A mock cron service that stores jobs in memory for testing.
 struct MockCronService {
@@ -82,7 +82,7 @@ impl CronService for MockCronService {
             system: create.system,
             sandbox: create.sandbox.clone(),
             wake_mode: create.wake_mode,
-            state: moltis_cron::types::CronJobState::default(),
+            state: chelix_cron::types::CronJobState::default(),
             created_at_ms: 0,
             updated_at_ms: 0,
         };
@@ -180,7 +180,7 @@ async fn start_test_server_with_mock_cron() -> (SocketAddr, Arc<MockCronService>
     #[cfg(not(feature = "push-notifications"))]
     let (router, app_state) = build_gateway_base(state, methods, None);
 
-    let router = router.merge(moltis_web::web_routes());
+    let router = router.merge(chelix_web::web_routes());
     let app = finalize_gateway_app(router, app_state, false);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -379,11 +379,11 @@ async fn heartbeat_update_updates_existing_job() {
     let create = CronJobCreate {
         id: Some("__heartbeat__".into()),
         name: "__heartbeat__".into(),
-        schedule: moltis_cron::types::CronSchedule::Every {
+        schedule: chelix_cron::types::CronSchedule::Every {
             every_ms: 1800000,
             anchor_ms: None,
         },
-        payload: moltis_cron::types::CronPayload::AgentTurn {
+        payload: chelix_cron::types::CronPayload::AgentTurn {
             message: "Old prompt".into(),
             model: None,
             agent_id: None,
@@ -393,16 +393,16 @@ async fn heartbeat_update_updates_existing_job() {
             channel: None,
             to: None,
         },
-        session_target: moltis_cron::types::SessionTarget::Named("heartbeat".into()),
+        session_target: chelix_cron::types::SessionTarget::Named("heartbeat".into()),
         delete_after_run: false,
         enabled: true,
         system: true,
-        sandbox: moltis_cron::types::CronSandboxConfig {
+        sandbox: chelix_cron::types::CronSandboxConfig {
             enabled: false,
             image: None,
             auto_prune_container: None,
         },
-        wake_mode: moltis_cron::types::CronWakeMode::NextHeartbeat,
+        wake_mode: chelix_cron::types::CronWakeMode::NextHeartbeat,
     };
     let create_json = serde_json::to_value(create).unwrap();
     mock_cron.add(create_json).await.unwrap();
@@ -412,7 +412,7 @@ async fn heartbeat_update_updates_existing_job() {
     assert!(initial_job.enabled);
     // Check that the job has the old prompt
     match &initial_job.payload {
-        moltis_cron::types::CronPayload::AgentTurn { message, .. } => {
+        chelix_cron::types::CronPayload::AgentTurn { message, .. } => {
             assert_eq!(message, "Old prompt");
         },
         _ => panic!("Expected AgentTurn payload"),
@@ -495,7 +495,7 @@ async fn heartbeat_update_updates_existing_job() {
     assert!(!updated_job.enabled);
     // Check that the job has the updated prompt
     match &updated_job.payload {
-        moltis_cron::types::CronPayload::AgentTurn { message, .. } => {
+        chelix_cron::types::CronPayload::AgentTurn { message, .. } => {
             assert_eq!(message, "Updated prompt");
         },
         _ => panic!("Expected AgentTurn payload"),

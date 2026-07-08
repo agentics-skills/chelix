@@ -106,7 +106,7 @@ function handleJsonRpc(rpcBody) {
 }
 
 var server = http.createServer(async (req, res) => {
-	// GET: health check probe from Moltis. Many real Streamable HTTP servers
+	// GET: health check probe from Chelix. Many real Streamable HTTP servers
 	// return 405 here because GET is optional in the MCP spec.
 	if (req.method === "GET") {
 		if (req.url === "/health") {

@@ -1,15 +1,15 @@
 [package]
 edition.workspace = true
-name              = "moltis-channels"
+name              = "chelix-channels"
 version.workspace = true
 
 [dependencies]
 async-trait    = { workspace = true }
 bytes          = { workspace = true }
 http           = { workspace = true }
-moltis-common  = { workspace = true }
-moltis-config  = { workspace = true }
-moltis-metrics = { optional = true, workspace = true }
+chelix-common  = { workspace = true }
+chelix-config  = { workspace = true }
+chelix-metrics = { optional = true, workspace = true }
 rand           = { workspace = true }
 serde          = { workspace = true }
 serde_json     = { workspace = true }
@@ -19,7 +19,7 @@ tracing        = { workspace = true }
 
 [features]
 default = []
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 
 [lints]
 workspace = true

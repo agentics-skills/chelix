@@ -2,7 +2,7 @@
 courier_domain: courier.example.com
 
 # Client app bundle identifier (apns-topic).
-courier_bundle_id: com.example.Moltis
+courier_bundle_id: com.example.Chelix
 
 # Apple .p8 key settings (from App Store Connect).
 courier_key_id: XXXXXXXXXX
@@ -19,4 +19,4 @@ courier_auth_token: CHANGE_ME
 courier_port: 8090
 
 # Path to the cross-compiled binary on the controller.
-courier_binary_path: "{{ playbook_dir }}/../../../target/x86_64-unknown-linux-gnu/release/moltis-courier"
+courier_binary_path: "{{ playbook_dir }}/../../../target/x86_64-unknown-linux-gnu/release/chelix-courier"

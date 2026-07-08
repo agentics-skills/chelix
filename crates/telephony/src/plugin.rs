@@ -2,7 +2,7 @@
 
 use {
     async_trait::async_trait,
-    moltis_channels::{
+    chelix_channels::{
         ChannelEventSink,
         config_view::ChannelConfigView,
         message_log::MessageLog,
@@ -93,20 +93,20 @@ impl TelephonyPlugin {
 
         let config = self.accounts.get(account_id).map(|a| &a.config);
 
-        let reply_to = moltis_channels::ChannelReplyTarget {
-            channel_type: moltis_channels::ChannelType::Telephony,
+        let reply_to = chelix_channels::ChannelReplyTarget {
+            channel_type: chelix_channels::ChannelType::Telephony,
             account_id: account_id.to_string(),
             chat_id: call_id.to_string(),
             message_id: None,
             thread_id: None,
         };
 
-        let meta = moltis_channels::ChannelMessageMeta {
-            channel_type: moltis_channels::ChannelType::Telephony,
+        let meta = chelix_channels::ChannelMessageMeta {
+            channel_type: chelix_channels::ChannelType::Telephony,
             sender_name: Some(caller.to_string()),
             username: Some(caller.to_string()),
             sender_id: Some(caller.to_string()),
-            message_kind: Some(moltis_channels::ChannelMessageKind::Voice),
+            message_kind: Some(chelix_channels::ChannelMessageKind::Voice),
             model: config.and_then(|c| c.model.clone()),
             agent_id: config.and_then(|c| c.agent_id.clone()),
             audio_filename: None,
@@ -137,9 +137,9 @@ impl ChannelPlugin for TelephonyPlugin {
         &mut self,
         account_id: &str,
         config: serde_json::Value,
-    ) -> moltis_channels::Result<()> {
+    ) -> chelix_channels::Result<()> {
         let cfg: TelephonyAccountConfig = serde_json::from_value(config)
-            .map_err(|e| moltis_channels::Error::invalid_input(e.to_string()))?;
+            .map_err(|e| chelix_channels::Error::invalid_input(e.to_string()))?;
 
         let provider: Box<dyn crate::provider::TelephonyProvider> = match cfg.provider {
             TelephonyProviderId::Twilio => {
@@ -154,7 +154,7 @@ impl ChannelPlugin for TelephonyPlugin {
                     .unwrap_or_else(|| Secret::new(String::new()));
 
                 if sid.is_empty() {
-                    return Err(moltis_channels::Error::invalid_input(
+                    return Err(chelix_channels::Error::invalid_input(
                         "account_sid is required for Twilio",
                     ));
                 }
@@ -172,7 +172,7 @@ impl ChannelPlugin for TelephonyPlugin {
                     .unwrap_or_default();
 
                 if connection_id.is_empty() {
-                    return Err(moltis_channels::Error::invalid_input(
+                    return Err(chelix_channels::Error::invalid_input(
                         "connection_id (account_sid field) is required for Telnyx",
                     ));
                 }
@@ -193,7 +193,7 @@ impl ChannelPlugin for TelephonyPlugin {
                     .unwrap_or_else(|| Secret::new(String::new()));
 
                 if auth_id.is_empty() {
-                    return Err(moltis_channels::Error::invalid_input(
+                    return Err(chelix_channels::Error::invalid_input(
                         "auth_id (account_sid field) is required for Plivo",
                     ));
                 }
@@ -236,7 +236,7 @@ impl ChannelPlugin for TelephonyPlugin {
         Ok(())
     }
 
-    async fn stop_account(&mut self, account_id: &str) -> moltis_channels::Result<()> {
+    async fn stop_account(&mut self, account_id: &str) -> chelix_channels::Result<()> {
         self.routing_outbound.remove_manager(account_id);
         if let Some(state) = self.accounts.remove(account_id) {
             let call_ids = state
@@ -262,7 +262,7 @@ impl ChannelPlugin for TelephonyPlugin {
         None
     }
 
-    fn status(&self) -> Option<&dyn moltis_channels::plugin::ChannelStatus> {
+    fn status(&self) -> Option<&dyn chelix_channels::plugin::ChannelStatus> {
         None
     }
 
@@ -284,7 +284,7 @@ impl ChannelPlugin for TelephonyPlugin {
         &self,
         _account_id: &str,
         _config: serde_json::Value,
-    ) -> moltis_channels::Result<()> {
+    ) -> chelix_channels::Result<()> {
         Ok(())
     }
 
@@ -309,7 +309,7 @@ mod tests {
         super::*,
         crate::providers::mock::MockProvider,
         async_trait::async_trait,
-        moltis_channels::{ChannelEvent, ChannelMessageMeta, ChannelReplyTarget, ChannelType},
+        chelix_channels::{ChannelEvent, ChannelMessageMeta, ChannelReplyTarget, ChannelType},
         std::sync::Mutex,
     };
 
@@ -364,7 +364,7 @@ mod tests {
             _command: &str,
             _reply_to: ChannelReplyTarget,
             _sender_id: Option<&str>,
-        ) -> moltis_channels::Result<String> {
+        ) -> chelix_channels::Result<String> {
             Ok(String::new())
         }
 
@@ -500,7 +500,7 @@ mod tests {
         assert_eq!(captured.meta.sender_id.as_deref(), Some("+15551112222"));
         assert!(matches!(
             captured.meta.message_kind,
-            Some(moltis_channels::ChannelMessageKind::Voice)
+            Some(chelix_channels::ChannelMessageKind::Voice)
         ));
         assert_eq!(
             captured.meta.model.as_deref(),

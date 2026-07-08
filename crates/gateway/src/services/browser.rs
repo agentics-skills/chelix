@@ -1,20 +1,20 @@
-// ── Browser (Real implementation — depends on moltis-browser) ───────────────
+// ── Browser (Real implementation — depends on chelix-browser) ───────────────
 
 use super::*;
 
 /// Real browser service using BrowserManager.
 pub struct RealBrowserService {
-    config: moltis_browser::BrowserConfig,
-    manager: tokio::sync::OnceCell<Arc<moltis_browser::BrowserManager>>,
+    config: chelix_browser::BrowserConfig,
+    manager: tokio::sync::OnceCell<Arc<chelix_browser::BrowserManager>>,
 }
 
 impl RealBrowserService {
     pub fn new(
-        config: &moltis_config::schema::BrowserConfig,
+        config: &chelix_config::schema::BrowserConfig,
         container_prefix: String,
         host_data_dir: Option<std::path::PathBuf>,
     ) -> Self {
-        let mut browser_config = moltis_browser::BrowserConfig::from(config);
+        let mut browser_config = chelix_browser::BrowserConfig::from(config);
         browser_config.container_prefix = container_prefix;
         browser_config.host_data_dir = host_data_dir;
         Self {
@@ -24,7 +24,7 @@ impl RealBrowserService {
     }
 
     pub fn from_config(
-        config: &moltis_config::schema::MoltisConfig,
+        config: &chelix_config::schema::ChelixConfig,
         container_prefix: String,
     ) -> Option<Self> {
         if !config.tools.browser.enabled {
@@ -43,7 +43,7 @@ impl RealBrowserService {
         ))
     }
 
-    async fn manager(&self) -> Arc<moltis_browser::BrowserManager> {
+    async fn manager(&self) -> Arc<chelix_browser::BrowserManager> {
         Arc::clone(
             self.manager
                 .get_or_init(|| async {
@@ -51,8 +51,8 @@ impl RealBrowserService {
                     match tokio::task::spawn_blocking(move || {
                         // Browser detection and stale-container cleanup can block;
                         // run these off the async runtime worker threads.
-                        moltis_browser::detect::check_and_warn(config.chrome_path.as_deref());
-                        Arc::new(moltis_browser::BrowserManager::new(config))
+                        chelix_browser::detect::check_and_warn(config.chrome_path.as_deref());
+                        Arc::new(chelix_browser::BrowserManager::new(config))
                     })
                     .await
                     {
@@ -63,8 +63,8 @@ impl RealBrowserService {
                                 "browser warmup worker failed, falling back to inline initialization"
                             );
                             let config = self.config.clone();
-                            moltis_browser::detect::check_and_warn(config.chrome_path.as_deref());
-                            Arc::new(moltis_browser::BrowserManager::new(config))
+                            chelix_browser::detect::check_and_warn(config.chrome_path.as_deref());
+                            Arc::new(chelix_browser::BrowserManager::new(config))
                         },
                     }
                 })
@@ -72,7 +72,7 @@ impl RealBrowserService {
         )
     }
 
-    fn manager_if_initialized(&self) -> Option<Arc<moltis_browser::BrowserManager>> {
+    fn manager_if_initialized(&self) -> Option<Arc<chelix_browser::BrowserManager>> {
         self.manager.get().map(Arc::clone)
     }
 }
@@ -80,7 +80,7 @@ impl RealBrowserService {
 #[async_trait]
 impl BrowserService for RealBrowserService {
     async fn request(&self, params: Value) -> ServiceResult {
-        let request: moltis_browser::BrowserRequest =
+        let request: chelix_browser::BrowserRequest =
             serde_json::from_value(params).map_err(|e| format!("invalid request: {e}"))?;
 
         let manager = self.manager().await;

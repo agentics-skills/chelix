@@ -1,12 +1,12 @@
 //! Import MCP server configurations from Codex CLI.
 //!
 //! Reads MCP servers from `~/.codex/config.toml` under `[mcp_servers]`
-//! and merges them into Moltis's `mcp-servers.json`.
+//! and merges them into Chelix's `mcp-servers.json`.
 
 use std::{collections::HashMap, path::Path};
 
 use {
-    moltis_import_core::{
+    chelix_import_core::{
         mcp::{ImportMcpServer, merge_mcp_servers},
         report::CategoryReport,
     },
@@ -15,16 +15,16 @@ use {
 
 use crate::detect::CodexDetection;
 
-/// Import MCP servers from Codex config into Moltis.
+/// Import MCP servers from Codex config into Chelix.
 pub fn import_mcp_servers(detection: &CodexDetection, dest_path: &Path) -> CategoryReport {
     let Some(ref config_path) = detection.config_path else {
-        return CategoryReport::skipped(moltis_import_core::report::ImportCategory::McpServers);
+        return CategoryReport::skipped(chelix_import_core::report::ImportCategory::McpServers);
     };
 
     let servers = match extract_mcp_from_config(config_path) {
         Some(s) if !s.is_empty() => s,
         _ => {
-            return CategoryReport::skipped(moltis_import_core::report::ImportCategory::McpServers);
+            return CategoryReport::skipped(chelix_import_core::report::ImportCategory::McpServers);
         },
     };
 
@@ -217,7 +217,7 @@ args = []
         let report = import_mcp_servers(&detection, &dest);
         assert_eq!(
             report.status,
-            moltis_import_core::report::ImportStatus::Skipped
+            chelix_import_core::report::ImportStatus::Skipped
         );
     }
 
@@ -229,7 +229,7 @@ args = []
         let report = import_mcp_servers(&detection, &dest);
         assert_eq!(
             report.status,
-            moltis_import_core::report::ImportStatus::Skipped
+            chelix_import_core::report::ImportStatus::Skipped
         );
     }
 }

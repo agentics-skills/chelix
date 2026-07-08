@@ -1,17 +1,17 @@
 [package]
 edition.workspace = true
-name              = "moltis-network-filter"
+name              = "chelix-network-filter"
 version.workspace = true
 
 [features]
 default = ["metrics", "proxy", "service"]
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 proxy   = ["dep:uuid"]
 service = []
 
 [dependencies]
 async-trait    = { workspace = true }
-moltis-metrics = { optional = true, workspace = true }
+chelix-metrics = { optional = true, workspace = true }
 serde          = { workspace = true }
 serde_json     = { workspace = true }
 thiserror      = { workspace = true }

@@ -2,11 +2,11 @@
 //
 // With Vite bundling, individual modules are no longer served. The real
 // nodes-selector module lives inside the bundle but is exposed on
-// window.__moltis_modules["nodes-selector"] from main.tsx.
+// window.__chelix_modules["nodes-selector"] from main.tsx.
 //
 // This shim re-exports everything the e2e tests need.
 
-const M = window.__moltis_modules?.["nodes-selector"] || {};
+const M = window.__chelix_modules?.["nodes-selector"] || {};
 
 export default M;
 

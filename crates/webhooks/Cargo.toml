@@ -1,6 +1,6 @@
 [package]
 edition.workspace = true
-name              = "moltis-webhooks"
+name              = "chelix-webhooks"
 version.workspace = true
 
 [dependencies]
@@ -9,9 +9,9 @@ async-trait    = { workspace = true }
 axum           = { workspace = true }
 hex            = { workspace = true }
 hmac           = { workspace = true }
-moltis-common  = { workspace = true }
-moltis-config  = { workspace = true }
-moltis-metrics = { optional = true, workspace = true }
+chelix-common  = { workspace = true }
+chelix-config  = { workspace = true }
+chelix-metrics = { optional = true, workspace = true }
 rand           = { workspace = true }
 serde          = { workspace = true }
 serde_json     = { workspace = true }
@@ -26,7 +26,7 @@ uuid           = { workspace = true }
 
 [features]
 default = []
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 tracing = []
 
 [dev-dependencies]

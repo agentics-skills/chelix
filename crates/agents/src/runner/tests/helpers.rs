@@ -7,7 +7,7 @@ use {
     crate::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent, ToolCall, Usage},
     anyhow::{Result, bail},
     async_trait::async_trait,
-    moltis_common::hooks::{HookAction, HookEvent, HookHandler, HookPayload, HookRegistry},
+    chelix_common::hooks::{HookAction, HookEvent, HookHandler, HookPayload, HookRegistry},
     std::{pin::Pin, sync::Arc},
     tokio_stream::Stream,
 };
@@ -53,7 +53,7 @@ impl HookHandler for RecordingHook {
         &self,
         _event: HookEvent,
         payload: &HookPayload,
-    ) -> moltis_common::error::Result<HookAction> {
+    ) -> chelix_common::error::Result<HookAction> {
         self.payloads.lock().unwrap().push(payload.clone());
         Ok(HookAction::Continue)
     }
@@ -78,7 +78,7 @@ impl HookHandler for RewriteToolArgsHook {
         &self,
         _event: HookEvent,
         _payload: &HookPayload,
-    ) -> moltis_common::error::Result<HookAction> {
+    ) -> chelix_common::error::Result<HookAction> {
         Ok(HookAction::ModifyPayload(self.replacement.clone()))
     }
 }
@@ -102,7 +102,7 @@ impl HookHandler for AgentStartRecordingHook {
         &self,
         _event: HookEvent,
         payload: &HookPayload,
-    ) -> moltis_common::error::Result<HookAction> {
+    ) -> chelix_common::error::Result<HookAction> {
         self.payloads.lock().unwrap().push(payload.clone());
         Ok(HookAction::Continue)
     }

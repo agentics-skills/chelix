@@ -8,15 +8,15 @@ use {
 };
 
 use {
-    moltis_gateway::auth::{AuthIdentity, AuthMethod},
-    moltis_protocol::{
+    chelix_gateway::auth::{AuthIdentity, AuthMethod},
+    chelix_protocol::{
         ConnectParams, ConnectParamsV4, ErrorShape, EventFrame, Extensions, Features, GatewayFrame,
         HANDSHAKE_TIMEOUT_MS, HelloAuth, HelloOk, KNOWN_EVENTS, MAX_PAYLOAD_BYTES,
         PROTOCOL_VERSION, Policy, ResponseFrame, ServerInfo, error_codes, roles, scopes,
     },
 };
 
-use moltis_gateway::{
+use chelix_gateway::{
     auth,
     broadcast::{BroadcastOpts, broadcast},
     methods::{MethodContext, MethodRegistry},
@@ -142,7 +142,7 @@ pub async fn handle_connection(
     // 3. No password + remote/proxied → onboarding only.
     //
     // `is_local` is computed per-request by `is_local_connection()` using:
-    //   - MOLTIS_BEHIND_PROXY env var (hard override)
+    //   - CHELIX_BEHIND_PROXY env var (hard override)
     //   - Proxy header detection (X-Forwarded-For, X-Real-IP, etc.)
     //   - Host header loopback check
     //   - TCP source IP loopback check
@@ -202,7 +202,7 @@ pub async fn handle_connection(
 
         // TOFU key pinning: reject if this device_id has been revoked or has a different key.
         match store.check_key_pinning(&params.client.id, pk_b64).await {
-            Ok(moltis_gateway::pairing::KeyPinningResult::Revoked) => {
+            Ok(chelix_gateway::pairing::KeyPinningResult::Revoked) => {
                 warn!(
                     conn_id = %conn_id,
                     device_id = %params.client.id,
@@ -221,7 +221,7 @@ pub async fn handle_connection(
                 graceful_writer_shutdown(client_tx, write_handle).await;
                 return;
             },
-            Ok(moltis_gateway::pairing::KeyPinningResult::Mismatch { expected }) => {
+            Ok(chelix_gateway::pairing::KeyPinningResult::Mismatch { expected }) => {
                 let expected_fp =
                     public_key_fingerprint(&expected).unwrap_or_else(|_| "unknown".into());
                 warn!(
@@ -882,14 +882,14 @@ pub async fn handle_connection(
         let tz_val = tz;
         let tz_display = tz_str.clone();
         tokio::task::spawn_blocking(move || {
-            let write_mode = moltis_config::discover_and_load()
+            let write_mode = chelix_config::discover_and_load()
                 .memory
                 .user_profile_write_mode;
-            let existing_user = moltis_config::resolve_user_profile();
+            let existing_user = chelix_config::resolve_user_profile();
             if existing_user.timezone.as_ref().is_none() && write_mode.allows_auto_write() {
                 let mut user = existing_user;
-                user.timezone = Some(moltis_config::Timezone::from(tz_val));
-                if let Err(e) = moltis_config::save_user_with_mode(&user, write_mode) {
+                user.timezone = Some(chelix_config::Timezone::from(tz_val));
+                if let Err(e) = chelix_config::save_user_with_mode(&user, write_mode) {
                     warn!(conn_id = %tz_conn_id, error = %e, "ws: failed to auto-persist timezone");
                 } else {
                     info!(conn_id = %tz_conn_id, timezone = %tz_display, "ws: auto-persisted browser timezone to USER.md");
@@ -923,8 +923,8 @@ pub async fn handle_connection(
 
     #[cfg(feature = "metrics")]
     {
-        moltis_metrics::counter!(moltis_metrics::websocket::CONNECTIONS_TOTAL).increment(1);
-        moltis_metrics::gauge!(moltis_metrics::websocket::CONNECTIONS_ACTIVE).increment(1.0);
+        chelix_metrics::counter!(chelix_metrics::websocket::CONNECTIONS_TOTAL).increment(1);
+        chelix_metrics::gauge!(chelix_metrics::websocket::CONNECTIONS_ACTIVE).increment(1.0);
     }
 
     // If node role, register in node registry.
@@ -993,7 +993,7 @@ pub async fn handle_connection(
             let prov_state = Arc::clone(&state);
             let prov_node_id = params.client.id.clone();
             tokio::spawn(async move {
-                match moltis_gateway::node_command::query_node_providers(&prov_state, &prov_node_id)
+                match chelix_gateway::node_command::query_node_providers(&prov_state, &prov_node_id)
                     .await
                 {
                     Ok(providers) => {
@@ -1169,7 +1169,7 @@ pub async fn handle_connection(
         .unwrap_or_default();
 
     #[cfg(feature = "metrics")]
-    moltis_metrics::gauge!(moltis_metrics::websocket::CONNECTIONS_ACTIVE).decrement(1.0);
+    chelix_metrics::gauge!(chelix_metrics::websocket::CONNECTIONS_ACTIVE).decrement(1.0);
 
     debug!(
         conn_id = %conn_id,
@@ -1238,11 +1238,11 @@ async fn receive_challenge_response(
 
 /// Poll the pair request status until it's resolved or expired.
 async fn wait_for_pair_approval(
-    store: &moltis_gateway::pairing::PairingStore,
+    store: &chelix_gateway::pairing::PairingStore,
     pair_id: &str,
     timeout: std::time::Duration,
 ) -> PairOutcome {
-    use moltis_gateway::pairing::PairStatus;
+    use chelix_gateway::pairing::PairStatus;
 
     let deadline = tokio::time::Instant::now() + timeout;
     let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));

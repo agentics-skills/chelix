@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use portable_pty::CommandBuilder;
 
-use {moltis_httpd::AppState, tokio::process::Command};
+use {chelix_httpd::AppState, tokio::process::Command};
 
 use super::types::{
     SandboxTerminalTarget, SandboxTmuxPaneInfo, SandboxTmuxSessionInfo, SandboxTmuxTree,
@@ -11,7 +11,7 @@ use super::types::{
 
 const SANDBOX_WORKDIR: &str = "/home/sandbox";
 const APPLE_CONTAINER_WORKDIR: &str = "/tmp";
-const FIELD_SEP: &str = "|moltis-tmux-field|";
+const FIELD_SEP: &str = "|chelix-tmux-field|";
 
 #[derive(Debug)]
 struct SandboxCommandOutput {
@@ -52,10 +52,10 @@ pub(crate) async fn sandbox_terminal_targets(
                 .config()
                 .container_prefix
                 .clone()
-                .unwrap_or_else(|| "moltis-sandbox".to_string())
+                .unwrap_or_else(|| "chelix-sandbox".to_string())
         })
-        .unwrap_or_else(|| "moltis-sandbox".to_string());
-    let containers = moltis_tools::sandbox::list_running_containers(&prefix)
+        .unwrap_or_else(|| "chelix-sandbox".to_string());
+    let containers = chelix_tools::sandbox::list_running_containers(&prefix)
         .await
         .map_err(|err| format!("failed to list sandbox terminal targets: {err}"))?;
     let mut targets: Vec<SandboxTerminalTarget> = containers
@@ -63,7 +63,7 @@ pub(crate) async fn sandbox_terminal_targets(
         .filter(|container| {
             matches!(
                 container.state,
-                moltis_tools::sandbox::ContainerRunState::Running
+                chelix_tools::sandbox::ContainerRunState::Running
             )
         })
         .map(|container| {
@@ -357,20 +357,20 @@ fn backend_cli(backend: &str) -> &str {
     }
 }
 
-fn container_backend_name(backend: moltis_tools::sandbox::ContainerBackend) -> &'static str {
+fn container_backend_name(backend: chelix_tools::sandbox::ContainerBackend) -> &'static str {
     match backend {
-        moltis_tools::sandbox::ContainerBackend::AppleContainer => "apple-container",
-        moltis_tools::sandbox::ContainerBackend::Docker => "docker",
-        moltis_tools::sandbox::ContainerBackend::Podman => "podman",
+        chelix_tools::sandbox::ContainerBackend::AppleContainer => "apple-container",
+        chelix_tools::sandbox::ContainerBackend::Docker => "docker",
+        chelix_tools::sandbox::ContainerBackend::Podman => "podman",
     }
 }
 
-fn container_state_name(state: moltis_tools::sandbox::ContainerRunState) -> &'static str {
+fn container_state_name(state: chelix_tools::sandbox::ContainerRunState) -> &'static str {
     match state {
-        moltis_tools::sandbox::ContainerRunState::Running => "running",
-        moltis_tools::sandbox::ContainerRunState::Stopped => "stopped",
-        moltis_tools::sandbox::ContainerRunState::Exited => "exited",
-        moltis_tools::sandbox::ContainerRunState::Unknown => "unknown",
+        chelix_tools::sandbox::ContainerRunState::Running => "running",
+        chelix_tools::sandbox::ContainerRunState::Stopped => "stopped",
+        chelix_tools::sandbox::ContainerRunState::Exited => "exited",
+        chelix_tools::sandbox::ContainerRunState::Unknown => "unknown",
     }
 }
 
@@ -493,7 +493,7 @@ mod tests {
 
     #[test]
     fn parse_sessions_accepts_live_tmux_separator_output() {
-        let input = "$0|moltis-tmux-field|ivan-bash-2|moltis-tmux-field|0\n";
+        let input = "$0|chelix-tmux-field|ivan-bash-2|chelix-tmux-field|0\n";
         let sessions = parse_sessions(input).expect("live tmux session output should parse");
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].id, "$0");

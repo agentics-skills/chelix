@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-use moltis_agents::model::{AgentToolControls, ChatMessage, StreamEvent};
+use chelix_agents::model::{AgentToolControls, ChatMessage, StreamEvent};
 
 use super::OpenAiProvider;
 

@@ -1,7 +1,7 @@
 const { expect, test } = require("../base-test");
 const { expectRpcOk, navigateAndWait, sendRpcFromPage, waitForWsConnected, watchPageErrors } = require("../helpers");
 
-const OPENAI_API_KEY = process.env.MOLTIS_E2E_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "";
+const OPENAI_API_KEY = process.env.CHELIX_E2E_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "";
 const SENTINEL = "OPENAI_LIVE_E2E_OK";
 
 function isLikelyFunctionCallingModel(modelId) {
@@ -13,7 +13,7 @@ function isLikelyFunctionCallingModel(modelId) {
 test.describe("Live OpenAI provider", () => {
 	test.describe.configure({ mode: "serial" });
 
-	test.skip(!OPENAI_API_KEY, "requires OPENAI_API_KEY or MOLTIS_E2E_OPENAI_API_KEY");
+	test.skip(!OPENAI_API_KEY, "requires OPENAI_API_KEY or CHELIX_E2E_OPENAI_API_KEY");
 
 	test("existing env can complete a real OpenAI chat turn", async ({ page }) => {
 		test.setTimeout(120_000);

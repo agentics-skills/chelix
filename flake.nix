@@ -1,5 +1,5 @@
 {
-  description = "Moltis - Personal AI gateway";
+  description = "Chelix - Personal AI gateway";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -51,11 +51,11 @@
             || (builtins.match ".*/wit.*" path != null);
         };
 
-        moltis-wasm-tools = wasmCraneLib.buildPackage {
+        chelix-wasm-tools = wasmCraneLib.buildPackage {
           inherit src;
-          pname = "moltis-wasm-tools";
+          pname = "chelix-wasm-tools";
           doCheck = false;
-          cargoExtraArgs = "--target wasm32-wasip2 -p moltis-wasm-calc -p moltis-wasm-web-fetch -p moltis-wasm-web-search ";
+          cargoExtraArgs = "--target wasm32-wasip2 -p chelix-wasm-calc -p chelix-wasm-web-fetch -p chelix-wasm-web-search ";
           nativeBuildInputs = with pkgs;
             [
               rustPlatform.bindgenHook
@@ -69,7 +69,7 @@
         };
       in {
         packages.default = rustPlatform.buildRustPackage {
-          pname = "moltis";
+          pname = "chelix";
           version = "0.1.0";
           inherit src;
           doCheck = false;
@@ -80,7 +80,7 @@
           ];
           preBuild = ''
             mkdir -p target/wasm32-wasip2/release/
-            ln -s ${moltis-wasm-tools}/lib/* target/wasm32-wasip2/release/
+            ln -s ${chelix-wasm-tools}/lib/* target/wasm32-wasip2/release/
           '';
           cargoLock = {
             lockFile = ./Cargo.lock;
@@ -94,14 +94,14 @@
             perl
             pkg-config
           ];
-          cargoBuildFlags = ["--bin" "moltis"];
-          MOLTIS_VERSION = toString (self.shortRev or self.dirtyShortRev or self.lastModified or "nix");
+          cargoBuildFlags = ["--bin" "chelix"];
+          CHELIX_VERSION = toString (self.shortRev or self.dirtyShortRev or self.lastModified or "nix");
 
           meta = with pkgs.lib; {
             description = "Personal AI gateway";
             homepage = "https://github.com/agentics-skills/chelix";
             license = licenses.mit;
-            mainProgram = "moltis";
+            mainProgram = "chelix";
           };
         };
 

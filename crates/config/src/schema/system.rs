@@ -40,16 +40,16 @@ pub struct ServerConfig {
     /// Enable or disable the host terminal in the web UI.
     ///
     /// Defaults to `true`. Set to `false` to prevent the web UI from
-    /// offering an unsandboxed shell. The `MOLTIS_TERMINAL_DISABLED`
+    /// offering an unsandboxed shell. The `CHELIX_TERMINAL_DISABLED`
     /// environment variable (set to `1` or `true`) takes precedence over
     /// this field and cannot be changed from the web UI config editor.
     #[serde(default = "default_terminal_enabled")]
     pub terminal_enabled: bool,
     /// Public URL when running behind a reverse proxy (e.g.
-    /// `https://moltis.example.com`). Used to derive the WebAuthn RP ID
+    /// `https://chelix.example.com`). Used to derive the WebAuthn RP ID
     /// and origin so passkey auth works with the proxy's public hostname.
     ///
-    /// The `MOLTIS_EXTERNAL_URL` environment variable takes precedence
+    /// The `CHELIX_EXTERNAL_URL` environment variable takes precedence
     /// over this field.
     pub external_url: Option<String>,
 }
@@ -85,11 +85,11 @@ impl Default for ServerConfig {
 
 impl ServerConfig {
     /// Returns whether the web UI terminal is enabled, accounting for the
-    /// `MOLTIS_TERMINAL_DISABLED` env-var override. When the env var is set
+    /// `CHELIX_TERMINAL_DISABLED` env-var override. When the env var is set
     /// to `"1"` or `"true"` (case-insensitive), the terminal is disabled
     /// regardless of the config file value.
     pub fn is_terminal_enabled(&self) -> bool {
-        if let Ok(val) = std::env::var("MOLTIS_TERMINAL_DISABLED")
+        if let Ok(val) = std::env::var("CHELIX_TERMINAL_DISABLED")
             && (val.eq_ignore_ascii_case("true") || val == "1")
         {
             return false;
@@ -97,12 +97,12 @@ impl ServerConfig {
         self.terminal_enabled
     }
 
-    /// Returns the effective external URL, checking `MOLTIS_EXTERNAL_URL`
+    /// Returns the effective external URL, checking `CHELIX_EXTERNAL_URL`
     /// env var first, then falling back to the config field. Trailing
     /// slashes are stripped so the result can be used directly as a
     /// WebAuthn origin.
     pub fn effective_external_url(&self) -> Option<String> {
-        let env_val = std::env::var("MOLTIS_EXTERNAL_URL")
+        let env_val = std::env::var("CHELIX_EXTERNAL_URL")
             .ok()
             .filter(|v| !v.is_empty());
         Self::resolve_external_url(env_val.as_deref(), self.external_url.as_deref())

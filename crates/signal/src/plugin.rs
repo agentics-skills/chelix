@@ -9,7 +9,7 @@ use std::{
 use {
     async_trait::async_trait,
     futures::StreamExt,
-    moltis_channels::{
+    chelix_channels::{
         ChannelEventSink, ChannelHealthSnapshot, ChannelOtpProvider, ChannelOutbound,
         ChannelPlugin, ChannelStatus, ChannelStreamOutbound, Result as ChannelResult,
         config_view::ChannelConfigView, otp::OtpChallengeInfo,
@@ -49,7 +49,7 @@ impl SignalPlugin {
         self
     }
 
-    pub fn with_message_log(self, _log: Arc<dyn moltis_channels::message_log::MessageLog>) -> Self {
+    pub fn with_message_log(self, _log: Arc<dyn chelix_channels::message_log::MessageLog>) -> Self {
         self
     }
 
@@ -83,7 +83,7 @@ impl ChannelPlugin for SignalPlugin {
 
     async fn start_account(&mut self, account_id: &str, config: Value) -> ChannelResult<()> {
         let signal_config: SignalAccountConfig = serde_json::from_value(config).map_err(|e| {
-            moltis_channels::Error::invalid_input(format!("invalid signal config: {e}"))
+            chelix_channels::Error::invalid_input(format!("invalid signal config: {e}"))
         })?;
         let signal_config = signal_config.normalize(account_id);
 
@@ -100,11 +100,11 @@ impl ChannelPlugin for SignalPlugin {
         let event_sink = self
             .event_sink
             .clone()
-            .ok_or_else(|| moltis_channels::Error::unavailable("event sink not configured"))?;
+            .ok_or_else(|| chelix_channels::Error::unavailable("event sink not configured"))?;
 
         let cancel = CancellationToken::new();
         let shared_config = Arc::new(RwLock::new(signal_config.clone()));
-        let shared_otp = Arc::new(Mutex::new(moltis_channels::otp::OtpState::new(
+        let shared_otp = Arc::new(Mutex::new(chelix_channels::otp::OtpState::new(
             signal_config.otp_cooldown_secs,
         )));
 
@@ -184,7 +184,7 @@ impl ChannelPlugin for SignalPlugin {
     /// drops naturally or errors out.
     fn update_account_config(&self, account_id: &str, config: Value) -> ChannelResult<()> {
         let new_config: SignalAccountConfig = serde_json::from_value(config).map_err(|e| {
-            moltis_channels::Error::invalid_input(format!("invalid signal config: {e}"))
+            chelix_channels::Error::invalid_input(format!("invalid signal config: {e}"))
         })?;
         let new_config = new_config.normalize(account_id);
         let accounts = self.accounts.read().unwrap_or_else(|e| e.into_inner());
@@ -274,7 +274,7 @@ impl ChannelOtpProvider for SignalPlugin {
 async fn run_event_loop(
     client: SignalClient,
     config: Arc<RwLock<SignalAccountConfig>>,
-    otp: Arc<Mutex<moltis_channels::otp::OtpState>>,
+    otp: Arc<Mutex<chelix_channels::otp::OtpState>>,
     account_id: String,
     event_sink: Arc<dyn ChannelEventSink>,
     cancel: CancellationToken,
@@ -353,7 +353,7 @@ async fn handle_sse_data(
     data: &str,
     client: &SignalClient,
     config: &Arc<RwLock<SignalAccountConfig>>,
-    otp: &Arc<Mutex<moltis_channels::otp::OtpState>>,
+    otp: &Arc<Mutex<chelix_channels::otp::OtpState>>,
     account_id: &str,
     event_sink: &Arc<dyn ChannelEventSink>,
 ) {

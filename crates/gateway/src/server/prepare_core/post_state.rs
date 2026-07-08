@@ -17,8 +17,8 @@ mod session_tools;
 use credential_env::{CredentialEnvVarProvider, ensure_sandbox_api_key};
 
 use {
-    moltis_providers::{PendingDiscoveries, ProviderRegistry},
-    moltis_sessions::{
+    chelix_providers::{PendingDiscoveries, ProviderRegistry},
+    chelix_sessions::{
         metadata::SqliteSessionMetadata, session_events::SessionEventBus, store::SessionStore,
     },
 };
@@ -54,16 +54,16 @@ use crate::server::helpers::start_skill_hot_reload_watcher;
 pub(super) struct PostStateInputs {
     pub bind: String,
     pub port: u16,
-    pub config: moltis_config::MoltisConfig,
+    pub config: chelix_config::ChelixConfig,
     pub log_buffer: Option<crate::logs::LogBuffer>,
     pub data_dir: PathBuf,
     pub resolved_auth: auth::ResolvedAuth,
     pub deploy_platform: Option<String>,
     pub session_event_bus: SessionEventBus,
     pub services: GatewayServices,
-    pub session_mutations: Arc<moltis_service_traits::SessionMutationCoordinator>,
+    pub session_mutations: Arc<chelix_service_traits::SessionMutationCoordinator>,
     pub registry: Arc<tokio::sync::RwLock<ProviderRegistry>>,
-    pub effective_providers: moltis_config::schema::ProvidersConfig,
+    pub effective_providers: chelix_config::schema::ProvidersConfig,
     pub config_env_overrides: std::collections::HashMap<String, String>,
     pub runtime_env_overrides: std::collections::HashMap<String, String>,
     pub provider_summary: String,
@@ -73,34 +73,34 @@ pub(super) struct PostStateInputs {
     pub live_model_service: Arc<LiveModelService>,
     pub provider_setup_service: Arc<LiveProviderSetupService>,
     pub live_mcp: Arc<crate::mcp_service::LiveMcpService>,
-    pub memory_manager: Option<moltis_memory::runtime::DynMemoryRuntime>,
-    pub code_index: Arc<moltis_code_index::CodeIndex>,
+    pub memory_manager: Option<chelix_memory::runtime::DynMemoryRuntime>,
+    pub code_index: Arc<chelix_code_index::CodeIndex>,
     #[cfg(any(feature = "qmd", feature = "code-index-builtin"))]
-    pub project_store: Arc<dyn moltis_projects::ProjectStore>,
+    pub project_store: Arc<dyn chelix_projects::ProjectStore>,
     pub credential_store: Arc<auth::CredentialStore>,
     pub db_pool: sqlx::SqlitePool,
     pub session_store: Arc<SessionStore>,
     pub session_metadata: Arc<SqliteSessionMetadata>,
     pub session_share_store: Arc<crate::share_store::ShareStore>,
-    pub session_state_store: Arc<moltis_sessions::state_store::SessionStateStore>,
+    pub session_state_store: Arc<chelix_sessions::state_store::SessionStateStore>,
     pub agent_persona_store: Arc<crate::agent_persona::AgentPersonaStore>,
-    pub sandbox_router: Arc<moltis_tools::sandbox::SandboxRouter>,
-    pub cron_service: Arc<moltis_cron::service::CronService>,
+    pub sandbox_router: Arc<chelix_tools::sandbox::SandboxRouter>,
+    pub cron_service: Arc<chelix_cron::service::CronService>,
     pub deferred_state: Arc<tokio::sync::OnceCell<Arc<GatewayState>>>,
     pub startup_mem_probe: StartupMemProbe,
-    pub approval_manager: Arc<moltis_tools::approval::ApprovalManager>,
-    pub hook_registry: Option<Arc<moltis_common::hooks::HookRegistry>>,
+    pub approval_manager: Arc<chelix_tools::approval::ApprovalManager>,
+    pub hook_registry: Option<Arc<chelix_common::hooks::HookRegistry>>,
     pub discovered_hooks_info: Vec<DiscoveredHookInfo>,
     pub persisted_disabled: std::collections::HashSet<String>,
-    pub agents_config: Arc<tokio::sync::RwLock<moltis_config::AgentsConfig>>,
+    pub agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
     #[cfg(feature = "msteams")]
-    pub msteams_webhook_plugin: Arc<tokio::sync::RwLock<moltis_msteams::MsTeamsPlugin>>,
+    pub msteams_webhook_plugin: Arc<tokio::sync::RwLock<chelix_msteams::MsTeamsPlugin>>,
     #[cfg(feature = "slack")]
-    pub slack_webhook_plugin: Arc<tokio::sync::RwLock<moltis_slack::SlackPlugin>>,
+    pub slack_webhook_plugin: Arc<tokio::sync::RwLock<chelix_slack::SlackPlugin>>,
     #[cfg(feature = "telephony")]
-    pub telephony_webhook_plugin: Arc<tokio::sync::RwLock<moltis_telephony::TelephonyPlugin>>,
+    pub telephony_webhook_plugin: Arc<tokio::sync::RwLock<chelix_telephony::TelephonyPlugin>>,
     #[cfg(feature = "vault")]
-    pub vault: Option<Arc<moltis_vault::Vault>>,
+    pub vault: Option<Arc<chelix_vault::Vault>>,
     #[cfg(feature = "trusted-network")]
     pub audit_buffer: Option<crate::network_audit::NetworkAuditBuffer>,
     #[cfg(feature = "trusted-network")]
@@ -108,7 +108,7 @@ pub(super) struct PostStateInputs {
 }
 
 async fn build_webauthn_registry(
-    config: &moltis_config::MoltisConfig,
+    config: &chelix_config::ChelixConfig,
     port: u16,
 ) -> anyhow::Result<Option<crate::auth_webauthn::SharedWebAuthnRegistry>> {
     let default_scheme = if config.tls.enabled {
@@ -117,7 +117,7 @@ async fn build_webauthn_registry(
         "http"
     };
 
-    // Derive RP ID and origin from server.external_url / MOLTIS_EXTERNAL_URL
+    // Derive RP ID and origin from server.external_url / CHELIX_EXTERNAL_URL
     // when available, before falling back to fine-grained env vars.
     let (external_rp_id, external_origin) = if let Some(ref ext_url) =
         config.server.effective_external_url()
@@ -144,10 +144,10 @@ async fn build_webauthn_registry(
     };
 
     let explicit_rp_id = external_rp_id
-        .or_else(|| std::env::var("MOLTIS_WEBAUTHN_RP_ID").ok())
+        .or_else(|| std::env::var("CHELIX_WEBAUTHN_RP_ID").ok())
         .or_else(|| std::env::var("APP_DOMAIN").ok());
     let explicit_origin = external_origin
-        .or_else(|| std::env::var("MOLTIS_WEBAUTHN_ORIGIN").ok())
+        .or_else(|| std::env::var("CHELIX_WEBAUTHN_ORIGIN").ok())
         .or_else(|| std::env::var("APP_URL").ok());
 
     let mut wa_registry = crate::auth_webauthn::WebAuthnRegistry::new();
@@ -179,12 +179,12 @@ async fn build_webauthn_registry(
         try_add(rp_id, &origin, &[]);
     } else {
         let localhost_origin = format!("{default_scheme}://localhost:{port}");
-        let moltis_localhost: Vec<webauthn_rs::prelude::Url> = webauthn_rs::prelude::Url::parse(
-            &format!("{default_scheme}://moltis.localhost:{port}"),
+        let chelix_localhost: Vec<webauthn_rs::prelude::Url> = webauthn_rs::prelude::Url::parse(
+            &format!("{default_scheme}://chelix.localhost:{port}"),
         )
         .into_iter()
         .collect();
-        try_add("localhost", &localhost_origin, &moltis_localhost);
+        try_add("localhost", &localhost_origin, &chelix_localhost);
 
         let instance_slug_value = instance_slug(config);
         if instance_slug_value != "localhost" {
@@ -289,15 +289,15 @@ pub(super) async fn complete_startup(
 
     #[cfg(feature = "metrics")]
     let metrics_handle = {
-        let metrics_config = moltis_metrics::MetricsRecorderConfig {
+        let metrics_config = chelix_metrics::MetricsRecorderConfig {
             enabled: config.metrics.enabled,
             prefix: None,
             global_labels: vec![
-                ("service".to_string(), "moltis-gateway".to_string()),
-                ("version".to_string(), moltis_config::VERSION.to_string()),
+                ("service".to_string(), "chelix-gateway".to_string()),
+                ("version".to_string(), chelix_config::VERSION.to_string()),
             ],
         };
-        match moltis_metrics::init_metrics(metrics_config) {
+        match chelix_metrics::init_metrics(metrics_config) {
             Ok(handle) => {
                 if config.metrics.enabled {
                     info!("Metrics collection enabled");
@@ -314,7 +314,7 @@ pub(super) async fn complete_startup(
     #[cfg(feature = "metrics")]
     let metrics_store: Option<Arc<dyn crate::state::MetricsStore>> = {
         let metrics_db_path = data_dir.join("metrics.db");
-        match moltis_metrics::SqliteMetricsStore::new(&metrics_db_path).await {
+        match chelix_metrics::SqliteMetricsStore::new(&metrics_db_path).await {
             Ok(store) => {
                 info!(
                     "Metrics history store initialized at {}",
@@ -368,7 +368,7 @@ pub(super) async fn complete_startup(
         Some(Arc::clone(&credential_store)),
         Some(pairing_store),
         is_localhost,
-        env_flag_enabled("MOLTIS_BEHIND_PROXY"),
+        env_flag_enabled("CHELIX_BEHIND_PROXY"),
         tls_enabled_for_gateway,
         hook_registry.clone(),
         memory_manager.clone(),
@@ -394,9 +394,9 @@ pub(super) async fn complete_startup(
 
     {
         let (webhook_tx, webhook_rx) = tokio::sync::mpsc::channel::<i64>(256);
-        let webhook_store: Arc<dyn moltis_webhooks::store::WebhookStore> = {
-            let inner: Arc<dyn moltis_webhooks::store::WebhookStore> = Arc::new(
-                moltis_webhooks::store::SqliteWebhookStore::with_pool(db_pool.clone()),
+        let webhook_store: Arc<dyn chelix_webhooks::store::WebhookStore> = {
+            let inner: Arc<dyn chelix_webhooks::store::WebhookStore> = Arc::new(
+                chelix_webhooks::store::SqliteWebhookStore::with_pool(db_pool.clone()),
             );
             #[cfg(feature = "vault")]
             {
@@ -415,10 +415,10 @@ pub(super) async fn complete_startup(
 
         let worker_store = Arc::clone(&webhook_store);
         let worker_state_ref = Arc::clone(&state);
-        let worker = moltis_webhooks::worker::WebhookWorker::new(
+        let worker = chelix_webhooks::worker::WebhookWorker::new(
             webhook_rx,
             worker_store,
-            Arc::new(move |req: moltis_webhooks::worker::ExecuteRequest| {
+            Arc::new(move |req: chelix_webhooks::worker::ExecuteRequest| {
                 let chat_state = Arc::clone(&worker_state_ref);
                 Box::pin(async move {
                     let chat = chat_state.chat();
@@ -446,7 +446,7 @@ pub(super) async fn complete_startup(
                         .get("text")
                         .and_then(|v| v.as_str())
                         .map(String::from);
-                    Ok(moltis_webhooks::worker::ProcessResult {
+                    Ok(chelix_webhooks::worker::ProcessResult {
                         output,
                         input_tokens,
                         output_tokens,
@@ -486,7 +486,7 @@ pub(super) async fn complete_startup(
 
     let setup_code_display =
         if !credential_store.is_setup_complete() && !credential_store.is_auth_disabled() {
-            let code = std::env::var("MOLTIS_E2E_SETUP_CODE")
+            let code = std::env::var("CHELIX_E2E_SETUP_CODE")
                 .unwrap_or_else(|_| auth::generate_setup_code());
             {
                 let mut inner = state.inner.write().await;
@@ -507,7 +507,7 @@ pub(super) async fn complete_startup(
         let state_for_startup_discovery = Arc::clone(&state);
         let provider_config_for_startup_discovery = effective_providers.clone();
         let provider_config_for_registry_rebuild = provider_config_for_startup_discovery.clone();
-        let global_cw_overrides = moltis_providers::extract_cw_overrides(&config.models);
+        let global_cw_overrides = chelix_providers::extract_cw_overrides(&config.models);
         let env_overrides_for_startup_discovery = config_env_overrides.clone();
         tokio::spawn(async move {
             let startup_discovery_started = std::time::Instant::now();
@@ -585,7 +585,7 @@ pub(super) async fn complete_startup(
     state.set_graphql_enabled(config.graphql.enabled);
 
     {
-        let broadcaster: Arc<dyn moltis_tools::approval::ApprovalBroadcaster> =
+        let broadcaster: Arc<dyn chelix_tools::approval::ApprovalBroadcaster> =
             Arc::new(GatewayApprovalBroadcaster::new(Arc::clone(&state)));
         // Build gateway URL for sandbox-to-gateway communication.
         // Only inject when the sandbox network policy allows host access
@@ -593,7 +593,7 @@ pub(super) async fn complete_startup(
         // has --network=none and host.docker.internal won't resolve.
         let sandbox_network_allows_host = !matches!(
             sandbox_router.config().network,
-            moltis_tools::sandbox::NetworkPolicy::Blocked
+            chelix_tools::sandbox::NetworkPolicy::Blocked
         );
         let sandbox_gateway_url = if sandbox_network_allows_host {
             let scheme = if tls_enabled_for_gateway {
@@ -611,7 +611,7 @@ pub(super) async fn complete_startup(
             None
         };
 
-        let env_provider: Arc<dyn moltis_tools::command::EnvVarProvider> =
+        let env_provider: Arc<dyn chelix_tools::command::EnvVarProvider> =
             Arc::new(CredentialEnvVarProvider {
                 store: Arc::clone(&credential_store),
                 gateway_url: sandbox_gateway_url,
@@ -619,36 +619,36 @@ pub(super) async fn complete_startup(
             });
         let events_queue = cron_service.events_queue().clone();
         let cron_for_command_events = Arc::clone(&cron_service);
-        let command_completion_callback: moltis_tools::command::CommandCompletionFn =
+        let command_completion_callback: chelix_tools::command::CommandCompletionFn =
             Arc::new(move |event| {
                 let summary = format!("Command `{}` exited {}", event.command, event.exit_code);
                 let events_queue = Arc::clone(&events_queue);
                 let cron_for_command_events = Arc::clone(&cron_for_command_events);
                 tokio::spawn(async move {
                     events_queue
-                        .enqueue(summary, moltis_cron::WAKE_REASON_COMMAND_EVENT.into())
+                        .enqueue(summary, chelix_cron::WAKE_REASON_COMMAND_EVENT.into())
                         .await;
                     cron_for_command_events
-                        .wake(moltis_cron::WAKE_REASON_COMMAND_EVENT)
+                        .wake(chelix_cron::WAKE_REASON_COMMAND_EVENT)
                         .await;
                 });
             });
 
-        let cron_tool = moltis_tools::cron_tool::CronTool::new(Arc::clone(&cron_service));
+        let cron_tool = chelix_tools::cron_tool::CronTool::new(Arc::clone(&cron_service));
 
-        let mut tool_registry = moltis_agents::tool_registry::ToolRegistry::new();
-        let process_tool = moltis_tools::process::ProcessTool::new()
+        let mut tool_registry = chelix_agents::tool_registry::ToolRegistry::new();
+        let process_tool = chelix_tools::process::ProcessTool::new()
             .with_sandbox_router(Arc::clone(&sandbox_router));
 
-        let sandbox_packages_tool = moltis_tools::sandbox_packages::SandboxPackagesTool::new()
+        let sandbox_packages_tool = chelix_tools::sandbox_packages::SandboxPackagesTool::new()
             .with_sandbox_router(Arc::clone(&sandbox_router));
 
-        let tmux_terminal_manager = Arc::new(moltis_tools::tmux_command::TmuxTerminalManager::new(
+        let tmux_terminal_manager = Arc::new(chelix_tools::tmux_command::TmuxTerminalManager::new(
             Arc::clone(&sandbox_router),
             config.tools.execute_command.max_output_bytes,
         ));
         let mut execute_command_tool =
-            moltis_tools::tmux_command::ExecuteCommandTool::new(Arc::clone(&tmux_terminal_manager))
+            chelix_tools::tmux_command::ExecuteCommandTool::new(Arc::clone(&tmux_terminal_manager))
                 .with_default_timeout(std::time::Duration::from_secs(
                     config.tools.execute_command.default_timeout_secs,
                 ))
@@ -674,16 +674,16 @@ pub(super) async fn complete_startup(
 
         tool_registry.register(Box::new(execute_command_tool));
         tool_registry.register(Box::new(
-            moltis_tools::tmux_command::ReadTerminalOutputTool::new(Arc::clone(
+            chelix_tools::tmux_command::ReadTerminalOutputTool::new(Arc::clone(
                 &tmux_terminal_manager,
             )),
         ));
-        tool_registry.register(Box::new(moltis_tools::calc::CalcTool::new()));
+        tool_registry.register(Box::new(chelix_tools::calc::CalcTool::new()));
         #[cfg(feature = "fs-tools")]
         {
-            use moltis_config::schema::FsBinaryPolicy;
+            use chelix_config::schema::FsBinaryPolicy;
             let fs_cfg = &config.tools.fs;
-            let path_policy = match moltis_tools::fs::FsPathPolicy::new(
+            let path_policy = match chelix_tools::fs::FsPathPolicy::new(
                 &fs_cfg.allow_paths,
                 &fs_cfg.deny_paths,
             ) {
@@ -701,24 +701,24 @@ pub(super) async fn complete_startup(
             };
             let workspace_root = fs_cfg.workspace_root.as_ref().map(PathBuf::from);
             let binary_policy = match fs_cfg.binary_policy {
-                FsBinaryPolicy::Reject => moltis_tools::fs::BinaryPolicy::Reject,
-                FsBinaryPolicy::Base64 => moltis_tools::fs::BinaryPolicy::Base64,
+                FsBinaryPolicy::Reject => chelix_tools::fs::BinaryPolicy::Reject,
+                FsBinaryPolicy::Base64 => chelix_tools::fs::BinaryPolicy::Base64,
             };
             let checkpoint_manager = if fs_cfg.checkpoint_before_mutation {
-                Some(Arc::new(moltis_tools::checkpoints::CheckpointManager::new(
-                    moltis_config::data_dir(),
+                Some(Arc::new(chelix_tools::checkpoints::CheckpointManager::new(
+                    chelix_config::data_dir(),
                 )))
             } else {
                 None
             };
             let shared_fs_state = if fs_cfg.track_reads {
-                Some(moltis_tools::fs::new_fs_state(
+                Some(chelix_tools::fs::new_fs_state(
                     fs_cfg.must_read_before_write,
                 ))
             } else {
                 None
             };
-            let ctx = moltis_tools::fs::FsToolsContext {
+            let ctx = chelix_tools::fs::FsToolsContext {
                 workspace_root,
                 fs_state: shared_fs_state.clone(),
                 path_policy,
@@ -733,7 +733,7 @@ pub(super) async fn complete_startup(
                 max_read_bytes: Some(fs_cfg.max_read_bytes),
                 context_window_tokens: fs_cfg.context_window_tokens,
             };
-            moltis_tools::fs::register_fs_tools(&mut tool_registry, ctx);
+            chelix_tools::fs::register_fs_tools(&mut tool_registry, ctx);
             if let Some(message) = fs_tools_host_warning_message(&sandbox_router) {
                 warn!("{message}");
             }
@@ -758,7 +758,7 @@ pub(super) async fn complete_startup(
                 .map(|s| s.expose_secret().clone())
                 .or_else(|| env_value_with_overrides(&runtime_env_overrides, "BRAVE_API_KEY"))
                 .filter(|k| !k.trim().is_empty());
-            if let Err(e) = moltis_tools::wasm_tool_runner::register_wasm_tools(
+            if let Err(e) = chelix_tools::wasm_tool_runner::register_wasm_tools(
                 &mut tool_registry,
                 &wasm_limits,
                 epoch_interval_ms,
@@ -774,7 +774,7 @@ pub(super) async fn complete_startup(
         tool_registry.register(Box::new(process_tool));
         tool_registry.register(Box::new(sandbox_packages_tool));
         tool_registry.register(Box::new(cron_tool));
-        tool_registry.register(Box::new(moltis_tools::webhook_tool::WebhookTool::new(
+        tool_registry.register(Box::new(chelix_tools::webhook_tool::WebhookTool::new(
             Arc::clone(&state.services.webhooks),
         )));
         tool_registry.register(Box::new(crate::channel_agent_tools::SendMessageTool::new(
@@ -831,21 +831,21 @@ pub(super) async fn complete_startup(
             ),
         ));
         tool_registry.register(Box::new(
-            moltis_tools::send_image::SendImageTool::new()
+            chelix_tools::send_image::SendImageTool::new()
                 .with_sandbox_router(Arc::clone(&sandbox_router)),
         ));
         #[cfg(feature = "provider-openai-codex")]
-        if moltis_providers::openai_codex::has_stored_tokens() {
+        if chelix_providers::openai_codex::has_stored_tokens() {
             tool_registry.register(Box::new(
-                moltis_tools::image_generation::GenerateImageTool::new(),
+                chelix_tools::image_generation::GenerateImageTool::new(),
             ));
         }
         tool_registry.register(Box::new(
-            moltis_tools::send_document::SendDocumentTool::new()
+            chelix_tools::send_document::SendDocumentTool::new()
                 .with_sandbox_router(Arc::clone(&sandbox_router))
                 .with_session_store(Arc::clone(&session_store)),
         ));
-        if let Some(t) = moltis_tools::web_search::WebSearchTool::from_config_with_env_overrides(
+        if let Some(t) = chelix_tools::web_search::WebSearchTool::from_config_with_env_overrides(
             &config.tools.web.search,
             &runtime_env_overrides,
         ) {
@@ -853,7 +853,7 @@ pub(super) async fn complete_startup(
             let t = t.with_firecrawl_config(&config.tools.web.firecrawl);
             tool_registry.register(Box::new(t.with_env_provider(Arc::clone(&env_provider))));
         }
-        if let Some(t) = moltis_tools::web_fetch::WebFetchTool::from_config(&config.tools.web.fetch)
+        if let Some(t) = chelix_tools::web_fetch::WebFetchTool::from_config(&config.tools.web.fetch)
         {
             #[cfg(feature = "firecrawl")]
             let t = t.with_firecrawl(&config.tools.web.firecrawl);
@@ -861,11 +861,11 @@ pub(super) async fn complete_startup(
         }
         #[cfg(feature = "firecrawl")]
         if let Some(t) =
-            moltis_tools::firecrawl::FirecrawlScrapeTool::from_config(&config.tools.web.firecrawl)
+            chelix_tools::firecrawl::FirecrawlScrapeTool::from_config(&config.tools.web.firecrawl)
         {
             tool_registry.register(Box::new(t));
         }
-        if let Some(t) = moltis_tools::browser::BrowserTool::from_tools_config(&config.tools) {
+        if let Some(t) = chelix_tools::browser::BrowserTool::from_tools_config(&config.tools) {
             let t = if sandbox_router.backend_name() != "none" {
                 t.with_sandbox_router(Arc::clone(&sandbox_router))
             } else {
@@ -876,7 +876,7 @@ pub(super) async fn complete_startup(
 
         #[cfg(feature = "caldav")]
         {
-            if let Some(t) = moltis_caldav::tool::CalDavTool::from_config(&config.caldav) {
+            if let Some(t) = chelix_caldav::tool::CalDavTool::from_config(&config.caldav) {
                 tool_registry.register(Box::new(t));
             }
         }
@@ -884,26 +884,26 @@ pub(super) async fn complete_startup(
         #[cfg(feature = "home-assistant")]
         {
             if let Some(t) =
-                moltis_home_assistant::tool::HomeAssistantTool::from_config(&config.home_assistant)
+                chelix_home_assistant::tool::HomeAssistantTool::from_config(&config.home_assistant)
             {
                 tool_registry.register(Box::new(t));
             }
         }
 
         if let Some(ref mm) = memory_manager {
-            tool_registry.register(Box::new(moltis_memory::tools::MemorySearchTool::new(
+            tool_registry.register(Box::new(chelix_memory::tools::MemorySearchTool::new(
                 Arc::clone(mm),
             )));
-            tool_registry.register(Box::new(moltis_memory::tools::MemoryGetTool::new(
+            tool_registry.register(Box::new(chelix_memory::tools::MemoryGetTool::new(
                 Arc::clone(mm),
             )));
-            tool_registry.register(Box::new(moltis_memory::tools::MemorySaveTool::new(
+            tool_registry.register(Box::new(chelix_memory::tools::MemorySaveTool::new(
                 Arc::clone(mm),
             )));
-            tool_registry.register(Box::new(moltis_memory::tools::MemoryDeleteTool::new(
+            tool_registry.register(Box::new(chelix_memory::tools::MemoryDeleteTool::new(
                 Arc::clone(mm),
             )));
-            tool_registry.register(Box::new(moltis_chat::MemoryForgetTool::new(
+            tool_registry.register(Box::new(chelix_chat::MemoryForgetTool::new(
                 Arc::clone(mm),
                 Arc::clone(&registry),
                 Arc::clone(&session_metadata),
@@ -914,7 +914,7 @@ pub(super) async fn complete_startup(
         #[cfg(feature = "qmd")]
         {
             use crate::project_aware_tools::ProjectAwareCodeIndexTool;
-            moltis_code_index::tools::register_tools_wrapped(
+            chelix_code_index::tools::register_tools_wrapped(
                 &mut tool_registry,
                 code_index_for_tools,
                 |tool| {
@@ -929,7 +929,7 @@ pub(super) async fn complete_startup(
         #[cfg(all(feature = "code-index-builtin", not(feature = "qmd")))]
         {
             use crate::project_aware_tools::ProjectAwareCodeIndexTool;
-            moltis_code_index::tools::register_tools_wrapped(
+            chelix_code_index::tools::register_tools_wrapped(
                 &mut tool_registry,
                 code_index_for_tools_builtin,
                 |tool| {
@@ -942,24 +942,24 @@ pub(super) async fn complete_startup(
         }
 
         {
-            let node_info_provider: Arc<dyn moltis_tools::nodes::NodeInfoProvider> =
+            let node_info_provider: Arc<dyn chelix_tools::nodes::NodeInfoProvider> =
                 Arc::new(crate::node_command::GatewayNodeInfoProvider::new(
                     Arc::clone(&state),
                     config.tools.execute_command.ssh_target.clone(),
                 ));
-            tool_registry.register(Box::new(moltis_tools::nodes::NodesListTool::new(
+            tool_registry.register(Box::new(chelix_tools::nodes::NodesListTool::new(
                 Arc::clone(&node_info_provider),
             )));
-            tool_registry.register(Box::new(moltis_tools::nodes::NodesDescribeTool::new(
+            tool_registry.register(Box::new(chelix_tools::nodes::NodesDescribeTool::new(
                 Arc::clone(&node_info_provider),
             )));
-            tool_registry.register(Box::new(moltis_tools::nodes::NodesSelectTool::new(
+            tool_registry.register(Box::new(chelix_tools::nodes::NodesSelectTool::new(
                 Arc::clone(&node_info_provider),
             )));
         }
 
         tool_registry.register(Box::new(
-            moltis_tools::session_state::SessionStateTool::new(Arc::clone(&session_state_store)),
+            chelix_tools::session_state::SessionStateTool::new(Arc::clone(&session_state_store)),
         ));
 
         session_tools::register_session_tools(
@@ -969,13 +969,13 @@ pub(super) async fn complete_startup(
             &session_metadata,
         );
         tool_registry.register(Box::new(
-            moltis_tools::checkpoints::CheckpointsListTool::new(data_dir.clone()),
+            chelix_tools::checkpoints::CheckpointsListTool::new(data_dir.clone()),
         ));
         tool_registry.register(Box::new(
-            moltis_tools::checkpoints::CheckpointRestoreTool::new(data_dir.clone()),
+            chelix_tools::checkpoints::CheckpointRestoreTool::new(data_dir.clone()),
         ));
 
-        tool_registry.register(Box::new(moltis_tools::task_list::TaskListTool::new(
+        tool_registry.register(Box::new(chelix_tools::task_list::TaskListTool::new(
             &data_dir,
         )));
         let mut speak_tool =
@@ -989,24 +989,24 @@ pub(super) async fn complete_startup(
         )));
 
         {
-            use moltis_skills::{discover::FsSkillDiscoverer, usage::SkillUsageStore};
+            use chelix_skills::{discover::FsSkillDiscoverer, usage::SkillUsageStore};
 
             let skill_usage = SkillUsageStore::open(&data_dir).await;
 
             tool_registry.register(Box::new(
-                moltis_tools::skill_tools::CreateSkillTool::new(data_dir.clone())
+                chelix_tools::skill_tools::CreateSkillTool::new(data_dir.clone())
                     .with_usage_store(skill_usage.clone()),
             ));
             tool_registry.register(Box::new(
-                moltis_tools::skill_tools::UpdateSkillTool::new(data_dir.clone())
+                chelix_tools::skill_tools::UpdateSkillTool::new(data_dir.clone())
                     .with_usage_store(skill_usage.clone()),
             ));
             tool_registry.register(Box::new(
-                moltis_tools::skill_tools::PatchSkillTool::new(data_dir.clone())
+                chelix_tools::skill_tools::PatchSkillTool::new(data_dir.clone())
                     .with_usage_store(skill_usage.clone()),
             ));
             tool_registry.register(Box::new(
-                moltis_tools::skill_tools::DeleteSkillTool::new(data_dir.clone())
+                chelix_tools::skill_tools::DeleteSkillTool::new(data_dir.clone())
                     .with_usage_store(skill_usage.clone()),
             ));
 
@@ -1015,14 +1015,14 @@ pub(super) async fn complete_startup(
 
             #[cfg(feature = "bundled-skills")]
             {
-                let bundled_store = Arc::new(moltis_skills::bundled::BundledSkillStore::new());
-                let read_discoverer: Arc<dyn moltis_skills::discover::SkillDiscoverer> =
-                    Arc::new(moltis_skills::discover::CompositeSkillDiscoverer::new(
+                let bundled_store = Arc::new(chelix_skills::bundled::BundledSkillStore::new());
+                let read_discoverer: Arc<dyn chelix_skills::discover::SkillDiscoverer> =
+                    Arc::new(chelix_skills::discover::CompositeSkillDiscoverer::new(
                         Box::new(fs_discoverer),
                         Arc::clone(&bundled_store),
                     ));
                 tool_registry.register(Box::new(
-                    moltis_tools::skill_tools::ReadSkillTool::with_bundled(
+                    chelix_tools::skill_tools::ReadSkillTool::with_bundled(
                         read_discoverer,
                         bundled_store,
                     )
@@ -1033,14 +1033,14 @@ pub(super) async fn complete_startup(
             {
                 let read_discoverer = Arc::new(fs_discoverer);
                 tool_registry.register(Box::new(
-                    moltis_tools::skill_tools::ReadSkillTool::new(read_discoverer)
+                    chelix_tools::skill_tools::ReadSkillTool::new(read_discoverer)
                         .with_usage_store(skill_usage.clone()),
                 ));
             }
 
             if config.skills.enable_agent_sidecar_files {
                 tool_registry.register(Box::new(
-                    moltis_tools::skill_tools::WriteSkillFilesTool::new(data_dir.clone()),
+                    chelix_tools::skill_tools::WriteSkillFilesTool::new(data_dir.clone()),
                 ));
             }
 
@@ -1048,7 +1048,7 @@ pub(super) async fn complete_startup(
         }
 
         tool_registry.register(Box::new(
-            moltis_tools::branch_session::BranchSessionTool::new(
+            chelix_tools::branch_session::BranchSessionTool::new(
                 Arc::clone(&session_store),
                 Arc::clone(&session_metadata),
             ),
@@ -1057,50 +1057,50 @@ pub(super) async fn complete_startup(
         let location_requester = Arc::new(crate::server::location::GatewayLocationRequester {
             state: Arc::clone(&state),
         });
-        tool_registry.register(Box::new(moltis_tools::location::LocationTool::new(
+        tool_registry.register(Box::new(chelix_tools::location::LocationTool::new(
             location_requester,
         )));
 
         let map_provider = match config.tools.maps.provider {
-            moltis_config::schema::MapProvider::GoogleMaps => {
-                moltis_tools::map::MapProvider::GoogleMaps
+            chelix_config::schema::MapProvider::GoogleMaps => {
+                chelix_tools::map::MapProvider::GoogleMaps
             },
-            moltis_config::schema::MapProvider::AppleMaps => {
-                moltis_tools::map::MapProvider::AppleMaps
+            chelix_config::schema::MapProvider::AppleMaps => {
+                chelix_tools::map::MapProvider::AppleMaps
             },
-            moltis_config::schema::MapProvider::OpenStreetMap => {
-                moltis_tools::map::MapProvider::OpenStreetMap
+            chelix_config::schema::MapProvider::OpenStreetMap => {
+                chelix_tools::map::MapProvider::OpenStreetMap
             },
         };
-        tool_registry.register(Box::new(moltis_tools::map::ShowMapTool::with_provider(
+        tool_registry.register(Box::new(chelix_tools::map::ShowMapTool::with_provider(
             map_provider,
         )));
 
         if let Some(default_provider) = registry.read().await.first_with_tools() {
             let spawn_task_store =
-                Arc::new(moltis_tools::spawn_agent_tasks::SpawnTaskStore::default());
+                Arc::new(chelix_tools::spawn_agent_tasks::SpawnTaskStore::default());
             tool_registry.register(Box::new(
-                moltis_tools::spawn_agent_tasks::SpawnStatusTool::new(Arc::clone(
+                chelix_tools::spawn_agent_tasks::SpawnStatusTool::new(Arc::clone(
                     &spawn_task_store,
                 )),
             ));
             tool_registry.register(Box::new(
-                moltis_tools::spawn_agent_tasks::SpawnResultTool::new(Arc::clone(
+                chelix_tools::spawn_agent_tasks::SpawnResultTool::new(Arc::clone(
                     &spawn_task_store,
                 )),
             ));
             tool_registry.register(Box::new(
-                moltis_tools::spawn_agent_tasks::SpawnListTool::new(Arc::clone(&spawn_task_store)),
+                chelix_tools::spawn_agent_tasks::SpawnListTool::new(Arc::clone(&spawn_task_store)),
             ));
             tool_registry.register(Box::new(
-                moltis_tools::spawn_agent_tasks::SpawnCancelTool::new(Arc::clone(
+                chelix_tools::spawn_agent_tasks::SpawnCancelTool::new(Arc::clone(
                     &spawn_task_store,
                 )),
             ));
             let base_tools = Arc::new(tool_registry.clone_without(&[]));
             let state_for_spawn = Arc::clone(&state);
-            let on_spawn_event: moltis_tools::spawn_agent::OnSpawnEvent = Arc::new(move |event| {
-                use moltis_agents::runner::RunnerEvent;
+            let on_spawn_event: chelix_tools::spawn_agent::OnSpawnEvent = Arc::new(move |event| {
+                use chelix_agents::runner::RunnerEvent;
                 let state = Arc::clone(&state_for_spawn);
                 let payload = match &event {
                     RunnerEvent::SubAgentStart { task, model, depth } => {
@@ -1131,7 +1131,7 @@ pub(super) async fn complete_startup(
                     broadcast(&state, "chat", payload, BroadcastOpts::default()).await;
                 });
             });
-            let spawn_tool = moltis_tools::spawn_agent::SpawnAgentTool::new(
+            let spawn_tool = chelix_tools::spawn_agent::SpawnAgentTool::new(
                 Arc::clone(&registry),
                 default_provider,
                 base_tools,
@@ -1206,7 +1206,7 @@ pub(super) async fn complete_startup(
 
                 if matches!(
                     event,
-                    moltis_skills::watcher::SkillWatchEvent::ManifestChanged
+                    chelix_skills::watcher::SkillWatchEvent::ManifestChanged
                 ) {
                     match start_skill_hot_reload_watcher().await {
                         Ok((new_watcher, new_rx)) => {

@@ -289,7 +289,7 @@ mod tests {
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("moltis-claude-test-{unique}"));
+        let dir = std::env::temp_dir().join(format!("chelix-claude-test-{unique}"));
         fs::create_dir_all(&dir)?;
         let script = dir.join("fake-claude.sh");
         let log = dir.join("args.log");

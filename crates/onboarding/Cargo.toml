@@ -1,12 +1,12 @@
 [package]
 edition.workspace = true
-name              = "moltis-onboarding"
+name              = "chelix-onboarding"
 version.workspace = true
 
 [dependencies]
-moltis-common  = { workspace = true }
-moltis-config  = { workspace = true }
-moltis-metrics = { optional = true, workspace = true }
+chelix-common  = { workspace = true }
+chelix-config  = { workspace = true }
+chelix-metrics = { optional = true, workspace = true }
 serde          = { workspace = true }
 serde_json     = { workspace = true }
 thiserror      = { workspace = true }
@@ -16,7 +16,7 @@ tracing        = { workspace = true }
 
 [features]
 default = []
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

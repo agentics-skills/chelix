@@ -7,8 +7,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../../../.." && pwd)"
 
-PORT="${MOLTIS_E2E_ONBOARDING_ANTHROPIC_PORT:-0}"
-RUNTIME_ROOT="${MOLTIS_E2E_ONBOARDING_ANTHROPIC_RUNTIME_DIR:-${REPO_ROOT}/target/e2e-runtime-onboarding-anthropic}"
+PORT="${CHELIX_E2E_ONBOARDING_ANTHROPIC_PORT:-0}"
+RUNTIME_ROOT="${CHELIX_E2E_ONBOARDING_ANTHROPIC_RUNTIME_DIR:-${REPO_ROOT}/target/e2e-runtime-onboarding-anthropic}"
 CONFIG_DIR="${RUNTIME_ROOT}/config"
 DATA_DIR="${RUNTIME_ROOT}/data"
 HOME_DIR="${RUNTIME_ROOT}/home"
@@ -21,9 +21,9 @@ mkdir -p "${CONFIG_DIR}" "${DATA_DIR}" "${HOME_DIR}"
 
 cd "${REPO_ROOT}"
 
-export MOLTIS_CONFIG_DIR="${CONFIG_DIR}"
-export MOLTIS_DATA_DIR="${DATA_DIR}"
-export MOLTIS_SERVER__PORT="${PORT}"
+export CHELIX_CONFIG_DIR="${CONFIG_DIR}"
+export CHELIX_DATA_DIR="${DATA_DIR}"
+export CHELIX_SERVER__PORT="${PORT}"
 # Keep rustup/cargo toolchains available after HOME isolation so
 # stale-binary fallback can still rebuild when needed.
 if [ -z "${RUSTUP_HOME:-}" ] && [ -n "${ORIGINAL_HOME}" ]; then
@@ -37,7 +37,7 @@ export HOME="${HOME_DIR}"
 
 # Preserve key for the Playwright runner while preventing gateway startup
 # provider auto-detection from env vars.
-export MOLTIS_E2E_ANTHROPIC_API_KEY="${MOLTIS_E2E_ANTHROPIC_API_KEY:-${ANTHROPIC_API_KEY:-}}"
+export CHELIX_E2E_ANTHROPIC_API_KEY="${CHELIX_E2E_ANTHROPIC_API_KEY:-${ANTHROPIC_API_KEY:-}}"
 unset ANTHROPIC_API_KEY
 unset OPENAI_API_KEY
 unset GEMINI_API_KEY
@@ -75,10 +75,10 @@ binary_is_stale() {
 }
 
 # Prefer a pre-built binary to avoid recompiling every test run.
-BINARY="${MOLTIS_BINARY:-}"
+BINARY="${CHELIX_BINARY:-}"
 if [ -z "${BINARY}" ]; then
 	# Pick the newest local build so tests don't accidentally run stale binaries.
-	for candidate in target/debug/moltis target/release/moltis; do
+	for candidate in target/debug/chelix target/release/chelix; do
 		if [ -x "${candidate}" ] && { [ -z "${BINARY}" ] || [ "${candidate}" -nt "${BINARY}" ]; }; then
 			BINARY="${candidate}"
 		fi
@@ -93,5 +93,5 @@ fi
 if [ -n "${BINARY}" ]; then
 	exec "${BINARY}" --no-tls --bind 127.0.0.1 --port "${PORT}"
 else
-	exec cargo run --bin moltis -- --no-tls --bind 127.0.0.1 --port "${PORT}"
+	exec cargo run --bin chelix -- --no-tls --bind 127.0.0.1 --port "${PORT}"
 fi

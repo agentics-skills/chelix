@@ -40,7 +40,7 @@ export function AddMatrixModal(): VNode {
 	const userIdDraft = useSignal("");
 	const credentialDraft = useSignal("");
 	const deviceDisplayNameDraft = useSignal("");
-	const ownershipModeDraft = useSignal("moltis_owned");
+	const ownershipModeDraft = useSignal("chelix_owned");
 	const oidcWaiting = useSignal(false);
 	const oidcPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const otpSelfApprovalDraft = useSignal(true);
@@ -60,7 +60,7 @@ export function AddMatrixModal(): VNode {
 		userIdDraft.value = "";
 		credentialDraft.value = "";
 		deviceDisplayNameDraft.value = "";
-		ownershipModeDraft.value = "moltis_owned";
+		ownershipModeDraft.value = "chelix_owned";
 		otpSelfApprovalDraft.value = true;
 		otpCooldownDraft.value = "300";
 		advancedConfigPatch.value = "";
@@ -230,7 +230,7 @@ export function AddMatrixModal(): VNode {
 							supports encryption. Access token auth is only for plain Matrix traffic
 						</div>
 						<div className="text-xs text-[var(--muted)]">
-							3. Moltis generates the local account ID automatically from the Matrix user or homeserver
+							3. Chelix generates the local account ID automatically from the Matrix user or homeserver
 						</div>
 					</div>
 				</div>
@@ -272,14 +272,14 @@ export function AddMatrixModal(): VNode {
 					<label className="flex items-start gap-2 rounded-md border border-[var(--border)] bg-[var(--surface2)] px-3 py-2">
 						<input
 							type="checkbox"
-							aria-label="Let Moltis own this Matrix account"
-							checked={normalizeMatrixOwnershipMode(ownershipModeDraft.value) === "moltis_owned"}
+							aria-label="Let Chelix own this Matrix account"
+							checked={normalizeMatrixOwnershipMode(ownershipModeDraft.value) === "chelix_owned"}
 							onChange={(e) => {
-								ownershipModeDraft.value = targetChecked(e) ? "moltis_owned" : "user_managed";
+								ownershipModeDraft.value = targetChecked(e) ? "chelix_owned" : "user_managed";
 							}}
 						/>
 						<span className="flex flex-col gap-1">
-							<span className="text-xs font-medium text-[var(--text-strong)]">Let Moltis own this Matrix account</span>
+							<span className="text-xs font-medium text-[var(--text-strong)]">Let Chelix own this Matrix account</span>
 							<span className="text-xs text-[var(--muted)]">
 								{matrixOwnershipModeGuidance(authModeDraft.value, ownershipModeDraft.value)}
 							</span>
@@ -322,13 +322,13 @@ export function AddMatrixModal(): VNode {
 						/>
 						<div className="text-xs text-[var(--muted)]">
 							{authModeDraft.value === "password" ? (
-								"Use the password for the dedicated Matrix bot account. This is the required mode for encrypted Matrix chats because Moltis needs to create and persist its own Matrix device keys."
+								"Use the password for the dedicated Matrix bot account. This is the required mode for encrypted Matrix chats because Chelix needs to create and persist its own Matrix device keys."
 							) : (
 								<>
 									Get the access token in Element:{" "}
 									<span className="font-mono">Settings -&gt; Help & About -&gt; Advanced -&gt; Access Token</span>.
 									Access token mode does <span className="font-medium">not</span> support encrypted Matrix chats because
-									Moltis cannot import that existing device's private encryption keys.
+									Chelix cannot import that existing device's private encryption keys.
 								</>
 							)}{" "}
 							<a href={MATRIX_DOCS_URL} target="_blank" rel="noreferrer" className="text-[var(--accent)] underline">
@@ -341,7 +341,7 @@ export function AddMatrixModal(): VNode {
 				<input
 					data-field="deviceDisplayName"
 					type="text"
-					placeholder="Moltis Matrix Bot"
+					placeholder="Chelix Matrix Bot"
 					value={deviceDisplayNameDraft.value}
 					onInput={(e) => {
 						deviceDisplayNameDraft.value = targetValue(e);

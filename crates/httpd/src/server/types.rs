@@ -4,20 +4,20 @@ use std::{path::PathBuf, sync::Arc};
 
 use axum::Router;
 
-use moltis_gateway::{auth_webauthn::SharedWebAuthnRegistry, state::GatewayState};
+use chelix_gateway::{auth_webauthn::SharedWebAuthnRegistry, state::GatewayState};
 
 // ── Shared app state ─────────────────────────────────────────────────────────
 
 #[derive(Clone)]
 pub struct AppState {
     pub gateway: Arc<GatewayState>,
-    pub methods: Arc<moltis_gateway::methods::MethodRegistry>,
+    pub methods: Arc<chelix_gateway::methods::MethodRegistry>,
     pub request_throttle: Arc<crate::request_throttle::RequestThrottle>,
     pub webauthn_registry: Option<SharedWebAuthnRegistry>,
     #[cfg(feature = "push-notifications")]
-    pub push_service: Option<Arc<moltis_gateway::push::PushService>>,
+    pub push_service: Option<Arc<chelix_gateway::push::PushService>>,
     #[cfg(feature = "graphql")]
-    pub graphql_schema: moltis_graphql::MoltisSchema,
+    pub graphql_schema: chelix_graphql::ChelixSchema,
 }
 
 /// Function signature for adding extra routes (e.g. web-UI) to the gateway.
@@ -45,7 +45,7 @@ pub struct PreparedGateway {
     /// Network audit buffer for real-time streaming (present when
     /// the `trusted-network` feature is enabled and the proxy is active).
     #[cfg(feature = "trusted-network")]
-    pub audit_buffer: Option<moltis_gateway::network_audit::NetworkAuditBuffer>,
+    pub audit_buffer: Option<chelix_gateway::network_audit::NetworkAuditBuffer>,
     /// Keeps the trusted-network proxy alive for the server's full lifetime.
     /// Dropping this sender closes the watch channel, which is the proxy's
     /// shutdown signal.
@@ -62,7 +62,7 @@ pub struct BannerMeta {
     pub data_dir: PathBuf,
     pub setup_code_display: Option<String>,
     pub webauthn_registry: Option<SharedWebAuthnRegistry>,
-    pub browser_for_lifecycle: Arc<dyn moltis_gateway::services::BrowserService>,
-    pub browser_tool_for_warmup: Option<Arc<dyn moltis_agents::tool_registry::AgentTool>>,
-    pub config: moltis_config::schema::MoltisConfig,
+    pub browser_for_lifecycle: Arc<dyn chelix_gateway::services::BrowserService>,
+    pub browser_tool_for_warmup: Option<Arc<dyn chelix_agents::tool_registry::AgentTool>>,
+    pub config: chelix_config::schema::ChelixConfig,
 }

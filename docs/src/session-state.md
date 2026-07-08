@@ -1,6 +1,6 @@
 # Session State
 
-Moltis provides a per-session key-value store that allows skills, extensions,
+Chelix provides a per-session key-value store that allows skills, extensions,
 and the agent itself to persist context across messages within a session.
 
 ## Overview
@@ -84,7 +84,7 @@ name as the namespace.
 ## Storage
 
 State is stored in the `session_state` table in the main SQLite database
-(`moltis.db`). The migration is in
+(`chelix.db`). The migration is in
 `crates/sessions/migrations/20260205120000_session_state.sql`.
 
 ```admonish tip

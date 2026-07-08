@@ -1,6 +1,6 @@
 //! Model capability heuristics: context window, tool support, vision, reasoning.
 
-use {crate::model_id::capability_model_id, moltis_config::schema::ModelOverride};
+use {crate::model_id::capability_model_id, chelix_config::schema::ModelOverride};
 
 /// Extract a `HashMap<String, u32>` of model ID → context window from
 /// a `HashMap<String, ModelOverride>`, filtering out entries without a
@@ -872,7 +872,7 @@ mod tests_cw_overrides {
     /// Verify extract_cw_overrides filters out None entries.
     #[test]
     fn extract_cw_overrides_filters_none() {
-        use moltis_config::schema::ModelOverride;
+        use chelix_config::schema::ModelOverride;
 
         let mut overrides = HashMap::new();
         overrides.insert("claude-opus-4-20250514".into(), ModelOverride {

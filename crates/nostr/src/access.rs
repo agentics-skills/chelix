@@ -1,9 +1,9 @@
 //! DM access control for Nostr channels.
 //!
-//! Reuses `DmPolicy` from `moltis_channels::gating` and maps Nostr pubkeys
+//! Reuses `DmPolicy` from `chelix_channels::gating` and maps Nostr pubkeys
 //! to the allowlist/OTP gating model used by other channels.
 
-use {moltis_channels::gating::DmPolicy, nostr_sdk::prelude::PublicKey};
+use {chelix_channels::gating::DmPolicy, nostr_sdk::prelude::PublicKey};
 
 /// Check whether a sender pubkey is authorized under the given DM policy.
 ///
@@ -47,7 +47,7 @@ impl std::fmt::Display for AccessDenied {
 
 #[cfg(test)]
 mod tests {
-    use {moltis_channels::gating::DmPolicy, nostr_sdk::prelude::Keys};
+    use {chelix_channels::gating::DmPolicy, nostr_sdk::prelude::Keys};
 
     use super::*;
 

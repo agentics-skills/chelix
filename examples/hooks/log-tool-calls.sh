@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-LOG_FILE="${HOOK_LOG_FILE:-/tmp/moltis-tool-calls.log}"
+LOG_FILE="${HOOK_LOG_FILE:-/tmp/chelix-tool-calls.log}"
 INPUT=$(cat)
 
 TOOL_NAME=$(echo "$INPUT" | grep -o '"tool_name":"[^"]*"' | head -1 | cut -d'"' -f4)

@@ -1,4 +1,4 @@
-//! CalDAV integration crate for moltis.
+//! CalDAV integration crate for chelix.
 //!
 //! Provides CalDAV client functionality and an `AgentTool` implementation
 //! for calendar CRUD operations. Supports Fastmail, iCloud, and generic

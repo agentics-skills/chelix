@@ -24,7 +24,7 @@ use {
 };
 
 use {
-    moltis_channels::{
+    chelix_channels::{
         ChannelEvent, ChannelType,
         config_view::ChannelConfigView,
         gating::{self, DmPolicy, GroupPolicy},
@@ -35,7 +35,7 @@ use {
         },
         plugin::{ChannelEventSink, ChannelMessageKind, ChannelMessageMeta, ChannelReplyTarget},
     },
-    moltis_common::types::ChatType,
+    chelix_common::types::ChatType,
     time::OffsetDateTime,
 };
 
@@ -49,7 +49,7 @@ use crate::{
 const UTD_NOTICE_COOLDOWN: Duration = Duration::from_secs(300);
 
 fn channel_help_text() -> String {
-    moltis_channels::commands::help_text()
+    chelix_channels::commands::help_text()
 }
 
 fn should_ignore_initial_sync_history(accounts: &AccountStateMap, account_id: &str) -> bool {
@@ -389,7 +389,7 @@ pub async fn handle_room_message(
             && let Some(cmd_text) = body.strip_prefix('/')
         {
             let cmd_name = cmd_text.split_whitespace().next().unwrap_or("");
-            if moltis_channels::commands::is_channel_command(cmd_name, cmd_text) {
+            if chelix_channels::commands::is_channel_command(cmd_name, cmd_text) {
                 let response = if cmd_name == "help" {
                     Ok(channel_help_text())
                 } else {
@@ -935,17 +935,17 @@ fn update_utd_notice_window(
 fn utd_notice_message(verification_state: VerificationState) -> &'static str {
     match verification_state {
         VerificationState::Verified => {
-            "I received an encrypted Matrix message but could not decrypt it yet. This Moltis device is likely missing room keys for older history. Resend the message after verification, or share keys from Element if needed."
+            "I received an encrypted Matrix message but could not decrypt it yet. This Chelix device is likely missing room keys for older history. Resend the message after verification, or share keys from Element if needed."
         },
         VerificationState::Unknown | VerificationState::Unverified => {
-            "I received an encrypted Matrix message but could not decrypt it yet. This Moltis device likely still needs verification or room keys. Start a fresh Element verification with the bot, then send `verify show` as a normal message in this same Matrix chat if you need the emoji prompt again. After verification finishes, resend the message."
+            "I received an encrypted Matrix message but could not decrypt it yet. This Chelix device likely still needs verification or room keys. Start a fresh Element verification with the bot, then send `verify show` as a normal message in this same Matrix chat if you need the emoji prompt again. After verification finishes, resend the message."
         },
     }
 }
 
 fn otp_request_message() -> &'static str {
     "To use this bot, please enter the verification code.\n\n\
-     Ask the bot owner for the code, it is visible in the Moltis web UI under Channels -> Senders.\n\n\
+     Ask the bot owner for the code, it is visible in the Chelix web UI under Channels -> Senders.\n\n\
      The code expires in 5 minutes."
 }
 
@@ -1125,9 +1125,9 @@ fn location_dispatch_body(
 
 fn record_message_received() {
     #[cfg(feature = "metrics")]
-    moltis_metrics::counter!(
-        moltis_metrics::channels::MESSAGES_RECEIVED_TOTAL,
-        moltis_metrics::labels::CHANNEL => "matrix"
+    chelix_metrics::counter!(
+        chelix_metrics::channels::MESSAGES_RECEIVED_TOTAL,
+        chelix_metrics::labels::CHANNEL => "matrix"
     )
     .increment(1);
 }

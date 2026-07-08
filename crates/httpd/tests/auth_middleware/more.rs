@@ -218,7 +218,7 @@ pub(super) async fn onboarding_accessible_with_session_after_setup() {
 
     let resp = client
         .get(format!("http://{addr}/onboarding"))
-        .header("Cookie", format!("moltis_session={token}"))
+        .header("Cookie", format!("chelix_session={token}"))
         .send()
         .await
         .unwrap();
@@ -284,7 +284,7 @@ pub(super) async fn setup_endpoint_rejected_after_setup_complete() {
     // Even with a valid session, /api/auth/setup must reject once setup is done.
     let resp = client
         .post(format!("http://{addr}/api/auth/setup"))
-        .header("Cookie", format!("moltis_session={token}"))
+        .header("Cookie", format!("chelix_session={token}"))
         .header("Content-Type", "application/json")
         .body(json_password(&new_password))
         .send()
@@ -310,7 +310,7 @@ pub(super) async fn authenticated_api_endpoint_not_rate_limited() {
     for _ in 0..220 {
         let resp = client
             .get(format!("http://{addr}/api/bootstrap"))
-            .header("Cookie", format!("moltis_session={token}"))
+            .header("Cookie", format!("chelix_session={token}"))
             .send()
             .await
             .unwrap();
@@ -333,7 +333,7 @@ pub(super) async fn password_change_initializes_vault() {
     // Vault starts uninitialized.
     assert_eq!(
         vault.status().await.unwrap(),
-        moltis_vault::VaultStatus::Uninitialized
+        chelix_vault::VaultStatus::Uninitialized
     );
 
     // Set password via the change endpoint (no current password — first time).
@@ -361,7 +361,7 @@ pub(super) async fn password_change_initializes_vault() {
     // Vault should now be unsealed.
     assert_eq!(
         vault.status().await.unwrap(),
-        moltis_vault::VaultStatus::Unsealed
+        chelix_vault::VaultStatus::Unsealed
     );
 
     // Password should be set.
@@ -381,14 +381,14 @@ pub(super) async fn vault_initialize_uses_existing_password() {
 
     assert_eq!(
         vault.status().await.unwrap(),
-        moltis_vault::VaultStatus::Uninitialized
+        chelix_vault::VaultStatus::Uninitialized
     );
 
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("http://{addr}/api/auth/vault/initialize"))
         .header("Content-Type", "application/json")
-        .header("Cookie", format!("moltis_session={token}"))
+        .header("Cookie", format!("chelix_session={token}"))
         .body(json_password(&password))
         .send()
         .await
@@ -405,7 +405,7 @@ pub(super) async fn vault_initialize_uses_existing_password() {
     );
     assert_eq!(
         vault.status().await.unwrap(),
-        moltis_vault::VaultStatus::Unsealed
+        chelix_vault::VaultStatus::Unsealed
     );
 }
 
@@ -422,7 +422,7 @@ pub(super) async fn vault_initialize_rejects_wrong_password() {
     let resp = client
         .post(format!("http://{addr}/api/auth/vault/initialize"))
         .header("Content-Type", "application/json")
-        .header("Cookie", format!("moltis_session={token}"))
+        .header("Cookie", format!("chelix_session={token}"))
         .body(json_password(&wrong_password))
         .send()
         .await
@@ -430,7 +430,7 @@ pub(super) async fn vault_initialize_rejects_wrong_password() {
     assert_eq!(resp.status(), 403);
     assert_eq!(
         vault.status().await.unwrap(),
-        moltis_vault::VaultStatus::Uninitialized
+        chelix_vault::VaultStatus::Uninitialized
     );
 }
 
@@ -447,7 +447,7 @@ pub(super) async fn vault_initialize_rejects_already_initialized_vault() {
     let resp = client
         .post(format!("http://{addr}/api/auth/vault/initialize"))
         .header("Content-Type", "application/json")
-        .header("Cookie", format!("moltis_session={token}"))
+        .header("Cookie", format!("chelix_session={token}"))
         .body(json_password(&password))
         .send()
         .await
@@ -468,7 +468,7 @@ pub(super) async fn password_change_on_initialized_vault_no_recovery_key() {
     let _rk = vault.initialize(&existing_password).await.unwrap();
     assert_eq!(
         vault.status().await.unwrap(),
-        moltis_vault::VaultStatus::Unsealed
+        chelix_vault::VaultStatus::Unsealed
     );
 
     // Set a password (first credential store password, but vault already initialized).
@@ -540,7 +540,7 @@ pub(super) async fn password_change_rotates_sealed_vault_password() {
     let resp = client
         .post(format!("http://{addr}/api/auth/password/change"))
         .header("Content-Type", "application/json")
-        .header("Cookie", format!("moltis_session={token}"))
+        .header("Cookie", format!("chelix_session={token}"))
         .body(
             serde_json::json!({
                 "current_password": current_password,
@@ -577,7 +577,7 @@ pub(super) async fn password_change_rejects_mismatched_vault_password() {
     let resp = client
         .post(format!("http://{addr}/api/auth/password/change"))
         .header("Content-Type", "application/json")
-        .header("Cookie", format!("moltis_session={token}"))
+        .header("Cookie", format!("chelix_session={token}"))
         .body(
             serde_json::json!({
                 "current_password": auth_password,
@@ -676,7 +676,7 @@ impl OnboardingService for MockOnboardingService {
     }
 
     async fn identity_get(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "name": "moltis", "avatar": null }))
+        Ok(serde_json::json!({ "name": "chelix", "avatar": null }))
     }
 
     async fn identity_update(&self, _params: serde_json::Value) -> ServiceResult {
@@ -713,12 +713,12 @@ pub(super) async fn start_server_with_onboarding(
     behind_proxy: bool,
 ) -> (SocketAddr, Arc<CredentialStore>, Arc<GatewayState>) {
     let tmp = tempfile::tempdir().unwrap();
-    moltis_config::set_config_dir(tmp.path().to_path_buf());
-    moltis_config::set_data_dir(tmp.path().to_path_buf());
+    chelix_config::set_config_dir(tmp.path().to_path_buf());
+    chelix_config::set_data_dir(tmp.path().to_path_buf());
     std::mem::forget(tmp);
 
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let auth_config = moltis_config::AuthConfig::default();
+    let auth_config = chelix_config::AuthConfig::default();
     let cred_store = Arc::new(
         CredentialStore::with_config(pool, &auth_config)
             .await
@@ -734,7 +734,7 @@ pub(super) async fn start_server_with_onboarding(
     let state = GatewayState::with_options(
         resolved_auth,
         services,
-        moltis_config::MoltisConfig::default(),
+        chelix_config::ChelixConfig::default(),
         None,
         Some(Arc::clone(&cred_store)),
         None, // pairing_store
@@ -743,8 +743,8 @@ pub(super) async fn start_server_with_onboarding(
         false,
         None,
         None,
-        Arc::new(moltis_code_index::CodeIndex::config_only(
-            moltis_code_index::CodeIndexConfig::default(),
+        Arc::new(chelix_code_index::CodeIndex::config_only(
+            chelix_code_index::CodeIndexConfig::default(),
         )),
         18789,
         false,
@@ -764,7 +764,7 @@ pub(super) async fn start_server_with_onboarding(
     #[cfg(not(feature = "push-notifications"))]
     let (router, app_state) = build_gateway_base(state, methods, None);
 
-    let router = router.merge(moltis_web::web_routes());
+    let router = router.merge(chelix_web::web_routes());
     let app = finalize_gateway_app(router, app_state, false);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

@@ -5,7 +5,7 @@ use std::{
 
 use tokio_util::sync::CancellationToken;
 
-use moltis_channels::{ChannelEventSink, message_log::MessageLog};
+use chelix_channels::{ChannelEventSink, message_log::MessageLog};
 
 use crate::{config::TelegramAccountConfig, otp::OtpState, outbound::TelegramOutbound};
 

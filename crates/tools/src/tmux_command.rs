@@ -9,7 +9,7 @@ use std::{
 
 use {
     async_trait::async_trait,
-    moltis_agents::tool_registry::AgentTool,
+    chelix_agents::tool_registry::AgentTool,
     secrecy::ExposeSecret,
     serde::{Deserialize, Serialize},
     tokio::sync::{RwLock, Semaphore},
@@ -35,9 +35,9 @@ const MAX_CAPTURE_LINES: usize = 20_000;
 const DEFAULT_TMUX_COLS: u16 = 200;
 const DEFAULT_TMUX_ROWS: u16 = 50;
 const SANDBOX_WORKDIR: &str = "/home/sandbox";
-const FIELD_SEP: &str = "|moltis-tmux-field|";
-const START_PREFIX: &str = "__MOLTIS_COMMAND_START__";
-const DONE_PREFIX: &str = "__MOLTIS_COMMAND_DONE__";
+const FIELD_SEP: &str = "|chelix-tmux-field|";
+const START_PREFIX: &str = "__CHELIX_COMMAND_START__";
+const DONE_PREFIX: &str = "__CHELIX_COMMAND_DONE__";
 const MAX_SANDBOX_RECOVERY_RETRIES: usize = 1;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -957,7 +957,7 @@ impl ExecuteCommandTool {
             debug!(path = %path.display(), "customCwd does not exist on host, using default");
         }
 
-        let default_dir = moltis_config::home_dir().unwrap_or_else(moltis_config::data_dir);
+        let default_dir = chelix_config::home_dir().unwrap_or_else(chelix_config::data_dir);
         if let Err(error) = tokio::fs::create_dir_all(&default_dir).await {
             tracing::warn!(
                 path = %default_dir.display(),
@@ -1229,7 +1229,7 @@ fn tmux_paste_buffer_name(terminal_id: &str) -> String {
         .chars()
         .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
         .collect::<String>();
-    format!("moltis-paste-{}-{}", id, uuid::Uuid::new_v4().simple())
+    format!("chelix-paste-{}-{}", id, uuid::Uuid::new_v4().simple())
 }
 
 fn set_paste_buffer_args(buffer_name: &str, text: &str) -> Vec<String> {
@@ -1274,12 +1274,12 @@ fn build_paste_payload(
     if marker_enabled {
         statements.push(format!("printf '\\n{START_PREFIX}{run_id}\\n'"));
         statements.push(format!("eval {}", shell_words::quote(command).as_ref()));
-        statements.push("__moltis_exit=$?".to_string());
+        statements.push("__chelix_exit=$?".to_string());
         if let Some(restore) = restore_shell_env_statement(&env_keys) {
             statements.push(restore);
         }
         statements.push(format!(
-            "printf '\\n{DONE_PREFIX}{run_id}:%s\\n' \"$__moltis_exit\""
+            "printf '\\n{DONE_PREFIX}{run_id}:%s\\n' \"$__chelix_exit\""
         ));
         let mut payload = statements.join("; ");
         payload.push('\n');
@@ -1329,11 +1329,11 @@ fn restore_shell_env_statement(keys: &[&str]) -> Option<String> {
 }
 
 fn shell_backup_set_var(key: &str) -> String {
-    format!("__moltis_env_{key}_was_set")
+    format!("__chelix_env_{key}_was_set")
 }
 
 fn shell_backup_value_var(key: &str) -> String {
-    format!("__moltis_env_{key}_value")
+    format!("__chelix_env_{key}_value")
 }
 
 fn extract_run_capture(raw: &str, run: Option<&ManagedRun>) -> CaptureResult {
@@ -1390,7 +1390,7 @@ fn should_skip_wrapper_line(line: &str, run: &ManagedRun) -> bool {
         || trimmed == run.command.trim()
         || trimmed.ends_with(run.command.trim()) && prompt_prefix(trimmed, run.command.trim())
         || trimmed.contains(START_PREFIX)
-        || trimmed.contains("__moltis_exit=$?")
+        || trimmed.contains("__chelix_exit=$?")
         || trimmed.contains(DONE_PREFIX)
 }
 
@@ -1447,7 +1447,7 @@ fn parse_bool_flag(raw: &str) -> bool {
 }
 
 fn default_session_name(session_key: &str) -> String {
-    let mut name = String::from("moltis-");
+    let mut name = String::from("chelix-");
     for ch in session_key.chars().take(48) {
         if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
             name.push(ch);
@@ -1455,7 +1455,7 @@ fn default_session_name(session_key: &str) -> String {
             name.push('-');
         }
     }
-    if name == "moltis-" {
+    if name == "chelix-" {
         name.push_str("main");
     }
     name
@@ -1518,7 +1518,7 @@ mod tests {
         let second = tmux_paste_buffer_name("term/1:%2");
 
         assert_ne!(first, second);
-        assert!(first.starts_with("moltis-paste-term12-"));
+        assert!(first.starts_with("chelix-paste-term12-"));
         assert!(
             first
                 .chars()
@@ -1528,13 +1528,13 @@ mod tests {
 
     #[test]
     fn paste_buffer_args_use_named_delete_after_paste_buffer() {
-        let set_args = set_paste_buffer_args("moltis-paste-1-abc", "cat <<'EOF'\nhello\nEOF\n");
-        let paste_args = paste_buffer_args("moltis-paste-1-abc", "%2");
+        let set_args = set_paste_buffer_args("chelix-paste-1-abc", "cat <<'EOF'\nhello\nEOF\n");
+        let paste_args = paste_buffer_args("chelix-paste-1-abc", "%2");
 
         assert_eq!(set_args, vec![
             "set-buffer",
             "-b",
-            "moltis-paste-1-abc",
+            "chelix-paste-1-abc",
             "--",
             "cat <<'EOF'\nhello\nEOF\n"
         ]);
@@ -1542,7 +1542,7 @@ mod tests {
             "paste-buffer",
             "-d",
             "-b",
-            "moltis-paste-1-abc",
+            "chelix-paste-1-abc",
             "-t",
             "%2"
         ]);
@@ -1552,9 +1552,9 @@ mod tests {
     fn paste_payload_adds_marker_for_foreground_commands() {
         let payload = build_paste_payload("echo true", Some("/home/sandbox"), "abc", true, &[]);
         assert!(payload.contains("cd /home/sandbox"));
-        assert!(payload.contains("__MOLTIS_COMMAND_START__abc"));
+        assert!(payload.contains("__CHELIX_COMMAND_START__abc"));
         assert!(payload.contains("eval 'echo true'"));
-        assert!(payload.contains("__MOLTIS_COMMAND_DONE__abc"));
+        assert!(payload.contains("__CHELIX_COMMAND_DONE__abc"));
     }
 
     #[test]
@@ -1566,9 +1566,9 @@ mod tests {
         let payload = build_paste_payload("printenv TOKEN", None, "abc", true, &env);
 
         assert!(payload.contains("export TOKEN='value with spaces'"));
-        assert!(payload.contains("__moltis_env_TOKEN_was_set=${TOKEN+x}"));
-        assert!(payload.contains("__moltis_env_TOKEN_value=${TOKEN-}"));
-        assert!(payload.contains("export TOKEN=\"${__moltis_env_TOKEN_value}\""));
+        assert!(payload.contains("__chelix_env_TOKEN_was_set=${TOKEN+x}"));
+        assert!(payload.contains("__chelix_env_TOKEN_value=${TOKEN-}"));
+        assert!(payload.contains("export TOKEN=\"${__chelix_env_TOKEN_value}\""));
         assert!(!payload.contains("BAD-NAME"));
         assert!(!payload.contains("ignored"));
         assert!(matches!(
@@ -1592,15 +1592,15 @@ mod tests {
             payload
                 .contains("; eval 'apt-get update -qq && apt-get install -y -qq iputils-ping'; ")
         );
-        assert!(payload.contains("; __moltis_exit=$?; "));
-        assert!(payload.contains("__MOLTIS_COMMAND_DONE__abc:%s"));
+        assert!(payload.contains("; __chelix_exit=$?; "));
+        assert!(payload.contains("__CHELIX_COMMAND_DONE__abc:%s"));
     }
 
     #[test]
     fn paste_payload_can_omit_marker_when_requested() {
         let payload = build_paste_payload("sleep 100", None, "abc", false, &[]);
         assert!(payload.contains("sleep 100"));
-        assert!(!payload.contains("__MOLTIS_COMMAND_DONE__abc"));
+        assert!(!payload.contains("__CHELIX_COMMAND_DONE__abc"));
     }
 
     #[test]
@@ -1614,7 +1614,7 @@ mod tests {
             exit_code: None,
             redaction_env: Vec::new(),
         };
-        let raw = "old\nold2\n$ printf '\\n__MOLTIS_COMMAND_START__abc\\n'\n__MOLTIS_COMMAND_START__abc\n$ echo true\ntrue\n__moltis_exit=$?\nprintf '\\n__MOLTIS_COMMAND_DONE__abc:%s\\n' \"$__moltis_exit\"\n__MOLTIS_COMMAND_DONE__abc:0\n$ ";
+        let raw = "old\nold2\n$ printf '\\n__CHELIX_COMMAND_START__abc\\n'\n__CHELIX_COMMAND_START__abc\n$ echo true\ntrue\n__chelix_exit=$?\nprintf '\\n__CHELIX_COMMAND_DONE__abc:%s\\n' \"$__chelix_exit\"\n__CHELIX_COMMAND_DONE__abc:0\n$ ";
         let capture = extract_run_capture(raw, Some(&run));
         assert!(capture.completed);
         assert_eq!(capture.exit_code, Some(0));

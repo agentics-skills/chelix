@@ -7,15 +7,15 @@ use {
 
 // ── Provider ID Enums ───────────────────────────────────────────────────────
 //
-// Canonical definitions live in `moltis-config`. Re-exported here so
-// downstream crates can import from `moltis_voice` without pulling in
+// Canonical definitions live in `chelix-config`. Re-exported here so
+// downstream crates can import from `chelix_voice` without pulling in
 // the full config crate.
 
 /// Text-to-Speech provider identifiers.
-pub type TtsProviderId = moltis_config::VoiceTtsProvider;
+pub type TtsProviderId = chelix_config::VoiceTtsProvider;
 
 /// Speech-to-Text provider identifiers.
-pub type SttProviderId = moltis_config::VoiceSttProvider;
+pub type SttProviderId = chelix_config::VoiceSttProvider;
 
 // ── Configuration Structs ───────────────────────────────────────────────────
 
@@ -422,7 +422,7 @@ pub struct WhisperCliConfig {
     /// Path to whisper-cli binary. If not set, looks in PATH.
     pub binary_path: Option<String>,
 
-    /// Path to the GGML model file (e.g., "~/.moltis/models/ggml-base.en.bin").
+    /// Path to the GGML model file (e.g., "~/.chelix/models/ggml-base.en.bin").
     pub model_path: Option<String>,
 
     /// Language hint (ISO 639-1 code).

@@ -1,7 +1,7 @@
 //! Image processing for the `Read` tool.
 //!
 //! Intercepts known image extensions before binary rejection, runs them
-//! through `moltis_media::image_ops::optimize_for_llm` (Lanczos3 resize,
+//! through `chelix_media::image_ops::optimize_for_llm` (Lanczos3 resize,
 //! transparency-aware format selection, progressive JPEG compression),
 //! and returns a structured payload with base64 data + dimension info.
 
@@ -42,11 +42,11 @@ pub(crate) async fn read_image(file_path: &str) -> Result<Value> {
 
     let path_owned = file_path.to_string();
     tokio::task::spawn_blocking(move || -> Result<Value> {
-        match moltis_media::image_ops::optimize_for_llm(&bytes, None) {
+        match chelix_media::image_ops::optimize_for_llm(&bytes, None) {
             Ok(optimized) => {
                 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
                 let media_type =
-                    moltis_media::mime::detect_mime(&optimized.data, Some(&optimized.media_type));
+                    chelix_media::mime::detect_mime(&optimized.data, Some(&optimized.media_type));
                 Ok(json!({
                     "kind": "image",
                     "file_path": path_owned,

@@ -15,15 +15,15 @@ use axum::{
 use tracing::{debug, warn};
 
 use {
-    moltis_auth::locality::is_local_connection,
-    moltis_gateway::{
+    chelix_auth::locality::is_local_connection,
+    chelix_gateway::{
         auth::{AuthIdentity, AuthMethod, CredentialStore},
         state::GatewayState,
     },
 };
 
 /// Session cookie name.
-pub const SESSION_COOKIE: &str = "moltis_session";
+pub const SESSION_COOKIE: &str = "chelix_session";
 #[cfg(feature = "web-ui")]
 const AUTH_SETUP_REQUIRED: &str = "AUTH_SETUP_REQUIRED";
 #[cfg(feature = "web-ui")]
@@ -316,7 +316,7 @@ pub async fn vault_guard(
         return next.run(request).await;
     }
     // Only block when Sealed (not Uninitialized).
-    if matches!(vault.status().await, Ok(moltis_vault::VaultStatus::Sealed)) {
+    if matches!(vault.status().await, Ok(chelix_vault::VaultStatus::Sealed)) {
         return (
             StatusCode::LOCKED,
             Json(serde_json::json!({"error": "vault is sealed", "status": "sealed"})),
@@ -435,15 +435,15 @@ mod tests {
     #[test]
     fn test_parse_cookie() {
         assert_eq!(
-            parse_cookie("moltis_session=abc123; other=def", "moltis_session"),
+            parse_cookie("chelix_session=abc123; other=def", "chelix_session"),
             Some("abc123")
         );
         assert_eq!(
-            parse_cookie("other=def; moltis_session=xyz", "moltis_session"),
+            parse_cookie("other=def; chelix_session=xyz", "chelix_session"),
             Some("xyz")
         );
-        assert_eq!(parse_cookie("other=def", "moltis_session"), None);
-        assert_eq!(parse_cookie("", "moltis_session"), None);
+        assert_eq!(parse_cookie("other=def", "chelix_session"), None);
+        assert_eq!(parse_cookie("", "chelix_session"), None);
     }
 
     #[cfg(feature = "web-ui")]
@@ -474,7 +474,7 @@ mod tests {
     async fn auth_disabled_still_requires_setup_for_remote_requests()
     -> Result<(), Box<dyn std::error::Error>> {
         let pool = SqlitePool::connect("sqlite::memory:").await?;
-        let auth_config = moltis_config::AuthConfig {
+        let auth_config = chelix_config::AuthConfig {
             disabled: true,
             ..Default::default()
         };

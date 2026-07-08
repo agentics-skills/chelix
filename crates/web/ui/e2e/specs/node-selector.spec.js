@@ -6,7 +6,7 @@ async function waitForActiveChatSessionSettled(page, expectedKey = "main") {
 		.poll(
 			() =>
 				page.evaluate((targetKey) => {
-					const store = window.__moltis_stores?.sessionStore;
+					const store = window.__chelix_stores?.sessionStore;
 					if (!store) return false;
 					return (
 						store.activeSessionKey?.value === targetKey &&
@@ -88,7 +88,7 @@ test.describe("Node selector", () => {
 							},
 						]);
 						select("ssh:deploy@box");
-						const session = window.__moltis_stores?.sessionStore?.activeSession?.value;
+						const session = window.__chelix_stores?.sessionStore?.activeSession?.value;
 						if (session) {
 							session.node_id = "ssh:deploy@box";
 							session.dataVersion.value++;

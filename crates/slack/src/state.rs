@@ -4,7 +4,7 @@ use std::{
 };
 
 use {
-    moltis_channels::{ChannelEventSink, message_log::MessageLog},
+    chelix_channels::{ChannelEventSink, message_log::MessageLog},
     tokio_util::sync::CancellationToken,
 };
 

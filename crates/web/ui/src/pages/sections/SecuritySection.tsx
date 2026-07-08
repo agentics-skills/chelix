@@ -82,15 +82,15 @@ export function SecuritySection(): VNode {
 	});
 
 	function notifyAuthStatusChanged(): void {
-		window.dispatchEvent(new CustomEvent("moltis:auth-status-changed"));
+		window.dispatchEvent(new CustomEvent("chelix:auth-status-changed"));
 	}
 
 	function deferNextPasswordChangedRedirect(): void {
-		window.__moltisSuppressNextPasswordChangedRedirect = true;
+		window.__chelixSuppressNextPasswordChangedRedirect = true;
 	}
 
 	function clearPasswordChangedRedirectDeferral(): void {
-		window.__moltisSuppressNextPasswordChangedRedirect = false;
+		window.__chelixSuppressNextPasswordChangedRedirect = false;
 	}
 
 	function refreshPasskeyHostStatus(): Promise<void> {
@@ -461,7 +461,7 @@ export function SecuritySection(): VNode {
 				>
 					<strong style={{ color: "var(--error)" }}>Authentication is disabled</strong>
 					<p className="text-xs text-[var(--muted)]" style={{ margin: "8px 0 0" }}>
-						Anyone with network access can control moltis and your computer. Set up a password to protect your instance.
+						Anyone with network access can control chelix and your computer. Set up a password to protect your instance.
 					</p>
 					<button
 						type="button"
@@ -496,7 +496,7 @@ export function SecuritySection(): VNode {
 					<p className="text-xs text-[var(--muted)]" style={{ margin: "8px 0 0" }}>
 						Localhost-only access is safe, but localhost bypass is active. Until you add a password or passkey, this
 						browser has full access and Sign out has no effect. Add credentials below to require login on localhost and
-						before exposing Moltis to your network.
+						before exposing Chelix to your network.
 					</p>
 				</div>
 			) : null}
@@ -505,7 +505,7 @@ export function SecuritySection(): VNode {
 				<div className="alert-info-text max-w-form">
 					<span className="alert-label-info">Note: </span>
 					Localhost bypass is active. Until you add a password or passkey, this browser has full access and Sign out has
-					no effect. Add credentials to require login on localhost and before exposing Moltis to your network.
+					no effect. Add credentials to require login on localhost and before exposing Chelix to your network.
 				</div>
 			) : null}
 
@@ -753,7 +753,7 @@ export function SecuritySection(): VNode {
 					API Keys
 				</h3>
 				<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: "0 0 12px" }}>
-					API keys authenticate external tools and scripts connecting to moltis over the WebSocket protocol. Pass the
+					API keys authenticate external tools and scripts connecting to chelix over the WebSocket protocol. Pass the
 					key as the <code style={{ fontFamily: "var(--font-mono)", fontSize: ".75rem" }}>api_key</code> field in the{" "}
 					<code style={{ fontFamily: "var(--font-mono)", fontSize: ".75rem" }}>auth</code> object of the{" "}
 					<code style={{ fontFamily: "var(--font-mono)", fontSize: ".75rem" }}>connect</code> handshake.
@@ -915,7 +915,7 @@ export function SecuritySection(): VNode {
 						</strong>
 						<p className="text-xs text-[var(--muted)]" style={{ margin: "6px 0 0" }}>
 							If you know what you're doing, you can fully disable authentication. Anyone with network access will be
-							able to access moltis and your computer. This removes your password, all passkeys, all API keys, and all
+							able to access chelix and your computer. This removes your password, all passkeys, all API keys, and all
 							sessions.
 						</p>
 						{resetConfirm ? (

@@ -3,7 +3,7 @@ import mdx from "@astrojs/mdx"
 import { mdbookCompat } from "./src/lib/remark-mdbook.mjs"
 
 const copyButtonTransformer = {
-  name: "moltis-copy-button",
+  name: "chelix-copy-button",
   pre(node) {
     node.properties["data-code"] = this.source
   },

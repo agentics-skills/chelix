@@ -4,7 +4,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     async_trait::async_trait,
-    moltis_agents::tool_registry::AgentTool,
+    chelix_agents::tool_registry::AgentTool,
     serde_json::{Value, json},
 };
 
@@ -492,7 +492,7 @@ mod tests {
     use {
         super::*,
         crate::types::EntityState,
-        moltis_config::HomeAssistantAccountConfig,
+        chelix_config::HomeAssistantAccountConfig,
         serde_json::json,
         wiremock::{
             Mock, MockServer, ResponseTemplate,

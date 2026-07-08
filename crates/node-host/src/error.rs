@@ -1,4 +1,4 @@
-//! Crate-level error type for `moltis-node-host`.
+//! Crate-level error type for `chelix-node-host`.
 
 use thiserror::Error;
 

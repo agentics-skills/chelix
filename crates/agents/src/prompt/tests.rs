@@ -9,14 +9,14 @@ use {
             build_system_prompt_with_session_runtime,
             build_system_prompt_with_session_runtime_details,
             formatting::{
-                format_compact_tool_schema, format_moltis_runtime_line, tool_call_guidance,
+                format_compact_tool_schema, format_chelix_runtime_line, tool_call_guidance,
             },
             prepend_datetime_to_user_content, runtime_datetime_message,
         },
         tool_registry::ToolRegistry,
     },
-    moltis_config::{AgentIdentity, UserProfile},
-    moltis_skills::types::SkillMetadata,
+    chelix_config::{AgentIdentity, UserProfile},
+    chelix_skills::types::SkillMetadata,
 };
 
 #[test]
@@ -138,8 +138,8 @@ fn test_documentation_section_includes_local_docs_path() {
     let tools = ToolRegistry::new();
     let runtime = PromptRuntimeContext {
         host: PromptHostRuntimeContext {
-            docs_path: Some("/tmp/moltis/docs/moltis".into()),
-            config_template_path: Some("/tmp/moltis/docs/moltis/config-template.md".into()),
+            docs_path: Some("/tmp/chelix/docs/chelix".into()),
+            config_template_path: Some("/tmp/chelix/docs/chelix/config-template.md".into()),
             ..Default::default()
         },
         ..Default::default()
@@ -162,7 +162,7 @@ fn test_documentation_section_includes_local_docs_path() {
     );
 
     assert!(prompt.contains("## Documentation"));
-    assert!(prompt.contains("Moltis docs: /tmp/moltis/docs/moltis"));
+    assert!(prompt.contains("Chelix docs: /tmp/chelix/docs/chelix"));
     assert!(prompt.contains("consult local docs first"));
     assert!(prompt.contains("config-template.md"));
 }
@@ -188,7 +188,7 @@ fn test_documentation_section_falls_back_to_public_docs() {
 
     assert!(
         prompt.contains(
-            "Moltis docs: https://github.com/agentics-skills/chelix/tree/master/docs/src"
+            "Chelix docs: https://github.com/agentics-skills/chelix/tree/master/docs/src"
         )
     );
 }
@@ -347,7 +347,7 @@ fn test_runtime_context_injected_when_provided() {
     let tools = ToolRegistry::new();
     let runtime = PromptRuntimeContext {
         host: PromptHostRuntimeContext {
-            host: Some("moltis-devbox".into()),
+            host: Some("chelix-devbox".into()),
             os: Some("macos".into()),
             arch: Some("aarch64".into()),
             shell: Some("zsh".into()),
@@ -363,7 +363,7 @@ fn test_runtime_context_injected_when_provided() {
             channel_chat_id: None,
             channel_chat_type: None,
             channel_sender_id: None,
-            data_dir: Some("/home/moltis/.moltis".into()),
+            data_dir: Some("/home/chelix/.chelix".into()),
             docs_path: None,
             config_template_path: None,
             sudo_non_interactive: Some(true),
@@ -378,10 +378,10 @@ fn test_runtime_context_injected_when_provided() {
             mode: Some("all".into()),
             backend: Some("docker".into()),
             scope: Some("session".into()),
-            image: Some("moltis-sandbox:abc123".into()),
+            image: Some("chelix-sandbox:abc123".into()),
             home: Some("/home/sandbox".into()),
             workspace_mount: Some("ro".into()),
-            workspace_path: Some("/home/moltis/.moltis".into()),
+            workspace_path: Some("/home/chelix/.chelix".into()),
             no_network: Some(true),
             session_override: Some(true),
         }),
@@ -406,16 +406,16 @@ fn test_runtime_context_injected_when_provided() {
     );
 
     assert!(prompt.contains("## Runtime"));
-    assert!(prompt.contains("Moltis v"));
-    assert!(prompt.contains(&format_moltis_runtime_line()));
-    assert!(prompt.contains("Host: host=moltis-devbox"));
+    assert!(prompt.contains("Chelix v"));
+    assert!(prompt.contains(&format_chelix_runtime_line()));
+    assert!(prompt.contains("Host: host=chelix-devbox"));
     assert!(!prompt.contains("time=2026-02-17 16:18:00 CET"));
     assert!(!prompt.contains("today="));
     assert!(!prompt.contains("Today is"));
     assert!(!prompt.contains("The current user datetime is"));
     assert!(prompt.contains("provider=openai"));
     assert!(prompt.contains("model=gpt-5"));
-    assert!(prompt.contains("data_dir=/home/moltis/.moltis"));
+    assert!(prompt.contains("data_dir=/home/chelix/.chelix"));
     assert!(prompt.contains("sudo_non_interactive=true"));
     assert!(prompt.contains("sudo_status=passwordless"));
     assert!(prompt.contains("timezone=Europe/Paris"));
@@ -424,7 +424,7 @@ fn test_runtime_context_injected_when_provided() {
     assert!(prompt.contains("Sandbox(execute_command): enabled=true"));
     assert!(prompt.contains("backend=docker"));
     assert!(prompt.contains("home=/home/sandbox"));
-    assert!(prompt.contains("workspace_path=/home/moltis/.moltis"));
+    assert!(prompt.contains("workspace_path=/home/chelix/.chelix"));
     assert!(prompt.contains("network=disabled"));
     assert!(prompt.contains("Execution routing:"));
     assert!(prompt.contains("`~` and relative paths resolve under"));
@@ -662,7 +662,7 @@ fn test_runtime_context_omits_location_when_none() {
 fn test_minimal_prompt_runtime_does_not_add_command_routing_block() {
     let runtime = PromptRuntimeContext {
         host: PromptHostRuntimeContext {
-            host: Some("moltis-devbox".into()),
+            host: Some("chelix-devbox".into()),
             ..Default::default()
         },
         sandbox: None,
@@ -684,7 +684,7 @@ fn test_minimal_prompt_runtime_does_not_add_command_routing_block() {
     );
 
     assert!(prompt.contains("## Runtime"));
-    assert!(prompt.contains("Host: host=moltis-devbox"));
+    assert!(prompt.contains("Host: host=chelix-devbox"));
     assert!(!prompt.contains("Sandbox(execute_command)"));
     assert!(!prompt.contains("Execution routing:"));
 }

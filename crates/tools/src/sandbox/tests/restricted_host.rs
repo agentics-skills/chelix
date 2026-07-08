@@ -179,7 +179,7 @@ fn test_restricted_host_sandbox_does_not_provide_fs_isolation() {
 
 #[test]
 fn test_check_restricted_host_path_allows_data_dir() {
-    let data = moltis_config::data_dir().join("notes/todo.txt");
+    let data = chelix_config::data_dir().join("notes/todo.txt");
     check_restricted_host_path(&data.display().to_string()).unwrap();
 }
 

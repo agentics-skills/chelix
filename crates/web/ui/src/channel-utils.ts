@@ -9,23 +9,23 @@ import { ChannelType } from "./types";
 export const MATRIX_DOCS_URL = "https://github.com/agentics-skills/chelix/blob/master/docs/src/matrix.md";
 export const MATRIX_DEFAULT_HOMESERVER = "https://matrix.org";
 export const MATRIX_ENCRYPTION_GUIDANCE =
-	"Encrypted Matrix chats require OIDC or Password auth. Access token auth can connect for plain Matrix traffic, but it reuses an existing Matrix session without that device's private encryption keys, so Moltis cannot reliably decrypt encrypted chats. Use OIDC (recommended) or Password so Moltis creates and persists its own Matrix device keys, then finish Element verification in the same Matrix DM or room by sending `verify yes`, `verify no`, `verify show`, or `verify cancel` as normal chat messages.";
+	"Encrypted Matrix chats require OIDC or Password auth. Access token auth can connect for plain Matrix traffic, but it reuses an existing Matrix session without that device's private encryption keys, so Chelix cannot reliably decrypt encrypted chats. Use OIDC (recommended) or Password so Chelix creates and persists its own Matrix device keys, then finish Element verification in the same Matrix DM or room by sending `verify yes`, `verify no`, `verify show`, or `verify cancel` as normal chat messages.";
 
 export function matrixAuthModeGuidance(authMode: string | undefined): string {
 	const mode = normalizeMatrixAuthMode(authMode);
 	if (mode === "oidc")
-		return "Recommended for homeservers using Matrix Authentication Service (e.g. matrix.org since April 2025). Moltis authenticates via your browser \u2014 no password or token needed.";
+		return "Recommended for homeservers using Matrix Authentication Service (e.g. matrix.org since April 2025). Chelix authenticates via your browser \u2014 no password or token needed.";
 	if (mode === "password")
-		return "Required for encrypted Matrix chats. Moltis logs in as its own Matrix device and stores the device's encryption keys locally.";
-	return "Does not support encrypted Matrix chats. Access tokens authenticate an existing Matrix session, but they do not transfer that device's private encryption keys into Moltis.";
+		return "Required for encrypted Matrix chats. Chelix logs in as its own Matrix device and stores the device's encryption keys locally.";
+	return "Does not support encrypted Matrix chats. Access tokens authenticate an existing Matrix session, but they do not transfer that device's private encryption keys into Chelix.";
 }
 
 export function channelStorageNote(): string {
 	const dbPath = String(getGon("channel_storage_db_path") || "").trim();
 	if (dbPath) {
-		return `Channels added or edited in the web UI are stored in Moltis's internal database (${dbPath}). They are not written back to moltis.toml. The channel picker itself comes from [channels].offered in moltis.toml, so reload this page after editing that list.`;
+		return `Channels added or edited in the web UI are stored in Chelix's internal database (${dbPath}). They are not written back to chelix.toml. The channel picker itself comes from [channels].offered in chelix.toml, so reload this page after editing that list.`;
 	}
-	return "Channels added or edited in the web UI are stored in Moltis's internal database (moltis.db). They are not written back to moltis.toml. The channel picker itself comes from [channels].offered in moltis.toml, so reload this page after editing that list.";
+	return "Channels added or edited in the web UI are stored in Chelix's internal database (chelix.db). They are not written back to chelix.toml. The channel picker itself comes from [channels].offered in chelix.toml, so reload this page after editing that list.";
 }
 
 interface ValidationSuccess {
@@ -82,17 +82,17 @@ export function normalizeMatrixAuthMode(authMode: string | undefined): string {
 }
 
 export function normalizeMatrixOwnershipMode(mode: string | undefined): string {
-	return mode === "moltis_owned" ? "moltis_owned" : "user_managed";
+	return mode === "chelix_owned" ? "chelix_owned" : "user_managed";
 }
 
 export function matrixOwnershipModeGuidance(authMode: string | undefined, ownershipMode: string | undefined): string {
 	const mode = normalizeMatrixAuthMode(authMode);
 	if (mode !== "password" && mode !== "oidc") {
-		return "Access token auth always stays user-managed because it reuses an existing Matrix session instead of giving Moltis full control of the account's encryption state.";
+		return "Access token auth always stays user-managed because it reuses an existing Matrix session instead of giving Chelix full control of the account's encryption state.";
 	}
-	return normalizeMatrixOwnershipMode(ownershipMode) === "moltis_owned"
-		? "Recommended for dedicated bot accounts. Moltis bootstraps cross-signing and recovery for this account so it can verify its own Matrix device automatically."
-		: "Use this if you want to open the same bot account in Element or another Matrix client yourself. Moltis will not try to take over the account's cross-signing or recovery state.";
+	return normalizeMatrixOwnershipMode(ownershipMode) === "chelix_owned"
+		? "Recommended for dedicated bot accounts. Chelix bootstraps cross-signing and recovery for this account so it can verify its own Matrix device automatically."
+		: "Use this if you want to open the same bot account in Element or another Matrix client yourself. Chelix will not try to take over the account's cross-signing or recovery state.";
 }
 
 export function matrixCredentialLabel(authMode: string | undefined): string {
@@ -147,7 +147,7 @@ interface DeriveMatrixAccountIdOptions {
 }
 
 /**
- * Generate a local Matrix account identifier for Moltis.
+ * Generate a local Matrix account identifier for Chelix.
  * Prefer the Matrix user ID when present, otherwise derive from homeserver.
  */
 export function deriveMatrixAccountId(options: DeriveMatrixAccountIdOptions = {}): string {
@@ -160,7 +160,7 @@ export function deriveMatrixAccountId(options: DeriveMatrixAccountIdOptions = {}
 }
 
 /**
- * Generate a local Signal account identifier for Moltis.
+ * Generate a local Signal account identifier for Chelix.
  * Derive from the phone number when present, otherwise use a random suffix.
  */
 export function deriveSignalAccountId(account?: string): string {

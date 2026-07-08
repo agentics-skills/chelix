@@ -23,7 +23,7 @@ pub use {
 /// Run database migrations for the sessions crate.
 ///
 /// This creates the `sessions` and `channel_sessions` tables. Should be called
-/// at application startup after [`moltis_projects::run_migrations`] (sessions
+/// at application startup after [`chelix_projects::run_migrations`] (sessions
 /// has a foreign key to projects).
 pub async fn run_migrations(pool: &sqlx::SqlitePool) -> Result<()> {
     sqlx::migrate!("./migrations")

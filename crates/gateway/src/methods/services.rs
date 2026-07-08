@@ -9,8 +9,8 @@ use std::path::Component;
 use tracing::warn;
 
 #[cfg(feature = "agent")]
-use moltis_agents::prompt::WorkspaceFilePromptStatus;
-use moltis_protocol::{ErrorShape, error_codes};
+use chelix_agents::prompt::WorkspaceFilePromptStatus;
+use chelix_protocol::{ErrorShape, error_codes};
 
 use crate::{
     broadcast::{BroadcastOpts, broadcast},
@@ -111,18 +111,18 @@ async fn resolve_requested_agent_id(
 }
 
 fn read_identity_payload_for_agent(agent_id: &str) -> serde_json::Value {
-    let config = moltis_config::discover_and_load();
-    let identity = moltis_config::load_identity_for_agent(agent_id).unwrap_or_default();
-    let user = moltis_config::resolve_user_profile_from_config(&config);
+    let config = chelix_config::discover_and_load();
+    let identity = chelix_config::load_identity_for_agent(agent_id).unwrap_or_default();
+    let user = chelix_config::resolve_user_profile_from_config(&config);
     let resolved_name = identity
         .name
         .clone()
-        .unwrap_or_else(|| "moltis".to_string());
-    let identity_path = moltis_config::agent_workspace_dir(agent_id).join("IDENTITY.md");
+        .unwrap_or_else(|| "chelix".to_string());
+    let identity_path = chelix_config::agent_workspace_dir(agent_id).join("IDENTITY.md");
     let identity_text = std::fs::read_to_string(identity_path)
         .ok()
-        .and_then(|content| moltis_config::extract_yaml_frontmatter(&content).map(str::to_string));
-    let soul = moltis_config::load_soul_for_agent(agent_id);
+        .and_then(|content| chelix_config::extract_yaml_frontmatter(&content).map(str::to_string));
+    let soul = chelix_config::load_soul_for_agent(agent_id);
     let user_name = user.name.clone();
     let user_timezone = user.timezone.as_ref().map(|tz| tz.name().to_string());
     serde_json::json!({
@@ -142,7 +142,7 @@ fn read_identity_payload_for_agent(agent_id: &str) -> serde_json::Value {
 }
 
 fn write_soul_for_agent(agent_id: &str, soul: Option<String>) -> Result<(), ErrorShape> {
-    moltis_config::save_soul_for_agent(agent_id, soul.as_deref())
+    chelix_config::save_soul_for_agent(agent_id, soul.as_deref())
         .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e.to_string()))?;
     Ok(())
 }
@@ -151,7 +151,7 @@ fn write_soul_for_agent(agent_id: &str, soul: Option<String>) -> Result<(), Erro
 /// present — mirrors the old `onboarding.identity_update()` behavior so the
 /// onboarding wizard doesn't re-appear after identity is saved.
 fn mark_onboarded_if_ready(
-    identity: &moltis_config::schema::AgentIdentity,
+    identity: &chelix_config::schema::AgentIdentity,
     params: &serde_json::Value,
 ) {
     let has_agent_name = identity.name.as_ref().is_some_and(|n| !n.is_empty());
@@ -159,19 +159,19 @@ fn mark_onboarded_if_ready(
         .get("user_name")
         .and_then(|v| v.as_str())
         .is_some_and(|n| !n.is_empty())
-        || moltis_config::resolve_user_profile()
+        || chelix_config::resolve_user_profile()
             .name
             .as_ref()
             .is_some_and(|n| !n.is_empty());
 
     if has_agent_name && has_user_name {
-        let sentinel = moltis_config::data_dir().join(".onboarded");
+        let sentinel = chelix_config::data_dir().join(".onboarded");
         let _ = std::fs::write(&sentinel, "");
     }
 }
 
 /// Save user profile fields (user_name, user_timezone, user_location) from
-/// identity update params. These are persisted to `[user]` in `moltis.toml`
+/// identity update params. These are persisted to `[user]` in `chelix.toml`
 /// and `USER.md`, independent of which agent is being updated.
 fn save_user_profile_fields(params: &serde_json::Value) -> Result<(), ErrorShape> {
     let has_user_field = params.get("user_name").is_some()
@@ -184,11 +184,11 @@ fn save_user_profile_fields(params: &serde_json::Value) -> Result<(), ErrorShape
         return Ok(());
     }
 
-    // Build the updated user profile, then save to both moltis.toml and USER.md.
+    // Build the updated user profile, then save to both chelix.toml and USER.md.
     // We must NOT re-read via resolve_user_profile_from_config after saving to toml,
     // because that would let the stale USER.md override the new values.
     let saved_user = std::sync::Mutex::new(None);
-    moltis_config::update_config(|cfg| {
+    chelix_config::update_config(|cfg| {
         let mut user = cfg.user.clone();
 
         if let Some(v) = params.get("user_name").and_then(|v| v.as_str()) {
@@ -206,7 +206,7 @@ fn save_user_profile_fields(params: &serde_json::Value) -> Result<(), ErrorShape
             let trimmed = raw.trim();
             if trimmed.is_empty() {
                 user.timezone = None;
-            } else if let Ok(tz) = trimmed.parse::<moltis_config::Timezone>() {
+            } else if let Ok(tz) = trimmed.parse::<chelix_config::Timezone>() {
                 user.timezone = Some(tz);
             }
         }
@@ -224,7 +224,7 @@ fn save_user_profile_fields(params: &serde_json::Value) -> Result<(), ErrorShape
                     .get("place")
                     .and_then(|v| v.as_str())
                     .map(str::to_string);
-                user.location = Some(moltis_config::GeoLocation::now(lat, lon, place));
+                user.location = Some(chelix_config::GeoLocation::now(lat, lon, place));
             }
         }
 
@@ -235,8 +235,8 @@ fn save_user_profile_fields(params: &serde_json::Value) -> Result<(), ErrorShape
 
     // Persist to USER.md using the values we just built (not re-read from config).
     if let Some(user) = saved_user.into_inner().unwrap_or(None) {
-        let config = moltis_config::discover_and_load_readonly();
-        let _ = moltis_config::save_user_with_mode(&user, config.memory.user_profile_write_mode);
+        let config = chelix_config::discover_and_load_readonly();
+        let _ = chelix_config::save_user_with_mode(&user, config.memory.user_profile_write_mode);
     }
 
     Ok(())
@@ -294,35 +294,35 @@ fn invalid_memory_config_value(field: &str, value: &str) -> ErrorShape {
     )
 }
 
-fn parse_memory_style(value: &str) -> Result<moltis_config::MemoryStyle, ErrorShape> {
+fn parse_memory_style(value: &str) -> Result<chelix_config::MemoryStyle, ErrorShape> {
     match value {
-        "hybrid" => Ok(moltis_config::MemoryStyle::Hybrid),
-        "prompt-only" => Ok(moltis_config::MemoryStyle::PromptOnly),
-        "search-only" => Ok(moltis_config::MemoryStyle::SearchOnly),
-        "off" => Ok(moltis_config::MemoryStyle::Off),
+        "hybrid" => Ok(chelix_config::MemoryStyle::Hybrid),
+        "prompt-only" => Ok(chelix_config::MemoryStyle::PromptOnly),
+        "search-only" => Ok(chelix_config::MemoryStyle::SearchOnly),
+        "off" => Ok(chelix_config::MemoryStyle::Off),
         _ => Err(invalid_memory_config_value("style", value)),
     }
 }
 
 fn parse_agent_memory_write_mode(
     value: &str,
-) -> Result<moltis_config::AgentMemoryWriteMode, ErrorShape> {
+) -> Result<chelix_config::AgentMemoryWriteMode, ErrorShape> {
     match value {
-        "hybrid" => Ok(moltis_config::AgentMemoryWriteMode::Hybrid),
-        "prompt-only" => Ok(moltis_config::AgentMemoryWriteMode::PromptOnly),
-        "search-only" => Ok(moltis_config::AgentMemoryWriteMode::SearchOnly),
-        "off" => Ok(moltis_config::AgentMemoryWriteMode::Off),
+        "hybrid" => Ok(chelix_config::AgentMemoryWriteMode::Hybrid),
+        "prompt-only" => Ok(chelix_config::AgentMemoryWriteMode::PromptOnly),
+        "search-only" => Ok(chelix_config::AgentMemoryWriteMode::SearchOnly),
+        "off" => Ok(chelix_config::AgentMemoryWriteMode::Off),
         _ => Err(invalid_memory_config_value("agent_write_mode", value)),
     }
 }
 
 fn parse_user_profile_write_mode(
     value: &str,
-) -> Result<moltis_config::UserProfileWriteMode, ErrorShape> {
+) -> Result<chelix_config::UserProfileWriteMode, ErrorShape> {
     match value {
-        "explicit-and-auto" => Ok(moltis_config::UserProfileWriteMode::ExplicitAndAuto),
-        "explicit-only" => Ok(moltis_config::UserProfileWriteMode::ExplicitOnly),
-        "off" => Ok(moltis_config::UserProfileWriteMode::Off),
+        "explicit-and-auto" => Ok(chelix_config::UserProfileWriteMode::ExplicitAndAuto),
+        "explicit-only" => Ok(chelix_config::UserProfileWriteMode::ExplicitOnly),
+        "off" => Ok(chelix_config::UserProfileWriteMode::Off),
         _ => Err(invalid_memory_config_value(
             "user_profile_write_mode",
             value,
@@ -330,55 +330,55 @@ fn parse_user_profile_write_mode(
     }
 }
 
-fn parse_memory_backend(value: &str) -> Result<moltis_config::MemoryBackend, ErrorShape> {
+fn parse_memory_backend(value: &str) -> Result<chelix_config::MemoryBackend, ErrorShape> {
     match value {
-        "builtin" => Ok(moltis_config::MemoryBackend::Builtin),
-        "qmd" => Ok(moltis_config::MemoryBackend::Qmd),
+        "builtin" => Ok(chelix_config::MemoryBackend::Builtin),
+        "qmd" => Ok(chelix_config::MemoryBackend::Qmd),
         _ => Err(invalid_memory_config_value("backend", value)),
     }
 }
 
-fn parse_memory_provider(value: &str) -> Result<Option<moltis_config::MemoryProvider>, ErrorShape> {
+fn parse_memory_provider(value: &str) -> Result<Option<chelix_config::MemoryProvider>, ErrorShape> {
     match value {
         "auto" => Ok(None),
-        "local" => Ok(Some(moltis_config::MemoryProvider::Local)),
-        "ollama" => Ok(Some(moltis_config::MemoryProvider::Ollama)),
-        "openai" => Ok(Some(moltis_config::MemoryProvider::OpenAi)),
-        "custom" => Ok(Some(moltis_config::MemoryProvider::Custom)),
+        "local" => Ok(Some(chelix_config::MemoryProvider::Local)),
+        "ollama" => Ok(Some(chelix_config::MemoryProvider::Ollama)),
+        "openai" => Ok(Some(chelix_config::MemoryProvider::OpenAi)),
+        "custom" => Ok(Some(chelix_config::MemoryProvider::Custom)),
         _ => Err(invalid_memory_config_value("provider", value)),
     }
 }
 
 fn parse_memory_citations_mode(
     value: &str,
-) -> Result<moltis_config::MemoryCitationsMode, ErrorShape> {
+) -> Result<chelix_config::MemoryCitationsMode, ErrorShape> {
     match value {
-        "on" => Ok(moltis_config::MemoryCitationsMode::On),
-        "off" => Ok(moltis_config::MemoryCitationsMode::Off),
-        "auto" => Ok(moltis_config::MemoryCitationsMode::Auto),
+        "on" => Ok(chelix_config::MemoryCitationsMode::On),
+        "off" => Ok(chelix_config::MemoryCitationsMode::Off),
+        "auto" => Ok(chelix_config::MemoryCitationsMode::Auto),
         _ => Err(invalid_memory_config_value("citations", value)),
     }
 }
 
 fn parse_memory_search_merge_strategy(
     value: &str,
-) -> Result<moltis_config::MemorySearchMergeStrategy, ErrorShape> {
+) -> Result<chelix_config::MemorySearchMergeStrategy, ErrorShape> {
     match value {
-        "rrf" => Ok(moltis_config::MemorySearchMergeStrategy::Rrf),
-        "linear" => Ok(moltis_config::MemorySearchMergeStrategy::Linear),
+        "rrf" => Ok(chelix_config::MemorySearchMergeStrategy::Rrf),
+        "linear" => Ok(chelix_config::MemorySearchMergeStrategy::Linear),
         _ => Err(invalid_memory_config_value("search_merge_strategy", value)),
     }
 }
 
 fn parse_session_export_mode(
     value: &serde_json::Value,
-) -> Result<moltis_config::SessionExportMode, ErrorShape> {
+) -> Result<chelix_config::SessionExportMode, ErrorShape> {
     match value {
-        serde_json::Value::Bool(false) => Ok(moltis_config::SessionExportMode::Off),
-        serde_json::Value::Bool(true) => Ok(moltis_config::SessionExportMode::OnNewOrReset),
+        serde_json::Value::Bool(false) => Ok(chelix_config::SessionExportMode::Off),
+        serde_json::Value::Bool(true) => Ok(chelix_config::SessionExportMode::OnNewOrReset),
         serde_json::Value::String(string) => match string.as_str() {
-            "off" => Ok(moltis_config::SessionExportMode::Off),
-            "on-new-or-reset" => Ok(moltis_config::SessionExportMode::OnNewOrReset),
+            "off" => Ok(chelix_config::SessionExportMode::Off),
+            "on-new-or-reset" => Ok(chelix_config::SessionExportMode::OnNewOrReset),
             _ => Err(invalid_memory_config_value("session_export", string)),
         },
         _ => Err(ErrorShape::new(
@@ -388,10 +388,10 @@ fn parse_session_export_mode(
     }
 }
 
-fn parse_prompt_memory_mode(value: &str) -> Result<moltis_config::PromptMemoryMode, ErrorShape> {
+fn parse_prompt_memory_mode(value: &str) -> Result<chelix_config::PromptMemoryMode, ErrorShape> {
     match value {
-        "live-reload" => Ok(moltis_config::PromptMemoryMode::LiveReload),
-        "frozen-at-session-start" => Ok(moltis_config::PromptMemoryMode::FrozenAtSessionStart),
+        "live-reload" => Ok(chelix_config::PromptMemoryMode::LiveReload),
+        "frozen-at-session-start" => Ok(chelix_config::PromptMemoryMode::FrozenAtSessionStart),
         _ => Err(invalid_memory_config_value("prompt_memory_mode", value)),
     }
 }
@@ -410,13 +410,13 @@ fn resolve_agent_file_target(
     agent_id: &str,
     relative_path: &Path,
 ) -> Option<(PathBuf, &'static str)> {
-    let primary = moltis_config::agent_workspace_dir(agent_id).join(relative_path);
+    let primary = chelix_config::agent_workspace_dir(agent_id).join(relative_path);
     if primary.exists() {
         return Some((primary, "agent"));
     }
 
     if should_fallback_agent_file_to_root(agent_id, relative_path) {
-        let fallback = moltis_config::data_dir().join(relative_path);
+        let fallback = chelix_config::data_dir().join(relative_path);
         if fallback.exists() {
             return Some((fallback, "root"));
         }
@@ -434,7 +434,7 @@ fn workspace_prompt_file_status(
     let relative_path = Path::new(file_name);
     let (path, source) = resolve_agent_file_target(agent_id, relative_path)?;
     let content = std::fs::read_to_string(&path).ok()?;
-    let normalized = moltis_config::normalize_workspace_markdown_content(&content)?;
+    let normalized = chelix_config::normalize_workspace_markdown_content(&content)?;
     let original_chars = normalized.chars().count();
     let size_bytes = std::fs::metadata(&path).ok().map(|meta| meta.len());
     Some(WorkspacePromptFileStatusResponse {
@@ -548,7 +548,7 @@ async fn reload_hooks(state: &Arc<crate::state::GatewayState>) {
 /// Persist the disabled hooks set to `data_dir/disabled_hooks.json`.
 async fn persist_disabled_hooks(state: &Arc<crate::state::GatewayState>) {
     let disabled = state.inner.read().await.disabled_hooks.clone();
-    let path = moltis_config::data_dir().join("disabled_hooks.json");
+    let path = chelix_config::data_dir().join("disabled_hooks.json");
     let json = serde_json::to_string_pretty(&disabled).unwrap_or_default();
     if let Err(e) = std::fs::write(&path, json) {
         warn!("failed to persist disabled hooks: {e}");
@@ -580,8 +580,8 @@ mod tests {
                 .unwrap_or_else(|error| panic!("config tempdir should be created: {error}"));
             let data_dir = tempfile::tempdir()
                 .unwrap_or_else(|error| panic!("data tempdir should be created: {error}"));
-            moltis_config::set_config_dir(config_dir.path().to_path_buf());
-            moltis_config::set_data_dir(data_dir.path().to_path_buf());
+            chelix_config::set_config_dir(config_dir.path().to_path_buf());
+            chelix_config::set_data_dir(data_dir.path().to_path_buf());
             Self {
                 _lock: lock,
                 _config_dir: config_dir,
@@ -592,8 +592,8 @@ mod tests {
 
     impl Drop for MemoryConfigTestGuard {
         fn drop(&mut self) {
-            moltis_config::clear_config_dir();
-            moltis_config::clear_data_dir();
+            chelix_config::clear_config_dir();
+            chelix_config::clear_data_dir();
         }
     }
 
@@ -630,7 +630,7 @@ mod tests {
     async fn dispatch_memory_method_response(
         method: &str,
         params: serde_json::Value,
-    ) -> moltis_protocol::ResponseFrame {
+    ) -> chelix_protocol::ResponseFrame {
         let mut reg = MethodRegistry::default();
         register(&mut reg);
         reg.dispatch(MethodContext {
@@ -656,18 +656,18 @@ mod tests {
     #[tokio::test]
     async fn memory_config_get_reports_typed_memory_fields() {
         let _guard = MemoryConfigTestGuard::new();
-        let update_result = moltis_config::update_config(|cfg| {
-            cfg.memory.style = moltis_config::MemoryStyle::SearchOnly;
-            cfg.memory.agent_write_mode = moltis_config::AgentMemoryWriteMode::PromptOnly;
-            cfg.memory.user_profile_write_mode = moltis_config::UserProfileWriteMode::ExplicitOnly;
-            cfg.memory.backend = moltis_config::MemoryBackend::Qmd;
-            cfg.memory.provider = Some(moltis_config::MemoryProvider::OpenAi);
-            cfg.memory.citations = moltis_config::MemoryCitationsMode::Off;
+        let update_result = chelix_config::update_config(|cfg| {
+            cfg.memory.style = chelix_config::MemoryStyle::SearchOnly;
+            cfg.memory.agent_write_mode = chelix_config::AgentMemoryWriteMode::PromptOnly;
+            cfg.memory.user_profile_write_mode = chelix_config::UserProfileWriteMode::ExplicitOnly;
+            cfg.memory.backend = chelix_config::MemoryBackend::Qmd;
+            cfg.memory.provider = Some(chelix_config::MemoryProvider::OpenAi);
+            cfg.memory.citations = chelix_config::MemoryCitationsMode::Off;
             cfg.memory.disable_rag = true;
             cfg.memory.llm_reranking = true;
-            cfg.memory.search_merge_strategy = moltis_config::MemorySearchMergeStrategy::Linear;
-            cfg.memory.session_export = moltis_config::SessionExportMode::Off;
-            cfg.chat.prompt_memory_mode = moltis_config::PromptMemoryMode::FrozenAtSessionStart;
+            cfg.memory.search_merge_strategy = chelix_config::MemorySearchMergeStrategy::Linear;
+            cfg.memory.session_export = chelix_config::SessionExportMode::Off;
+            cfg.chat.prompt_memory_mode = chelix_config::PromptMemoryMode::FrozenAtSessionStart;
         });
         assert!(update_result.is_ok(), "config update should succeed");
 
@@ -719,38 +719,38 @@ mod tests {
         assert_eq!(payload["session_export"], "off");
         assert_eq!(payload["prompt_memory_mode"], "frozen-at-session-start");
 
-        let config = moltis_config::discover_and_load();
-        assert_eq!(config.memory.style, moltis_config::MemoryStyle::PromptOnly);
+        let config = chelix_config::discover_and_load();
+        assert_eq!(config.memory.style, chelix_config::MemoryStyle::PromptOnly);
         assert_eq!(
             config.memory.agent_write_mode,
-            moltis_config::AgentMemoryWriteMode::SearchOnly
+            chelix_config::AgentMemoryWriteMode::SearchOnly
         );
         assert_eq!(
             config.memory.user_profile_write_mode,
-            moltis_config::UserProfileWriteMode::Off
+            chelix_config::UserProfileWriteMode::Off
         );
-        assert_eq!(config.memory.backend, moltis_config::MemoryBackend::Qmd);
+        assert_eq!(config.memory.backend, chelix_config::MemoryBackend::Qmd);
         assert_eq!(
             config.memory.provider,
-            Some(moltis_config::MemoryProvider::Custom)
+            Some(chelix_config::MemoryProvider::Custom)
         );
         assert_eq!(
             config.memory.citations,
-            moltis_config::MemoryCitationsMode::On
+            chelix_config::MemoryCitationsMode::On
         );
         assert!(config.memory.disable_rag);
         assert!(config.memory.llm_reranking);
         assert_eq!(
             config.memory.search_merge_strategy,
-            moltis_config::MemorySearchMergeStrategy::Linear
+            chelix_config::MemorySearchMergeStrategy::Linear
         );
         assert_eq!(
             config.memory.session_export,
-            moltis_config::SessionExportMode::Off
+            chelix_config::SessionExportMode::Off
         );
         assert_eq!(
             config.chat.prompt_memory_mode,
-            moltis_config::PromptMemoryMode::FrozenAtSessionStart
+            chelix_config::PromptMemoryMode::FrozenAtSessionStart
         );
     }
 

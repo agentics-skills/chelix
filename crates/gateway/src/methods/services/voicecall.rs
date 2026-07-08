@@ -1,7 +1,7 @@
 use super::*;
 
 #[cfg(feature = "telephony")]
-use moltis_channels::ChannelPlugin as _;
+use chelix_channels::ChannelPlugin as _;
 
 pub(super) fn register(reg: &mut MethodRegistry) {
     reg.register(
@@ -87,8 +87,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     let message = ctx.params["message"].as_str();
                     let mode_str = ctx.params["mode"].as_str().unwrap_or("conversation");
                     let mode = match mode_str {
-                        "notify" => moltis_telephony::types::CallMode::Notify,
-                        _ => moltis_telephony::types::CallMode::Conversation,
+                        "notify" => chelix_telephony::types::CallMode::Notify,
+                        _ => chelix_telephony::types::CallMode::Conversation,
                     };
                     let target_account = ctx.params["account_id"].as_str().map(String::from);
 
@@ -315,7 +315,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         )
                         .map_err(|e| ErrorShape::new("storage_error", e.to_string()))?;
 
-                    moltis_config::update_config(|cfg| {
+                    chelix_config::update_config(|cfg| {
                         cfg.phone.enabled = true;
                         cfg.phone.provider = provider.to_string();
                         phone::clear_inline_phone_credentials(cfg, provider);
@@ -347,7 +347,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         .as_str()
                         .ok_or_else(|| ErrorShape::new("invalid_params", "missing provider"))?;
 
-                    moltis_config::update_config(|cfg| {
+                    chelix_config::update_config(|cfg| {
                         phone::apply_phone_provider_settings(cfg, provider, &ctx.params);
                     })
                     .map_err(|e| ErrorShape::new("config_error", e.to_string()))?;
@@ -382,7 +382,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         .remove(&store_key)
                         .map_err(|e| ErrorShape::new("storage_error", e.to_string()))?;
 
-                    moltis_config::update_config(|cfg| {
+                    chelix_config::update_config(|cfg| {
                         phone::clear_inline_phone_credentials(cfg, provider);
                         if cfg.phone.provider == provider {
                             cfg.phone.enabled = false;

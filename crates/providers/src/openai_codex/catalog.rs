@@ -1,7 +1,7 @@
 use std::{collections::HashSet, sync::mpsc, time::Duration};
 
 use {
-    moltis_oauth::TokenStore,
+    chelix_oauth::TokenStore,
     secrecy::{ExposeSecret, Secret},
     tracing::{debug, info, warn},
 };
@@ -12,7 +12,7 @@ const CODEX_MODELS_ENDPOINT: &str = "https://chatgpt.com/backend-api/codex/model
 /// Report a client version that satisfies the Codex API's
 /// `minimal_client_version` filter so all available models are returned.
 /// Using the crate's own version (0.x) caused the API to hide newer models
-/// that require >= 0.98.0. See <https://github.com/moltis-org/moltis/issues/354>.
+/// that require >= 0.98.0. See <https://github.com/agentics-skills/chelix/issues/354>.
 ///
 /// **DO NOT** change this to `env!("CARGO_PKG_VERSION")` — the crate version
 /// is unrelated to the Codex client version and will break model discovery.
@@ -29,7 +29,7 @@ pub(super) const DEFAULT_CODEX_MODELS: &[(&str, &str)] = &[
 ];
 
 /// Parse tokens from Codex CLI auth.json content.
-pub(super) fn parse_codex_cli_tokens(data: &str) -> Option<moltis_oauth::OAuthTokens> {
+pub(super) fn parse_codex_cli_tokens(data: &str) -> Option<chelix_oauth::OAuthTokens> {
     let json: serde_json::Value = serde_json::from_str(data).ok()?;
     let tokens = json.get("tokens")?;
     let access_token = tokens.get("access_token")?.as_str()?.to_string();
@@ -45,7 +45,7 @@ pub(super) fn parse_codex_cli_tokens(data: &str) -> Option<moltis_oauth::OAuthTo
         .get("refresh_token")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
-    Some(moltis_oauth::OAuthTokens {
+    Some(chelix_oauth::OAuthTokens {
         access_token: Secret::new(access_token),
         refresh_token: refresh_token.map(Secret::new),
         id_token: id_token.map(Secret::new),
@@ -55,7 +55,7 @@ pub(super) fn parse_codex_cli_tokens(data: &str) -> Option<moltis_oauth::OAuthTo
 }
 
 /// Try to load tokens from the Codex CLI file at `~/.codex/auth.json`.
-pub(super) fn load_codex_cli_tokens() -> Option<moltis_oauth::OAuthTokens> {
+pub(super) fn load_codex_cli_tokens() -> Option<chelix_oauth::OAuthTokens> {
     let home = std::env::var("HOME").ok()?;
     let path = std::path::PathBuf::from(home)
         .join(".codex")

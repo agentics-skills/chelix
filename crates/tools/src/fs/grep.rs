@@ -19,7 +19,7 @@ use {
     grep_regex::RegexMatcherBuilder,
     grep_searcher::{BinaryDetection, Searcher, SearcherBuilder, Sink, SinkMatch},
     ignore::WalkBuilder,
-    moltis_agents::tool_registry::AgentTool,
+    chelix_agents::tool_registry::AgentTool,
     serde_json::{Value, json},
     std::{
         io,
@@ -30,7 +30,7 @@ use {
 };
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, labels, tools as tools_metrics};
+use chelix_metrics::{counter, labels, tools as tools_metrics};
 
 use crate::{
     Result,

@@ -1,6 +1,6 @@
 [package]
 edition.workspace    = true
-name                 = "moltis-tls"
+name                 = "chelix-tls"
 repository.workspace = true
 version.workspace    = true
 
@@ -8,8 +8,8 @@ version.workspace    = true
 axum           = { workspace = true }
 hostname       = { workspace = true }
 hyper-util     = { workspace = true }
-moltis-common  = { workspace = true }
-moltis-config  = { workspace = true }
+chelix-common  = { workspace = true }
+chelix-config  = { workspace = true }
 rcgen          = { workspace = true }
 rustls         = { workspace = true }
 rustls-pemfile = { workspace = true }

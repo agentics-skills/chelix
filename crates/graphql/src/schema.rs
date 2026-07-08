@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use {
-    async_graphql::Schema, moltis_service_traits::Services, serde_json::Value,
+    async_graphql::Schema, chelix_service_traits::Services, serde_json::Value,
     tokio::sync::broadcast,
 };
 
@@ -12,8 +12,8 @@ use crate::{
     subscriptions::SubscriptionRoot,
 };
 
-/// The full Moltis GraphQL schema type.
-pub type MoltisSchema = Schema<QueryRoot, MutationRoot, SubscriptionRoot>;
+/// The full Chelix GraphQL schema type.
+pub type ChelixSchema = Schema<QueryRoot, MutationRoot, SubscriptionRoot>;
 
 /// Build the GraphQL schema with a services bundle and broadcast channel.
 ///
@@ -25,7 +25,7 @@ pub type MoltisSchema = Schema<QueryRoot, MutationRoot, SubscriptionRoot>;
 pub fn build_schema(
     services: Arc<Services>,
     broadcast_tx: broadcast::Sender<(String, Value)>,
-) -> MoltisSchema {
+) -> ChelixSchema {
     let ctx = Arc::new(GqlContext {
         broadcast_tx,
         services,

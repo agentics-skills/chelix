@@ -17,7 +17,7 @@ fn generate_random_port() -> u16 {
 }
 
 /// Standard config file names, checked in order.
-const CONFIG_FILENAMES: &[&str] = &["moltis.toml", "moltis.yaml", "moltis.yml", "moltis.json"];
+const CONFIG_FILENAMES: &[&str] = &["chelix.toml", "chelix.yaml", "chelix.yml", "chelix.json"];
 
 /// Override for the config directory, set via `set_config_dir()`.
 static CONFIG_DIR_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
@@ -91,20 +91,20 @@ fn share_dir_override() -> Option<PathBuf> {
 ///
 /// Resolution order:
 /// 1. Programmatic override via `set_share_dir()`
-/// 2. `MOLTIS_SHARE_DIR` env var
-/// 3. `/usr/share/moltis/` (Linux system packages) - only if it exists
-/// 4. `data_dir()/share/` (`~/.moltis/share/`) - only if it exists
+/// 2. `CHELIX_SHARE_DIR` env var
+/// 3. `/usr/share/chelix/` (Linux system packages) - only if it exists
+/// 4. `data_dir()/share/` (`~/.chelix/share/`) - only if it exists
 /// 5. `None` (fall back to embedded assets)
 pub fn share_dir() -> Option<PathBuf> {
     if let Some(dir) = share_dir_override() {
         return Some(dir);
     }
-    if let Ok(dir) = std::env::var("MOLTIS_SHARE_DIR")
+    if let Ok(dir) = std::env::var("CHELIX_SHARE_DIR")
         && !dir.is_empty()
     {
         return Some(PathBuf::from(dir));
     }
-    let system = PathBuf::from("/usr/share/moltis");
+    let system = PathBuf::from("/usr/share/chelix");
     if system.is_dir() {
         return Some(system);
     }
@@ -118,34 +118,34 @@ pub fn share_dir() -> Option<PathBuf> {
 /// Returns the user's home directory (`$HOME` / `~`).
 ///
 /// This is the **single call-site** for `directories::BaseDirs` - all other
-/// crates must call this via `moltis_config::home_dir()` instead of using the
+/// crates must call this via `chelix_config::home_dir()` instead of using the
 /// `directories` crate directly.
 pub fn home_dir() -> Option<PathBuf> {
     directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf())
 }
 
-/// Returns the config directory: programmatic override -> `MOLTIS_CONFIG_DIR` env ->
-/// `~/.config/moltis/`.
+/// Returns the config directory: programmatic override -> `CHELIX_CONFIG_DIR` env ->
+/// `~/.config/chelix/`.
 pub fn config_dir() -> Option<PathBuf> {
     if let Some(dir) = config_dir_override() {
         return Some(dir);
     }
-    if let Ok(dir) = std::env::var("MOLTIS_CONFIG_DIR")
+    if let Ok(dir) = std::env::var("CHELIX_CONFIG_DIR")
         && !dir.is_empty()
     {
         return Some(PathBuf::from(dir));
     }
-    home_dir().map(|h| h.join(".config").join("moltis"))
+    home_dir().map(|h| h.join(".config").join("chelix"))
 }
 
-/// Returns the user-global config directory (`~/.config/moltis`) without
-/// considering overrides like `MOLTIS_CONFIG_DIR`.
+/// Returns the user-global config directory (`~/.config/chelix`) without
+/// considering overrides like `CHELIX_CONFIG_DIR`.
 pub fn user_global_config_dir() -> Option<PathBuf> {
-    home_dir().map(|h| h.join(".config").join("moltis"))
+    home_dir().map(|h| h.join(".config").join("chelix"))
 }
 
 /// Returns the user-global config directory only when it differs from the
-/// active config directory (i.e. when `MOLTIS_CONFIG_DIR` or `--config-dir`
+/// active config directory (i.e. when `CHELIX_CONFIG_DIR` or `--config-dir`
 /// is overriding the default). Returns `None` when they are the same path.
 pub fn user_global_config_dir_if_different() -> Option<PathBuf> {
     let home = user_global_config_dir()?;
@@ -169,20 +169,20 @@ pub fn find_user_global_config_file() -> Option<PathBuf> {
     None
 }
 
-/// Returns the data directory: programmatic override -> `MOLTIS_DATA_DIR` env ->
-/// `~/.moltis/`.
+/// Returns the data directory: programmatic override -> `CHELIX_DATA_DIR` env ->
+/// `~/.chelix/`.
 pub fn data_dir() -> PathBuf {
     if let Some(dir) = data_dir_override() {
         return dir;
     }
-    if let Ok(dir) = std::env::var("MOLTIS_DATA_DIR")
+    if let Ok(dir) = std::env::var("CHELIX_DATA_DIR")
         && !dir.is_empty()
     {
         return PathBuf::from(dir);
     }
     home_dir()
-        .map(|h| h.join(".moltis"))
-        .unwrap_or_else(|| PathBuf::from(".moltis"))
+        .map(|h| h.join(".chelix"))
+        .unwrap_or_else(|| PathBuf::from(".chelix"))
 }
 
 /// Path to the workspace soul file.
@@ -217,7 +217,7 @@ pub fn tools_path() -> PathBuf {
 
 /// Path to workspace guidelines override markdown.
 pub fn guidelines_path() -> PathBuf {
-    data_dir().join("docs/moltis/GUIDELINES.md")
+    data_dir().join("docs/chelix/GUIDELINES.md")
 }
 
 /// Path to workspace heartbeat markdown.

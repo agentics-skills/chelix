@@ -5,8 +5,8 @@ use std::{collections::HashMap, sync::Arc};
 use {
     anyhow::anyhow,
     async_trait::async_trait,
-    moltis_agents::tool_registry::AgentTool,
-    moltis_config::CalDavConfig,
+    chelix_agents::tool_registry::AgentTool,
+    chelix_config::CalDavConfig,
     serde_json::{Value, json},
 };
 
@@ -356,7 +356,7 @@ impl crate::client::CalDavClient for MockCalDavClient {
         _calendar_href: &str,
         _event: NewEvent,
     ) -> crate::error::Result<crate::types::CreatedEvent> {
-        let uid = format!("mock-{}@moltis", uuid::Uuid::new_v4());
+        let uid = format!("mock-{}@chelix", uuid::Uuid::new_v4());
         Ok(crate::types::CreatedEvent {
             href: format!("/cal/{uid}.ics"),
             etag: Some("\"mock-etag\"".to_string()),
@@ -386,7 +386,7 @@ impl crate::client::CalDavClient for MockCalDavClient {
 mod tests {
     use {
         super::*,
-        moltis_config::{CalDavAccountConfig, CalDavConfig},
+        chelix_config::{CalDavAccountConfig, CalDavConfig},
         secrecy::Secret,
     };
 

@@ -1,25 +1,25 @@
-# Moltis Docker Compose example
+# Chelix Docker Compose example
 #
 # Usage:
 #   docker compose up -d
 #   open https://localhost:13131
 #
-# For an unattended first boot, set MOLTIS_PASSWORD, MOLTIS_PROVIDER, and
-# MOLTIS_API_KEY in the service environment below.
+# For an unattended first boot, set CHELIX_PASSWORD, CHELIX_PROVIDER, and
+# CHELIX_API_KEY in the service environment below.
 #
 # On first launch, a setup code is printed to the logs:
-#   docker compose logs moltis
+#   docker compose logs chelix
 #
 # Configuration and data are stored in local directories:
-#   ./config - moltis.toml, credentials.json, mcp-servers.json
+#   ./config - chelix.toml, credentials.json, mcp-servers.json
 #   ./data   - databases, sessions, memory files
 #
 # For Podman, see the rootless/rootful socket paths below.
 
 services:
-  moltis:
-    image: ghcr.io/moltis-org/moltis:latest
-    container_name: moltis
+  chelix:
+    image: ghcr.io/agentics-skills/chelix:latest
+    container_name: chelix
     restart: unless-stopped
     ports:
       - "13131:13131"
@@ -27,15 +27,15 @@ services:
       - "1455:1455"   # OAuth callback (OpenAI Codex, etc.)
     environment:
       # Uncomment for unattended setup.
-      # MOLTIS_PASSWORD: change-me
-      # MOLTIS_PROVIDER: openai
-      # MOLTIS_API_KEY: sk-...
+      # CHELIX_PASSWORD: change-me
+      # CHELIX_PROVIDER: openai
+      # CHELIX_API_KEY: sk-...
     volumes:
       # Configuration files (editable from host)
-      - ./config:/home/moltis/.config/moltis
+      - ./config:/home/chelix/.config/chelix
 
       # Data directory (databases, sessions, memory)
-      - ./data:/home/moltis/.moltis
+      - ./data:/home/chelix/.chelix
 
       # Docker socket for sandbox command execution
       # Without this, the agent cannot run shell commands in isolated containers

@@ -26,7 +26,7 @@ pub use error::Error;
 
 /// Canonical list of sidecar subdirectories a skill directory may contain,
 /// matching the agentskills.io standard. Both the prompt generator
-/// (`prompt_gen.rs`) and the read-side tool (`moltis_tools::skill_tools`)
+/// (`prompt_gen.rs`) and the read-side tool (`chelix_tools::skill_tools`)
 /// use this constant, so adding a new subdirectory here automatically
 /// propagates to the skill-loading instruction and the listing walker — no
 /// silent drift between what the prompt advertises and what the tool

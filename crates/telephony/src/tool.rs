@@ -5,8 +5,8 @@
 
 use {
     async_trait::async_trait,
-    moltis_agents::tool_registry::AgentTool,
-    moltis_channels::ChannelPlugin as _,
+    chelix_agents::tool_registry::AgentTool,
+    chelix_channels::ChannelPlugin as _,
     serde_json::{Value, json},
     std::sync::Arc,
     tokio::sync::RwLock,

@@ -1,6 +1,6 @@
 //! Static asset serving with three-tier resolution:
 //!
-//! 1. **Dev filesystem** — `MOLTIS_ASSETS_DIR` env var or auto-detected from
+//! 1. **Dev filesystem** — `CHELIX_ASSETS_DIR` env var or auto-detected from
 //!    the crate source tree when running via `cargo run`.
 //! 2. **External share dir** — `share_dir()/web/` for packaged deployments
 //!    (Debian, RPM, Docker) where assets live outside the binary.
@@ -29,7 +29,7 @@ static ASSETS: include_dir::Dir = include_dir::include_dir!("$CARGO_MANIFEST_DIR
 
 /// Resolved asset source, checked once at startup.
 enum AssetSource {
-    /// Filesystem directory (dev mode or `MOLTIS_ASSETS_DIR`).
+    /// Filesystem directory (dev mode or `CHELIX_ASSETS_DIR`).
     Filesystem(PathBuf),
     /// External share directory (`share_dir()/web/`).
     External(PathBuf),
@@ -54,7 +54,7 @@ struct AssetState {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AssetVersionInfo<'a> {
-    moltis_version: &'static str,
+    chelix_version: &'static str,
     asset_hash: &'a str,
     asset_source: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -109,7 +109,7 @@ impl AssetState {
 
     fn version_info(&self) -> AssetVersionInfo<'_> {
         AssetVersionInfo {
-            moltis_version: moltis_config::VERSION,
+            chelix_version: chelix_config::VERSION,
             asset_hash: &self.hash,
             asset_source: self.source_name(),
             fallback_reason: self.fallback_reason,
@@ -125,13 +125,13 @@ static ASSET_STATE: LazyLock<AssetState> = LazyLock::new(resolve_asset_state);
 
 fn resolve_asset_state() -> AssetState {
     // 1. Explicit env var
-    let explicit_dir = std::env::var("MOLTIS_ASSETS_DIR").ok().map(PathBuf::from);
+    let explicit_dir = std::env::var("CHELIX_ASSETS_DIR").ok().map(PathBuf::from);
 
     // 2. Auto-detect cargo source tree (dev mode)
     let cargo_dir = Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/assets"));
 
     // 3. External share directory
-    resolve_asset_state_with_paths(explicit_dir, cargo_dir, moltis_config::share_dir())
+    resolve_asset_state_with_paths(explicit_dir, cargo_dir, chelix_config::share_dir())
 }
 
 fn resolve_asset_state_with_paths(
@@ -415,8 +415,8 @@ fn serve_asset(path: &str, cache_control: &'static str) -> axum::response::Respo
             if matches!(&ASSET_STATE.source, AssetSource::Unavailable) {
                 (
                     StatusCode::SERVICE_UNAVAILABLE,
-                    "Web assets are not available. Install assets to /usr/share/moltis/web/ \
-                     or set MOLTIS_SHARE_DIR to the directory containing them.",
+                    "Web assets are not available. Install assets to /usr/share/chelix/web/ \
+                     or set CHELIX_SHARE_DIR to the directory containing them.",
                 )
                     .into_response()
             } else {
@@ -512,6 +512,6 @@ mod tests {
         assert_eq!(version_json["assetSource"], "embedded");
         assert_eq!(version_json["fallbackReason"], "external-assets-mismatch");
         assert_eq!(version_json["assetHash"], hash_embedded_assets());
-        assert_eq!(version_json["moltisVersion"], moltis_config::VERSION);
+        assert_eq!(version_json["chelixVersion"], chelix_config::VERSION);
     }
 }

@@ -73,11 +73,11 @@ mod tests {
     #[test]
     fn substitutes_known_var() {
         let lookup = |name: &str| match name {
-            "MOLTIS_TEST_VAR" => Some("hello".to_string()),
+            "CHELIX_TEST_VAR" => Some("hello".to_string()),
             _ => None,
         };
         assert_eq!(
-            substitute_env_with("key=${MOLTIS_TEST_VAR}", lookup),
+            substitute_env_with("key=${CHELIX_TEST_VAR}", lookup),
             "key=hello"
         );
     }
@@ -86,8 +86,8 @@ mod tests {
     fn leaves_unknown_var() {
         let lookup = |_: &str| None;
         assert_eq!(
-            substitute_env_with("${MOLTIS_NONEXISTENT_XYZ}", lookup),
-            "${MOLTIS_NONEXISTENT_XYZ}"
+            substitute_env_with("${CHELIX_NONEXISTENT_XYZ}", lookup),
+            "${CHELIX_NONEXISTENT_XYZ}"
         );
     }
 
@@ -135,12 +135,12 @@ mod tests {
     fn with_overrides_falls_through_to_map() {
         let mut overrides = HashMap::new();
         overrides.insert(
-            "MOLTIS_TEST_OVERRIDE_ONLY".to_string(),
+            "CHELIX_TEST_OVERRIDE_ONLY".to_string(),
             "db-value".to_string(),
         );
         // This var should not exist in the process env.
         assert_eq!(
-            substitute_env_with_overrides("${MOLTIS_TEST_OVERRIDE_ONLY}", &overrides),
+            substitute_env_with_overrides("${CHELIX_TEST_OVERRIDE_ONLY}", &overrides),
             "db-value"
         );
     }
@@ -149,8 +149,8 @@ mod tests {
     fn with_overrides_leaves_unknown_var() {
         let overrides = HashMap::new();
         assert_eq!(
-            substitute_env_with_overrides("${MOLTIS_NONEXISTENT_XYZ}", &overrides),
-            "${MOLTIS_NONEXISTENT_XYZ}"
+            substitute_env_with_overrides("${CHELIX_NONEXISTENT_XYZ}", &overrides),
+            "${CHELIX_NONEXISTENT_XYZ}"
         );
     }
 }

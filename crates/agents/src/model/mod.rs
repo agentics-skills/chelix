@@ -1,7 +1,7 @@
 // ── Reasoning effort ──────────────────────────────────────────────────────
 
 /// Re-export from config so downstream crates can use agent model-level types together.
-pub use moltis_config::schema::{AgentToolControls, ReasoningEffort, ToolChoice};
+pub use chelix_config::schema::{AgentToolControls, ReasoningEffort, ToolChoice};
 
 mod types;
 pub use types::{
@@ -28,7 +28,7 @@ fn document_absolute_path_from_media_ref(media_ref: &str) -> String {
         return media_ref.to_string();
     }
 
-    moltis_config::data_dir()
+    chelix_config::data_dir()
         .join("sessions")
         .join(media_ref)
         .to_string_lossy()

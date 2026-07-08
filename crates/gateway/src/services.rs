@@ -2,13 +2,13 @@
 //! Each trait has a `Noop` implementation that returns empty/default responses,
 //! allowing the gateway to run standalone before domain crates are wired in.
 //!
-//! Pure trait definitions and simple noop implementations live in `moltis-service-traits`.
+//! Pure trait definitions and simple noop implementations live in `chelix-service-traits`.
 //! This module re-exports everything from that crate and adds gateway-specific implementations.
 
 mod skills;
 
 // Re-export all trait definitions and simple noops from service-traits.
-pub use {moltis_service_traits::*, skills::NoopSkillsService};
+pub use {chelix_service_traits::*, skills::NoopSkillsService};
 
 use {
     async_trait::async_trait,
@@ -22,7 +22,7 @@ mod gateway;
 pub use {browser::RealBrowserService, gateway::GatewayServices};
 
 fn security_audit(event: &str, details: Value) {
-    let dir = moltis_config::data_dir().join("logs");
+    let dir = chelix_config::data_dir().join("logs");
     let path = dir.join("security-audit.jsonl");
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

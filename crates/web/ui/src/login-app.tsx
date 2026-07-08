@@ -9,8 +9,8 @@ import type { VaultStatus } from "./types/gon";
 import * as _wsConnect from "./ws-connect";
 
 // Expose state module for E2E test WS mocking via shims.
-window.__moltis_state = S;
-window.__moltis_modules = { ...(window.__moltis_modules || {}), "ws-connect": _wsConnect };
+window.__chelix_state = S;
+window.__chelix_modules = { ...(window.__chelix_modules || {}), "ws-connect": _wsConnect };
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -55,7 +55,7 @@ const i18nReady = initI18n().catch((err: unknown) => {
 });
 
 // Read identity from server-injected gon data (name for title).
-const gonData = (window as unknown as { __MOLTIS__?: Record<string, unknown> }).__MOLTIS__ || {};
+const gonData = (window as unknown as { __CHELIX__?: Record<string, unknown> }).__CHELIX__ || {};
 const identity = (gonData.identity as IdentityInfo) || null;
 
 // Set page branding from identity.

@@ -58,7 +58,7 @@ using the `webhook` tool. They are not part of the onboarding flow.
 ### Creating a Webhook (CLI)
 
 ```bash
-moltis webhooks create \
+chelix webhooks create \
   --name github-pr-review \
   --source-profile github \
   --auth-mode github_hmac_sha256 \
@@ -69,7 +69,7 @@ moltis webhooks create \
 For a zero-cost event forwarder (no LLM tokens):
 
 ```bash
-moltis webhooks create \
+chelix webhooks create \
   --name stripe-payments \
   --source-profile stripe \
   --auth-mode stripe_webhook_signature \
@@ -93,7 +93,7 @@ then tell you the URL to register in GitHub's settings.
 Each webhook gets a stable, high-entropy public URL:
 
 ```
-https://your-moltis-host/api/webhooks/ingest/wh_a1b2c3d4e5f6...
+https://your-chelix-host/api/webhooks/ingest/wh_a1b2c3d4e5f6...
 ```
 
 The `wh_` prefix followed by 36 random hex characters serves as a routing
@@ -518,7 +518,7 @@ and target channel.
 
 **CLI**:
 ```bash
-moltis webhooks create \
+chelix webhooks create \
   --name deploy-status \
   --source-profile generic \
   --auth-mode static_header \
@@ -570,7 +570,7 @@ values (channel-specific metadata like chat IDs).
 ### Example: GitHub Issue → Telegram
 
 ```bash
-moltis webhooks create \
+chelix webhooks create \
   --name github-issues \
   --source-profile github \
   --auth-mode github_hmac_sha256 \
@@ -588,7 +588,7 @@ When someone opens issue #42 "Fix auth bug", Telegram receives:
 ### Example: Stripe Payment → Discord
 
 ```bash
-moltis webhooks create \
+chelix webhooks create \
   --name stripe-notify \
   --source-profile stripe \
   --auth-mode stripe_webhook_signature \

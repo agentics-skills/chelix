@@ -7,15 +7,15 @@ use crate::types::BridgeState;
 pub enum CompactionScenario {
     /// No compaction on either side — normal delta sync.
     None,
-    /// Moltis compacted but CLI did not — CLI has more context.
-    MoltisCompacted,
-    /// CLI compacted but Moltis did not — need to re-send from Moltis.
+    /// Chelix compacted but CLI did not — CLI has more context.
+    ChelixCompacted,
+    /// CLI compacted but Chelix did not — need to re-send from Chelix.
     CliCompacted,
-    /// Both sides compacted — use Moltis summary as authoritative.
+    /// Both sides compacted — use Chelix summary as authoritative.
     BothCompacted,
 }
 
-/// Result of computing the delta between Moltis session state and bridge state.
+/// Result of computing the delta between Chelix session state and bridge state.
 #[derive(Debug)]
 pub struct DeltaSyncResult {
     pub scenario: CompactionScenario,
@@ -32,11 +32,11 @@ pub fn message_hash(message: &serde_json::Value) -> String {
 }
 
 /// Compute the delta sync parameters from the current bridge state and
-/// the Moltis session's message array.
+/// the Chelix session's message array.
 ///
 /// # Arguments
 /// * `state` — persisted bridge state from the last sync
-/// * `messages` — current Moltis session messages
+/// * `messages` — current Chelix session messages
 /// * `cli_alive` — whether the external agent session is still running
 #[must_use]
 pub fn compute_delta(
@@ -67,10 +67,10 @@ pub fn compute_delta(
     // Check if the sync point is still valid
     let sync_idx = state.synced_message_count;
 
-    // Moltis has fewer messages than at last sync — compaction happened
+    // Chelix has fewer messages than at last sync — compaction happened
     if current_count < sync_idx {
         return DeltaSyncResult {
-            scenario: CompactionScenario::MoltisCompacted,
+            scenario: CompactionScenario::ChelixCompacted,
             start_index: 0,
             needs_context_snapshot: true,
         };
@@ -82,9 +82,9 @@ pub fn compute_delta(
     {
         let hash = message_hash(msg);
         if state.last_synced_tail_hash.as_deref() != Some(&hash) {
-            // Hash mismatch: Moltis compacted and rewrote history
+            // Hash mismatch: Chelix compacted and rewrote history
             return DeltaSyncResult {
-                scenario: CompactionScenario::MoltisCompacted,
+                scenario: CompactionScenario::ChelixCompacted,
                 start_index: 0,
                 needs_context_snapshot: true,
             };
@@ -164,7 +164,7 @@ mod tests {
     }
 
     #[test]
-    fn moltis_compaction_detected_by_count() {
+    fn chelix_compaction_detected_by_count() {
         let messages = make_messages(10);
         let mut state = BridgeState::new(AgentTransportKind::ClaudeCode);
         advance_bridge_state(&mut state, &messages, None);
@@ -173,11 +173,11 @@ mod tests {
         let compacted = make_messages(3);
         let result = compute_delta(&state, &compacted, true);
         assert!(result.needs_context_snapshot);
-        assert_eq!(result.scenario, CompactionScenario::MoltisCompacted);
+        assert_eq!(result.scenario, CompactionScenario::ChelixCompacted);
     }
 
     #[test]
-    fn moltis_compaction_detected_by_hash() {
+    fn chelix_compaction_detected_by_hash() {
         let messages = make_messages(5);
         let mut state = BridgeState::new(AgentTransportKind::ClaudeCode);
         advance_bridge_state(&mut state, &messages, None);
@@ -189,7 +189,7 @@ mod tests {
 
         let result = compute_delta(&state, &modified, true);
         assert!(result.needs_context_snapshot);
-        assert_eq!(result.scenario, CompactionScenario::MoltisCompacted);
+        assert_eq!(result.scenario, CompactionScenario::ChelixCompacted);
     }
 
     #[test]

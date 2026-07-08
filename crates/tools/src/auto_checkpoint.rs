@@ -8,7 +8,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use {
     async_trait::async_trait,
-    moltis_common::hooks::{HookAction, HookEvent, HookHandler, HookPayload},
+    chelix_common::hooks::{HookAction, HookEvent, HookHandler, HookPayload},
     serde_json::Value,
     time::OffsetDateTime,
     tokio::sync::Mutex,
@@ -78,7 +78,7 @@ impl HookHandler for AutoCheckpointHook {
         &self,
         _event: HookEvent,
         payload: &HookPayload,
-    ) -> moltis_common::Result<HookAction> {
+    ) -> chelix_common::Result<HookAction> {
         // On AgentEnd, flush any in-progress turn so it is persisted.
         if let HookPayload::AgentEnd { session_key, .. } = payload {
             let mut active = self.active.lock().await;

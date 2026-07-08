@@ -1,4 +1,4 @@
-//! Import data from Claude Code and Claude Desktop into Moltis.
+//! Import data from Claude Code and Claude Desktop into Chelix.
 //!
 //! Supports detection, scanning, and selective import of:
 //! - MCP server configurations (from `~/.claude.json`, project `.mcp.json`, Claude Desktop)

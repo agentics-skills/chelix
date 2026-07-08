@@ -273,9 +273,9 @@ pub struct ResolvedIdentity {
 }
 
 impl ResolvedIdentity {
-    pub fn from_config(cfg: &MoltisConfig) -> Self {
+    pub fn from_config(cfg: &ChelixConfig) -> Self {
         Self {
-            name: cfg.identity.name.clone().unwrap_or_else(|| "moltis".into()),
+            name: cfg.identity.name.clone().unwrap_or_else(|| "chelix".into()),
             emoji: cfg.identity.emoji.clone(),
             theme: cfg.identity.theme.clone(),
             soul: None,
@@ -287,7 +287,7 @@ impl ResolvedIdentity {
 impl Default for ResolvedIdentity {
     fn default() -> Self {
         Self {
-            name: "moltis".into(),
+            name: "chelix".into(),
             emoji: None,
             theme: None,
             soul: None,
@@ -299,7 +299,7 @@ impl Default for ResolvedIdentity {
 /// Root configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
-pub struct MoltisConfig {
+pub struct ChelixConfig {
     pub server: ServerConfig,
     pub providers: ProvidersConfig,
     pub chat: ChatConfig,
@@ -354,7 +354,7 @@ pub struct MoltisConfig {
         deserialize_with = "crate::schema::deserialize_option_secret"
     )]
     pub upstream_proxy: Option<Secret<String>>,
-    /// Environment variables injected into the Moltis process at startup.
+    /// Environment variables injected into the Chelix process at startup.
     /// Useful for API keys in Docker where you can't easily set env vars.
     /// Process env vars take precedence (existing vars are not overwritten).
     #[serde(default)]
@@ -452,7 +452,7 @@ impl AgentRuntimeLimits {
     }
 }
 
-impl MoltisConfig {
+impl ChelixConfig {
     #[must_use]
     pub fn agent_runtime_limits(&self, agent_id: &str) -> AgentRuntimeLimits {
         AgentRuntimeLimits::resolve(&self.tools, self.agents.get_preset(agent_id))

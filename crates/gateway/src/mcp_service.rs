@@ -9,15 +9,15 @@ use {
     tracing::{info, warn},
 };
 
-use moltis_agents::tool_registry::ToolRegistry;
+use chelix_agents::tool_registry::ToolRegistry;
 
 use crate::services::{McpService, ServiceError, ServiceResult};
 
-// Re-export pure parsing functions that now live in moltis-mcp.
-pub(crate) use moltis_mcp::{merge_env_overrides, parse_server_config};
+// Re-export pure parsing functions that now live in chelix-mcp.
+pub(crate) use chelix_mcp::{merge_env_overrides, parse_server_config};
 
 // Re-export sync_mcp_tools from the dedicated bridge crate.
-pub(crate) use moltis_mcp_agent_bridge::sync_mcp_tools;
+pub(crate) use chelix_mcp_agent_bridge::sync_mcp_tools;
 
 // ── Config parsing helper ───────────────────────────────────────────────────
 
@@ -26,7 +26,7 @@ pub(crate) use moltis_mcp_agent_bridge::sync_mcp_tools;
 
 /// Live MCP service delegating to `McpManager`.
 pub struct LiveMcpService {
-    manager: Arc<moltis_mcp::McpManager>,
+    manager: Arc<chelix_mcp::McpManager>,
     /// Shared tool registry for syncing MCP tools into the agent loop.
     /// Set after construction via `set_tool_registry`.
     tool_registry: RwLock<Option<Arc<RwLock<ToolRegistry>>>>,
@@ -36,7 +36,7 @@ pub struct LiveMcpService {
 
 impl LiveMcpService {
     pub fn new(
-        manager: Arc<moltis_mcp::McpManager>,
+        manager: Arc<chelix_mcp::McpManager>,
         config_env_overrides: HashMap<String, String>,
         credential_store: Option<Arc<crate::auth::CredentialStore>>,
     ) -> Self {
@@ -63,7 +63,7 @@ impl LiveMcpService {
     }
 
     /// Access the underlying manager.
-    pub fn manager(&self) -> &Arc<moltis_mcp::McpManager> {
+    pub fn manager(&self) -> &Arc<chelix_mcp::McpManager> {
         &self.manager
     }
 
@@ -136,7 +136,7 @@ impl McpService for LiveMcpService {
             Err(e) => {
                 if matches!(
                     e,
-                    moltis_mcp::Error::Manager(moltis_mcp::McpManagerError::OAuthRequired { .. })
+                    chelix_mcp::Error::Manager(chelix_mcp::McpManagerError::OAuthRequired { .. })
                 ) {
                     if let Some(uri) = redirect_uri {
                         let auth_url = self
@@ -202,7 +202,7 @@ impl McpService for LiveMcpService {
             Err(e) => {
                 if matches!(
                     e,
-                    moltis_mcp::Error::Manager(moltis_mcp::McpManagerError::OAuthRequired { .. })
+                    chelix_mcp::Error::Manager(chelix_mcp::McpManagerError::OAuthRequired { .. })
                 ) {
                     if let Some(uri) = redirect_uri {
                         let auth_url = self

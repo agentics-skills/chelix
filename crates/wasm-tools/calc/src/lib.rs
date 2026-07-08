@@ -8,7 +8,7 @@ wit_bindgen::generate!({
 });
 
 #[cfg(target_arch = "wasm32")]
-use crate::moltis::tool::types::{ToolError, ToolValue};
+use crate::chelix::tool::types::{ToolError, ToolValue};
 
 use {
     anyhow::{Result, bail},

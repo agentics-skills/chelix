@@ -48,7 +48,7 @@ function DisableVaultForm({ vaultStatus, onDisabled, onError }: DisableVaultForm
 				if (r.ok) {
 					setDisablePw("");
 					onDisabled(
-						"Vault disabled. Stored secrets were decrypted; restart Moltis to fully remove vault startup behavior.",
+						"Vault disabled. Stored secrets were decrypted; restart Chelix to fully remove vault startup behavior.",
 					);
 					return;
 				}

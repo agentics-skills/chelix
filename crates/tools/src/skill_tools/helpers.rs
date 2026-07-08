@@ -270,7 +270,7 @@ pub(super) async fn write_sidecar_files(
             rollback_written_files(&written_paths).await;
             return Err(Error::message("invalid file name"));
         };
-        let temp_name = format!(".{file_name}.moltis-tmp-{}", uuid::Uuid::new_v4());
+        let temp_name = format!(".{file_name}.chelix-tmp-{}", uuid::Uuid::new_v4());
         let temp_path = parent.join(temp_name);
 
         tokio::fs::write(&temp_path, &file.content).await?;

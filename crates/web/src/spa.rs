@@ -6,7 +6,7 @@ use {
         http::Uri,
         response::{IntoResponse, Redirect},
     },
-    moltis_httpd::AppState,
+    chelix_httpd::AppState,
 };
 
 use crate::templates::{

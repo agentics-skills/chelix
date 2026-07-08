@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use {
-    moltis_code_index::store::CodeIndexStore,
+    chelix_code_index::store::CodeIndexStore,
     std::{path::Path, sync::OnceLock},
 };
 
@@ -10,8 +10,8 @@ fn main() {
 
 // ── Benchmark Configuration ─────────────────────────────────────────────────────
 
-const MOLTIS_PROJECT_PATH: &str = "/mnt/fast_data/workspaces/moltis";
-const PROJECT_ID: &str = "moltis";
+const CHELIX_PROJECT_PATH: &str = "/mnt/fast_data/workspaces/chelix";
+const PROJECT_ID: &str = "chelix";
 
 const BENCHMARK_QUERIES: &[&str] = &[
     "password hashing and verification",
@@ -42,7 +42,7 @@ fn tokio_rt() -> &'static tokio::runtime::Runtime {
 // ── Shared search index (built once) ────────────────────────────────────────────
 
 struct SearchFixture {
-    store: moltis_code_index::store_sqlite::SqliteCodeIndexStore,
+    store: chelix_code_index::store_sqlite::SqliteCodeIndexStore,
     // Leak the tempdir so the DB file persists for the benchmark lifetime.
     _db_dir: tempfile::TempDir,
 }
@@ -55,18 +55,18 @@ fn search_fixture() -> &'static SearchFixture {
         rt.block_on(async {
             let db_dir = tempfile::tempdir().unwrap();
             let db_path = db_dir.path().join("bench_code_index.db");
-            let store = moltis_code_index::store_sqlite::SqliteCodeIndexStore::new(&db_path)
+            let store = chelix_code_index::store_sqlite::SqliteCodeIndexStore::new(&db_path)
                 .await
                 .unwrap();
 
             store.initialize().await.unwrap();
 
             // Discover and filter files
-            let project_dir = Path::new(MOLTIS_PROJECT_PATH);
-            let tracked = moltis_code_index::discover::discover_tracked_files(project_dir).unwrap();
-            let config = moltis_code_index::CodeIndexConfig::default();
+            let project_dir = Path::new(CHELIX_PROJECT_PATH);
+            let tracked = chelix_code_index::discover::discover_tracked_files(project_dir).unwrap();
+            let config = chelix_code_index::CodeIndexConfig::default();
             let filtered =
-                moltis_code_index::filter::filter_tracked_files(project_dir, &tracked, &config)
+                chelix_code_index::filter::filter_tracked_files(project_dir, &tracked, &config)
                     .unwrap();
 
             // Chunk and index each file
@@ -85,7 +85,7 @@ fn search_fixture() -> &'static SearchFixture {
                     .and_then(|e| e.to_str())
                     .unwrap_or_default();
                 let chunks =
-                    moltis_code_index::chunker::chunk(&content, &rel, ext, &chunker_config);
+                    chelix_code_index::chunker::chunk(&content, &rel, ext, &chunker_config);
 
                 if !chunks.is_empty() {
                     store
@@ -116,22 +116,22 @@ fn search_fixture() -> &'static SearchFixture {
 
 // ── File Discovery Benchmarks ──────────────────────────────────────────────────
 
-/// Benchmark discovering git-tracked files in the moltis repo.
+/// Benchmark discovering git-tracked files in the chelix repo.
 #[divan::bench]
 fn discover_tracked_files() {
-    let files = moltis_code_index::discover::discover_tracked_files(Path::new(MOLTIS_PROJECT_PATH));
+    let files = chelix_code_index::discover::discover_tracked_files(Path::new(CHELIX_PROJECT_PATH));
     divan::black_box(files.unwrap());
 }
 
 /// Benchmark file discovery with default config.
 #[divan::bench]
 fn discover_and_filter_default_config() {
-    let project_dir = Path::new(MOLTIS_PROJECT_PATH);
+    let project_dir = Path::new(CHELIX_PROJECT_PATH);
 
-    let tracked = moltis_code_index::discover::discover_tracked_files(project_dir).unwrap();
-    let config = moltis_code_index::CodeIndexConfig::default();
+    let tracked = chelix_code_index::discover::discover_tracked_files(project_dir).unwrap();
+    let config = chelix_code_index::CodeIndexConfig::default();
     let filtered =
-        moltis_code_index::filter::filter_tracked_files(project_dir, &tracked, &config).unwrap();
+        chelix_code_index::filter::filter_tracked_files(project_dir, &tracked, &config).unwrap();
 
     divan::black_box(filtered.len());
 }
@@ -139,33 +139,33 @@ fn discover_and_filter_default_config() {
 /// Benchmark file discovery with Rust-only extensions.
 #[divan::bench]
 fn discover_and_filter_rust_only() {
-    let project_dir = Path::new(MOLTIS_PROJECT_PATH);
+    let project_dir = Path::new(CHELIX_PROJECT_PATH);
 
-    let tracked = moltis_code_index::discover::discover_tracked_files(project_dir).unwrap();
-    let config = moltis_code_index::CodeIndexConfig {
+    let tracked = chelix_code_index::discover::discover_tracked_files(project_dir).unwrap();
+    let config = chelix_code_index::CodeIndexConfig {
         extensions: vec!["rs".to_string()],
         ..Default::default()
     };
     let filtered =
-        moltis_code_index::filter::filter_tracked_files(project_dir, &tracked, &config).unwrap();
+        chelix_code_index::filter::filter_tracked_files(project_dir, &tracked, &config).unwrap();
 
     divan::black_box(filtered.len());
 }
 
 // ── Content Hashing Benchmarks ─────────────────────────────────────────────────
 
-fn get_filtered_files() -> Vec<moltis_code_index::types::FilteredFile> {
-    let project_dir = Path::new(MOLTIS_PROJECT_PATH);
-    let tracked = moltis_code_index::discover::discover_tracked_files(project_dir).unwrap();
-    let config = moltis_code_index::CodeIndexConfig::default();
-    moltis_code_index::filter::filter_tracked_files(project_dir, &tracked, &config).unwrap()
+fn get_filtered_files() -> Vec<chelix_code_index::types::FilteredFile> {
+    let project_dir = Path::new(CHELIX_PROJECT_PATH);
+    let tracked = chelix_code_index::discover::discover_tracked_files(project_dir).unwrap();
+    let config = chelix_code_index::CodeIndexConfig::default();
+    chelix_code_index::filter::filter_tracked_files(project_dir, &tracked, &config).unwrap()
 }
 
 /// Benchmark computing content hash for a single file.
 #[divan::bench]
 fn content_hash_single_file() {
-    let lib_rs_path = Path::new("/mnt/fast_data/workspaces/moltis/crates/code-index/src/lib.rs");
-    let hash = moltis_code_index::filter::content_hash(lib_rs_path);
+    let lib_rs_path = Path::new("/mnt/fast_data/workspaces/chelix/crates/code-index/src/lib.rs");
+    let hash = chelix_code_index::filter::content_hash(lib_rs_path);
     divan::black_box(hash.unwrap());
 }
 
@@ -177,7 +177,7 @@ fn content_hash_multiple_files(count: usize) {
 
     let mut hashes = Vec::new();
     for file in files_to_hash {
-        if let Ok(hash) = moltis_code_index::filter::content_hash(&file.path) {
+        if let Ok(hash) = chelix_code_index::filter::content_hash(&file.path) {
             hashes.push(hash);
         }
     }
@@ -190,31 +190,31 @@ fn content_hash_multiple_files(count: usize) {
 /// Benchmark computing delta with empty previous snapshot (first run).
 #[divan::bench]
 fn compute_delta_first_run() {
-    let project_dir = Path::new(MOLTIS_PROJECT_PATH);
-    let config = moltis_code_index::CodeIndexConfig::default();
-    let previous: moltis_code_index::delta::HashSnapshot = std::collections::HashMap::new();
+    let project_dir = Path::new(CHELIX_PROJECT_PATH);
+    let config = chelix_code_index::CodeIndexConfig::default();
+    let previous: chelix_code_index::delta::HashSnapshot = std::collections::HashMap::new();
 
-    let delta = moltis_code_index::delta::compute_delta(project_dir, &config, &previous);
+    let delta = chelix_code_index::delta::compute_delta(project_dir, &config, &previous);
     divan::black_box(delta.unwrap());
 }
 
 /// Benchmark computing delta with previous snapshot (incremental).
 #[divan::bench]
 fn compute_delta_incremental() {
-    let project_dir = Path::new(MOLTIS_PROJECT_PATH);
-    let config = moltis_code_index::CodeIndexConfig::default();
+    let project_dir = Path::new(CHELIX_PROJECT_PATH);
+    let config = chelix_code_index::CodeIndexConfig::default();
 
     let mut previous = std::collections::HashMap::new();
-    let tracked = moltis_code_index::discover::discover_tracked_files(project_dir).unwrap();
+    let tracked = chelix_code_index::discover::discover_tracked_files(project_dir).unwrap();
     let filtered =
-        moltis_code_index::filter::filter_tracked_files(project_dir, &tracked, &config).unwrap();
+        chelix_code_index::filter::filter_tracked_files(project_dir, &tracked, &config).unwrap();
 
     for file in filtered.iter().take(filtered.len() / 2) {
-        if let Ok(hash) = moltis_code_index::filter::content_hash(&file.path) {
+        if let Ok(hash) = chelix_code_index::filter::content_hash(&file.path) {
             let meta = std::fs::metadata(&file.path);
             previous.insert(
                 file.relative_path.to_string_lossy().into_owned(),
-                moltis_code_index::FileMeta {
+                chelix_code_index::FileMeta {
                     content_hash: hash,
                     modified_time: meta
                         .as_ref()
@@ -232,7 +232,7 @@ fn compute_delta_incremental() {
         }
     }
 
-    let delta = moltis_code_index::delta::compute_delta(project_dir, &config, &previous);
+    let delta = chelix_code_index::delta::compute_delta(project_dir, &config, &previous);
     divan::black_box(delta.unwrap());
 }
 
@@ -240,16 +240,16 @@ fn compute_delta_incremental() {
 
 /// Benchmark creating default CodeIndexConfig.
 #[divan::bench]
-fn config_default() -> moltis_code_index::CodeIndexConfig {
-    divan::black_box(moltis_code_index::CodeIndexConfig::default())
+fn config_default() -> chelix_code_index::CodeIndexConfig {
+    divan::black_box(chelix_code_index::CodeIndexConfig::default())
 }
 
 /// Benchmark config serialization/deserialization.
 #[divan::bench]
 fn config_serde_roundtrip() {
-    let config = moltis_code_index::CodeIndexConfig::default();
+    let config = chelix_code_index::CodeIndexConfig::default();
     let json = serde_json::to_string(&config).unwrap();
-    let _ = serde_json::from_str::<moltis_code_index::CodeIndexConfig>(&json).unwrap();
+    let _ = serde_json::from_str::<chelix_code_index::CodeIndexConfig>(&json).unwrap();
 }
 
 // ── Full Pipeline Benchmarks ───────────────────────────────────────────────────
@@ -257,16 +257,16 @@ fn config_serde_roundtrip() {
 /// Benchmark the full discover → filter → hash pipeline.
 #[divan::bench]
 fn full_discover_filter_hash_pipeline() {
-    let project_dir = Path::new(MOLTIS_PROJECT_PATH);
-    let config = moltis_code_index::CodeIndexConfig::default();
+    let project_dir = Path::new(CHELIX_PROJECT_PATH);
+    let config = chelix_code_index::CodeIndexConfig::default();
 
-    let tracked = moltis_code_index::discover::discover_tracked_files(project_dir).unwrap();
+    let tracked = chelix_code_index::discover::discover_tracked_files(project_dir).unwrap();
     let filtered =
-        moltis_code_index::filter::filter_tracked_files(project_dir, &tracked, &config).unwrap();
+        chelix_code_index::filter::filter_tracked_files(project_dir, &tracked, &config).unwrap();
 
     let mut hashes = Vec::new();
     for file in filtered.iter().take(100) {
-        if let Ok(hash) = moltis_code_index::filter::content_hash(&file.path) {
+        if let Ok(hash) = chelix_code_index::filter::content_hash(&file.path) {
             hashes.push(hash);
         }
     }
@@ -277,20 +277,20 @@ fn full_discover_filter_hash_pipeline() {
 /// Benchmark full delta computation with snapshot.
 #[divan::bench]
 fn full_delta_computation_with_snapshot() {
-    let project_dir = Path::new(MOLTIS_PROJECT_PATH);
-    let config = moltis_code_index::CodeIndexConfig::default();
+    let project_dir = Path::new(CHELIX_PROJECT_PATH);
+    let config = chelix_code_index::CodeIndexConfig::default();
 
-    let mut previous: moltis_code_index::delta::HashSnapshot = std::collections::HashMap::new();
-    let tracked = moltis_code_index::discover::discover_tracked_files(project_dir).unwrap();
+    let mut previous: chelix_code_index::delta::HashSnapshot = std::collections::HashMap::new();
+    let tracked = chelix_code_index::discover::discover_tracked_files(project_dir).unwrap();
     let filtered =
-        moltis_code_index::filter::filter_tracked_files(project_dir, &tracked, &config).unwrap();
+        chelix_code_index::filter::filter_tracked_files(project_dir, &tracked, &config).unwrap();
 
     for file in filtered.iter().take(filtered.len() / 2) {
-        if let Ok(hash) = moltis_code_index::filter::content_hash(&file.path) {
+        if let Ok(hash) = chelix_code_index::filter::content_hash(&file.path) {
             let meta = std::fs::metadata(&file.path);
             previous.insert(
                 file.relative_path.to_string_lossy().into_owned(),
-                moltis_code_index::FileMeta {
+                chelix_code_index::FileMeta {
                     content_hash: hash,
                     modified_time: meta
                         .as_ref()
@@ -308,7 +308,7 @@ fn full_delta_computation_with_snapshot() {
         }
     }
 
-    let delta = moltis_code_index::delta::compute_delta(project_dir, &config, &previous);
+    let delta = chelix_code_index::delta::compute_delta(project_dir, &config, &previous);
     divan::black_box(delta.unwrap());
 }
 
@@ -406,7 +406,7 @@ fn grep_searcher_count(project_dir: &Path, query: &str) -> usize {
 /// Benchmark a single in-process grep-searcher query.
 #[divan::bench(args = BENCHMARK_QUERIES)]
 fn grep_searcher(query: &&str) {
-    let project_dir = Path::new(MOLTIS_PROJECT_PATH);
+    let project_dir = Path::new(CHELIX_PROJECT_PATH);
     let matches = grep_searcher_count(project_dir, query);
     divan::black_box(matches);
 }
@@ -414,7 +414,7 @@ fn grep_searcher(query: &&str) {
 /// Benchmark running all grep-searcher queries sequentially.
 #[divan::bench]
 fn grep_searcher_all_queries() {
-    let project_dir = Path::new(MOLTIS_PROJECT_PATH);
+    let project_dir = Path::new(CHELIX_PROJECT_PATH);
     let mut total = 0usize;
     for query in BENCHMARK_QUERIES {
         total += grep_searcher_count(project_dir, query);
@@ -450,7 +450,7 @@ fn rg_subprocess_count(project_dir: &Path, query: &str) -> usize {
 /// Benchmark a single ripgrep subprocess query.
 #[divan::bench(args = BENCHMARK_QUERIES)]
 fn ripgrep_subprocess(query: &&str) {
-    let project_dir = Path::new(MOLTIS_PROJECT_PATH);
+    let project_dir = Path::new(CHELIX_PROJECT_PATH);
     let matches = rg_subprocess_count(project_dir, query);
     divan::black_box(matches);
 }
@@ -458,7 +458,7 @@ fn ripgrep_subprocess(query: &&str) {
 /// Benchmark running all ripgrep subprocess queries sequentially.
 #[divan::bench]
 fn ripgrep_subprocess_all_queries() {
-    let project_dir = Path::new(MOLTIS_PROJECT_PATH);
+    let project_dir = Path::new(CHELIX_PROJECT_PATH);
     let mut total = 0usize;
     for query in BENCHMARK_QUERIES {
         total += rg_subprocess_count(project_dir, query);
@@ -491,7 +491,7 @@ mod qmd_benches {
     use super::*;
 
     struct QmdFixture {
-        manager: moltis_qmd::QmdManager,
+        manager: chelix_qmd::QmdManager,
     }
 
     static QMD_FIXTURE: OnceLock<QmdFixture> = OnceLock::new();
@@ -505,11 +505,11 @@ mod qmd_benches {
             .get_or_init(|| {
                 let rt = tokio_rt();
                 rt.block_on(async {
-                    let project_dir = Path::new(MOLTIS_PROJECT_PATH);
-                    let config = moltis_qmd::QmdManagerConfig {
+                    let project_dir = Path::new(CHELIX_PROJECT_PATH);
+                    let config = chelix_qmd::QmdManagerConfig {
                         collections: std::collections::HashMap::from([(
                             PROJECT_ID.to_string(),
-                            moltis_qmd::QmdCollection {
+                            chelix_qmd::QmdCollection {
                                 path: project_dir.to_path_buf(),
                                 glob: "**/*.{rs,toml,json,md,css,js,html,sql}".to_string(),
                             },
@@ -519,7 +519,7 @@ mod qmd_benches {
                         work_dir: project_dir.to_path_buf(),
                         ..Default::default()
                     };
-                    let manager = moltis_qmd::QmdManager::new(config);
+                    let manager = chelix_qmd::QmdManager::new(config);
 
                     if manager.is_available().await {
                         // Build the index (first run)

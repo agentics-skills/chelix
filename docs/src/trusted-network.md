@@ -30,7 +30,7 @@ you explicitly trust.
 
 ## Configuration
 
-Enable trusted network mode in `moltis.toml`:
+Enable trusted network mode in `chelix.toml`:
 
 ```toml
 [tools.execute_command.sandbox]
@@ -98,7 +98,7 @@ Both allowed and denied requests are recorded in the network audit log.
 ## Network Audit
 
 Every proxied request is logged to an in-memory ring buffer (2048 entries)
-and persisted to `~/.moltis/network-audit.jsonl`. The audit log is
+and persisted to `~/.chelix/network-audit.jsonl`. The audit log is
 accessible from:
 
 - **Settings > Network Audit** in the web UI
@@ -213,7 +213,7 @@ denied domains — add them to the allowlist only if they are legitimate.
 
 **Proxy not starting**: Check the gateway startup log for
 `trusted-network proxy started on port 18791`. If missing, verify
-`network = "trusted"` is set in `moltis.toml`.
+`network = "trusted"` is set in `chelix.toml`.
 
 **Connections timing out**: Some tools don't respect `HTTP_PROXY`. Verify
 the tool uses the proxy by checking the audit log — if no entries appear

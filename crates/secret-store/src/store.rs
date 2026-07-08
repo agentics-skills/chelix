@@ -29,7 +29,7 @@ pub enum Error {
 
     #[cfg(feature = "vault")]
     #[error(transparent)]
-    Vault(#[from] moltis_vault::VaultError),
+    Vault(#[from] chelix_vault::VaultError),
 }
 
 fn object(config: &Value) -> Result<&Map<String, Value>, Error> {
@@ -111,11 +111,11 @@ pub fn has_encrypted_secret_fields(config: &Value, secret_fields: &[&str]) -> Re
 }
 
 #[cfg(feature = "vault")]
-pub async fn encrypt_secret_fields<C: moltis_vault::Cipher>(
+pub async fn encrypt_secret_fields<C: chelix_vault::Cipher>(
     config: &mut Value,
     secret_fields: &[&str],
     aad_scope: &str,
-    vault: &moltis_vault::Vault<C>,
+    vault: &chelix_vault::Vault<C>,
 ) -> Result<bool, Error> {
     let map = object_mut(config)?;
     let mut changed = false;
@@ -147,11 +147,11 @@ pub async fn encrypt_secret_fields<C: moltis_vault::Cipher>(
 }
 
 #[cfg(feature = "vault")]
-pub async fn decrypt_secret_fields<C: moltis_vault::Cipher>(
+pub async fn decrypt_secret_fields<C: chelix_vault::Cipher>(
     config: &mut Value,
     secret_fields: &[&str],
     aad_scope: &str,
-    vault: &moltis_vault::Vault<C>,
+    vault: &chelix_vault::Vault<C>,
 ) -> Result<bool, Error> {
     let map = object_mut(config)?;
     let mut changed = false;
@@ -198,7 +198,7 @@ mod tests {
     }
 
     #[cfg(feature = "vault")]
-    async fn test_vault() -> moltis_vault::Vault<moltis_vault::XChaCha20Poly1305Cipher> {
+    async fn test_vault() -> chelix_vault::Vault<chelix_vault::XChaCha20Poly1305Cipher> {
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS vault_metadata (
@@ -217,7 +217,7 @@ mod tests {
         .await
         .unwrap();
 
-        let vault = moltis_vault::Vault::with_cipher(pool, moltis_vault::XChaCha20Poly1305Cipher)
+        let vault = chelix_vault::Vault::with_cipher(pool, chelix_vault::XChaCha20Poly1305Cipher)
             .await
             .unwrap();
         let password = generated_secret_value();

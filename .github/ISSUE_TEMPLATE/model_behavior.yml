@@ -94,8 +94,8 @@ body:
     id: version
     attributes:
       label: Chelix version
-      description: Run `moltis --version` and paste the output.
-      placeholder: "e.g., moltis 0.3.8"
+      description: Run `chelix --version` and paste the output.
+      placeholder: "e.g., chelix 0.3.8"
     validations:
       required: true
 

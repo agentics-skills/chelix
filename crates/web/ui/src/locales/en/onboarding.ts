@@ -20,7 +20,7 @@ export default {
 		chooseHowToSecureRequired: "Choose how to secure your instance.",
 		setupCode: "Setup code",
 		setupCodePlaceholder: "6-digit code from terminal",
-		setupCodeHint: "Find this code in the moltis process log (stdout).",
+		setupCodeHint: "Find this code in the chelix process log (stdout).",
 		enterSetupCode: "Enter the setup code shown in the process log (stdout).",
 		setupFailed: "Setup failed",
 		passkey: "Passkey",
@@ -174,7 +174,7 @@ export default {
 	skills: {
 		title: "Bundled Skills",
 		description:
-			"Moltis ships with skills across many domains. Disable categories you don't need to keep the agent focused. You can change this later in Settings.",
+			"Chelix ships with skills across many domains. Disable categories you don't need to keep the agent focused. You can change this later in Settings.",
 		enableAll: "Enable all",
 		disableAll: "Disable all",
 	},

@@ -2,11 +2,11 @@
 //
 // With Vite bundling, individual modules are no longer served. The real
 // helpers module lives inside the bundle but is exposed on
-// window.__moltis_modules["helpers"] from main.tsx.
+// window.__chelix_modules["helpers"] from main.tsx.
 //
 // This shim re-exports everything the e2e tests need.
 
-const M = window.__moltis_modules?.["helpers"] || {};
+const M = window.__chelix_modules?.["helpers"] || {};
 
 export default M;
 

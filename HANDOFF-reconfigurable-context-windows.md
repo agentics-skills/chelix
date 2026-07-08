@@ -9,9 +9,9 @@
 
 ## 1. Problem Statement
 
-All model context window sizes in Moltis are determined by hardcoded prefix matching in a single Rust function. There is no configuration override. Known inaccuracies exist:
+All model context window sizes in Chelix are determined by hardcoded prefix matching in a single Rust function. There is no configuration override. Known inaccuracies exist:
 
-| Model Family | Moltis Hardcoded | Actual Provider Value | Gap |
+| Model Family | Chelix Hardcoded | Actual Provider Value | Gap |
 |---|---|---|---|
 | `glm-5`, `glm-5-turbo`, `glm-5.1` | 128,000 | ~202,752 | 74K tokens lost |
 | `glm-4.7` | 128,000 | 200,000 | 72K tokens lost |
@@ -19,7 +19,7 @@ All model context window sizes in Moltis are determined by hardcoded prefix matc
 | `gemini-2.5-pro` | 1,000,000 | 1,048,576 | ~48K close enough |
 | `gemini-1.5-pro` | 1,000,000 | 2,097,152 | 1M tokens lost |
 
-Users cannot override these values from `moltis.toml`.
+Users cannot override these values from `chelix.toml`.
 
 ---
 
@@ -147,7 +147,7 @@ These are all the places that read the context window value and would need consi
 
 ### 4.1 Requirements
 
-1. **User-configurable override** — allow `moltis.toml` to specify per-model context windows
+1. **User-configurable override** — allow `chelix.toml` to specify per-model context windows
 2. **Backward compatible** — heuristic remains as fallback when no config is provided
 3. **Per-provider or global** — support both `[models.<model_id>]` and `[providers.<name>.models.<model_id>]` scoping
 4. **No runtime API dependency** — config should work even when provider metadata endpoint is unavailable
@@ -221,7 +221,7 @@ Current hardcoded values for implementation and test updates:
 | `crates/providers/src/anthropic.rs` | Integrate config override |
 | `docs/src/configuration-reference.md` | Document new config keys |
 | `crates/providers/src/model_capabilities.rs` (tests) | Update tests for new behavior |
-| Config loading code (find where moltis.toml is parsed) | Parse new `[models.*]` and `[providers.*.models.*]` sections |
+| Config loading code (find where chelix.toml is parsed) | Parse new `[models.*]` and `[providers.*.models.*]` sections |
 
 ---
 

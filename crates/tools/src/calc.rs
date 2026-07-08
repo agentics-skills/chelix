@@ -5,7 +5,7 @@
 
 use {
     async_trait::async_trait,
-    moltis_agents::tool_registry::AgentTool,
+    chelix_agents::tool_registry::AgentTool,
     serde_json::{Value, json},
 };
 

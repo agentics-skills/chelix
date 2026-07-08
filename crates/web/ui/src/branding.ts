@@ -1,6 +1,6 @@
 import type { ResolvedIdentity } from "./types/gon";
 
-const DYNAMIC_FAVICON_SELECTOR = 'link[data-moltis-dynamic-favicon="true"]';
+const DYNAMIC_FAVICON_SELECTOR = 'link[data-chelix-dynamic-favicon="true"]';
 
 function trimString(value: unknown): string {
 	return typeof value === "string" ? value.trim() : "";
@@ -8,7 +8,7 @@ function trimString(value: unknown): string {
 
 export function identityName(identity: Partial<ResolvedIdentity> | null | undefined): string {
 	const name = trimString(identity?.name);
-	return name || "moltis";
+	return name || "chelix";
 }
 
 export function identityEmoji(identity: Partial<ResolvedIdentity> | null | undefined): string {
@@ -51,7 +51,7 @@ function ensureDynamicFaviconLink(): HTMLLinkElement {
 
 	const link = document.createElement("link");
 	link.rel = "icon";
-	link.dataset.moltisDynamicFavicon = "true";
+	link.dataset.chelixDynamicFavicon = "true";
 	document.head.appendChild(link);
 	return link;
 }

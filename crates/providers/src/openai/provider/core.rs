@@ -2,7 +2,7 @@ use std::{pin::Pin, time::Duration};
 
 use {
     async_trait::async_trait,
-    moltis_config::schema::{ProviderStreamTransport, WireApi},
+    chelix_config::schema::{ProviderStreamTransport, WireApi},
     secrecy::ExposeSecret,
     tokio_stream::Stream,
 };
@@ -13,7 +13,7 @@ use crate::{
     ModelCapabilities, context_window_for_model_with_config, http::retry_after_ms_from_headers,
 };
 
-use moltis_agents::model::{
+use chelix_agents::model::{
     AgentToolControls, ChatMessage, CompletionResponse, LlmProvider, ModelMetadata, StreamEvent,
     ToolChoice,
 };
@@ -51,7 +51,7 @@ impl OpenAiProvider {
             metadata_cache: tokio::sync::OnceCell::new(),
             tool_mode_override: None,
             reasoning_effort: None,
-            cache_retention: moltis_config::CacheRetention::Short,
+            cache_retention: chelix_config::CacheRetention::Short,
             strict_tools_override: None,
             reasoning_content_override: None,
             capabilities,
@@ -82,7 +82,7 @@ impl OpenAiProvider {
     }
 
     #[must_use]
-    pub fn with_cache_retention(mut self, cache_retention: moltis_config::CacheRetention) -> Self {
+    pub fn with_cache_retention(mut self, cache_retention: chelix_config::CacheRetention) -> Self {
         self.cache_retention = cache_retention;
         self
     }
@@ -94,7 +94,7 @@ impl OpenAiProvider {
     }
 
     #[must_use]
-    pub fn with_tool_mode(mut self, mode: moltis_config::ToolMode) -> Self {
+    pub fn with_tool_mode(mut self, mode: chelix_config::ToolMode) -> Self {
         self.tool_mode_override = Some(mode);
         self
     }
@@ -261,7 +261,7 @@ impl OpenAiProvider {
     /// OpenAI-compatible providers accept provider-specific reasoning effort strings.
     /// Levels outside a provider's supported range are clamped to the nearest supported value.
     pub(crate) fn reasoning_effort_str(&self) -> Option<&'static str> {
-        use moltis_agents::model::ReasoningEffort;
+        use chelix_agents::model::ReasoningEffort;
         match self.capabilities.reasoning_effort_policy {
             ReasoningEffortPolicy::Unsupported => None,
             ReasoningEffortPolicy::DeepSeek => self.reasoning_effort.map(|e| match e {
@@ -351,13 +351,13 @@ impl LlmProvider for OpenAiProvider {
         &self.provider_name
     }
 
-    fn reasoning_effort(&self) -> Option<moltis_agents::model::ReasoningEffort> {
+    fn reasoning_effort(&self) -> Option<chelix_agents::model::ReasoningEffort> {
         self.reasoning_effort
     }
 
     fn with_reasoning_effort(
         self: std::sync::Arc<Self>,
-        effort: moltis_agents::model::ReasoningEffort,
+        effort: chelix_agents::model::ReasoningEffort,
     ) -> Option<std::sync::Arc<dyn LlmProvider>> {
         if matches!(
             self.capabilities.reasoning_effort_policy,
@@ -376,13 +376,13 @@ impl LlmProvider for OpenAiProvider {
 
     fn supports_tools(&self) -> bool {
         match self.tool_mode_override {
-            Some(moltis_config::ToolMode::Native) => true,
-            Some(moltis_config::ToolMode::Text | moltis_config::ToolMode::Off) => false,
-            Some(moltis_config::ToolMode::Auto) | None => self.model_capabilities.tools,
+            Some(chelix_config::ToolMode::Native) => true,
+            Some(chelix_config::ToolMode::Text | chelix_config::ToolMode::Off) => false,
+            Some(chelix_config::ToolMode::Auto) | None => self.model_capabilities.tools,
         }
     }
 
-    fn tool_mode(&self) -> Option<moltis_config::ToolMode> {
+    fn tool_mode(&self) -> Option<chelix_config::ToolMode> {
         self.tool_mode_override
     }
 
@@ -620,7 +620,7 @@ pub(crate) fn apply_openai_chat_tool_choice(
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use {super::*, moltis_agents::model::ReasoningEffort, std::sync::Arc};
+    use {super::*, chelix_agents::model::ReasoningEffort, std::sync::Arc};
 
     #[test]
     fn nearai_does_not_accept_reasoning_effort_suffixes() {

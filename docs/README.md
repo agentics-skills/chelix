@@ -1,4 +1,4 @@
-# Moltis Docs
+# Chelix Docs
 
 Project documentation is built from the Markdown files in `docs/src/`.
 

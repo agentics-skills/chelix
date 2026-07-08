@@ -9,17 +9,17 @@ use {
 };
 
 use {
-    moltis_common::hooks::HookRegistry,
-    moltis_projects::ProjectStore,
-    moltis_sessions::{
+    chelix_common::hooks::HookRegistry,
+    chelix_projects::ProjectStore,
+    chelix_sessions::{
         message::PersistedMessage, metadata::SqliteSessionMetadata, state_store::SessionStateStore,
         store::SessionStore,
     },
-    moltis_tools::sandbox::SandboxRouter,
+    chelix_tools::sandbox::SandboxRouter,
 };
 
 #[cfg(feature = "fs-tools")]
-use moltis_tools::fs::FsState;
+use chelix_tools::fs::FsState;
 
 use crate::{
     agent_persona::AgentPersonaStore,
@@ -43,9 +43,9 @@ pub(super) const UI_HISTORY_TRIM_STEP: usize = 50;
 
 pub(super) fn resolve_hook_channel_binding(
     session_key: &str,
-    session_entry: Option<&moltis_sessions::metadata::SessionEntry>,
-) -> Option<moltis_common::hooks::ChannelBinding> {
-    let binding = match moltis_channels::resolve_session_channel_binding(
+    session_entry: Option<&chelix_sessions::metadata::SessionEntry>,
+) -> Option<chelix_common::hooks::ChannelBinding> {
+    let binding = match chelix_channels::resolve_session_channel_binding(
         session_key,
         session_entry.and_then(|entry| entry.channel_binding.as_deref()),
     ) {
@@ -56,7 +56,7 @@ pub(super) fn resolve_hook_channel_binding(
                 session = %session_key,
                 "failed to parse channel_binding JSON; falling back to web"
             );
-            moltis_channels::web_session_channel_binding()
+            chelix_channels::web_session_channel_binding()
         },
     };
     (!binding.is_empty()).then_some(binding)
@@ -144,7 +144,7 @@ pub(super) fn message_text(msg: &Value) -> Option<String> {
 pub(super) fn sanitize_tts_text(text: &str) -> String {
     #[cfg(feature = "voice")]
     {
-        moltis_voice::tts::sanitize_text_for_tts(text).to_string()
+        chelix_voice::tts::sanitize_text_for_tts(text).to_string()
     }
 
     #[cfg(not(feature = "voice"))]
@@ -351,7 +351,7 @@ async fn tool_result_image_for_share(
         (image_mime_type(filename).to_string(), bytes)
     };
 
-    let full_meta = moltis_media::image_ops::get_image_metadata(&full_bytes).ok()?;
+    let full_meta = chelix_media::image_ops::get_image_metadata(&full_bytes).ok()?;
     let full_asset = SharedImageAsset {
         data_url: build_image_data_url(&full_mime, &full_bytes),
         width: full_meta.width,
@@ -361,7 +361,7 @@ async fn tool_result_image_for_share(
     let needs_preview_resize = full_meta.width > SHARE_PREVIEW_MAX_IMAGE_WIDTH
         || full_meta.height > SHARE_PREVIEW_MAX_IMAGE_HEIGHT;
     let preview_bytes = if needs_preview_resize {
-        moltis_media::image_ops::resize_image(
+        chelix_media::image_ops::resize_image(
             &full_bytes,
             SHARE_PREVIEW_MAX_IMAGE_WIDTH,
             SHARE_PREVIEW_MAX_IMAGE_HEIGHT,
@@ -370,7 +370,7 @@ async fn tool_result_image_for_share(
     } else {
         full_bytes.clone()
     };
-    let preview_meta = moltis_media::image_ops::get_image_metadata(&preview_bytes).ok()?;
+    let preview_meta = chelix_media::image_ops::get_image_metadata(&preview_bytes).ok()?;
     let preview_mime = sniff_image_mime(&preview_bytes, &full_mime);
     let preview_asset = SharedImageAsset {
         data_url: build_image_data_url(&preview_mime, &preview_bytes),

@@ -15,7 +15,7 @@ pub struct ToolsConfig {
     pub maps: MapsConfig,
     pub browser: BrowserConfig,
     /// Native filesystem tools (Read/Write/Edit/MultiEdit/Glob/Grep).
-    /// See moltis-org/moltis#657.
+    /// See agentics-skills/chelix#657.
     #[serde(default)]
     pub fs: FsToolsConfig,
     /// Maximum wall-clock seconds for an agent run (0 = no timeout). Default 600.
@@ -92,7 +92,7 @@ impl Default for ToolsConfig {
 /// Configuration for the native filesystem tools
 /// (Read / Write / Edit / MultiEdit / Glob / Grep).
 ///
-/// Tracks GH moltis-org/moltis#657. Every field is optional and conservative
+/// Tracks GH agentics-skills/chelix#657. Every field is optional and conservative
 /// by default — fs tools work out of the box with no configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -484,9 +484,9 @@ pub struct BrowserConfig {
     /// If not set and `persist_profile` is true, defaults to `data_dir()/browser/profile/`.
     pub profile_dir: Option<String>,
     /// Hostname or IP used to connect to the browser container from the host.
-    /// Default: "127.0.0.1" (localhost). When running Moltis itself inside Docker,
+    /// Default: "127.0.0.1" (localhost). When running Chelix itself inside Docker,
     /// set this to "host.docker.internal" or the Docker bridge gateway IP so
-    /// Moltis can reach the sibling browser container via the host's port mapping.
+    /// Chelix can reach the sibling browser container via the host's port mapping.
     #[serde(default = "default_container_host")]
     pub container_host: String,
     /// Browserless API compatibility mode for websocket endpoints.
@@ -675,7 +675,7 @@ pub struct SandboxConfig {
     /// retains capability-drop / no-new-privileges hardening, while `"rw"`
     /// leaves the rootfs writable and skips those flags.
     pub workspace_sysmount: String,
-    /// Optional host-visible path for Moltis `data_dir()` when creating
+    /// Optional host-visible path for Chelix `data_dir()` when creating
     /// sandbox containers from inside another container.
     pub host_data_dir: Option<String>,
     /// Persistence strategy for `/home/sandbox`: off, session, or shared.

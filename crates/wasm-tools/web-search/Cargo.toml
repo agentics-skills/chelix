@@ -1,6 +1,6 @@
 [package]
 edition.workspace = true
-name              = "moltis-wasm-web-search"
+name              = "chelix-wasm-web-search"
 version.workspace = true
 
 [lib]

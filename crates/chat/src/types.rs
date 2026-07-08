@@ -1,4 +1,4 @@
-//! Shared types and small utility helpers used across `moltis_chat` modules.
+//! Shared types and small utility helpers used across `chelix_chat` modules.
 
 use std::collections::HashSet;
 
@@ -8,8 +8,8 @@ use {
 };
 
 use {
-    moltis_agents::model::Usage,
-    moltis_config::{AgentMemoryWriteMode, MemoryStyle, PromptMemoryMode},
+    chelix_agents::model::Usage,
+    chelix_config::{AgentMemoryWriteMode, MemoryStyle, PromptMemoryMode},
 };
 
 /// Placeholder to match the old `BroadcastOpts` pattern. All fields are ignored;
@@ -334,7 +334,7 @@ mod tests {
             ReplyMedium, UsageSnapshot, assistant_message_is_visible, build_assistant_turn_output,
             build_chat_final_broadcast, session_token_usage_from_messages,
         },
-        moltis_agents::model::Usage,
+        chelix_agents::model::Usage,
     };
 
     #[test]
@@ -894,7 +894,7 @@ pub(crate) fn allowlist_pattern_matches_key(pattern: &str, key: &str) -> bool {
 }
 
 #[allow(dead_code)]
-pub fn model_matches_allowlist(model: &moltis_providers::ModelInfo, patterns: &[String]) -> bool {
+pub fn model_matches_allowlist(model: &chelix_providers::ModelInfo, patterns: &[String]) -> bool {
     if patterns.is_empty() {
         return true;
     }
@@ -902,7 +902,7 @@ pub fn model_matches_allowlist(model: &moltis_providers::ModelInfo, patterns: &[
         return true;
     }
     let full = normalize_model_key(&model.id);
-    let raw = normalize_model_key(moltis_providers::model_id::raw_model_id(&model.id));
+    let raw = normalize_model_key(chelix_providers::model_id::raw_model_id(&model.id));
     let display = normalize_model_key(&model.display_name);
     patterns.iter().any(|p| {
         allowlist_pattern_matches_key(p, &full)
@@ -913,7 +913,7 @@ pub fn model_matches_allowlist(model: &moltis_providers::ModelInfo, patterns: &[
 
 #[allow(dead_code)]
 pub fn model_matches_allowlist_with_provider(
-    model: &moltis_providers::ModelInfo,
+    model: &chelix_providers::ModelInfo,
     provider_name: Option<&str>,
     patterns: &[String],
 ) -> bool {
@@ -1009,14 +1009,14 @@ pub(crate) struct PromptMemoryStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub file_source: Option<moltis_config::WorkspaceMarkdownSource>,
+    pub file_source: Option<chelix_config::WorkspaceMarkdownSource>,
 }
 
 /// Pre-loaded persona data used to build the system prompt.
 pub(crate) struct PromptPersona {
-    pub config: moltis_config::MoltisConfig,
-    pub identity: moltis_config::AgentIdentity,
-    pub user: moltis_config::UserProfile,
+    pub config: chelix_config::ChelixConfig,
+    pub identity: chelix_config::AgentIdentity,
+    pub user: chelix_config::UserProfile,
     pub soul_text: Option<String>,
     pub boot_text: Option<String>,
     pub agents_text: Option<String>,
@@ -1040,7 +1040,7 @@ pub(crate) async fn broadcast(
 }
 
 #[cfg(feature = "metrics")]
-pub(crate) use moltis_metrics::{counter, histogram, labels, llm as llm_metrics};
+pub(crate) use chelix_metrics::{counter, histogram, labels, llm as llm_metrics};
 
 /// Detect the current user's runtime shell from environment variables.
 pub(crate) fn detect_runtime_shell() -> Option<String> {
@@ -1163,7 +1163,7 @@ pub(crate) fn normalized_iana_timezone(timezone: Option<&str>) -> Option<String>
 }
 
 pub(crate) fn default_user_prompt_timezone() -> Option<String> {
-    moltis_config::resolve_user_profile()
+    chelix_config::resolve_user_profile()
         .timezone
         .as_ref()
         .map(|timezone| timezone.name().to_string())
@@ -1236,7 +1236,7 @@ pub(crate) fn prompt_today_for_timezone(timezone: Option<&str>) -> String {
 }
 
 pub(crate) fn refresh_runtime_prompt_time(
-    host: &mut moltis_agents::prompt::PromptHostRuntimeContext,
+    host: &mut chelix_agents::prompt::PromptHostRuntimeContext,
 ) {
     host.time = Some(prompt_now_for_timezone(host.timezone.as_deref()));
     host.today = Some(prompt_today_for_timezone(host.timezone.as_deref()));
@@ -1361,7 +1361,7 @@ pub(crate) fn suggest_model_ids(
     }
 
     let requested_provider = model_id_provider(requested_model_id).map(str::to_ascii_lowercase);
-    let requested_raw = moltis_providers::model_id::raw_model_id(requested_model_id);
+    let requested_raw = chelix_providers::model_id::raw_model_id(requested_model_id);
     let requested_norm = normalize_model_lookup_key(requested_model_id);
     let requested_raw_norm = normalize_model_lookup_key(requested_raw);
 
@@ -1374,7 +1374,7 @@ pub(crate) fn suggest_model_ids(
                 .zip(candidate_provider.as_deref())
                 .is_some_and(|(left, right)| left == right);
 
-            let candidate_raw = moltis_providers::model_id::raw_model_id(candidate);
+            let candidate_raw = chelix_providers::model_id::raw_model_id(candidate);
             let candidate_norm = normalize_model_lookup_key(candidate);
             let candidate_raw_norm = normalize_model_lookup_key(candidate_raw);
 

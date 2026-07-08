@@ -41,8 +41,8 @@ pub struct McpOAuthConfig {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        serialize_with = "moltis_oauth::types::serialize_option_secret",
-        deserialize_with = "moltis_oauth::types::deserialize_option_secret"
+        serialize_with = "chelix_oauth::types::serialize_option_secret",
+        deserialize_with = "chelix_oauth::types::deserialize_option_secret"
     )]
     pub client_secret: Option<Secret<String>>,
     pub auth_url: String,
@@ -75,8 +75,8 @@ pub struct McpServerConfig {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        serialize_with = "moltis_oauth::types::serialize_option_secret",
-        deserialize_with = "moltis_oauth::types::deserialize_option_secret"
+        serialize_with = "chelix_oauth::types::serialize_option_secret",
+        deserialize_with = "chelix_oauth::types::deserialize_option_secret"
     )]
     pub url: Option<Secret<String>>,
     /// Custom headers for remote HTTP/SSE transport.

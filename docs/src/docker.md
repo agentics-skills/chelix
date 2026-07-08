@@ -8,20 +8,20 @@ Registry on every release.
 
 ```bash
 docker run -d \
-  --name moltis \
+  --name chelix \
   -p 13131:13131 \
   -p 13132:13132 \
   -p 1455:1455 \
-  -v moltis-config:/home/moltis/.config/moltis \
-  -v moltis-data:/home/moltis/.moltis \
+  -v chelix-config:/home/chelix/.config/chelix \
+  -v chelix-data:/home/chelix/.chelix \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  ghcr.io/moltis-org/moltis:latest
+  ghcr.io/agentics-skills/chelix:latest
 ```
 
 Open https://localhost:13131 in your browser and configure your LLM provider to start chatting.
 
-For unattended bootstraps, add `MOLTIS_TOKEN`, `MOLTIS_PROVIDER`, and
-`MOLTIS_API_KEY` before first start. That pre-configures auth plus one LLM
+For unattended bootstraps, add `CHELIX_TOKEN`, `CHELIX_PROVIDER`, and
+`CHELIX_API_KEY` before first start. That pre-configures auth plus one LLM
 provider so you can skip the browser setup wizard entirely.
 
 ### Ports
@@ -40,14 +40,14 @@ HTTP so you can download it:
 
 ```bash
 # Download the CA certificate
-curl -o moltis-ca.pem http://localhost:13132/certs/ca.pem
+curl -o chelix-ca.pem http://localhost:13132/certs/ca.pem
 
 # macOS — add to system Keychain and trust it
 sudo security add-trusted-cert -d -r trustRoot \
-  -k /Library/Keychains/System.keychain moltis-ca.pem
+  -k /Library/Keychains/System.keychain chelix-ca.pem
 
 # Linux (Debian/Ubuntu)
-sudo cp moltis-ca.pem /usr/local/share/ca-certificates/moltis-ca.crt
+sudo cp chelix-ca.pem /usr/local/share/ca-certificates/chelix-ca.crt
 sudo update-ca-certificates
 ```
 
@@ -55,7 +55,7 @@ After trusting the CA, restart your browser. The warning will not appear again
 (the CA persists in the mounted config volume).
 
 This local CA only solves certificate trust for names included in the generated
-server certificate, such as `localhost`, `moltis.localhost`, the container or
+server certificate, such as `localhost`, `chelix.localhost`, the container or
 host name, and sometimes an inferred non-loopback bind IP. It does not make a
 certificate valid for an arbitrary public VPS IP address or hosting-provider
 domain. Browsers still reject those targets with a certificate name mismatch if
@@ -72,16 +72,16 @@ Regular public TLS deployments should use a domain name.
 
 For internet-facing Docker deployments, prefer a domain name plus a reverse
 proxy with public CA certificates. Run Chelix with `--no-tls`, set
-`MOLTIS_BEHIND_PROXY=true`, and point the proxy at `http://<moltis-host>:13131`.
+`CHELIX_BEHIND_PROXY=true`, and point the proxy at `http://<chelix-host>:13131`.
 If you want Chelix to serve HTTPS directly, mount a certificate and private key
 whose SANs cover the public hostname and set `tls.cert_path` and `tls.key_path`
-in `moltis.toml`.
+in `chelix.toml`.
 
 ```admonish note
 When accessing from localhost, no authentication is required. If you access Chelix from a different machine (e.g., over the network), a setup code is printed to the container logs for authentication setup:
 
 ~~~bash
-docker logs moltis
+docker logs chelix
 ~~~
 ```
 
@@ -91,26 +91,26 @@ Chelix uses two directories that should be persisted:
 
 | Path | Contents |
 |------|----------|
-| `/home/moltis/.config/moltis` | Configuration files: `moltis.toml`, `credentials.json`, `mcp-servers.json` |
-| `/home/moltis/.moltis` | Runtime data: databases, sessions, memory files, logs |
-| `/home/moltis/.npm` | npm cache (used by stdio-based MCP servers) |
+| `/home/chelix/.config/chelix` | Configuration files: `chelix.toml`, `credentials.json`, `mcp-servers.json` |
+| `/home/chelix/.chelix` | Runtime data: databases, sessions, memory files, logs |
+| `/home/chelix/.npm` | npm cache (used by stdio-based MCP servers) |
 
 You can use named volumes (as shown above) or bind mounts to local directories
 for easier access to configuration files:
 
 ```bash
 docker run -d \
-  --name moltis \
+  --name chelix \
   -p 13131:13131 \
   -p 13132:13132 \
   -p 1455:1455 \
-  -v ./config:/home/moltis/.config/moltis \
-  -v ./data:/home/moltis/.moltis \
+  -v ./config:/home/chelix/.config/chelix \
+  -v ./data:/home/chelix/.chelix \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  ghcr.io/moltis-org/moltis:latest
+  ghcr.io/agentics-skills/chelix:latest
 ```
 
-With bind mounts, you can edit `config/moltis.toml` directly on the host.
+With bind mounts, you can edit `config/chelix.toml` directly on the host.
 
 ## Docker Socket (Sandbox Execution)
 
@@ -133,11 +133,11 @@ For full container-level isolation (filesystem boundaries, network policies),
 mount the Docker socket.
 
 If Chelix is itself running in Docker and your `data_dir()` mount is backed by
-a different host path than `/home/moltis/.moltis`, Chelix tries to discover that
+a different host path than `/home/chelix/.chelix`, Chelix tries to discover that
 host path automatically from `docker inspect`/`podman inspect`. It first checks
 the current container's hostname/cgroup references, then scans running
 containers for an unambiguous mount of Chelix's data directory. If that lookup
-still fails, add this to `/home/moltis/.config/moltis/moltis.toml` inside the
+still fails, add this to `/home/chelix/.config/chelix/chelix.toml` inside the
 container:
 
 ```toml
@@ -145,11 +145,11 @@ container:
 host_data_dir = "/absolute/host/path/to/data"
 ```
 
-For a bind mount like `-v ./data:/home/moltis/.moltis`, use the resolved host
+For a bind mount like `-v ./data:/home/chelix/.chelix`, use the resolved host
 path to `./data`. This setting is also used by sandboxed browser containers for
 their persistent Chrome profile directory. If browser startup logs show
 `/data/browser-profile/SingletonLock: Permission denied`, Chelix probably fell
-back to the in-container path (`/home/moltis/.moltis/...`) instead of the real
+back to the in-container path (`/home/chelix/.chelix/...`) instead of the real
 host path. Set `host_data_dir` to the host-visible data directory and restart
 Chelix so new sandbox and browser containers pick up the corrected mount
 source.
@@ -159,7 +159,7 @@ source.
 Mounting the Docker socket gives the container full access to the Docker
 daemon. This is equivalent to root access on the host for practical purposes.
 Only run Chelix containers from trusted sources (official images from
-`ghcr.io/moltis-org/moltis`).
+`ghcr.io/agentics-skills/chelix`).
 
 ## Docker Compose
 
@@ -168,17 +168,17 @@ complete example:
 
 ```yaml
 services:
-  moltis:
-    image: ghcr.io/moltis-org/moltis:latest
-    container_name: moltis
+  chelix:
+    image: ghcr.io/agentics-skills/chelix:latest
+    container_name: chelix
     restart: unless-stopped
     ports:
       - "13131:13131"
       - "13132:13132"
       - "1455:1455"   # OAuth callback (OpenAI Codex, etc.)
     volumes:
-      - ./config:/home/moltis/.config/moltis
-      - ./data:/home/moltis/.moltis
+      - ./config:/home/chelix/.config/chelix
+      - ./data:/home/chelix/.chelix
       - /var/run/docker.sock:/var/run/docker.sock
 ```
 
@@ -187,16 +187,16 @@ vault recovery key as a Docker secret and point Chelix at the mounted file:
 
 ```yaml
 services:
-  moltis:
-    image: ghcr.io/moltis-org/moltis:latest
+  chelix:
+    image: ghcr.io/agentics-skills/chelix:latest
     environment:
-      MOLTIS_VAULT_AUTO_UNSEAL_KEY_FILE: /run/secrets/moltis_vault_recovery_key
+      CHELIX_VAULT_AUTO_UNSEAL_KEY_FILE: /run/secrets/chelix_vault_recovery_key
     secrets:
-      - moltis_vault_recovery_key
+      - chelix_vault_recovery_key
 
 secrets:
-  moltis_vault_recovery_key:
-    file: ./moltis-vault-recovery-key
+  chelix_vault_recovery_key:
+    file: ./chelix-vault-recovery-key
 ```
 
 This lets encrypted environment variables and channel credentials load during
@@ -214,13 +214,13 @@ container is a sibling container on the host. By default, Chelix connects to
 
 The sibling browser also needs a host-visible mount for its Chrome profile. If
 your Chelix data directory is bind-mounted or stored somewhere that is not
-visible on the host as `/home/moltis/.moltis`, configure
+visible on the host as `/home/chelix/.chelix`, configure
 `[tools.execute_command.sandbox].host_data_dir` as described in
 [Docker Socket Sandbox Execution](#docker-socket-sandbox-execution). Without
 that override, Chrome may fail with `SingletonLock: Permission denied` when the
 browser container tries to write `/data/browser-profile`.
 
-Add `container_host` to your `moltis.toml` so Chelix can reach the browser
+Add `container_host` to your `chelix.toml` so Chelix can reach the browser
 container through the host's port mapping:
 
 ```toml
@@ -233,15 +233,15 @@ resolves to the host:
 
 ```bash
 docker run -d \
-  --name moltis \
+  --name chelix \
   --add-host=host.docker.internal:host-gateway \
   -p 13131:13131 \
   -p 13132:13132 \
   -p 1455:1455 \
-  -v moltis-config:/home/moltis/.config/moltis \
-  -v moltis-data:/home/moltis/.moltis \
+  -v chelix-config:/home/chelix/.config/chelix \
+  -v chelix-data:/home/chelix/.chelix \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  ghcr.io/moltis-org/moltis:latest
+  ghcr.io/agentics-skills/chelix:latest
 ```
 
 Alternatively, use the Docker bridge gateway IP directly
@@ -255,25 +255,25 @@ socket instead of the Docker socket:
 ```bash
 # Podman rootless
 podman run -d \
-  --name moltis \
+  --name chelix \
   -p 13131:13131 \
   -p 13132:13132 \
   -p 1455:1455 \
-  -v moltis-config:/home/moltis/.config/moltis \
-  -v moltis-data:/home/moltis/.moltis \
+  -v chelix-config:/home/chelix/.config/chelix \
+  -v chelix-data:/home/chelix/.chelix \
   -v /run/user/$(id -u)/podman/podman.sock:/var/run/docker.sock \
-  ghcr.io/moltis-org/moltis:latest
+  ghcr.io/agentics-skills/chelix:latest
 
 # Podman rootful
 podman run -d \
-  --name moltis \
+  --name chelix \
   -p 13131:13131 \
   -p 13132:13132 \
   -p 1455:1455 \
-  -v moltis-config:/home/moltis/.config/moltis \
-  -v moltis-data:/home/moltis/.moltis \
+  -v chelix-config:/home/chelix/.config/chelix \
+  -v chelix-data:/home/chelix/.chelix \
   -v /run/podman/podman.sock:/var/run/docker.sock \
-  ghcr.io/moltis-org/moltis:latest
+  ghcr.io/agentics-skills/chelix:latest
 ```
 
 You may need to enable the Podman socket service first:
@@ -290,24 +290,24 @@ sudo systemctl enable --now podman.socket
 
 | Variable | Description |
 |----------|-------------|
-| `MOLTIS_CONFIG_DIR` | Override config directory (default: `~/.config/moltis`) |
-| `MOLTIS_DATA_DIR` | Override data directory (default: `~/.moltis`) |
-| `MOLTIS_NO_TLS` | Disable TLS (serve plain HTTP) — equivalent to `--no-tls` |
+| `CHELIX_CONFIG_DIR` | Override config directory (default: `~/.config/chelix`) |
+| `CHELIX_DATA_DIR` | Override data directory (default: `~/.chelix`) |
+| `CHELIX_NO_TLS` | Disable TLS (serve plain HTTP) — equivalent to `--no-tls` |
 
 Example:
 
 ```bash
 docker run -d \
-  --name moltis \
+  --name chelix \
   -p 13131:13131 \
   -p 13132:13132 \
   -p 1455:1455 \
-  -e MOLTIS_CONFIG_DIR=/config \
-  -e MOLTIS_DATA_DIR=/data \
+  -e CHELIX_CONFIG_DIR=/config \
+  -e CHELIX_DATA_DIR=/data \
   -v ./config:/config \
   -v ./data:/data \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  ghcr.io/moltis-org/moltis:latest
+  ghcr.io/agentics-skills/chelix:latest
 ```
 
 ### API Keys and the `[env]` Section
@@ -323,31 +323,31 @@ and no manual setup:
 
 ```yaml
 services:
-  moltis:
-    image: ghcr.io/moltis-org/moltis:latest
+  chelix:
+    image: ghcr.io/agentics-skills/chelix:latest
     environment:
-      MOLTIS_TOKEN: "change-me"
-      MOLTIS_PROVIDER: "openai"
-      MOLTIS_API_KEY: "sk-..."
+      CHELIX_TOKEN: "change-me"
+      CHELIX_PROVIDER: "openai"
+      CHELIX_API_KEY: "sk-..."
 ```
 
-`MOLTIS_PROVIDER` must be a Chelix provider name such as `openai`,
+`CHELIX_PROVIDER` must be a Chelix provider name such as `openai`,
 `anthropic`, `gemini`, `groq`, `openrouter`, or `mistral`. The shorter
-aliases `PROVIDER` and `API_KEY` also work, but the `MOLTIS_*` names are
+aliases `PROVIDER` and `API_KEY` also work, but the `CHELIX_*` names are
 preferred because they are less likely to collide with other containers.
 
 **Option 2: Provider-specific `docker -e` flags** (takes precedence for that provider)
 
 ```bash
 docker run -d \
-  --name moltis \
+  --name chelix \
   -e BRAVE_API_KEY=your-key \
   -e OPENROUTER_API_KEY=sk-or-... \
   ...
-  ghcr.io/moltis-org/moltis:latest
+  ghcr.io/agentics-skills/chelix:latest
 ```
 
-**Option 3: `[env]` section in `moltis.toml`**
+**Option 3: `[env]` section in `chelix.toml`**
 
 Add an `[env]` section to your config file. These variables are injected into
 the Chelix process at startup, making them available to all features:
@@ -379,10 +379,10 @@ To build the Docker image from source:
 
 ```bash
 # Single architecture (current platform)
-docker build -t moltis:local .
+docker build -t chelix:local .
 
 # Multi-architecture (requires buildx)
-docker buildx build --platform linux/amd64,linux/arm64 -t moltis:local .
+docker buildx build --platform linux/amd64,linux/arm64 -t chelix:local .
 ```
 
 ## OrbStack
@@ -399,7 +399,7 @@ The Docker socket is not mounted or the Chelix user doesn't have permission
 to access it. Verify:
 
 ```bash
-docker exec moltis ls -la /var/run/docker.sock
+docker exec chelix ls -la /var/run/docker.sock
 ```
 
 ### Setup code not appearing in logs (for network access)
@@ -407,7 +407,7 @@ docker exec moltis ls -la /var/run/docker.sock
 The setup code only appears when accessing from a non-localhost address. If you're accessing from the same machine via `localhost`, no setup code is needed. For network access, wait a few seconds for the gateway to start, then check logs:
 
 ```bash
-docker logs moltis 2>&1 | grep -i setup
+docker logs chelix 2>&1 | grep -i setup
 ```
 
 ### OAuth authentication error (OpenAI Codex)
@@ -424,7 +424,7 @@ over the network, `localhost:1455` on the browser side points to your local
 machine — not the server. In that case, authenticate via the CLI instead:
 
 ```bash
-docker exec -it moltis moltis auth login --provider openai-codex
+docker exec -it chelix chelix auth login --provider openai-codex
 ```
 
 The CLI opens a browser on the machine where you run the command and handles
@@ -441,7 +441,7 @@ mkdir -p ./config ./data
 chmod 755 ./config ./data
 ```
 
-The container runs as user `moltis` (UID 1000). If you see permission errors,
+The container runs as user `chelix` (UID 1000). If you see permission errors,
 you may need to adjust ownership:
 
 ```bash

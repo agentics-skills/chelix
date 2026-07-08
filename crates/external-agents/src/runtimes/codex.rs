@@ -136,7 +136,7 @@ impl CodexAppServerSession {
                 "id": 1u64,
                 "method": "initialize",
                 "params": {
-                    "clientInfo": {"name": "moltis", "version": env!("CARGO_PKG_VERSION")},
+                    "clientInfo": {"name": "chelix", "version": env!("CARGO_PKG_VERSION")},
                     "capabilities": {"experimentalApi": true}
                 }
             }),
@@ -229,7 +229,7 @@ impl ExternalAgentSession for CodexAppServerSession {
             let mut params = json!({
                 "threadId": self.thread_id,
                 "input": [{"type": "text", "text": prompt}],
-                "title": "Moltis chat turn",
+                "title": "Chelix chat turn",
             });
             if let Some(working_dir) = &self.working_dir {
                 params["cwd"] = json!(working_dir);
@@ -449,7 +449,7 @@ mod tests {
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("moltis-codex-test-{unique}"));
+        let dir = std::env::temp_dir().join(format!("chelix-codex-test-{unique}"));
         fs::create_dir_all(&dir)?;
         let script = dir.join("fake-codex-app-server.sh");
         fs::write(

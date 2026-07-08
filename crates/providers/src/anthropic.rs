@@ -9,7 +9,7 @@ use {async_trait::async_trait, futures::StreamExt, secrecy::ExposeSecret, tokio_
 
 use tracing::{debug, trace, warn};
 
-use moltis_agents::model::{
+use chelix_agents::model::{
     AgentToolControls, ChatMessage, CompletionResponse, ContentPart, LlmProvider, StreamEvent,
     ToolCall, ToolChoice, Usage, UserContent,
 };
@@ -22,9 +22,9 @@ pub struct AnthropicProvider {
     /// Optional alias for metrics differentiation (e.g., "anthropic-work", "anthropic-2").
     alias: Option<String>,
     /// Optional reasoning effort level for extended thinking.
-    reasoning_effort: Option<moltis_agents::model::ReasoningEffort>,
+    reasoning_effort: Option<chelix_agents::model::ReasoningEffort>,
     /// Prompt cache retention policy. When `None`, caching is disabled.
-    cache_retention: moltis_config::CacheRetention,
+    cache_retention: chelix_config::CacheRetention,
     /// Global per-model context window overrides from `[models.<id>]` config.
     context_window_global: HashMap<String, u32>,
     /// Provider-scoped per-model context window overrides from
@@ -43,7 +43,7 @@ impl AnthropicProvider {
             client: crate::shared_http_client(),
             alias: None,
             reasoning_effort: None,
-            cache_retention: moltis_config::CacheRetention::Short,
+            cache_retention: chelix_config::CacheRetention::Short,
             context_window_global: HashMap::new(),
             context_window_provider: HashMap::new(),
         }
@@ -63,21 +63,21 @@ impl AnthropicProvider {
             client: crate::shared_http_client(),
             alias,
             reasoning_effort: None,
-            cache_retention: moltis_config::CacheRetention::Short,
+            cache_retention: chelix_config::CacheRetention::Short,
             context_window_global: HashMap::new(),
             context_window_provider: HashMap::new(),
         }
     }
 
     #[must_use]
-    pub fn with_cache_retention(mut self, cache_retention: moltis_config::CacheRetention) -> Self {
+    pub fn with_cache_retention(mut self, cache_retention: chelix_config::CacheRetention) -> Self {
         self.cache_retention = cache_retention;
         self
     }
 
     /// Returns `true` when prompt caching is enabled (short or long retention).
     fn caching_enabled(&self) -> bool {
-        !matches!(self.cache_retention, moltis_config::CacheRetention::None)
+        !matches!(self.cache_retention, chelix_config::CacheRetention::None)
     }
 
     /// Set context window override maps extracted from config.
@@ -98,7 +98,7 @@ impl AnthropicProvider {
     /// Apply `thinking` configuration to an Anthropic request body based on
     /// the configured reasoning effort.
     fn apply_thinking(&self, body: &mut serde_json::Value) {
-        use moltis_agents::model::ReasoningEffort;
+        use chelix_agents::model::ReasoningEffort;
         let Some(effort) = self.reasoning_effort else {
             return;
         };
@@ -681,13 +681,13 @@ impl LlmProvider for AnthropicProvider {
         self.alias.as_deref().unwrap_or("anthropic")
     }
 
-    fn reasoning_effort(&self) -> Option<moltis_agents::model::ReasoningEffort> {
+    fn reasoning_effort(&self) -> Option<chelix_agents::model::ReasoningEffort> {
         self.reasoning_effort
     }
 
     fn with_reasoning_effort(
         self: std::sync::Arc<Self>,
-        effort: moltis_agents::model::ReasoningEffort,
+        effort: chelix_agents::model::ReasoningEffort,
     ) -> Option<std::sync::Arc<dyn LlmProvider>> {
         Some(std::sync::Arc::new(Self {
             api_key: self.api_key.clone(),
@@ -756,7 +756,7 @@ impl LlmProvider for AnthropicProvider {
 
         if self
             .reasoning_effort
-            .is_some_and(|effort| !matches!(effort, moltis_agents::model::ReasoningEffort::None))
+            .is_some_and(|effort| !matches!(effort, chelix_agents::model::ReasoningEffort::None))
             && matches!(
                 options.tool_choice,
                 Some(ToolChoice::Tool { .. } | ToolChoice::Any)
@@ -901,7 +901,7 @@ impl LlmProvider for AnthropicProvider {
             }
 
             if self.reasoning_effort.is_some_and(|effort| {
-                !matches!(effort, moltis_agents::model::ReasoningEffort::None)
+                !matches!(effort, chelix_agents::model::ReasoningEffort::None)
             })
                 && matches!(options.tool_choice, Some(ToolChoice::Tool { .. } | ToolChoice::Any))
             {

@@ -2,12 +2,12 @@
 //
 // With Vite bundling, individual modules are no longer served. The real
 // chat-ui module lives inside the bundle but is exposed on
-// window.__moltis_modules["chat-ui"] from main.tsx.
+// window.__chelix_modules["chat-ui"] from main.tsx.
 //
 // This shim re-exports everything the e2e tests need.
 
 function chatUi() {
-	return window.__moltis_modules?.["chat-ui"] || {};
+	return window.__chelix_modules?.["chat-ui"] || {};
 }
 
 export default new Proxy({}, {

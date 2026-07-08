@@ -221,7 +221,7 @@ mod tests {
     fn test_with_options() {
         let provider = SherpaOnnxStt::with_options(
             Some("/usr/local/bin/sherpa-onnx-offline".into()),
-            Some("~/.moltis/models/sherpa-onnx-whisper-tiny.en".into()),
+            Some("~/.chelix/models/sherpa-onnx-whisper-tiny.en".into()),
             Some("en".into()),
         );
         assert_eq!(
@@ -230,7 +230,7 @@ mod tests {
         );
         assert_eq!(
             provider.model_dir,
-            Some("~/.moltis/models/sherpa-onnx-whisper-tiny.en".into())
+            Some("~/.chelix/models/sherpa-onnx-whisper-tiny.en".into())
         );
         assert_eq!(provider.language, Some("en".into()));
     }

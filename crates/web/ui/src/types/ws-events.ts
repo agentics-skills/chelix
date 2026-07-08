@@ -1,6 +1,6 @@
 // ── WebSocket event types (discriminated union) ──────────────
 
-/** All WebSocket event names emitted by the moltis gateway. */
+/** All WebSocket event names emitted by the chelix gateway. */
 export enum WsEventName {
 	Chat = "chat",
 	Error = "error",

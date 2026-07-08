@@ -33,8 +33,8 @@ impl SkillsService for NoopSkillsService {
             .and_then(|v| v.as_str())
             .ok_or_else(|| "missing 'source' parameter (owner/repo format)".to_string())?;
         let install_dir =
-            moltis_skills::install::default_install_dir().map_err(ServiceError::message)?;
-        let skills = moltis_skills::install::install_skill(source, &install_dir)
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        let skills = chelix_skills::install::install_skill(source, &install_dir)
             .await
             .map_err(ServiceError::message)?;
         let installed: Vec<_> = skills
@@ -62,7 +62,7 @@ impl SkillsService for NoopSkillsService {
     }
 
     async fn list(&self) -> ServiceResult {
-        use moltis_skills::{
+        use chelix_skills::{
             discover::{FsSkillDiscoverer, SkillDiscoverer},
             requirements::check_requirements,
         };
@@ -70,8 +70,8 @@ impl SkillsService for NoopSkillsService {
 
         #[cfg(feature = "bundled-skills")]
         let skills = {
-            let bundled = Arc::new(moltis_skills::bundled::BundledSkillStore::new());
-            let composite = moltis_skills::discover::CompositeSkillDiscoverer::new(
+            let bundled = Arc::new(chelix_skills::bundled::BundledSkillStore::new());
+            let composite = chelix_skills::discover::CompositeSkillDiscoverer::new(
                 Box::new(fs_discoverer),
                 bundled,
             );
@@ -88,8 +88,8 @@ impl SkillsService for NoopSkillsService {
                 let elig = check_requirements(s);
                 let protected = matches!(
                     s.source,
-                    Some(moltis_skills::types::SkillSource::Personal)
-                        | Some(moltis_skills::types::SkillSource::Project)
+                    Some(chelix_skills::types::SkillSource::Personal)
+                        | Some(chelix_skills::types::SkillSource::Project)
                 ) && is_protected_discovered_skill(&s.name);
                 serde_json::json!({
                     "name": s.name,
@@ -116,8 +116,8 @@ impl SkillsService for NoopSkillsService {
             .ok_or_else(|| "missing 'source' parameter".to_string())?;
 
         let install_dir =
-            moltis_skills::install::default_install_dir().map_err(ServiceError::message)?;
-        moltis_skills::install::remove_repo(source, &install_dir)
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        chelix_skills::install::remove_repo(source, &install_dir)
             .await
             .map_err(ServiceError::message)?;
 
@@ -128,10 +128,10 @@ impl SkillsService for NoopSkillsService {
 
     async fn repos_list(&self) -> ServiceResult {
         let install_dir =
-            moltis_skills::install::default_install_dir().map_err(ServiceError::message)?;
-        let manifest_path = moltis_skills::manifest::ManifestStore::default_path()
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        let manifest_path = chelix_skills::manifest::ManifestStore::default_path()
             .map_err(ServiceError::message)?;
-        let store = moltis_skills::manifest::ManifestStore::new(manifest_path);
+        let store = chelix_skills::manifest::ManifestStore::new(manifest_path);
         let mut manifest = store.load().map_err(ServiceError::message)?;
         let (drift_changed, drifted_sources) =
             detect_and_mark_repo_drift(&mut manifest, &install_dir);
@@ -154,9 +154,9 @@ impl SkillsService for NoopSkillsService {
                 let trusted = unique_skills.iter().filter(|s| s.trusted).count();
                 let skill_count = unique_skills.len();
                 // Re-detect format for repos that predate the formats module
-                let format = if repo.format == moltis_skills::formats::PluginFormat::Skill {
+                let format = if repo.format == chelix_skills::formats::PluginFormat::Skill {
                     let repo_dir = install_dir.join(&repo.repo_name);
-                    moltis_skills::formats::detect_format(&repo_dir)
+                    chelix_skills::formats::detect_format(&repo_dir)
                 } else {
                     repo.format
                 };
@@ -188,7 +188,7 @@ impl SkillsService for NoopSkillsService {
                 if manifest.repos.iter().any(|r| r.repo_name == repo_name) {
                     continue;
                 }
-                let format = moltis_skills::formats::detect_format(&path);
+                let format = chelix_skills::formats::detect_format(&path);
                 repos.push(serde_json::json!({
                     "source": format!("orphan:{repo_name}"),
                     "repo_name": repo_name,
@@ -207,13 +207,13 @@ impl SkillsService for NoopSkillsService {
     }
 
     async fn repos_list_full(&self) -> ServiceResult {
-        use moltis_skills::requirements::check_requirements;
+        use chelix_skills::requirements::check_requirements;
 
         let install_dir =
-            moltis_skills::install::default_install_dir().map_err(ServiceError::message)?;
-        let manifest_path = moltis_skills::manifest::ManifestStore::default_path()
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        let manifest_path = chelix_skills::manifest::ManifestStore::default_path()
             .map_err(ServiceError::message)?;
-        let store = moltis_skills::manifest::ManifestStore::new(manifest_path);
+        let store = chelix_skills::manifest::ManifestStore::new(manifest_path);
         let mut manifest = store.load().map_err(ServiceError::message)?;
         let (drift_changed, drifted_sources) =
             detect_and_mark_repo_drift(&mut manifest, &install_dir);
@@ -227,16 +227,16 @@ impl SkillsService for NoopSkillsService {
             .map(|repo| {
                 let repo_dir = install_dir.join(&repo.repo_name);
                 // Re-detect format for repos that predate the formats module
-                let format = if repo.format == moltis_skills::formats::PluginFormat::Skill {
-                    moltis_skills::formats::detect_format(&repo_dir)
+                let format = if repo.format == chelix_skills::formats::PluginFormat::Skill {
+                    chelix_skills::formats::detect_format(&repo_dir)
                 } else {
                     repo.format
                 };
 
                 // For non-SKILL.md formats, scan with adapter to get enriched metadata.
                 let adapter_entries = match format {
-                    moltis_skills::formats::PluginFormat::Skill => None,
-                    _ => moltis_skills::formats::scan_with_adapter(&repo_dir, format)
+                    chelix_skills::formats::PluginFormat::Skill => None,
+                    _ => chelix_skills::formats::scan_with_adapter(&repo_dir, format)
                         .and_then(|r| r.ok()),
                 };
 
@@ -267,10 +267,10 @@ impl SkillsService for NoopSkillsService {
                             // SKILL.md format: parse from disk.
                             let skill_dir = install_dir.join(&s.relative_path);
                             let skill_md = skill_dir.join("SKILL.md");
-                            let meta_json = moltis_skills::parse::read_meta_json(&skill_dir);
+                            let meta_json = chelix_skills::parse::read_meta_json(&skill_dir);
                             let (description, display_name, elig) =
                                 if let Ok(content) = std::fs::read_to_string(&skill_md) {
-                                    if let Ok(meta) = moltis_skills::parse::parse_metadata(
+                                    if let Ok(meta) = chelix_skills::parse::parse_metadata(
                                         &content, &skill_dir,
                                     ) {
                                         let e = check_requirements(&meta);
@@ -338,7 +338,7 @@ impl SkillsService for NoopSkillsService {
                 if manifest.repos.iter().any(|r| r.repo_name == repo_name) {
                     continue;
                 }
-                let format = moltis_skills::formats::detect_format(&path);
+                let format = chelix_skills::formats::detect_format(&path);
                 repos.push(serde_json::json!({
                     "source": format!("orphan:{repo_name}"),
                     "repo_name": repo_name,
@@ -363,7 +363,7 @@ impl SkillsService for NoopSkillsService {
 
         if let Some(repo_name) = source.strip_prefix("orphan:") {
             let install_dir =
-                moltis_skills::install::default_install_dir().map_err(ServiceError::message)?;
+                chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
             let dir = install_dir.join(repo_name);
             if dir.exists() {
                 std::fs::remove_dir_all(&dir).map_err(ServiceError::message)?;
@@ -376,8 +376,8 @@ impl SkillsService for NoopSkillsService {
         }
 
         let install_dir =
-            moltis_skills::install::default_install_dir().map_err(ServiceError::message)?;
-        moltis_skills::install::remove_repo(source, &install_dir)
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        chelix_skills::install::remove_repo(source, &install_dir)
             .await
             .map_err(ServiceError::message)?;
 
@@ -399,8 +399,8 @@ impl SkillsService for NoopSkillsService {
             .and_then(|v| v.as_str())
             .map(PathBuf::from);
         let install_dir =
-            moltis_skills::install::default_install_dir().map_err(ServiceError::message)?;
-        let exported = moltis_skills::portability::export_repo_bundle(
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        let exported = chelix_skills::portability::export_repo_bundle(
             source,
             &install_dir,
             output_path.as_deref(),
@@ -429,9 +429,9 @@ impl SkillsService for NoopSkillsService {
             .and_then(|v| v.as_str())
             .ok_or_else(|| "missing 'path' parameter".to_string())?;
         let install_dir =
-            moltis_skills::install::default_install_dir().map_err(ServiceError::message)?;
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
         let imported =
-            moltis_skills::portability::import_repo_bundle(Path::new(bundle_path), &install_dir)
+            chelix_skills::portability::import_repo_bundle(Path::new(bundle_path), &install_dir)
                 .await
                 .map_err(ServiceError::message)?;
 
@@ -466,9 +466,9 @@ impl SkillsService for NoopSkillsService {
             .and_then(|v| v.as_str())
             .ok_or_else(|| "missing 'source' parameter".to_string())?;
 
-        let manifest_path = moltis_skills::manifest::ManifestStore::default_path()
+        let manifest_path = chelix_skills::manifest::ManifestStore::default_path()
             .map_err(ServiceError::message)?;
-        let store = moltis_skills::manifest::ManifestStore::new(manifest_path);
+        let store = chelix_skills::manifest::ManifestStore::new(manifest_path);
         let mut manifest = store.load().map_err(ServiceError::message)?;
         let repo = manifest
             .find_repo_mut(source)
@@ -486,9 +486,9 @@ impl SkillsService for NoopSkillsService {
     }
 
     async fn emergency_disable(&self) -> ServiceResult {
-        let manifest_path = moltis_skills::manifest::ManifestStore::default_path()
+        let manifest_path = chelix_skills::manifest::ManifestStore::default_path()
             .map_err(ServiceError::message)?;
-        let store = moltis_skills::manifest::ManifestStore::new(manifest_path);
+        let store = chelix_skills::manifest::ManifestStore::new(manifest_path);
         let mut manifest = store.load().map_err(ServiceError::message)?;
 
         let mut disabled = 0_u64;
@@ -541,9 +541,9 @@ impl SkillsService for NoopSkillsService {
     async fn bundled_categories(&self) -> ServiceResult {
         #[cfg(feature = "bundled-skills")]
         {
-            let store = moltis_skills::bundled::BundledSkillStore::new();
+            let store = chelix_skills::bundled::BundledSkillStore::new();
             let skills = store.discover();
-            let config = moltis_config::discover_and_load();
+            let config = chelix_config::discover_and_load();
             let disabled = &config.skills.disabled_bundled_categories;
 
             let mut cats: std::collections::BTreeMap<String, u32> =
@@ -584,7 +584,7 @@ impl SkillsService for NoopSkillsService {
         let category = category.to_string();
         let cat_clone = category.clone();
 
-        if let Err(e) = moltis_config::update_config(|cfg| {
+        if let Err(e) = chelix_config::update_config(|cfg| {
             if enabled {
                 cfg.skills
                     .disabled_bundled_categories
@@ -607,7 +607,7 @@ impl SkillsService for NoopSkillsService {
     }
 
     async fn skill_detail(&self, params: Value) -> ServiceResult {
-        use moltis_skills::requirements::check_requirements;
+        use chelix_skills::requirements::check_requirements;
 
         let source = params
             .get("source")
@@ -630,10 +630,10 @@ impl SkillsService for NoopSkillsService {
         }
 
         let install_dir =
-            moltis_skills::install::default_install_dir().map_err(ServiceError::message)?;
-        let manifest_path = moltis_skills::manifest::ManifestStore::default_path()
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        let manifest_path = chelix_skills::manifest::ManifestStore::default_path()
             .map_err(ServiceError::message)?;
-        let store = moltis_skills::manifest::ManifestStore::new(manifest_path);
+        let store = chelix_skills::manifest::ManifestStore::new(manifest_path);
         let mut manifest = store.load().map_err(ServiceError::message)?;
         let (drift_changed, drifted_sources) =
             detect_and_mark_repo_drift(&mut manifest, &install_dir);
@@ -661,15 +661,15 @@ impl SkillsService for NoopSkillsService {
 
         // Route by format: SKILL.md repos parse the file; others use format adapters.
         match repo.format {
-            moltis_skills::formats::PluginFormat::Skill => {
+            chelix_skills::formats::PluginFormat::Skill => {
                 let skill_dir = install_dir.join(&skill_state.relative_path);
                 let skill_md = skill_dir.join("SKILL.md");
                 let raw = std::fs::read_to_string(&skill_md)
                     .map_err(|e| format!("failed to read SKILL.md: {e}"))?;
-                let content = moltis_skills::parse::parse_skill(&raw, &skill_dir)
+                let content = chelix_skills::parse::parse_skill(&raw, &skill_dir)
                     .map_err(|e| format!("failed to parse SKILL.md: {e}"))?;
                 let elig = check_requirements(&content.metadata);
-                let meta_json = moltis_skills::parse::read_meta_json(&skill_dir);
+                let meta_json = chelix_skills::parse::read_meta_json(&skill_dir);
                 let display_name = meta_json.as_ref().and_then(|m| m.display_name.clone());
                 let author = meta_json.as_ref().and_then(|m| m.owner.clone());
                 let version = meta_json
@@ -726,7 +726,7 @@ impl SkillsService for NoopSkillsService {
             },
             format => {
                 // Non-SKILL.md format: use adapter to scan for skill body + metadata.
-                let entries = moltis_skills::formats::scan_with_adapter(&repo_dir, format)
+                let entries = chelix_skills::formats::scan_with_adapter(&repo_dir, format)
                     .ok_or_else(|| format!("no adapter for format '{format}'"))?
                     .map_err(|e| format!("scan error: {e}"))?;
                 let entry = entries
@@ -777,11 +777,11 @@ impl SkillsService for NoopSkillsService {
 
     async fn install_dep(&self, params: Value) -> ServiceResult {
         use {
-            moltis_skills::{
+            chelix_skills::{
                 discover::{FsSkillDiscoverer, SkillDiscoverer},
                 requirements::{check_requirements, install_command_preview, run_install},
             },
-            moltis_tools::approval::{
+            chelix_tools::approval::{
                 ApprovalAction, ApprovalManager, ApprovalMode, SecurityLevel,
             },
         };
@@ -809,8 +809,8 @@ impl SkillsService for NoopSkillsService {
 
         #[cfg(feature = "bundled-skills")]
         let skills = {
-            let bundled = Arc::new(moltis_skills::bundled::BundledSkillStore::new());
-            let composite = moltis_skills::discover::CompositeSkillDiscoverer::new(
+            let bundled = Arc::new(chelix_skills::bundled::BundledSkillStore::new());
+            let composite = chelix_skills::discover::CompositeSkillDiscoverer::new(
                 Box::new(fs_discoverer),
                 bundled,
             );
@@ -858,7 +858,7 @@ impl SkillsService for NoopSkillsService {
             .into());
         }
 
-        let config = moltis_config::discover_and_load();
+        let config = chelix_config::discover_and_load();
         if config.tools.execute_command.sandbox.mode == "off" && !allow_host_install {
             return Err("dependency install blocked because sandbox mode is off. Enable sandbox or re-run with allow_host_install=true and confirm=true".into());
         }
@@ -935,14 +935,14 @@ impl SkillsService for NoopSkillsService {
             })
             .unwrap_or_default();
 
-        if !moltis_skills::parse::validate_name(name) {
+        if !chelix_skills::parse::validate_name(name) {
             return Err(format!(
                 "invalid skill name '{name}': must be 1-64 lowercase alphanumeric/hyphen chars"
             )
             .into());
         }
 
-        let skills_dir = moltis_config::data_dir().join("skills");
+        let skills_dir = chelix_config::data_dir().join("skills");
         let skill_dir = skills_dir.join(name);
 
         // Build SKILL.md content.
@@ -975,7 +975,7 @@ impl SkillsService for NoopSkillsService {
 
     async fn security_status(&self) -> ServiceResult {
         let installed_dir =
-            moltis_skills::install::default_install_dir().map_err(ServiceError::message)?;
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
         let mcp_scan_available = command_available("mcp-scan").await;
         let uvx_available = command_available("uvx").await;
         Ok(serde_json::json!({
@@ -989,7 +989,7 @@ impl SkillsService for NoopSkillsService {
 
     async fn security_scan(&self) -> ServiceResult {
         let installed_dir =
-            moltis_skills::install::default_install_dir().map_err(ServiceError::message)?;
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
         if !installed_dir.exists() {
             return Ok(serde_json::json!({
                 "ok": true,
@@ -1026,7 +1026,7 @@ impl SkillsService for NoopSkillsService {
             .get("source")
             .and_then(|v| v.as_str())
             .ok_or_else(|| "missing 'source' parameter".to_string())?;
-        match moltis_skills::recipes::get_recipe(source) {
+        match chelix_skills::recipes::get_recipe(source) {
             Some(recipe) => Ok(serde_json::json!({
                 "found": true,
                 "recipe": recipe,
@@ -1044,7 +1044,7 @@ mod tests {
 
     impl Drop for ConfigDirGuard {
         fn drop(&mut self) {
-            moltis_config::clear_config_dir();
+            chelix_config::clear_config_dir();
         }
     }
 
@@ -1066,7 +1066,7 @@ mod tests {
     #[serial]
     async fn disabling_one_bundled_skill_does_not_disable_category() -> anyhow::Result<()> {
         let dir = tempfile::tempdir()?;
-        moltis_config::set_config_dir(dir.path().to_path_buf());
+        chelix_config::set_config_dir(dir.path().to_path_buf());
         let _guard = ConfigDirGuard;
 
         let service = NoopSkillsService;
@@ -1079,7 +1079,7 @@ mod tests {
             Some("apple-notes")
         );
 
-        let config = moltis_config::discover_and_load();
+        let config = chelix_config::discover_and_load();
         assert!(config.skills.disabled_bundled_categories.is_empty());
         assert_eq!(config.skills.disabled_bundled_skills, vec![
             "apple-notes".to_string()
@@ -1102,7 +1102,7 @@ mod tests {
     #[serial]
     async fn bundled_category_toggle_preserves_individual_disables() -> anyhow::Result<()> {
         let dir = tempfile::tempdir()?;
-        moltis_config::set_config_dir(dir.path().to_path_buf());
+        chelix_config::set_config_dir(dir.path().to_path_buf());
         let _guard = ConfigDirGuard;
 
         let service = NoopSkillsService;
@@ -1120,7 +1120,7 @@ mod tests {
             Some(true)
         );
 
-        let config = moltis_config::discover_and_load();
+        let config = chelix_config::discover_and_load();
         assert!(config.skills.disabled_bundled_categories.is_empty());
         assert_eq!(config.skills.disabled_bundled_skills, vec![
             "apple-notes".to_string()

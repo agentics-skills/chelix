@@ -150,7 +150,7 @@ unwrap_used = "deny"
 [workspace.package]
 edition      = "2024"
 license      = "MIT"
-repository   = "https://github.com/moltis-org/moltis"
+repository   = "https://github.com/agentics-skills/chelix"
 rust-version = "1.91"
 version      = "0.1.0"
 
@@ -341,65 +341,65 @@ tower-service = "0.3"
 zeroize       = { features = ["derive"], version = "1" }
 
 # Workspace crates
-moltis                  = { path = "crates/cli" }
-moltis-agents           = { path = "crates/agents" }
-moltis-auth             = { path = "crates/auth" }
-moltis-auto-reply       = { path = "crates/auto-reply" }
-moltis-browser          = { path = "crates/browser" }
-moltis-caldav           = { path = "crates/caldav" }
-moltis-canvas           = { path = "crates/canvas" }
-moltis-channels         = { path = "crates/channels" }
-moltis-chat             = { path = "crates/chat" }
-moltis-claude-import    = { path = "crates/claude-import" }
-moltis-code-index       = { path = "crates/code-index" }
-moltis-codex-import     = { path = "crates/codex-import" }
-moltis-common           = { path = "crates/common" }
-moltis-config           = { path = "crates/config" }
-moltis-cron             = { path = "crates/cron" }
-moltis-discord          = { path = "crates/discord" }
-moltis-external-agents  = { path = "crates/external-agents" }
-moltis-gateway          = { default-features = false, path = "crates/gateway" }
-moltis-graphql          = { path = "crates/graphql" }
-moltis-home-assistant   = { path = "crates/home-assistant" }
-moltis-httpd            = { default-features = false, path = "crates/httpd" }
-moltis-import-core      = { path = "crates/import-core" }
-moltis-matrix           = { path = "crates/matrix" }
-moltis-mcp              = { path = "crates/mcp" }
-moltis-mcp-agent-bridge = { path = "crates/mcp-agent-bridge" }
-moltis-media            = { path = "crates/media" }
-moltis-memory           = { path = "crates/memory" }
-moltis-metrics          = { path = "crates/metrics" }
-moltis-msteams          = { path = "crates/msteams" }
-moltis-network-filter   = { default-features = false, path = "crates/network-filter" }
-moltis-node-host        = { path = "crates/node-host" }
-moltis-nostr            = { path = "crates/nostr" }
-moltis-oauth            = { path = "crates/oauth" }
-moltis-onboarding       = { path = "crates/onboarding" }
-moltis-plugins          = { path = "crates/plugins" }
-moltis-portable         = { path = "crates/portable" }
-moltis-projects         = { path = "crates/projects" }
-moltis-protocol         = { path = "crates/protocol" }
-moltis-provider-setup   = { path = "crates/provider-setup" }
-moltis-providers        = { features = ["provider-github-copilot", "provider-kimi-code", "provider-openai-codex"], path = "crates/providers" }
-moltis-qmd              = { path = "crates/qmd" }
-moltis-routing          = { path = "crates/routing" }
-moltis-schema-export    = { path = "crates/schema-export" }
-moltis-secret-store     = { default-features = false, path = "crates/secret-store" }
-moltis-service-traits   = { path = "crates/service-traits" }
-moltis-sessions         = { path = "crates/sessions" }
-moltis-signal           = { path = "crates/signal" }
-moltis-skills           = { path = "crates/skills" }
-moltis-slack            = { path = "crates/slack" }
-moltis-splitter         = { path = "crates/splitter" }
-moltis-telegram         = { path = "crates/telegram" }
-moltis-telephony        = { path = "crates/telephony" }
-moltis-tls              = { path = "crates/tls" }
-moltis-tools            = { path = "crates/tools" }
-moltis-vault            = { path = "crates/vault" }
-moltis-voice            = { path = "crates/voice" }
-moltis-web              = { default-features = false, path = "crates/web" }
-moltis-webhooks         = { path = "crates/webhooks" }
-moltis-whatsapp         = { path = "crates/whatsapp" }
+chelix                  = { path = "crates/cli" }
+chelix-agents           = { path = "crates/agents" }
+chelix-auth             = { path = "crates/auth" }
+chelix-auto-reply       = { path = "crates/auto-reply" }
+chelix-browser          = { path = "crates/browser" }
+chelix-caldav           = { path = "crates/caldav" }
+chelix-canvas           = { path = "crates/canvas" }
+chelix-channels         = { path = "crates/channels" }
+chelix-chat             = { path = "crates/chat" }
+chelix-claude-import    = { path = "crates/claude-import" }
+chelix-code-index       = { path = "crates/code-index" }
+chelix-codex-import     = { path = "crates/codex-import" }
+chelix-common           = { path = "crates/common" }
+chelix-config           = { path = "crates/config" }
+chelix-cron             = { path = "crates/cron" }
+chelix-discord          = { path = "crates/discord" }
+chelix-external-agents  = { path = "crates/external-agents" }
+chelix-gateway          = { default-features = false, path = "crates/gateway" }
+chelix-graphql          = { path = "crates/graphql" }
+chelix-home-assistant   = { path = "crates/home-assistant" }
+chelix-httpd            = { default-features = false, path = "crates/httpd" }
+chelix-import-core      = { path = "crates/import-core" }
+chelix-matrix           = { path = "crates/matrix" }
+chelix-mcp              = { path = "crates/mcp" }
+chelix-mcp-agent-bridge = { path = "crates/mcp-agent-bridge" }
+chelix-media            = { path = "crates/media" }
+chelix-memory           = { path = "crates/memory" }
+chelix-metrics          = { path = "crates/metrics" }
+chelix-msteams          = { path = "crates/msteams" }
+chelix-network-filter   = { default-features = false, path = "crates/network-filter" }
+chelix-node-host        = { path = "crates/node-host" }
+chelix-nostr            = { path = "crates/nostr" }
+chelix-oauth            = { path = "crates/oauth" }
+chelix-onboarding       = { path = "crates/onboarding" }
+chelix-plugins          = { path = "crates/plugins" }
+chelix-portable         = { path = "crates/portable" }
+chelix-projects         = { path = "crates/projects" }
+chelix-protocol         = { path = "crates/protocol" }
+chelix-provider-setup   = { path = "crates/provider-setup" }
+chelix-providers        = { features = ["provider-github-copilot", "provider-kimi-code", "provider-openai-codex"], path = "crates/providers" }
+chelix-qmd              = { path = "crates/qmd" }
+chelix-routing          = { path = "crates/routing" }
+chelix-schema-export    = { path = "crates/schema-export" }
+chelix-secret-store     = { default-features = false, path = "crates/secret-store" }
+chelix-service-traits   = { path = "crates/service-traits" }
+chelix-sessions         = { path = "crates/sessions" }
+chelix-signal           = { path = "crates/signal" }
+chelix-skills           = { path = "crates/skills" }
+chelix-slack            = { path = "crates/slack" }
+chelix-splitter         = { path = "crates/splitter" }
+chelix-telegram         = { path = "crates/telegram" }
+chelix-telephony        = { path = "crates/telephony" }
+chelix-tls              = { path = "crates/tls" }
+chelix-tools            = { path = "crates/tools" }
+chelix-vault            = { path = "crates/vault" }
+chelix-voice            = { path = "crates/voice" }
+chelix-web              = { default-features = false, path = "crates/web" }
+chelix-webhooks         = { path = "crates/webhooks" }
+chelix-whatsapp         = { path = "crates/whatsapp" }
 
 [profile.release]
 codegen-units = 1

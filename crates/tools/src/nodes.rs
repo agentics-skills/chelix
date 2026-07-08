@@ -10,7 +10,7 @@ use {
     serde::{Deserialize, Serialize},
 };
 
-use moltis_agents::tool_registry::AgentTool;
+use chelix_agents::tool_registry::AgentTool;
 
 /// Serializable summary of a connected node, returned by the list/describe tools.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,7 +54,7 @@ pub struct NodeProviderInfo {
 }
 
 /// Abstraction implemented by the gateway to supply node data to node tools
-/// without introducing a reverse dependency on `moltis-gateway`.
+/// without introducing a reverse dependency on `chelix-gateway`.
 #[async_trait]
 pub trait NodeInfoProvider: Send + Sync {
     async fn list_nodes(&self) -> Vec<NodeInfo>;

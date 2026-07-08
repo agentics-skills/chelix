@@ -20,9 +20,9 @@ use {
 };
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, histogram};
+use chelix_metrics::{counter, histogram};
 
-use moltis_agents::tool_registry::AgentTool;
+use chelix_agents::tool_registry::AgentTool;
 
 use crate::{command::CommandOptions, sandbox::SandboxRouter};
 
@@ -447,7 +447,7 @@ mod tests {
     use {
         super::*,
         crate::sandbox::{SandboxConfig, SandboxRouter},
-        moltis_agents::tool_registry::AgentTool,
+        chelix_agents::tool_registry::AgentTool,
     };
 
     fn make_tool(packages: Vec<String>) -> SandboxPackagesTool {

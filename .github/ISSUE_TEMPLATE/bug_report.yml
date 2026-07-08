@@ -10,7 +10,7 @@ body:
         Thanks for reporting this bug! Please fill out the sections below so we can reproduce and fix it.
 
         Before submitting, please check:
-        - You're using the latest version of Chelix (`moltis --version`)
+        - You're using the latest version of Chelix (`chelix --version`)
         - This issue hasn't already been [reported](https://github.com/agentics-skills/chelix/issues?q=is%3Aissue+label%3Abug)
 
   - type: checkboxes
@@ -49,8 +49,8 @@ body:
       label: Steps to reproduce
       description: Provide clear, numbered steps anyone can follow.
       placeholder: |
-        1. Add an MCP server entry to `moltis.toml` with `transport = "sse"`
-        2. Run `moltis serve`
+        1. Add an MCP server entry to `chelix.toml` with `transport = "sse"`
+        2. Run `chelix serve`
         3. Open the web UI and start a new session
         4. Panic appears in the terminal output
     validations:
@@ -102,8 +102,8 @@ body:
     id: version
     attributes:
       label: Chelix version
-      description: Run `moltis --version` and paste the output.
-      placeholder: "e.g., moltis 0.3.8"
+      description: Run `chelix --version` and paste the output.
+      placeholder: "e.g., chelix 0.3.8"
     validations:
       required: true
 

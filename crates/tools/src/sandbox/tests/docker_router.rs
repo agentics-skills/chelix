@@ -43,7 +43,7 @@ async fn test_no_sandbox_command() {
 #[tokio::test]
 async fn test_apple_container_home_read_uses_mounted_host_path() {
     let temp_dir = tempfile::tempdir().unwrap();
-    let host_data_dir = temp_dir.path().join("moltis-data");
+    let host_data_dir = temp_dir.path().join("chelix-data");
     let config = SandboxConfig {
         home_persistence: HomePersistence::Session,
         host_data_dir: Some(host_data_dir.clone()),
@@ -75,7 +75,7 @@ async fn test_apple_container_home_read_uses_mounted_host_path() {
 #[tokio::test]
 async fn test_apple_container_home_write_uses_mounted_host_path() {
     let temp_dir = tempfile::tempdir().unwrap();
-    let host_data_dir = temp_dir.path().join("moltis-data");
+    let host_data_dir = temp_dir.path().join("chelix-data");
     let config = SandboxConfig {
         home_persistence: HomePersistence::Session,
         host_data_dir: Some(host_data_dir.clone()),
@@ -111,7 +111,7 @@ async fn test_apple_container_home_write_uses_mounted_host_path() {
 #[tokio::test]
 async fn test_apple_container_home_list_remaps_mounted_host_paths() {
     let temp_dir = tempfile::tempdir().unwrap();
-    let host_data_dir = temp_dir.path().join("moltis-data");
+    let host_data_dir = temp_dir.path().join("chelix-data");
     let config = SandboxConfig {
         home_persistence: HomePersistence::Session,
         host_data_dir: Some(host_data_dir.clone()),
@@ -250,8 +250,8 @@ fn test_docker_container_name() {
 #[tokio::test]
 async fn test_docker_startup_gate_serializes_same_container() {
     let docker = DockerSandbox::new(SandboxConfig::default());
-    let first = docker.startup_gate_for("moltis-sandbox-session").await;
-    let second = docker.startup_gate_for("moltis-sandbox-session").await;
+    let first = docker.startup_gate_for("chelix-sandbox-session").await;
+    let second = docker.startup_gate_for("chelix-sandbox-session").await;
     assert!(Arc::ptr_eq(&first, &second));
 
     let permit = first.acquire().await.unwrap();
@@ -264,8 +264,8 @@ async fn test_docker_startup_gate_serializes_same_container() {
 #[tokio::test]
 async fn test_docker_startup_gate_allows_different_containers() {
     let docker = DockerSandbox::new(SandboxConfig::default());
-    let first = docker.startup_gate_for("moltis-sandbox-session-a").await;
-    let second = docker.startup_gate_for("moltis-sandbox-session-b").await;
+    let first = docker.startup_gate_for("chelix-sandbox-session-a").await;
+    let second = docker.startup_gate_for("chelix-sandbox-session-b").await;
     assert!(!Arc::ptr_eq(&first, &second));
 
     let _first_permit = first.acquire().await.unwrap();
@@ -276,17 +276,17 @@ async fn test_docker_startup_gate_allows_different_containers() {
 fn test_container_name_conflict_detection() {
     assert!(is_container_name_conflict(
         "docker: Error response from daemon: Conflict. The container name \
-         \"/moltis-myagent-sandbox-cron-57120844\" is already in use by container \
+         \"/chelix-myagent-sandbox-cron-57120844\" is already in use by container \
          \"7587022e73ff\"."
     ));
     assert!(is_container_name_conflict(
-        "Error: creating container storage: the name \"moltis-sandbox-main\" is already in use"
+        "Error: creating container storage: the name \"chelix-sandbox-main\" is already in use"
     ));
     assert!(!is_container_name_conflict(
         "Error response from daemon: pull access denied for image"
     ));
     assert!(!is_container_name_conflict(
-        "Error: creating container storage: the namespace \"moltis-sandbox-main\" is already in use"
+        "Error: creating container storage: the namespace \"chelix-sandbox-main\" is already in use"
     ));
 }
 
@@ -521,9 +521,9 @@ async fn test_resolve_image_skill_override() {
     let config = SandboxConfig::default();
     let router = SandboxRouter::new(config);
     let img = router
-        .resolve_image("main", Some("moltis-cache/my-skill:abc123"))
+        .resolve_image("main", Some("chelix-cache/my-skill:abc123"))
         .await;
-    assert_eq!(img, "moltis-cache/my-skill:abc123");
+    assert_eq!(img, "chelix-cache/my-skill:abc123");
 }
 
 #[tokio::test]
@@ -545,9 +545,9 @@ async fn test_resolve_image_skill_beats_session() {
         .set_image_override("sess1", "custom:latest".into())
         .await;
     let img = router
-        .resolve_image("sess1", Some("moltis-cache/skill:hash"))
+        .resolve_image("sess1", Some("chelix-cache/skill:hash"))
         .await;
-    assert_eq!(img, "moltis-cache/skill:hash");
+    assert_eq!(img, "chelix-cache/skill:hash");
 }
 
 #[tokio::test]
@@ -595,10 +595,10 @@ async fn test_remove_image_override() {
 #[test]
 fn test_docker_image_tag_deterministic() {
     let packages = vec!["curl".into(), "git".into(), "wget".into()];
-    let tag1 = sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &packages);
-    let tag2 = sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &packages);
+    let tag1 = sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &packages);
+    let tag2 = sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &packages);
     assert_eq!(tag1, tag2);
-    assert!(tag1.starts_with("moltis-main-sandbox:"));
+    assert!(tag1.starts_with("chelix-main-sandbox:"));
 }
 
 #[test]
@@ -606,8 +606,8 @@ fn test_docker_image_tag_order_independent() {
     let p1 = vec!["curl".into(), "git".into()];
     let p2 = vec!["git".into(), "curl".into()];
     assert_eq!(
-        sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &p1),
-        sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &p2),
+        sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p1),
+        sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p2),
     );
 }
 
@@ -616,8 +616,8 @@ fn test_docker_image_tag_normalizes_whitespace_and_duplicates() {
     let p1 = vec!["curl".into(), "git".into(), "curl".into()];
     let p2 = vec![" git ".into(), "curl".into()];
     assert_eq!(
-        sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &p1),
-        sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &p2),
+        sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p1),
+        sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p2),
     );
 }
 
@@ -703,8 +703,8 @@ fn test_sandbox_image_dockerfile_no_gh_repo_without_gh() {
 #[test]
 fn test_docker_image_tag_changes_with_base() {
     let packages = vec!["curl".into()];
-    let t1 = sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &packages);
-    let t2 = sandbox_image_tag("moltis-main-sandbox", "ubuntu:24.04", &packages);
+    let t1 = sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &packages);
+    let t2 = sandbox_image_tag("chelix-main-sandbox", "ubuntu:24.04", &packages);
     assert_ne!(t1, t2);
 }
 
@@ -712,16 +712,16 @@ fn test_docker_image_tag_changes_with_base() {
 fn test_docker_image_tag_changes_with_packages() {
     let p1 = vec!["curl".into()];
     let p2 = vec!["curl".into(), "git".into()];
-    let t1 = sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &p1);
-    let t2 = sandbox_image_tag("moltis-main-sandbox", "ubuntu:26.04", &p2);
+    let t1 = sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p1);
+    let t2 = sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p2);
     assert_ne!(t1, t2);
 }
 
 #[test]
 fn test_rebuildable_sandbox_image_tag_requires_packages() {
     let tag = rebuildable_sandbox_image_tag(
-        "moltis-main-sandbox:deadbeef",
-        "moltis-main-sandbox",
+        "chelix-main-sandbox:deadbeef",
+        "chelix-main-sandbox",
         "ubuntu:26.04",
         &[],
     );
@@ -731,7 +731,7 @@ fn test_rebuildable_sandbox_image_tag_requires_packages() {
 #[test]
 fn test_rebuildable_sandbox_image_tag_requires_local_repo_prefix() {
     let tag =
-        rebuildable_sandbox_image_tag("ubuntu:26.04", "moltis-main-sandbox", "ubuntu:26.04", &[
+        rebuildable_sandbox_image_tag("ubuntu:26.04", "chelix-main-sandbox", "ubuntu:26.04", &[
             "curl".into(),
         ]);
     assert!(tag.is_none());
@@ -741,15 +741,15 @@ fn test_rebuildable_sandbox_image_tag_requires_local_repo_prefix() {
 fn test_rebuildable_sandbox_image_tag_returns_deterministic_tag() {
     let packages = vec!["curl".into(), "git".into()];
     let tag = rebuildable_sandbox_image_tag(
-        "moltis-main-sandbox:oldtag",
-        "moltis-main-sandbox",
+        "chelix-main-sandbox:oldtag",
+        "chelix-main-sandbox",
         "ubuntu:26.04",
         &packages,
     );
     assert_eq!(
         tag,
         Some(sandbox_image_tag(
-            "moltis-main-sandbox",
+            "chelix-main-sandbox",
             "ubuntu:26.04",
             &packages
         ))
@@ -806,14 +806,14 @@ async fn test_sandbox_router_global_image_override() {
 
     // Set global override
     router
-        .set_global_image(Some("moltis-sandbox:abc123".into()))
+        .set_global_image(Some("chelix-sandbox:abc123".into()))
         .await;
     let img = router.default_image().await;
-    assert_eq!(img, "moltis-sandbox:abc123");
+    assert_eq!(img, "chelix-sandbox:abc123");
 
     // Global override flows through resolve_image
     let img = router.resolve_image("main", None).await;
-    assert_eq!(img, "moltis-sandbox:abc123");
+    assert_eq!(img, "chelix-sandbox:abc123");
 
     // Session override still wins
     router.set_image_override("main", "custom:v1".into()).await;
@@ -1038,15 +1038,15 @@ async fn test_failover_sandbox_list_files_enforces_path_allowlist() {
 
 /// E2E regression test for #796: Podman+BuildKit may leave images in
 /// BuildKit's cache instead of the Podman store.  Gated behind
-/// `MOLTIS_SANDBOX_RUNTIME_E2E=1` and requires Podman to be installed.
+/// `CHELIX_SANDBOX_RUNTIME_E2E=1` and requires Podman to be installed.
 #[tokio::test]
 async fn test_podman_build_image_exists_in_store() {
-    let enabled = env::var("MOLTIS_SANDBOX_RUNTIME_E2E")
+    let enabled = env::var("CHELIX_SANDBOX_RUNTIME_E2E")
         .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
         .unwrap_or(false);
     if !enabled || !is_cli_available("podman") {
         eprintln!(
-            "skipping test_podman_build_image_exists_in_store (set MOLTIS_SANDBOX_RUNTIME_E2E=1 and install podman)"
+            "skipping test_podman_build_image_exists_in_store (set CHELIX_SANDBOX_RUNTIME_E2E=1 and install podman)"
         );
         return;
     }

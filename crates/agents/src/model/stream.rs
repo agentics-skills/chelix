@@ -96,7 +96,7 @@ pub trait LlmProvider: Send + Sync {
     ///
     /// Returns `None` when the provider has no explicit tool mode override
     /// (the caller should fall back to `Auto` behavior based on `supports_tools()`).
-    fn tool_mode(&self) -> Option<moltis_config::ToolMode> {
+    fn tool_mode(&self) -> Option<chelix_config::ToolMode> {
         None
     }
 

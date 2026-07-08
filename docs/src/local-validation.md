@@ -1,6 +1,6 @@
 # Local Validation
 
-Moltis provides a local validation script that runs the same checks as CI
+Chelix provides a local validation script that runs the same checks as CI
 (format, lint, test, e2e).
 
 ## Why this exists
@@ -59,7 +59,7 @@ checks in the PR.
   `LOCAL_VALIDATE_E2E_CMD`.
 - Enable the live Ollama/Qwen regression check with
   `LOCAL_VALIDATE_OLLAMA_QWEN_E2E=1`. It starts a local Ollama server on
-  `MOLTIS_E2E_OLLAMA_QWEN_API_PORT` (default `11435`), pulls the configured
+  `CHELIX_E2E_OLLAMA_QWEN_API_PORT` (default `11435`), pulls the configured
   Qwen model if missing, and runs the dedicated Playwright project. Override
   the command with `LOCAL_VALIDATE_OLLAMA_QWEN_E2E_CMD`.
 

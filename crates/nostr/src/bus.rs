@@ -23,7 +23,7 @@ use crate::{
 };
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, nostr as nostr_metrics};
+use chelix_metrics::{counter, nostr as nostr_metrics};
 
 /// Maximum plaintext message size in bytes.
 const MAX_MESSAGE_BYTES: usize = 64 * 1024;
@@ -44,7 +44,7 @@ pub async fn run_subscription_loop(
     cached_allowlist: Arc<RwLock<Vec<PublicKey>>>,
     otp: SharedOtp,
     account_id: String,
-    event_sink: Arc<dyn moltis_channels::ChannelEventSink>,
+    event_sink: Arc<dyn chelix_channels::ChannelEventSink>,
     cancel: CancellationToken,
 ) {
     let bot_pubkey = keys.public_key();
@@ -142,7 +142,7 @@ async fn handle_event(
     cached_allowlist: &Arc<RwLock<Vec<PublicKey>>>,
     otp: &SharedOtp,
     account_id: &str,
-    event_sink: &Arc<dyn moltis_channels::ChannelEventSink>,
+    event_sink: &Arc<dyn chelix_channels::ChannelEventSink>,
 ) {
     // 1. Kind gate — accept kind:4 (legacy NIP-04) and kind:1059 (NIP-59 gift wrap)
     let is_gift_wrap = event.kind == Kind::GiftWrap;
@@ -296,8 +296,8 @@ async fn handle_event(
     counter!(nostr_metrics::MESSAGES_RECEIVED_TOTAL).increment(1);
 
     event_sink
-        .emit(moltis_channels::ChannelEvent::InboundMessage {
-            channel_type: moltis_channels::ChannelType::Nostr,
+        .emit(chelix_channels::ChannelEvent::InboundMessage {
+            channel_type: chelix_channels::ChannelType::Nostr,
             account_id: account_id.to_string(),
             peer_id: sender_hex.clone(),
             username: Some(sender_npub.clone()),
@@ -308,8 +308,8 @@ async fn handle_event(
         .await;
 
     // 9. Intercept slash commands before dispatching to the LLM.
-    let reply_to = moltis_channels::ChannelReplyTarget {
-        channel_type: moltis_channels::ChannelType::Nostr,
+    let reply_to = chelix_channels::ChannelReplyTarget {
+        channel_type: chelix_channels::ChannelType::Nostr,
         account_id: account_id.to_string(),
         chat_id: sender_hex.clone(),
         message_id: Some(event.id.to_hex()),
@@ -318,9 +318,9 @@ async fn handle_event(
 
     if let Some(cmd_text) = text.strip_prefix('/') {
         let cmd_name = cmd_text.split_whitespace().next().unwrap_or("");
-        if moltis_channels::commands::is_channel_command(cmd_name, cmd_text) {
+        if chelix_channels::commands::is_channel_command(cmd_name, cmd_text) {
             let response = if cmd_name == "help" {
-                Ok(moltis_channels::commands::help_text())
+                Ok(chelix_channels::commands::help_text())
             } else {
                 event_sink
                     .dispatch_command(cmd_text, reply_to, Some(&sender_hex))
@@ -341,12 +341,12 @@ async fn handle_event(
     }
 
     // 10. Dispatch to gateway
-    let meta = moltis_channels::ChannelMessageMeta {
-        channel_type: moltis_channels::ChannelType::Nostr,
+    let meta = chelix_channels::ChannelMessageMeta {
+        channel_type: chelix_channels::ChannelType::Nostr,
         sender_name: None,
         username: Some(sender_npub),
         sender_id: Some(sender_hex.clone()),
-        message_kind: Some(moltis_channels::ChannelMessageKind::Text),
+        message_kind: Some(chelix_channels::ChannelMessageKind::Text),
         model: None,
         agent_id: None,
         audio_filename: None,
@@ -374,9 +374,9 @@ async fn handle_otp_verification(
     sender_hex: &str,
     sender_npub: &str,
     code: &str,
-    event_sink: &Arc<dyn moltis_channels::ChannelEventSink>,
+    event_sink: &Arc<dyn chelix_channels::ChannelEventSink>,
 ) {
-    use moltis_channels::otp::{OtpVerifyResult, emit_otp_resolution};
+    use chelix_channels::otp::{OtpVerifyResult, emit_otp_resolution};
 
     let result = {
         let mut guard = otp.lock().unwrap_or_else(|e| e.into_inner());
@@ -420,7 +420,7 @@ async fn handle_otp_verification(
     // Emit resolution event for admin UI.
     emit_otp_resolution(
         Some(event_sink.as_ref()),
-        moltis_channels::ChannelType::Nostr,
+        chelix_channels::ChannelType::Nostr,
         account_id,
         sender_hex,
         Some(sender_npub),
@@ -443,9 +443,9 @@ async fn handle_otp_challenge(
     account_id: &str,
     sender_hex: &str,
     sender_npub: &str,
-    event_sink: &Arc<dyn moltis_channels::ChannelEventSink>,
+    event_sink: &Arc<dyn chelix_channels::ChannelEventSink>,
 ) {
-    use moltis_channels::otp::{OtpInitResult, emit_otp_challenge};
+    use chelix_channels::otp::{OtpInitResult, emit_otp_challenge};
 
     let init_result = {
         let mut otp_guard = otp.lock().unwrap_or_else(|e| e.into_inner());
@@ -471,7 +471,7 @@ async fn handle_otp_challenge(
 
             emit_otp_challenge(
                 Some(event_sink.as_ref()),
-                moltis_channels::ChannelType::Nostr,
+                chelix_channels::ChannelType::Nostr,
                 account_id,
                 sender_hex,
                 Some(sender_npub),
@@ -491,8 +491,8 @@ async fn handle_otp_challenge(
 
     // Always emit InboundMessage with access_granted: false for the UI.
     event_sink
-        .emit(moltis_channels::ChannelEvent::InboundMessage {
-            channel_type: moltis_channels::ChannelType::Nostr,
+        .emit(chelix_channels::ChannelEvent::InboundMessage {
+            channel_type: chelix_channels::ChannelType::Nostr,
             account_id: account_id.to_string(),
             peer_id: sender_hex.to_string(),
             username: Some(sender_npub.to_string()),

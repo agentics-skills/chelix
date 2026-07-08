@@ -9,16 +9,16 @@ use {
 };
 
 use {
-    moltis_channels::{
+    chelix_channels::{
         ChannelAttachment, ChannelDocumentFile, ChannelEvent, ChannelMessageMeta, ChannelOutbound,
         ChannelReplyTarget, ChannelType, config_view::ChannelConfigView,
         message_log::MessageLogEntry,
     },
-    moltis_common::types::ChatType,
+    chelix_common::types::ChatType,
 };
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, histogram, telegram as tg_metrics};
+use chelix_metrics::{counter, histogram, telegram as tg_metrics};
 
 use crate::{
     access::{self, AccessDenied},
@@ -280,7 +280,7 @@ pub async fn handle_message_direct(
                 );
 
                 // Optimize image for LLM consumption (resize if needed, compress)
-                let (final_data, media_type) = match moltis_media::image_ops::optimize_for_llm(
+                let (final_data, media_type) = match chelix_media::image_ops::optimize_for_llm(
                     &image_data,
                     None,
                 ) {
@@ -376,7 +376,7 @@ pub async fn handle_message_direct(
                     if document_file.media_type.starts_with("image/") {
                         // Optimize image documents the same way as photo messages
                         let (final_data, media_type) =
-                            match moltis_media::image_ops::optimize_for_llm(&document_data, None) {
+                            match chelix_media::image_ops::optimize_for_llm(&document_data, None) {
                                 Ok(optimized) => {
                                     if optimized.was_resized {
                                         info!(
@@ -700,7 +700,7 @@ pub async fn handle_message_direct(
                 // Commands with custom keyboard handlers (model, agent, etc.)
                 // are handled above and won't reach this point.
                 if cmd_text.trim() == cmd {
-                    let cmd_def = moltis_channels::commands::all_commands()
+                    let cmd_def = chelix_channels::commands::all_commands()
                         .iter()
                         .find(|c| c.name == cmd);
                     if let Some(def) = cmd_def
@@ -725,7 +725,7 @@ pub async fn handle_message_direct(
                 }
 
                 let response = if cmd == "help" {
-                    moltis_channels::commands::help_text()
+                    chelix_channels::commands::help_text()
                 } else {
                     match sink
                         .dispatch_command(cmd_text, reply_target.clone(), Some(&peer_id))
@@ -791,7 +791,7 @@ pub async fn handle_message_direct(
 }
 
 fn should_intercept_slash_command(cmd: &str, cmd_text: &str) -> bool {
-    moltis_channels::commands::is_channel_command(cmd, cmd_text)
+    chelix_channels::commands::is_channel_command(cmd, cmd_text)
 }
 
 /// Handle an edited message — only processes live location updates.

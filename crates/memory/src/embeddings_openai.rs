@@ -7,7 +7,7 @@ use {
 };
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, histogram, labels, memory as mem_metrics};
+use chelix_metrics::{counter, histogram, labels, memory as mem_metrics};
 
 use crate::embeddings::EmbeddingProvider;
 
@@ -134,7 +134,7 @@ impl EmbeddingProvider for OpenAiEmbeddingProvider {
 
         #[cfg(feature = "metrics")]
         histogram!(
-            "moltis_memory_embedding_duration_seconds",
+            "chelix_memory_embedding_duration_seconds",
             labels::PROVIDER => "openai"
         )
         .record(start.elapsed().as_secs_f64());

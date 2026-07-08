@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use {
-    moltis_channels::{ChannelReplyTarget, Error as ChannelError, Result as ChannelResult},
-    moltis_config::ModePreset,
-    moltis_sessions::metadata::SqliteSessionMetadata,
-    moltis_tools::image_cache::ImageBuilder,
+    chelix_channels::{ChannelReplyTarget, Error as ChannelError, Result as ChannelResult},
+    chelix_config::ModePreset,
+    chelix_sessions::metadata::SqliteSessionMetadata,
+    chelix_tools::image_cache::ImageBuilder,
 };
 
 use crate::{
@@ -22,7 +22,7 @@ use super::{
 
 // ── Control command handlers ─────────────────────────────────────
 
-fn sorted_mode_presets(config: &moltis_config::MoltisConfig) -> Vec<(String, ModePreset)> {
+fn sorted_mode_presets(config: &chelix_config::ChelixConfig) -> Vec<(String, ModePreset)> {
     let mut modes: Vec<(String, ModePreset)> = config
         .modes
         .presets
@@ -236,7 +236,7 @@ pub(in crate::channel_events) async fn handle_mode(
     session_key: &str,
     args: &str,
 ) -> ChannelResult<String> {
-    let config = moltis_config::discover_and_load();
+    let config = chelix_config::discover_and_load();
     let modes = sorted_mode_presets(&config);
     if modes.is_empty() {
         return Ok("No modes are configured.".to_string());
@@ -482,7 +482,7 @@ pub(in crate::channel_events) async fn handle_sandbox(
                     if let Some(ref router) = state.sandbox_router {
                         router.resolve_default_image_nowait().await
                     } else {
-                        moltis_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string()
+                        chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string()
                     }
                 },
             }
@@ -495,13 +495,13 @@ pub(in crate::channel_events) async fn handle_sandbox(
         };
 
         // List available images.
-        let cfg = moltis_config::discover_and_load();
-        let builder = moltis_tools::image_cache::DockerImageBuilder::for_backend(
+        let cfg = chelix_config::discover_and_load();
+        let builder = chelix_tools::image_cache::DockerImageBuilder::for_backend(
             &cfg.tools.execute_command.sandbox.backend,
         );
         let cached = builder.list_cached().await.unwrap_or_default();
 
-        let default_img = moltis_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string();
+        let default_img = chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string();
         let mut images: Vec<(String, Option<String>)> = vec![(default_img.clone(), None)];
         for img in &cached {
             images.push((
@@ -565,9 +565,9 @@ pub(in crate::channel_events) async fn handle_sandbox(
             .parse()
             .map_err(|_| ChannelError::invalid_input("usage: /sandbox image [number]"))?;
 
-        let default_img = moltis_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string();
-        let cfg = moltis_config::discover_and_load();
-        let builder = moltis_tools::image_cache::DockerImageBuilder::for_backend(
+        let default_img = chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string();
+        let cfg = chelix_config::discover_and_load();
+        let builder = chelix_tools::image_cache::DockerImageBuilder::for_backend(
             &cfg.tools.execute_command.sandbox.backend,
         );
         let cached = builder.list_cached().await.unwrap_or_default();
@@ -706,7 +706,7 @@ pub(in crate::channel_events) async fn handle_update(
     };
     if !authorized {
         return Err(ChannelError::invalid_input(
-            "You are not authorized to update moltis. Only users on this bot's allowlist can use /update.",
+            "You are not authorized to update chelix. Only users on this bot's allowlist can use /update.",
         ));
     }
 
@@ -721,7 +721,7 @@ pub(in crate::channel_events) async fn handle_update(
     );
 
     let client = reqwest::Client::builder()
-        .user_agent(format!("moltis-gateway/{}", state.version))
+        .user_agent(format!("chelix-gateway/{}", state.version))
         .build()
         .map_err(|e| ChannelError::external("build HTTP client", e))?;
 

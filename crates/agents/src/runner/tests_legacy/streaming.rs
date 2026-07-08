@@ -23,13 +23,13 @@ pub async fn run_agent_loop_streaming(
     hook_registry: Option<Arc<HookRegistry>>,
 ) -> Result<AgentRunResult, AgentRunError> {
     let native_tools = provider.supports_tools();
-    let config = moltis_config::discover_and_load();
+    let config = chelix_config::discover_and_load();
     let max_tool_result_bytes = config.tools.max_tool_result_bytes;
     let max_auto_continues = config.tools.agent_max_auto_continues;
     let auto_continue_min_tool_calls = config.tools.agent_auto_continue_min_tool_calls;
     let base_max_iterations = resolve_agent_max_iterations(config.tools.agent_max_iterations);
     // Lazy mode needs extra iterations for tool_search discovery round-trips.
-    let max_iterations = if config.tools.registry_mode == moltis_config::ToolRegistryMode::Lazy {
+    let max_iterations = if config.tools.registry_mode == chelix_config::ToolRegistryMode::Lazy {
         base_max_iterations * 3
     } else {
         base_max_iterations

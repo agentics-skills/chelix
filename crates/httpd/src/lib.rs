@@ -1,10 +1,10 @@
-//! HTTP/WebSocket transport layer for the moltis gateway.
+//! HTTP/WebSocket transport layer for the chelix gateway.
 //!
 //! This crate provides the HTTP server, WebSocket upgrade handler,
 //! authentication middleware, and all HTTP route handlers. It depends
-//! on `moltis-gateway` for core business logic but never the reverse.
+//! on `chelix-gateway` for core business logic but never the reverse.
 //!
-//! Non-HTTP consumers (TUI, tests) can depend on `moltis-gateway`
+//! Non-HTTP consumers (TUI, tests) can depend on `chelix-gateway`
 //! directly without pulling in the HTTP stack.
 
 pub mod auth_middleware;
@@ -34,5 +34,5 @@ pub mod push_routes;
 
 // Re-export key types for consumers.
 #[cfg(feature = "tls")]
-pub use moltis_tls as tls;
+pub use chelix_tls as tls;
 pub use server::{AppState, PreparedGateway, RouteEnhancer, prepare_httpd_embedded, start_gateway};

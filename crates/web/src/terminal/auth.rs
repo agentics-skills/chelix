@@ -36,7 +36,7 @@ fn is_loopback_host(host: &str) -> bool {
 ///
 /// A connection is considered local when **all** of the following hold:
 ///
-/// - `MOLTIS_BEHIND_PROXY` is **not** set (`behind_proxy == false`)
+/// - `CHELIX_BEHIND_PROXY` is **not** set (`behind_proxy == false`)
 /// - No proxy headers are present (X-Forwarded-For, X-Real-IP, etc.)
 /// - The `Host` header resolves to a loopback address (or is absent)
 /// - The TCP source IP is loopback
@@ -70,7 +70,7 @@ pub(crate) fn is_local_connection(
 
 pub(crate) async fn websocket_header_authenticated(
     headers: &axum::http::HeaderMap,
-    credential_store: Option<&Arc<moltis_gateway::auth::CredentialStore>>,
+    credential_store: Option<&Arc<chelix_gateway::auth::CredentialStore>>,
     is_local: bool,
 ) -> bool {
     let Some(store) = credential_store else {
@@ -78,8 +78,8 @@ pub(crate) async fn websocket_header_authenticated(
     };
 
     matches!(
-        moltis_httpd::auth_middleware::check_auth(store, headers, is_local).await,
-        moltis_httpd::auth_middleware::AuthResult::Allowed(_)
+        chelix_httpd::auth_middleware::check_auth(store, headers, is_local).await,
+        chelix_httpd::auth_middleware::AuthResult::Allowed(_)
     )
 }
 
@@ -125,7 +125,7 @@ pub(crate) fn is_same_origin(origin: &str, host: &str) -> bool {
     let hh = strip_port(host);
 
     // Normalise loopback variants so 127.0.0.1 == localhost == ::1.
-    // Subdomains of .localhost (e.g. moltis.localhost) are also loopback per RFC 6761.
+    // Subdomains of .localhost (e.g. chelix.localhost) are also loopback per RFC 6761.
     let is_loopback =
         |h: &str| matches!(h, "localhost" | "127.0.0.1" | "::1") || h.ends_with(".localhost");
 

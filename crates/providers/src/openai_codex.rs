@@ -4,14 +4,14 @@ use {
     async_trait::async_trait,
     base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD},
     futures::StreamExt,
-    moltis_config::schema::ProviderStreamTransport,
-    moltis_oauth::{OAuthFlow, TokenStore, load_oauth_config},
+    chelix_config::schema::ProviderStreamTransport,
+    chelix_oauth::{OAuthFlow, TokenStore, load_oauth_config},
     secrecy::ExposeSecret,
     tokio_stream::Stream,
     tracing::{debug, info, trace},
 };
 
-use moltis_agents::model::{
+use chelix_agents::model::{
     AgentToolControls, ChatMessage, CompletionResponse, LlmProvider, ReasoningEffort, StreamEvent,
     ToolCall, Usage, UserContent, decode_tool_call_arguments_from_str,
 };
@@ -102,14 +102,14 @@ impl OpenAiCodexProvider {
         }
     }
 
-    pub(crate) async fn get_valid_tokens(&self) -> anyhow::Result<moltis_oauth::OAuthTokens> {
+    pub(crate) async fn get_valid_tokens(&self) -> anyhow::Result<chelix_oauth::OAuthTokens> {
         let tokens = self
             .token_store
             .load("openai-codex")
             .or_else(load_codex_cli_tokens)
             .ok_or_else(|| {
                 anyhow::anyhow!(
-                    "not logged in to openai-codex — run `moltis auth login --provider openai-codex`"
+                    "not logged in to openai-codex — run `chelix auth login --provider openai-codex`"
                 )
             })?;
 
@@ -193,7 +193,7 @@ impl OpenAiCodexProvider {
         Self::extract_account_id_from_claims(&claims)
     }
 
-    pub(crate) fn resolve_account_id(tokens: &moltis_oauth::OAuthTokens) -> anyhow::Result<String> {
+    pub(crate) fn resolve_account_id(tokens: &chelix_oauth::OAuthTokens) -> anyhow::Result<String> {
         if let Some(account_id) = tokens
             .account_id
             .as_ref()
@@ -234,10 +234,10 @@ impl OpenAiCodexProvider {
                                 parts
                                     .iter()
                                     .map(|p| match p {
-                                        moltis_agents::model::ContentPart::Text(t) => {
+                                        chelix_agents::model::ContentPart::Text(t) => {
                                             serde_json::json!({"type": "input_text", "text": t})
                                         },
-                                        moltis_agents::model::ContentPart::Image {
+                                        chelix_agents::model::ContentPart::Image {
                                             media_type,
                                             data,
                                         } => {
@@ -822,7 +822,7 @@ impl LlmProvider for OpenAiCodexProvider {
 mod tests {
     use std::sync::Arc;
 
-    use moltis_agents::model::UserContent;
+    use chelix_agents::model::UserContent;
 
     use super::*;
 
@@ -1221,7 +1221,7 @@ mod tests {
 
     #[test]
     fn convert_messages_user_multimodal_with_image() {
-        use moltis_agents::model::ContentPart;
+        use chelix_agents::model::ContentPart;
 
         let messages = vec![ChatMessage::User {
             content: UserContent::Multimodal(vec![
@@ -1247,7 +1247,7 @@ mod tests {
     fn client_version_satisfies_codex_minimum() {
         // Pin the constant so any change forces the test to be updated and
         // the new value to be validated against the Codex API.
-        // See https://github.com/moltis-org/moltis/issues/354
+        // See https://github.com/agentics-skills/chelix/issues/354
         assert_eq!(
             CODEX_MODELS_CLIENT_VERSION, "1.0.0",
             "If you need to change CODEX_MODELS_CLIENT_VERSION, ensure the new value \

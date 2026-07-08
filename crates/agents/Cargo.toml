@@ -1,11 +1,11 @@
 [package]
 edition.workspace = true
-name              = "moltis-agents"
+name              = "chelix-agents"
 version.workspace = true
 
 [features]
 default = ["metrics"]
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 
 [dependencies]
 anyhow          = { workspace = true }
@@ -13,10 +13,10 @@ async-stream    = { workspace = true }
 async-trait     = { workspace = true }
 futures         = { workspace = true }
 include_dir     = { workspace = true }
-moltis-common   = { workspace = true }
-moltis-config   = { workspace = true }
-moltis-sessions = { workspace = true }
-moltis-skills   = { workspace = true }
+chelix-common   = { workspace = true }
+chelix-config   = { workspace = true }
+chelix-sessions = { workspace = true }
+chelix-skills   = { workspace = true }
 reqwest         = { workspace = true }
 secrecy         = { workspace = true }
 serde           = { workspace = true }
@@ -29,7 +29,7 @@ tracing         = { workspace = true }
 uuid            = { workspace = true }
 
 # Optional
-moltis-metrics = { optional = true, workspace = true }
+chelix-metrics = { optional = true, workspace = true }
 
 [dev-dependencies]
 axum     = { workspace = true }

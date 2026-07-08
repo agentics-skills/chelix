@@ -7,8 +7,8 @@
 use std::sync::Arc;
 
 use {
-    async_trait::async_trait, moltis_agents::tool_registry::AgentTool,
-    moltis_projects::ProjectStore, serde_json::json,
+    async_trait::async_trait, chelix_agents::tool_registry::AgentTool,
+    chelix_projects::ProjectStore, serde_json::json,
 };
 
 /// Wraps a code-index tool, returning a "disabled" response when
@@ -80,7 +80,7 @@ impl AgentTool for ProjectAwareCodeIndexTool {
 mod tests {
     use {
         super::*,
-        moltis_projects::{Project, ProjectStore},
+        chelix_projects::{Project, ProjectStore},
         std::{collections::HashMap, path::PathBuf},
         tokio::sync::Mutex,
     };
@@ -119,15 +119,15 @@ mod tests {
 
     #[async_trait]
     impl ProjectStore for MockProjectStore {
-        async fn list(&self) -> moltis_projects::Result<Vec<Project>> {
+        async fn list(&self) -> chelix_projects::Result<Vec<Project>> {
             Ok(self.projects.lock().await.values().cloned().collect())
         }
 
-        async fn get(&self, id: &str) -> moltis_projects::Result<Option<Project>> {
+        async fn get(&self, id: &str) -> chelix_projects::Result<Option<Project>> {
             Ok(self.projects.lock().await.get(id).cloned())
         }
 
-        async fn upsert(&self, project: Project) -> moltis_projects::Result<()> {
+        async fn upsert(&self, project: Project) -> chelix_projects::Result<()> {
             self.projects
                 .lock()
                 .await
@@ -135,7 +135,7 @@ mod tests {
             Ok(())
         }
 
-        async fn delete(&self, id: &str) -> moltis_projects::Result<()> {
+        async fn delete(&self, id: &str) -> chelix_projects::Result<()> {
             self.projects.lock().await.remove(id);
             Ok(())
         }

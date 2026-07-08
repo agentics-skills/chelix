@@ -213,7 +213,7 @@ pub struct CompactionConfig {
     #[serde(default = "default_compaction_max_summary_tokens")]
     pub max_summary_tokens: u32,
 
-    /// Whether the "Change `chat.compaction.mode` in moltis.toml…" hint
+    /// Whether the "Change `chat.compaction.mode` in chelix.toml…" hint
     /// is included in compaction broadcasts and channel notices. After
     /// you've seen it a few times it tends to become noise; set this to
     /// `false` to strip the hint from future compaction notifications
@@ -227,7 +227,7 @@ fn default_compaction_threshold() -> f32 {
     // Matches the pre-PR-#653 hardcoded auto-compact trigger of 95 % of
     // the context window so existing deploys see no change in trigger
     // behaviour when they upgrade. Users who want earlier compaction
-    // should lower this explicitly in moltis.toml.
+    // should lower this explicitly in chelix.toml.
     0.95
 }
 

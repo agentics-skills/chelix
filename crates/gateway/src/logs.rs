@@ -617,8 +617,8 @@ mod tests {
     #[test]
     fn filter_by_target() {
         let buf = LogBuffer::default();
-        buf.push(make_entry("INFO", "moltis::gateway", "a"));
-        buf.push(make_entry("INFO", "moltis::chat", "b"));
+        buf.push(make_entry("INFO", "chelix::gateway", "a"));
+        buf.push(make_entry("INFO", "chelix::chat", "b"));
 
         let result = buf.list(
             &LogFilter {

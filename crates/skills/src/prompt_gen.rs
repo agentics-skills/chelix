@@ -209,7 +209,7 @@ mod tests {
         let skills = vec![SkillMetadata {
             name: "demo".into(),
             description: "A demo skill".into(),
-            path: PathBuf::from("/home/secretuser/.moltis/skills/demo"),
+            path: PathBuf::from("/home/secretuser/.chelix/skills/demo"),
             source: Some(SkillSource::Personal),
             ..Default::default()
         }];

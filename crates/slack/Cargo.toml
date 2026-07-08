@@ -1,6 +1,6 @@
 [package]
 edition.workspace = true
-name              = "moltis-slack"
+name              = "chelix-slack"
 version.workspace = true
 
 [dependencies]
@@ -9,9 +9,9 @@ base64          = { workspace = true }
 bytes           = { workspace = true }
 hmac            = { workspace = true }
 http            = { workspace = true }
-moltis-channels = { workspace = true }
-moltis-common   = { workspace = true }
-moltis-metrics  = { optional = true, workspace = true }
+chelix-channels = { workspace = true }
+chelix-common   = { workspace = true }
+chelix-metrics  = { optional = true, workspace = true }
 reqwest         = { workspace = true }
 secrecy         = { workspace = true }
 serde           = { workspace = true }
@@ -23,7 +23,7 @@ tokio-util      = { workspace = true }
 tracing         = { workspace = true }
 
 [features]
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 
 [lints]
 workspace = true

@@ -366,7 +366,7 @@ function SettingsPage(): VNode {
 								<div className="text-xs text-[var(--muted)] max-w-form">
 									The host terminal has been disabled by the server administrator. To re-enable it, set{" "}
 									<code>terminal_enabled = true</code> under <code>[server]</code> in the configuration file, or remove
-									the <code>MOLTIS_TERMINAL_DISABLED</code> environment variable if it is set.
+									the <code>CHELIX_TERMINAL_DISABLED</code> environment variable if it is set.
 								</div>
 							</div>
 						) : (

@@ -38,13 +38,13 @@ enum Backend {
 
     /// QMD (external vector DB) backend.
     #[cfg(feature = "qmd")]
-    Qmd(moltis_qmd::QmdManager),
+    Qmd(chelix_qmd::QmdManager),
 
     /// Built-in SQLite + FTS5 backend with optional embedding provider.
     #[cfg(feature = "builtin")]
     Builtin {
         store: Box<dyn CodeIndexStore>,
-        embedder: Option<Box<dyn moltis_memory::embeddings::EmbeddingProvider>>,
+        embedder: Option<Box<dyn chelix_memory::embeddings::EmbeddingProvider>>,
     },
 }
 
@@ -73,12 +73,12 @@ impl CodeIndex {
 
     /// Create a new code index with QMD backend.
     #[cfg(feature = "qmd")]
-    pub fn new(config: CodeIndexConfig, qmd: moltis_qmd::QmdManager) -> Self {
+    pub fn new(config: CodeIndexConfig, qmd: chelix_qmd::QmdManager) -> Self {
         let snapshot_store = SnapshotStore::new(
             config
                 .data_dir
                 .clone()
-                .unwrap_or_else(|| moltis_config::data_dir().join("code-index")),
+                .unwrap_or_else(|| chelix_config::data_dir().join("code-index")),
         );
         Self {
             config,
@@ -95,13 +95,13 @@ impl CodeIndex {
     pub fn new_builtin(
         config: CodeIndexConfig,
         store: Box<dyn CodeIndexStore>,
-        embedder: Option<Box<dyn moltis_memory::embeddings::EmbeddingProvider>>,
+        embedder: Option<Box<dyn chelix_memory::embeddings::EmbeddingProvider>>,
     ) -> Self {
         let snapshot_store = SnapshotStore::new(
             config
                 .data_dir
                 .clone()
-                .unwrap_or_else(|| moltis_config::data_dir().join("code-index")),
+                .unwrap_or_else(|| chelix_config::data_dir().join("code-index")),
         );
         Self {
             config,
@@ -119,7 +119,7 @@ impl CodeIndex {
             config
                 .data_dir
                 .clone()
-                .unwrap_or_else(|| moltis_config::data_dir().join("code-index")),
+                .unwrap_or_else(|| chelix_config::data_dir().join("code-index")),
         );
         Self {
             config,
@@ -471,7 +471,7 @@ impl CodeIndex {
         project_dir: &Path,
         filtered: &[FilteredFile],
         store: &dyn CodeIndexStore,
-        embedder: Option<&dyn moltis_memory::embeddings::EmbeddingProvider>,
+        embedder: Option<&dyn chelix_memory::embeddings::EmbeddingProvider>,
     ) -> Result<IndexStatus> {
         #[cfg(feature = "tracing")]
         info!(
@@ -557,7 +557,7 @@ impl CodeIndex {
         _project_dir: &Path,
         filtered: &[FilteredFile],
         store: &dyn CodeIndexStore,
-        embedder: Option<&dyn moltis_memory::embeddings::EmbeddingProvider>,
+        embedder: Option<&dyn chelix_memory::embeddings::EmbeddingProvider>,
     ) -> Result<()> {
         store.initialize().await.map_err(|e| Error::IndexFailed {
             project_id: project_id.to_string(),
@@ -596,7 +596,7 @@ impl CodeIndex {
         project_id: &str,
         files: &[&FilteredFile],
         store: &dyn CodeIndexStore,
-        embedder: Option<&dyn moltis_memory::embeddings::EmbeddingProvider>,
+        embedder: Option<&dyn chelix_memory::embeddings::EmbeddingProvider>,
     ) -> Result<()> {
         use crate::{chunker, store::CodeChunk as StoreChunk};
 
@@ -738,7 +738,7 @@ impl CodeIndex {
         query: &str,
         limit: usize,
         store: &dyn CodeIndexStore,
-        embedder: Option<&dyn moltis_memory::embeddings::EmbeddingProvider>,
+        embedder: Option<&dyn chelix_memory::embeddings::EmbeddingProvider>,
     ) -> Result<Vec<SearchResult>> {
         // Always run keyword search via FTS5.
         let keyword_results = store
@@ -816,7 +816,7 @@ impl CodeIndex {
         &self,
         project_id: &str,
         store: &dyn CodeIndexStore,
-        embedder: Option<&dyn moltis_memory::embeddings::EmbeddingProvider>,
+        embedder: Option<&dyn chelix_memory::embeddings::EmbeddingProvider>,
     ) -> Result<IndexStatus> {
         let total_chunks = store
             .chunk_count(project_id)
@@ -875,8 +875,8 @@ mod tests {
     }
 
     #[async_trait]
-    impl moltis_memory::embeddings::EmbeddingProvider for MockEmbedder {
-        async fn embed(&self, text: &str) -> moltis_memory::error::Result<Vec<f32>> {
+    impl chelix_memory::embeddings::EmbeddingProvider for MockEmbedder {
+        async fn embed(&self, text: &str) -> chelix_memory::error::Result<Vec<f32>> {
             let mut vec = vec![0.0f32; self.dims];
             for (i, b) in text.as_bytes().iter().enumerate() {
                 vec[i % self.dims] += *b as f32 / 255.0;
@@ -907,9 +907,9 @@ mod tests {
     struct FailingEmbedder;
 
     #[async_trait]
-    impl moltis_memory::embeddings::EmbeddingProvider for FailingEmbedder {
-        async fn embed(&self, _text: &str) -> moltis_memory::error::Result<Vec<f32>> {
-            Err(moltis_memory::Error::Embedding("embed failed".into()))
+    impl chelix_memory::embeddings::EmbeddingProvider for FailingEmbedder {
+        async fn embed(&self, _text: &str) -> chelix_memory::error::Result<Vec<f32>> {
+            Err(chelix_memory::Error::Embedding("embed failed".into()))
         }
 
         fn model_name(&self) -> &str {
@@ -998,7 +998,7 @@ mod tests {
             data_dir: Some(data_dir.path().to_path_buf()),
             ..CodeIndexConfig::default()
         };
-        let embedder: Box<dyn moltis_memory::embeddings::EmbeddingProvider> =
+        let embedder: Box<dyn chelix_memory::embeddings::EmbeddingProvider> =
             Box::new(MockEmbedder::new(16));
         let index = CodeIndex::new_builtin(config, Box::new(store), Some(embedder));
         (index, data_dir, repo)
@@ -1013,7 +1013,7 @@ mod tests {
             data_dir: Some(data_dir.path().to_path_buf()),
             ..CodeIndexConfig::default()
         };
-        let embedder: Box<dyn moltis_memory::embeddings::EmbeddingProvider> =
+        let embedder: Box<dyn chelix_memory::embeddings::EmbeddingProvider> =
             Box::new(FailingEmbedder);
         let index = CodeIndex::new_builtin(config, Box::new(store), Some(embedder));
         (index, data_dir, repo)

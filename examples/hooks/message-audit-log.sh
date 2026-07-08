@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-LOG_FILE="${HOOK_AUDIT_FILE:-/tmp/moltis-message-audit.jsonl}"
+LOG_FILE="${HOOK_AUDIT_FILE:-/tmp/chelix-message-audit.jsonl}"
 INPUT=$(cat)
 
 EVENT=$(echo "$INPUT" | grep -o '"event":"[^"]*"' | head -1 | cut -d'"' -f4)

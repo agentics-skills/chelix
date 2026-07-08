@@ -11,8 +11,8 @@ use {
 };
 
 use {
-    moltis_channels::{Error as ChannelError, Result},
-    moltis_common::types::ReplyPayload,
+    chelix_channels::{Error as ChannelError, Result},
+    chelix_common::types::ReplyPayload,
 };
 
 use crate::topic::parse_chat_target;
@@ -57,7 +57,7 @@ pub(super) async fn send_media_impl(
         }
     } else if !payload.text.is_empty() {
         // No media attachment -- fall back to plain text.
-        use moltis_channels::plugin::ChannelOutbound;
+        use chelix_channels::plugin::ChannelOutbound;
         outbound
             .send_text(account_id, to, &payload.text, reply_to)
             .await?;
@@ -100,7 +100,7 @@ async fn send_base64_media(
 
     // Use the original filename when provided, otherwise derive from MIME type.
     let filename = media.filename.clone().unwrap_or_else(|| {
-        let ext = moltis_media::mime::extension_for_mime(&media.mime_type);
+        let ext = chelix_media::mime::extension_for_mime(&media.mime_type);
         format!("file.{ext}")
     });
 

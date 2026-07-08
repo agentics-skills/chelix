@@ -11,8 +11,8 @@ use {
     },
 };
 
-pub const AUTO_UNSEAL_KEY_ENV: &str = "MOLTIS_VAULT_AUTO_UNSEAL_KEY";
-pub const AUTO_UNSEAL_KEY_FILE_ENV: &str = "MOLTIS_VAULT_AUTO_UNSEAL_KEY_FILE";
+pub const AUTO_UNSEAL_KEY_ENV: &str = "CHELIX_VAULT_AUTO_UNSEAL_KEY";
+pub const AUTO_UNSEAL_KEY_FILE_ENV: &str = "CHELIX_VAULT_AUTO_UNSEAL_KEY_FILE";
 
 static VAULT_ENCRYPTION_RUNTIME_ENABLED: AtomicBool = AtomicBool::new(true);
 
@@ -47,7 +47,7 @@ struct AutoUnsealSecret {
 }
 
 #[tracing::instrument(skip(vault))]
-pub async fn auto_unseal_from_env(vault: &moltis_vault::Vault) -> AutoUnsealResult {
+pub async fn auto_unseal_from_env(vault: &chelix_vault::Vault) -> AutoUnsealResult {
     let Some(secret) = auto_unseal_secret_from_env().await else {
         return AutoUnsealResult::NotConfigured;
     };
@@ -55,7 +55,7 @@ pub async fn auto_unseal_from_env(vault: &moltis_vault::Vault) -> AutoUnsealResu
 }
 
 async fn auto_unseal_with_secret(
-    vault: &moltis_vault::Vault,
+    vault: &chelix_vault::Vault,
     secret: AutoUnsealSecret,
 ) -> AutoUnsealResult {
     if vault.is_unsealed().await {
@@ -77,11 +77,11 @@ async fn auto_unseal_with_secret(
             tracing::info!(source = ?secret.kind, "vault auto-unsealed");
             AutoUnsealResult::Unsealed
         },
-        Err(moltis_vault::VaultError::NotInitialized) => {
+        Err(chelix_vault::VaultError::NotInitialized) => {
             tracing::debug!("vault auto-unseal skipped: vault is not initialized");
             AutoUnsealResult::NotInitialized
         },
-        Err(moltis_vault::VaultError::BadCredential) => {
+        Err(chelix_vault::VaultError::BadCredential) => {
             tracing::warn!(
                 source = ?secret.kind,
                 "vault auto-unseal failed: recovery key was rejected"
@@ -146,7 +146,7 @@ async fn read_auto_unseal_secret_file(path: PathBuf) -> Option<AutoUnsealSecret>
 pub async fn run_vault_env_migration(credential_store: &CredentialStore) {
     if let Some(vault) = credential_store.vault() {
         let pool = credential_store.db_pool();
-        match moltis_vault::migration::migrate_env_vars(vault, pool).await {
+        match chelix_vault::migration::migrate_env_vars(vault, pool).await {
             Ok(n) if n > 0 => {
                 tracing::info!(count = n, "migrated env vars to encrypted");
             },
@@ -155,7 +155,7 @@ pub async fn run_vault_env_migration(credential_store: &CredentialStore) {
                 tracing::warn!(%error, "env var migration failed");
             },
         }
-        match moltis_vault::migration::migrate_ssh_keys(vault, pool).await {
+        match chelix_vault::migration::migrate_ssh_keys(vault, pool).await {
             Ok(n) if n > 0 => {
                 tracing::info!(count = n, "migrated ssh keys to encrypted");
             },
@@ -165,9 +165,9 @@ pub async fn run_vault_env_migration(credential_store: &CredentialStore) {
             },
         }
 
-        if let Some(config_dir) = moltis_config::config_dir() {
+        if let Some(config_dir) = chelix_config::config_dir() {
             let provider_keys_path = config_dir.join("provider_keys.json");
-            match moltis_vault::migration::encrypt_json_file(
+            match chelix_vault::migration::encrypt_json_file(
                 vault,
                 &provider_keys_path,
                 "provider_keys",
@@ -201,7 +201,7 @@ pub struct VaultDisableReport {
 /// after all decryptions succeed, so a partial failure leaves vault mode intact.
 #[tracing::instrument(skip(vault, pool))]
 pub async fn disable_vault_and_decrypt_all(
-    vault: &moltis_vault::Vault,
+    vault: &chelix_vault::Vault,
     pool: &sqlx::SqlitePool,
 ) -> anyhow::Result<VaultDisableReport> {
     if !vault.is_unsealed().await {
@@ -216,7 +216,7 @@ pub async fn disable_vault_and_decrypt_all(
         provider_keys: decrypt_provider_keys(vault).await?,
     };
 
-    moltis_config::update_config(|config| {
+    chelix_config::update_config(|config| {
         config.auth.vault_enabled = false;
     })
     .context("failed to persist auth.vault_enabled=false")?;
@@ -227,7 +227,7 @@ pub async fn disable_vault_and_decrypt_all(
 }
 
 async fn decrypt_env_vars(
-    vault: &moltis_vault::Vault,
+    vault: &chelix_vault::Vault,
     pool: &sqlx::SqlitePool,
 ) -> anyhow::Result<usize> {
     let rows: Vec<(i64, String, String)> =
@@ -249,7 +249,7 @@ async fn decrypt_env_vars(
 }
 
 async fn decrypt_ssh_keys(
-    vault: &moltis_vault::Vault,
+    vault: &chelix_vault::Vault,
     pool: &sqlx::SqlitePool,
 ) -> anyhow::Result<usize> {
     let rows: Vec<(i64, String, String)> =
@@ -271,7 +271,7 @@ async fn decrypt_ssh_keys(
 }
 
 async fn decrypt_channels(
-    vault: &moltis_vault::Vault,
+    vault: &chelix_vault::Vault,
     pool: &sqlx::SqlitePool,
 ) -> anyhow::Result<usize> {
     let rows: Vec<(String, String, String)> =
@@ -280,7 +280,7 @@ async fn decrypt_channels(
             .await?;
     let mut changed = 0;
     for (channel_type, account_id, config_json) in rows {
-        let channel_type_enum = match channel_type.parse::<moltis_channels::plugin::ChannelType>() {
+        let channel_type_enum = match channel_type.parse::<chelix_channels::plugin::ChannelType>() {
             Ok(channel_type) => channel_type,
             Err(_) => {
                 let config: serde_json::Value =
@@ -301,10 +301,10 @@ async fn decrypt_channels(
         }
         let mut config: serde_json::Value = serde_json::from_str(&config_json)
             .with_context(|| format!("invalid channel config for {channel_type}:{account_id}"))?;
-        if !moltis_secret_store::has_encrypted_secret_fields(&config, secret_fields)? {
+        if !chelix_secret_store::has_encrypted_secret_fields(&config, secret_fields)? {
             continue;
         }
-        moltis_secret_store::decrypt_secret_fields(
+        chelix_secret_store::decrypt_secret_fields(
             &mut config,
             secret_fields,
             &format!("channel:{channel_type}:{account_id}"),
@@ -335,7 +335,7 @@ fn contains_vault_encrypted_secret(value: &serde_json::Value) -> bool {
 }
 
 async fn decrypt_webhooks(
-    vault: &moltis_vault::Vault,
+    vault: &chelix_vault::Vault,
     pool: &sqlx::SqlitePool,
 ) -> anyhow::Result<usize> {
     let rows: Vec<(i64, String, Option<String>, Option<String>)> =
@@ -351,9 +351,9 @@ async fn decrypt_webhooks(
                 .with_context(|| format!("invalid auth_config_json for webhook {id}"))?;
             let fields = webhook_auth_secret_fields(&auth_mode);
             if !fields.is_empty()
-                && moltis_secret_store::has_encrypted_secret_fields(&config, fields)?
+                && chelix_secret_store::has_encrypted_secret_fields(&config, fields)?
             {
-                moltis_secret_store::decrypt_secret_fields(
+                chelix_secret_store::decrypt_secret_fields(
                     &mut config,
                     fields,
                     "webhook:config",
@@ -367,8 +367,8 @@ async fn decrypt_webhooks(
             let mut config: serde_json::Value = serde_json::from_str(&config_json)
                 .with_context(|| format!("invalid source_config_json for webhook {id}"))?;
             let fields = webhook_source_secret_fields();
-            if moltis_secret_store::has_encrypted_secret_fields(&config, fields)? {
-                moltis_secret_store::decrypt_secret_fields(
+            if chelix_secret_store::has_encrypted_secret_fields(&config, fields)? {
+                chelix_secret_store::decrypt_secret_fields(
                     &mut config,
                     fields,
                     "webhook:config",
@@ -411,8 +411,8 @@ async fn decrypt_webhooks(
     Ok(changed)
 }
 
-async fn decrypt_provider_keys(vault: &moltis_vault::Vault) -> anyhow::Result<bool> {
-    let Some(config_dir) = moltis_config::config_dir() else {
+async fn decrypt_provider_keys(vault: &chelix_vault::Vault) -> anyhow::Result<bool> {
+    let Some(config_dir) = chelix_config::config_dir() else {
         return Ok(false);
     };
     let path = config_dir.join("provider_keys.json");
@@ -578,10 +578,10 @@ mod tests {
         std::sync::Arc,
     };
 
-    async fn test_vault() -> Arc<moltis_vault::Vault> {
+    async fn test_vault() -> Arc<chelix_vault::Vault> {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        moltis_vault::run_migrations(&pool).await.unwrap();
-        Arc::new(moltis_vault::Vault::new(pool).await.unwrap())
+        chelix_vault::run_migrations(&pool).await.unwrap();
+        Arc::new(chelix_vault::Vault::new(pool).await.unwrap())
     }
 
     struct VaultRuntimeFlagGuard;
@@ -622,7 +622,7 @@ mod tests {
         assert_eq!(result, AutoUnsealResult::Unsealed);
         assert_eq!(
             vault.status().await.unwrap(),
-            moltis_vault::VaultStatus::Unsealed
+            chelix_vault::VaultStatus::Unsealed
         );
     }
 
@@ -641,7 +641,7 @@ mod tests {
         assert_eq!(result, AutoUnsealResult::AlreadyUnsealed);
         assert_eq!(
             vault.status().await.unwrap(),
-            moltis_vault::VaultStatus::Unsealed
+            chelix_vault::VaultStatus::Unsealed
         );
     }
 
@@ -660,7 +660,7 @@ mod tests {
         assert_eq!(result, AutoUnsealResult::BadCredential);
         assert_eq!(
             vault.status().await.unwrap(),
-            moltis_vault::VaultStatus::Sealed
+            chelix_vault::VaultStatus::Sealed
         );
     }
 
@@ -679,7 +679,7 @@ mod tests {
         assert_eq!(result, AutoUnsealResult::EmptySecret);
         assert_eq!(
             vault.status().await.unwrap(),
-            moltis_vault::VaultStatus::Sealed
+            chelix_vault::VaultStatus::Sealed
         );
     }
 
@@ -688,11 +688,11 @@ mod tests {
     async fn disable_vault_decrypts_stored_secrets_before_flipping_config() {
         let _runtime_flag = VaultRuntimeFlagGuard::enabled();
         let config_dir = tempfile::tempdir().unwrap();
-        moltis_config::set_config_dir(config_dir.path().to_path_buf());
+        chelix_config::set_config_dir(config_dir.path().to_path_buf());
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        moltis_vault::run_migrations(&pool).await.unwrap();
+        chelix_vault::run_migrations(&pool).await.unwrap();
         create_disable_test_tables(&pool).await;
-        let vault = Arc::new(moltis_vault::Vault::new(pool.clone()).await.unwrap());
+        let vault = Arc::new(chelix_vault::Vault::new(pool.clone()).await.unwrap());
         vault.initialize(&test_password()).await.unwrap();
 
         let env_ciphertext = vault
@@ -716,7 +716,7 @@ mod tests {
             .unwrap();
 
         let mut channel_config = serde_json::json!({ "token": "Bot discord-token" });
-        moltis_secret_store::encrypt_secret_fields(
+        chelix_secret_store::encrypt_secret_fields(
             &mut channel_config,
             &["token"],
             "channel:discord:main",
@@ -731,7 +731,7 @@ mod tests {
             .unwrap();
 
         let mut webhook_config = serde_json::json!({ "token": "webhook-token" });
-        moltis_secret_store::encrypt_secret_fields(
+        chelix_secret_store::encrypt_secret_fields(
             &mut webhook_config,
             &["token"],
             "webhook:config",
@@ -772,11 +772,11 @@ mod tests {
     async fn disable_vault_fails_on_unknown_channel_with_encrypted_secret() {
         let _runtime_flag = VaultRuntimeFlagGuard::enabled();
         let config_dir = tempfile::tempdir().unwrap();
-        moltis_config::set_config_dir(config_dir.path().to_path_buf());
+        chelix_config::set_config_dir(config_dir.path().to_path_buf());
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        moltis_vault::run_migrations(&pool).await.unwrap();
+        chelix_vault::run_migrations(&pool).await.unwrap();
         create_disable_test_tables(&pool).await;
-        let vault = Arc::new(moltis_vault::Vault::new(pool.clone()).await.unwrap());
+        let vault = Arc::new(chelix_vault::Vault::new(pool.clone()).await.unwrap());
         vault.initialize(&test_password()).await.unwrap();
 
         let config = serde_json::json!({

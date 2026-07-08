@@ -10,9 +10,9 @@ use {
 };
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, histogram, labels, tools as tools_metrics};
+use chelix_metrics::{counter, histogram, labels, tools as tools_metrics};
 
-use moltis_agents::tool_registry::AgentTool;
+use chelix_agents::tool_registry::AgentTool;
 
 use crate::{
     command::{CommandOptions, CommandOutput, run_shell_command},

@@ -1,6 +1,6 @@
 # Checkpoints
 
-Moltis automatically snapshots files before the agent modifies them. If the
+Chelix automatically snapshots files before the agent modifies them. If the
 agent breaks something, use [`/rollback`](commands.md#rollback) to restore files
 to their pre-turn state.
 
@@ -17,7 +17,7 @@ The hook also fires on skill and memory mutations:
 - `memory_save`, `memory_forget`, `memory_delete`
 - the silent pre-compaction memory flush
 
-Each mutation creates a manifest-backed snapshot in `~/.moltis/checkpoints/`
+Each mutation creates a manifest-backed snapshot in `~/.chelix/checkpoints/`
 before the write or delete happens.
 
 ## /rollback Command
@@ -68,7 +68,7 @@ checkpoint.
 
 ## Behavior
 
-- If the target existed, Moltis snapshots the file or directory first.
+- If the target existed, Chelix snapshots the file or directory first.
 - If the target did not exist yet, restore removes the later-created path.
 - Restore replaces the current target state with the checkpoint snapshot.
 - Checkpoints are internal safety artifacts, they do not touch the user’s git

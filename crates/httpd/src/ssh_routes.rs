@@ -12,7 +12,7 @@ use {
     tokio::process::Command,
 };
 
-use moltis_gateway::{
+use chelix_gateway::{
     auth::{SshAuthMode, SshKeyEntry, SshResolvedTarget, SshTargetEntry},
     node_command::run_resolved_ssh_target,
 };
@@ -434,7 +434,7 @@ pub async fn ssh_test_target(
         .map_err(|err| ApiError::internal(SSH_TARGET_TEST_FAILED, err))?
         .ok_or_else(|| ApiError::bad_request(SSH_TARGET_TEST_FAILED, "ssh target not found"))?;
 
-    let probe = "__moltis_ssh_probe__";
+    let probe = "__chelix_ssh_probe__";
     let result = run_resolved_ssh_target(
         store,
         &target,
@@ -519,7 +519,7 @@ pub async fn ssh_doctor(
         .await
         .map_err(|err| ApiError::internal(SSH_LIST_FAILED, err))?;
 
-    let config = moltis_config::discover_and_load();
+    let config = chelix_config::discover_and_load();
     let command_host = config.tools.execute_command.host.trim().to_string();
     let configured_node = config
         .tools
@@ -622,7 +622,7 @@ pub async fn ssh_doctor_test_active(
         ApiError::service_unavailable(SSH_STORE_UNAVAILABLE, "no credential store")
     })?;
 
-    let config = moltis_config::discover_and_load();
+    let config = chelix_config::discover_and_load();
     if config.tools.execute_command.host.trim() != "ssh" {
         return Err(ApiError::bad_request(
             SSH_TARGET_TEST_FAILED,
@@ -661,7 +661,7 @@ pub async fn ssh_doctor_test_active(
         ));
     };
 
-    let probe = "__moltis_ssh_probe__";
+    let probe = "__chelix_ssh_probe__";
     let result = run_resolved_ssh_target(
         store,
         &route,
@@ -723,7 +723,7 @@ fn classify_ssh_failure(stderr: &str) -> Option<(&'static str, String)> {
     if lower.contains("vault is locked") {
         return Some((
             "vault_locked",
-            "The vault is locked, so Moltis cannot decrypt the managed SSH key. Unlock the vault in Settings → Encryption and retry.".to_string(),
+            "The vault is locked, so Chelix cannot decrypt the managed SSH key. Unlock the vault in Settings → Encryption and retry.".to_string(),
         ));
     }
 
@@ -733,7 +733,7 @@ fn classify_ssh_failure(stderr: &str) -> Option<(&'static str, String)> {
 fn build_ssh_test_response(
     route_label: Option<String>,
     probe: &str,
-    result: anyhow::Result<moltis_gateway::node_command::NodeCommandResult>,
+    result: anyhow::Result<chelix_gateway::node_command::NodeCommandResult>,
 ) -> SshTestResponse {
     match result {
         Ok(result) => {
@@ -773,14 +773,14 @@ async fn generate_ssh_key_material(
     name: &str,
 ) -> crate::error::Result<(SecretString, String, String)> {
     let dir = tempfile::tempdir()?;
-    let key_path = dir.path().join("moltis_deploy_key");
+    let key_path = dir.path().join("chelix_deploy_key");
     let output = Command::new("ssh-keygen")
         .arg("-t")
         .arg("ed25519")
         .arg("-N")
         .arg("")
         .arg("-C")
-        .arg(format!("moltis:{name}"))
+        .arg(format!("chelix:{name}"))
         .arg("-f")
         .arg(&key_path)
         .output()
@@ -898,7 +898,7 @@ fn configure_ssh_askpass(
     command
         .env("SSH_ASKPASS", &askpass_path)
         .env("SSH_ASKPASS_REQUIRE", "force")
-        .env("DISPLAY", "moltis-askpass");
+        .env("DISPLAY", "chelix-askpass");
     Ok(dir)
 }
 
@@ -1286,7 +1286,7 @@ mod tests {
             .arg("-N")
             .arg("correct horse battery staple")
             .arg("-C")
-            .arg("moltis-encrypted")
+            .arg("chelix-encrypted")
             .arg("-f")
             .arg(&key_path)
             .output()

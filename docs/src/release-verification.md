@@ -24,7 +24,7 @@ The easiest way to verify a release is with the included script:
 ./scripts/verify-release.sh --checksums --version VERSION
 
 # Verify specific local files
-./scripts/verify-release.sh moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz
+./scripts/verify-release.sh chelix-VERSION-x86_64-unknown-linux-gnu.tar.gz
 ```
 
 ### GitHub Artifact Attestations
@@ -35,15 +35,15 @@ the [GitHub CLI](https://cli.github.com/):
 
 ```bash
 # Verify a downloaded binary
-gh attestation verify moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz \
+gh attestation verify chelix-VERSION-x86_64-unknown-linux-gnu.tar.gz \
   -R agentics-skills/chelix
 
 # Verify a Docker image
-gh attestation verify oci://ghcr.io/moltis-org/moltis:VERSION \
+gh attestation verify oci://ghcr.io/agentics-skills/chelix:VERSION \
   -R agentics-skills/chelix
 
 # Verify an SBOM
-gh attestation verify moltis-sbom.spdx.json \
+gh attestation verify chelix-sbom.spdx.json \
   -R agentics-skills/chelix
 ```
 
@@ -56,10 +56,10 @@ Browse all attestations at
 
 ```bash
 # Download the artifact and its checksum
-curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz
-curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sha256
+curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/chelix-VERSION-x86_64-unknown-linux-gnu.tar.gz
+curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/chelix-VERSION-x86_64-unknown-linux-gnu.tar.gz.sha256
 
-sha256sum --check moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sha256
+sha256sum --check chelix-VERSION-x86_64-unknown-linux-gnu.tar.gz.sha256
 ```
 
 #### 2. Verify GPG signature
@@ -78,12 +78,12 @@ curl -fsSL https://pen.so/gpg.asc | gpg --import
 gpg --fingerprint F7649BBF
 
 # Download the detached signature
-curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.asc
+curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/chelix-VERSION-x86_64-unknown-linux-gnu.tar.gz.asc
 
 # Verify
 gpg --verify \
-  moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.asc \
-  moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz
+  chelix-VERSION-x86_64-unknown-linux-gnu.tar.gz.asc \
+  chelix-VERSION-x86_64-unknown-linux-gnu.tar.gz
 ```
 
 You should see `Good signature from ...` with the maintainer's identity.
@@ -94,15 +94,15 @@ You should see `Good signature from ...` with the maintainer's identity.
 # Install cosign: https://docs.sigstore.dev/cosign/system_config/installation/
 
 # Download signature and certificate
-curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sig
-curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.crt
+curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/chelix-VERSION-x86_64-unknown-linux-gnu.tar.gz.sig
+curl -LO https://github.com/agentics-skills/chelix/releases/download/VERSION/chelix-VERSION-x86_64-unknown-linux-gnu.tar.gz.crt
 
 cosign verify-blob \
-  --signature moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.sig \
-  --certificate moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz.crt \
+  --signature chelix-VERSION-x86_64-unknown-linux-gnu.tar.gz.sig \
+  --certificate chelix-VERSION-x86_64-unknown-linux-gnu.tar.gz.crt \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp 'https://github\.com/agentics-skills/chelix/' \
-  moltis-VERSION-x86_64-unknown-linux-gnu.tar.gz
+  chelix-VERSION-x86_64-unknown-linux-gnu.tar.gz
 ```
 
 #### 4. Verify Docker images
@@ -111,7 +111,7 @@ cosign verify-blob \
 cosign verify \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp 'https://github\.com/agentics-skills/chelix/' \
-  ghcr.io/moltis-org/moltis:VERSION
+  ghcr.io/agentics-skills/chelix:VERSION
 ```
 
 ## What Each Layer Proves

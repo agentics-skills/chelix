@@ -13,7 +13,7 @@ use {
         sandbox::{Sandbox, SandboxConfig, SandboxId, SandboxRouter, types::BuildImageResult},
     },
     async_trait::async_trait,
-    moltis_agents::tool_registry::ToolRegistry,
+    chelix_agents::tool_registry::ToolRegistry,
     serde_json::json,
     std::{
         path::PathBuf,

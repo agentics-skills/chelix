@@ -1,4 +1,4 @@
-//! Telephony channel plugin for moltis.
+//! Telephony channel plugin for chelix.
 //!
 //! Provides phone call support via pluggable telephony providers (Twilio, etc.).
 //! Implements `ChannelPlugin` so voice calls integrate with the gateway like

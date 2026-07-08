@@ -29,7 +29,7 @@ pub struct ChunkRow {
 ///
 /// This creates the `files`, `chunks`, `embedding_cache` tables and the
 /// `chunks_fts` full-text search virtual table. Memory uses its own database
-/// (`memory.db`) separate from the main `moltis.db`.
+/// (`memory.db`) separate from the main `chelix.db`.
 pub async fn run_migrations(pool: &sqlx::SqlitePool) -> crate::error::Result<()> {
     sqlx::migrate!("./migrations")
         .set_ignore_missing(true)

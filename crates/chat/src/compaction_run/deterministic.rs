@@ -4,7 +4,7 @@
 //! produces a single `[Conversation Summary]` user message that replaces
 //! the entire history. Current PR #653 default behaviour.
 
-use {moltis_config::CompactionMode, serde_json::Value, tracing::info};
+use {chelix_config::CompactionMode, serde_json::Value, tracing::info};
 
 use super::{CompactionOutcome, CompactionRunError, shared::build_summary_message};
 
@@ -41,7 +41,7 @@ pub(super) fn run(history: &[Value]) -> Result<CompactionOutcome, CompactionRunE
 mod tests {
     use {
         super::*,
-        moltis_config::{CompactionConfig, CompactionMode},
+        chelix_config::{CompactionConfig, CompactionMode},
         serde_json::json,
     };
 

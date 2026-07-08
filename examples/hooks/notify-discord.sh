@@ -19,7 +19,7 @@ SESSION=$(echo "$INPUT" | grep -o '"session_key":"[^"]*"' | head -1 | cut -d'"' 
 
 curl -s -X POST "$DISCORD_WEBHOOK_URL" \
     -H 'Content-Type: application/json' \
-    -d "{\"content\": \"Moltis session ended: ${SESSION}\"}" \
+    -d "{\"content\": \"Chelix session ended: ${SESSION}\"}" \
     > /dev/null
 
 # Continue.

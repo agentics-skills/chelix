@@ -4,18 +4,18 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use {
     async_trait::async_trait,
-    moltis_tools::image_cache::ImageBuilder,
+    chelix_tools::image_cache::ImageBuilder,
     serde::Deserialize,
     tracing::{debug, error, info, warn},
 };
 
 use {
-    moltis_channels::{
+    chelix_channels::{
         ChannelAttachment, ChannelEvent, ChannelEventSink, ChannelMessageMeta, ChannelReplyTarget,
         Error as ChannelError, Result as ChannelResult, SavedChannelFile,
     },
-    moltis_sessions::metadata::{SessionEntry, SqliteSessionMetadata},
-    moltis_tools::approval::PendingApprovalView,
+    chelix_sessions::metadata::{SessionEntry, SqliteSessionMetadata},
+    chelix_tools::approval::PendingApprovalView,
 };
 
 use crate::{
@@ -142,10 +142,10 @@ async fn is_sender_on_allowlist(
     // Check the full sender_id first, then try the user part before '@'
     // (WhatsApp JIDs are e.g. "15551234567@s.whatsapp.net" but allowlists
     // use plain phone numbers like "15551234567").
-    moltis_channels::gating::is_allowed(sender_id, allowlist)
+    chelix_channels::gating::is_allowed(sender_id, allowlist)
         || sender_id
             .split_once('@')
-            .is_some_and(|(user, _)| moltis_channels::gating::is_allowed(user, allowlist))
+            .is_some_and(|(user, _)| chelix_channels::gating::is_allowed(user, allowlist))
 }
 
 fn is_attachable_session(entry: &SessionEntry) -> bool {

@@ -11,7 +11,7 @@ use {
     tracing::{info, instrument, warn},
 };
 
-use moltis_channels::{Error as ChannelError, Result as ChannelResult};
+use chelix_channels::{Error as ChannelError, Result as ChannelResult};
 
 use crate::{
     client::{AuthMode, auth_mode},
@@ -29,7 +29,7 @@ pub(crate) async fn maybe_take_matrix_account_ownership(
     account_id: &str,
     config: &MatrixAccountConfig,
 ) -> OwnershipAttemptResult {
-    if config.ownership_mode != MatrixOwnershipMode::MoltisOwned {
+    if config.ownership_mode != MatrixOwnershipMode::ChelixOwned {
         return OwnershipAttemptResult::default();
     }
 
@@ -37,7 +37,7 @@ pub(crate) async fn maybe_take_matrix_account_ownership(
         return ensure_oidc_owned_encryption_state(client, account_id).await;
     }
 
-    match ensure_moltis_owned_encryption_state(client, account_id, config).await {
+    match ensure_chelix_owned_encryption_state(client, account_id, config).await {
         Ok(Some(handle)) => {
             let startup_error = ownership_approval_message(&handle);
             warn!(
@@ -101,7 +101,7 @@ async fn try_recover_secret_storage_with_password(
 }
 
 #[instrument(skip(client, config), fields(account_id))]
-async fn ensure_moltis_owned_encryption_state(
+async fn ensure_chelix_owned_encryption_state(
     client: &Client,
     account_id: &str,
     config: &MatrixAccountConfig,
@@ -112,12 +112,12 @@ async fn ensure_moltis_owned_encryption_state(
         .filter(|user_id| !user_id.is_empty())
     else {
         return Err(ChannelError::invalid_input(
-            "user_id is required when Moltis owns a Matrix account",
+            "user_id is required when Chelix owns a Matrix account",
         ));
     };
     let Some(password) = config.password.as_ref() else {
         return Err(ChannelError::invalid_input(
-            "password is required when Moltis owns a Matrix account",
+            "password is required when Chelix owns a Matrix account",
         ));
     };
 
@@ -458,7 +458,7 @@ async fn force_take_over_existing_identity(
 
     info!(
         account_id,
-        "matrix ownership forcibly reset existing recovery state and bootstrapped fresh Moltis-managed recovery"
+        "matrix ownership forcibly reset existing recovery state and bootstrapped fresh Chelix-managed recovery"
     );
 
     Ok(None)

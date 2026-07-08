@@ -2,7 +2,7 @@ use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
 use tracing::{debug, warn};
 
-use moltis_protocol::{ErrorShape, ResponseFrame, error_codes};
+use chelix_protocol::{ErrorShape, ResponseFrame, error_codes};
 
 use crate::state::GatewayState;
 
@@ -308,7 +308,7 @@ fn is_in(method: &str, list: &[&str]) -> bool {
 
 /// Check role + scopes for a method. Returns None if authorized, Some(error) if not.
 pub fn authorize_method(method: &str, role: &str, scopes: &[String]) -> Option<ErrorShape> {
-    use moltis_protocol::scopes as s;
+    use chelix_protocol::scopes as s;
 
     if is_in(method, NODE_METHODS) {
         if role == "node" {
@@ -451,7 +451,7 @@ impl MethodRegistry {
 
 /// Load the disabled hooks set from `data_dir/disabled_hooks.json`.
 pub(crate) fn load_disabled_hooks() -> std::collections::HashSet<String> {
-    let path = moltis_config::data_dir().join("disabled_hooks.json");
+    let path = chelix_config::data_dir().join("disabled_hooks.json");
     std::fs::read_to_string(&path)
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())

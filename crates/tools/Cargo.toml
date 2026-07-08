@@ -1,16 +1,16 @@
 [package]
 edition.workspace = true
-name              = "moltis-tools"
+name              = "chelix-tools"
 version.workspace = true
 
 [features]
-bundled-skills        = ["moltis-skills/bundled-skills"]
+bundled-skills        = ["chelix-skills/bundled-skills"]
 default               = ["firecrawl", "fs-tools", "metrics", "provider-openai-codex", "wasm"]
 embedded-wasm         = []
 firecrawl             = []
-provider-openai-codex = ["moltis-providers/provider-openai-codex"]
+provider-openai-codex = ["chelix-providers/provider-openai-codex"]
 # Native filesystem tools (Read, Write, Edit, MultiEdit, Glob, Grep).
-# See moltis-org/moltis#657. Default-on; build with
+# See agentics-skills/chelix#657. Default-on; build with
 # --no-default-features to omit them from minimal builds.
 fs-tools = [
   "dep:globset",
@@ -20,7 +20,7 @@ fs-tools = [
   "dep:ignore",
   "dep:pdf-extract",
 ]
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 wasm = ["dep:wasmtime", "dep:wasmtime-wasi", "wasmtime/component-model"]
 
 [dependencies]
@@ -38,18 +38,18 @@ html2text             = { workspace = true }
 ignore                = { optional = true, workspace = true }
 image                 = { workspace = true }
 ipnet                 = { workspace = true }
-moltis-agents         = { workspace = true }
-moltis-browser        = { workspace = true }
-moltis-common         = { workspace = true }
-moltis-config         = { workspace = true }
-moltis-cron           = { workspace = true }
-moltis-media          = { workspace = true }
-moltis-metrics        = { optional = true, workspace = true }
-moltis-network-filter = { workspace = true }
-moltis-providers      = { workspace = true }
-moltis-service-traits = { workspace = true }
-moltis-sessions       = { workspace = true }
-moltis-skills         = { workspace = true }
+chelix-agents         = { workspace = true }
+chelix-browser        = { workspace = true }
+chelix-common         = { workspace = true }
+chelix-config         = { workspace = true }
+chelix-cron           = { workspace = true }
+chelix-media          = { workspace = true }
+chelix-metrics        = { optional = true, workspace = true }
+chelix-network-filter = { workspace = true }
+chelix-providers      = { workspace = true }
+chelix-service-traits = { workspace = true }
+chelix-sessions       = { workspace = true }
+chelix-skills         = { workspace = true }
 pdf-extract           = { optional = true, workspace = true }
 regex                 = { workspace = true }
 reqwest               = { features = ["blocking"], workspace = true }

@@ -10,7 +10,7 @@ use std::pin::Pin;
 
 use {
     async_trait::async_trait,
-    moltis_agents::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent, Usage},
+    chelix_agents::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent, Usage},
     tokio_stream::{Stream, StreamExt},
 };
 

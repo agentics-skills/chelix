@@ -155,7 +155,7 @@ pub const SAFE_BINS: &[&str] = &[
 ///
 /// Used by both `DANGEROUS_PATTERN_DEFS` (regex layer) and `extract_first_bin`
 /// (semantic layer) for defense-in-depth against env-var prefix injection
-/// (moltis-org/moltis#814).
+/// (agentics-skills/chelix#814).
 const DANGEROUS_ENV_VARS: &[&str] = &[
     // Linux dynamic linker (LD_DEBUG excluded — diagnostic only, no code injection)
     "LD_PRELOAD",
@@ -228,7 +228,7 @@ static DANGEROUS_PATTERN_DEFS: &[(&str, &str)] = &[
         r"chmod\s+(-\S*R\S*\s+)*777\s+/",
         "recursive chmod 777 on root",
     ),
-    // Inline environment variable injection (moltis-org/moltis#814).
+    // Inline environment variable injection (agentics-skills/chelix#814).
     //
     // Anchored with `(?:^|[;&|]\s*)` so patterns only fire at command-start
     // positions (start of string, after `;`, `&`, `|`), not inside grep/sed
@@ -423,7 +423,7 @@ fn parse_heredoc_marker(chars: &[char], i: &mut usize) -> Option<String> {
 /// Returns `None` when the command is empty **or** when a leading env-var
 /// assignment uses a dangerous variable name (see [`DANGEROUS_ENV_VARS`]).
 /// This prevents attackers from smuggling `LD_PRELOAD=… cat /file` through the
-/// safe-bin / allowlist path (moltis-org/moltis#814).
+/// safe-bin / allowlist path (agentics-skills/chelix#814).
 ///
 /// **Limitation:** Quoted tokens like `"LD_PRELOAD=/evil.so" cat /file` will
 /// not be caught here because `split_once('=')` sees key `"LD_PRELOAD` (with
@@ -480,7 +480,7 @@ pub fn matches_allowlist(command: &str, allowlist: &[String]) -> bool {
             // valid binary. When extract_first_bin returned None (dangerous
             // env-var prefix), raw-string matching would let chained
             // assignments like `MY_APP=1 LD_PRELOAD=/evil.so cat` bypass
-            // the env-var protection (moltis-org/moltis#814).
+            // the env-var protection (agentics-skills/chelix#814).
             if bin_name.starts_with(prefix) || (bin.is_some() && command.starts_with(prefix)) {
                 return true;
             }
@@ -536,7 +536,7 @@ impl ApprovalManager {
         // allowlisted. In OnMiss/Always mode we escalate to NeedsApproval so a
         // human can gate. In Off mode there is no human approver to wait on,
         // so the only safe outcome is to deny — otherwise the agent would hang
-        // on `NeedsApproval` forever in headless deployments (moltis-org/moltis#654).
+        // on `NeedsApproval` forever in headless deployments (agentics-skills/chelix#654).
         if let Some(desc) = check_dangerous(command) {
             if !matches_allowlist(command, &self.allowlist) {
                 if self.mode == ApprovalMode::Off {
@@ -559,7 +559,7 @@ impl ApprovalManager {
         // Safety floor layer 2: catch dangerous env-var prefixes that the
         // anchored regex missed (e.g. chained assignments like
         // `FOO=bar LD_PRELOAD=/evil.so cat`). Same deny/escalate logic as
-        // the regex layer above (moltis-org/moltis#814).
+        // the regex layer above (agentics-skills/chelix#814).
         if !command.trim().is_empty() && extract_first_bin(command).is_none() {
             if !matches_allowlist(command, &self.allowlist) {
                 if self.mode == ApprovalMode::Off {
@@ -598,7 +598,7 @@ impl ApprovalManager {
                 // With a non-empty allowlist, the list is authoritative: the user
                 // explicitly asked for enforcement, and there is no human to prompt
                 // in headless deployments — non-matches must be denied, not silently
-                // proceeded (moltis-org/moltis#654).
+                // proceeded (agentics-skills/chelix#654).
                 if self.allowlist.is_empty() {
                     return Ok(ApprovalAction::Proceed);
                 }
@@ -806,7 +806,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_approval_off_with_allowlist_match() {
-        // Regression test for moltis-org/moltis#654: non-empty allowlist must be
+        // Regression test for agentics-skills/chelix#654: non-empty allowlist must be
         // enforced even when approval_mode is off (headless deployments).
         let mgr = ApprovalManager {
             mode: ApprovalMode::Off,
@@ -819,7 +819,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_approval_off_with_allowlist_miss_denies() {
-        // Regression test for moltis-org/moltis#654: commands outside the
+        // Regression test for agentics-skills/chelix#654: commands outside the
         // configured allowlist must be denied in Off mode, not silently proceeded.
         let mgr = ApprovalManager {
             mode: ApprovalMode::Off,
@@ -1091,7 +1091,7 @@ rm -rf /\n";
     async fn test_dangerous_denied_when_mode_off() {
         // In Off mode dangerous commands must be denied (not NeedsApproval),
         // otherwise headless agents hang waiting for an approver that never
-        // arrives (moltis-org/moltis#654).
+        // arrives (agentics-skills/chelix#654).
         let mgr = ApprovalManager {
             mode: ApprovalMode::Off,
             ..Default::default()

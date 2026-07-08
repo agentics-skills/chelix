@@ -1,8 +1,8 @@
 //! Ed25519 node identity: keypair generation, persistence, and fingerprinting.
 //!
 //! Each node generates a unique Ed25519 keypair on first run. The private key
-//! is stored at `~/.moltis/node_key` (mode 0600 on Unix), the public key at
-//! `~/.moltis/node_key.pub`. The gateway pins the public key on first approval
+//! is stored at `~/.chelix/node_key` (mode 0600 on Unix), the public key at
+//! `~/.chelix/node_key.pub`. The gateway pins the public key on first approval
 //! (TOFU model) and verifies subsequent connections via challenge-response.
 
 use std::{
@@ -92,7 +92,7 @@ fn public_key_path(dir: &Path) -> PathBuf {
 
 /// Load an existing identity from `dir`, or generate and persist a new one.
 ///
-/// `dir` is typically `~/.moltis/` (from `moltis_config::data_dir()`).
+/// `dir` is typically `~/.chelix/` (from `chelix_config::data_dir()`).
 ///
 /// On Unix the private key file is created with mode 0600. If the file exists
 /// with wrong permissions, this function returns an error rather than silently

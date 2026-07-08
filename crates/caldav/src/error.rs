@@ -1,4 +1,4 @@
-//! Crate-level error types for `moltis-caldav`.
+//! Crate-level error types for `chelix-caldav`.
 
 use thiserror::Error;
 

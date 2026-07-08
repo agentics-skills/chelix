@@ -18,4 +18,4 @@ pub use {
 };
 
 #[cfg(feature = "vault")]
-pub use moltis_vault;
+pub use chelix_vault;

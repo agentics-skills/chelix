@@ -1,4 +1,4 @@
-//! Output formatting for `moltis-ctl`.
+//! Output formatting for `chelix-ctl`.
 
 use serde_json::Value;
 

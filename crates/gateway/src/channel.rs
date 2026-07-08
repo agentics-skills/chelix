@@ -7,14 +7,14 @@ use {
 };
 
 use {
-    moltis_channels::{
+    chelix_channels::{
         ChannelOutbound, ChannelType,
         message_log::MessageLog,
         plugin::ChannelHealthSnapshot,
         registry::ChannelRegistry,
         store::{ChannelStore, StoredChannel},
     },
-    moltis_sessions::metadata::SqliteSessionMetadata,
+    chelix_sessions::metadata::SqliteSessionMetadata,
 };
 
 use crate::services::{ChannelService, ServiceError, ServiceResult};
@@ -27,7 +27,7 @@ fn unix_now() -> i64 {
 }
 
 fn is_redacted_secret(value: &Value) -> bool {
-    matches!(value, Value::String(text) if text == moltis_common::secret_serde::REDACTED)
+    matches!(value, Value::String(text) if text == chelix_common::secret_serde::REDACTED)
 }
 
 fn merge_channel_config_value(existing: &mut Value, patch: Value) {
@@ -379,7 +379,7 @@ impl ChannelService for LiveChannelService {
                     .await
                 {
                     Ok(()) => {},
-                    Err(moltis_channels::Error::UnknownAccount { .. }) => {
+                    Err(chelix_channels::Error::UnknownAccount { .. }) => {
                         warn!(
                             account_id,
                             channel_type = ct,
@@ -918,7 +918,7 @@ impl ChannelService for LiveChannelService {
 mod tests {
     use {
         super::{merge_channel_config, otp_pending_payload, sender_allowlist_key},
-        moltis_channels::ChannelType,
+        chelix_channels::ChannelType,
         serde_json::json,
     };
 

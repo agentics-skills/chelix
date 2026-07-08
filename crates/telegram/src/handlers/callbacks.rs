@@ -8,7 +8,7 @@ use {
 
 use std::sync::Arc;
 
-use moltis_channels::{ChannelOutbound, ChannelReplyTarget, ChannelType};
+use chelix_channels::{ChannelOutbound, ChannelReplyTarget, ChannelType};
 
 use crate::state::AccountStateMap;
 

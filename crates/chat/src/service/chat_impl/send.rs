@@ -8,8 +8,8 @@ use {
 };
 
 use {
-    moltis_config::MessageQueueMode,
-    moltis_service_traits::{ServiceError, ServiceResult, SessionBusyReason},
+    chelix_config::MessageQueueMode,
+    chelix_service_traits::{ServiceError, ServiceResult, SessionBusyReason},
 };
 
 use crate::{
@@ -31,7 +31,7 @@ use crate::{
 
 use {super::*, crate::service::build_persisted_assistant_message};
 
-use {crate::memory_tools::AgentScopedMemoryWriter, moltis_agents::model::values_to_chat_messages};
+use {crate::memory_tools::AgentScopedMemoryWriter, chelix_agents::model::values_to_chat_messages};
 
 impl LiveChatService {
     #[tracing::instrument(skip(self, params), fields(session_id))]
@@ -70,7 +70,7 @@ impl LiveChatService {
                                 "image_url" => {
                                     let url = block.get("image_url")?.get("url")?.as_str()?;
                                     Some(ContentBlock::ImageUrl {
-                                        image_url: moltis_sessions::message::ImageUrl {
+                                        image_url: chelix_sessions::message::ImageUrl {
                                             url: url.to_string(),
                                         },
                                     })
@@ -100,7 +100,7 @@ impl LiveChatService {
         let explicit_model = params.get("model").and_then(|v| v.as_str());
         let requested_reasoning_effort_override = requested_reasoning_effort(&params)?;
         let tool_controls =
-            moltis_config::schema::AgentToolControls::from_tool_context(Some(&params));
+            chelix_config::schema::AgentToolControls::from_tool_context(Some(&params));
         // Use streaming-only mode if explicitly requested or if no tools are registered.
         let explicit_stream_only = params
             .get("stream_only")
@@ -291,7 +291,7 @@ impl LiveChatService {
                 && let Some(entry) = self.session_metadata.get(&session_key).await
                 && let Some(ref binding_json) = entry.channel_binding
                 && let Ok(target) =
-                    serde_json::from_str::<moltis_channels::ChannelReplyTarget>(binding_json)
+                    serde_json::from_str::<chelix_channels::ChannelReplyTarget>(binding_json)
             {
                 let is_active = self
                     .session_metadata
@@ -326,7 +326,7 @@ impl LiveChatService {
                     .get("_channel_reply_target")
                     .cloned()
                     .and_then(|value| {
-                        match serde_json::from_value::<moltis_channels::ChannelReplyTarget>(value) {
+                        match serde_json::from_value::<chelix_channels::ChannelReplyTarget>(value) {
                             Ok(target) => Some(target),
                             Err(e) => {
                                 warn!(
@@ -540,7 +540,7 @@ impl LiveChatService {
         };
         let model_id = explicit_model.or(session_model.as_deref());
 
-        let provider: Arc<dyn moltis_agents::model::LlmProvider> = {
+        let provider: Arc<dyn chelix_agents::model::LlmProvider> = {
             let reg = self.providers.read().await;
             let primary = if let Some(id) = model_id {
                 reg.get(id).ok_or_else(|| {
@@ -577,7 +577,7 @@ impl LiveChatService {
                 } else {
                     let mut chain = vec![primary];
                     chain.extend(fallbacks);
-                    Arc::new(moltis_agents::provider_chain::ProviderChain::new(chain))
+                    Arc::new(chelix_agents::provider_chain::ProviderChain::new(chain))
                 }
             }
         };
@@ -629,7 +629,7 @@ impl LiveChatService {
             && let Some(entry) = self.session_metadata.get(&session_key).await
             && let Some(ref binding_json) = entry.channel_binding
             && let Ok(target) =
-                serde_json::from_str::<moltis_channels::ChannelReplyTarget>(binding_json)
+                serde_json::from_str::<chelix_channels::ChannelReplyTarget>(binding_json)
         {
             // Only echo to channel if this is the active session for this chat.
             let is_active = self
@@ -665,7 +665,7 @@ impl LiveChatService {
                 .get("_channel_reply_target")
                 .cloned()
                 .and_then(|value| {
-                    match serde_json::from_value::<moltis_channels::ChannelReplyTarget>(value) {
+                    match serde_json::from_value::<chelix_channels::ChannelReplyTarget>(value) {
                         Ok(target) => Some(target),
                         Err(e) => {
                             warn!(
@@ -705,15 +705,15 @@ impl LiveChatService {
                 session_entry.as_ref(),
             ))
             .filter(|binding| !binding.is_empty());
-            let payload = moltis_common::hooks::HookPayload::MessageReceived {
+            let payload = chelix_common::hooks::HookPayload::MessageReceived {
                 session_key: session_key.clone(),
                 content: text.clone(),
                 channel,
                 channel_binding,
             };
             match hooks.dispatch(&payload).await {
-                Ok(moltis_common::hooks::HookAction::Continue) => {},
-                Ok(moltis_common::hooks::HookAction::ModifyPayload(new_payload)) => {
+                Ok(chelix_common::hooks::HookAction::Continue) => {},
+                Ok(chelix_common::hooks::HookAction::ModifyPayload(new_payload)) => {
                     match new_payload.get("content").and_then(|v| v.as_str()) {
                         Some(new_text) => {
                             info!(
@@ -735,7 +735,7 @@ impl LiveChatService {
                         },
                     }
                 },
-                Ok(moltis_common::hooks::HookAction::Block(reason)) => {
+                Ok(chelix_common::hooks::HookAction::Block(reason)) => {
                     info!(
                         session = %session_key,
                         reason = %reason,
@@ -1320,15 +1320,15 @@ impl LiveChatService {
                             let mm = Arc::clone(mm);
                             let prov = Arc::clone(&provider_for_extraction);
                             tokio::spawn(async move {
-                                let writer: Arc<dyn moltis_agents::memory_writer::MemoryWriter> =
+                                let writer: Arc<dyn chelix_agents::memory_writer::MemoryWriter> =
                                     Arc::new(AgentScopedMemoryWriter::new(
                                         mm, agent_id, write_mode,
                                     ));
-                                match moltis_agents::silent_turn::run_silent_memory_turn_with_prompt(
+                                match chelix_agents::silent_turn::run_silent_memory_turn_with_prompt(
                                         prov,
                                         &chat_msgs,
                                         writer,
-                                        moltis_agents::silent_turn::SilentTurnPrompt::PeriodicExtract,
+                                        chelix_agents::silent_turn::SilentTurnPrompt::PeriodicExtract,
                                     )
                                     .await
                                     {

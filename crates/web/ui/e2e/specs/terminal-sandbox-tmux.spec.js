@@ -47,12 +47,12 @@ test.describe("Terminal sandbox tmux targets", () => {
 				body: JSON.stringify({
 					targets: [
 						{
-							id: "docker:moltis-sandbox-test",
-							label: "moltis-sandbox-test (docker)",
+							id: "docker:chelix-sandbox-test",
+							label: "chelix-sandbox-test (docker)",
 							backend: "docker",
-							containerName: "moltis-sandbox-test",
+							containerName: "chelix-sandbox-test",
 							state: "running",
-							image: "moltis/sandbox:test",
+							image: "chelix/sandbox:test",
 						},
 					],
 				}),
@@ -80,7 +80,7 @@ test.describe("Terminal sandbox tmux targets", () => {
 					mode: "sandbox_tmux",
 					persistenceEnabled: true,
 					persistenceAvailable: true,
-					targetLabel: "moltis-sandbox-test (docker)",
+					targetLabel: "chelix-sandbox-test (docker)",
 					sessionId: "$agent",
 					windowId: "@7",
 					paneId: "%11",
@@ -95,11 +95,11 @@ test.describe("Terminal sandbox tmux targets", () => {
 		await navigateAndWait(page, "/settings/terminal");
 		await waitForWsConnected(page);
 
-		await expect(page.locator("#terminalTarget")).toContainText("moltis-sandbox-test (docker)");
-		await page.locator("#terminalTarget").selectOption("sandbox:docker:moltis-sandbox-test");
+		await expect(page.locator("#terminalTarget")).toContainText("chelix-sandbox-test (docker)");
+		await page.locator("#terminalTarget").selectOption("sandbox:docker:chelix-sandbox-test");
 
 		await expect(page.getByRole("button", { name: "agent-main / 2: builder" })).toBeVisible({ timeout: 10_000 });
-		await expect(page.locator("#terminalMeta")).toContainText("Sandbox tmux: moltis-sandbox-test (docker)");
+		await expect(page.locator("#terminalMeta")).toContainText("Sandbox tmux: chelix-sandbox-test (docker)");
 		await expect(page.locator("#terminalHint")).toContainText(
 			"Attached to a real tmux session inside the selected sandbox.",
 		);
@@ -108,7 +108,7 @@ test.describe("Terminal sandbox tmux targets", () => {
 			.poll(() => terminalWebSocketUrls.find((url) => url.includes("/api/terminal/sandbox/ws")) || "", {
 				timeout: 10_000,
 			})
-			.toContain("targetId=docker%3Amoltis-sandbox-test");
+			.toContain("targetId=docker%3Achelix-sandbox-test");
 		const terminalUrl = terminalWebSocketUrls.find((url) => url.includes("/api/terminal/sandbox/ws")) || "";
 		expect(terminalUrl).toContain("sessionId=%24agent");
 		expect(terminalUrl).toContain("windowId=%407");

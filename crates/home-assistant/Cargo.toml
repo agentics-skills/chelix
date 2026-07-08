@@ -1,18 +1,18 @@
 [package]
 edition.workspace    = true
-name                 = "moltis-home-assistant"
+name                 = "chelix-home-assistant"
 repository.workspace = true
 version.workspace    = true
-description          = "Home Assistant integration for Moltis"
+description          = "Home Assistant integration for Chelix"
 
 [dependencies]
 anyhow            = { workspace = true }
 async-trait       = { workspace = true }
 bytes             = { workspace = true }
 futures-util      = { workspace = true }
-moltis-agents     = { workspace = true }
-moltis-config     = { workspace = true }
-moltis-metrics    = { optional = true, workspace = true }
+chelix-agents     = { workspace = true }
+chelix-config     = { workspace = true }
+chelix-metrics    = { optional = true, workspace = true }
 reqwest           = { workspace = true }
 secrecy           = { workspace = true }
 serde             = { workspace = true }
@@ -33,7 +33,7 @@ serde_json       = { workspace = true }
 
 [features]
 default = ["tracing"]
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 tracing = []
 
 [lints]

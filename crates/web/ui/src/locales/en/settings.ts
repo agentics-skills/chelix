@@ -84,12 +84,12 @@ export default {
 		title: "Security",
 		authDisabled: "Authentication is disabled",
 		authDisabledWarning:
-			"Anyone with network access can control moltis and your computer. Set up a password to protect your instance.",
+			"Anyone with network access can control chelix and your computer. Set up a password to protect your instance.",
 		setupAuth: "Set up authentication",
 		localhostBypassWarning:
-			"Localhost-only access is safe, but localhost bypass is active. Until you add a password or passkey, this browser has full access and Sign out has no effect. Add credentials below to require login on localhost and before exposing Moltis to your network.",
+			"Localhost-only access is safe, but localhost bypass is active. Until you add a password or passkey, this browser has full access and Sign out has no effect. Add credentials below to require login on localhost and before exposing Chelix to your network.",
 		localhostBypassNote:
-			"Localhost bypass is active. Until you add a password or passkey, this browser has full access and Sign out has no effect. Add credentials to require login on localhost and before exposing Moltis to your network.",
+			"Localhost bypass is active. Until you add a password or passkey, this browser has full access and Sign out has no effect. Add credentials to require login on localhost and before exposing Chelix to your network.",
 		note: "Note: ",
 		changePassword: "Change Password",
 		setPasswordTitle: "Set Password",
@@ -119,7 +119,7 @@ export default {
 		// API keys
 		apiKeys: "API Keys",
 		apiKeysDescription:
-			"API keys authenticate external tools and scripts connecting to moltis over the WebSocket protocol. Pass the key as the api_key field in the auth object of the connect handshake.",
+			"API keys authenticate external tools and scripts connecting to chelix over the WebSocket protocol. Pass the key as the api_key field in the auth object of the connect handshake.",
 		apiKeyCopyWarning: "Copy this key now. It won't be shown again.",
 		fullAccess: "Full access",
 		revoke: "Revoke",
@@ -140,7 +140,7 @@ export default {
 		dangerZone: "Danger Zone",
 		removeAllAuth: "Remove all authentication",
 		removeAllAuthWarning:
-			"If you know what you're doing, you can fully disable authentication. Anyone with network access will be able to access moltis and your computer. This removes your password, all passkeys, all API keys, and all sessions.",
+			"If you know what you're doing, you can fully disable authentication. Anyone with network access will be able to access chelix and your computer. This removes your password, all passkeys, all API keys, and all sessions.",
 		removeAllAuthConfirm: "Are you sure? This cannot be undone.",
 		removing: "Removing\u2026",
 		yesRemoveAllAuth: "Yes, remove all auth",
@@ -150,7 +150,7 @@ export default {
 	config: {
 		title: "Configuration",
 		description:
-			"Edit the full moltis configuration. This includes server, tools, LLM providers, auth, and all other settings. Test your changes before saving. Changes require a restart to take effect.",
+			"Edit the full chelix configuration. This includes server, tools, LLM providers, auth, and all other settings. Test your changes before saving. Changes require a restart to take effect.",
 		viewDocs: "View documentation \u2197",
 		fileLabel: "File:",
 		warnings: "Warnings:",
@@ -166,13 +166,13 @@ export default {
 		configValid: "Configuration is valid.",
 		configInvalid: "Invalid configuration",
 		configSaved: "Configuration saved. Restart required for changes to take effect.",
-		restartingMoltis: "Restarting moltis...",
-		serverNotBack: "Server did not come back up. Check if moltis is running.",
+		restartingChelix: "Restarting chelix...",
+		serverNotBack: "Server did not come back up. Check if chelix is running.",
 		autoReloadHint: "The page will reload automatically when the server is back up.",
 		resetConfirm:
 			"Replace current config with the default template?\n\nThis will show all available options with documentation. Your current values will be lost unless you copy them first.",
 		templateLoaded: "Loaded default template with all options. Review and save when ready.",
-		failedToConnect: "Failed to connect to server. Please check if moltis is running.",
+		failedToConnect: "Failed to connect to server. Please check if chelix is running.",
 		invalidJsonResponse: "Invalid JSON response from server",
 		failedToLoadTemplate: "Failed to load template",
 		tipLabel: "Tip:",
@@ -261,7 +261,7 @@ export default {
 		mostUsers: "Most users",
 		powerUsers: "Power users",
 		builtInRecommended: "Built-in (Recommended)",
-		qmdNotEnabled: "QMD feature is not enabled. Rebuild moltis with --features qmd",
+		qmdNotEnabled: "QMD feature is not enabled. Rebuild chelix with --features qmd",
 		qmdStatus: "QMD Status",
 		qmdInstalled: "\u2713 QMD is installed",
 		qmdNotInstalled: "\u2717 QMD is not installed or not found in PATH",
@@ -296,7 +296,7 @@ export default {
 		toggling: "\u2026",
 		installRequired: "Installation required",
 		installRequiredSafari:
-			"On Safari, push notifications are only available for installed apps. Add moltis to your Dock using File \u2192 Add to Dock (or Share \u2192 Add to Dock on iOS), then open it from there.",
+			"On Safari, push notifications are only available for installed apps. Add chelix to your Dock using File \u2192 Add to Dock (or Share \u2192 Add to Dock on iOS), then open it from there.",
 		notificationsBlocked: "Notifications are blocked",
 		blockedExplanation:
 			"You previously blocked notifications for this site. To enable them, you'll need to update your browser's site settings and allow notifications for this origin.",

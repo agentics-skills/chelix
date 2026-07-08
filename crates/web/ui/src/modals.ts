@@ -72,4 +72,4 @@ function refreshModalTitles(): void {
 	if (project) project.textContent = t("common:modals.manageProjects");
 }
 
-window.addEventListener("moltis:locale-changed", refreshModalTitles);
+window.addEventListener("chelix:locale-changed", refreshModalTitles);

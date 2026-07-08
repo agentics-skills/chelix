@@ -1,7 +1,7 @@
 //! Default configuration template with all options documented.
 //!
 //! This template is used when creating a new config file. It contains only
-//! user overrides — built-in defaults live in `defaults.toml` (Moltis-managed)
+//! user overrides — built-in defaults live in `defaults.toml` (Chelix-managed)
 //! and should not be duplicated here.
 //!
 //! Uncommenting a built-in default here creates a local override that shadows
@@ -14,10 +14,10 @@
 /// so users can see what's available without accidentally freezing defaults.
 pub fn default_config_template(port: u16) -> String {
     format!(
-        r##"# Moltis User Configuration
+        r##"# Chelix User Configuration
 # =========================
 # This file contains YOUR overrides only. Built-in defaults are in
-# defaults.toml (Moltis-managed, regenerated on every startup).
+# defaults.toml (Chelix-managed, regenerated on every startup).
 #
 # Uncomment and modify settings to override the built-in defaults.
 # Changes require a restart to take effect.
@@ -41,12 +41,12 @@ port = {port}                           # Port number (auto-generated for this i
 # terminal_enabled = true                # Enable interactive host terminal in Settings > Terminal
                                          # Set to false to disable the unsandboxed shell in the web UI.
                                          # NOTE: this can be re-enabled via the web UI config editor.
-                                         # For hard lockdown, set MOLTIS_TERMINAL_DISABLED=1 (env var
+                                         # For hard lockdown, set CHELIX_TERMINAL_DISABLED=1 (env var
                                          # takes precedence and cannot be changed from the web UI).
 # update_releases_url = "https://github.com/agentics-skills/chelix"  # Override releases manifest URL
-# external_url = "https://moltis.example.com"  # Public URL when behind a reverse proxy.
+# external_url = "https://chelix.example.com"  # Public URL when behind a reverse proxy.
                                                  # Used for WebAuthn passkey origins.
-                                                 # Env var MOLTIS_EXTERNAL_URL takes precedence.
+                                                 # Env var CHELIX_EXTERNAL_URL takes precedence.
 
 # ══════════════════════════════════════════════════════════════════════════════
 # UPSTREAM PROXY
@@ -64,7 +64,7 @@ port = {port}                           # Port number (auto-generated for this i
 
 # [auth]
 # disabled = false                  # true = disable auth entirely (DANGEROUS if exposed)
-                                    # When disabled, anyone with network access can use moltis
+                                    # When disabled, anyone with network access can use chelix
 # vault_enabled = true              # true = encrypt stored secrets at rest using the password vault
 #                                   # Set false to keep password auth without requiring vault unlocks after restart.
 
@@ -95,7 +95,7 @@ port = {port}                           # Port number (auto-generated for this i
 # Customize your agent's personality. These are typically set during onboarding.
 
 # [identity]
-# name = "moltis"                   # Agent's display name
+# name = "chelix"                   # Agent's display name
 # emoji = "🦊"                      # Agent's emoji/avatar
 # theme = "wise owl"                # Theme for agent personality (e.g. wise owl, chill fox)
 # soul = ""                         # Freeform personality text injected into system prompt
@@ -435,7 +435,7 @@ port = {port}                           # Port number (auto-generated for this i
 # no_network = true                 # Disable network access in sandbox
 # image = "custom-image:tag"        # Custom Docker image (default: auto-built)
 # packages = [...]                  # Packages installed in sandbox containers
-# host_data_dir = "/host/moltis-data" # Host path for Moltis data when running Moltis inside Docker
+# host_data_dir = "/host/chelix-data" # Host path for Chelix data when running Chelix inside Docker
 # gpus = "all"                      # GPU passthrough: "all", "device=0", "device=0,1"
                                     # (Docker/Podman only, ignored for other backends)
 
@@ -652,10 +652,10 @@ port = {port}                           # Port number (auto-generated for this i
 # ══════════════════════════════════════════════════════════════════════════════
 # EXTERNAL AGENTS
 # ══════════════════════════════════════════════════════════════════════════════
-# Connect Moltis chat sessions to external CLI coding agents.
+# Connect Chelix chat sessions to external CLI coding agents.
 # Codex and ACP use persistent JSON-RPC sessions; Claude Code uses print-mode
 # resume when the CLI returns a session_id.
-# Moltis acts as orchestrator; the CLI agent owns its own context window.
+# Chelix acts as orchestrator; the CLI agent owns its own context window.
 
 [external_agents]
 # enabled = false                   # Enable external agent bridge
@@ -686,7 +686,7 @@ port = {port}                           # Port number (auto-generated for this i
 # CHANNELS
 # ══════════════════════════════════════════════════════════════════════════════
 # External messaging integrations.
-# Note: channels added in the web UI are stored in data_dir()/moltis.db,
+# Note: channels added in the web UI are stored in data_dir()/chelix.db,
 # not in this file. Keep channel config here only for manual TOML management.
 
 # [channels]
@@ -709,7 +709,7 @@ port = {port}                           # Port number (auto-generated for this i
 # ══════════════════════════════════════════════════════════════════════════════
 # ENVIRONMENT VARIABLES
 # ══════════════════════════════════════════════════════════════════════════════
-# Variables injected into the Moltis process at startup.
+# Variables injected into the Chelix process at startup.
 
 # [env]
 # BRAVE_API_KEY = "..."

@@ -21,16 +21,16 @@ use super::tmux::{
 
 /// Build a command that opens a shell in the specified container via docker/podman exec.
 fn container_terminal_command_builder(container_name: &str) -> CommandBuilder {
-    let config = moltis_config::discover_and_load();
+    let config = chelix_config::discover_and_load();
     let cli: &str = match config.tools.execute_command.sandbox.backend.as_str() {
         "apple-container" => "container",
         "docker" => "docker",
         "podman" => "podman",
         _ => {
             // Auto-detect: prefer `container` on macOS, then docker, then podman.
-            if cfg!(target_os = "macos") && moltis_tools::sandbox::is_cli_available("container") {
+            if cfg!(target_os = "macos") && chelix_tools::sandbox::is_cli_available("container") {
                 "container"
-            } else if moltis_tools::sandbox::is_cli_available("docker") {
+            } else if chelix_tools::sandbox::is_cli_available("docker") {
                 "docker"
             } else {
                 "podman"
@@ -185,7 +185,7 @@ fn spawn_host_terminal_reader(
 ) -> TerminalResult<tokio::sync::mpsc::UnboundedReceiver<HostTerminalOutputEvent>> {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<HostTerminalOutputEvent>();
     std::thread::Builder::new()
-        .name("moltis-host-terminal-reader".to_string())
+        .name("chelix-host-terminal-reader".to_string())
         .spawn(move || {
             let mut buf = vec![0_u8; 16 * 1024];
             loop {

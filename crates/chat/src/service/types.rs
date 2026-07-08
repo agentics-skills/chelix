@@ -14,10 +14,10 @@ use {
 };
 
 use {
-    moltis_agents::tool_registry::ToolRegistry,
-    moltis_providers::ProviderRegistry,
-    moltis_service_traits::SessionMutationCoordinator,
-    moltis_sessions::{
+    chelix_agents::tool_registry::ToolRegistry,
+    chelix_providers::ProviderRegistry,
+    chelix_service_traits::SessionMutationCoordinator,
+    chelix_sessions::{
         PersistedMessage,
         message::{PersistedFunction, PersistedToolCall},
         metadata::SqliteSessionMetadata,
@@ -243,7 +243,7 @@ pub struct LiveChatService {
     pub(in crate::service) session_store: Arc<SessionStore>,
     pub(in crate::service) session_metadata: Arc<SqliteSessionMetadata>,
     pub(in crate::service) session_state_store: Option<Arc<SessionStateStore>>,
-    pub(in crate::service) hook_registry: Option<Arc<moltis_common::hooks::HookRegistry>>,
+    pub(in crate::service) hook_registry: Option<Arc<chelix_common::hooks::HookRegistry>>,
     /// Per-session coordinator ensuring session history mutations do not race chat turns.
     pub(in crate::service) session_mutations: Arc<SessionMutationCoordinator>,
     /// Per-session message queue for messages arriving during an active run.
@@ -263,9 +263,9 @@ pub struct LiveChatService {
     /// `voicePending` state after a page reload.
     pub(in crate::service) active_reply_medium: Arc<RwLock<HashMap<String, ReplyMedium>>>,
     /// Startup configuration snapshot for chat hot-path decisions.
-    pub(in crate::service) config: moltis_config::MoltisConfig,
+    pub(in crate::service) config: chelix_config::ChelixConfig,
     /// Failover configuration for automatic model/provider failover.
-    pub(in crate::service) failover_config: moltis_config::schema::FailoverConfig,
+    pub(in crate::service) failover_config: chelix_config::schema::FailoverConfig,
 }
 
 impl LiveChatService {
@@ -296,17 +296,17 @@ impl LiveChatService {
             active_tool_calls: Arc::new(RwLock::new(HashMap::new())),
             active_partial_assistant: Arc::new(RwLock::new(HashMap::new())),
             active_reply_medium: Arc::new(RwLock::new(HashMap::new())),
-            config: moltis_config::discover_and_load(),
-            failover_config: moltis_config::schema::FailoverConfig::default(),
+            config: chelix_config::discover_and_load(),
+            failover_config: chelix_config::schema::FailoverConfig::default(),
         }
     }
 
-    pub fn with_config(mut self, config: moltis_config::MoltisConfig) -> Self {
+    pub fn with_config(mut self, config: chelix_config::ChelixConfig) -> Self {
         self.config = config;
         self
     }
 
-    pub fn with_failover(mut self, config: moltis_config::schema::FailoverConfig) -> Self {
+    pub fn with_failover(mut self, config: chelix_config::schema::FailoverConfig) -> Self {
         self.failover_config = config;
         self
     }
@@ -326,12 +326,12 @@ impl LiveChatService {
         self
     }
 
-    pub fn with_hooks(mut self, registry: moltis_common::hooks::HookRegistry) -> Self {
+    pub fn with_hooks(mut self, registry: chelix_common::hooks::HookRegistry) -> Self {
         self.hook_registry = Some(Arc::new(registry));
         self
     }
 
-    pub fn with_hooks_arc(mut self, registry: Arc<moltis_common::hooks::HookRegistry>) -> Self {
+    pub fn with_hooks_arc(mut self, registry: Arc<chelix_common::hooks::HookRegistry>) -> Self {
         self.hook_registry = Some(registry);
         self
     }
@@ -473,7 +473,7 @@ impl LiveChatService {
         &self,
         session_key: &str,
         history: &[Value],
-    ) -> error::Result<Arc<dyn moltis_agents::model::LlmProvider>> {
+    ) -> error::Result<Arc<dyn chelix_agents::model::LlmProvider>> {
         let reg = self.providers.read().await;
         let session_model = self
             .session_metadata
@@ -561,28 +561,28 @@ impl LiveChatService {
             .await
             .ok()?;
         let dir = val.get("directory").and_then(|v| v.as_str())?;
-        let files = match moltis_projects::context::load_context_files(Path::new(dir)) {
+        let files = match chelix_projects::context::load_context_files(Path::new(dir)) {
             Ok(f) => f,
             Err(e) => {
                 warn!("failed to load project context: {e}");
                 return None;
             },
         };
-        let project: moltis_projects::Project = serde_json::from_value(val.clone()).ok()?;
+        let project: chelix_projects::Project = serde_json::from_value(val.clone()).ok()?;
         let worktree_dir = self
             .session_metadata
             .get(session_key)
             .await
             .and_then(|e| e.worktree_branch)
             .and_then(|_| {
-                let wt_path = Path::new(dir).join(".moltis-worktrees").join(session_key);
+                let wt_path = Path::new(dir).join(".chelix-worktrees").join(session_key);
                 if wt_path.exists() {
                     Some(wt_path)
                 } else {
                     None
                 }
             });
-        let ctx = moltis_projects::ProjectContext {
+        let ctx = chelix_projects::ProjectContext {
             project,
             context_files: files,
             worktree_dir,
@@ -599,7 +599,7 @@ mod tests {
             build_tool_call_assistant_message,
         },
         crate::types::AssistantTurnOutput,
-        moltis_sessions::PersistedMessage,
+        chelix_sessions::PersistedMessage,
     };
 
     #[test]

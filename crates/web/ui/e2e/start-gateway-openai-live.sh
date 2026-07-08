@@ -6,17 +6,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../../../.." && pwd)"
 
-PORT="${MOLTIS_E2E_OPENAI_LIVE_PORT:-0}"
-RUNTIME_ROOT="${MOLTIS_E2E_OPENAI_LIVE_RUNTIME_DIR:-${REPO_ROOT}/target/e2e-runtime-openai-live}"
+PORT="${CHELIX_E2E_OPENAI_LIVE_PORT:-0}"
+RUNTIME_ROOT="${CHELIX_E2E_OPENAI_LIVE_RUNTIME_DIR:-${REPO_ROOT}/target/e2e-runtime-openai-live}"
 CONFIG_DIR="${RUNTIME_ROOT}/config"
 DATA_DIR="${RUNTIME_ROOT}/data"
 HOME_DIR="${RUNTIME_ROOT}/home"
 ORIGINAL_HOME="${HOME:-}"
 
-OPENAI_KEY="${MOLTIS_E2E_OPENAI_API_KEY:-${OPENAI_API_KEY:-}}"
+OPENAI_KEY="${CHELIX_E2E_OPENAI_API_KEY:-${OPENAI_API_KEY:-}}"
 
 if [ -z "${OPENAI_KEY}" ]; then
-	echo "Missing OPENAI_API_KEY or MOLTIS_E2E_OPENAI_API_KEY for live OpenAI e2e." >&2
+	echo "Missing OPENAI_API_KEY or CHELIX_E2E_OPENAI_API_KEY for live OpenAI e2e." >&2
 	exit 1
 fi
 
@@ -30,7 +30,7 @@ name: e2e-bot
 
 # IDENTITY.md
 
-This file is managed by Moltis settings.
+This file is managed by Chelix settings.
 EOF
 
 cat > "${DATA_DIR}/USER.md" <<'EOF'
@@ -40,18 +40,18 @@ name: e2e-user
 
 # USER.md
 
-This file is managed by Moltis settings.
+This file is managed by Chelix settings.
 EOF
 
 touch "${DATA_DIR}/.onboarded"
 
 cd "${REPO_ROOT}"
 
-export MOLTIS_CONFIG_DIR="${CONFIG_DIR}"
-export MOLTIS_DATA_DIR="${DATA_DIR}"
-export MOLTIS_SERVER__PORT="${PORT}"
+export CHELIX_CONFIG_DIR="${CONFIG_DIR}"
+export CHELIX_DATA_DIR="${DATA_DIR}"
+export CHELIX_SERVER__PORT="${PORT}"
 export OPENAI_API_KEY="${OPENAI_KEY}"
-export MOLTIS_E2E_OPENAI_API_KEY="${OPENAI_KEY}"
+export CHELIX_E2E_OPENAI_API_KEY="${OPENAI_KEY}"
 if [ -z "${RUSTUP_HOME:-}" ] && [ -n "${ORIGINAL_HOME}" ]; then
 	export RUSTUP_HOME="${ORIGINAL_HOME}/.rustup"
 fi
@@ -97,9 +97,9 @@ binary_is_stale() {
 		-print -quit | grep -q .
 }
 
-BINARY="${MOLTIS_BINARY:-}"
+BINARY="${CHELIX_BINARY:-}"
 if [ -z "${BINARY}" ]; then
-	for candidate in target/debug/moltis target/release/moltis; do
+	for candidate in target/debug/chelix target/release/chelix; do
 		if [ -x "${candidate}" ] && { [ -z "${BINARY}" ] || [ "${candidate}" -nt "${BINARY}" ]; }; then
 			BINARY="${candidate}"
 		fi
@@ -114,5 +114,5 @@ fi
 if [ -n "${BINARY}" ]; then
 	exec "${BINARY}" --no-tls --bind 127.0.0.1 --port "${PORT}"
 else
-	exec cargo run --bin moltis -- --no-tls --bind 127.0.0.1 --port "${PORT}"
+	exec cargo run --bin chelix -- --no-tls --bind 127.0.0.1 --port "${PORT}"
 fi

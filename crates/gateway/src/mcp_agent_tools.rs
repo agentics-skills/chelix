@@ -1,13 +1,13 @@
 //! Agent tools for MCP server management.
 //!
 //! These tools let the agent manage MCP servers directly without needing
-//! sandbox network access or the `moltis-ctl` CLI.
+//! sandbox network access or the `chelix-ctl` CLI.
 
 use std::sync::Arc;
 
 use {
     async_trait::async_trait,
-    moltis_agents::tool_registry::AgentTool,
+    chelix_agents::tool_registry::AgentTool,
     serde_json::{Value, json},
 };
 

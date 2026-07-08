@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-LOG_FILE="${HOOK_METRICS_FILE:-/tmp/moltis-agent-metrics.jsonl}"
+LOG_FILE="${HOOK_METRICS_FILE:-/tmp/chelix-agent-metrics.jsonl}"
 INPUT=$(cat)
 
 SESSION=$(echo "$INPUT" | grep -o '"session_key":"[^"]*"' | head -1 | cut -d'"' -f4)

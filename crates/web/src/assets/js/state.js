@@ -2,14 +2,14 @@
 //
 // With Vite bundling, individual modules are no longer served. The real
 // state module lives inside the bundle but is exposed on
-// window.__moltis_state from app.tsx / onboarding-app.tsx.
+// window.__chelix_state from app.tsx / onboarding-app.tsx.
 //
 // This shim re-exports everything the e2e tests need. All mutable
 // values use `export let` with a requestAnimationFrame sync loop so
 // reads always return the current value from the bundled state.
 
 function state() {
-	return window.__moltis_state || {};
+	return window.__chelix_state || {};
 }
 
 // Default export — proxy to the bundled state namespace, even if imported early.

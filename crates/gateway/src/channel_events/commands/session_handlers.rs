@@ -3,8 +3,8 @@ use std::sync::Arc;
 use tracing::info;
 
 use {
-    moltis_channels::{ChannelReplyTarget, Error as ChannelError, Result as ChannelResult},
-    moltis_sessions::metadata::SqliteSessionMetadata,
+    chelix_channels::{ChannelReplyTarget, Error as ChannelError, Result as ChannelResult},
+    chelix_sessions::metadata::SqliteSessionMetadata,
 };
 
 use crate::{

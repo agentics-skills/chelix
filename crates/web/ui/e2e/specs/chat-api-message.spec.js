@@ -47,14 +47,14 @@ test.describe("API-sent user messages (GH #729)", () => {
 			payload: {
 				sessionKey: "main",
 				state: "user_message",
-				text: "Bonjour Moltis !",
+				text: "Bonjour Chelix !",
 			},
 		});
 
 		// The user message should appear in the DOM.
 		var userMsg = page.locator(".msg.user");
 		await expect(userMsg).toBeVisible({ timeout: 5_000 });
-		await expect(userMsg).toContainText("Bonjour Moltis !");
+		await expect(userMsg).toContainText("Bonjour Chelix !");
 
 		// It should also be cached in session history.
 		const cachedHistory = await page.evaluate(async () => {
@@ -70,7 +70,7 @@ test.describe("API-sent user messages (GH #729)", () => {
 			expect.arrayContaining([
 				expect.objectContaining({
 					role: "user",
-					content: "Bonjour Moltis !",
+					content: "Bonjour Chelix !",
 				}),
 			]),
 		);

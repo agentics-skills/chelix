@@ -33,7 +33,7 @@ Options:
 
 Environment:
   GPG_KEY_ID          Default GPG key (overridden by --key)
-  MOLTIS_REPO         GitHub repo (default: moltis-org/moltis)
+  CHELIX_REPO         GitHub repo (default: agentics-skills/chelix)
 
 Examples:
   ./scripts/gpg-sign-release.sh                          # latest, default key
@@ -44,7 +44,7 @@ EOF
 
 # --- Parse arguments ---
 KEY_ID="${GPG_KEY_ID:-}"
-REPO="${MOLTIS_REPO:-moltis-org/moltis}"
+REPO="${CHELIX_REPO:-agentics-skills/chelix}"
 DRY_RUN=false
 VERSION=""
 
@@ -120,19 +120,19 @@ echo "Downloading release artifacts for $VERSION..."
 gh release download "$VERSION" \
   --repo "$REPO" \
   --dir "$WORK_DIR" \
-  --pattern 'moltis*.tar.gz' \
-  --pattern 'moltis*.zip' \
-  --pattern 'moltis*.exe' \
-  --pattern 'moltis*.cdx.json' \
-  --pattern 'moltis*.spdx.json'
+  --pattern 'chelix*.tar.gz' \
+  --pattern 'chelix*.zip' \
+  --pattern 'chelix*.exe' \
+  --pattern 'chelix*.cdx.json' \
+  --pattern 'chelix*.spdx.json'
 
 ARTIFACTS=()
 while IFS= read -r -d '' f; do
   ARTIFACTS+=("$f")
 done < <(find "$WORK_DIR" -maxdepth 1 -type f \
-  \( -name 'moltis*.tar.gz' \
-     -o -name 'moltis*.zip' -o -name 'moltis*.exe' \
-     -o -name 'moltis*.cdx.json' -o -name 'moltis*.spdx.json' \) \
+  \( -name 'chelix*.tar.gz' \
+     -o -name 'chelix*.zip' -o -name 'chelix*.exe' \
+     -o -name 'chelix*.cdx.json' -o -name 'chelix*.spdx.json' \) \
   -print0 | sort -z)
 
 if [[ ${#ARTIFACTS[@]} -eq 0 ]]; then
@@ -224,5 +224,5 @@ echo "  ./scripts/verify-release.sh --version $VERSION"
 echo ""
 echo "Or manually:"
 echo "  curl -fsSL https://pen.so/gpg.asc | gpg --import"
-echo "  gpg --verify moltis-${VERSION}-x86_64-unknown-linux-gnu.tar.gz.asc \\"
-echo "               moltis-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+echo "  gpg --verify chelix-${VERSION}-x86_64-unknown-linux-gnu.tar.gz.asc \\"
+echo "               chelix-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"

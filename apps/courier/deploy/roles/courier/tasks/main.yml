@@ -1,8 +1,8 @@
 ---
 # ── System user ──────────────────────────────────────────────
-- name: Create moltis-courier system user
+- name: Create chelix-courier system user
   ansible.builtin.user:
-    name: moltis-courier
+    name: chelix-courier
     system: true
     shell: /usr/sbin/nologin
     create_home: false
@@ -10,17 +10,17 @@
 # ── Config directory ─────────────────────────────────────────
 - name: Create config directory
   ansible.builtin.file:
-    path: /etc/moltis-courier
+    path: /etc/chelix-courier
     state: directory
-    owner: moltis-courier
-    group: moltis-courier
+    owner: chelix-courier
+    group: chelix-courier
     mode: "0750"
 
 # ── Binary ───────────────────────────────────────────────────
 - name: Upload courier binary
   ansible.builtin.copy:
     src: "{{ courier_binary_path }}"
-    dest: /usr/local/bin/moltis-courier
+    dest: /usr/local/bin/chelix-courier
     owner: root
     group: root
     mode: "0755"
@@ -30,27 +30,27 @@
 - name: Upload .p8 key
   ansible.builtin.copy:
     src: "{{ courier_p8_key_path }}"
-    dest: /etc/moltis-courier/AuthKey.p8
-    owner: moltis-courier
-    group: moltis-courier
+    dest: /etc/chelix-courier/AuthKey.p8
+    owner: chelix-courier
+    group: chelix-courier
     mode: "0600"
   notify: Restart courier
 
 # ── Environment file ─────────────────────────────────────────
 - name: Write environment file
   ansible.builtin.template:
-    src: moltis-courier.env.j2
-    dest: /etc/moltis-courier/env
-    owner: moltis-courier
-    group: moltis-courier
+    src: chelix-courier.env.j2
+    dest: /etc/chelix-courier/env
+    owner: chelix-courier
+    group: chelix-courier
     mode: "0600"
   notify: Restart courier
 
 # ── Systemd unit ─────────────────────────────────────────────
 - name: Install systemd service
   ansible.builtin.template:
-    src: moltis-courier.service.j2
-    dest: /etc/systemd/system/moltis-courier.service
+    src: chelix-courier.service.j2
+    dest: /etc/systemd/system/chelix-courier.service
     owner: root
     group: root
     mode: "0644"
@@ -58,7 +58,7 @@
 
 - name: Enable and start courier
   ansible.builtin.systemd:
-    name: moltis-courier
+    name: chelix-courier
     enabled: true
     state: started
     daemon_reload: true

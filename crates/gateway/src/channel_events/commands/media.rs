@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tracing::{debug, info, warn};
 
-use moltis_channels::{
+use chelix_channels::{
     ChannelReplyTarget, Error as ChannelError, Result as ChannelResult, SavedChannelFile,
 };
 

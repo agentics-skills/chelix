@@ -111,13 +111,13 @@ mod tests {
         assert!(is_loopback_host("127.0.0.1:18789"));
         assert!(is_loopback_host("::1"));
         assert!(is_loopback_host("[::1]:18789"));
-        assert!(is_loopback_host("moltis.localhost"));
-        assert!(is_loopback_host("moltis.localhost:8080"));
+        assert!(is_loopback_host("chelix.localhost"));
+        assert!(is_loopback_host("chelix.localhost:8080"));
 
         assert!(!is_loopback_host("example.com"));
         assert!(!is_loopback_host("example.com:18789"));
         assert!(!is_loopback_host("192.168.1.1:18789"));
-        assert!(!is_loopback_host("moltis.example.com"));
+        assert!(!is_loopback_host("chelix.example.com"));
     }
 
     #[test]
@@ -196,7 +196,7 @@ mod tests {
         let mut headers = axum::http::HeaderMap::new();
         headers.insert(
             axum::http::header::HOST,
-            "moltis.example.com".parse().unwrap(),
+            "chelix.example.com".parse().unwrap(),
         );
         assert!(!is_local_connection(&headers, addr, false));
     }
@@ -204,7 +204,7 @@ mod tests {
     /// Simulates a reverse proxy (Caddy/nginx) on the same machine that
     /// does NOT add proxy headers (bare nginx `proxy_pass`). The Host header
     /// is rewritten to the upstream (loopback) address and the TCP source is
-    /// loopback. Without `MOLTIS_BEHIND_PROXY`, this would appear local.
+    /// loopback. Without `CHELIX_BEHIND_PROXY`, this would appear local.
     #[test]
     fn bare_proxy_without_env_var_appears_local() {
         let addr: SocketAddr = "127.0.0.1:12345".parse().unwrap();
@@ -212,7 +212,7 @@ mod tests {
         headers.insert(axum::http::header::HOST, "127.0.0.1:18789".parse().unwrap());
         // This is the known limitation: bare proxy looks like local.
         assert!(is_local_connection(&headers, addr, false));
-        // Setting MOLTIS_BEHIND_PROXY fixes it.
+        // Setting CHELIX_BEHIND_PROXY fixes it.
         assert!(!is_local_connection(&headers, addr, true));
     }
 
@@ -224,7 +224,7 @@ mod tests {
         let mut headers = axum::http::HeaderMap::new();
         headers.insert(
             axum::http::header::HOST,
-            "moltis.example.com".parse().unwrap(),
+            "chelix.example.com".parse().unwrap(),
         );
         headers.insert("x-forwarded-for", "203.0.113.50".parse().unwrap());
         assert!(!is_local_connection(&headers, addr, false));
@@ -237,7 +237,7 @@ mod tests {
         let mut headers = axum::http::HeaderMap::new();
         headers.insert(
             axum::http::header::HOST,
-            "moltis.example.com".parse().unwrap(),
+            "chelix.example.com".parse().unwrap(),
         );
         assert!(!is_local_connection(&headers, addr, false));
     }

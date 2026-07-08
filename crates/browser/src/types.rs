@@ -471,9 +471,9 @@ pub struct BrowserConfig {
     pub profile_dir: Option<String>,
     /// Hostname or IP used to connect to the browser container.
     /// Default: "127.0.0.1". Set to e.g. "host.docker.internal" when
-    /// Moltis runs inside Docker alongside a sibling browser container.
+    /// Chelix runs inside Docker alongside a sibling browser container.
     pub container_host: String,
-    /// Optional host-visible path for Moltis `data_dir()` when launching
+    /// Optional host-visible path for Chelix `data_dir()` when launching
     /// browser sandbox containers from inside another container.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host_data_dir: Option<PathBuf>,
@@ -503,7 +503,7 @@ fn default_sandbox_image() -> String {
 }
 
 fn default_container_prefix() -> String {
-    "moltis-browser".to_string()
+    "chelix-browser".to_string()
 }
 
 impl Default for BrowserConfig {
@@ -546,15 +546,15 @@ impl BrowserConfig {
         if let Some(ref dir) = self.profile_dir {
             Some(PathBuf::from(dir))
         } else if self.persist_profile {
-            Some(moltis_config::data_dir().join("browser").join("profile"))
+            Some(chelix_config::data_dir().join("browser").join("profile"))
         } else {
             None
         }
     }
 }
 
-impl From<&moltis_config::schema::BrowserConfig> for BrowserConfig {
-    fn from(cfg: &moltis_config::schema::BrowserConfig) -> Self {
+impl From<&chelix_config::schema::BrowserConfig> for BrowserConfig {
+    fn from(cfg: &chelix_config::schema::BrowserConfig) -> Self {
         Self {
             enabled: cfg.enabled,
             chrome_path: cfg.chrome_path.clone(),
@@ -579,8 +579,8 @@ impl From<&moltis_config::schema::BrowserConfig> for BrowserConfig {
             container_host: cfg.container_host.clone(),
             host_data_dir: None,
             browserless_api_version: match cfg.browserless_api_version {
-                moltis_config::schema::BrowserlessApiVersion::V1 => BrowserlessApiVersion::V1,
-                moltis_config::schema::BrowserlessApiVersion::V2 => BrowserlessApiVersion::V2,
+                chelix_config::schema::BrowserlessApiVersion::V1 => BrowserlessApiVersion::V1,
+                chelix_config::schema::BrowserlessApiVersion::V2 => BrowserlessApiVersion::V2,
             },
         }
     }

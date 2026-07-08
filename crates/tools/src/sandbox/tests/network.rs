@@ -3,7 +3,7 @@ use super::*;
 
 #[test]
 fn test_from_config_network_trusted_overrides_no_network() {
-    let cfg = moltis_config::schema::SandboxConfig {
+    let cfg = chelix_config::schema::SandboxConfig {
         no_network: true,
         network: "trusted".into(),
         ..Default::default()
@@ -14,7 +14,7 @@ fn test_from_config_network_trusted_overrides_no_network() {
 
 #[test]
 fn test_from_config_network_bypass_overrides_no_network() {
-    let cfg = moltis_config::schema::SandboxConfig {
+    let cfg = chelix_config::schema::SandboxConfig {
         no_network: true,
         network: "bypass".into(),
         ..Default::default()
@@ -25,7 +25,7 @@ fn test_from_config_network_bypass_overrides_no_network() {
 
 #[test]
 fn test_from_config_empty_network_defaults_to_trusted() {
-    let cfg = moltis_config::schema::SandboxConfig {
+    let cfg = chelix_config::schema::SandboxConfig {
         no_network: false,
         network: String::new(),
         ..Default::default()
@@ -36,7 +36,7 @@ fn test_from_config_empty_network_defaults_to_trusted() {
 
 #[test]
 fn test_from_config_no_network_true_empty_network_is_blocked() {
-    let cfg = moltis_config::schema::SandboxConfig {
+    let cfg = chelix_config::schema::SandboxConfig {
         no_network: true,
         network: String::new(),
         ..Default::default()
@@ -86,7 +86,7 @@ fn test_docker_proxy_command_env_args_trusted() {
     let args = docker.proxy_command_env_args();
     let expected_url = format!(
         "http://host.docker.internal:{}",
-        moltis_network_filter::DEFAULT_PROXY_PORT
+        chelix_network_filter::DEFAULT_PROXY_PORT
     );
     // Should contain -e pairs for HTTP_PROXY, http_proxy, HTTPS_PROXY, https_proxy,
     // NO_PROXY, no_proxy (6 keys x 2 args each = 12 args).
@@ -156,7 +156,7 @@ fn test_apple_container_proxy_prefix_trusted() {
     let proxy_url = format!(
         "http://{}:{}",
         gateway,
-        moltis_network_filter::DEFAULT_PROXY_PORT
+        chelix_network_filter::DEFAULT_PROXY_PORT
     );
     let mut prefix = String::new();
     let escaped_proxy = proxy_url.replace('\'', "'\\''");
@@ -169,6 +169,6 @@ fn test_apple_container_proxy_prefix_trusted() {
 
     assert!(prefix.contains("export HTTP_PROXY="));
     assert!(prefix.contains("export https_proxy="));
-    assert!(prefix.contains(&format!(":{}", moltis_network_filter::DEFAULT_PROXY_PORT)));
+    assert!(prefix.contains(&format!(":{}", chelix_network_filter::DEFAULT_PROXY_PORT)));
     assert!(prefix.contains("export NO_PROXY='localhost,127.0.0.1,::1'"));
 }

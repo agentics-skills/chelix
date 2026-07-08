@@ -1,4 +1,4 @@
-//! Metrics collection and export for moltis.
+//! Metrics collection and export for chelix.
 //!
 //! This crate provides a unified metrics interface using the `metrics` crate facade.
 //! When the `prometheus` feature is enabled, metrics are exported in Prometheus format.
@@ -7,7 +7,7 @@
 //! # Usage
 //!
 //! ```rust,ignore
-//! use moltis_metrics::{counter, gauge, histogram};
+//! use chelix_metrics::{counter, gauge, histogram};
 //!
 //! // Record metrics using the facade macros
 //! counter!("http_requests_total", "endpoint" => "/api/chat").increment(1);

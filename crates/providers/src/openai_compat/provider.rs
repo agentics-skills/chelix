@@ -6,7 +6,7 @@
 use std::collections::{HashMap, HashSet};
 
 use {
-    moltis_agents::model::{
+    chelix_agents::model::{
         ChatMessage, CompletionResponse, StreamEvent, ToolCall, Usage, UserContent,
         decode_tool_call_arguments_with_diagnostic, extract_tool_call_metadata,
     },
@@ -193,10 +193,10 @@ pub fn to_responses_input(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
                     UserContent::Multimodal(parts) => parts
                         .iter()
                         .map(|p| match p {
-                            moltis_agents::model::ContentPart::Text(t) => {
+                            chelix_agents::model::ContentPart::Text(t) => {
                                 serde_json::json!({"type": "input_text", "text": t})
                             },
-                            moltis_agents::model::ContentPart::Image { media_type, data } => {
+                            chelix_agents::model::ContentPart::Image { media_type, data } => {
                                 let data_uri = format!("data:{media_type};base64,{data}");
                                 serde_json::json!({
                                     "type": "input_image",

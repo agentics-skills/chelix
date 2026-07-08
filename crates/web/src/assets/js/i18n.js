@@ -1,5 +1,5 @@
 // E2E shim — proxies to bundled i18n module
-const M = (window.__moltis_modules || {})["i18n"] || {};
+const M = (window.__chelix_modules || {})["i18n"] || {};
 export default M;
 export const locale = M.locale;
 export const t = (...args) => M.t?.(...args);

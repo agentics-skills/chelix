@@ -3,7 +3,7 @@ use std::{collections::HashMap, pin::Pin};
 use futures::Stream;
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, external_agents as external_agent_metrics, histogram, labels};
+use chelix_metrics::{counter, external_agents as external_agent_metrics, histogram, labels};
 #[cfg(feature = "metrics")]
 use std::time::Instant;
 

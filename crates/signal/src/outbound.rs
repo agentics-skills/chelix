@@ -7,11 +7,11 @@ use std::{
 
 use {
     async_trait::async_trait,
-    moltis_channels::{
+    chelix_channels::{
         ChannelOutbound, ChannelStreamOutbound, Result as ChannelResult, StreamReceiver,
         plugin::StreamEvent,
     },
-    moltis_common::types::ReplyPayload,
+    chelix_common::types::ReplyPayload,
     serde_json::{Value, json},
 };
 
@@ -41,7 +41,7 @@ impl SignalOutbound {
     )> {
         let accounts = self.accounts.read().unwrap_or_else(|e| e.into_inner());
         let state = accounts.get(account_id).ok_or_else(|| {
-            moltis_channels::Error::unavailable(format!("signal account not found: {account_id}"))
+            chelix_channels::Error::unavailable(format!("signal account not found: {account_id}"))
         })?;
         let config = state
             .config
@@ -55,7 +55,7 @@ impl SignalOutbound {
 fn parse_target(raw: &str) -> ChannelResult<SignalTarget> {
     let mut value = raw.trim();
     if value.is_empty() {
-        return Err(moltis_channels::Error::invalid_input(
+        return Err(chelix_channels::Error::invalid_input(
             "Signal recipient is required",
         ));
     }
@@ -68,7 +68,7 @@ fn parse_target(raw: &str) -> ChannelResult<SignalTarget> {
         .then(|| value["group:".len()..].trim())
     {
         if group_id.is_empty() {
-            return Err(moltis_channels::Error::invalid_input(
+            return Err(chelix_channels::Error::invalid_input(
                 "Signal group ID is required",
             ));
         }
@@ -79,7 +79,7 @@ fn parse_target(raw: &str) -> ChannelResult<SignalTarget> {
         .then(|| value["username:".len()..].trim())
     {
         if username.is_empty() {
-            return Err(moltis_channels::Error::invalid_input(
+            return Err(chelix_channels::Error::invalid_input(
                 "Signal username is required",
             ));
         }
@@ -87,7 +87,7 @@ fn parse_target(raw: &str) -> ChannelResult<SignalTarget> {
     }
     if let Some(username) = lower.starts_with("u:").then(|| value["u:".len()..].trim()) {
         if username.is_empty() {
-            return Err(moltis_channels::Error::invalid_input(
+            return Err(chelix_channels::Error::invalid_input(
                 "Signal username is required",
             ));
         }
@@ -131,7 +131,7 @@ async fn send_text_once(
     let target = parse_target(to)?;
     let mut params = target_params(target);
     let Some(obj) = params.as_object_mut() else {
-        return Err(moltis_channels::Error::invalid_input(
+        return Err(chelix_channels::Error::invalid_input(
             "invalid Signal target parameters",
         ));
     };

@@ -7,7 +7,7 @@ mod tests {
     use {
         super::*,
         async_trait::async_trait,
-        moltis_common::hooks::{HookAction, HookEvent, HookHandler, HookPayload},
+        chelix_common::hooks::{HookAction, HookEvent, HookHandler, HookPayload},
     };
 
     struct RecordingHook {
@@ -29,7 +29,7 @@ mod tests {
             &self,
             _event: HookEvent,
             payload: &HookPayload,
-        ) -> moltis_common::error::Result<HookAction> {
+        ) -> chelix_common::error::Result<HookAction> {
             self.payloads.lock().unwrap().push(payload.clone());
             Ok(HookAction::Continue)
         }
@@ -942,7 +942,7 @@ mod tests {
     async fn sqlite_pool() -> sqlx::SqlitePool {
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
         // Projects table must exist before sessions (FK constraint).
-        moltis_projects::run_migrations(&pool).await.unwrap();
+        chelix_projects::run_migrations(&pool).await.unwrap();
         SqliteSessionMetadata::init(&pool).await.unwrap();
         pool
     }
@@ -967,12 +967,12 @@ mod tests {
             .set_sandbox_enabled("session:abc", Some(true))
             .await;
 
-        let mut router = SandboxRouter::new(moltis_tools::sandbox::SandboxConfig {
+        let mut router = SandboxRouter::new(chelix_tools::sandbox::SandboxConfig {
             backend: "docker".to_string(),
             ..Default::default()
         });
-        router.register_backend(Arc::new(moltis_tools::sandbox::RestrictedHostSandbox::new(
-            moltis_tools::sandbox::SandboxConfig::default(),
+        router.register_backend(Arc::new(chelix_tools::sandbox::RestrictedHostSandbox::new(
+            chelix_tools::sandbox::SandboxConfig::default(),
         )));
         let router = Arc::new(router);
         let service = LiveSessionService::new(store, Arc::clone(&metadata))
@@ -999,8 +999,8 @@ mod tests {
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
         let key = "telegram:bot-main:-100123";
         metadata.upsert(key, None).await.unwrap();
-        let binding_json = serde_json::to_string(&moltis_channels::ChannelReplyTarget {
-            channel_type: moltis_channels::ChannelType::Telegram,
+        let binding_json = serde_json::to_string(&chelix_channels::ChannelReplyTarget {
+            channel_type: chelix_channels::ChannelType::Telegram,
             account_id: "bot-main".to_string(),
             chat_id: "-100123".to_string(),
             message_id: Some("9".to_string()),
@@ -1673,14 +1673,14 @@ mod tests {
     }
 
     #[async_trait]
-    impl moltis_agents::memory_writer::MemoryWriter for MockMemoryRuntime {
+    impl chelix_agents::memory_writer::MemoryWriter for MockMemoryRuntime {
         async fn write_memory(
             &self,
             _file: &str,
             _content: &str,
             _append: bool,
-        ) -> anyhow::Result<moltis_agents::memory_writer::MemoryWriteResult> {
-            Ok(moltis_agents::memory_writer::MemoryWriteResult {
+        ) -> anyhow::Result<chelix_agents::memory_writer::MemoryWriteResult> {
+            Ok(chelix_agents::memory_writer::MemoryWriteResult {
                 location: String::new(),
                 bytes_written: 0,
                 checkpoint_id: None,
@@ -1689,7 +1689,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl moltis_memory::runtime::MemoryRuntime for MockMemoryRuntime {
+    impl chelix_memory::runtime::MemoryRuntime for MockMemoryRuntime {
         fn backend_name(&self) -> &'static str {
             "mock"
         }
@@ -1702,23 +1702,23 @@ mod tests {
             true
         }
 
-        fn citation_mode(&self) -> moltis_memory::config::CitationMode {
-            moltis_memory::config::CitationMode::Auto
+        fn citation_mode(&self) -> chelix_memory::config::CitationMode {
+            chelix_memory::config::CitationMode::Auto
         }
 
         fn llm_reranking_enabled(&self) -> bool {
             false
         }
 
-        async fn sync(&self) -> moltis_memory::error::Result<moltis_memory::manager::SyncReport> {
-            Ok(moltis_memory::manager::SyncReport::default())
+        async fn sync(&self) -> chelix_memory::error::Result<chelix_memory::manager::SyncReport> {
+            Ok(chelix_memory::manager::SyncReport::default())
         }
 
-        async fn sync_path(&self, _path: &Path) -> moltis_memory::error::Result<bool> {
+        async fn sync_path(&self, _path: &Path) -> chelix_memory::error::Result<bool> {
             Ok(false)
         }
 
-        async fn remove_path(&self, path: &Path) -> moltis_memory::error::Result<bool> {
+        async fn remove_path(&self, path: &Path) -> chelix_memory::error::Result<bool> {
             self.removed_paths.lock().unwrap().push(path.to_path_buf());
             Ok(true)
         }
@@ -1727,21 +1727,21 @@ mod tests {
             &self,
             _query: &str,
             _limit: usize,
-        ) -> moltis_memory::error::Result<Vec<moltis_memory::search::SearchResult>> {
+        ) -> chelix_memory::error::Result<Vec<chelix_memory::search::SearchResult>> {
             Ok(Vec::new())
         }
 
         async fn get_chunk(
             &self,
             _id: &str,
-        ) -> moltis_memory::error::Result<Option<moltis_memory::schema::ChunkRow>> {
+        ) -> chelix_memory::error::Result<Option<chelix_memory::schema::ChunkRow>> {
             Ok(None)
         }
 
         async fn status(
             &self,
-        ) -> moltis_memory::error::Result<moltis_memory::manager::MemoryStatus> {
-            Ok(moltis_memory::manager::MemoryStatus {
+        ) -> chelix_memory::error::Result<chelix_memory::manager::MemoryStatus> {
+            Ok(chelix_memory::manager::MemoryStatus {
                 total_files: 0,
                 total_chunks: 0,
                 embedding_model: "mock".to_string(),
@@ -1814,7 +1814,7 @@ mod tests {
             .await
             .unwrap();
 
-        let fs_state = moltis_tools::fs::new_fs_state(false);
+        let fs_state = chelix_tools::fs::new_fs_state(false);
         {
             let mut guard = fs_state
                 .lock()

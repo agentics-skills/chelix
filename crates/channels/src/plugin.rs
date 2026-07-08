@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use {
     async_trait::async_trait,
-    moltis_common::{hooks::ChannelBinding, types::ReplyPayload},
+    chelix_common::{hooks::ChannelBinding, types::ReplyPayload},
     tokio::sync::mpsc,
 };
 

@@ -1,6 +1,6 @@
 # Channels
 
-Moltis connects to messaging platforms through **channels**. Each channel type
+Chelix connects to messaging platforms through **channels**. Each channel type
 has a distinct inbound mode, determining how it receives messages, and a set of
 capabilities that control what features are available.
 
@@ -65,27 +65,27 @@ integrations (e.g. email, SMS).
 
 Channels can be configured in two places:
 
-- In `moltis.toml` under `[channels]`, for file-managed setups
-- In the web UI under **Settings -> Channels**, which stores channel accounts in the internal `channels` table inside `data_dir()/moltis.db`
+- In `chelix.toml` under `[channels]`, for file-managed setups
+- In the web UI under **Settings -> Channels**, which stores channel accounts in the internal `channels` table inside `data_dir()/chelix.db`
 
-The web UI does not write channel settings back into `moltis.toml`. It includes an advanced JSON config editor so channel-specific settings remain reachable even when a dedicated form field has not been added yet.
+The web UI does not write channel settings back into `chelix.toml`. It includes an advanced JSON config editor so channel-specific settings remain reachable even when a dedicated form field has not been added yet.
 
 The channel picker itself is controlled by `[channels].offered` in
-`moltis.toml`. If you edit that list by hand, reload the page so the web UI
+`chelix.toml`. If you edit that list by hand, reload the page so the web UI
 re-reads the current picker options.
 
 Channel configs stored through the web UI currently live as JSON records in the
-internal `channels` table in `data_dir()/moltis.db`. They are not currently
-wrapped by the Moltis vault, so treat local access to that database as access
+internal `channels` table in `data_dir()/chelix.db`. They are not currently
+wrapped by the Chelix vault, so treat local access to that database as access
 to the configured channel credentials.
 
 Some channel integrations also have platform-specific limits. For Matrix,
 encrypted chats require password auth. Access-token auth is only suitable for
-plain Matrix traffic because Moltis cannot import an existing device's private
+plain Matrix traffic because Chelix cannot import an existing device's private
 E2EE keys from an access token alone. See [Matrix](./matrix.md) for the full
 setup, ownership, verification, and troubleshooting flow.
 
-`moltis.toml` and the web UI are both loaded at startup. If the same `(channel_type, account_id)` exists in both, the `moltis.toml` entry wins.
+`chelix.toml` and the web UI are both loaded at startup. If the same `(channel_type, account_id)` exists in both, the `chelix.toml` entry wins.
 
 Manual file configuration looks like this:
 
@@ -124,17 +124,17 @@ For detailed configuration, see the per-channel pages:
 [Slack](slack.md), [Matrix](matrix.md), [WhatsApp](whatsapp.md),
 [Nostr](nostr.md), [Signal](signal.md).
 
-You can also use the web UI's **Channels** tab for guided setup with each platform. Web-added channels do not get written back into `moltis.toml`.
+You can also use the web UI's **Channels** tab for guided setup with each platform. Web-added channels do not get written back into `chelix.toml`.
 
 For Matrix specifically, the web UI now supports the full normal setup flow:
 
 - password auth is the default because it unlocks encrypted chats
-- dedicated bot accounts default to `moltis_owned` so Moltis can bootstrap cross-signing and recovery
+- dedicated bot accounts default to `chelix_owned` so Chelix can bootstrap cross-signing and recovery
 - older Matrix accounts that need one external approval expose that approval flow in the channel card instead of failing silently
 
 ## Proactive Outbound Messaging
 
-Agents are not limited to replying in the current chat. Moltis supports three
+Agents are not limited to replying in the current chat. Chelix supports three
 main outbound patterns:
 
 - **`send_message` tool** for direct proactive messages to any configured channel account/chat
@@ -152,7 +152,7 @@ Example `send_message` tool call:
 }
 ```
 
-`account_id` is the configured channel account name, either from `moltis.toml` or from a channel account stored through the web UI, and `to` is the destination chat, peer, or room identifier for that platform.
+`account_id` is the configured channel account name, either from `chelix.toml` or from a channel account stored through the web UI, and `to` is the destination chat, peer, or room identifier for that platform.
 
 Example `update_channel_settings` tool call:
 
@@ -168,7 +168,7 @@ Example `update_channel_settings` tool call:
 ```
 
 `update_channel_settings` intentionally supports a narrow patch surface. It is
-for non-secret channel settings only, not raw `moltis.toml` editing, token
+for non-secret channel settings only, not raw `chelix.toml` editing, token
 rotation, or arbitrary config mutation.
 
 ## Access Control

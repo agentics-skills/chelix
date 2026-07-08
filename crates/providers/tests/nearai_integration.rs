@@ -7,8 +7,8 @@
 
 use {
     futures::StreamExt,
-    moltis_agents::model::{ChatMessage, LlmProvider, StreamEvent},
-    moltis_providers::{nearai, openai::OpenAiProvider},
+    chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent},
+    chelix_providers::{nearai, openai::OpenAiProvider},
     secrecy::Secret,
 };
 

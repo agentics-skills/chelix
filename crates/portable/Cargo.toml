@@ -1,8 +1,8 @@
 [package]
-description       = "Import/export Moltis config, data, and databases as portable .tar.gz archives"
+description       = "Import/export Chelix config, data, and databases as portable .tar.gz archives"
 edition.workspace = true
 license.workspace = true
-name              = "moltis-portable"
+name              = "chelix-portable"
 version.workspace = true
 
 [dependencies]
@@ -19,7 +19,7 @@ tokio      = { workspace = true }
 tracing    = { workspace = true }
 walkdir    = { workspace = true }
 
-moltis-config = { workspace = true }
+chelix-config = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

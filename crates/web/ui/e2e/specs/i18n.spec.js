@@ -38,7 +38,7 @@ test.describe("i18n", () => {
 		expect(translated.save).toBe("Save");
 		expect(translated.cancel).toBe("Cancel");
 		expect(translated.errorTitle).toBe("Error");
-		expect(translated.pwaInstallTitle).toBe("Install moltis on your device");
+		expect(translated.pwaInstallTitle).toBe("Install chelix on your device");
 		expect(translated.sessionGreeting).toBe("Hello, Sam!");
 		// Default locale should be English (or start with "en").
 		expect(translated.locale).toMatch(/^en/);
@@ -62,7 +62,7 @@ test.describe("i18n", () => {
 			// The locale signal should already be set.
 			const current = i18n.locale.value;
 			// Verify localStorage reflects the detected locale.
-			const storedLocale = localStorage.getItem("moltis-locale");
+			const storedLocale = localStorage.getItem("chelix-locale");
 			return { current, storedLocale };
 		});
 		// On first load without explicit setting, localStorage may or may not be set.
@@ -78,7 +78,7 @@ test.describe("i18n", () => {
 			await i18n.setLocale("en");
 		});
 
-		const afterSet = await page.evaluate(() => localStorage.getItem("moltis-locale"));
+		const afterSet = await page.evaluate(() => localStorage.getItem("chelix-locale"));
 		expect(afterSet).toBe("en");
 
 		// Reload and verify locale persists.
@@ -92,7 +92,7 @@ test.describe("i18n", () => {
 			const i18n = await import(`${prefix}js/i18n.js`);
 			return {
 				locale: i18n.locale.value,
-				stored: localStorage.getItem("moltis-locale"),
+				stored: localStorage.getItem("chelix-locale"),
 			};
 		});
 		expect(afterReload.locale).toBe("en");
@@ -122,7 +122,7 @@ test.describe("i18n", () => {
 					const i18n = await import(`${prefix}js/i18n.js`);
 					return {
 						locale: i18n.locale.value,
-						stored: localStorage.getItem("moltis-locale"),
+						stored: localStorage.getItem("chelix-locale"),
 					};
 				}),
 			)
@@ -152,12 +152,12 @@ test.describe("i18n", () => {
 
 		await languageSelect.selectOption("en");
 		await applyButton.click();
-		await expect.poll(() => page.evaluate(() => localStorage.getItem("moltis-locale"))).toBe("en");
+		await expect.poll(() => page.evaluate(() => localStorage.getItem("chelix-locale"))).toBe("en");
 		await waitForWsConnected(page);
 
 		await languageSelect.selectOption("auto");
 		await applyButton.click();
-		await expect.poll(() => page.evaluate(() => localStorage.getItem("moltis-locale"))).toBe(null);
+		await expect.poll(() => page.evaluate(() => localStorage.getItem("chelix-locale"))).toBe(null);
 		await waitForWsConnected(page);
 
 		expect(pageErrors).toEqual([]);

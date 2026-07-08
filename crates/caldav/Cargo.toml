@@ -1,6 +1,6 @@
 [package]
 edition.workspace    = true
-name                 = "moltis-caldav"
+name                 = "chelix-caldav"
 repository.workspace = true
 version.workspace    = true
 
@@ -13,8 +13,8 @@ hyper-rustls  = { workspace = true }
 hyper-util    = { workspace = true }
 icalendar     = { workspace = true }
 libdav        = { workspace = true }
-moltis-agents = { workspace = true }
-moltis-config = { workspace = true }
+chelix-agents = { workspace = true }
+chelix-config = { workspace = true }
 secrecy       = { workspace = true }
 serde         = { workspace = true }
 serde_json    = { workspace = true }

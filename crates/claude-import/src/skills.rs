@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use {
-    moltis_import_core::{
+    chelix_import_core::{
         report::{CategoryReport, ImportCategory, ImportStatus},
         skills::{copy_skill_dirs, create_skill_from_command},
     },
@@ -129,7 +129,7 @@ fn sanitize_name(name: &str) -> String {
         .to_lowercase()
 }
 
-/// Import skills and commands from Claude Code into Moltis.
+/// Import skills and commands from Claude Code into Chelix.
 pub fn import_skills(detection: &ClaudeDetection, dest_skills_dir: &Path) -> CategoryReport {
     let skills = discover_skills(detection);
     let commands = discover_commands(detection);

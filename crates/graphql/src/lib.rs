@@ -1,4 +1,4 @@
-//! GraphQL API for Moltis.
+//! GraphQL API for Chelix.
 //!
 //! Provides a typed GraphQL schema that mirrors the RPC interface, exposing
 //! queries, mutations, and subscriptions for all gateway services. The schema
@@ -6,7 +6,7 @@
 //! WebSocket upgrade on GET).
 //!
 //! Resolvers call domain services directly through the `Services` bundle from
-//! `moltis-service-traits`, sharing the same code path as the RPC layer. No
+//! `chelix-service-traits`, sharing the same code path as the RPC layer. No
 //! string-based dispatch or RPC indirection is used.
 //!
 //! The gateway crate is responsible for building the HTTP handlers and wiring
@@ -21,7 +21,7 @@ pub mod schema;
 pub mod subscriptions;
 pub mod types;
 
-pub use schema::{MoltisSchema, build_schema};
+pub use schema::{ChelixSchema, build_schema};
 
 // ── Shared resolver helpers ─────────────────────────────────────────────────
 

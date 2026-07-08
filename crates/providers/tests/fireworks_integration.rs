@@ -12,8 +12,8 @@ use std::{collections::HashSet, time::Duration};
 
 use {
     futures::StreamExt,
-    moltis_agents::model::{ChatMessage, LlmProvider, StreamEvent, ToolCall},
-    moltis_providers::openai::OpenAiProvider,
+    chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent, ToolCall},
+    chelix_providers::openai::OpenAiProvider,
     secrecy::{ExposeSecret, Secret},
 };
 
@@ -61,7 +61,7 @@ fn make_named_provider(model: &str, provider_name: &str) -> OpenAiProvider {
     p
 }
 
-/// Tool schema in moltis-internal flat format.
+/// Tool schema in chelix-internal flat format.
 fn weather_tool() -> serde_json::Value {
     serde_json::json!({
         "name": "get_weather",

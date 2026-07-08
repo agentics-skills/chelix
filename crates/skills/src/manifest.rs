@@ -12,9 +12,9 @@ impl ManifestStore {
         Self { path }
     }
 
-    /// Default manifest path: `~/.moltis/skills-manifest.json`.
+    /// Default manifest path: `~/.chelix/skills-manifest.json`.
     pub fn default_path() -> Result<PathBuf> {
-        Ok(moltis_config::data_dir().join("skills-manifest.json"))
+        Ok(chelix_config::data_dir().join("skills-manifest.json"))
     }
 
     /// Load manifest from disk, returning a default if missing.

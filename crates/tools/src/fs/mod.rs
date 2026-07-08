@@ -4,7 +4,7 @@
 //! `execute_command`. They match Claude Code's tool schemas exactly so LLMs trained on
 //! those tools encounter the same shape of parameters and responses.
 //!
-//! See GH moltis-org/moltis#657 for context.
+//! See GH agentics-skills/chelix#657 for context.
 //!
 //! Phase 1 (this module) covers host-path execution only. Sandbox routing
 //! arrives in phase 2, UX polish (adaptive paging, edit recovery, re-read

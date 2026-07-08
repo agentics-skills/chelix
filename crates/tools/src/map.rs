@@ -12,7 +12,7 @@ use {
     async_trait::async_trait,
     base64::{Engine as _, engine::general_purpose::STANDARD as BASE64},
     image::{ImageFormat, RgbaImage, imageops},
-    moltis_agents::tool_registry::AgentTool,
+    chelix_agents::tool_registry::AgentTool,
     serde::Deserialize,
     tracing::{debug, warn},
 };
@@ -455,7 +455,7 @@ async fn fetch_tile(client: &reqwest::Client, url: &str) -> Option<RgbaImage> {
     debug!(url = %url, "fetching OSM tile");
     let resp = client
         .get(url)
-        .header("User-Agent", "moltis/0.3")
+        .header("User-Agent", "chelix/0.3")
         .timeout(std::time::Duration::from_secs(10))
         .send()
         .await

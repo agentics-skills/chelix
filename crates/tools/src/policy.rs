@@ -97,7 +97,7 @@ impl ToolPolicy {
 
 /// Build a `ToolPolicy` from a `ToolPolicyConfig`, expanding the optional
 /// `profile` field before applying explicit allow/deny.
-fn policy_from_config(cfg: &moltis_config::schema::ToolPolicyConfig) -> ToolPolicy {
+fn policy_from_config(cfg: &chelix_config::schema::ToolPolicyConfig) -> ToolPolicy {
     let mut p = if let Some(profile) = cfg.profile.as_deref()
         && !profile.is_empty()
     {
@@ -125,7 +125,7 @@ fn policy_from_config(cfg: &moltis_config::schema::ToolPolicyConfig) -> ToolPoli
 /// 5. Per-sender in group — `[channels.<type>.<account>.tools.groups.<chat_type>.by_sender.<id>]`
 /// 6. Sandbox overrides — `[tools.execute_command.sandbox.tools_policy]` (only when `context.sandboxed`)
 pub fn resolve_effective_policy(
-    config: &moltis_config::MoltisConfig,
+    config: &chelix_config::ChelixConfig,
     context: &PolicyContext,
 ) -> ToolPolicy {
     let mut effective = ToolPolicy::default();
@@ -164,13 +164,13 @@ pub fn resolve_effective_policy(
 
         // Translate MCP server policy into tool deny patterns.
         match &preset.mcp {
-            moltis_config::schema::PresetMcpPolicy::All => {},
-            moltis_config::schema::PresetMcpPolicy::Deny(servers) => {
+            chelix_config::schema::PresetMcpPolicy::All => {},
+            chelix_config::schema::PresetMcpPolicy::Deny(servers) => {
                 for server in servers {
                     deny.push(server.to_deny_pattern());
                 }
             },
-            moltis_config::schema::PresetMcpPolicy::Allow(_) => {
+            chelix_config::schema::PresetMcpPolicy::Allow(_) => {
                 // Allow-list enforcement is handled in apply_runtime_tool_filters
                 // (prompt.rs) where the full tool registry is available, not here
                 // in the policy layer — because the deny-wins-over-allow semantics
@@ -235,7 +235,7 @@ pub fn resolve_effective_policy(
 mod tests {
     use super::*;
 
-    fn stub_mcp_entry() -> moltis_config::schema::McpServerEntry {
+    fn stub_mcp_entry() -> chelix_config::schema::McpServerEntry {
         serde_json::from_value(serde_json::json!({})).expect("empty MCP entry")
     }
 
@@ -312,7 +312,7 @@ mod tests {
 
     #[test]
     fn test_resolve_global_policy() {
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.tools.policy.allow = vec!["execute_command".into()];
         cfg.tools.policy.deny = vec!["dangerous".into()];
 
@@ -328,13 +328,13 @@ mod tests {
 
     #[test]
     fn test_resolve_provider_deny_wins_across_layers() {
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.tools.policy.allow = vec!["*".into()];
 
         cfg.providers
             .providers
-            .insert("openai".into(), moltis_config::schema::ProviderEntry {
-                policy: Some(moltis_config::schema::ToolPolicyConfig {
+            .insert("openai".into(), chelix_config::schema::ProviderEntry {
+                policy: Some(chelix_config::schema::ToolPolicyConfig {
                     allow: Vec::new(),
                     deny: vec!["execute_command".into()],
                     profile: None,
@@ -354,12 +354,12 @@ mod tests {
 
     #[test]
     fn test_resolve_agent_preset_layer() {
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.tools.policy.allow = vec!["*".into()];
         cfg.agents
             .presets
-            .insert("researcher".into(), moltis_config::schema::AgentPreset {
-                tools: moltis_config::schema::PresetToolPolicy {
+            .insert("researcher".into(), chelix_config::schema::AgentPreset {
+                tools: chelix_config::schema::PresetToolPolicy {
                     allow: vec!["web_search".into(), "web_fetch".into()],
                     deny: Vec::new(),
                 },
@@ -378,7 +378,7 @@ mod tests {
 
     #[test]
     fn test_resolve_channel_group_policy() {
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.tools.policy.allow = vec!["*".into()];
 
         // Set up channel config with tool policy.
@@ -432,7 +432,7 @@ mod tests {
 
     #[test]
     fn test_resolve_channel_group_sender_override_allow() {
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         // Restrict global to web_search only.
         cfg.tools.policy.allow = vec!["web_search".into()];
 
@@ -468,7 +468,7 @@ mod tests {
 
     #[test]
     fn test_no_channel_context_skips_layers_4_5() {
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.tools.policy.allow = vec!["*".into()];
 
         // Even with channel config, no channel in context means layers 4-5 skipped.
@@ -494,12 +494,12 @@ mod tests {
 
     #[test]
     fn test_resolve_sandbox_layer_overrides() {
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.tools.policy.allow = vec!["*".into()];
 
         // Configure sandbox-specific tool policy that denies browser.
         cfg.tools.execute_command.sandbox.tools_policy =
-            Some(moltis_config::schema::ToolPolicyConfig {
+            Some(chelix_config::schema::ToolPolicyConfig {
                 allow: vec!["execute_command".into()],
                 deny: vec!["browser".into()],
                 profile: None,
@@ -529,12 +529,12 @@ mod tests {
 
     #[test]
     fn test_resolve_agent_mcp_deny_servers() {
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.tools.policy.allow = vec!["*".into()];
         cfg.agents
             .presets
-            .insert("restricted".into(), moltis_config::schema::AgentPreset {
-                mcp: moltis_config::schema::PresetMcpPolicy::Deny(vec!["home-assistant".into()]),
+            .insert("restricted".into(), chelix_config::schema::AgentPreset {
+                mcp: chelix_config::schema::PresetMcpPolicy::Deny(vec!["home-assistant".into()]),
                 ..Default::default()
             });
 
@@ -559,7 +559,7 @@ mod tests {
         // not in the policy deny layer, because deny-wins-over-allow can't
         // express "deny all MCP except these". The policy layer should NOT
         // add any MCP deny patterns for Allow mode.
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.tools.policy.allow = vec!["*".into()];
 
         cfg.mcp.servers.insert("github".into(), stub_mcp_entry());
@@ -569,8 +569,8 @@ mod tests {
 
         cfg.agents
             .presets
-            .insert("allow-only".into(), moltis_config::schema::AgentPreset {
-                mcp: moltis_config::schema::PresetMcpPolicy::Allow(vec!["github".into()]),
+            .insert("allow-only".into(), chelix_config::schema::AgentPreset {
+                mcp: chelix_config::schema::PresetMcpPolicy::Allow(vec!["github".into()]),
                 ..Default::default()
             });
 
@@ -588,12 +588,12 @@ mod tests {
 
     #[test]
     fn test_resolve_agent_mcp_all_is_default() {
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.tools.policy.allow = vec!["*".into()];
         cfg.agents
             .presets
-            .insert("open".into(), moltis_config::schema::AgentPreset {
-                mcp: moltis_config::schema::PresetMcpPolicy::All,
+            .insert("open".into(), chelix_config::schema::AgentPreset {
+                mcp: chelix_config::schema::PresetMcpPolicy::All,
                 ..Default::default()
             });
 
@@ -610,15 +610,15 @@ mod tests {
     fn test_resolve_agent_mcp_allow_empty_passes_policy() {
         // Empty allow-list enforcement happens in apply_runtime_tool_filters.
         // Policy layer should pass MCP tools through.
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.tools.policy.allow = vec!["*".into()];
 
         cfg.mcp.servers.insert("github".into(), stub_mcp_entry());
 
         cfg.agents
             .presets
-            .insert("locked".into(), moltis_config::schema::AgentPreset {
-                mcp: moltis_config::schema::PresetMcpPolicy::Allow(vec![]),
+            .insert("locked".into(), chelix_config::schema::AgentPreset {
+                mcp: chelix_config::schema::PresetMcpPolicy::Allow(vec![]),
                 ..Default::default()
             });
 
@@ -634,14 +634,14 @@ mod tests {
 
     #[test]
     fn test_profile_expanded_in_sender_and_provider_layers() {
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.tools.policy.allow = vec!["web_search".into()];
 
         // Layer 2: provider with profile = "full"
         cfg.providers
             .providers
-            .insert("openai".into(), moltis_config::schema::ProviderEntry {
-                policy: Some(moltis_config::schema::ToolPolicyConfig {
+            .insert("openai".into(), chelix_config::schema::ProviderEntry {
+                policy: Some(chelix_config::schema::ToolPolicyConfig {
                     allow: Vec::new(),
                     deny: Vec::new(),
                     profile: Some("full".into()),
@@ -660,7 +660,7 @@ mod tests {
         assert!(policy.is_allowed("web_search"));
 
         // Layer 5: sender with profile = "full" in a restricted group.
-        let mut cfg2 = moltis_config::MoltisConfig::default();
+        let mut cfg2 = chelix_config::ChelixConfig::default();
         cfg2.tools.policy.allow = vec!["web_search".into()];
         let account_config = serde_json::json!({
             "tools": {

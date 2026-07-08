@@ -321,7 +321,7 @@ async fn run_voice_scenario(
     }
 }
 
-/// Regression for https://github.com/moltis-org/moltis/issues/632:
+/// Regression for https://github.com/agentics-skills/chelix/issues/632:
 /// when STT returns an empty transcription and there is no caption
 /// fallback, the handler must send a direct user-facing reply and
 /// **must not** dispatch a placeholder string to the LLM (which would

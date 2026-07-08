@@ -1,17 +1,17 @@
 [Unit]
-Description=Moltis Courier – APNS push relay
+Description=Chelix Courier – APNS push relay
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=moltis-courier
-Group=moltis-courier
-EnvironmentFile=/etc/moltis-courier/env
-ExecStart=/usr/local/bin/moltis-courier \
+User=chelix-courier
+Group=chelix-courier
+EnvironmentFile=/etc/chelix-courier/env
+ExecStart=/usr/local/bin/chelix-courier \
     --bind 127.0.0.1 \
     --port {{ courier_port }} \
-    --key-path /etc/moltis-courier/AuthKey.p8 \
+    --key-path /etc/chelix-courier/AuthKey.p8 \
     --key-id ${COURIER_KEY_ID} \
     --team-id ${COURIER_TEAM_ID} \
     --bundle-id ${COURIER_BUNDLE_ID} \
@@ -24,7 +24,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadOnlyPaths=/etc/moltis-courier
+ReadOnlyPaths=/etc/chelix-courier
 
 [Install]
 WantedBy=multi-user.target

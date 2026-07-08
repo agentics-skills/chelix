@@ -67,7 +67,7 @@ pub async fn sync_in(
         "sync-in: uploading workspace"
     );
 
-    let tar_path = "/tmp/moltis-sync-in.tar.gz";
+    let tar_path = "/tmp/chelix-sync-in.tar.gz";
     let sandbox_workspace = shell_single_quote(sandbox_workspace);
     backend.write_file(id, tar_path, &tar_bytes).await?;
 
@@ -125,7 +125,7 @@ pub async fn sync_out(
     );
 
     // Create tarball in sandbox.
-    let tar_path = "/tmp/moltis-sync-out.tar.gz";
+    let tar_path = "/tmp/chelix-sync-out.tar.gz";
     let tar_cmd = format!("tar -czf {tar_path} -C {sandbox_workspace_shell} .");
     let tar_result = backend.run_command(id, &tar_cmd, &opts).await?;
     if tar_result.exit_code != 0 {
@@ -198,7 +198,7 @@ pub fn resolve_sync_workspace(
     }
     // Fallback: dedicated sync directory for isolated backends.
     Some(
-        moltis_config::data_dir()
+        chelix_config::data_dir()
             .join("sandbox")
             .join("sync")
             .join(sanitize_path_component(&id.key)),

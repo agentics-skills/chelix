@@ -3,7 +3,7 @@ use super::*;
 
 // ── ReadSkillTool ───────────────────────────────────────────────────────
 
-use moltis_skills::{discover::FsSkillDiscoverer, types::SkillSource};
+use chelix_skills::{discover::FsSkillDiscoverer, types::SkillSource};
 
 /// Seed a personal-source skill at `<root>/skills/<name>/SKILL.md` with a
 /// known frontmatter + body. Returns the skill directory.
@@ -247,7 +247,7 @@ async fn test_read_skill_warns_on_injection_patterns() {
     );
 }
 
-// ── ReadSkillTool robustness (moltis-u3f) ──────────────────────────────
+// ── ReadSkillTool robustness (chelix-u3f) ──────────────────────────────
 
 /// Helper: seed a personal skill whose SKILL.md body is written verbatim
 /// between the frontmatter and EOF. Lets individual tests include
@@ -726,7 +726,7 @@ async fn test_read_skill_multi_source_resolves_by_name() {
     // right body.
     let tmp = tempfile::tempdir().unwrap();
     // Seed a project-scoped skill (different directory).
-    let project_dir = tmp.path().join(".moltis/skills");
+    let project_dir = tmp.path().join(".chelix/skills");
     std::fs::create_dir_all(project_dir.join("shared")).unwrap();
     std::fs::write(
         project_dir.join("shared/SKILL.md"),
@@ -884,7 +884,7 @@ async fn test_read_skill_plugin_as_file_rejects_sidecar_request() {
     std::fs::write(&plugin_md, "# Plugin body\n").unwrap();
 
     let discoverer: Arc<dyn SkillDiscoverer> = Arc::new(StaticDiscoverer::new(vec![
-        moltis_skills::types::SkillMetadata {
+        chelix_skills::types::SkillMetadata {
             name: "demo".into(),
             description: "stub".into(),
             path: plugin_md,
@@ -918,7 +918,7 @@ async fn test_read_skill_uses_shared_sidecar_subdirs_constant() {
     // same `SIDECAR_SUBDIRS` list the skills crate exports. This
     // catches any future divergence between the prompt's advertised
     // subdirs and the walker's actual coverage.
-    assert_eq!(SIDECAR_SUBDIRS, moltis_skills::SIDECAR_SUBDIRS);
+    assert_eq!(SIDECAR_SUBDIRS, chelix_skills::SIDECAR_SUBDIRS);
 }
 
 #[tokio::test]
@@ -938,7 +938,7 @@ async fn test_read_skill_plugin_md_strips_frontmatter_from_body() {
     .unwrap();
 
     let discoverer: Arc<dyn SkillDiscoverer> = Arc::new(StaticDiscoverer::new(vec![
-        moltis_skills::types::SkillMetadata {
+        chelix_skills::types::SkillMetadata {
             name: "demo-plugin".into(),
             description: "stub description".into(),
             path: plugin_md.clone(),
@@ -971,7 +971,7 @@ async fn test_read_skill_plugin_md_without_frontmatter_is_returned_verbatim() {
     std::fs::write(&plugin_md, "# Plain plugin body\n\nNo frontmatter.\n").unwrap();
 
     let discoverer: Arc<dyn SkillDiscoverer> = Arc::new(StaticDiscoverer::new(vec![
-        moltis_skills::types::SkillMetadata {
+        chelix_skills::types::SkillMetadata {
             name: "plain-plugin".into(),
             description: "no frontmatter".into(),
             path: plugin_md,
@@ -1023,7 +1023,7 @@ async fn test_read_skill_plugin_md_rejects_oversized_body() {
     std::fs::write(&plugin_md, "x".repeat(MAX_SKILL_BODY_BYTES + 1)).unwrap();
 
     let discoverer: Arc<dyn SkillDiscoverer> = Arc::new(StaticDiscoverer::new(vec![
-        moltis_skills::types::SkillMetadata {
+        chelix_skills::types::SkillMetadata {
             name: "huge-plugin".into(),
             description: "big".into(),
             path: plugin_md,
@@ -1067,7 +1067,7 @@ async fn test_read_skill_primary_rejects_symlinked_skill_directory() {
     .unwrap();
 
     let discoverer: Arc<dyn SkillDiscoverer> = Arc::new(StaticDiscoverer::new(vec![
-        moltis_skills::types::SkillMetadata {
+        chelix_skills::types::SkillMetadata {
             name: "evil".into(),
             description: "trap".into(),
             path: tmp.path().join("skills/evil"),
@@ -1122,7 +1122,7 @@ async fn test_read_skill_sidecar_rejects_symlinked_skill_directory() {
     // (this mirrors what a real-world discoverer would do if someone
     // symlinked a skill into place).
     let discoverer: Arc<dyn SkillDiscoverer> = Arc::new(StaticDiscoverer::new(vec![
-        moltis_skills::types::SkillMetadata {
+        chelix_skills::types::SkillMetadata {
             name: "evil".into(),
             description: "trap".into(),
             path: tmp.path().join("skills/evil"),
@@ -1151,7 +1151,7 @@ async fn test_read_skill_sidecar_rejects_symlinked_skill_directory() {
 #[cfg(feature = "bundled-skills")]
 #[tokio::test]
 async fn test_read_bundled_skill_with_scripts_includes_skill_dir() {
-    use moltis_skills::bundled::BundledSkillStore;
+    use chelix_skills::bundled::BundledSkillStore;
 
     let tmp = tempfile::tempdir().unwrap();
     let store = Arc::new(BundledSkillStore::with_materialize_dir(
@@ -1183,7 +1183,7 @@ async fn test_read_bundled_skill_with_scripts_includes_skill_dir() {
 #[cfg(feature = "bundled-skills")]
 #[tokio::test]
 async fn test_read_bundled_skill_without_scripts_omits_skill_dir() {
-    use moltis_skills::bundled::BundledSkillStore;
+    use chelix_skills::bundled::BundledSkillStore;
 
     let tmp = tempfile::tempdir().unwrap();
     let store = Arc::new(BundledSkillStore::with_materialize_dir(
@@ -1213,11 +1213,11 @@ async fn test_read_bundled_skill_without_scripts_omits_skill_dir() {
 /// plugin/symlink tests construct scenarios that don't match the
 /// `FsSkillDiscoverer`'s directory-walking assumptions.
 struct StaticDiscoverer {
-    skills: Vec<moltis_skills::types::SkillMetadata>,
+    skills: Vec<chelix_skills::types::SkillMetadata>,
 }
 
 impl StaticDiscoverer {
-    fn new(skills: Vec<moltis_skills::types::SkillMetadata>) -> Self {
+    fn new(skills: Vec<chelix_skills::types::SkillMetadata>) -> Self {
         Self { skills }
     }
 }
@@ -1226,7 +1226,7 @@ impl StaticDiscoverer {
 impl SkillDiscoverer for StaticDiscoverer {
     async fn discover(
         &self,
-    ) -> moltis_skills::error::Result<Vec<moltis_skills::types::SkillMetadata>> {
+    ) -> chelix_skills::error::Result<Vec<chelix_skills::types::SkillMetadata>> {
         Ok(self.skills.clone())
     }
 }

@@ -260,7 +260,7 @@ function SummaryStep({ onBack, onFinish }: { onBack: () => void; onFinish: () =>
 		);
 	}
 
-	const activeModel = localStorage.getItem("moltis-model");
+	const activeModel = localStorage.getItem("chelix-model");
 	const configuredProviders = data.providers.filter((p) => p.configured);
 
 	return (

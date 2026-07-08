@@ -42,7 +42,7 @@ impl BundledSkillStore {
     #[must_use]
     pub fn new() -> Self {
         let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/assets");
-        let materialize_dir = moltis_config::data_dir().join("bundled-skills");
+        let materialize_dir = chelix_config::data_dir().join("bundled-skills");
         let source = if cargo_dir.is_dir() {
             tracing::debug!(path = %cargo_dir.display(), "bundled skills: using filesystem (dev mode)");
             AssetSource::Filesystem(cargo_dir)
@@ -58,7 +58,7 @@ impl BundledSkillStore {
 
     /// Create a store with a custom materialization directory (for tests).
     ///
-    /// Avoids calling [`data_dir()`](moltis_config::data_dir) so tests
+    /// Avoids calling [`data_dir()`](chelix_config::data_dir) so tests
     /// do not trigger side effects from the global config.
     #[must_use]
     pub fn with_materialize_dir(materialize_dir: PathBuf) -> Self {
@@ -517,7 +517,7 @@ mod tests {
         let skills = store().discover();
         assert!(
             skills.iter().all(|skill| skill.name != "mcporter"),
-            "Moltis has native MCP tools; mcporter must not be bundled by default"
+            "Chelix has native MCP tools; mcporter must not be bundled by default"
         );
     }
 
@@ -613,7 +613,7 @@ mod tests {
         // All skills should come from one of our vetted sources.
         for source in &sources {
             assert!(
-                source == "hermes-agent" || source == "openclaw" || source == "moltis",
+                source == "hermes-agent" || source == "openclaw" || source == "chelix",
                 "unexpected origin source: '{}'",
                 source
             );
@@ -810,13 +810,13 @@ mod tests {
     }
 
     #[test]
-    fn webhook_subscriptions_is_moltis_native() {
+    fn webhook_subscriptions_is_chelix_native() {
         let s = store();
         let body = s.read_skill("webhook-subscriptions").expect("should exist");
-        // The rewritten skill should reference Moltis RPC, not Hermes CLI.
+        // The rewritten skill should reference Chelix RPC, not Hermes CLI.
         assert!(
             body.contains("webhooks.create"),
-            "webhook skill should reference Moltis RPC API"
+            "webhook skill should reference Chelix RPC API"
         );
         assert!(
             !body.contains("hermes webhook"),

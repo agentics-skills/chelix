@@ -10,7 +10,7 @@ use {
         routing::{get, post},
     },
     chrono::Utc,
-    moltis_gateway::push::PushSubscription,
+    chelix_gateway::push::PushSubscription,
     serde::{Deserialize, Serialize},
     std::net::SocketAddr,
 };
@@ -145,11 +145,11 @@ async fn subscribe_handler(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Broadcast subscription change
-    moltis_gateway::broadcast::broadcast(
+    chelix_gateway::broadcast::broadcast(
         &state.gateway,
         "push.subscriptions",
         serde_json::json!({"action": "added"}),
-        moltis_gateway::broadcast::BroadcastOpts::default(),
+        chelix_gateway::broadcast::BroadcastOpts::default(),
     )
     .await;
 
@@ -171,11 +171,11 @@ async fn unsubscribe_handler(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Broadcast subscription change
-    moltis_gateway::broadcast::broadcast(
+    chelix_gateway::broadcast::broadcast(
         &state.gateway,
         "push.subscriptions",
         serde_json::json!({"action": "removed"}),
-        moltis_gateway::broadcast::BroadcastOpts::default(),
+        chelix_gateway::broadcast::BroadcastOpts::default(),
     )
     .await;
 

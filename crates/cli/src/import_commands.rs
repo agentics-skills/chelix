@@ -103,7 +103,7 @@ fn detect_claude(
 ) -> bool {
     #[cfg(feature = "claude-import")]
     {
-        let Some(detection) = moltis_claude_import::detect::detect() else {
+        let Some(detection) = chelix_claude_import::detect::detect() else {
             if !json_output {
                 println!("Claude Code: not detected");
             }
@@ -111,8 +111,8 @@ fn detect_claude(
             return false;
         };
 
-        let skills = moltis_claude_import::skills::discover_skills(&detection);
-        let commands = moltis_claude_import::skills::discover_commands(&detection);
+        let skills = chelix_claude_import::skills::discover_skills(&detection);
+        let commands = chelix_claude_import::skills::discover_commands(&detection);
 
         if json_output {
             results.insert(
@@ -163,7 +163,7 @@ fn detect_codex(
 ) -> bool {
     #[cfg(feature = "codex-import")]
     {
-        let Some(detection) = moltis_codex_import::detect::detect() else {
+        let Some(detection) = chelix_codex_import::detect::detect() else {
             if !json_output {
                 println!("Codex CLI: not detected");
             }
@@ -171,7 +171,7 @@ fn detect_codex(
             return false;
         };
 
-        let mcp_count = moltis_codex_import::mcp_servers::count_mcp_servers(&detection);
+        let mcp_count = chelix_codex_import::mcp_servers::count_mcp_servers(&detection);
 
         if json_output {
             results.insert(
@@ -212,7 +212,7 @@ fn handle_import_all(
         return handle_detect(source, json_output);
     }
 
-    let data_dir = moltis_config::data_dir();
+    let data_dir = chelix_config::data_dir();
 
     let mut all_results = serde_json::Map::new();
 
@@ -242,7 +242,7 @@ fn import_claude_all(
 ) -> anyhow::Result<()> {
     #[cfg(feature = "claude-import")]
     {
-        let Some(detection) = moltis_claude_import::detect::detect() else {
+        let Some(detection) = chelix_claude_import::detect::detect() else {
             if !json_output {
                 println!("Claude Code: not detected, skipping");
             }
@@ -257,9 +257,9 @@ fn import_claude_all(
         let skills_dir = data_dir.join("skills");
 
         let categories = vec![
-            moltis_claude_import::mcp_servers::import_mcp_servers(&detection, &mcp_path),
-            moltis_claude_import::skills::import_skills(&detection, &skills_dir),
-            moltis_claude_import::memory::import_memory(&detection, data_dir),
+            chelix_claude_import::mcp_servers::import_mcp_servers(&detection, &mcp_path),
+            chelix_claude_import::skills::import_skills(&detection, &skills_dir),
+            chelix_claude_import::memory::import_memory(&detection, data_dir),
         ];
 
         let total: usize = categories.iter().map(|c| c.items_imported).sum();
@@ -287,7 +287,7 @@ fn import_codex_all(
 ) -> anyhow::Result<()> {
     #[cfg(feature = "codex-import")]
     {
-        let Some(detection) = moltis_codex_import::detect::detect() else {
+        let Some(detection) = chelix_codex_import::detect::detect() else {
             if !json_output {
                 println!("Codex CLI: not detected, skipping");
             }
@@ -304,8 +304,8 @@ fn import_codex_all(
         let mcp_path = data_dir.join("mcp-servers.json");
 
         let categories = vec![
-            moltis_codex_import::mcp_servers::import_mcp_servers(&detection, &mcp_path),
-            moltis_codex_import::memory::import_memory(&detection, data_dir),
+            chelix_codex_import::mcp_servers::import_mcp_servers(&detection, &mcp_path),
+            chelix_codex_import::memory::import_memory(&detection, data_dir),
         ];
 
         let total: usize = categories.iter().map(|c| c.items_imported).sum();
@@ -337,7 +337,7 @@ fn handle_import_select(
         return handle_detect(Some(source), json_output);
     }
 
-    let data_dir = moltis_config::data_dir();
+    let data_dir = chelix_config::data_dir();
 
     match source {
         ImportSource::Claude => import_claude_select(categories, &data_dir, json_output),
@@ -353,7 +353,7 @@ fn import_claude_select(
 ) -> anyhow::Result<()> {
     #[cfg(feature = "claude-import")]
     {
-        let Some(detection) = moltis_claude_import::detect::detect() else {
+        let Some(detection) = chelix_claude_import::detect::detect() else {
             anyhow::bail!("No Claude Code installation found");
         };
 
@@ -366,18 +366,18 @@ fn import_claude_select(
         for cat in &cats {
             match cat.as_str() {
                 "mcp_servers" | "mcp-servers" | "mcp" => {
-                    reports.push(moltis_claude_import::mcp_servers::import_mcp_servers(
+                    reports.push(chelix_claude_import::mcp_servers::import_mcp_servers(
                         &detection, &mcp_path,
                     ));
                 },
                 "skills" | "commands" => {
-                    reports.push(moltis_claude_import::skills::import_skills(
+                    reports.push(chelix_claude_import::skills::import_skills(
                         &detection,
                         &skills_dir,
                     ));
                 },
                 "memory" => {
-                    reports.push(moltis_claude_import::memory::import_memory(
+                    reports.push(chelix_claude_import::memory::import_memory(
                         &detection, data_dir,
                     ));
                 },
@@ -410,7 +410,7 @@ fn import_codex_select(
 ) -> anyhow::Result<()> {
     #[cfg(feature = "codex-import")]
     {
-        let Some(detection) = moltis_codex_import::detect::detect() else {
+        let Some(detection) = chelix_codex_import::detect::detect() else {
             anyhow::bail!("No Codex CLI installation found");
         };
 
@@ -421,12 +421,12 @@ fn import_codex_select(
         for cat in &cats {
             match cat.as_str() {
                 "mcp_servers" | "mcp-servers" | "mcp" => {
-                    reports.push(moltis_codex_import::mcp_servers::import_mcp_servers(
+                    reports.push(chelix_codex_import::mcp_servers::import_mcp_servers(
                         &detection, &mcp_path,
                     ));
                 },
                 "memory" => {
-                    reports.push(moltis_codex_import::memory::import_memory(
+                    reports.push(chelix_codex_import::memory::import_memory(
                         &detection, data_dir,
                     ));
                 },
@@ -503,23 +503,23 @@ trait AsReport {
     fn as_report(&self) -> (&str, &str, usize, usize, usize, &[String], &[String]);
 }
 
-impl AsReport for moltis_import_core::report::CategoryReport {
+impl AsReport for chelix_import_core::report::CategoryReport {
     fn as_report(&self) -> (&str, &str, usize, usize, usize, &[String], &[String]) {
         let status = match self.status {
-            moltis_import_core::report::ImportStatus::Success => "success",
-            moltis_import_core::report::ImportStatus::Partial => "partial",
-            moltis_import_core::report::ImportStatus::Skipped => "skipped",
-            moltis_import_core::report::ImportStatus::Failed => "failed",
+            chelix_import_core::report::ImportStatus::Success => "success",
+            chelix_import_core::report::ImportStatus::Partial => "partial",
+            chelix_import_core::report::ImportStatus::Skipped => "skipped",
+            chelix_import_core::report::ImportStatus::Failed => "failed",
         };
         let name = match self.category {
-            moltis_import_core::report::ImportCategory::Identity => "Identity",
-            moltis_import_core::report::ImportCategory::Providers => "Providers",
-            moltis_import_core::report::ImportCategory::Skills => "Skills",
-            moltis_import_core::report::ImportCategory::Memory => "Memory",
-            moltis_import_core::report::ImportCategory::Channels => "Channels",
-            moltis_import_core::report::ImportCategory::Sessions => "Sessions",
-            moltis_import_core::report::ImportCategory::McpServers => "MCP Servers",
-            moltis_import_core::report::ImportCategory::WorkspaceFiles => "Workspace Files",
+            chelix_import_core::report::ImportCategory::Identity => "Identity",
+            chelix_import_core::report::ImportCategory::Providers => "Providers",
+            chelix_import_core::report::ImportCategory::Skills => "Skills",
+            chelix_import_core::report::ImportCategory::Memory => "Memory",
+            chelix_import_core::report::ImportCategory::Channels => "Channels",
+            chelix_import_core::report::ImportCategory::Sessions => "Sessions",
+            chelix_import_core::report::ImportCategory::McpServers => "MCP Servers",
+            chelix_import_core::report::ImportCategory::WorkspaceFiles => "Workspace Files",
         };
         (
             name,

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use {async_trait::async_trait, serde_json::Value, tracing::warn};
 
-use moltis_projects::{
+use chelix_projects::{
     ProjectStore,
     complete::complete_path,
     context::load_context_files,
@@ -38,7 +38,7 @@ impl ProjectService for LiveProjectService {
     }
 
     async fn upsert(&self, params: Value) -> ServiceResult {
-        let project: moltis_projects::Project = serde_json::from_value(params)?;
+        let project: chelix_projects::Project = serde_json::from_value(params)?;
         self.store
             .upsert(project.clone())
             .await

@@ -1,7 +1,7 @@
 //! Voice service implementations for TTS and STT.
 //!
 //! This module provides concrete implementations of the `TtsService` and
-//! `SttService` traits using the moltis-voice crate's providers.
+//! `SttService` traits using the chelix-voice crate's providers.
 
 #[cfg(feature = "voice")]
 mod stt_service;
@@ -13,26 +13,26 @@ pub use stt_service::{LiveSttService, SttServiceConfig};
 #[cfg(feature = "voice")]
 pub use tts_service::LiveTtsService;
 
-// `SttService` trait and `NoopSttService` are defined in `moltis-service-traits`
+// `SttService` trait and `NoopSttService` are defined in `chelix-service-traits`
 // and re-exported via `crate::services::*`.
 pub use crate::services::{NoopSttService, SttService};
 
 #[cfg(feature = "voice")]
 use secrecy::Secret;
 
-// TTS/STT provider IDs are defined once in moltis-config (VoiceTtsProvider,
-// VoiceSttProvider) and re-exported through moltis-voice as TtsProviderId /
+// TTS/STT provider IDs are defined once in chelix-config (VoiceTtsProvider,
+// VoiceSttProvider) and re-exported through chelix-voice as TtsProviderId /
 // SttProviderId. Same type everywhere — no conversion needed.
 
 /// Load config with voice API keys merged from the credential store.
 ///
-/// Voice API keys are stored in the [`KeyStore`] (not `moltis.toml`) so they
+/// Voice API keys are stored in the [`KeyStore`] (not `chelix.toml`) so they
 /// benefit from vault encryption when enabled.  This function loads the TOML
 /// config and overlays any voice-specific keys found in the store, giving the
 /// store priority over legacy TOML values.
 #[cfg(feature = "voice")]
-pub(crate) fn load_voice_config() -> moltis_config::MoltisConfig {
-    let mut cfg = moltis_config::discover_and_load();
+pub(crate) fn load_voice_config() -> chelix_config::ChelixConfig {
+    let mut cfg = chelix_config::discover_and_load();
     merge_voice_keys(&mut cfg);
     cfg
 }
@@ -42,7 +42,7 @@ pub(crate) fn load_voice_config() -> moltis_config::MoltisConfig {
 /// Keys in the store take precedence over those in the TOML config.
 /// Shared keys (ElevenLabs, Google) are applied to both TTS and STT sections.
 #[cfg(feature = "voice")]
-pub(crate) fn merge_voice_keys(cfg: &mut moltis_config::MoltisConfig) {
+pub(crate) fn merge_voice_keys(cfg: &mut chelix_config::ChelixConfig) {
     let store = crate::provider_setup::KeyStore::new();
 
     // ElevenLabs (shared TTS + STT)
@@ -107,14 +107,14 @@ pub(crate) fn voice_key_store_name(provider: &str) -> String {
     }
 }
 
-/// One-time migration: move voice API keys from `moltis.toml` into the
+/// One-time migration: move voice API keys from `chelix.toml` into the
 /// [`KeyStore`] and clear them from the config file.
 ///
 /// Called once at gateway startup.  If a voice key already exists in the
 /// store the TOML value is ignored (store wins).  After migration the
 /// TOML file no longer contains voice secrets.
 #[cfg(feature = "voice")]
-pub(crate) fn migrate_voice_keys_to_key_store(config: &moltis_config::MoltisConfig) {
+pub(crate) fn migrate_voice_keys_to_key_store(config: &chelix_config::ChelixConfig) {
     use secrecy::ExposeSecret;
 
     let store = crate::provider_setup::KeyStore::new();
@@ -181,7 +181,7 @@ pub(crate) fn migrate_voice_keys_to_key_store(config: &moltis_config::MoltisConf
     }
 
     // Clear the TOML entries so secrets don't linger in the config file.
-    if let Err(e) = moltis_config::update_config(|cfg| {
+    if let Err(e) = chelix_config::update_config(|cfg| {
         for key in &migrated {
             match *key {
                 "voice-elevenlabs" => {
@@ -216,7 +216,7 @@ pub(crate) fn migrate_voice_keys_to_key_store(config: &moltis_config::MoltisConf
         tracing::info!(
             count = migrated.len(),
             keys = ?migrated,
-            "migrated voice API keys from moltis.toml to credential store"
+            "migrated voice API keys from chelix.toml to credential store"
         );
     }
 }
@@ -226,7 +226,7 @@ pub(crate) fn migrate_voice_keys_to_key_store(config: &moltis_config::MoltisConf
 #[cfg(feature = "voice")]
 pub(crate) fn resolve_openai_key(
     voice_key: Option<&Secret<String>>,
-    cfg: &moltis_config::MoltisConfig,
+    cfg: &chelix_config::ChelixConfig,
 ) -> Option<Secret<String>> {
     voice_key
         .cloned()
@@ -236,13 +236,13 @@ pub(crate) fn resolve_openai_key(
 
 #[cfg(feature = "voice")]
 pub(crate) fn resolve_openai_provider_base_url(
-    cfg: &moltis_config::MoltisConfig,
+    cfg: &chelix_config::ChelixConfig,
 ) -> Option<String> {
     cfg.providers.get("openai").and_then(|p| p.base_url.clone())
 }
 
 #[cfg(feature = "voice")]
-pub(crate) fn resolve_openai_tts_base_url(cfg: &moltis_config::MoltisConfig) -> Option<String> {
+pub(crate) fn resolve_openai_tts_base_url(cfg: &chelix_config::ChelixConfig) -> Option<String> {
     cfg.voice
         .tts
         .openai
@@ -252,7 +252,7 @@ pub(crate) fn resolve_openai_tts_base_url(cfg: &moltis_config::MoltisConfig) -> 
 }
 
 #[cfg(feature = "voice")]
-pub(crate) fn resolve_openai_whisper_base_url(cfg: &moltis_config::MoltisConfig) -> Option<String> {
+pub(crate) fn resolve_openai_whisper_base_url(cfg: &chelix_config::ChelixConfig) -> Option<String> {
     cfg.voice
         .stt
         .whisper
@@ -279,10 +279,10 @@ mod tests {
                 .unwrap_or_else(|error| panic!("config tempdir should be created: {error}"));
             let data_dir = tempfile::tempdir()
                 .unwrap_or_else(|error| panic!("data tempdir should be created: {error}"));
-            std::fs::write(config_dir.path().join("moltis.toml"), config_toml)
+            std::fs::write(config_dir.path().join("chelix.toml"), config_toml)
                 .unwrap_or_else(|error| panic!("config should be written: {error}"));
-            moltis_config::set_config_dir(config_dir.path().to_path_buf());
-            moltis_config::set_data_dir(data_dir.path().to_path_buf());
+            chelix_config::set_config_dir(config_dir.path().to_path_buf());
+            chelix_config::set_data_dir(data_dir.path().to_path_buf());
             Self {
                 _lock: lock,
                 _config_dir: config_dir,
@@ -293,19 +293,19 @@ mod tests {
 
     impl Drop for VoiceConfigTestGuard {
         fn drop(&mut self) {
-            moltis_config::clear_config_dir();
-            moltis_config::clear_data_dir();
+            chelix_config::clear_config_dir();
+            chelix_config::clear_data_dir();
         }
     }
 
     #[test]
     fn test_resolve_openai_key_prefers_voice_key_over_llm_provider_key() {
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.providers.providers.insert(
             "openai".to_string(),
-            moltis_config::schema::ProviderEntry {
+            chelix_config::schema::ProviderEntry {
                 api_key: Some(Secret::new("llm-openai-key".to_string())),
-                ..moltis_config::schema::ProviderEntry::default()
+                ..chelix_config::schema::ProviderEntry::default()
             },
         );
 
@@ -320,12 +320,12 @@ mod tests {
             return;
         }
 
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.providers.providers.insert(
             "openai".to_string(),
-            moltis_config::schema::ProviderEntry {
+            chelix_config::schema::ProviderEntry {
                 api_key: Some(Secret::new("llm-openai-key".to_string())),
-                ..moltis_config::schema::ProviderEntry::default()
+                ..chelix_config::schema::ProviderEntry::default()
             },
         );
 
@@ -336,13 +336,13 @@ mod tests {
 
     #[test]
     fn test_resolve_openai_tts_base_url_prefers_voice_specific_value() {
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.voice.tts.openai.base_url = Some("http://127.0.0.1:8003".to_string());
         cfg.providers.providers.insert(
             "openai".to_string(),
-            moltis_config::schema::ProviderEntry {
+            chelix_config::schema::ProviderEntry {
                 base_url: Some("http://127.0.0.1:8001".to_string()),
-                ..moltis_config::schema::ProviderEntry::default()
+                ..chelix_config::schema::ProviderEntry::default()
             },
         );
 
@@ -354,12 +354,12 @@ mod tests {
 
     #[test]
     fn test_resolve_openai_tts_base_url_falls_back_to_provider_value() {
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.providers.providers.insert(
             "openai".to_string(),
-            moltis_config::schema::ProviderEntry {
+            chelix_config::schema::ProviderEntry {
                 base_url: Some("http://127.0.0.1:8001".to_string()),
-                ..moltis_config::schema::ProviderEntry::default()
+                ..chelix_config::schema::ProviderEntry::default()
             },
         );
 
@@ -371,13 +371,13 @@ mod tests {
 
     #[test]
     fn test_resolve_openai_whisper_base_url_prefers_voice_specific_value() {
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.voice.stt.whisper.base_url = Some("http://127.0.0.1:8002".to_string());
         cfg.providers.providers.insert(
             "openai".to_string(),
-            moltis_config::schema::ProviderEntry {
+            chelix_config::schema::ProviderEntry {
                 base_url: Some("http://127.0.0.1:8001".to_string()),
-                ..moltis_config::schema::ProviderEntry::default()
+                ..chelix_config::schema::ProviderEntry::default()
             },
         );
 
@@ -389,12 +389,12 @@ mod tests {
 
     #[test]
     fn test_resolve_openai_whisper_base_url_falls_back_to_provider_value() {
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.providers.providers.insert(
             "openai".to_string(),
-            moltis_config::schema::ProviderEntry {
+            chelix_config::schema::ProviderEntry {
                 base_url: Some("http://127.0.0.1:8001".to_string()),
-                ..moltis_config::schema::ProviderEntry::default()
+                ..chelix_config::schema::ProviderEntry::default()
             },
         );
 
@@ -429,7 +429,7 @@ mod tests {
             .save_config("voice-elevenlabs", Some("el-test-key".into()), None, None)
             .unwrap();
 
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         assert!(cfg.voice.tts.elevenlabs.api_key.is_none());
 
         merge_voice_keys(&mut cfg);
@@ -448,7 +448,7 @@ mod tests {
         let guard = VoiceConfigTestGuard::with_config("");
 
         // Build a config with voice keys as if they came from TOML.
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.voice.tts.elevenlabs.api_key = Some(Secret::new("el-legacy-key".to_string()));
         cfg.voice.stt.groq.api_key = Some(Secret::new("groq-legacy-key".to_string()));
 
@@ -463,7 +463,7 @@ mod tests {
         assert_eq!(store.load("voice-groq").as_deref(), Some("groq-legacy-key"));
 
         // Running again with empty config is a no-op (keys already in store).
-        let cfg2 = moltis_config::MoltisConfig::default();
+        let cfg2 = chelix_config::ChelixConfig::default();
         migrate_voice_keys_to_key_store(&cfg2);
         assert_eq!(
             store.load("voice-elevenlabs").as_deref(),
@@ -477,7 +477,7 @@ mod tests {
     fn migrate_voice_keys_skips_env_var_references() {
         let guard = VoiceConfigTestGuard::with_config("");
 
-        let mut cfg = moltis_config::MoltisConfig::default();
+        let mut cfg = chelix_config::ChelixConfig::default();
         cfg.voice.tts.elevenlabs.api_key = Some(Secret::new("${ELEVENLABS_API_KEY}".to_string()));
 
         migrate_voice_keys_to_key_store(&cfg);

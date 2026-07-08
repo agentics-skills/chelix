@@ -15,15 +15,15 @@ use {
 };
 
 use {
-    moltis_agents::{
+    chelix_agents::{
         json_repair::repair_json,
         model::{ChatMessage, LlmProvider},
         tool_registry::{AgentTool, ToolRegistry},
     },
-    moltis_config::{AgentMemoryWriteMode, MemoryStyle, ToolMode},
-    moltis_memory::writer::remove_exact_text,
-    moltis_providers::ProviderRegistry,
-    moltis_sessions::metadata::SqliteSessionMetadata,
+    chelix_config::{AgentMemoryWriteMode, MemoryStyle, ToolMode},
+    chelix_memory::writer::remove_exact_text,
+    chelix_providers::ProviderRegistry,
+    chelix_sessions::metadata::SqliteSessionMetadata,
 };
 
 use crate::types::{
@@ -216,10 +216,10 @@ fn memory_file_label_from_root(root: &Path, path: &Path) -> Option<String> {
 }
 
 fn agent_memory_file_label_for_path(path: &Path, agent_id: &str) -> Option<String> {
-    let workspace = moltis_config::agent_workspace_dir(agent_id);
+    let workspace = chelix_config::agent_workspace_dir(agent_id);
     memory_file_label_from_root(&workspace, path).or_else(|| {
         if agent_id == "main" {
-            memory_file_label_from_root(&moltis_config::data_dir(), path)
+            memory_file_label_from_root(&chelix_config::data_dir(), path)
         } else {
             None
         }
@@ -227,7 +227,7 @@ fn agent_memory_file_label_for_path(path: &Path, agent_id: &str) -> Option<Strin
 }
 
 fn global_memory_file_label_for_path(
-    manager: &dyn moltis_memory::runtime::MemoryRuntime,
+    manager: &dyn chelix_memory::runtime::MemoryRuntime,
     path: &Path,
 ) -> Option<String> {
     memory_file_label_from_root(manager.data_dir()?, path)
@@ -245,7 +245,7 @@ fn forget_planned_match_json(candidate: &ForgetCandidate, reason: &str) -> Value
 }
 
 async fn collect_forget_candidates<F>(
-    manager: &moltis_memory::runtime::DynMemoryRuntime,
+    manager: &chelix_memory::runtime::DynMemoryRuntime,
     request: &str,
     limit: usize,
     mut map_path_to_file: F,
@@ -423,7 +423,7 @@ pub(crate) fn resolve_agent_memory_target_path(
         anyhow::bail!("memory path cannot be empty");
     }
 
-    let workspace = moltis_config::agent_workspace_dir(agent_id);
+    let workspace = chelix_config::agent_workspace_dir(agent_id);
     if trimmed == "MEMORY.md" || trimmed == "memory.md" {
         return Ok(workspace.join(trimmed));
     }
@@ -442,7 +442,7 @@ pub(crate) fn resolve_agent_memory_target_path(
 }
 
 pub(crate) fn is_path_in_agent_memory_scope(path: &Path, agent_id: &str) -> bool {
-    let workspace = moltis_config::agent_workspace_dir(agent_id);
+    let workspace = chelix_config::agent_workspace_dir(agent_id);
     let workspace_memory_dir = workspace.join("memory");
     if path == workspace.join("MEMORY.md")
         || path == workspace.join("memory.md")
@@ -455,7 +455,7 @@ pub(crate) fn is_path_in_agent_memory_scope(path: &Path, agent_id: &str) -> bool
         return false;
     }
 
-    let data_dir = moltis_config::data_dir();
+    let data_dir = chelix_config::data_dir();
     let root_memory_dir = data_dir.join("memory");
     path == data_dir.join("MEMORY.md")
         || path == data_dir.join("memory.md")
@@ -463,15 +463,15 @@ pub(crate) fn is_path_in_agent_memory_scope(path: &Path, agent_id: &str) -> bool
 }
 
 pub struct AgentScopedMemoryWriter {
-    manager: moltis_memory::runtime::DynMemoryRuntime,
+    manager: chelix_memory::runtime::DynMemoryRuntime,
     agent_id: String,
     write_mode: AgentMemoryWriteMode,
-    checkpoints: moltis_tools::checkpoints::CheckpointManager,
+    checkpoints: chelix_tools::checkpoints::CheckpointManager,
 }
 
 impl AgentScopedMemoryWriter {
     pub fn new(
-        manager: moltis_memory::runtime::DynMemoryRuntime,
+        manager: chelix_memory::runtime::DynMemoryRuntime,
         agent_id: String,
         write_mode: AgentMemoryWriteMode,
     ) -> Self {
@@ -479,8 +479,8 @@ impl AgentScopedMemoryWriter {
             manager,
             agent_id,
             write_mode,
-            checkpoints: moltis_tools::checkpoints::CheckpointManager::new(
-                moltis_config::data_dir(),
+            checkpoints: chelix_tools::checkpoints::CheckpointManager::new(
+                chelix_config::data_dir(),
             ),
         }
     }
@@ -491,7 +491,7 @@ impl AgentScopedMemoryWriter {
         reason: &str,
     ) -> anyhow::Result<(
         std::path::PathBuf,
-        moltis_tools::checkpoints::CheckpointRecord,
+        chelix_tools::checkpoints::CheckpointRecord,
     )> {
         validate_agent_memory_target_for_mode(self.write_mode, file)?;
         let path = resolve_agent_memory_target_path(&self.agent_id, file)?;
@@ -569,13 +569,13 @@ struct AgentScopedMemoryDeleteResult {
 }
 
 #[async_trait]
-impl moltis_agents::memory_writer::MemoryWriter for AgentScopedMemoryWriter {
+impl chelix_agents::memory_writer::MemoryWriter for AgentScopedMemoryWriter {
     async fn write_memory(
         &self,
         file: &str,
         content: &str,
         append: bool,
-    ) -> anyhow::Result<moltis_agents::memory_writer::MemoryWriteResult> {
+    ) -> anyhow::Result<chelix_agents::memory_writer::MemoryWriteResult> {
         if content.len() > MAX_AGENT_MEMORY_WRITE_BYTES {
             anyhow::bail!(
                 "content exceeds maximum size of {} bytes ({} bytes provided)",
@@ -607,7 +607,7 @@ impl moltis_agents::memory_writer::MemoryWriter for AgentScopedMemoryWriter {
             warn!(path = %path.display(), %error, "agent memory write re-index failed");
         }
 
-        Ok(moltis_agents::memory_writer::MemoryWriteResult {
+        Ok(chelix_agents::memory_writer::MemoryWriteResult {
             location: path.to_string_lossy().into_owned(),
             bytes_written,
             checkpoint_id: Some(checkpoint.id),
@@ -616,12 +616,12 @@ impl moltis_agents::memory_writer::MemoryWriter for AgentScopedMemoryWriter {
 }
 
 struct AgentScopedMemorySearchTool {
-    manager: moltis_memory::runtime::DynMemoryRuntime,
+    manager: chelix_memory::runtime::DynMemoryRuntime,
     agent_id: String,
 }
 
 impl AgentScopedMemorySearchTool {
-    fn new(manager: moltis_memory::runtime::DynMemoryRuntime, agent_id: String) -> Self {
+    fn new(manager: chelix_memory::runtime::DynMemoryRuntime, agent_id: String) -> Self {
         Self { manager, agent_id }
     }
 }
@@ -666,7 +666,7 @@ impl AgentTool for AgentScopedMemorySearchTool {
             .max(MEMORY_SEARCH_MIN_FETCH)
             .max(limit);
 
-        let mut results: Vec<moltis_memory::search::SearchResult> = self
+        let mut results: Vec<chelix_memory::search::SearchResult> = self
             .manager
             .search(query, search_limit)
             .await?
@@ -675,7 +675,7 @@ impl AgentTool for AgentScopedMemorySearchTool {
             .collect();
         results.truncate(limit);
 
-        let include_citations = moltis_memory::search::SearchResult::should_include_citations(
+        let include_citations = chelix_memory::search::SearchResult::should_include_citations(
             &results,
             self.manager.citation_mode(),
         );
@@ -708,12 +708,12 @@ impl AgentTool for AgentScopedMemorySearchTool {
 }
 
 struct AgentScopedMemoryGetTool {
-    manager: moltis_memory::runtime::DynMemoryRuntime,
+    manager: chelix_memory::runtime::DynMemoryRuntime,
     agent_id: String,
 }
 
 impl AgentScopedMemoryGetTool {
-    fn new(manager: moltis_memory::runtime::DynMemoryRuntime, agent_id: String) -> Self {
+    fn new(manager: chelix_memory::runtime::DynMemoryRuntime, agent_id: String) -> Self {
         Self { manager, agent_id }
     }
 }
@@ -775,7 +775,7 @@ struct AgentScopedMemorySaveTool {
 
 impl AgentScopedMemorySaveTool {
     fn new(
-        manager: moltis_memory::runtime::DynMemoryRuntime,
+        manager: chelix_memory::runtime::DynMemoryRuntime,
         agent_id: String,
         write_mode: AgentMemoryWriteMode,
     ) -> Self {
@@ -833,7 +833,7 @@ impl AgentTool for AgentScopedMemorySaveTool {
             .and_then(Value::as_bool)
             .unwrap_or(true);
 
-        use moltis_agents::memory_writer::MemoryWriter;
+        use chelix_agents::memory_writer::MemoryWriter;
         let result = self.writer.write_memory(file, content, append).await?;
 
         Ok(serde_json::json!({
@@ -851,7 +851,7 @@ struct AgentScopedMemoryDeleteTool {
 
 impl AgentScopedMemoryDeleteTool {
     fn new(
-        manager: moltis_memory::runtime::DynMemoryRuntime,
+        manager: chelix_memory::runtime::DynMemoryRuntime,
         agent_id: String,
         write_mode: AgentMemoryWriteMode,
     ) -> Self {
@@ -941,7 +941,7 @@ impl AgentTool for AgentScopedMemoryDeleteTool {
 }
 
 struct AgentScopedMemoryForgetTool {
-    manager: moltis_memory::runtime::DynMemoryRuntime,
+    manager: chelix_memory::runtime::DynMemoryRuntime,
     writer: AgentScopedMemoryWriter,
     provider: Arc<dyn LlmProvider>,
     agent_id: String,
@@ -949,7 +949,7 @@ struct AgentScopedMemoryForgetTool {
 
 impl AgentScopedMemoryForgetTool {
     fn new(
-        manager: moltis_memory::runtime::DynMemoryRuntime,
+        manager: chelix_memory::runtime::DynMemoryRuntime,
         provider: Arc<dyn LlmProvider>,
         agent_id: String,
         write_mode: AgentMemoryWriteMode,
@@ -1067,14 +1067,14 @@ impl AgentTool for AgentScopedMemoryForgetTool {
 }
 
 pub struct MemoryForgetTool {
-    manager: moltis_memory::runtime::DynMemoryRuntime,
+    manager: chelix_memory::runtime::DynMemoryRuntime,
     providers: Arc<RwLock<ProviderRegistry>>,
     session_metadata: Arc<SqliteSessionMetadata>,
 }
 
 impl MemoryForgetTool {
     pub fn new(
-        manager: moltis_memory::runtime::DynMemoryRuntime,
+        manager: chelix_memory::runtime::DynMemoryRuntime,
         providers: Arc<RwLock<ProviderRegistry>>,
         session_metadata: Arc<SqliteSessionMetadata>,
     ) -> Self {
@@ -1177,7 +1177,7 @@ impl AgentTool for MemoryForgetTool {
             }));
         }
 
-        let delete_tool = moltis_memory::tools::MemoryDeleteTool::new(Arc::clone(&self.manager));
+        let delete_tool = chelix_memory::tools::MemoryDeleteTool::new(Arc::clone(&self.manager));
         let mut results = Vec::new();
         let mut checkpoint_ids = Vec::new();
         for action in validated_actions {
@@ -1214,7 +1214,7 @@ impl AgentTool for MemoryForgetTool {
 
 pub(crate) fn install_agent_scoped_memory_tools(
     registry: &mut ToolRegistry,
-    manager: &moltis_memory::runtime::DynMemoryRuntime,
+    manager: &chelix_memory::runtime::DynMemoryRuntime,
     provider: Arc<dyn LlmProvider>,
     agent_id: &str,
     style: MemoryStyle,

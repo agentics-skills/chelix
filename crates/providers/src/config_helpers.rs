@@ -2,13 +2,13 @@
 
 use std::collections::{HashMap, HashSet};
 
-use {moltis_config::schema::ProvidersConfig, secrecy::ExposeSecret};
+use {chelix_config::schema::ProvidersConfig, secrecy::ExposeSecret};
 
 use crate::model_id::configured_model_for_provider;
 
 /// Resolve an env value from overrides or process environment.
 pub(crate) fn env_value(env_overrides: &HashMap<String, String>, key: &str) -> Option<String> {
-    moltis_config::env_value_with_overrides(env_overrides, key)
+    chelix_config::env_value_with_overrides(env_overrides, key)
 }
 
 /// Resolve an API key from config (Secret) or environment variable,
@@ -23,7 +23,7 @@ pub(crate) fn resolve_api_key(
         .get(provider)
         .and_then(|e| e.api_key.clone())
         .or_else(|| env_value(env_overrides, env_key).map(secrecy::Secret::new))
-        .or_else(|| moltis_config::generic_provider_api_key_from_env(provider, env_overrides))
+        .or_else(|| chelix_config::generic_provider_api_key_from_env(provider, env_overrides))
         .filter(|s| !s.expose_secret().is_empty())
 }
 
@@ -99,14 +99,14 @@ mod tests {
         };
         config.providers.insert(
             "openai-codex".into(),
-            moltis_config::schema::ProviderEntry {
+            chelix_config::schema::ProviderEntry {
                 enabled: false,
                 ..Default::default()
             },
         );
         config.providers.insert(
             "github-copilot".into(),
-            moltis_config::schema::ProviderEntry {
+            chelix_config::schema::ProviderEntry {
                 enabled: false,
                 ..Default::default()
             },

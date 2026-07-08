@@ -1,14 +1,14 @@
-# Why Moltis Doesn't Support Anthropic OAuth
+# Why Chelix Doesn't Support Anthropic OAuth
 
 A common request is browser-based OAuth login for Anthropic, similar to what
-Moltis offers for OpenAI Codex and GitHub Copilot.  This page explains why that
+Chelix offers for OpenAI Codex and GitHub Copilot.  This page explains why that
 isn't possible and what to do instead.
 
 ## TL;DR
 
 Anthropic **does not offer an OAuth program for third-party tools**.  Their
 OAuth flow is locked to Claude Code and Claude.ai only.  The only supported way
-to use Anthropic models in Moltis is with an API key from the
+to use Anthropic models in Chelix is with an API key from the
 [Anthropic Console](https://console.anthropic.com).
 
 ## Background
@@ -60,15 +60,15 @@ Code's client ID from a different application:
 - **Could break at any time** — the client ID and internal endpoints are not
   part of a public, stable API surface.
 
-## How to Use Anthropic in Moltis
+## How to Use Anthropic in Chelix
 
 1. Go to [console.anthropic.com](https://console.anthropic.com) and create an
    account (or sign in).
 2. Navigate to **Settings → API Keys** and create a new key.
-3. In Moltis, go to **Settings → Providers → Anthropic** and paste the key.
+3. In Chelix, go to **Settings → Providers → Anthropic** and paste the key.
 
 Alternatively, set the `ANTHROPIC_API_KEY` environment variable or add it to
-your `moltis.toml`:
+your `chelix.toml`:
 
 ```toml
 [providers.anthropic]
@@ -83,7 +83,7 @@ all third-party integrations.
 ## Will This Change?
 
 If Anthropic introduces a developer OAuth program with client ID registration
-in the future, Moltis will adopt it.  The generic infrastructure for
+in the future, Chelix will adopt it.  The generic infrastructure for
 OAuth-to-API-key exchange already exists in the codebase (the `api_key_endpoint`
 field on `OAuthConfig`), so adding support would be straightforward.
 

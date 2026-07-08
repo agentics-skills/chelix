@@ -1,5 +1,5 @@
 #!/bin/sh
-# Moltis installer script
+# Chelix installer script
 # https://github.com/agentics-skills/chelix
 #
 # Usage:
@@ -10,8 +10,8 @@
 
 set -e
 
-GITHUB_REPO="moltis-org/moltis"
-BINARY_NAME="moltis"
+GITHUB_REPO="agentics-skills/chelix"
+BINARY_NAME="chelix"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 # Default options
@@ -59,7 +59,7 @@ while [ $# -gt 0 ]; do
             ;;
         -h|--help)
             cat <<EOF
-Moltis installer
+Chelix installer
 
 Usage:
     install.sh [OPTIONS]
@@ -192,7 +192,7 @@ install_shared_assets() {
         return 0
     fi
 
-    share_dir="$HOME/.moltis/share"
+    share_dir="$HOME/.chelix/share"
     mkdir -p "$share_dir"
     cp -R "$source_dir"/. "$share_dir"/
     info "Installed shared assets to $share_dir"
@@ -282,13 +282,13 @@ install_binary() {
     mv "$tmpdir/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
     chmod +x "$INSTALL_DIR/$BINARY_NAME"
 
-    if [ -d "$tmpdir/share/moltis" ]; then
-        install_shared_assets "$tmpdir/share/moltis"
+    if [ -d "$tmpdir/share/chelix" ]; then
+        install_shared_assets "$tmpdir/share/chelix"
     elif [ -d "$tmpdir/share/web" ] && [ -d "$tmpdir/share/wasm" ]; then
         install_shared_assets "$tmpdir/share"
     fi
 
-    success "Moltis installed to $INSTALL_DIR/$BINARY_NAME"
+    success "Chelix installed to $INSTALL_DIR/$BINARY_NAME"
     add_to_path_instructions
 }
 
@@ -296,7 +296,7 @@ install_binary() {
 
 main() {
     printf "\n"
-    printf "  ${BOLD}Moltis Installer${NC}\n"
+    printf "  ${BOLD}Chelix Installer${NC}\n"
     printf "  Personal AI gateway - one binary, multiple LLM providers\n"
     printf "\n"
 
@@ -333,8 +333,8 @@ main() {
         printf "  ${BOLD}%s${NC}\n" "$installed_version"
         printf "\n"
         printf "Get started:\n"
-        printf "  ${BOLD}moltis${NC}          # Start the gateway\n"
-        printf "  ${BOLD}moltis --help${NC}   # Show help\n"
+        printf "  ${BOLD}chelix${NC}          # Start the gateway\n"
+        printf "  ${BOLD}chelix --help${NC}   # Show help\n"
         printf "\n"
         printf "Project: ${BLUE}https://github.com/agentics-skills/chelix${NC}\n"
     elif [ -x "$INSTALL_DIR/$BINARY_NAME" ]; then

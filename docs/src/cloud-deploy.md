@@ -1,7 +1,7 @@
 # Cloud Deploy
 
 Chelix publishes a multi-arch Docker image (`linux/amd64` and `linux/arm64`)
-to `ghcr.io/moltis-org/moltis`. You can deploy it to any cloud provider that
+to `ghcr.io/agentics-skills/chelix`. You can deploy it to any cloud provider that
 supports container images.
 
 ## Common configuration
@@ -11,21 +11,21 @@ HTTP mode. The key settings are:
 
 | Setting | Value | Purpose |
 |---------|-------|---------|
-| `--no-tls` or `MOLTIS_NO_TLS=true` | Disable TLS | Provider handles HTTPS |
+| `--no-tls` or `CHELIX_NO_TLS=true` | Disable TLS | Provider handles HTTPS |
 | `--bind 0.0.0.0` | Bind all interfaces | Required for container networking |
 | `--port <PORT>` | Listen port | Must match provider's expected internal port |
-| `MOLTIS_CONFIG_DIR=/data/config` | Config directory | Persist moltis.toml, credentials |
-| `MOLTIS_DATA_DIR=/data` | Data directory | Persist databases, sessions, memory |
-| `MOLTIS_DEPLOY_PLATFORM` | Deploy platform | Hides local-only providers (see below) |
-| `MOLTIS_PASSWORD` | Initial password | Set auth password via environment variable |
+| `CHELIX_CONFIG_DIR=/data/config` | Config directory | Persist chelix.toml, credentials |
+| `CHELIX_DATA_DIR=/data` | Data directory | Persist databases, sessions, memory |
+| `CHELIX_DEPLOY_PLATFORM` | Deploy platform | Hides local-only providers (see below) |
+| `CHELIX_PASSWORD` | Initial password | Set auth password via environment variable |
 
 ```admonish tip
 If requests to your domain are redirected to `:13131`, Chelix TLS is still
 enabled behind a TLS-terminating proxy. Use `--no-tls` (or
-`MOLTIS_NO_TLS=true`).
+`CHELIX_NO_TLS=true`).
 
 Only keep Chelix TLS enabled when your proxy talks HTTPS to Chelix (or uses
-TCP TLS passthrough). In that case, set `MOLTIS_ALLOW_TLS_BEHIND_PROXY=true`.
+TCP TLS passthrough). In that case, set `CHELIX_ALLOW_TLS_BEHIND_PROXY=true`.
 ```
 
 ```admonish tip
@@ -34,7 +34,7 @@ Docker-in-Docker. Sandboxed command execution therefore requires a
 deployment target with a local container runtime available to Chelix.
 ```
 
-### `MOLTIS_DEPLOY_PLATFORM`
+### `CHELIX_DEPLOY_PLATFORM`
 
 Set this to a non-empty label for your deployment target when Chelix runs on a
 remote container platform. When set, Chelix hides local-only LLM providers
@@ -51,7 +51,7 @@ on the user's browser points to their own machine, not the cloud instance.
 
 ```bash
 # Generic container
-docker exec -it <container> moltis auth login --provider openai-codex
+docker exec -it <container> chelix auth login --provider openai-codex
 ```
 
 The CLI opens a browser on the machine where you run the command. If automatic
@@ -68,7 +68,7 @@ github.com), so it works from the web UI without this workaround.
 ## Authentication
 
 On first launch, Chelix requires a password or passkey to be set. In cloud
-deployments the easiest approach is to set the `MOLTIS_PASSWORD` environment
+deployments the easiest approach is to set the `CHELIX_PASSWORD` environment
 variable (or secret) before deploying. This pre-configures the password so the
 setup code flow is skipped.
 

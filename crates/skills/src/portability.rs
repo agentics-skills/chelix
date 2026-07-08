@@ -47,7 +47,7 @@ pub struct ImportedRepoBundle {
 }
 
 pub fn default_export_dir() -> Result<PathBuf> {
-    Ok(moltis_config::data_dir().join("skill-exports"))
+    Ok(chelix_config::data_dir().join("skill-exports"))
 }
 
 pub async fn export_repo_bundle(

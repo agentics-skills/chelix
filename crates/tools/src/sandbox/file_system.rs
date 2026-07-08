@@ -269,7 +269,7 @@ pub async fn command_write_file<S: Sandbox + ?Sized>(
          parent=$(dirname \"$path\"); \
          if [ ! -d \"$parent\" ]; then exit {EXIT_PARENT_MISSING}; fi; \
          if [ -L \"$path\" ]; then exit {EXIT_SYMLINK}; fi; \
-         tmp=\"$path.moltis.$$\"; \
+         tmp=\"$path.chelix.$$\"; \
          if ! printf '%s' '{encoded}' | base64 -d > \"$tmp\"; then rm -f \"$tmp\"; exit 1; fi; \
          sync \"$tmp\" 2>/dev/null || sync; \
          if [ -L \"$path\" ]; then rm -f \"$tmp\"; exit {EXIT_SYMLINK}; fi; \

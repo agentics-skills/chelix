@@ -29,13 +29,13 @@ async fn test_apple_container_name_generation_rotation() {
     };
 
     let first_name = sandbox.container_name(&id).await;
-    assert_eq!(first_name, "moltis-sandbox-session-abc");
+    assert_eq!(first_name, "chelix-sandbox-session-abc");
 
     let rotated_name = sandbox.bump_container_generation(&id).await;
-    assert_eq!(rotated_name, "moltis-sandbox-session-abc-g1");
+    assert_eq!(rotated_name, "chelix-sandbox-session-abc-g1");
 
     let current_name = sandbox.container_name(&id).await;
-    assert_eq!(current_name, "moltis-sandbox-session-abc-g1");
+    assert_eq!(current_name, "chelix-sandbox-session-abc-g1");
 }
 
 /// When both Docker and Apple Container are available, test that we can
@@ -116,7 +116,7 @@ fn test_is_apple_container_service_error() {
 #[test]
 fn test_is_apple_container_exists_error() {
     assert!(is_apple_container_exists_error(
-        "Error: exists: \"container with id moltis-sandbox-main already exists\""
+        "Error: exists: \"container with id chelix-sandbox-main already exists\""
     ));
     assert!(is_apple_container_exists_error(
         "Error: container already exists"
@@ -138,10 +138,10 @@ fn test_is_apple_container_unavailable_error() {
     ));
     // notFound errors from get/inspect failures
     assert!(is_apple_container_unavailable_error(
-        "Error: notFound: \"get failed: container moltis-sandbox-main not found\""
+        "Error: notFound: \"get failed: container chelix-sandbox-main not found\""
     ));
     assert!(is_apple_container_unavailable_error(
-        "container not found: moltis-sandbox-session-abc"
+        "container not found: chelix-sandbox-session-abc"
     ));
     assert!(!is_apple_container_unavailable_error("permission denied"));
 }
@@ -175,12 +175,12 @@ fn test_apple_container_bootstrap_command_uses_portable_sleep() {
 
 #[test]
 fn test_apple_container_run_args_pin_workdir_and_bootstrap_home() {
-    let args = apple_container_run_args("moltis-sandbox-test", "ubuntu:26.04", Some("UTC"), None);
+    let args = apple_container_run_args("chelix-sandbox-test", "ubuntu:26.04", Some("UTC"), None);
     let expected = vec![
         "run",
         "-d",
         "--name",
-        "moltis-sandbox-test",
+        "chelix-sandbox-test",
         "--workdir",
         "/tmp",
         "-e",
@@ -199,7 +199,7 @@ fn test_apple_container_run_args_pin_workdir_and_bootstrap_home() {
 #[test]
 fn test_apple_container_run_args_with_home_volume() {
     let args = apple_container_run_args(
-        "moltis-sandbox-test",
+        "chelix-sandbox-test",
         "ubuntu:26.04",
         Some("UTC"),
         Some("/tmp/home:/home/sandbox"),
@@ -208,7 +208,7 @@ fn test_apple_container_run_args_with_home_volume() {
         "run",
         "-d",
         "--name",
-        "moltis-sandbox-test",
+        "chelix-sandbox-test",
         "--workdir",
         "/tmp",
         "-e",
@@ -228,12 +228,12 @@ fn test_apple_container_run_args_with_home_volume() {
 
 #[test]
 fn test_apple_container_exec_args_pin_workdir_and_bootstrap_home() {
-    let args = apple_container_exec_args("moltis-sandbox-test", "true".to_string());
+    let args = apple_container_exec_args("chelix-sandbox-test", "true".to_string());
     let expected = vec![
         "exec",
         "--workdir",
         "/tmp",
-        "moltis-sandbox-test",
+        "chelix-sandbox-test",
         "bash",
         "-c",
         "mkdir -p /home/sandbox && true",
@@ -246,12 +246,12 @@ fn test_apple_container_exec_args_pin_workdir_and_bootstrap_home() {
 
 #[test]
 fn test_container_exec_shell_args_apple_container_uses_safe_wrapper() {
-    let args = container_exec_shell_args("container", "moltis-sandbox-test", "echo hi".into());
+    let args = container_exec_shell_args("container", "chelix-sandbox-test", "echo hi".into());
     let expected = vec![
         "exec",
         "--workdir",
         "/tmp",
-        "moltis-sandbox-test",
+        "chelix-sandbox-test",
         "bash",
         "-c",
         "mkdir -p /home/sandbox && echo hi",
@@ -264,8 +264,8 @@ fn test_container_exec_shell_args_apple_container_uses_safe_wrapper() {
 
 #[test]
 fn test_container_exec_shell_args_docker_keeps_standard_exec_shape() {
-    let args = container_exec_shell_args("docker", "moltis-sandbox-test", "echo hi".into());
-    let expected = vec!["exec", "moltis-sandbox-test", "bash", "-c", "echo hi"]
+    let args = container_exec_shell_args("docker", "chelix-sandbox-test", "echo hi".into());
+    let expected = vec!["exec", "chelix-sandbox-test", "bash", "-c", "echo hi"]
         .into_iter()
         .map(str::to_string)
         .collect::<Vec<_>>();

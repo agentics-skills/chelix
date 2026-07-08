@@ -23,7 +23,7 @@ function resetAuthRedirectGuard(): void {
 	authRedirectPending = false;
 }
 
-window.addEventListener("moltis:auth-status-sync-complete", resetAuthRedirectGuard);
+window.addEventListener("chelix:auth-status-sync-complete", resetAuthRedirectGuard);
 
 /** Backoff configuration for reconnect. */
 interface BackoffConfig {
@@ -156,7 +156,7 @@ export function connectWs(opts: ConnectOptions): void {
 			// avoid dispatching multiple times when several RPCs fail.
 			if (frame.error?.code === "UNAUTHORIZED" && !authRedirectPending) {
 				authRedirectPending = true;
-				window.dispatchEvent(new CustomEvent("moltis:auth-status-changed"));
+				window.dispatchEvent(new CustomEvent("chelix:auth-status-changed"));
 			}
 		}
 		if (frame.type === "res" && frame.id && Object.hasOwn(S.pending, frame.id)) {

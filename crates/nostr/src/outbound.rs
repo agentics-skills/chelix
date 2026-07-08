@@ -10,18 +10,18 @@ use std::{
 
 use {
     async_trait::async_trait,
-    moltis_channels::{
+    chelix_channels::{
         ChannelOutbound, ChannelStreamOutbound, Result as ChannelResult, StreamReceiver,
         plugin::StreamEvent,
     },
-    moltis_common::types::ReplyPayload,
+    chelix_common::types::ReplyPayload,
     nostr_sdk::prelude::*,
 };
 
 use crate::state::AccountState;
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, histogram, nostr as nostr_metrics};
+use chelix_metrics::{counter, histogram, nostr as nostr_metrics};
 
 /// Shared account state map type.
 ///
@@ -44,10 +44,10 @@ impl NostrOutbound {
     ) -> ChannelResult<(Client, Keys, PublicKey)> {
         let accounts = self.accounts.read().unwrap_or_else(|e| e.into_inner());
         let state = accounts.get(account_id).ok_or_else(|| {
-            moltis_channels::Error::unavailable(format!("nostr account not found: {account_id}"))
+            chelix_channels::Error::unavailable(format!("nostr account not found: {account_id}"))
         })?;
         let recipient = PublicKey::parse(to).map_err(|e| {
-            moltis_channels::Error::invalid_input(format!("invalid recipient pubkey: {e}"))
+            chelix_channels::Error::invalid_input(format!("invalid recipient pubkey: {e}"))
         })?;
         Ok((state.client.clone(), state.keys.clone(), recipient))
     }
@@ -74,7 +74,7 @@ impl ChannelOutbound for NostrOutbound {
                 #[cfg(feature = "metrics")]
                 counter!(nostr_metrics::MESSAGE_SEND_ERRORS_TOTAL, "reason" => "gift_wrap")
                     .increment(1);
-                moltis_channels::Error::external("nostr", e)
+                chelix_channels::Error::external("nostr", e)
             })?;
 
         #[cfg(feature = "metrics")]

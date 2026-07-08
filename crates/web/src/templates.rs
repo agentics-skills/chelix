@@ -8,7 +8,7 @@ use {
         http::StatusCode,
         response::{Html, IntoResponse},
     },
-    moltis_gateway::{session_reasoning::preset_defaults_for_agent, state::GatewayState},
+    chelix_gateway::{session_reasoning::preset_defaults_for_agent, state::GatewayState},
     tracing::warn,
 };
 
@@ -54,18 +54,18 @@ pub(crate) static SPA_ROUTES: SpaRoutes = SpaRoutes {
 
 // ── GonData ──────────────────────────────────────────────────────────────────
 
-/// Server-side data injected into every page as `window.__MOLTIS__`
+/// Server-side data injected into every page as `window.__CHELIX__`
 /// (gon pattern — see CLAUDE.md § Server-Injected Data).
 #[derive(serde::Serialize)]
 pub(crate) struct GonData {
-    pub(crate) identity: moltis_config::ResolvedIdentity,
+    pub(crate) identity: chelix_config::ResolvedIdentity,
     version: String,
     port: u16,
     counts: NavCounts,
-    crons: Vec<moltis_cron::types::CronJob>,
-    cron_status: moltis_cron::types::CronStatus,
-    heartbeat_config: moltis_config::schema::HeartbeatConfig,
-    heartbeat_runs: Vec<moltis_cron::types::CronRunRecord>,
+    crons: Vec<chelix_cron::types::CronJob>,
+    cron_status: chelix_cron::types::CronStatus,
+    heartbeat_config: chelix_config::schema::HeartbeatConfig,
+    heartbeat_runs: Vec<chelix_cron::types::CronRunRecord>,
     voice_enabled: bool,
     stt_enabled: bool,
     tts_enabled: bool,
@@ -76,9 +76,9 @@ pub(crate) struct GonData {
     #[serde(skip_serializing_if = "Option::is_none")]
     deploy_platform: Option<String>,
     channels_offered: Vec<String>,
-    channel_descriptors: Vec<moltis_channels::ChannelDescriptor>,
+    channel_descriptors: Vec<chelix_channels::ChannelDescriptor>,
     channel_storage_db_path: String,
-    update: moltis_gateway::update_check::UpdateAvailability,
+    update: chelix_gateway::update_check::UpdateAvailability,
     sandbox: SandboxGonInfo,
     routes: SpaRoutes,
     started_at: u64,
@@ -98,11 +98,11 @@ pub(crate) struct GonData {
 
 #[derive(serde::Serialize)]
 struct SandboxGonInfo {
-    backend: moltis_tools::sandbox::SandboxBackendId,
+    backend: chelix_tools::sandbox::SandboxBackendId,
     os: &'static str,
     default_image: String,
     image_building: bool,
-    available_backends: Vec<moltis_tools::sandbox::SandboxBackendId>,
+    available_backends: Vec<chelix_tools::sandbox::SandboxBackendId>,
 }
 
 /// Memory snapshot included in gon data and tick broadcasts.
@@ -184,7 +184,7 @@ fn truncate_preview(text: &str, max_chars: usize) -> String {
     out
 }
 
-fn default_channel_session_key(target: &moltis_channels::ChannelReplyTarget) -> String {
+fn default_channel_session_key(target: &chelix_channels::ChannelReplyTarget) -> String {
     match &target.thread_id {
         Some(thread_id) => format!(
             "{}:{}:{}:{}",
@@ -206,7 +206,7 @@ async fn build_recent_sessions_snapshot(gw: &GatewayState, limit: usize) -> Vec<
     for entry in metadata.list().await.into_iter().take(limit) {
         let active_channel = if let Some(ref binding_json) = entry.channel_binding {
             if let Ok(target) =
-                serde_json::from_str::<moltis_channels::ChannelReplyTarget>(binding_json)
+                serde_json::from_str::<chelix_channels::ChannelReplyTarget>(binding_json)
             {
                 metadata
                     .get_active_session(
@@ -318,8 +318,8 @@ pub(crate) async fn build_nav_counts(gw: &GatewayState) -> NavCounts {
         .unwrap_or(0);
 
     let skills = tokio::task::spawn_blocking(|| {
-        let path = moltis_skills::manifest::ManifestStore::default_path().ok()?;
-        let store = moltis_skills::manifest::ManifestStore::new(path);
+        let path = chelix_skills::manifest::ManifestStore::default_path().ok()?;
+        let store = chelix_skills::manifest::ManifestStore::new(path);
         let m = store.load().ok()?;
         Some(
             m.repos
@@ -434,11 +434,11 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> GonData {
         .ok()
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
-    let crons: Vec<moltis_cron::types::CronJob> = crons
+    let crons: Vec<chelix_cron::types::CronJob> = crons
         .ok()
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
-    let cron_status: moltis_cron::types::CronStatus = cron_status
+    let cron_status: chelix_cron::types::CronStatus = cron_status
         .ok()
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
@@ -446,13 +446,13 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> GonData {
         tokio::task::spawn_blocking(move || resolve_channels_offered(cached_channels_offered))
             .await
             .unwrap_or_default();
-    let channel_descriptors: Vec<moltis_channels::ChannelDescriptor> = channels_offered
+    let channel_descriptors: Vec<chelix_channels::ChannelDescriptor> = channels_offered
         .iter()
-        .filter_map(|s| s.parse::<moltis_channels::ChannelType>().ok())
+        .filter_map(|s| s.parse::<chelix_channels::ChannelType>().ok())
         .map(|ct| ct.descriptor())
         .collect();
 
-    let heartbeat_runs: Vec<moltis_cron::types::CronRunRecord> = gw
+    let heartbeat_runs: Vec<chelix_cron::types::CronRunRecord> = gw
         .services
         .cron
         .runs(serde_json::json!({ "id": "__heartbeat__", "limit": 10 }))
@@ -466,7 +466,7 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> GonData {
     );
 
     let sandbox = if let Some(ref router) = gw.sandbox_router {
-        use moltis_tools::sandbox::SandboxBackendId;
+        use chelix_tools::sandbox::SandboxBackendId;
         SandboxGonInfo {
             backend: SandboxBackendId::from_name(router.backend_name()),
             os: std::env::consts::OS,
@@ -485,11 +485,11 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> GonData {
                 .collect(),
         }
     } else {
-        use moltis_tools::sandbox::SandboxBackendId;
+        use chelix_tools::sandbox::SandboxBackendId;
         SandboxGonInfo {
             backend: SandboxBackendId::None,
             os: std::env::consts::OS,
-            default_image: moltis_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_owned(),
+            default_image: chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_owned(),
             image_building: false,
             available_backends: vec![SandboxBackendId::None],
         }
@@ -552,16 +552,16 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> GonData {
         deploy_platform: gw.deploy_platform.clone(),
         channels_offered,
         channel_descriptors,
-        channel_storage_db_path: moltis_config::data_dir()
-            .join("moltis.db")
+        channel_storage_db_path: chelix_config::data_dir()
+            .join("chelix.db")
             .display()
             .to_string(),
         update,
         sandbox,
         routes: SPA_ROUTES.clone(),
         started_at: *PROCESS_STARTED_AT_MS,
-        claude_detected: moltis_gateway::server::claude_detected_for_ui(),
-        codex_detected: moltis_gateway::server::codex_detected_for_ui(),
+        claude_detected: chelix_gateway::server::claude_detected_for_ui(),
+        codex_detected: chelix_gateway::server::codex_detected_for_ui(),
         sessions_recent,
         agents,
         webhooks,
@@ -586,12 +586,12 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> GonData {
 
 fn load_channels_offered_from_config_path(
     path: &Path,
-) -> Result<Vec<String>, moltis_config::Error> {
-    moltis_config::loader::load_config(path).map(|config| config.channels.offered)
+) -> Result<Vec<String>, chelix_config::Error> {
+    chelix_config::loader::load_config(path).map(|config| config.channels.offered)
 }
 
 fn resolve_channels_offered(cached_channels_offered: Vec<String>) -> Vec<String> {
-    let Some(path) = moltis_config::loader::find_config_file() else {
+    let Some(path) = chelix_config::loader::find_config_file() else {
         return cached_channels_offered;
     };
 
@@ -716,7 +716,7 @@ pub(crate) fn script_safe_json<T: serde::Serialize>(value: &T) -> String {
         .replace('\u{2029}', "\\u2029")
 }
 
-pub(crate) fn build_share_meta(identity: &moltis_config::ResolvedIdentity) -> ShareMeta {
+pub(crate) fn build_share_meta(identity: &chelix_config::ResolvedIdentity) -> ShareMeta {
     let agent_name = identity_name(identity);
     let user_name = identity
         .user_name
@@ -746,10 +746,10 @@ pub(crate) fn build_share_meta(identity: &moltis_config::ResolvedIdentity) -> Sh
     }
 }
 
-pub(crate) fn identity_name(identity: &moltis_config::ResolvedIdentity) -> &str {
+pub(crate) fn identity_name(identity: &chelix_config::ResolvedIdentity) -> &str {
     let name = identity.name.trim();
     if name.is_empty() {
-        "moltis"
+        "chelix"
     } else {
         name
     }
@@ -822,7 +822,7 @@ pub(crate) fn render_error_page(
         ErrorPageKind::InternalServerError => (
             "Internal server error",
             "500",
-            "Moltis hit an internal error while building this page.",
+            "Chelix hit an internal error while building this page.",
         ),
     };
 
@@ -1016,7 +1016,7 @@ pub(crate) async fn onboarding_completed(_gw: &GatewayState) -> bool {
     // Check the onboarded sentinel file directly instead of going through
     // wizard_status() which acquires a std::sync::Mutex and does filesystem
     // I/O — both block the async runtime on low-CPU runners.
-    tokio::task::spawn_blocking(|| moltis_config::data_dir().join(".onboarded").exists())
+    tokio::task::spawn_blocking(|| chelix_config::data_dir().join(".onboarded").exists())
         .await
         .unwrap_or(false)
 }
@@ -1111,7 +1111,7 @@ mod tests {
     #[test]
     fn load_channels_offered_from_config_path_reads_matrix_entries() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("moltis.toml");
+        let path = dir.path().join("chelix.toml");
         let mut file = std::fs::File::create(&path).unwrap();
         writeln!(
             file,

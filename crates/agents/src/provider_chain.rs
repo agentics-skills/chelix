@@ -17,7 +17,7 @@ use std::{
 use {async_trait::async_trait, tokio_stream::Stream, tracing::warn};
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, histogram, labels, llm as llm_metrics};
+use chelix_metrics::{counter, histogram, labels, llm as llm_metrics};
 
 use crate::model::{ChatMessage, CompletionResponse, LlmProvider, ReasoningEffort, StreamEvent};
 

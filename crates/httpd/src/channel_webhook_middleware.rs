@@ -3,7 +3,7 @@ use {
         http::StatusCode,
         response::{IntoResponse as _, Response},
     },
-    moltis_channels::channel_webhook_middleware::ChannelWebhookRejection,
+    chelix_channels::channel_webhook_middleware::ChannelWebhookRejection,
 };
 
 /// Convert a webhook rejection into an HTTP response for channel routes.

@@ -199,7 +199,7 @@ pub(crate) fn is_sandbox_image_tag(tag: &str) -> bool {
 /// requested image points to a local pre-built sandbox repository.
 ///
 /// This allows recover-on-demand behavior when users delete local pre-built
-/// images from the UI while Moltis is still running.
+/// images from the UI while Chelix is still running.
 pub(crate) fn rebuildable_sandbox_image_tag(
     requested_image: &str,
     image_repo: &str,
@@ -428,7 +428,7 @@ pub enum ContainerBackend {
     Podman,
 }
 
-/// A container managed by moltis (running, stopped, or exited).
+/// A container managed by chelix (running, stopped, or exited).
 #[derive(Debug, Clone, Serialize)]
 pub struct RunningContainer {
     pub name: String,

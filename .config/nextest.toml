@@ -10,7 +10,7 @@ retries = 0
 max-threads = 1
 
 [[profile.default.overrides]]
-filter = "package(moltis-qmd)"
+filter = "package(chelix-qmd)"
 test-group = "qmd-serial"
 
 [profile.ci]

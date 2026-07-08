@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-# Verify GPG signatures on Moltis release artifacts.
+# Verify GPG signatures on Chelix release artifacts.
 #
 # Downloads the maintainer's public key from https://pen.so/gpg.asc,
 # then verifies the detached GPG signature (.asc) for each artifact
@@ -14,19 +14,19 @@ set -euo pipefail
 #
 # Usage:
 #   ./scripts/verify-release.sh [OPTIONS] [FILE...]
-#   ./scripts/verify-release.sh moltis-20260331.01-x86_64-unknown-linux-gnu.tar.gz
+#   ./scripts/verify-release.sh chelix-20260331.01-x86_64-unknown-linux-gnu.tar.gz
 #   ./scripts/verify-release.sh --version 20260331.01
 #   ./scripts/verify-release.sh *.tar.gz
 
 GPG_KEY_URL="https://pen.so/gpg.asc"
 EXPECTED_FINGERPRINT="310320A8CC1C5BA86AD09040C0451BADF7649BBF"
-REPO="${MOLTIS_REPO:-moltis-org/moltis}"
+REPO="${CHELIX_REPO:-agentics-skills/chelix}"
 
 usage() {
   cat <<'EOF'
 Usage: ./scripts/verify-release.sh [OPTIONS] [FILE...]
 
-Verifies GPG signatures on Moltis release artifacts.
+Verifies GPG signatures on Chelix release artifacts.
 
   FILE          One or more local artifact files to verify (must have
                 matching .asc files alongside them)
@@ -39,12 +39,12 @@ Options:
   -h, --help          Show this help
 
 Environment:
-  MOLTIS_REPO         GitHub repo (default: moltis-org/moltis)
+  CHELIX_REPO         GitHub repo (default: agentics-skills/chelix)
 
 Examples:
   ./scripts/verify-release.sh --version 20260331.01
   ./scripts/verify-release.sh --checksums --version 20260331.01
-  ./scripts/verify-release.sh moltis-*.tar.gz
+  ./scripts/verify-release.sh chelix-*.tar.gz
 EOF
 }
 

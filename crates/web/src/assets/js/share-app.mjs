@@ -21,7 +21,7 @@ import { DateTime } from "/assets/js/vendor/luxon.mjs";
   }
 
   function syncThemeFromStorage() {
-    applyTheme(localStorage.getItem("moltis-theme") || "system");
+    applyTheme(localStorage.getItem("chelix-theme") || "system");
   }
 
   var mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
@@ -29,7 +29,7 @@ import { DateTime } from "/assets/js/vendor/luxon.mjs";
   if (typeof mediaQuery.addEventListener === "function") {
     mediaQuery.addEventListener("change", function () {
       if (
-        (localStorage.getItem("moltis-theme") || "system") === "system"
+        (localStorage.getItem("chelix-theme") || "system") === "system"
       ) {
         applyTheme("system");
       }
@@ -37,7 +37,7 @@ import { DateTime } from "/assets/js/vendor/luxon.mjs";
   } else if (typeof mediaQuery.addListener === "function") {
     mediaQuery.addListener(function () {
       if (
-        (localStorage.getItem("moltis-theme") || "system") === "system"
+        (localStorage.getItem("chelix-theme") || "system") === "system"
       ) {
         applyTheme("system");
       }
@@ -46,7 +46,7 @@ import { DateTime } from "/assets/js/vendor/luxon.mjs";
   document.querySelectorAll(".theme-btn").forEach(function (btn) {
     btn.addEventListener("click", function () {
       var selected = this.getAttribute("data-theme-val") || "system";
-      localStorage.setItem("moltis-theme", selected);
+      localStorage.setItem("chelix-theme", selected);
       applyTheme(selected);
     });
   });

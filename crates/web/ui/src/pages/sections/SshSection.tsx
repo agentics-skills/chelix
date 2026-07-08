@@ -438,7 +438,7 @@ export function SshSection(): VNode {
 				<div className="flex flex-col gap-4 max-w-[760px]">
 					<p className="text-xs text-[var(--muted)] m-0">
 						Generate a new keypair for a host, or import an existing private key. Passphrase-protected imports are
-						decrypted once and then stored under Moltis control.
+						decrypted once and then stored under Chelix control.
 					</p>
 					<div className="mb-3 rounded border border-[var(--border)] bg-[var(--surface2)] p-2 text-xs text-[var(--muted)] leading-relaxed">
 						Recommended flow: generate one deploy key per remote host, copy the public key below, add it to that
@@ -581,7 +581,7 @@ export function SshSection(): VNode {
 							placeholder="Optional known_hosts line from ssh-keyscan -H host"
 						/>
 						<div className="text-xs text-[var(--muted)]">
-							If you paste a <code className="text-[var(--text)]">known_hosts</code> line here, Moltis will use strict
+							If you paste a <code className="text-[var(--text)]">known_hosts</code> line here, Chelix will use strict
 							host-key checking for this target instead of trusting your global SSH config.
 						</div>
 						<button
@@ -608,7 +608,7 @@ export function SshSection(): VNode {
 						) : null}
 						{targetAuthMode === "managed" && keys.length === 0 ? (
 							<div className="text-xs text-[var(--muted)]">
-								Generate or import a deploy key first. Moltis cannot connect with a managed target until a private key
+								Generate or import a deploy key first. Chelix cannot connect with a managed target until a private key
 								exists.
 							</div>
 						) : null}

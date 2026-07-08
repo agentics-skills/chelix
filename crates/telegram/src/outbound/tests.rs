@@ -6,7 +6,7 @@ use {
         http::{StatusCode, Uri},
         routing::post,
     },
-    moltis_channels::{
+    chelix_channels::{
         gating::DmPolicy,
         plugin::{ChannelOutbound, ChannelStreamOutbound, StreamEvent},
     },
@@ -971,7 +971,7 @@ async fn send_html_fallback_sends_plain_text_without_raw_tags() {
     server.await.expect("server join");
 }
 
-/// Regression test for <https://github.com/moltis-org/moltis/issues/947>.
+/// Regression test for <https://github.com/agentics-skills/chelix/issues/947>.
 ///
 /// teloxide-core 0.10.1 panicked in `PartSerializer::serialize_newtype_struct`
 /// when serializing `ThreadId` (a newtype wrapping `MessageId`) in a multipart
@@ -986,8 +986,8 @@ async fn send_html_fallback_sends_plain_text_without_raw_tags() {
 async fn send_document_to_topic_chat_does_not_panic() {
     use {
         axum::{Router, body::Bytes, http::Uri, routing::post},
-        moltis_channels::plugin::ChannelOutbound,
-        moltis_common::types::{MediaAttachment, ReplyPayload},
+        chelix_channels::plugin::ChannelOutbound,
+        chelix_common::types::{MediaAttachment, ReplyPayload},
     };
 
     // Mock Telegram API that returns a message result for every method.

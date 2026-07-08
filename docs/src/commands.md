@@ -42,7 +42,7 @@ Available in web UI, all channels, and via the `sessions.fork` RPC. See
 | `/sh [on\|off]` | Enter command mode (passthrough to shell) |
 | `/stop` | Abort the current running agent |
 | `/peek` | Show current thinking/tool status |
-| `/update [version]` | Update moltis (owner-only) |
+| `/update [version]` | Update chelix (owner-only) |
 
 ## Quick Actions
 

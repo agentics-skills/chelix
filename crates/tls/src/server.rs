@@ -91,7 +91,7 @@ async fn serve_ca_cert(State(state): State<HttpRedirectState>) -> impl IntoRespo
             ("content-type", "application/x-pem-file"),
             (
                 "content-disposition",
-                "attachment; filename=\"moltis-ca.pem\"",
+                "attachment; filename=\"chelix-ca.pem\"",
             ),
         ],
         state.ca_pem.as_ref().clone(),
@@ -306,7 +306,7 @@ mod tests {
         let mut headers = axum::http::HeaderMap::new();
         headers.insert(
             axum::http::header::HOST,
-            "moltis.localhost:18080".parse().unwrap(),
+            "chelix.localhost:18080".parse().unwrap(),
         );
         let uri: axum::http::Uri = "/foo?bar=baz".parse().unwrap();
         let response = redirect_to_https(State(state), headers, uri)

@@ -293,7 +293,7 @@ test.describe("Onboarding wizard", () => {
 			return;
 		}
 
-		const voiceEnabledType = await page.evaluate(() => typeof window.__MOLTIS__?.voice_enabled);
+		const voiceEnabledType = await page.evaluate(() => typeof window.__CHELIX__?.voice_enabled);
 		expect(voiceEnabledType).toBe("boolean");
 		expect(pageErrors).toEqual([]);
 	});
@@ -872,7 +872,7 @@ test.describe("Onboarding wizard", () => {
 			return;
 		}
 
-		await expect(page.getByText(/stored in Moltis's internal database \(.+moltis\.db\)/)).toBeVisible();
+		await expect(page.getByText(/stored in Chelix's internal database \(.+chelix\.db\)/)).toBeVisible();
 
 		const matrixSelectBtn = page.getByRole("button", { name: "Matrix", exact: true });
 		if (await isVisible(matrixSelectBtn)) {
@@ -889,10 +889,10 @@ test.describe("Onboarding wizard", () => {
 			page.getByText("Password is the default because it supports encrypted Matrix chats", { exact: false }),
 		).toBeVisible();
 		await expect(
-			page.getByText("Use Password so Moltis creates and persists its own Matrix device keys", { exact: false }),
+			page.getByText("Use Password so Chelix creates and persists its own Matrix device keys", { exact: false }),
 		).toBeVisible();
 		await expect(
-			page.getByText("do not transfer that device's private encryption keys into Moltis", { exact: false }),
+			page.getByText("do not transfer that device's private encryption keys into Chelix", { exact: false }),
 		).toBeVisible();
 		await expect(page.getByText("verify yes", { exact: false })).toBeVisible();
 
@@ -930,7 +930,7 @@ test.describe("Onboarding wizard", () => {
 		const authSelect = page.getByText("Authentication", { exact: true }).locator("xpath=following-sibling::select[1]");
 		await expect(authSelect).toHaveValue("password");
 		await homeserverInput.fill("https://matrix.example.com");
-		await expect(page.getByLabel("Let Moltis own this Matrix account", { exact: true })).toBeChecked();
+		await expect(page.getByLabel("Let Chelix own this Matrix account", { exact: true })).toBeChecked();
 		await authSelect.selectOption("access_token");
 		await page.locator('input[name="matrix_credential"]').fill("syt_test_token");
 		await page.getByText("Advanced Config JSON", { exact: true }).click();

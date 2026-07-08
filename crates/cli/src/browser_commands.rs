@@ -21,7 +21,7 @@ pub fn handle_browser(action: BrowserAction) -> Result<()> {
 }
 
 fn status() -> Result<()> {
-    let config = moltis_config::discover_and_load();
+    let config = chelix_config::discover_and_load();
     let browser = &config.tools.browser;
 
     println!("Browser configuration:");
@@ -39,11 +39,11 @@ fn status() -> Result<()> {
         println!("  chrome_path:    (auto-detect)");
     }
 
-    let detected = moltis_browser::detect::detect_browsers(browser.chrome_path.as_deref());
+    let detected = chelix_browser::detect::detect_browsers(browser.chrome_path.as_deref());
     if detected.is_empty() {
         println!("  detected:       none");
     } else {
-        let labels = moltis_browser::detect::installed_browser_labels(&detected);
+        let labels = chelix_browser::detect::installed_browser_labels(&detected);
         println!("  detected:       {}", labels.join(", "));
     }
 
@@ -60,7 +60,7 @@ fn status() -> Result<()> {
 }
 
 fn enable() -> Result<()> {
-    let path = moltis_config::update_config(|config| {
+    let path = chelix_config::update_config(|config| {
         config.tools.browser.enabled = true;
     })?;
     println!("Browser support enabled.");
@@ -70,7 +70,7 @@ fn enable() -> Result<()> {
 }
 
 fn disable() -> Result<()> {
-    let path = moltis_config::update_config(|config| {
+    let path = chelix_config::update_config(|config| {
         config.tools.browser.enabled = false;
     })?;
     println!("Browser support disabled.");

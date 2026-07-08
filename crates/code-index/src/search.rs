@@ -6,7 +6,7 @@
 use crate::types::SearchResult;
 
 #[cfg(feature = "qmd")]
-use moltis_qmd::QmdSearchResult;
+use chelix_qmd::QmdSearchResult;
 
 /// Convert a [`QmdSearchResult`] into our crate-level [`SearchResult`].
 ///

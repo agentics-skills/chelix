@@ -6,7 +6,7 @@ use {
     tracing::{debug, info, warn},
 };
 
-use moltis_channels::{
+use chelix_channels::{
     config_view::ChannelConfigView,
     gating::{DmPolicy, GroupPolicy, is_allowed},
     message_log::MessageLogEntry,
@@ -36,25 +36,25 @@ pub async fn start_socket_mode(
     account_id: &str,
     config: SlackAccountConfig,
     accounts: AccountStateMap,
-    message_log: Option<Arc<dyn moltis_channels::message_log::MessageLog>>,
-    event_sink: Option<Arc<dyn moltis_channels::ChannelEventSink>>,
-) -> moltis_channels::Result<()> {
+    message_log: Option<Arc<dyn chelix_channels::message_log::MessageLog>>,
+    event_sink: Option<Arc<dyn chelix_channels::ChannelEventSink>>,
+) -> chelix_channels::Result<()> {
     let bot_token_str = config.bot_token.expose_secret().clone();
     let app_token_str = config.app_token.expose_secret().clone();
 
     if bot_token_str.is_empty() {
-        return Err(moltis_channels::Error::invalid_input(
+        return Err(chelix_channels::Error::invalid_input(
             "Slack bot_token is required",
         ));
     }
     if app_token_str.is_empty() {
-        return Err(moltis_channels::Error::invalid_input(
+        return Err(chelix_channels::Error::invalid_input(
             "Slack app_token is required for Socket Mode",
         ));
     }
 
     let client = Arc::new(SlackClient::new(SlackClientHyperConnector::new().map_err(
-        |e| moltis_channels::Error::unavailable(format!("hyper connector: {e}")),
+        |e| chelix_channels::Error::unavailable(format!("hyper connector: {e}")),
     )?));
 
     // Verify the bot token and get the bot user ID.
@@ -63,7 +63,7 @@ pub async fn start_socket_mode(
     let auth_response = session
         .auth_test()
         .await
-        .map_err(|e| moltis_channels::Error::unavailable(format!("auth.test failed: {e}")))?;
+        .map_err(|e| chelix_channels::Error::unavailable(format!("auth.test failed: {e}")))?;
 
     let bot_user_id = auth_response.user_id.to_string();
     info!(account_id, bot_user_id, "slack bot authenticated");
@@ -519,13 +519,13 @@ pub(crate) async fn handle_inbound(
     // Check activation mode for non-DM channels.
     if !is_dm {
         match config.mention_mode {
-            moltis_channels::gating::MentionMode::Mention => {
+            chelix_channels::gating::MentionMode::Mention => {
                 if !is_mention {
                     return;
                 }
             },
-            moltis_channels::gating::MentionMode::None => return,
-            moltis_channels::gating::MentionMode::Always => {},
+            chelix_channels::gating::MentionMode::None => return,
+            chelix_channels::gating::MentionMode::Always => {},
         }
     }
 
@@ -575,9 +575,9 @@ pub(crate) async fn handle_inbound(
         };
 
         #[cfg(feature = "metrics")]
-        moltis_metrics::counter!(
-            moltis_metrics::channels::MESSAGES_RECEIVED_TOTAL,
-            moltis_metrics::labels::CHANNEL => "slack"
+        chelix_metrics::counter!(
+            chelix_metrics::channels::MESSAGES_RECEIVED_TOTAL,
+            chelix_metrics::labels::CHANNEL => "slack"
         )
         .increment(1);
 

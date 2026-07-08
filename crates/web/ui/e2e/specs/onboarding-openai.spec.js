@@ -2,7 +2,7 @@ const { expect, test } = require("../base-test");
 const { watchPageErrors } = require("../helpers");
 
 const LLM_STEP_HEADING = /^(Add LLMs|Add providers)$/;
-const OPENAI_API_KEY = process.env.MOLTIS_E2E_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "";
+const OPENAI_API_KEY = process.env.CHELIX_E2E_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "";
 
 function isVisible(locator) {
 	return locator.isVisible().catch(() => false);
@@ -77,7 +77,7 @@ async function moveToLlmStep(page) {
 test.describe("Onboarding OpenAI provider", () => {
 	test.describe.configure({ mode: "serial" });
 
-	test.skip(!OPENAI_API_KEY, "requires OPENAI_API_KEY or MOLTIS_E2E_OPENAI_API_KEY");
+	test.skip(!OPENAI_API_KEY, "requires OPENAI_API_KEY or CHELIX_E2E_OPENAI_API_KEY");
 
 	test("detected OpenAI choose model opens selector without asking for API key again", async ({ page }) => {
 		test.setTimeout(90_000);

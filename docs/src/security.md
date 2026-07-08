@@ -42,7 +42,7 @@ directly from Telegram or WhatsApp.
 
 ### Approval Policies
 
-Configure approval behavior in `moltis.toml`:
+Configure approval behavior in `chelix.toml`:
 
 ```toml
 [tools.execute_command]
@@ -63,7 +63,7 @@ critical destructive commands (e.g. `rm -rf /`, `git reset --hard`,
 approval regardless of configuration.
 
 Users can override specific patterns by adding matching entries to their
-`allowlist` in `moltis.toml`. The blocklist only applies to host execution;
+`allowlist` in `chelix.toml`. The blocklist only applies to host execution;
 sandboxed commands are already isolated.
 
 ### Destructive Command Guard (dcg)
@@ -224,9 +224,9 @@ API keys authenticate external tools and scripts connecting to Chelix. Keys
 
 ```bash
 # Scoped key (comma-separated scopes)
-moltis auth create-api-key --label "Monitor" --scopes "operator.read"
-moltis auth create-api-key --label "Automation" --scopes "operator.read,operator.write"
-moltis auth create-api-key --label "CI pipeline" --scopes "operator.admin"
+chelix auth create-api-key --label "Monitor" --scopes "operator.read"
+chelix auth create-api-key --label "Automation" --scopes "operator.read,operator.write"
+chelix auth create-api-key --label "CI pipeline" --scopes "operator.admin"
 ```
 
 #### Using API Keys
@@ -354,9 +354,9 @@ Remote nodes authenticate using Ed25519 challenge-response, following the same
 Trust On First Use (TOFU) model as SSH:
 
 1. **First connection**: The operator opens the pairing window from the Nodes UI
-   or with `moltis node pairing enable`. The node generates an Ed25519 keypair
+   or with `chelix node pairing enable`. The node generates an Ed25519 keypair
    and presents its public key to the gateway. The operator verifies the
-   fingerprint and approves the pairing (via the web UI or `moltis node approve`).
+   fingerprint and approves the pairing (via the web UI or `chelix node approve`).
 2. **Subsequent connections**: The gateway sends a random 32-byte nonce. The node
    signs it with its private key. The gateway verifies the signature against the
    stored public key. No shared secret crosses the wire.
@@ -366,11 +366,11 @@ Trust On First Use (TOFU) model as SSH:
 4. **Revocation**: Revoked keys are kept in the database so they cannot be
    re-paired without explicit operator action.
 
-The private key (`~/.moltis/node_key`) is stored with mode 0600 and never
+The private key (`~/.chelix/node_key`) is stored with mode 0600 and never
 leaves the node. The gateway stores only public keys.
 
 Pairing is disabled by default. Keep it disabled except while onboarding a new
-node, then close the window with `moltis node pairing disable`.
+node, then close the window with `chelix node pairing disable`.
 
 ## HTTP Endpoint Throttling
 
@@ -400,7 +400,7 @@ allowed.
 
 ### Reverse Proxy Behavior
 
-When `MOLTIS_BEHIND_PROXY=true`, throttling is keyed by forwarded client IP
+When `CHELIX_BEHIND_PROXY=true`, throttling is keyed by forwarded client IP
 headers (`X-Forwarded-For`, `X-Real-IP`, `CF-Connecting-IP`) instead of the
 direct socket address.
 
@@ -436,10 +436,10 @@ above.  Most reverse proxies add forwarding headers or change the
 
 For proxies that **strip all signals** (e.g. a bare nginx `proxy_pass`
 that rewrites `Host` to the upstream address and adds no `X-Forwarded-For`),
-use the `MOLTIS_BEHIND_PROXY` environment variable as a hard override:
+use the `CHELIX_BEHIND_PROXY` environment variable as a hard override:
 
 ```bash
-MOLTIS_BEHIND_PROXY=true moltis
+CHELIX_BEHIND_PROXY=true chelix
 ```
 
 When this variable is set, **all** connections are treated as remote —
@@ -447,7 +447,7 @@ no loopback bypass, no exceptions.
 
 ### Deploying behind a proxy
 
-1. **Set `MOLTIS_BEHIND_PROXY=true`** if your proxy does not add
+1. **Set `CHELIX_BEHIND_PROXY=true`** if your proxy does not add
    forwarding headers (safest option — eliminates any ambiguity).
 
 2. **Set a password or register a passkey** during initial setup.
@@ -460,14 +460,14 @@ no loopback bypass, no exceptions.
    WebSocket hijacking (CSWSH).
 
 4. **TLS termination** should happen at the proxy. Run Chelix with
-   `--no-tls` (or `MOLTIS_NO_TLS=true`) in this mode.
+   `--no-tls` (or `CHELIX_NO_TLS=true`) in this mode.
 
    If your browser is being redirected to `https://<domain>:13131`,
    Chelix TLS is still enabled while your proxy upstream is plain HTTP.
 
 5. **Advanced TLS upstream mode** (optional): if your proxy connects to
    Chelix using HTTPS upstream (or TCP TLS passthrough), you may keep
-   Chelix TLS enabled. Set `MOLTIS_ALLOW_TLS_BEHIND_PROXY=true` to
+   Chelix TLS enabled. Set `CHELIX_ALLOW_TLS_BEHIND_PROXY=true` to
    acknowledge this non-default setup.
 
 ### Nginx (direct config example)
@@ -504,7 +504,7 @@ map $http_upgrade $connection_upgrade {
 
 If WebSockets fail behind NPM while HTTP works, ensure:
 
-- Chelix runs with `MOLTIS_BEHIND_PROXY=true`
+- Chelix runs with `CHELIX_BEHIND_PROXY=true`
 - For standard edge TLS termination, Chelix runs with `--no-tls`
 - NPM preserves browser host/origin context
 
@@ -527,10 +527,10 @@ WebSocket connections are rejected with "cross-origin WebSocket upgrade".
 
 Upstream scheme guidance:
 
-- **Edge TLS termination (most setups)**: proxy to `http://<moltis-host>:13131`
+- **Edge TLS termination (most setups)**: proxy to `http://<chelix-host>:13131`
    with Chelix started using `--no-tls`
-- **HTTPS upstream / TLS passthrough**: proxy to `https://<moltis-host>:13131`
-  and set `MOLTIS_ALLOW_TLS_BEHIND_PROXY=true`
+- **HTTPS upstream / TLS passthrough**: proxy to `https://<chelix-host>:13131`
+  and set `CHELIX_ALLOW_TLS_BEHIND_PROXY=true`
 
 ### Passkeys Behind Proxies (Host Changes)
 
@@ -542,7 +542,7 @@ server process. In practice:
 - If a proxy rewrites `Host` and does not preserve browser host context,
   passkey routes can fail with "no passkey config for this hostname".
 
-For stable proxy deployments, set your public URL in `moltis.toml`:
+For stable proxy deployments, set your public URL in `chelix.toml`:
 
 ```toml
 [server]
@@ -550,14 +550,14 @@ external_url = "https://chat.example.com"
 ```
 
 Chelix derives the WebAuthn RP ID (domain) and origin from this URL
-automatically. The `MOLTIS_EXTERNAL_URL` environment variable takes
+automatically. The `CHELIX_EXTERNAL_URL` environment variable takes
 precedence over the config field, which is useful for container
 deployments:
 
 ```bash
-MOLTIS_BEHIND_PROXY=true
-MOLTIS_NO_TLS=true
-MOLTIS_EXTERNAL_URL=https://chat.example.com
+CHELIX_BEHIND_PROXY=true
+CHELIX_NO_TLS=true
+CHELIX_EXTERNAL_URL=https://chat.example.com
 ```
 
 For fine-grained control (e.g. when the RP ID differs from the URL host),
@@ -565,8 +565,8 @@ the existing env vars still work and take precedence after
 `external_url`:
 
 ```bash
-MOLTIS_WEBAUTHN_RP_ID=chat.example.com
-MOLTIS_WEBAUTHN_ORIGIN=https://chat.example.com
+CHELIX_WEBAUTHN_RP_ID=chat.example.com
+CHELIX_WEBAUTHN_ORIGIN=https://chat.example.com
 ```
 
 Migration guidance when changing host/domain:

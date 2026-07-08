@@ -1,14 +1,14 @@
 [package]
 edition.workspace = true
-name              = "moltis-nostr"
+name              = "chelix-nostr"
 version.workspace = true
 
 [dependencies]
 async-trait     = { workspace = true }
-moltis-channels = { workspace = true }
-moltis-common   = { workspace = true }
-moltis-config   = { workspace = true }
-moltis-metrics  = { optional = true, workspace = true }
+chelix-channels = { workspace = true }
+chelix-common   = { workspace = true }
+chelix-config   = { workspace = true }
+chelix-metrics  = { optional = true, workspace = true }
 nostr-sdk       = { workspace = true }
 secrecy         = { workspace = true }
 serde           = { workspace = true }
@@ -21,7 +21,7 @@ tracing         = { workspace = true }
 
 [features]
 default = []
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 
 [dev-dependencies]
 tokio = { workspace = true }

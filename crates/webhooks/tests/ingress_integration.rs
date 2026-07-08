@@ -12,7 +12,7 @@ use {
     sqlx::SqlitePool,
 };
 
-use moltis_webhooks::{
+use chelix_webhooks::{
     auth, dedup,
     profiles::ProfileRegistry,
     store::{NewDelivery, SqliteWebhookStore, WebhookStore},
@@ -23,7 +23,7 @@ type HmacSha256 = Hmac<Sha256>;
 
 async fn setup() -> SqliteWebhookStore {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    moltis_webhooks::run_migrations(&pool).await.unwrap();
+    chelix_webhooks::run_migrations(&pool).await.unwrap();
     SqliteWebhookStore::with_pool(pool)
 }
 
@@ -213,7 +213,7 @@ async fn test_github_pr_ingress_full_flow() {
     assert!(normalized.summary.contains("@testuser"));
 
     // 14. Verify the delivery message builder works
-    let message = moltis_webhooks::normalize::build_delivery_message(
+    let message = chelix_webhooks::normalize::build_delivery_message(
         &wh,
         Some("pull_request.opened"),
         Some(delivery_id),
@@ -390,7 +390,7 @@ async fn test_stripe_event_parsing() {
 
 #[test]
 fn test_rate_limiter_enforces_per_webhook_limit() {
-    let limiter = moltis_webhooks::rate_limit::WebhookRateLimiter::new(1000);
+    let limiter = chelix_webhooks::rate_limit::WebhookRateLimiter::new(1000);
 
     // 10 requests should succeed for webhook 1 with limit 10
     for _ in 0..10 {
@@ -437,7 +437,7 @@ async fn test_disabled_webhook_lookup() {
 
     // Disable it
     store
-        .update_webhook(wh.id, moltis_webhooks::types::WebhookPatch {
+        .update_webhook(wh.id, chelix_webhooks::types::WebhookPatch {
             enabled: Some(false),
             ..Default::default()
         })
@@ -504,9 +504,9 @@ fn test_auth_with_null_config_fails_clearly() {
 #[test]
 fn test_truncate_str_ascii() {
     let s = "hello world";
-    assert_eq!(moltis_webhooks::normalize::truncate_str(s, 5), "hello");
+    assert_eq!(chelix_webhooks::normalize::truncate_str(s, 5), "hello");
     assert_eq!(
-        moltis_webhooks::normalize::truncate_str(s, 100),
+        chelix_webhooks::normalize::truncate_str(s, 100),
         "hello world"
     );
 }
@@ -519,12 +519,12 @@ fn test_truncate_str_multibyte() {
 
     // Truncate at 5 bytes — falls inside the 2nd emoji (bytes 4..8).
     // Should walk back to byte 4 (end of first emoji).
-    let t = moltis_webhooks::normalize::truncate_str(s, 5);
+    let t = chelix_webhooks::normalize::truncate_str(s, 5);
     assert_eq!(t, "\u{1F389}");
     assert_eq!(t.len(), 4);
 
     // Truncate at 8 — exactly at boundary of 2nd emoji.
-    let t2 = moltis_webhooks::normalize::truncate_str(s, 8);
+    let t2 = chelix_webhooks::normalize::truncate_str(s, 8);
     assert_eq!(t2, "\u{1F389}\u{1F38A}");
 }
 
@@ -535,7 +535,7 @@ fn test_truncate_str_cjk() {
     assert_eq!(s.len(), 12);
 
     // Truncate at 7 — falls inside "世" (bytes 6..9).
-    let t = moltis_webhooks::normalize::truncate_str(s, 7);
+    let t = chelix_webhooks::normalize::truncate_str(s, 7);
     assert_eq!(t, "你好");
     assert_eq!(t.len(), 6);
 }
@@ -618,7 +618,7 @@ async fn test_crash_recovery_includes_processing_deliveries() {
         .unwrap();
 
     // Insert deliveries in various states.
-    use moltis_webhooks::store::NewDelivery;
+    use chelix_webhooks::store::NewDelivery;
     for (i, status) in [
         DeliveryStatus::Received,
         DeliveryStatus::Queued,
@@ -691,7 +691,7 @@ fn test_generic_profile_no_body_hash_dedup() {
 
 #[test]
 fn test_rate_limiter_global_limit_blocks_all() {
-    let limiter = moltis_webhooks::rate_limit::WebhookRateLimiter::new(3);
+    let limiter = chelix_webhooks::rate_limit::WebhookRateLimiter::new(3);
 
     // 3 requests across different webhooks should succeed.
     assert!(limiter.check(1, 100));
@@ -707,7 +707,7 @@ fn test_rate_limiter_global_limit_blocks_all() {
 
 #[test]
 fn test_webhook_redacted_hides_secrets() {
-    let wh = moltis_webhooks::types::Webhook {
+    let wh = chelix_webhooks::types::Webhook {
         id: 1,
         name: "test".into(),
         description: None,
@@ -753,7 +753,7 @@ fn test_webhook_redacted_hides_secrets() {
 
 #[test]
 fn test_webhook_redacted_none_stays_none() {
-    let wh = moltis_webhooks::types::Webhook {
+    let wh = chelix_webhooks::types::Webhook {
         id: 1,
         name: "test".into(),
         description: None,
@@ -851,7 +851,7 @@ async fn test_source_profile_not_in_patch() {
         "name": "renamed",
         "sourceProfile": "github",  // should be ignored
     });
-    let patch: moltis_webhooks::types::WebhookPatch = serde_json::from_value(patch_json).unwrap();
+    let patch: chelix_webhooks::types::WebhookPatch = serde_json::from_value(patch_json).unwrap();
     assert_eq!(patch.name, Some("renamed".into()));
     // source_profile is not a field on WebhookPatch, so it's silently ignored.
     // The webhook keeps its original source_profile.

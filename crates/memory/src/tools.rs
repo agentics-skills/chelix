@@ -1,7 +1,7 @@
 /// Agent tools for memory search, retrieval, and persistence.
 use std::{path::PathBuf, sync::Arc};
 
-use {async_trait::async_trait, moltis_agents::tool_registry::AgentTool, serde_json::json};
+use {async_trait::async_trait, chelix_agents::tool_registry::AgentTool, serde_json::json};
 
 use crate::{
     runtime::MemoryRuntime,
@@ -331,12 +331,12 @@ async fn checkpoint_memory_path(
     manager: &dyn MemoryRuntime,
     file: &str,
     reason: &str,
-) -> anyhow::Result<moltis_tools::checkpoints::CheckpointRecord> {
+) -> anyhow::Result<chelix_tools::checkpoints::CheckpointRecord> {
     let path = resolve_memory_tool_path(manager, file)?;
     let data_dir = manager
         .data_dir()
         .ok_or_else(|| anyhow::anyhow!("memory writes are disabled (no data_dir configured)"))?;
-    let checkpoints = moltis_tools::checkpoints::CheckpointManager::new(data_dir.to_path_buf());
+    let checkpoints = chelix_tools::checkpoints::CheckpointManager::new(data_dir.to_path_buf());
     checkpoints
         .checkpoint_path(&path, reason)
         .await

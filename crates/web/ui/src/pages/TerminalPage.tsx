@@ -214,7 +214,7 @@ const RECONNECT_DELAY_MS = 800;
 const INPUT_FLUSH_MS = 16;
 const WINDOW_REFRESH_MS = 2000;
 const MAX_INPUT_CHUNK = 512;
-const TmuxInstallPromptStorageKey = "moltis.settings.terminal.tmuxInstallPromptSeen.v1";
+const TmuxInstallPromptStorageKey = "chelix.settings.terminal.tmuxInstallPromptSeen.v1";
 
 function readTmuxInstallPromptSeen(): boolean {
 	try {

@@ -18,7 +18,7 @@ use crate::config::{
 use crate::access;
 
 use {
-    moltis_channels::{
+    chelix_channels::{
         ChannelEvent, ChannelType, Error as ChannelError, InboundMediaDownloader,
         InboundMediaSource, Result as ChannelsResult,
         gating::{DmPolicy, MentionMode},
@@ -32,7 +32,7 @@ use {
             ChannelReplyTarget,
         },
     },
-    moltis_common::{http_client::build_default_http_client, ssrf::ssrf_check},
+    chelix_common::{http_client::build_default_http_client, ssrf::ssrf_check},
 };
 
 use crate::state::AccountStateMap;
@@ -399,7 +399,7 @@ impl InboundMediaDownloader for DiscordInboundMediaDownloader {
 }
 
 async fn log_discord_message(
-    message_log: Option<&std::sync::Arc<dyn moltis_channels::message_log::MessageLog>>,
+    message_log: Option<&std::sync::Arc<dyn chelix_channels::message_log::MessageLog>>,
     account_id: &str,
     peer_id: &str,
     username: &Option<String>,
@@ -546,7 +546,7 @@ async fn resolve_discord_inbound_media(
                     "downloaded discord image attachment"
                 );
                 let (final_data, media_type) =
-                    match moltis_media::image_ops::optimize_for_llm(&image_data, None) {
+                    match chelix_media::image_ops::optimize_for_llm(&image_data, None) {
                         Ok(optimized) => {
                             if optimized.was_resized {
                                 info!(
@@ -774,9 +774,9 @@ impl EventHandler for Handler {
 
         // Check DM / guild / mention policy.
         let chat_type = if is_guild {
-            moltis_common::types::ChatType::Group
+            chelix_common::types::ChatType::Group
         } else {
-            moltis_common::types::ChatType::Dm
+            chelix_common::types::ChatType::Dm
         };
         let guild_id_str = msg.guild_id.map(|g| g.to_string());
         let basic_access = access::check_access(
@@ -1064,9 +1064,9 @@ impl EventHandler for Handler {
         );
 
         #[cfg(feature = "metrics")]
-        moltis_metrics::counter!(
-            moltis_metrics::channels::MESSAGES_RECEIVED_TOTAL,
-            moltis_metrics::labels::CHANNEL => "discord"
+        chelix_metrics::counter!(
+            chelix_metrics::channels::MESSAGES_RECEIVED_TOTAL,
+            chelix_metrics::labels::CHANNEL => "discord"
         )
         .increment(1);
 

@@ -13,7 +13,7 @@ use {
     tower_http::set_header::SetResponseHeaderLayer,
 };
 
-use moltis_gateway::{
+use chelix_gateway::{
     auth_webauthn::SharedWebAuthnRegistry, methods::MethodRegistry, state::GatewayState,
 };
 
@@ -32,7 +32,7 @@ use super::{
 pub(super) fn build_gateway_base_internal(
     state: Arc<GatewayState>,
     methods: Arc<MethodRegistry>,
-    push_service: Option<Arc<moltis_gateway::push::PushService>>,
+    push_service: Option<Arc<chelix_gateway::push::PushService>>,
     webauthn_registry: Option<SharedWebAuthnRegistry>,
 ) -> GatewayBase {
     let mut router = Router::new()
@@ -86,7 +86,7 @@ pub(super) fn build_gateway_base_internal(
 pub fn build_gateway_base(
     state: Arc<GatewayState>,
     methods: Arc<MethodRegistry>,
-    push_service: Option<Arc<moltis_gateway::push::PushService>>,
+    push_service: Option<Arc<chelix_gateway::push::PushService>>,
     webauthn_registry: Option<SharedWebAuthnRegistry>,
 ) -> (Router<AppState>, AppState) {
     let (router, app_state) =
@@ -218,7 +218,7 @@ pub fn finalize_gateway_app(
 pub fn build_gateway_app(
     state: Arc<GatewayState>,
     methods: Arc<MethodRegistry>,
-    push_service: Option<Arc<moltis_gateway::push::PushService>>,
+    push_service: Option<Arc<chelix_gateway::push::PushService>>,
     http_request_logs: bool,
     webauthn_registry: Option<SharedWebAuthnRegistry>,
 ) -> Router {

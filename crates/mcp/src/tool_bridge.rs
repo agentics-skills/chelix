@@ -10,7 +10,7 @@ use {
         traits::McpClientTrait,
         types::{McpToolDef, ToolContent},
     },
-    moltis_config::schema::McpServerId,
+    chelix_config::schema::McpServerId,
 };
 
 /// Recursively strip null values from nested objects and arrays.
@@ -92,9 +92,9 @@ impl McpToolBridge {
     }
 }
 
-/// Trait for agent-callable tools, matching `AgentTool` in moltis-agents.
+/// Trait for agent-callable tools, matching `AgentTool` in chelix-agents.
 ///
-/// We define our own copy here to avoid a circular dependency on moltis-agents.
+/// We define our own copy here to avoid a circular dependency on chelix-agents.
 /// The gateway wires `McpToolBridge` into the `ToolRegistry` via a thin adapter.
 #[async_trait]
 pub trait McpAgentTool: Send + Sync {

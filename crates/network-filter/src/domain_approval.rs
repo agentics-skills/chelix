@@ -16,7 +16,7 @@ use {
 };
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, histogram};
+use chelix_metrics::{counter, histogram};
 
 use crate::{ApprovalSource, DomainDecision, DomainFilter, DomainPattern, FilterAction};
 

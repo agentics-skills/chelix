@@ -99,7 +99,7 @@ impl DockerSandbox {
         self.config
             .container_prefix
             .as_deref()
-            .unwrap_or("moltis-sandbox")
+            .unwrap_or("chelix-sandbox")
     }
 
     pub(crate) fn container_name(&self, id: &SandboxId) -> String {
@@ -228,7 +228,7 @@ impl DockerSandbox {
         }
         let proxy_url = format!(
             "http://host.docker.internal:{}",
-            moltis_network_filter::DEFAULT_PROXY_PORT
+            chelix_network_filter::DEFAULT_PROXY_PORT
         );
         let mut args = Vec::new();
         for key in ["HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"] {
@@ -292,34 +292,34 @@ impl DockerSandbox {
         args
     }
 
-    /// Mount the host `moltis-ctl` binary into the sandbox at `/usr/local/bin/moltis-ctl`.
+    /// Mount the host `chelix-ctl` binary into the sandbox at `/usr/local/bin/chelix-ctl`.
     ///
-    /// Locates the binary next to the current executable (same directory as `moltis`),
-    /// and if found, bind-mounts it read-only. This allows skills to call `moltis-ctl`
+    /// Locates the binary next to the current executable (same directory as `chelix`),
+    /// and if found, bind-mounts it read-only. This allows skills to call `chelix-ctl`
     /// inside sandboxes to communicate with the gateway.
-    fn moltis_ctl_mount_args() -> Vec<String> {
+    fn chelix_ctl_mount_args() -> Vec<String> {
         let Ok(current_exe) = std::env::current_exe() else {
             return Vec::new();
         };
         let Some(exe_dir) = current_exe.parent() else {
             return Vec::new();
         };
-        let ctl_binary = exe_dir.join("moltis-ctl");
+        let ctl_binary = exe_dir.join("chelix-ctl");
         if !ctl_binary.is_file() {
             tracing::debug!(
                 path = %ctl_binary.display(),
-                "moltis-ctl binary not found next to server, skipping sandbox mount"
+                "chelix-ctl binary not found next to server, skipping sandbox mount"
             );
             return Vec::new();
         }
         vec![
             "-v".to_string(),
-            format!("{}:/usr/local/bin/moltis-ctl:ro", ctl_binary.display()),
+            format!("{}:/usr/local/bin/chelix-ctl:ro", ctl_binary.display()),
         ]
     }
 
     pub(crate) fn workspace_args(&self) -> Vec<String> {
-        let guest_workspace_dir = moltis_config::data_dir();
+        let guest_workspace_dir = chelix_config::data_dir();
         let host_workspace_dir = host_visible_data_dir(&self.config, Some(self.cli));
         let guest_workspace_dir_str = guest_workspace_dir.display().to_string();
         let host_workspace_dir_str = host_workspace_dir.display().to_string();
@@ -395,7 +395,7 @@ impl DockerSandbox {
         context_dir: &std::path::Path,
     ) -> Result<()> {
         let tar_path = std::env::temp_dir().join(format!(
-            "moltis-sandbox-export-{}.tar",
+            "chelix-sandbox-export-{}.tar",
             uuid::Uuid::new_v4()
         ));
 
@@ -499,7 +499,7 @@ impl DockerSandbox {
         ));
         args.extend(self.workspace_args());
         args.extend(self.home_persistence_args(id)?);
-        args.extend(Self::moltis_ctl_mount_args());
+        args.extend(Self::chelix_ctl_mount_args());
 
         args.push(image);
         args.extend(["sleep".to_string(), "infinity".to_string()]);
@@ -629,7 +629,7 @@ impl Sandbox for DockerSandbox {
 
         // Generate Dockerfile in a temp dir.
         let tmp_dir =
-            std::env::temp_dir().join(format!("moltis-sandbox-build-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("chelix-sandbox-build-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&tmp_dir)?;
 
         let pkg_list = canonical_sandbox_packages(packages).join(" ");
@@ -814,7 +814,7 @@ impl Sandbox for DockerSandbox {
         // `mounted_host_path` is pure path arithmetic and does not verify that
         // the translated host path is actually reachable from this process. The
         // host fast-path is only valid when the mount is genuinely visible here
-        // (the same bytes are bind-mounted into the container). When Moltis
+        // (the same bytes are bind-mounted into the container). When Chelix
         // itself runs inside a container, the persistence/workspace mount exists
         // only inside the sandbox, so a host walk would report nothing while the
         // container still sees the files. Probe the host path and use it only

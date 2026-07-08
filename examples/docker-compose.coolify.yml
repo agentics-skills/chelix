@@ -1,23 +1,23 @@
-# Moltis Docker Compose example for Coolify (Hetzner/VPS friendly)
+# Chelix Docker Compose example for Coolify (Hetzner/VPS friendly)
 #
 # Deploy this as a "Service Stack" in Coolify.
 #
 # Why this differs from local docker-compose:
 # - Uses --no-tls because Coolify terminates TLS at the proxy.
 # - Uses SERVICE_FQDN_* magic env var for Coolify routing.
-# - Mounts docker.sock so Moltis sandboxed exec tools can launch containers.
+# - Mounts docker.sock so Chelix sandboxed exec tools can launch containers.
 # - Runs as root to avoid docker.sock group-id mismatches across hosts.
 #
 # Required in Coolify UI:
-# - MOLTIS_PASSWORD (initial auth password)
-# - SERVICE_FQDN_MOLTIS_13131 (your domain, e.g. https://moltis.example.com)
+# - CHELIX_PASSWORD (initial auth password)
+# - SERVICE_FQDN_CHELIX_13131 (your domain, e.g. https://chelix.example.com)
 #
-# If you do not mount docker.sock, Moltis will still run, but sandboxed command
+# If you do not mount docker.sock, Chelix will still run, but sandboxed command
 # execution falls back to no container isolation.
 
 services:
-  moltis:
-    image: ghcr.io/moltis-org/moltis:latest
+  chelix:
+    image: ghcr.io/agentics-skills/chelix:latest
     restart: unless-stopped
     user: "0:0"
     ports:
@@ -29,16 +29,16 @@ services:
       - "13131"
       - --no-tls
     environment:
-      - SERVICE_FQDN_MOLTIS_13131=${SERVICE_FQDN_MOLTIS_13131:?}
-      - MOLTIS_PASSWORD=${MOLTIS_PASSWORD:?}
-      - MOLTIS_NO_TLS=true
-      - MOLTIS_BEHIND_PROXY=true
-      - MOLTIS_DEPLOY_PLATFORM=coolify
-      - MOLTIS_CONFIG_DIR=/data/config
-      - MOLTIS_DATA_DIR=/data
+      - SERVICE_FQDN_CHELIX_13131=${SERVICE_FQDN_CHELIX_13131:?}
+      - CHELIX_PASSWORD=${CHELIX_PASSWORD:?}
+      - CHELIX_NO_TLS=true
+      - CHELIX_BEHIND_PROXY=true
+      - CHELIX_DEPLOY_PLATFORM=coolify
+      - CHELIX_CONFIG_DIR=/data/config
+      - CHELIX_DATA_DIR=/data
     volumes:
       - type: volume
-        source: moltis-data
+        source: chelix-data
         target: /data
       - type: bind
         source: /var/run/docker.sock
@@ -51,4 +51,4 @@ services:
       start_period: 20s
 
 volumes:
-  moltis-data: {}
+  chelix-data: {}

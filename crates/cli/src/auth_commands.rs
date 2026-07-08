@@ -1,7 +1,7 @@
 use {
     anyhow::Result,
     clap::Subcommand,
-    moltis_oauth::{
+    chelix_oauth::{
         CallbackServer, OAuthFlow, TokenStore, callback_port, device_flow, load_oauth_config,
         parse_callback_input,
     },
@@ -110,7 +110,7 @@ fn extract_pasted_callback_code(input: &str, expected_state: &str) -> Result<Str
     Ok(parsed.code)
 }
 
-async fn login_device_flow(provider: &str, config: &moltis_oauth::OAuthConfig) -> Result<()> {
+async fn login_device_flow(provider: &str, config: &chelix_oauth::OAuthConfig) -> Result<()> {
     let client = reqwest::Client::new();
 
     // Build extra headers for providers that need them (e.g. Kimi Code).
@@ -151,7 +151,7 @@ async fn login_device_flow(provider: &str, config: &moltis_oauth::OAuthConfig) -
 /// Build provider-specific extra headers for the device flow.
 fn build_provider_headers(provider: &str) -> Option<reqwest::header::HeaderMap> {
     match provider {
-        "kimi-code" => Some(moltis_oauth::kimi_headers()),
+        "kimi-code" => Some(chelix_oauth::kimi_headers()),
         _ => None,
     }
 }
@@ -193,7 +193,7 @@ fn logout(provider: &str) -> Result<()> {
 }
 
 fn reset_identity() -> Result<()> {
-    moltis_config::loader::update_config(|cfg| {
+    chelix_config::loader::update_config(|cfg| {
         cfg.identity = Default::default();
         cfg.user = Default::default();
     })?;
@@ -202,14 +202,14 @@ fn reset_identity() -> Result<()> {
 }
 
 async fn reset_password() -> Result<()> {
-    let data_dir = moltis_config::data_dir();
-    let db_path = data_dir.join("moltis.db");
+    let data_dir = chelix_config::data_dir();
+    let db_path = data_dir.join("chelix.db");
     if !db_path.exists() {
         println!("No database found at {}", db_path.display());
         return Ok(());
     }
 
-    moltis_gateway::auth::CredentialStore::reset_from_db_path(&db_path).await?;
+    chelix_gateway::auth::CredentialStore::reset_from_db_path(&db_path).await?;
     for line in reset_password_success_lines() {
         println!("{line}");
     }
@@ -224,8 +224,8 @@ fn reset_password_success_lines() -> [&'static str; 2] {
 }
 
 async fn create_api_key(label: &str, scopes_str: Option<String>) -> Result<()> {
-    let data_dir = moltis_config::data_dir();
-    let db_path = data_dir.join("moltis.db");
+    let data_dir = chelix_config::data_dir();
+    let db_path = data_dir.join("chelix.db");
     if !db_path.exists() {
         anyhow::bail!(
             "No database found at {}. Start the gateway first to initialize it.",
@@ -237,10 +237,10 @@ async fn create_api_key(label: &str, scopes_str: Option<String>) -> Result<()> {
     let scopes: Option<Vec<String>> = if let Some(ref s) = scopes_str {
         let parsed: Vec<String> = s.split(',').map(|s| s.trim().to_string()).collect();
         for scope in &parsed {
-            if !moltis_gateway::auth::VALID_SCOPES.contains(&scope.as_str()) {
+            if !chelix_gateway::auth::VALID_SCOPES.contains(&scope.as_str()) {
                 anyhow::bail!(
                     "Invalid scope: {scope}\nValid scopes: {}",
-                    moltis_gateway::auth::VALID_SCOPES.join(", ")
+                    chelix_gateway::auth::VALID_SCOPES.join(", ")
                 );
             }
         }
@@ -252,8 +252,8 @@ async fn create_api_key(label: &str, scopes_str: Option<String>) -> Result<()> {
     // Connect to database and create the key
     let db_url = format!("sqlite:{}", db_path.display());
     let pool = sqlx::SqlitePool::connect(&db_url).await?;
-    let config = moltis_config::discover_and_load();
-    let store = moltis_gateway::auth::CredentialStore::with_config(pool, &config.auth).await?;
+    let config = chelix_config::discover_and_load();
+    let store = chelix_gateway::auth::CredentialStore::with_config(pool, &config.auth).await?;
 
     let (id, raw_key) = store.create_api_key(label, scopes.as_deref()).await?;
 

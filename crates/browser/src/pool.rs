@@ -206,9 +206,9 @@ impl BrowserPool {
         {
             self.active_count
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            moltis_metrics::gauge!(moltis_metrics::browser::INSTANCES_ACTIVE)
+            chelix_metrics::gauge!(chelix_metrics::browser::INSTANCES_ACTIVE)
                 .set(self.active_count.load(std::sync::atomic::Ordering::Relaxed) as f64);
-            moltis_metrics::counter!(moltis_metrics::browser::INSTANCES_CREATED_TOTAL).increment(1);
+            chelix_metrics::counter!(chelix_metrics::browser::INSTANCES_CREATED_TOTAL).increment(1);
         }
 
         let mode = if sandbox {
@@ -283,9 +283,9 @@ impl BrowserPool {
             {
                 self.active_count
                     .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-                moltis_metrics::gauge!(moltis_metrics::browser::INSTANCES_ACTIVE)
+                chelix_metrics::gauge!(chelix_metrics::browser::INSTANCES_ACTIVE)
                     .set(self.active_count.load(std::sync::atomic::Ordering::Relaxed) as f64);
-                moltis_metrics::counter!(moltis_metrics::browser::INSTANCES_DESTROYED_TOTAL)
+                chelix_metrics::counter!(chelix_metrics::browser::INSTANCES_DESTROYED_TOTAL)
                     .increment(1);
             }
 
@@ -442,7 +442,7 @@ impl BrowserPool {
             // container runs Chrome as uid 999 (`chrome` user), which differs from the
             // host uid that owns this directory. Without open permissions the bind-mounted
             // volume is not writable and Chrome crashes on startup.
-            // This is safe: the directory is Moltis-managed (~/.moltis/browser/profile/)
+            // This is safe: the directory is Chelix-managed (~/.chelix/browser/profile/)
             // and contains only ephemeral Chrome profile data (cache, cookies, local
             // storage). It is not a system directory and has no security-sensitive content.
             if let Some(ref dir) = profile_dir {
@@ -1122,17 +1122,17 @@ mod tests {
 
     #[test]
     fn sanitize_session_component_replaces_unsafe_chars() {
-        let sanitized = sanitize_session_component("discord:moltis:1476434288646815864");
-        assert_eq!(sanitized, "discord_moltis_1476434288646815864");
+        let sanitized = sanitize_session_component("discord:chelix:1476434288646815864");
+        assert_eq!(sanitized, "discord_chelix_1476434288646815864");
     }
 
     #[test]
     fn sandbox_profile_dir_is_namespaced_by_session() {
-        let base = PathBuf::from("/tmp/moltis-profile");
+        let base = PathBuf::from("/tmp/chelix-profile");
         let path = sandbox_profile_dir(Some(base), "browser-abc123");
         assert_eq!(
             path,
-            Some(PathBuf::from("/tmp/moltis-profile/sandbox/browser-abc123"))
+            Some(PathBuf::from("/tmp/chelix-profile/sandbox/browser-abc123"))
         );
     }
 

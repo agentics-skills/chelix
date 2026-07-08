@@ -1,4 +1,4 @@
-package moltis:tool@0.1.0;
+package chelix:tool@0.1.0;
 
 interface outgoing-handler {
   record http-request {

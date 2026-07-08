@@ -14,8 +14,8 @@ use {
 use crate::error::Error;
 
 use {
-    moltis_agents::tool_registry::AgentTool,
-    moltis_config::schema::{SearchProvider as ConfigSearchProvider, WebSearchConfig},
+    chelix_agents::tool_registry::AgentTool,
+    chelix_config::schema::{SearchProvider as ConfigSearchProvider, WebSearchConfig},
 };
 
 use crate::command::EnvVarProvider;
@@ -241,7 +241,7 @@ impl WebSearchTool {
     #[must_use]
     pub fn with_firecrawl_config(
         mut self,
-        config: &moltis_config::schema::FirecrawlConfig,
+        config: &chelix_config::schema::FirecrawlConfig,
     ) -> Self {
         if let SearchProvider::Firecrawl { ref mut base_url } = self.provider {
             if !config.base_url.trim().is_empty() {
@@ -1032,7 +1032,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_env_value_with_provider_uses_runtime_env_values() {
-        let key = format!("MOLTIS_TEST_DYNAMIC_KEY_{}", std::process::id());
+        let key = format!("CHELIX_TEST_DYNAMIC_KEY_{}", std::process::id());
         let provider = Arc::new(MockEnvProvider {
             vars: vec![(key.clone(), "dynamic-value".to_string())],
         });

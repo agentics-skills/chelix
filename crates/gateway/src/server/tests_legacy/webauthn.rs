@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use {
-    moltis_auth::{AuthMode, CredentialStore, ResolvedAuth},
+    chelix_auth::{AuthMode, CredentialStore, ResolvedAuth},
     sqlx::SqlitePool,
 };
 
@@ -16,7 +16,7 @@ async fn sync_runtime_webauthn_host_registers_new_origin() {
             password: None,
         },
         crate::services::GatewayServices::noop(),
-        moltis_config::MoltisConfig::default(),
+        chelix_config::ChelixConfig::default(),
         None,
         Some(Arc::clone(&credential_store)),
         None,
@@ -25,8 +25,8 @@ async fn sync_runtime_webauthn_host_registers_new_origin() {
         false,
         None,
         None,
-        Arc::new(moltis_code_index::CodeIndex::config_only(
-            moltis_code_index::CodeIndexConfig::default(),
+        Arc::new(chelix_code_index::CodeIndex::config_only(
+            chelix_code_index::CodeIndexConfig::default(),
         )),
         18789,
         false,
@@ -104,12 +104,12 @@ async fn sync_runtime_webauthn_host_skips_insecure_http_origin() {
     let notice = crate::server::startup::sync_runtime_webauthn_host_and_notice(
         &gateway,
         Some(&registry),
-        Some("moltis.local"),
+        Some("chelix.local"),
         None,
         "test",
     )
     .await;
 
     assert!(notice.is_none());
-    assert!(!registry.read().await.contains_host("moltis.local"));
+    assert!(!registry.read().await.contains_host("chelix.local"));
 }

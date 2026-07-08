@@ -7,7 +7,7 @@ Use this when adding a new channel crate or bringing an existing one to parity.
 - The channel must be configurable from the web UI.
 - The onboarding flow must expose the same core settings needed for first-run success.
 - Any channel-specific settings not modeled in dedicated fields must still be reachable through the shared advanced JSON config editor.
-- The UI must state clearly that channel settings added or edited in the web UI are stored in `data_dir()/moltis.db`, not written back to `moltis.toml`.
+- The UI must state clearly that channel settings added or edited in the web UI are stored in `data_dir()/chelix.db`, not written back to `chelix.toml`.
 - Editing a channel from the UI must preserve omitted settings and redacted secrets instead of silently wiping them.
 
 ## Backend checklist
@@ -46,7 +46,7 @@ Use this when adding a new channel crate or bringing an existing one to parity.
 - Web UI add and edit flows.
 - Onboarding support if the channel is offered there.
 - Advanced JSON config editor support in the web UI so unmodeled settings remain reachable.
-- Clear UI and docs note that web-managed channel settings are stored in `data_dir()/moltis.db`, not written back to `moltis.toml`.
+- Clear UI and docs note that web-managed channel settings are stored in `data_dir()/chelix.db`, not written back to `chelix.toml`.
 - Config template, schema validation, docs, and tests updated in the same PR.
 - Unit coverage for config, access control, and any channel-specific parsing or merge logic.
 

@@ -418,7 +418,7 @@ mod tests {
                 "mcp__vmcp-ha__homeassistant_ha_get_state",
                 "Get current status, state, and attributes from Home Assistant",
             )),
-            moltis_config::schema::McpServerId::from("vmcp-ha"),
+            chelix_config::schema::McpServerId::from("vmcp-ha"),
         );
         registry
     }

@@ -18,7 +18,7 @@ use {
     sha2::{Digest, Sha256},
 };
 
-/// Privacy-preserving APNS push relay for Moltis gateways.
+/// Privacy-preserving APNS push relay for Chelix gateways.
 ///
 /// Holds a single Apple .p8 key and forwards opaque "wake up" silent
 /// pushes on behalf of self-hosted gateways. The relay never sees

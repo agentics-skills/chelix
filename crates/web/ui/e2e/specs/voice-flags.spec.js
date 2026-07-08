@@ -15,11 +15,11 @@ async function mockVoiceFlags(page, { sttEnabled = true, ttsEnabled = true } = {
 		var contentType = response.headers()["content-type"] || "";
 		if (!contentType.includes("text/html")) return route.fulfill({ response });
 		var html = await response.text();
-		html = html.replace(/window\.__MOLTIS__=({.*?});<\/script>/s, (_match, rawGon) => {
+		html = html.replace(/window\.__CHELIX__=({.*?});<\/script>/s, (_match, rawGon) => {
 			var gon = JSON.parse(rawGon);
 			gon.stt_enabled = sttEnabled;
 			gon.tts_enabled = ttsEnabled;
-			return `window.__MOLTIS__=${JSON.stringify(gon)};</script>`;
+			return `window.__CHELIX__=${JSON.stringify(gon)};</script>`;
 		});
 		var headers = response.headers();
 		delete headers["content-length"];
@@ -51,7 +51,7 @@ async function mockVoiceFlags(page, { sttEnabled = true, ttsEnabled = true } = {
 async function applyVoiceFlags(page, { sttEnabled = true, ttsEnabled = true } = {}) {
 	await page.evaluate(
 		(flags) => {
-			var gon = window.__moltis_modules?.gon;
+			var gon = window.__chelix_modules?.gon;
 			if (gon?.set) {
 				gon.set("stt_enabled", flags.sttEnabled);
 				gon.set("tts_enabled", flags.ttsEnabled);

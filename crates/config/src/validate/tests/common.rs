@@ -139,14 +139,14 @@ rate_limit_max = 10
 
 #[test]
 fn schema_drift_guard() {
-    let config = MoltisConfig::default();
+    let config = ChelixConfig::default();
     let toml_value = toml::Value::try_from(&config).expect("serialize default config");
     let schema = build_schema_map();
     let mut missing = Vec::new();
     collect_missing_keys(&toml_value, &schema, "", &mut missing);
     assert!(
         missing.is_empty(),
-        "schema map is missing keys present in MoltisConfig::default(): {missing:?}\n\
+        "schema map is missing keys present in ChelixConfig::default(): {missing:?}\n\
          Update build_schema_map() in validate.rs to include these fields."
     );
 }
@@ -250,7 +250,7 @@ terminal_enabled = false
 fn server_external_url_is_known_field() {
     let toml = r#"
 [server]
-external_url = "https://moltis.example.com"
+external_url = "https://chelix.example.com"
 "#;
     let result = validate_toml_str(toml);
     let unknown = result

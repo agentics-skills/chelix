@@ -2,8 +2,8 @@
 name: mcp-servers
 description: Add, remove, configure, and troubleshoot MCP (Model Context Protocol) servers. Use when the user wants to connect external tools, manage MCP server lifecycle, or debug MCP connectivity issues.
 origin:
-  source: moltis
-  url: https://github.com/moltis-org/moltis
+  source: chelix
+  url: https://github.com/agentics-skills/chelix
   version: "1.0"
 ---
 

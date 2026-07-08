@@ -39,11 +39,11 @@ impl From<&str> for ServiceError {
     }
 }
 
-impl From<ServiceError> for moltis_protocol::ErrorShape {
+impl From<ServiceError> for chelix_protocol::ErrorShape {
     fn from(err: ServiceError) -> Self {
         let code = match &err {
-            ServiceError::Forbidden { .. } => moltis_protocol::error_codes::FORBIDDEN,
-            _ => moltis_protocol::error_codes::INTERNAL,
+            ServiceError::Forbidden { .. } => chelix_protocol::error_codes::FORBIDDEN,
+            _ => chelix_protocol::error_codes::INTERNAL,
         };
         Self::new(code, err.to_string())
     }

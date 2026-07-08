@@ -16,16 +16,16 @@ use super::helpers::{ensure_ollama_model, env_value_with_overrides};
 /// when no embedding provider could be resolved or the database could not
 /// be opened.
 pub(crate) async fn init_memory_system(
-    config: &moltis_config::MoltisConfig,
+    config: &chelix_config::ChelixConfig,
     data_dir: &FsPath,
-    effective_providers: &moltis_config::schema::ProvidersConfig,
+    effective_providers: &chelix_config::schema::ProvidersConfig,
     runtime_env_overrides: &HashMap<String, String>,
     db_pool_max_connections: u32,
-) -> Option<moltis_memory::runtime::DynMemoryRuntime> {
+) -> Option<chelix_memory::runtime::DynMemoryRuntime> {
     // Build embedding provider(s) for the fallback chain.
     let mut embedding_providers: Vec<(
         String,
-        Box<dyn moltis_memory::embeddings::EmbeddingProvider>,
+        Box<dyn chelix_memory::embeddings::EmbeddingProvider>,
     )> = Vec::new();
 
     let mem_cfg = &config.memory;
@@ -36,7 +36,7 @@ pub(crate) async fn init_memory_system(
         // 1. If user explicitly configured an embedding provider, use it.
         if let Some(provider) = mem_cfg.provider {
             match provider {
-                moltis_config::MemoryProvider::Local => {
+                chelix_config::MemoryProvider::Local => {
                     #[cfg(feature = "local-embeddings")]
                     {
                         let cache_dir = mem_cfg
@@ -44,18 +44,18 @@ pub(crate) async fn init_memory_system(
                             .as_ref()
                             .map(PathBuf::from)
                             .unwrap_or_else(
-                                moltis_memory::embeddings_local::LocalGgufEmbeddingProvider::default_cache_dir,
+                                chelix_memory::embeddings_local::LocalGgufEmbeddingProvider::default_cache_dir,
                             );
                         // `memory.model` selects the GGUF file (path or cached
                         // filename); falls back to the bundled default when unset.
-                        match moltis_memory::embeddings_local::LocalGgufEmbeddingProvider::resolve_model(
+                        match chelix_memory::embeddings_local::LocalGgufEmbeddingProvider::resolve_model(
                             cache_dir,
                             mem_cfg.model.as_deref(),
                         )
                         .await
                         {
                             Ok(path) => {
-                                match moltis_memory::embeddings_local::LocalGgufEmbeddingProvider::new(
+                                match chelix_memory::embeddings_local::LocalGgufEmbeddingProvider::new(
                                     path,
                                 ) {
                                     Ok(p) => embedding_providers.push(("local-gguf".into(), Box::new(p))),
@@ -70,14 +70,14 @@ pub(crate) async fn init_memory_system(
                         "memory: 'local' embedding provider requires the 'local-embeddings' feature"
                     );
                 },
-                moltis_config::MemoryProvider::Ollama
-                | moltis_config::MemoryProvider::Custom
-                | moltis_config::MemoryProvider::OpenAi => {
+                chelix_config::MemoryProvider::Ollama
+                | chelix_config::MemoryProvider::Custom
+                | chelix_config::MemoryProvider::OpenAi => {
                     let base_url = mem_cfg.base_url.clone().unwrap_or_else(|| match provider {
-                        moltis_config::MemoryProvider::Ollama => "http://localhost:11434".into(),
+                        chelix_config::MemoryProvider::Ollama => "http://localhost:11434".into(),
                         _ => "https://api.openai.com".into(),
                     });
-                    if provider == moltis_config::MemoryProvider::Ollama {
+                    if provider == chelix_config::MemoryProvider::Ollama {
                         let model = mem_cfg.model.as_deref().unwrap_or("nomic-embed-text");
                         ensure_ollama_model(&base_url, model).await;
                     }
@@ -90,7 +90,7 @@ pub(crate) async fn init_memory_system(
                         })
                         .unwrap_or_default();
                     let mut e =
-                        moltis_memory::embeddings_openai::OpenAiEmbeddingProvider::new(api_key);
+                        chelix_memory::embeddings_openai::OpenAiEmbeddingProvider::new(api_key);
                     if base_url != "https://api.openai.com" {
                         e = e.with_base_url(base_url);
                     }
@@ -98,10 +98,10 @@ pub(crate) async fn init_memory_system(
                         e = e.with_model(model.clone(), 1536);
                     }
                     let provider_name = match provider {
-                        moltis_config::MemoryProvider::Ollama => "ollama",
-                        moltis_config::MemoryProvider::Custom => "custom",
-                        moltis_config::MemoryProvider::OpenAi => "openai",
-                        moltis_config::MemoryProvider::Local => "local",
+                        chelix_config::MemoryProvider::Ollama => "ollama",
+                        chelix_config::MemoryProvider::Custom => "custom",
+                        chelix_config::MemoryProvider::OpenAi => "openai",
+                        chelix_config::MemoryProvider::Local => "local",
                     };
                     embedding_providers.push((provider_name.to_owned(), Box::new(e)));
                 },
@@ -119,7 +119,7 @@ pub(crate) async fn init_memory_system(
             if ollama_ok {
                 ensure_ollama_model("http://localhost:11434", "nomic-embed-text").await;
                 let e =
-                    moltis_memory::embeddings_openai::OpenAiEmbeddingProvider::new(String::new())
+                    chelix_memory::embeddings_openai::OpenAiEmbeddingProvider::new(String::new())
                         .with_base_url("http://localhost:11434".into())
                         .with_model("nomic-embed-text".into(), 768);
                 embedding_providers.push(("ollama".into(), Box::new(e)));
@@ -156,7 +156,7 @@ pub(crate) async fn init_memory_system(
                     .get(config_name)
                     .and_then(|e| e.base_url.clone())
                     .unwrap_or_else(|| default_base.to_string());
-                let mut e = moltis_memory::embeddings_openai::OpenAiEmbeddingProvider::new(api_key);
+                let mut e = chelix_memory::embeddings_openai::OpenAiEmbeddingProvider::new(api_key);
                 if base != "https://api.openai.com" {
                     e = e.with_base_url(base);
                 }
@@ -166,7 +166,7 @@ pub(crate) async fn init_memory_system(
     }
 
     // Build the final embedder: fallback chain, single provider, or keyword-only.
-    let embedder: Option<Box<dyn moltis_memory::embeddings::EmbeddingProvider>> =
+    let embedder: Option<Box<dyn chelix_memory::embeddings::EmbeddingProvider>> =
         if mem_cfg.disable_rag {
             None
         } else if embedding_providers.is_empty() {
@@ -187,7 +187,7 @@ pub(crate) async fn init_memory_system(
             } else {
                 info!(providers = ?names, active = names[0], "memory: fallback chain configured");
                 Some(Box::new(
-                    moltis_memory::embeddings_fallback::FallbackEmbeddingProvider::new(
+                    chelix_memory::embeddings_fallback::FallbackEmbeddingProvider::new(
                         embedding_providers,
                     ),
                 ))
@@ -223,7 +223,7 @@ pub(crate) async fn init_memory_system(
     };
     match memory_pool_result {
         Ok(memory_pool) => {
-            if let Err(e) = moltis_memory::schema::run_migrations(&memory_pool).await {
+            if let Err(e) = chelix_memory::schema::run_migrations(&memory_pool).await {
                 tracing::warn!("memory migration failed: {e}");
                 None
             } else {
@@ -239,11 +239,11 @@ pub(crate) async fn init_memory_system(
 
 /// Build the memory runtime, start initial sync, file watchers, and periodic syncs.
 async fn build_memory_runtime(
-    mem_cfg: &moltis_config::schema::MemoryEmbeddingConfig,
+    mem_cfg: &chelix_config::schema::MemoryEmbeddingConfig,
     data_dir: &FsPath,
-    embedder: Option<Box<dyn moltis_memory::embeddings::EmbeddingProvider>>,
+    embedder: Option<Box<dyn chelix_memory::embeddings::EmbeddingProvider>>,
     memory_pool: sqlx::SqlitePool,
-) -> Option<moltis_memory::runtime::DynMemoryRuntime> {
+) -> Option<chelix_memory::runtime::DynMemoryRuntime> {
     let data_memory_file = data_dir.join("MEMORY.md");
     let data_memory_file_lower = data_dir.join("memory.md");
     let data_memory_sub = data_dir.join("memory");
@@ -264,7 +264,7 @@ async fn build_memory_runtime(
         );
     }
 
-    let memory_runtime_config = moltis_memory::config::MemoryConfig {
+    let memory_runtime_config = chelix_memory::config::MemoryConfig {
         db_path: data_dir.join("memory.db").to_string_lossy().into(),
         data_dir: Some(data_dir.to_path_buf()),
         memory_dirs: vec![
@@ -274,38 +274,38 @@ async fn build_memory_runtime(
             agents_root,
         ],
         citations: match mem_cfg.citations {
-            moltis_config::MemoryCitationsMode::On => moltis_memory::config::CitationMode::On,
-            moltis_config::MemoryCitationsMode::Off => moltis_memory::config::CitationMode::Off,
-            moltis_config::MemoryCitationsMode::Auto => moltis_memory::config::CitationMode::Auto,
+            chelix_config::MemoryCitationsMode::On => chelix_memory::config::CitationMode::On,
+            chelix_config::MemoryCitationsMode::Off => chelix_memory::config::CitationMode::Off,
+            chelix_config::MemoryCitationsMode::Auto => chelix_memory::config::CitationMode::Auto,
         },
         llm_reranking: mem_cfg.llm_reranking,
         merge_strategy: match mem_cfg.search_merge_strategy {
-            moltis_config::MemorySearchMergeStrategy::Rrf => {
-                moltis_memory::config::MergeStrategy::Rrf
+            chelix_config::MemorySearchMergeStrategy::Rrf => {
+                chelix_memory::config::MergeStrategy::Rrf
             },
-            moltis_config::MemorySearchMergeStrategy::Linear => {
-                moltis_memory::config::MergeStrategy::Linear
+            chelix_config::MemorySearchMergeStrategy::Linear => {
+                chelix_memory::config::MergeStrategy::Linear
             },
         },
         ..Default::default()
     };
 
-    let store = Box::new(moltis_memory::store_sqlite::SqliteMemoryStore::new(
+    let store = Box::new(chelix_memory::store_sqlite::SqliteMemoryStore::new(
         memory_pool,
     ));
     let memory_dirs_for_watch = memory_runtime_config.memory_dirs.clone();
     let builtin_manager = Arc::new(if let Some(embedder) = embedder {
-        moltis_memory::manager::MemoryManager::new(memory_runtime_config, store, embedder)
+        chelix_memory::manager::MemoryManager::new(memory_runtime_config, store, embedder)
     } else {
-        moltis_memory::manager::MemoryManager::keyword_only(memory_runtime_config, store)
+        chelix_memory::manager::MemoryManager::keyword_only(memory_runtime_config, store)
     });
-    let manager: moltis_memory::runtime::DynMemoryRuntime = match mem_cfg.backend {
-        moltis_config::MemoryBackend::Builtin => builtin_manager.clone(),
-        moltis_config::MemoryBackend::Qmd => {
+    let manager: chelix_memory::runtime::DynMemoryRuntime = match mem_cfg.backend {
+        chelix_config::MemoryBackend::Builtin => builtin_manager.clone(),
+        chelix_config::MemoryBackend::Qmd => {
             #[cfg(feature = "qmd")]
             {
                 let qmd_manager =
-                    Arc::new(moltis_qmd::QmdManager::new(moltis_qmd::QmdManagerConfig {
+                    Arc::new(chelix_qmd::QmdManager::new(chelix_qmd::QmdManagerConfig {
                         command: mem_cfg.qmd.command.clone().unwrap_or_else(|| "qmd".into()),
                         collections: super::helpers::build_qmd_collections(data_dir, &mem_cfg.qmd),
                         max_results: mem_cfg.qmd.max_results.unwrap_or(20),
@@ -321,7 +321,7 @@ async fn build_memory_runtime(
                         collections = qmd_manager.collections().len(),
                         "memory: using QMD backend"
                     );
-                    Arc::new(moltis_qmd::QmdMemoryRuntime::new(
+                    Arc::new(chelix_qmd::QmdMemoryRuntime::new(
                         qmd_manager,
                         builtin_manager.clone(),
                         mem_cfg.disable_rag,
@@ -376,18 +376,18 @@ async fn build_memory_runtime(
         #[cfg(feature = "file-watcher")]
         {
             let watcher_manager = Arc::clone(&sync_manager);
-            let watch_specs = moltis_memory::watcher::build_watch_specs(&memory_dirs_for_watch);
-            match moltis_memory::watcher::MemoryFileWatcher::start(watch_specs) {
+            let watch_specs = chelix_memory::watcher::build_watch_specs(&memory_dirs_for_watch);
+            match chelix_memory::watcher::MemoryFileWatcher::start(watch_specs) {
                 Ok((_watcher, mut rx)) => {
                     info!("memory: file watcher started");
                     tokio::spawn(async move {
                         while let Some(event) = rx.recv().await {
                             let path = match &event {
-                                moltis_memory::watcher::WatchEvent::Created(p)
-                                | moltis_memory::watcher::WatchEvent::Modified(p) => {
+                                chelix_memory::watcher::WatchEvent::Created(p)
+                                | chelix_memory::watcher::WatchEvent::Modified(p) => {
                                     Some(p.clone())
                                 },
-                                moltis_memory::watcher::WatchEvent::Removed(p) => {
+                                chelix_memory::watcher::WatchEvent::Removed(p) => {
                                     if let Err(e) = watcher_manager.sync().await {
                                         tracing::warn!(
                                             path = %p.display(),

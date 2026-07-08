@@ -1144,7 +1144,7 @@ function ConfigSection(): VNode {
 					{configLoading.value ? "Loading\u2026" : "Reload"}
 				</button>
 			</div>
-			<p className="text-xs text-[var(--muted)] mb-3">Controls how long Moltis waits for an MCP server response.</p>
+			<p className="text-xs text-[var(--muted)] mb-3">Controls how long Chelix waits for an MCP server response.</p>
 			<div className="flex flex-wrap items-end gap-3">
 				<label className="flex flex-col gap-1">
 					<span className="text-xs text-[var(--muted)]">Timeout (seconds)</span>
@@ -1201,7 +1201,7 @@ function McpPageComponent(): VNode {
 				<div className="flex items-center gap-2 my-3 px-3.5 py-2.5 bg-[var(--surface)] rounded-[var(--radius-sm)] font-mono text-xs text-[var(--text-strong)]">
 					<span className="opacity-50">Agent</span>
 					<span className="text-[var(--accent)]">&rarr;</span>
-					<span>Moltis</span>
+					<span>Chelix</span>
 					<span className="text-[var(--accent)]">&rarr;</span>
 					<span>Local / Remote MCP</span>
 					<span className="text-[var(--accent)]">&rarr;</span>

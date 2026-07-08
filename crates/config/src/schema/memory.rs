@@ -15,7 +15,7 @@ pub struct MemoryEmbeddingConfig {
     pub style: MemoryStyle,
     /// Where agent-authored memory writes are allowed to land.
     pub agent_write_mode: AgentMemoryWriteMode,
-    /// How Moltis writes the managed `USER.md` profile surface.
+    /// How Chelix writes the managed `USER.md` profile surface.
     pub user_profile_write_mode: UserProfileWriteMode,
     /// Memory backend used for search, retrieval, and indexing.
     pub backend: MemoryBackend,
@@ -139,7 +139,7 @@ pub enum AgentMemoryWriteMode {
     Off,
 }
 
-/// How Moltis writes the managed `USER.md` profile surface.
+/// How Chelix writes the managed `USER.md` profile surface.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum UserProfileWriteMode {
@@ -148,7 +148,7 @@ pub enum UserProfileWriteMode {
     ExplicitAndAuto,
     /// Allow explicit settings saves, but disable silent browser/channel enrichment.
     ExplicitOnly,
-    /// Do not write `USER.md`; keep user profile only in `moltis.toml`.
+    /// Do not write `USER.md`; keep user profile only in `chelix.toml`.
     Off,
 }
 

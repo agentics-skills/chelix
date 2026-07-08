@@ -1,6 +1,6 @@
 # Telegram
 
-Moltis can connect to Telegram as a bot, letting you chat with your agent from
+Chelix can connect to Telegram as a bot, letting you chat with your agent from
 any Telegram conversation. The integration uses Telegram's
 [Bot API](https://core.telegram.org/bots/api) with long polling — no public URL
 or webhook endpoint is required.
@@ -15,7 +15,7 @@ or webhook endpoint is required.
                    │  long polling (getUpdates)
                    ▼
 ┌──────────────────────────────────────────────────────┐
-│              moltis-telegram crate                    │
+│              chelix-telegram crate                    │
 │  ┌────────────┐  ┌────────────┐  ┌────────────────┐  │
 │  │  Handler   │  │  Outbound  │  │     Plugin     │  │
 │  │ (inbound)  │  │ (replies)  │  │  (lifecycle)   │  │
@@ -24,7 +24,7 @@ or webhook endpoint is required.
                    │
                    ▼
 ┌──────────────────────────────────────────────────────┐
-│                 Moltis Gateway                        │
+│                 Chelix Gateway                        │
 │         (chat dispatch, tools, memory)                │
 └──────────────────────────────────────────────────────┘
 ```
@@ -35,7 +35,7 @@ run on a home machine or behind a NAT.
 
 ## Prerequisites
 
-Before configuring Moltis, create a Telegram bot:
+Before configuring Chelix, create a Telegram bot:
 
 1. Open Telegram and message [@BotFather](https://t.me/BotFather)
 2. Send `/newbot` and follow the prompts to choose a name and username
@@ -43,14 +43,14 @@ Before configuring Moltis, create a Telegram bot:
 
 ```admonish warning
 The bot token is a secret — treat it like a password. Never commit it to
-version control. Moltis stores it with `secrecy::Secret` and redacts it from
-logs, but your `moltis.toml` file is plain text on disk. Consider using
+version control. Chelix stores it with `secrecy::Secret` and redacts it from
+logs, but your `chelix.toml` file is plain text on disk. Consider using
 [Vault](vault.md) for encryption at rest.
 ```
 
 ## Configuration
 
-Add a `[channels.telegram.<account-id>]` section to your `moltis.toml`:
+Add a `[channels.telegram.<account-id>]` section to your `chelix.toml`:
 
 ```toml
 [channels.telegram.my-bot]
@@ -198,7 +198,7 @@ unknown users who DM the bot receive a verification challenge:
 
 1. User sends a DM to the bot
 2. Bot responds with a challenge prompt (the 6-digit code is **not** shown to the user)
-3. The code appears in the Moltis web UI under **Channels > Senders**
+3. The code appears in the Chelix web UI under **Channels > Senders**
 4. The bot owner shares the code with the user out-of-band
 5. User replies with the 6-digit code
 6. On success, the user is automatically added to the allowlist
@@ -219,9 +219,9 @@ the latest `stream_progress_max_chars` progress characters visible.
 
 When the final answer is ready, the progress message is cleaned up or reused and
 the final answer is delivered separately from intermediate progress. With
-`stream_notify_on_complete = false` (default), Moltis may silently reuse the
+`stream_notify_on_complete = false` (default), Chelix may silently reuse the
 existing progress message for the final answer. With `stream_notify_on_complete =
-true`, Moltis deletes the progress message where possible and sends the final
+true`, Chelix deletes the progress message where possible and sends the final
 answer as a new notifying message.
 
 ## Session Commands
@@ -283,7 +283,7 @@ The same form is available during onboarding when Telegram is in `channels.offer
   username is listed in `allowlist`
 - An empty `allowlist` with `dm_policy = "allowlist"` blocks **all** DMs
 - Check `group_policy` — if `"disabled"`, group messages are ignored
-- Look at logs: `RUST_LOG=moltis_telegram=debug moltis`
+- Look at logs: `RUST_LOG=chelix_telegram=debug chelix`
 
 ### "allowed_users" doesn't work
 

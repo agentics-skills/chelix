@@ -1,4 +1,4 @@
-//! Generic webhook ingress for Moltis.
+//! Generic webhook ingress for Chelix.
 //!
 //! Provides named inbound HTTP endpoints that trigger agent sessions.
 //! Each delivery is verified, deduplicated, persisted, and processed

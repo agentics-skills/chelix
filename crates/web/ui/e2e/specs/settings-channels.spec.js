@@ -128,7 +128,7 @@ test.describe("Settings channels", () => {
 		const pageErrors = watchPageErrors(page);
 		await navigateAndWait(page, "/settings/channels");
 		await waitForWsConnected(page);
-		await expect(page.getByText(/stored in Moltis's internal database \(.+moltis\.db\)/)).toBeVisible();
+		await expect(page.getByText(/stored in Chelix's internal database \(.+chelix\.db\)/)).toBeVisible();
 
 		const addButton = page.getByRole("button", { name: "Connect Matrix", exact: true });
 		await expect(addButton).toBeVisible();
@@ -144,7 +144,7 @@ test.describe("Settings channels", () => {
 			modal.getByText("Encrypted Matrix chats require OIDC or Password auth.", { exact: false }),
 		).toBeVisible();
 		await expect(
-			modal.getByText("Use OIDC (recommended) or Password so Moltis creates and persists its own Matrix device keys", {
+			modal.getByText("Use OIDC (recommended) or Password so Chelix creates and persists its own Matrix device keys", {
 				exact: false,
 			}),
 		).toBeVisible();
@@ -188,7 +188,7 @@ test.describe("Settings channels", () => {
 		).toBeVisible();
 		await expect(modal.getByText("Access token auth always stays user-managed", { exact: false })).toBeVisible();
 		await expect(
-			modal.getByText("do not transfer that device's private encryption keys into Moltis", { exact: false }),
+			modal.getByText("do not transfer that device's private encryption keys into Chelix", { exact: false }),
 		).toBeVisible();
 		await expect(modal.getByRole("link", { name: "Matrix setup docs", exact: true })).toHaveAttribute(
 			"href",
@@ -275,7 +275,7 @@ test.describe("Settings channels", () => {
 		await modal.locator('input[data-field="homeserver"]').fill("https://matrix.example.com");
 		await modal.locator('select[data-field="authMode"]').selectOption("password");
 		await expect(modal.getByText("Required for encrypted Matrix chats.", { exact: false })).toBeVisible();
-		await expect(modal.getByLabel("Let Moltis own this Matrix account", { exact: true })).toBeChecked();
+		await expect(modal.getByLabel("Let Chelix own this Matrix account", { exact: true })).toBeChecked();
 		await modal.locator('input[data-field="userId"]').fill("@bot:example.com");
 		await modal.locator('input[data-field="credential"]').fill("correct horse battery staple");
 		await modal.locator('select[data-field="autoJoin"]').selectOption("allowlist");
@@ -308,7 +308,7 @@ test.describe("Settings channels", () => {
 			homeserver: "https://matrix.example.com",
 			user_id: "@bot:example.com",
 			password: "correct horse battery staple",
-			ownership_mode: "moltis_owned",
+			ownership_mode: "chelix_owned",
 			auto_join: "allowlist",
 			otp_self_approval: true,
 			otp_cooldown_secs: 300,
@@ -328,19 +328,19 @@ test.describe("Settings channels", () => {
 			channels: [
 				{
 					type: "matrix",
-					account_id: "moltis-testbot",
-					name: "Matrix (moltis-testbot)",
+					account_id: "chelix-testbot",
+					name: "Matrix (chelix-testbot)",
 					status: "connected",
-					details: "@moltis-testbot:matrix.org on https://matrix.org",
+					details: "@chelix-testbot:matrix.org on https://matrix.org",
 					sessions: [],
 					extra: {
 						matrix: {
 							verification_state: "unverified",
-							ownership_mode: "moltis_owned",
+							ownership_mode: "chelix_owned",
 							auth_mode: "password",
-							user_id: "@moltis-testbot:matrix.org",
-							device_id: "MOLTISBOT",
-							device_display_name: "Moltis Matrix Bot",
+							user_id: "@chelix-testbot:matrix.org",
+							device_id: "CHELIXBOT",
+							device_display_name: "Chelix Matrix Bot",
 							cross_signing_complete: true,
 							device_verified_by_owner: false,
 							recovery_state: "enabled",
@@ -358,16 +358,16 @@ test.describe("Settings channels", () => {
 			],
 		});
 
-		await expect(page.getByText("Matrix (moltis-testbot)", { exact: true })).toBeVisible();
+		await expect(page.getByText("Matrix (chelix-testbot)", { exact: true })).toBeVisible();
 		await expect(page.getByText("Encryption device state: unverified", { exact: false })).toBeVisible();
-		await expect(page.getByText("Managed by Moltis", { exact: true })).toBeVisible();
+		await expect(page.getByText("Managed by Chelix", { exact: true })).toBeVisible();
 		await expect(page.getByText("Device not yet verified by owner", { exact: true })).toBeVisible();
-		await expect(page.getByText("MOLTISBOT", { exact: true })).toBeHidden();
+		await expect(page.getByText("CHELIXBOT", { exact: true })).toBeHidden();
 		const matrixDetails = page.getByText("Matrix account details", { exact: true });
 		await expect(matrixDetails).toBeVisible();
 		await matrixDetails.click();
-		await expect(page.getByText("@moltis-testbot:matrix.org", { exact: true })).toBeVisible();
-		await expect(page.getByText("MOLTISBOT", { exact: true })).toBeVisible();
+		await expect(page.getByText("@chelix-testbot:matrix.org", { exact: true })).toBeVisible();
+		await expect(page.getByText("CHELIXBOT", { exact: true })).toBeVisible();
 		await expect(page.getByText("Verification pending", { exact: true })).toBeVisible();
 		await expect(page.getByText("With @alice:matrix.org", { exact: true })).toBeVisible();
 		await expect(page.getByText("verify yes", { exact: false })).toBeVisible();
@@ -384,18 +384,18 @@ test.describe("Settings channels", () => {
 			channels: [
 				{
 					type: "matrix",
-					account_id: "moltis-testbot",
-					name: "Matrix (moltis-testbot)",
+					account_id: "chelix-testbot",
+					name: "Matrix (chelix-testbot)",
 					status: "connected",
-					details: "@moltis-testbot:matrix.org on https://matrix.org",
+					details: "@chelix-testbot:matrix.org on https://matrix.org",
 					sessions: [],
 					extra: {
 						matrix: {
 							verification_state: "unverified",
-							ownership_mode: "moltis_owned",
+							ownership_mode: "chelix_owned",
 							auth_mode: "password",
-							user_id: "@moltis-testbot:matrix.org",
-							device_id: "MOLTISBOT",
+							user_id: "@chelix-testbot:matrix.org",
+							device_id: "CHELIXBOT",
 							cross_signing_complete: false,
 							device_verified_by_owner: false,
 							recovery_state: "incomplete",
@@ -408,8 +408,8 @@ test.describe("Settings channels", () => {
 			],
 		});
 
-		await expect(page.getByText("Matrix (moltis-testbot)", { exact: true })).toBeVisible();
-		await expect(page.getByText("Moltis ownership blocked", { exact: true })).toBeVisible();
+		await expect(page.getByText("Matrix (chelix-testbot)", { exact: true })).toBeVisible();
+		await expect(page.getByText("Chelix ownership blocked", { exact: true })).toBeVisible();
 		await expect(
 			page.getByText(
 				"This account already has partial Matrix secure-backup state. Finish or repair it in Element, or switch this channel to user-managed mode.",
@@ -435,17 +435,17 @@ test.describe("Settings channels", () => {
 			channels: [
 				{
 					type: "matrix",
-					account_id: "moltis-testbot",
-					name: "Matrix (moltis-testbot)",
+					account_id: "chelix-testbot",
+					name: "Matrix (chelix-testbot)",
 					status: "connected",
-					details: "@moltis-testbot:matrix.org on https://matrix.org",
+					details: "@chelix-testbot:matrix.org on https://matrix.org",
 					sessions: [],
 					extra: {
 						matrix: {
 							verification_state: "unverified",
-							ownership_mode: "moltis_owned",
+							ownership_mode: "chelix_owned",
 							auth_mode: "password",
-							user_id: "@moltis-testbot:matrix.org",
+							user_id: "@chelix-testbot:matrix.org",
 							device_id: "GT7YDd8CWl",
 							cross_signing_complete: false,
 							device_verified_by_owner: false,
@@ -462,13 +462,13 @@ test.describe("Settings channels", () => {
 		await expect(page.getByText("Ownership approval required", { exact: true })).toBeVisible();
 		await expect(
 			page.getByText(
-				"This existing Matrix account can already chat, but Matrix needs one browser approval before Moltis can take over encryption ownership. Open the approval page, approve the reset, then retry ownership setup.",
+				"This existing Matrix account can already chat, but Matrix needs one browser approval before Chelix can take over encryption ownership. Open the approval page, approve the reset, then retry ownership setup.",
 				{ exact: true },
 			),
 		).toBeVisible();
 		await expect(page.getByText("Browser approval pending", { exact: true })).toBeVisible();
 		const approvalLink = page.getByRole("link", {
-			name: "Open approval page for @moltis-testbot:matrix.org",
+			name: "Open approval page for @chelix-testbot:matrix.org",
 			exact: true,
 		});
 		await expect(approvalLink).toHaveAttribute(
@@ -483,13 +483,13 @@ test.describe("Settings channels", () => {
 		});
 		await expect(retryButton).toBeVisible();
 		const approvalNote = approvalLink.locator("xpath=../following-sibling::div[1]");
-		await expect(approvalNote).toContainText("Make sure the browser page is signed into @moltis-testbot:matrix.org.");
+		await expect(approvalNote).toContainText("Make sure the browser page is signed into @chelix-testbot:matrix.org.");
 		await retryButton.click();
 		await expect.poll(() => page.evaluate(() => window.__matrixOwnershipRetryRequest)).not.toBeNull();
 		const retryRequest = await page.evaluate(() => window.__matrixOwnershipRetryRequest);
 		expect(retryRequest).toEqual({
 			type: "matrix",
-			account_id: "moltis-testbot",
+			account_id: "chelix-testbot",
 		});
 		expect(pageErrors).toEqual([]);
 	});
@@ -503,10 +503,10 @@ test.describe("Settings channels", () => {
 			channels: [
 				{
 					type: "matrix",
-					account_id: "moltis-testbot",
-					name: "Matrix (moltis-testbot)",
+					account_id: "chelix-testbot",
+					name: "Matrix (chelix-testbot)",
 					status: "connected",
-					details: "@moltis-testbot:matrix.org on https://matrix.org",
+					details: "@chelix-testbot:matrix.org on https://matrix.org",
 					sessions: [],
 				},
 			],
@@ -526,7 +526,7 @@ test.describe("Settings channels", () => {
 			],
 		});
 
-		await expect(page.getByText("Matrix (moltis-testbot)", { exact: true })).toBeVisible({ timeout: 10_000 });
+		await expect(page.getByText("Matrix (chelix-testbot)", { exact: true })).toBeVisible({ timeout: 10_000 });
 		await page.getByRole("tab", { name: /Senders/ }).click();
 		await expect.poll(() => page.locator(".senders-table tbody tr").count(), { timeout: 10_000 }).toBe(1);
 		await expect(page.getByText("Alice", { exact: true })).toBeVisible();

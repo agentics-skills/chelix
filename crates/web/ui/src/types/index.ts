@@ -1,4 +1,4 @@
-// ── Shared type definitions for the moltis web UI ────────────
+// ── Shared type definitions for the chelix web UI ────────────
 
 // Re-export all types from domain modules.
 export type {

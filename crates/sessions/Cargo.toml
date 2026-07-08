@@ -1,16 +1,16 @@
 [package]
 edition.workspace = true
-name              = "moltis-sessions"
+name              = "chelix-sessions"
 version.workspace = true
 
 [features]
 default = ["metrics"]
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 
 [dependencies]
 fd-lock        = { workspace = true }
-moltis-common  = { workspace = true }
-moltis-metrics = { optional = true, workspace = true }
+chelix-common  = { workspace = true }
+chelix-metrics = { optional = true, workspace = true }
 serde          = { workspace = true }
 serde_json     = { workspace = true }
 sqlx           = { workspace = true }

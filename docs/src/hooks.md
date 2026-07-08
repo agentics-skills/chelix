@@ -65,8 +65,8 @@ These events run hooks in parallel for performance. They cannot modify or block.
 | `MessageSent` | After response is delivered |
 | `SessionStart` | When a new session begins |
 | `SessionEnd` | When a session ends |
-| `GatewayStart` | When Moltis starts |
-| `GatewayStop` | When Moltis shuts down |
+| `GatewayStart` | When Chelix starts |
+| `GatewayStop` | When Chelix shuts down |
 | `Command` | When a slash command is used |
 
 ## Prompt Injection Filtering
@@ -204,7 +204,7 @@ exit 0
 ### 1. Create the Hook Directory
 
 ```bash
-mkdir -p ~/.moltis/hooks/my-hook
+mkdir -p ~/.chelix/hooks/my-hook
 ```
 
 ### 2. Create HOOK.md
@@ -250,7 +250,7 @@ exit 0
 ### 4. Make it Executable
 
 ```bash
-chmod +x ~/.moltis/hooks/my-hook/handler.sh
+chmod +x ~/.chelix/hooks/my-hook/handler.sh
 ```
 
 ## Shell Hook Protocol
@@ -327,17 +327,17 @@ exit 0
 
 ## Hook Discovery
 
-Hooks are discovered from `HOOK.md` files and `moltis.toml` config entries:
+Hooks are discovered from `HOOK.md` files and `chelix.toml` config entries:
 
-1. **Project-local**: `<workspace>/.moltis/hooks/<name>/HOOK.md`
-2. **User-global**: `~/.moltis/hooks/<name>/HOOK.md`
+1. **Project-local**: `<workspace>/.chelix/hooks/<name>/HOOK.md`
+2. **User-global**: `~/.chelix/hooks/<name>/HOOK.md`
 
 Project-local hooks take precedence over global hooks with the same name. If a hook declared in
-`moltis.toml` has the same name as a filesystem hook, the filesystem hook takes precedence and the
+`chelix.toml` has the same name as a filesystem hook, the filesystem hook takes precedence and the
 config hook is skipped to avoid running the same hook twice. Config hooks appear with source
 `config` in the hooks UI/status output.
 
-## Configuration in moltis.toml
+## Configuration in chelix.toml
 
 You can also define hooks directly in the config file:
 
@@ -389,25 +389,25 @@ This prevents a broken hook from blocking all operations.
 
 ```bash
 # List all discovered hooks
-moltis hooks list
+chelix hooks list
 
 # List only eligible hooks (requirements met)
-moltis hooks list --eligible
+chelix hooks list --eligible
 
 # Output as JSON
-moltis hooks list --json
+chelix hooks list --json
 
 # Show details for a specific hook
-moltis hooks info my-hook
+chelix hooks info my-hook
 ```
 
 ## Bundled Hooks
 
-Moltis includes several built-in hooks:
+Chelix includes several built-in hooks:
 
 ## Workspace Context Files
 
-Moltis supports several workspace markdown files in `data_dir`.
+Chelix supports several workspace markdown files in `data_dir`.
 
 ### BOOT.md
 
@@ -431,7 +431,7 @@ If `TOOLS.md` is empty or missing, it is not injected.
 
 ### AGENTS.md (workspace)
 
-Moltis also supports a workspace-level `AGENTS.md` in `data_dir`.
+Chelix also supports a workspace-level `AGENTS.md` in `data_dir`.
 
 This is separate from project `AGENTS.md`/`CLAUDE.md` discovery. Use workspace
 `AGENTS.md` for global instructions that should apply across projects in this workspace.
@@ -481,8 +481,8 @@ bash /tmp/dcg-install.sh && rm /tmp/dcg-install.sh
 Copy the bundled hook example to your hooks directory:
 
 ```bash
-cp -r examples/hooks/dcg-guard ~/.moltis/hooks/dcg-guard
-chmod +x ~/.moltis/hooks/dcg-guard/handler.sh
+cp -r examples/hooks/dcg-guard ~/.chelix/hooks/dcg-guard
+chmod +x ~/.chelix/hooks/dcg-guard/handler.sh
 ```
 
 The hook subscribes to `BeforeToolCall`, extracts `execute_command` commands, pipes them

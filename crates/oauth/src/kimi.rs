@@ -2,12 +2,12 @@
 
 use reqwest::header::{HeaderMap, HeaderValue};
 
-use crate::config_dir::moltis_config_dir;
+use crate::config_dir::chelix_config_dir;
 
 /// Get or generate a persistent device ID for Kimi API headers.
-/// Stored at `~/.config/moltis/kimi_device_id`.
+/// Stored at `~/.config/chelix/kimi_device_id`.
 pub fn get_or_create_device_id() -> String {
-    get_or_create_device_id_at(&moltis_config_dir().join("kimi_device_id"))
+    get_or_create_device_id_at(&chelix_config_dir().join("kimi_device_id"))
 }
 
 fn get_or_create_device_id_at(path: &std::path::Path) -> String {
@@ -38,7 +38,7 @@ pub fn kimi_headers() -> HeaderMap {
     let mut headers = HeaderMap::new();
     headers.insert("X-Msh-Platform", HeaderValue::from_static("web"));
     headers.insert("X-Msh-Version", HeaderValue::from_static("1.0.0"));
-    headers.insert("X-Msh-Device-Name", HeaderValue::from_static("moltis"));
+    headers.insert("X-Msh-Device-Name", HeaderValue::from_static("chelix"));
     headers.insert("X-Msh-Device-Model", HeaderValue::from_static("cli"));
     headers.insert(
         "X-Msh-Os-Version",

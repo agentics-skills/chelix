@@ -7,7 +7,7 @@
 //! we emit one [`QmdCollection`] per extension.
 
 #[cfg(feature = "qmd")]
-use moltis_qmd::{QmdCollection, QmdManagerConfig};
+use chelix_qmd::{QmdCollection, QmdManagerConfig};
 
 use crate::config::CodeIndexConfig;
 

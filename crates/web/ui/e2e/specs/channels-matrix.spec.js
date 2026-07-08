@@ -86,7 +86,7 @@ test.describe("Matrix channel", () => {
 		await expect(modal.getByText("Required for encrypted Matrix chats", { exact: false })).toBeVisible();
 
 		// Ownership checkbox visible for password mode
-		await expect(modal.getByRole("checkbox", { name: /Let Moltis own this Matrix account/i })).toBeVisible();
+		await expect(modal.getByRole("checkbox", { name: /Let Chelix own this Matrix account/i })).toBeVisible();
 
 		// Submit button says "Connect Matrix"
 		await expect(modal.getByRole("button", { name: "Connect Matrix", exact: true })).toBeVisible();
@@ -110,7 +110,7 @@ test.describe("Matrix channel", () => {
 
 		// Credential should be visible, ownership checkbox should not
 		await expect(modal.locator('input[data-field="credential"]')).toBeVisible();
-		await expect(modal.getByRole("checkbox", { name: /Let Moltis own this Matrix account/i })).not.toBeVisible();
+		await expect(modal.getByRole("checkbox", { name: /Let Chelix own this Matrix account/i })).not.toBeVisible();
 
 		// Access token guidance
 		await expect(
@@ -219,7 +219,7 @@ test.describe("Matrix channel", () => {
 			modal.getByText("Encrypted Matrix chats require OIDC or Password auth", { exact: false }),
 		).toBeVisible();
 		await expect(
-			modal.getByText("Use OIDC (recommended) or Password so Moltis creates", { exact: false }),
+			modal.getByText("Use OIDC (recommended) or Password so Chelix creates", { exact: false }),
 		).toBeVisible();
 
 		expect(pageErrors).toEqual([]);

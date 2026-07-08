@@ -1,6 +1,6 @@
 # Skill Self-Extension
 
-Moltis can create, update, and delete personal skills at runtime through agent
+Chelix can create, update, and delete personal skills at runtime through agent
 tools, enabling the system to extend its own capabilities during a conversation.
 
 ## Overview
@@ -25,7 +25,7 @@ Skills created this way are personal and stored in the configured data
 directory's `skills/` folder. They become available on the next message
 automatically thanks to the skill watcher.
 
-Before any built-in skill mutation runs, Moltis creates an automatic
+Before any built-in skill mutation runs, Chelix creates an automatic
 checkpoint. Tool results include a `checkpointId` you can later restore with
 `checkpoint_restore`.
 
@@ -85,7 +85,7 @@ Safety rules:
 - only relative UTF-8 text files
 - rejects `..`, absolute paths, hidden path components, and `SKILL.md`
 - rejects symlink escapes and oversized batches
-- appends an audit entry to `~/.moltis/logs/security-audit.jsonl`
+- appends an audit entry to `~/.chelix/logs/security-audit.jsonl`
 
 ## Updating a Skill
 

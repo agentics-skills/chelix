@@ -1,4 +1,4 @@
-//! WhatsApp channel plugin for moltis.
+//! WhatsApp channel plugin for chelix.
 //!
 //! Implements `ChannelPlugin` using the `whatsapp-rust` library to receive and
 //! send messages via WhatsApp Linked Devices (QR code pairing).

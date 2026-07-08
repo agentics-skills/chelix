@@ -1,6 +1,6 @@
 # LLM Providers
 
-Moltis supports multiple LLM providers through a trait-based architecture.
+Chelix supports multiple LLM providers through a trait-based architecture.
 Configure providers through the web UI or directly in configuration files.
 
 ## Available Providers
@@ -52,13 +52,13 @@ fetch_models = true
 models = ["my-model"]
 ```
 
-For `custom-*` providers, `models = [...]` is a whitelist when set: only those model IDs are registered. With `fetch_models = true`, Moltis still calls `/models` and uses returned metadata such as `capabilities` and `context_length` for the whitelisted models.
+For `custom-*` providers, `models = [...]` is a whitelist when set: only those model IDs are registered. With `fetch_models = true`, Chelix still calls `/models` and uses returned metadata such as `capabilities` and `context_length` for the whitelisted models.
 
 ## Configuration
 
 ### Via Web UI (Recommended)
 
-1. Open Moltis in your browser.
+1. Open Chelix in your browser.
 2. Go to **Settings** → **Providers**.
 3. Choose a provider card.
 4. Complete OAuth or enter your API key.
@@ -66,7 +66,7 @@ For `custom-*` providers, `models = [...]` is a whitelist when set: only those m
 
 ### Via Configuration Files
 
-Configure providers in `moltis.toml`:
+Configure providers in `chelix.toml`:
 
 ```toml
 [providers]
@@ -139,7 +139,7 @@ Gemini supports native tool calling, vision/multimodal inputs, streaming, and au
 NEAR AI Cloud exposes an OpenAI-compatible chat completions API with a public
 model catalog that includes TEE and attestation metadata.
 The API accepts OpenAI-compatible tool schemas, but the public model catalog does
-not currently expose per-model tool capability metadata. Moltis therefore does
+not currently expose per-model tool capability metadata. Chelix therefore does
 not mark auto-discovered NEAR AI Cloud models as tool-capable.
 
 1. Get an API key from [cloud.near.ai](https://cloud.near.ai/).
@@ -162,7 +162,7 @@ OpenAI Codex uses OAuth-based access.
 2. Click **Connect** and complete the auth flow.
 3. Choose a Codex model.
 
-If the browser cannot reach `localhost:1455`, Moltis now supports a manual
+If the browser cannot reach `localhost:1455`, Chelix now supports a manual
 fallback in both **Settings** and **Onboarding**: paste the callback URL (or
 `code#state`) into the OAuth panel and submit it.
 
@@ -173,7 +173,7 @@ cannot reach the server, authenticate via the CLI instead:
 
 ~~~bash
 # Docker
-docker exec -it moltis moltis auth login --provider openai-codex
+docker exec -it chelix chelix auth login --provider openai-codex
 ~~~
 
 The CLI opens a browser on your machine and handles the callback locally. If
@@ -202,7 +202,7 @@ so it works from the web UI without extra port configuration. If you prefer the
 CLI:
 
 ~~~bash
-docker exec -it moltis moltis auth login --provider github-copilot
+docker exec -it chelix chelix auth login --provider github-copilot
 ~~~
 ```
 
@@ -236,7 +236,7 @@ enabled = true
 - **Per session**: Use the model selector in the chat UI.
 - **Per message**: Use `/model <name>` in chat.
 - **Global defaults**: Use `[providers].offered`, provider `models = [...]`, and
-  `[chat].priority_models` in `moltis.toml`.
+  `[chat].priority_models` in `chelix.toml`.
 
 ## Troubleshooting
 

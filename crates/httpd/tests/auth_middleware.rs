@@ -18,14 +18,14 @@ use tokio_tungstenite::{connect_async, tungstenite::client::IntoClientRequest};
 use async_trait::async_trait;
 
 use {
-    moltis_gateway::{
+    chelix_gateway::{
         auth::{self, CredentialStore},
         auth_webauthn::{SharedWebAuthnRegistry, WebAuthnRegistry, WebAuthnState},
         methods::MethodRegistry,
         services::{GatewayServices, OnboardingService, ServiceResult},
         state::GatewayState,
     },
-    moltis_httpd::server::{build_gateway_base, finalize_gateway_app},
+    chelix_httpd::server::{build_gateway_base, finalize_gateway_app},
 };
 
 fn next_test_secret_id() -> u64 {
@@ -118,13 +118,13 @@ async fn start_auth_server_impl_with_webauthn(
     // Isolate each test process with its own config/data directory so
     // concurrent nextest processes don't race on shared config files.
     let tmp = tempfile::tempdir().unwrap();
-    moltis_config::set_config_dir(tmp.path().to_path_buf());
-    moltis_config::set_data_dir(tmp.path().to_path_buf());
+    chelix_config::set_config_dir(tmp.path().to_path_buf());
+    chelix_config::set_data_dir(tmp.path().to_path_buf());
     // Leak the TempDir so it outlives the test (cleaned up on process exit).
     std::mem::forget(tmp);
 
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let auth_config = moltis_config::AuthConfig::default();
+    let auth_config = chelix_config::AuthConfig::default();
     let cred_store = Arc::new(
         CredentialStore::with_config(pool, &auth_config)
             .await
@@ -136,7 +136,7 @@ async fn start_auth_server_impl_with_webauthn(
     let state = GatewayState::with_options(
         resolved_auth,
         services,
-        moltis_config::MoltisConfig::default(),
+        chelix_config::ChelixConfig::default(),
         None,
         Some(Arc::clone(&cred_store)),
         None, // pairing_store
@@ -145,8 +145,8 @@ async fn start_auth_server_impl_with_webauthn(
         false,
         None,
         None,
-        Arc::new(moltis_code_index::CodeIndex::config_only(
-            moltis_code_index::CodeIndexConfig::default(),
+        Arc::new(chelix_code_index::CodeIndex::config_only(
+            chelix_code_index::CodeIndexConfig::default(),
         )),
         18789,
         false,
@@ -166,7 +166,7 @@ async fn start_auth_server_impl_with_webauthn(
     #[cfg(not(feature = "push-notifications"))]
     let (router, app_state) = build_gateway_base(state, methods, webauthn_registry);
 
-    let router = router.merge(moltis_web::web_routes());
+    let router = router.merge(chelix_web::web_routes());
     let app = finalize_gateway_app(router, app_state, false);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -184,7 +184,7 @@ async fn start_auth_server_impl_with_webauthn(
 
 fn test_webauthn_registry() -> SharedWebAuthnRegistry {
     let localhost_origin = webauthn_rs::prelude::Url::parse("http://localhost:18080").unwrap();
-    let extras = vec![webauthn_rs::prelude::Url::parse("http://moltis.localhost:18080").unwrap()];
+    let extras = vec![webauthn_rs::prelude::Url::parse("http://chelix.localhost:18080").unwrap()];
     let localhost_state = WebAuthnState::new("localhost", &localhost_origin, &extras).unwrap();
 
     let mut registry = WebAuthnRegistry::new();
@@ -198,17 +198,17 @@ async fn start_localhost_server_with_vault() -> (
     SocketAddr,
     Arc<CredentialStore>,
     Arc<GatewayState>,
-    Arc<moltis_vault::Vault>,
+    Arc<chelix_vault::Vault>,
 ) {
     let tmp = tempfile::tempdir().unwrap();
-    moltis_config::set_config_dir(tmp.path().to_path_buf());
-    moltis_config::set_data_dir(tmp.path().to_path_buf());
+    chelix_config::set_config_dir(tmp.path().to_path_buf());
+    chelix_config::set_data_dir(tmp.path().to_path_buf());
     std::mem::forget(tmp);
 
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-    moltis_vault::run_migrations(&pool).await.unwrap();
-    let auth_config = moltis_config::AuthConfig::default();
-    let vault = Arc::new(moltis_vault::Vault::new(pool.clone()).await.unwrap());
+    chelix_vault::run_migrations(&pool).await.unwrap();
+    let auth_config = chelix_config::AuthConfig::default();
+    let vault = Arc::new(chelix_vault::Vault::new(pool.clone()).await.unwrap());
     let cred_store = Arc::new(
         CredentialStore::with_vault(pool, &auth_config, Some(Arc::clone(&vault)))
             .await
@@ -220,7 +220,7 @@ async fn start_localhost_server_with_vault() -> (
     let state = GatewayState::with_options(
         resolved_auth,
         services,
-        moltis_config::MoltisConfig::default(),
+        chelix_config::ChelixConfig::default(),
         None,
         Some(Arc::clone(&cred_store)),
         None, // pairing_store
@@ -229,8 +229,8 @@ async fn start_localhost_server_with_vault() -> (
         false,
         None,
         None,
-        Arc::new(moltis_code_index::CodeIndex::config_only(
-            moltis_code_index::CodeIndexConfig::default(),
+        Arc::new(chelix_code_index::CodeIndex::config_only(
+            chelix_code_index::CodeIndexConfig::default(),
         )),
         18789,
         false,
@@ -250,7 +250,7 @@ async fn start_localhost_server_with_vault() -> (
     #[cfg(not(feature = "push-notifications"))]
     let (router, app_state) = build_gateway_base(state, methods, None);
 
-    let router = router.merge(moltis_web::web_routes());
+    let router = router.merge(chelix_web::web_routes());
     let app = finalize_gateway_app(router, app_state, false);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -272,32 +272,32 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
     SocketAddr,
     Arc<CredentialStore>,
     Arc<GatewayState>,
-    Arc<moltis_vault::Vault>,
-    Arc<moltis_sessions::store::SessionStore>,
+    Arc<chelix_vault::Vault>,
+    Arc<chelix_sessions::store::SessionStore>,
 ) {
     let tmp = tempfile::tempdir().unwrap();
-    moltis_config::set_config_dir(tmp.path().to_path_buf());
-    moltis_config::set_data_dir(tmp.path().to_path_buf());
+    chelix_config::set_config_dir(tmp.path().to_path_buf());
+    chelix_config::set_data_dir(tmp.path().to_path_buf());
     let sessions_dir = tmp.path().join("sessions");
     std::mem::forget(tmp);
 
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-    moltis_vault::run_migrations(&pool).await.unwrap();
-    let auth_config = moltis_config::AuthConfig::default();
-    let vault = Arc::new(moltis_vault::Vault::new(pool.clone()).await.unwrap());
+    chelix_vault::run_migrations(&pool).await.unwrap();
+    let auth_config = chelix_config::AuthConfig::default();
+    let vault = Arc::new(chelix_vault::Vault::new(pool.clone()).await.unwrap());
     let cred_store = Arc::new(
         CredentialStore::with_vault(pool, &auth_config, Some(Arc::clone(&vault)))
             .await
             .unwrap(),
     );
-    let session_store = Arc::new(moltis_sessions::store::SessionStore::new(sessions_dir));
+    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
 
     let resolved_auth = auth::resolve_auth(None, None);
     let services = GatewayServices::noop().with_session_store(Arc::clone(&session_store));
     let state = GatewayState::with_options(
         resolved_auth,
         services,
-        moltis_config::MoltisConfig::default(),
+        chelix_config::ChelixConfig::default(),
         None,
         Some(Arc::clone(&cred_store)),
         None, // pairing_store
@@ -306,8 +306,8 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
         false,
         None,
         None,
-        Arc::new(moltis_code_index::CodeIndex::config_only(
-            moltis_code_index::CodeIndexConfig::default(),
+        Arc::new(chelix_code_index::CodeIndex::config_only(
+            chelix_code_index::CodeIndexConfig::default(),
         )),
         18789,
         false,
@@ -327,7 +327,7 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
     #[cfg(not(feature = "push-notifications"))]
     let (router, app_state) = build_gateway_base(state, methods, None);
 
-    let router = router.merge(moltis_web::web_routes());
+    let router = router.merge(chelix_web::web_routes());
     let app = finalize_gateway_app(router, app_state, false);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -346,8 +346,8 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
 /// Start a test server without a credential store (no auth).
 async fn start_noauth_server() -> SocketAddr {
     let tmp = tempfile::tempdir().unwrap();
-    moltis_config::set_config_dir(tmp.path().to_path_buf());
-    moltis_config::set_data_dir(tmp.path().to_path_buf());
+    chelix_config::set_config_dir(tmp.path().to_path_buf());
+    chelix_config::set_data_dir(tmp.path().to_path_buf());
     std::mem::forget(tmp);
 
     let resolved_auth = auth::resolve_auth(None, None);
@@ -359,7 +359,7 @@ async fn start_noauth_server() -> SocketAddr {
     #[cfg(not(feature = "push-notifications"))]
     let (router, app_state) = build_gateway_base(state, methods, None);
 
-    let router = router.merge(moltis_web::web_routes());
+    let router = router.merge(chelix_web::web_routes());
     let app = finalize_gateway_app(router, app_state, false);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -426,7 +426,7 @@ async fn session_cookie_auth_succeeds() {
     let client = reqwest::Client::new();
     let resp = client
         .get(format!("http://{addr}/api/bootstrap"))
-        .header("Cookie", format!("moltis_session={token}"))
+        .header("Cookie", format!("chelix_session={token}"))
         .send()
         .await
         .unwrap();
@@ -545,7 +545,7 @@ async fn graphql_runtime_toggle_applies_immediately() {
     let token = store.create_session().await.unwrap();
 
     let client = reqwest::Client::new();
-    let auth_header = format!("moltis_session={token}");
+    let auth_header = format!("chelix_session={token}");
 
     let resp = client
         .get(format!("http://{addr}/graphql"))
@@ -589,7 +589,7 @@ async fn graphql_status_includes_uptime_ms() {
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("http://{addr}/graphql"))
-        .header("Cookie", format!("moltis_session={token}"))
+        .header("Cookie", format!("chelix_session={token}"))
         .header("Content-Type", "application/json")
         .body(serde_json::json!({ "query": "{ status { uptimeMs } }" }).to_string())
         .send()
@@ -657,7 +657,7 @@ async fn invalid_session_cookie_returns_401() {
     let client = reqwest::Client::new();
     let resp = client
         .get(format!("http://{addr}/api/bootstrap"))
-        .header("Cookie", "moltis_session=invalid_token")
+        .header("Cookie", "chelix_session=invalid_token")
         .send()
         .await
         .unwrap();
@@ -682,7 +682,7 @@ async fn reset_auth_removes_all_authentication() {
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("http://{addr}/api/auth/reset"))
-        .header("Cookie", format!("moltis_session={token}"))
+        .header("Cookie", format!("chelix_session={token}"))
         .send()
         .await
         .unwrap();
@@ -731,7 +731,7 @@ async fn reenable_auth_after_reset() {
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("http://{addr}/api/auth/reset"))
-        .header("Cookie", format!("moltis_session={token}"))
+        .header("Cookie", format!("chelix_session={token}"))
         .send()
         .await
         .unwrap();
@@ -929,7 +929,7 @@ async fn setup_code_not_required_when_auth_disabled() {
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("http://{addr}/api/auth/reset"))
-        .header("Cookie", format!("moltis_session={token}"))
+        .header("Cookie", format!("chelix_session={token}"))
         .send()
         .await
         .unwrap();
@@ -1035,7 +1035,7 @@ async fn upload_endpoint_requires_auth() {
     let token = store.create_session().await.unwrap();
     let resp = client
         .post(format!("http://{addr}/api/sessions/main/upload"))
-        .header("Cookie", format!("moltis_session={token}"))
+        .header("Cookie", format!("chelix_session={token}"))
         .header("Content-Type", "audio/webm")
         .body(vec![0u8; 100])
         .send()
@@ -1062,7 +1062,7 @@ async fn media_endpoint_requires_auth() {
     let client = reqwest::Client::new();
     let resp = client
         .get(format!("http://{addr}/api/sessions/main/media/test.png"))
-        .header("Cookie", format!("moltis_session={token}"))
+        .header("Cookie", format!("chelix_session={token}"))
         .send()
         .await
         .unwrap();
@@ -1138,7 +1138,7 @@ async fn status_reports_passkey_host_update_warning() {
     );
 }
 
-/// When the browser reaches Moltis through an HTTPS proxy host, auth status
+/// When the browser reaches Chelix through an HTTPS proxy host, auth status
 /// should lazily register that forwarded host for WebAuthn and return the
 /// origins that apply to the current host instead of localhost fallbacks.
 #[cfg(feature = "web-ui")]
@@ -1181,7 +1181,7 @@ async fn proxied_passkey_begin_uses_forwarded_webauthn_host() {
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("http://{addr}/api/auth/passkey/register/begin"))
-        .header("Cookie", format!("moltis_session={token}"))
+        .header("Cookie", format!("chelix_session={token}"))
         .header("X-Forwarded-Host", "app.example.com")
         .header("X-Forwarded-Proto", "https")
         .send()
@@ -1244,7 +1244,7 @@ async fn proxied_with_password_requires_auth() {
     let client = reqwest::Client::new();
     let resp = client
         .get(format!("http://{addr}/api/bootstrap"))
-        .header("Cookie", format!("moltis_session={token}"))
+        .header("Cookie", format!("chelix_session={token}"))
         .send()
         .await
         .unwrap();
@@ -1254,7 +1254,7 @@ async fn proxied_with_password_requires_auth() {
 // ── Cookie domain tests ─────────────────────────────────────────────────────
 
 /// Login via /api/auth/login with a Host header containing a .localhost
-/// subdomain (e.g. moltis.localhost) should set Domain=localhost on the
+/// subdomain (e.g. chelix.localhost) should set Domain=localhost on the
 /// session cookie so the cookie is shared across all loopback hostnames.
 #[cfg(feature = "web-ui")]
 #[tokio::test]
@@ -1269,7 +1269,7 @@ async fn login_cookie_includes_domain_for_localhost_subdomain() {
 
     let resp = client
         .post(format!("http://{addr}/api/auth/login"))
-        .header("Host", "moltis.localhost:18080")
+        .header("Host", "chelix.localhost:18080")
         .header("Content-Type", "application/json")
         .body(json_password(&password))
         .send()
@@ -1288,11 +1288,11 @@ async fn login_cookie_includes_domain_for_localhost_subdomain() {
         cookie_header.contains("Domain=localhost"),
         "session cookie should include Domain=localhost for .localhost host, got: {cookie_header}"
     );
-    assert!(cookie_header.contains("moltis_session="));
+    assert!(cookie_header.contains("chelix_session="));
 }
 
 /// Login with a plain localhost Host should also include Domain=localhost
-/// so the cookie works for both localhost and moltis.localhost.
+/// so the cookie works for both localhost and chelix.localhost.
 #[cfg(feature = "web-ui")]
 #[tokio::test]
 async fn login_cookie_includes_domain_for_plain_localhost() {

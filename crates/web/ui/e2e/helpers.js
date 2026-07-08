@@ -58,7 +58,7 @@ async function waitForWsConnected(page, timeoutMs = 10_000) {
 				if (!statusDotConnected) return false;
 				return page
 					.evaluate(() => {
-						const state = window.__moltis_state;
+						const state = window.__chelix_state;
 						return Boolean(state?.connected && state?.subscribed && state?.ws?.readyState === WebSocket.OPEN);
 					})
 					.catch(() => false);
@@ -199,7 +199,7 @@ async function navigateAndWait(page, path) {
 async function createSession(page) {
 	const timeoutMs = 10_000;
 	const previousActiveKey = await page.evaluate(() => {
-		return window.__moltis_stores?.sessionStore?.activeSessionKey?.value || "";
+		return window.__chelix_stores?.sessionStore?.activeSessionKey?.value || "";
 	});
 
 	await page.locator("#newSessionBtn").click();
@@ -207,7 +207,7 @@ async function createSession(page) {
 		.poll(
 			() =>
 				page.evaluate(() => {
-					return window.__moltis_stores?.sessionStore?.activeSessionKey?.value || "";
+					return window.__chelix_stores?.sessionStore?.activeSessionKey?.value || "";
 				}),
 			{ timeout: timeoutMs },
 		)
@@ -217,7 +217,7 @@ async function createSession(page) {
 		.poll(
 			() =>
 				page.evaluate(() => {
-					const key = window.__moltis_stores?.sessionStore?.activeSessionKey?.value || "";
+					const key = window.__chelix_stores?.sessionStore?.activeSessionKey?.value || "";
 					if (!key) return false;
 					return window.location.pathname === `/chats/${key.replace(/:/g, "/")}`;
 				}),
@@ -232,7 +232,7 @@ async function createSession(page) {
 async function waitForChatSessionReady(page) {
 	await page.waitForFunction(
 		async () => {
-			var store = window.__moltis_stores?.sessionStore;
+			var store = window.__chelix_stores?.sessionStore;
 			var activeKey = store?.activeSessionKey?.value || "";
 			if (!(activeKey && store?.getByKey?.(activeKey))) return false;
 			if (store?.switchInProgress?.value) return false;
@@ -265,7 +265,7 @@ async function sendRpcFromPage(page, method, params) {
 		if (attempt > 0) {
 			const wsState = await page
 				.evaluate(() => {
-					var s = window.__moltis_state;
+					var s = window.__chelix_state;
 					return {
 						connected: s?.connected,
 						subscribed: s?.subscribed,

@@ -1,7 +1,7 @@
 use std::path::{Component, Path, PathBuf};
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, histogram, skills as skills_metrics};
+use chelix_metrics::{counter, histogram, skills as skills_metrics};
 
 use crate::{
     error::{Error, Result},
@@ -44,7 +44,7 @@ pub async fn install_skill(source: &str, install_dir: &Path) -> Result<Vec<Skill
     tokio::fs::create_dir_all(install_dir).await?;
 
     #[cfg(feature = "metrics")]
-    counter!("moltis_skills_git_clone_fallback_total").increment(1);
+    counter!("chelix_skills_git_clone_fallback_total").increment(1);
     let commit_sha = install_via_http(&owner, &repo, &target).await?;
 
     // Auto-detect repo format and scan accordingly.
@@ -145,7 +145,7 @@ async fn install_via_http(owner: &str, repo: &str, target: &Path) -> Result<Opti
     let commit_sha = fetch_latest_commit_sha(&client, owner, repo).await;
     let resp = client
         .get(&url)
-        .header("User-Agent", "moltis-skills")
+        .header("User-Agent", "chelix-skills")
         .send()
         .await?;
 
@@ -225,7 +225,7 @@ async fn fetch_latest_commit_sha(
     let url = format!("https://api.github.com/repos/{owner}/{repo}/commits?per_page=1");
     let response = client
         .get(url)
-        .header("User-Agent", "moltis-skills")
+        .header("User-Agent", "chelix-skills")
         .send()
         .await
         .ok()?;
@@ -383,7 +383,7 @@ fn parse_source(source: &str) -> Result<(String, String)> {
 
 /// Get the default installation directory.
 pub fn default_install_dir() -> Result<PathBuf> {
-    Ok(moltis_config::data_dir().join("installed-skills"))
+    Ok(chelix_config::data_dir().join("installed-skills"))
 }
 
 /// Compute a per-skill `relative_path` for a plugin/marketplace entry.

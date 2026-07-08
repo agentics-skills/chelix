@@ -6,14 +6,14 @@ use {async_trait::async_trait, base64::Engine as _, serde_json::Value, tracing::
 
 #[cfg(feature = "vault")]
 use {
-    moltis_secret_store::{
+    chelix_secret_store::{
         decrypt_secret_fields, encrypt_secret_fields, has_encrypted_secret_fields,
         has_plaintext_secret_fields,
     },
-    moltis_vault::VaultStatus,
+    chelix_vault::VaultStatus,
 };
 
-use moltis_webhooks::{
+use chelix_webhooks::{
     profiles::ProfileRegistry,
     store::{DeliveryUpdate, NewDelivery, NewResponseAction, WebhookStore},
     types::{
@@ -55,17 +55,17 @@ fn source_secret_fields(_source_profile: &str) -> &'static [&'static str] {
 #[cfg(feature = "vault")]
 fn secret_store_error(
     context: &'static str,
-    source: moltis_secret_store::Error,
-) -> moltis_webhooks::Error {
-    moltis_webhooks::Error::external(context, source)
+    source: chelix_secret_store::Error,
+) -> chelix_webhooks::Error {
+    chelix_webhooks::Error::external(context, source)
 }
 
 #[cfg(feature = "vault")]
 async fn encrypt_secret_config(
     config: &mut Option<Value>,
     secret_fields: &[&str],
-    vault: Option<&Arc<moltis_vault::Vault>>,
-) -> moltis_webhooks::Result<()> {
+    vault: Option<&Arc<chelix_vault::Vault>>,
+) -> chelix_webhooks::Result<()> {
     if secret_fields.is_empty() {
         return Ok(());
     }
@@ -97,7 +97,7 @@ async fn encrypt_secret_config(
     let status = vault
         .status()
         .await
-        .map_err(|error| moltis_webhooks::Error::external("check vault status", error))?;
+        .map_err(|error| chelix_webhooks::Error::external("check vault status", error))?;
     if matches!(status, VaultStatus::Uninitialized) {
         return Ok(());
     }
@@ -105,7 +105,7 @@ async fn encrypt_secret_config(
     let has_plaintext = has_plaintext_secret_fields(config, secret_fields)
         .map_err(|error| secret_store_error("inspect plaintext webhook secrets", error))?;
     if has_plaintext {
-        return Err(moltis_webhooks::Error::message(
+        return Err(chelix_webhooks::Error::message(
             "vault is sealed; webhook secrets cannot be persisted",
         ));
     }
@@ -116,7 +116,7 @@ async fn encrypt_secret_config(
 #[cfg(feature = "vault")]
 pub async fn decrypt_webhook_secrets(
     webhook: &mut Webhook,
-    vault: Option<&Arc<moltis_vault::Vault>>,
+    vault: Option<&Arc<chelix_vault::Vault>>,
 ) -> anyhow::Result<()> {
     decrypt_secret_config(
         &mut webhook.auth_config,
@@ -137,7 +137,7 @@ pub async fn decrypt_webhook_secrets(
 async fn decrypt_secret_config(
     config: &mut Option<Value>,
     fields: &[&str],
-    vault: Option<&Arc<moltis_vault::Vault>>,
+    vault: Option<&Arc<chelix_vault::Vault>>,
 ) -> anyhow::Result<()> {
     if fields.is_empty() {
         return Ok(());
@@ -168,12 +168,12 @@ async fn decrypt_secret_config(
 #[cfg(feature = "vault")]
 pub struct VaultWebhookStore {
     inner: Arc<dyn WebhookStore>,
-    vault: Option<Arc<moltis_vault::Vault>>,
+    vault: Option<Arc<chelix_vault::Vault>>,
 }
 
 #[cfg(feature = "vault")]
 impl VaultWebhookStore {
-    pub fn new(inner: Arc<dyn WebhookStore>, vault: Option<Arc<moltis_vault::Vault>>) -> Self {
+    pub fn new(inner: Arc<dyn WebhookStore>, vault: Option<Arc<chelix_vault::Vault>>) -> Self {
         Self { inner, vault }
     }
 }
@@ -181,19 +181,19 @@ impl VaultWebhookStore {
 #[cfg(feature = "vault")]
 #[async_trait]
 impl WebhookStore for VaultWebhookStore {
-    async fn list_webhooks(&self) -> moltis_webhooks::Result<Vec<Webhook>> {
+    async fn list_webhooks(&self) -> chelix_webhooks::Result<Vec<Webhook>> {
         self.inner.list_webhooks().await
     }
 
-    async fn get_webhook(&self, id: i64) -> moltis_webhooks::Result<Webhook> {
+    async fn get_webhook(&self, id: i64) -> chelix_webhooks::Result<Webhook> {
         self.inner.get_webhook(id).await
     }
 
-    async fn get_webhook_by_public_id(&self, public_id: &str) -> moltis_webhooks::Result<Webhook> {
+    async fn get_webhook_by_public_id(&self, public_id: &str) -> chelix_webhooks::Result<Webhook> {
         self.inner.get_webhook_by_public_id(public_id).await
     }
 
-    async fn create_webhook(&self, mut create: WebhookCreate) -> moltis_webhooks::Result<Webhook> {
+    async fn create_webhook(&self, mut create: WebhookCreate) -> chelix_webhooks::Result<Webhook> {
         encrypt_secret_config(
             &mut create.auth_config,
             auth_secret_fields(&create.auth_mode),
@@ -213,7 +213,7 @@ impl WebhookStore for VaultWebhookStore {
         &self,
         id: i64,
         mut patch: WebhookPatch,
-    ) -> moltis_webhooks::Result<Webhook> {
+    ) -> chelix_webhooks::Result<Webhook> {
         let existing = self.inner.get_webhook(id).await?;
         let auth_mode = patch
             .auth_mode
@@ -236,7 +236,7 @@ impl WebhookStore for VaultWebhookStore {
         self.inner.update_webhook(id, patch).await
     }
 
-    async fn delete_webhook(&self, id: i64) -> moltis_webhooks::Result<()> {
+    async fn delete_webhook(&self, id: i64) -> chelix_webhooks::Result<()> {
         self.inner.delete_webhook(id).await
     }
 
@@ -244,11 +244,11 @@ impl WebhookStore for VaultWebhookStore {
         &self,
         id: i64,
         received_at: &str,
-    ) -> moltis_webhooks::Result<()> {
+    ) -> chelix_webhooks::Result<()> {
         self.inner.increment_delivery_count(id, received_at).await
     }
 
-    async fn insert_delivery(&self, delivery: &NewDelivery) -> moltis_webhooks::Result<i64> {
+    async fn insert_delivery(&self, delivery: &NewDelivery) -> chelix_webhooks::Result<i64> {
         self.inner.insert_delivery(delivery).await
     }
 
@@ -257,14 +257,14 @@ impl WebhookStore for VaultWebhookStore {
         id: i64,
         status: DeliveryStatus,
         update: DeliveryUpdate,
-    ) -> moltis_webhooks::Result<()> {
+    ) -> chelix_webhooks::Result<()> {
         self.inner.update_delivery_status(id, status, update).await
     }
 
     async fn get_delivery(
         &self,
         id: i64,
-    ) -> moltis_webhooks::Result<moltis_webhooks::types::WebhookDelivery> {
+    ) -> chelix_webhooks::Result<chelix_webhooks::types::WebhookDelivery> {
         self.inner.get_delivery(id).await
     }
 
@@ -273,14 +273,14 @@ impl WebhookStore for VaultWebhookStore {
         webhook_id: i64,
         limit: usize,
         offset: usize,
-    ) -> moltis_webhooks::Result<Vec<moltis_webhooks::types::WebhookDelivery>> {
+    ) -> chelix_webhooks::Result<Vec<chelix_webhooks::types::WebhookDelivery>> {
         self.inner.list_deliveries(webhook_id, limit, offset).await
     }
 
     async fn get_delivery_body(
         &self,
         delivery_id: i64,
-    ) -> moltis_webhooks::Result<Option<Vec<u8>>> {
+    ) -> chelix_webhooks::Result<Option<Vec<u8>>> {
         self.inner.get_delivery_body(delivery_id).await
     }
 
@@ -288,29 +288,29 @@ impl WebhookStore for VaultWebhookStore {
         &self,
         webhook_id: i64,
         key: &str,
-    ) -> moltis_webhooks::Result<Option<i64>> {
+    ) -> chelix_webhooks::Result<Option<i64>> {
         self.inner.find_by_delivery_key(webhook_id, key).await
     }
 
-    async fn list_unprocessed_deliveries(&self) -> moltis_webhooks::Result<Vec<i64>> {
+    async fn list_unprocessed_deliveries(&self) -> chelix_webhooks::Result<Vec<i64>> {
         self.inner.list_unprocessed_deliveries().await
     }
 
     async fn insert_response_action(
         &self,
         action: &NewResponseAction,
-    ) -> moltis_webhooks::Result<i64> {
+    ) -> chelix_webhooks::Result<i64> {
         self.inner.insert_response_action(action).await
     }
 
     async fn list_response_actions(
         &self,
         delivery_id: i64,
-    ) -> moltis_webhooks::Result<Vec<WebhookResponseAction>> {
+    ) -> chelix_webhooks::Result<Vec<WebhookResponseAction>> {
         self.inner.list_response_actions(delivery_id).await
     }
 
-    async fn prune_deliveries_before(&self, before: &str) -> moltis_webhooks::Result<u64> {
+    async fn prune_deliveries_before(&self, before: &str) -> chelix_webhooks::Result<u64> {
         self.inner.prune_deliveries_before(before).await
     }
 }
@@ -503,7 +503,7 @@ mod tests {
 
     use super::*;
 
-    async fn test_vault(pool: SqlitePool) -> Arc<moltis_vault::Vault> {
+    async fn test_vault(pool: SqlitePool) -> Arc<chelix_vault::Vault> {
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS vault_metadata (
                 id                   INTEGER PRIMARY KEY CHECK (id = 1),
@@ -521,20 +521,20 @@ mod tests {
         .await
         .unwrap();
 
-        let vault = Arc::new(moltis_vault::Vault::new(pool).await.unwrap());
+        let vault = Arc::new(chelix_vault::Vault::new(pool).await.unwrap());
         vault.initialize("test-password").await.unwrap();
         vault
     }
 
     async fn make_store() -> (
         Arc<dyn WebhookStore>,
-        Arc<moltis_webhooks::store::SqliteWebhookStore>,
-        Arc<moltis_vault::Vault>,
+        Arc<chelix_webhooks::store::SqliteWebhookStore>,
+        Arc<chelix_vault::Vault>,
     ) {
         crate::vault_lifecycle::set_vault_encryption_runtime_enabled(true);
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        moltis_webhooks::run_migrations(&pool).await.unwrap();
-        let raw = Arc::new(moltis_webhooks::store::SqliteWebhookStore::with_pool(
+        chelix_webhooks::run_migrations(&pool).await.unwrap();
+        let raw = Arc::new(chelix_webhooks::store::SqliteWebhookStore::with_pool(
             pool.clone(),
         ));
         let vault = test_vault(pool).await;
@@ -555,7 +555,7 @@ mod tests {
                 agent_id: None,
                 model: None,
                 system_prompt_suffix: None,
-                tool_policy: Some(moltis_webhooks::types::ToolPolicy {
+                tool_policy: Some(chelix_webhooks::types::ToolPolicy {
                     allow: vec!["web_fetch".into()],
                     deny: vec!["execute_command".into()],
                 }),
@@ -564,7 +564,7 @@ mod tests {
                 source_profile: "github".into(),
                 source_config: Some(serde_json::json!({ "api_token": "ghp_secret" })),
                 event_filter: Default::default(),
-                session_mode: moltis_webhooks::types::SessionMode::PerDelivery,
+                session_mode: chelix_webhooks::types::SessionMode::PerDelivery,
                 named_session_key: None,
                 allowed_cidrs: Vec::new(),
                 max_body_bytes: 1024,
@@ -621,7 +621,7 @@ mod tests {
                 source_profile: "generic".into(),
                 source_config: None,
                 event_filter: Default::default(),
-                session_mode: moltis_webhooks::types::SessionMode::PerDelivery,
+                session_mode: chelix_webhooks::types::SessionMode::PerDelivery,
                 named_session_key: None,
                 allowed_cidrs: Vec::new(),
                 max_body_bytes: 1024,

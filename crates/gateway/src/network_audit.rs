@@ -1,6 +1,6 @@
 //! Network audit service layer.
 //!
-//! The buffer, filter, and stats types live in `moltis-network-filter`;
+//! The buffer, filter, and stats types live in `chelix-network-filter`;
 //! this module provides the `NetworkAuditService` trait (tied to gateway's
 //! `ServiceResult`) and the live/noop implementations.
 
@@ -11,7 +11,7 @@ use {async_trait::async_trait, serde_json::Value, tracing::debug};
 // Re-export types from the trusted-network crate so existing gateway code
 // doesn't need to add a direct dependency when the feature is on.
 #[cfg(feature = "trusted-network")]
-pub use moltis_network_filter::{
+pub use chelix_network_filter::{
     FilterOutcome, NetworkAuditEntry, NetworkProtocol,
     buffer::{NetworkAuditBuffer, NetworkAuditFilter, NetworkAuditStats},
 };

@@ -8,7 +8,7 @@ wit_bindgen::generate!({
 });
 
 #[cfg(target_arch = "wasm32")]
-use crate::moltis::tool::{
+use crate::chelix::tool::{
     outgoing_handler::{self, HttpError, HttpRequest},
     types::{ToolError, ToolValue},
 };

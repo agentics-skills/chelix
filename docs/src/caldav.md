@@ -1,6 +1,6 @@
 # CalDAV (Calendars)
 
-Moltis can read and manage remote calendars through the
+Chelix can read and manage remote calendars through the
 [CalDAV](https://en.wikipedia.org/wiki/CalDAV) protocol. Once configured, the
 agent gains a `caldav` tool that can list calendars, query events, and create,
 update, or delete entries on your behalf.
@@ -10,7 +10,7 @@ disabled at build time with `--no-default-features`.
 
 ## Configuration
 
-Add a `[caldav]` section to your `moltis.toml` (usually `~/.moltis/moltis.toml`):
+Add a `[caldav]` section to your `chelix.toml` (usually `~/.chelix/chelix.toml`):
 
 ```toml
 [caldav]
@@ -75,13 +75,13 @@ password = "secret"
 
 ```admonish warning
 Store passwords as app-specific passwords, never your main account password.
-Passwords are stored in `moltis.toml` and redacted in logs, but the file itself
+Passwords are stored in `chelix.toml` and redacted in logs, but the file itself
 is plain text on disk. Consider using [Vault](vault.md) for encryption at rest.
 ```
 
 ## How it works
 
-When Moltis starts and CalDAV is enabled with at least one account, a `caldav`
+When Chelix starts and CalDAV is enabled with at least one account, a `caldav`
 tool is registered in the agent tool registry. The agent can then call it during
 conversations to interact with your calendars.
 
@@ -193,5 +193,5 @@ cargo build --release --no-default-features --features lightweight
 
 ## Validation
 
-`moltis config check` validates CalDAV configuration and warns about unknown
+`chelix config check` validates CalDAV configuration and warns about unknown
 providers. Valid provider values are: `fastmail`, `icloud`, `generic`.

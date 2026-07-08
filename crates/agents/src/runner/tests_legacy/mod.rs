@@ -6,9 +6,9 @@ use {
 };
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, histogram, labels, llm as llm_metrics};
+use chelix_metrics::{counter, histogram, labels, llm as llm_metrics};
 
-use moltis_common::hooks::{ChannelBinding, HookAction, HookPayload, HookRegistry};
+use chelix_common::hooks::{ChannelBinding, HookAction, HookPayload, HookRegistry};
 
 use crate::{
     model::{

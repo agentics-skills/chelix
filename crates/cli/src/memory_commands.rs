@@ -26,7 +26,7 @@ pub async fn handle_memory(action: MemoryAction) -> anyhow::Result<()> {
 
 /// Resolve the memory.db path using the data directory.
 fn memory_db_path() -> std::path::PathBuf {
-    moltis_config::data_dir().join("memory.db")
+    chelix_config::data_dir().join("memory.db")
 }
 
 /// Open a read-only SQLite connection pool to memory.db.
@@ -45,8 +45,8 @@ async fn open_memory_pool() -> anyhow::Result<sqlx::SqlitePool> {
 
 async fn search_memory(query: &str, limit: usize, json: bool) -> anyhow::Result<()> {
     let pool = open_memory_pool().await?;
-    let store = moltis_memory::store_sqlite::SqliteMemoryStore::new(pool);
-    let results = moltis_memory::search::keyword_only_search(&store, query, limit).await?;
+    let store = chelix_memory::store_sqlite::SqliteMemoryStore::new(pool);
+    let results = chelix_memory::search::keyword_only_search(&store, query, limit).await?;
 
     if results.is_empty() {
         if json {
@@ -66,7 +66,7 @@ async fn search_memory(query: &str, limit: usize, json: bool) -> anyhow::Result<
     Ok(())
 }
 
-fn print_json(results: &[moltis_memory::search::SearchResult]) -> anyhow::Result<()> {
+fn print_json(results: &[chelix_memory::search::SearchResult]) -> anyhow::Result<()> {
     let items: Vec<serde_json::Value> = results
         .iter()
         .map(|r| {
@@ -83,7 +83,7 @@ fn print_json(results: &[moltis_memory::search::SearchResult]) -> anyhow::Result
     Ok(())
 }
 
-fn print_human(results: &[moltis_memory::search::SearchResult]) {
+fn print_human(results: &[chelix_memory::search::SearchResult]) {
     for (i, r) in results.iter().enumerate() {
         if i > 0 {
             println!();
@@ -113,13 +113,13 @@ async fn show_status() -> anyhow::Result<()> {
     }
 
     let pool = open_memory_pool().await?;
-    let store = moltis_memory::store_sqlite::SqliteMemoryStore::new(pool);
+    let store = chelix_memory::store_sqlite::SqliteMemoryStore::new(pool);
 
-    let config = moltis_memory::config::MemoryConfig {
+    let config = chelix_memory::config::MemoryConfig {
         db_path: db_path.to_string_lossy().to_string(),
         ..Default::default()
     };
-    let manager = moltis_memory::manager::MemoryManager::keyword_only(config, Box::new(store));
+    let manager = chelix_memory::manager::MemoryManager::keyword_only(config, Box::new(store));
     let status = manager.status().await?;
 
     println!("Memory status:");
@@ -151,7 +151,7 @@ mod tests {
     async fn test_search_missing_db() {
         // Point data dir to a temp directory with no memory.db
         let tmp = tempfile::TempDir::new().unwrap();
-        moltis_config::set_data_dir(tmp.path().to_path_buf());
+        chelix_config::set_data_dir(tmp.path().to_path_buf());
 
         let result = search_memory("test", 5, false).await;
         assert!(result.is_err());
@@ -170,7 +170,7 @@ mod tests {
 
         // Create and populate the database
         let pool = sqlx::SqlitePool::connect(&db_url).await.unwrap();
-        moltis_memory::schema::run_migrations(&pool).await.unwrap();
+        chelix_memory::schema::run_migrations(&pool).await.unwrap();
 
         // Insert test data
         sqlx::query("INSERT INTO files (path, source, hash, mtime, size) VALUES (?, ?, ?, ?, ?)")
@@ -203,12 +203,12 @@ mod tests {
         pool.close().await;
 
         // Point data dir to our temp directory
-        moltis_config::set_data_dir(tmp.path().to_path_buf());
+        chelix_config::set_data_dir(tmp.path().to_path_buf());
 
         // Search should find results
         let pool = open_memory_pool().await.unwrap();
-        let store = moltis_memory::store_sqlite::SqliteMemoryStore::new(pool);
-        let results = moltis_memory::search::keyword_only_search(&store, "rust", 5)
+        let store = chelix_memory::store_sqlite::SqliteMemoryStore::new(pool);
+        let results = chelix_memory::search::keyword_only_search(&store, "rust", 5)
             .await
             .unwrap();
         assert!(!results.is_empty(), "should find results for 'rust'");
@@ -222,14 +222,14 @@ mod tests {
         let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
 
         let pool = sqlx::SqlitePool::connect(&db_url).await.unwrap();
-        moltis_memory::schema::run_migrations(&pool).await.unwrap();
+        chelix_memory::schema::run_migrations(&pool).await.unwrap();
         pool.close().await;
 
-        moltis_config::set_data_dir(tmp.path().to_path_buf());
+        chelix_config::set_data_dir(tmp.path().to_path_buf());
 
         let pool = open_memory_pool().await.unwrap();
-        let store = moltis_memory::store_sqlite::SqliteMemoryStore::new(pool);
-        let results = moltis_memory::search::keyword_only_search(&store, "nonexistent", 5)
+        let store = chelix_memory::store_sqlite::SqliteMemoryStore::new(pool);
+        let results = chelix_memory::search::keyword_only_search(&store, "nonexistent", 5)
             .await
             .unwrap();
         assert!(results.is_empty(), "should find no results");
@@ -238,7 +238,7 @@ mod tests {
     #[tokio::test]
     async fn test_status_missing_db() {
         let tmp = tempfile::TempDir::new().unwrap();
-        moltis_config::set_data_dir(tmp.path().to_path_buf());
+        chelix_config::set_data_dir(tmp.path().to_path_buf());
 
         // Should not error, just print a message
         let result = show_status().await;
@@ -252,7 +252,7 @@ mod tests {
         let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
 
         let pool = sqlx::SqlitePool::connect(&db_url).await.unwrap();
-        moltis_memory::schema::run_migrations(&pool).await.unwrap();
+        chelix_memory::schema::run_migrations(&pool).await.unwrap();
 
         // Insert a file and chunk
         sqlx::query("INSERT INTO files (path, source, hash, mtime, size) VALUES (?, ?, ?, ?, ?)")
@@ -284,16 +284,16 @@ mod tests {
 
         pool.close().await;
 
-        moltis_config::set_data_dir(tmp.path().to_path_buf());
+        chelix_config::set_data_dir(tmp.path().to_path_buf());
 
         // Status should succeed and report 1 file, 1 chunk
         let ro_pool = open_memory_pool().await.unwrap();
-        let store = moltis_memory::store_sqlite::SqliteMemoryStore::new(ro_pool);
-        let config = moltis_memory::config::MemoryConfig {
+        let store = chelix_memory::store_sqlite::SqliteMemoryStore::new(ro_pool);
+        let config = chelix_memory::config::MemoryConfig {
             db_path: db_path.to_string_lossy().to_string(),
             ..Default::default()
         };
-        let manager = moltis_memory::manager::MemoryManager::keyword_only(config, Box::new(store));
+        let manager = chelix_memory::manager::MemoryManager::keyword_only(config, Box::new(store));
         let status = manager.status().await.unwrap();
         assert_eq!(status.total_files, 1);
         assert_eq!(status.total_chunks, 1);
@@ -302,7 +302,7 @@ mod tests {
 
     #[test]
     fn test_print_json_output() {
-        use moltis_memory::search::SearchResult;
+        use chelix_memory::search::SearchResult;
 
         let results = vec![SearchResult {
             chunk_id: "c1".into(),
@@ -321,7 +321,7 @@ mod tests {
 
     #[test]
     fn test_print_human_output() {
-        use moltis_memory::search::SearchResult;
+        use chelix_memory::search::SearchResult;
 
         let results = vec![
             SearchResult {

@@ -1,12 +1,12 @@
 [package]
 edition.workspace    = true
-name                 = "moltis-auth"
+name                 = "chelix-auth"
 repository.workspace = true
 version.workspace    = true
 
 [features]
 default = []
-vault   = ["dep:moltis-vault"]
+vault   = ["dep:chelix-vault"]
 
 [dependencies]
 argon2            = { workspace = true }
@@ -15,9 +15,9 @@ axum              = { workspace = true }
 base64            = { workspace = true }
 dashmap           = { workspace = true }
 hmac              = { workspace = true }
-moltis-config     = { workspace = true }
-moltis-tools      = { workspace = true }
-moltis-vault      = { optional = true, workspace = true }
+chelix-config     = { workspace = true }
+chelix-tools      = { workspace = true }
+chelix-vault      = { optional = true, workspace = true }
 password-hash     = { workspace = true }
 rand              = { workspace = true }
 secrecy           = { workspace = true }
@@ -34,7 +34,7 @@ webauthn-rs-proto = { workspace = true }
 openssl = { workspace = true }
 
 [dev-dependencies]
-moltis-vault = { workspace = true }
+chelix-vault = { workspace = true }
 tempfile     = { workspace = true }
 
 [lints]

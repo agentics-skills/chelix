@@ -6,7 +6,7 @@ use {
     tracing::{info, warn},
 };
 
-use moltis_service_traits::{ServiceError, ServiceResult};
+use chelix_service_traits::{ServiceError, ServiceResult};
 
 use {
     super::{LiveProviderSetupService, support::ProviderSetupTiming},

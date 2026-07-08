@@ -1,12 +1,12 @@
-//! `moltis-ctl` — lightweight CLI for controlling a Moltis gateway.
+//! `chelix-ctl` — lightweight CLI for controlling a Chelix gateway.
 //!
-//! Designed for use inside sandboxes where the full `moltis` binary is
+//! Designed for use inside sandboxes where the full `chelix` binary is
 //! not available. Communicates with the gateway over WebSocket RPC.
 //!
 //! # Environment variables
 //!
-//! - `MOLTIS_GATEWAY_URL`: Gateway HTTP URL (default: `http://localhost:8080`)
-//! - `MOLTIS_API_KEY`: API key for authentication
+//! - `CHELIX_GATEWAY_URL`: Gateway HTTP URL (default: `http://localhost:8080`)
+//! - `CHELIX_API_KEY`: API key for authentication
 
 mod client;
 mod commands;
@@ -22,21 +22,21 @@ use crate::{client::CtlClient, error::exit, output::print_json};
 
 #[derive(Parser)]
 #[command(
-    name = "moltis-ctl",
-    about = "Lightweight CLI for controlling a Moltis gateway",
+    name = "chelix-ctl",
+    about = "Lightweight CLI for controlling a Chelix gateway",
     version
 )]
 struct Cli {
     /// Gateway URL.
     #[arg(
         long,
-        env = "MOLTIS_GATEWAY_URL",
+        env = "CHELIX_GATEWAY_URL",
         default_value = "http://localhost:8080"
     )]
     gateway_url: String,
 
     /// API key for authentication.
-    #[arg(long, env = "MOLTIS_API_KEY", default_value = "")]
+    #[arg(long, env = "CHELIX_API_KEY", default_value = "")]
     api_key: String,
 
     /// Pretty-print JSON output.

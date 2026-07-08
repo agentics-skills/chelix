@@ -10,7 +10,7 @@ if [[ ! -f "$docs_path" ]]; then
   exit 1
 fi
 
-pattern='releases/latest/download/moltis'
+pattern='releases/latest/download/chelix'
 
 if hits=$(grep -n "$pattern" "$docs_path") && [[ -n "$hits" ]]; then
   echo "installation docs contain versionless GitHub asset URLs that drift from release filenames" >&2

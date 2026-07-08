@@ -2,7 +2,7 @@
 
 use {
     axum::{Json, extract::State, response::IntoResponse},
-    moltis_httpd::AppState,
+    chelix_httpd::AppState,
 };
 
 use crate::templates::build_gon_data;
@@ -26,7 +26,7 @@ struct PublicIdentity {
 
 /// Public branding payload for unauthenticated discovery clients.
 pub async fn api_public_identity_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let identity: moltis_config::ResolvedIdentity = state
+    let identity: chelix_config::ResolvedIdentity = state
         .gateway
         .services
         .onboarding
@@ -39,7 +39,7 @@ pub async fn api_public_identity_handler(State(state): State<AppState>) -> impl 
     let name = {
         let trimmed = identity.name.trim();
         if trimmed.is_empty() {
-            "moltis".to_owned()
+            "chelix".to_owned()
         } else {
             trimmed.to_owned()
         }

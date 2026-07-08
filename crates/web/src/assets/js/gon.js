@@ -1,4 +1,4 @@
-const gon = window.__MOLTIS__ || {};
+const gon = window.__CHELIX__ || {};
 const listeners = {};
 function get(key) {
   return gon[key] ?? null;

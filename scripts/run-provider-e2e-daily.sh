@@ -15,7 +15,7 @@ fi
 echo "Running provider E2E scenario checks..."
 
 cargo test \
-  -p moltis-providers \
+  -p chelix-providers \
   --test tool_arg_serialization_integration \
   -- \
   --ignored \

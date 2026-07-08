@@ -242,20 +242,20 @@ fn test_docker_workspace_args_ro() {
     let args = docker.workspace_args();
     assert_eq!(args.len(), 2);
     assert_eq!(args[0], "-v");
-    let workspace_dir = moltis_config::data_dir();
+    let workspace_dir = chelix_config::data_dir();
     let expected_volume = format!("{}:{}:ro", workspace_dir.display(), workspace_dir.display());
     assert_eq!(args[1], expected_volume);
 }
 
 #[test]
-fn test_workspace_mount_points_sandbox_at_moltis_data_dir_memory_files() {
+fn test_workspace_mount_points_sandbox_at_chelix_data_dir_memory_files() {
     let config = SandboxConfig {
         workspace_mount: WorkspaceMount::Ro,
         ..Default::default()
     };
     let docker = DockerSandbox::new(config);
     let args = docker.workspace_args();
-    let workspace_dir = moltis_config::data_dir();
+    let workspace_dir = chelix_config::data_dir();
     let guest_memory_file = workspace_dir.join("MEMORY.md");
     let guest_memory_dir = workspace_dir.join("memory");
 
@@ -263,7 +263,7 @@ fn test_workspace_mount_points_sandbox_at_moltis_data_dir_memory_files() {
     assert_eq!(args[0], "-v");
     assert!(
         args[1].contains(&format!(":{}:ro", workspace_dir.display())),
-        "workspace mount should expose the Moltis data dir inside the sandbox"
+        "workspace mount should expose the Chelix data dir inside the sandbox"
     );
     assert_eq!(guest_memory_file, workspace_dir.join("MEMORY.md"));
     assert_eq!(guest_memory_dir, workspace_dir.join("memory"));
@@ -273,15 +273,15 @@ fn test_workspace_mount_points_sandbox_at_moltis_data_dir_memory_files() {
 fn test_docker_workspace_args_uses_host_data_dir_override() {
     let config = SandboxConfig {
         workspace_mount: WorkspaceMount::Ro,
-        host_data_dir: Some(PathBuf::from("/host/moltis-data")),
+        host_data_dir: Some(PathBuf::from("/host/chelix-data")),
         ..Default::default()
     };
     let docker = DockerSandbox::new(config);
     let args = docker.workspace_args();
     assert_eq!(args.len(), 2);
     assert_eq!(args[0], "-v");
-    let guest_workspace_dir = moltis_config::data_dir();
-    let expected_volume = format!("/host/moltis-data:{}:ro", guest_workspace_dir.display());
+    let guest_workspace_dir = chelix_config::data_dir();
+    let expected_volume = format!("/host/chelix-data:{}:ro", guest_workspace_dir.display());
     assert_eq!(args[1], expected_volume);
 }
 
@@ -335,7 +335,7 @@ fn test_docker_home_persistence_args_default_shared() {
     let args = docker.home_persistence_args(&id).unwrap();
     assert_eq!(args.len(), 2);
     assert_eq!(args[0], "-v");
-    let expected_host_dir = moltis_config::data_dir()
+    let expected_host_dir = chelix_config::data_dir()
         .join("sandbox")
         .join("home")
         .join("shared");
@@ -353,7 +353,7 @@ fn test_sandbox_home_persistence_is_separate_from_memory_workspace() {
 
     let home_dir =
         guest_visible_sandbox_home_persistence_host_dir(&config, &id).expect("shared home path");
-    let data_dir = moltis_config::data_dir();
+    let data_dir = chelix_config::data_dir();
 
     assert_eq!(
         home_dir,
@@ -369,7 +369,7 @@ fn test_sandbox_home_persistence_is_separate_from_memory_workspace() {
 #[test]
 fn test_docker_home_persistence_args_default_shared_uses_host_data_dir_override() {
     let temp_dir = tempfile::tempdir().unwrap();
-    let host_data_dir = temp_dir.path().join("moltis-data");
+    let host_data_dir = temp_dir.path().join("chelix-data");
     let config = SandboxConfig {
         host_data_dir: Some(host_data_dir.clone()),
         ..Default::default()
@@ -392,7 +392,7 @@ fn test_docker_home_persistence_args_default_shared_uses_host_data_dir_override(
 #[test]
 fn test_docker_home_persistence_args_custom_shared_absolute_path() {
     let config = SandboxConfig {
-        shared_home_dir: Some(PathBuf::from("/tmp/moltis-shared-home")),
+        shared_home_dir: Some(PathBuf::from("/tmp/chelix-shared-home")),
         ..Default::default()
     };
     let docker = DockerSandbox::new(config);
@@ -403,7 +403,7 @@ fn test_docker_home_persistence_args_custom_shared_absolute_path() {
     let args = docker.home_persistence_args(&id).unwrap();
     assert_eq!(args.len(), 2);
     assert_eq!(args[0], "-v");
-    let expected_volume = "/tmp/moltis-shared-home:/home/sandbox:rw".to_string();
+    let expected_volume = "/tmp/chelix-shared-home:/home/sandbox:rw".to_string();
     assert_eq!(args[1], expected_volume);
 }
 
@@ -421,7 +421,7 @@ fn test_docker_home_persistence_args_custom_shared_relative_path() {
     let args = docker.home_persistence_args(&id).unwrap();
     assert_eq!(args.len(), 2);
     assert_eq!(args[0], "-v");
-    let expected_host_dir = moltis_config::data_dir().join("sandbox/custom-shared");
+    let expected_host_dir = chelix_config::data_dir().join("sandbox/custom-shared");
     let expected_volume = format!("{}:/home/sandbox:rw", expected_host_dir.display());
     assert_eq!(args[1], expected_volume);
 }
@@ -429,10 +429,10 @@ fn test_docker_home_persistence_args_custom_shared_relative_path() {
 #[test]
 fn test_docker_home_persistence_args_custom_shared_guest_absolute_path_uses_host_override() {
     let temp_dir = tempfile::tempdir().unwrap();
-    let host_data_dir = temp_dir.path().join("moltis-data");
+    let host_data_dir = temp_dir.path().join("chelix-data");
     let config = SandboxConfig {
         host_data_dir: Some(host_data_dir.clone()),
-        shared_home_dir: Some(moltis_config::data_dir().join("sandbox/custom-shared")),
+        shared_home_dir: Some(chelix_config::data_dir().join("sandbox/custom-shared")),
         ..Default::default()
     };
     let docker = DockerSandbox::new(config);
@@ -464,7 +464,7 @@ fn test_docker_home_persistence_args_session() {
     let args = docker.home_persistence_args(&id).unwrap();
     assert_eq!(args.len(), 2);
     assert_eq!(args[0], "-v");
-    let expected_host_dir = moltis_config::data_dir()
+    let expected_host_dir = chelix_config::data_dir()
         .join("sandbox")
         .join("home")
         .join("session")
@@ -476,7 +476,7 @@ fn test_docker_home_persistence_args_session() {
 #[test]
 fn test_docker_home_persistence_args_session_uses_host_data_dir_override() {
     let temp_dir = tempfile::tempdir().unwrap();
-    let host_data_dir = temp_dir.path().join("moltis-data");
+    let host_data_dir = temp_dir.path().join("chelix-data");
     let config = SandboxConfig {
         home_persistence: HomePersistence::Session,
         host_data_dir: Some(host_data_dir.clone()),
@@ -502,13 +502,13 @@ fn test_docker_home_persistence_args_session_uses_host_data_dir_override() {
 #[test]
 fn test_resolve_workspace_guest_path_on_host_uses_host_override() {
     let temp_dir = tempfile::tempdir().unwrap();
-    let host_data_dir = temp_dir.path().join("moltis-data");
+    let host_data_dir = temp_dir.path().join("chelix-data");
     let config = SandboxConfig {
         workspace_mount: WorkspaceMount::Rw,
         host_data_dir: Some(host_data_dir.clone()),
         ..Default::default()
     };
-    let guest_file = moltis_config::data_dir().join("notes/todo.txt");
+    let guest_file = chelix_config::data_dir().join("notes/todo.txt");
 
     let resolved =
         resolve_workspace_guest_path_on_host(&config, Some("docker"), &guest_file).unwrap();
@@ -519,7 +519,7 @@ fn test_resolve_workspace_guest_path_on_host_uses_host_override() {
 #[test]
 fn test_resolve_home_persistence_guest_path_on_host_uses_session_mount() {
     let temp_dir = tempfile::tempdir().unwrap();
-    let host_data_dir = temp_dir.path().join("moltis-data");
+    let host_data_dir = temp_dir.path().join("chelix-data");
     let config = SandboxConfig {
         home_persistence: HomePersistence::Session,
         host_data_dir: Some(host_data_dir.clone()),
@@ -544,7 +544,7 @@ fn test_resolve_home_persistence_guest_path_on_host_uses_session_mount() {
 #[test]
 fn test_resolve_home_persistence_guest_path_on_host_uses_shared_mount() {
     let temp_dir = tempfile::tempdir().unwrap();
-    let host_data_dir = temp_dir.path().join("moltis-data");
+    let host_data_dir = temp_dir.path().join("chelix-data");
     let config = SandboxConfig {
         host_data_dir: Some(host_data_dir.clone()),
         ..Default::default()
@@ -571,7 +571,7 @@ fn test_resolve_home_persistence_guest_path_on_host_uses_shared_mount() {
 #[tokio::test]
 async fn test_docker_read_file_uses_mounted_workspace_path() {
     let temp_dir = tempfile::tempdir().unwrap();
-    let host_data_dir = temp_dir.path().join("moltis-data");
+    let host_data_dir = temp_dir.path().join("chelix-data");
     let host_file = host_data_dir.join("notes/todo.txt");
     std::fs::create_dir_all(host_file.parent().unwrap()).unwrap();
     std::fs::write(&host_file, "docker mounted read").unwrap();
@@ -585,7 +585,7 @@ async fn test_docker_read_file_uses_mounted_workspace_path() {
         scope: SandboxScope::Session,
         key: "test-docker-read".into(),
     };
-    let guest_file = moltis_config::data_dir().join("notes/todo.txt");
+    let guest_file = chelix_config::data_dir().join("notes/todo.txt");
 
     let result = docker
         .read_file(&id, &guest_file.display().to_string(), 1024)
@@ -600,7 +600,7 @@ async fn test_docker_read_file_uses_mounted_workspace_path() {
 #[tokio::test]
 async fn test_docker_write_file_uses_mounted_workspace_path() {
     let temp_dir = tempfile::tempdir().unwrap();
-    let host_data_dir = temp_dir.path().join("moltis-data");
+    let host_data_dir = temp_dir.path().join("chelix-data");
     let docker = DockerSandbox::new(SandboxConfig {
         workspace_mount: WorkspaceMount::Rw,
         host_data_dir: Some(host_data_dir.clone()),
@@ -610,7 +610,7 @@ async fn test_docker_write_file_uses_mounted_workspace_path() {
         scope: SandboxScope::Session,
         key: "test-docker-write".into(),
     };
-    let guest_file = moltis_config::data_dir().join("notes/todo.txt");
+    let guest_file = chelix_config::data_dir().join("notes/todo.txt");
     std::fs::create_dir_all(host_data_dir.join("notes")).unwrap();
 
     let result = docker
@@ -631,7 +631,7 @@ async fn test_docker_write_file_uses_mounted_workspace_path() {
 #[tokio::test]
 async fn test_docker_write_file_uses_mounted_home_path() {
     let temp_dir = tempfile::tempdir().unwrap();
-    let host_data_dir = temp_dir.path().join("moltis-data");
+    let host_data_dir = temp_dir.path().join("chelix-data");
     let docker = DockerSandbox::new(SandboxConfig {
         home_persistence: HomePersistence::Session,
         host_data_dir: Some(host_data_dir.clone()),
@@ -659,7 +659,7 @@ async fn test_docker_write_file_uses_mounted_home_path() {
 #[tokio::test]
 async fn test_docker_list_files_remaps_mounted_workspace_paths() {
     let temp_dir = tempfile::tempdir().unwrap();
-    let host_data_dir = temp_dir.path().join("moltis-data");
+    let host_data_dir = temp_dir.path().join("chelix-data");
     let host_root = host_data_dir.join("notes");
     std::fs::create_dir_all(host_root.join("nested")).unwrap();
     std::fs::write(host_root.join("todo.txt"), "a").unwrap();
@@ -674,7 +674,7 @@ async fn test_docker_list_files_remaps_mounted_workspace_paths() {
         scope: SandboxScope::Session,
         key: "test-docker-list".into(),
     };
-    let guest_root = moltis_config::data_dir().join("notes");
+    let guest_root = chelix_config::data_dir().join("notes");
 
     let files = docker
         .list_files(&id, &guest_root.display().to_string())
@@ -690,7 +690,7 @@ async fn test_docker_list_files_remaps_mounted_workspace_paths() {
 #[tokio::test]
 async fn test_provisioning_guard_skips_second_call() {
     let docker = DockerSandbox::new(SandboxConfig::default());
-    let name = "moltis-sandbox-test-guard";
+    let name = "chelix-sandbox-test-guard";
 
     // First insertion succeeds.
     {
@@ -709,7 +709,7 @@ async fn test_provisioning_guard_skips_second_call() {
 #[tokio::test]
 async fn test_provisioning_guard_cleared_on_cleanup_entry() {
     let docker = DockerSandbox::new(SandboxConfig::default());
-    let name = "moltis-sandbox-test-cleanup";
+    let name = "chelix-sandbox-test-cleanup";
 
     // Mark as provisioned.
     docker.provisioned.lock().await.insert(name.to_string());

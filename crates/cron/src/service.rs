@@ -17,7 +17,7 @@ use {
 };
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, cron as cron_metrics, gauge, histogram};
+use chelix_metrics::{counter, cron as cron_metrics, gauge, histogram};
 
 use crate::{
     Error, Result, schedule::compute_next_run, store::CronStore, system_events::SystemEventsQueue,
@@ -110,7 +110,7 @@ pub struct AgentTurnRequest {
     pub model: Option<String>,
     pub agent_id: Option<String>,
     pub timeout_secs: Option<u64>,
-    pub tool_controls: moltis_config::schema::AgentToolControls,
+    pub tool_controls: chelix_config::schema::AgentToolControls,
     pub deliver: bool,
     pub channel: Option<String>,
     pub to: Option<String>,

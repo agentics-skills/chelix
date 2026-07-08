@@ -8,7 +8,7 @@ Running an AI assistant on your own machine or server is still new territory. Tr
 <strong style="font-size: 1.2em;">A secure persistent personal agent server written in Rust.<br>One binary, no runtime, no npm.</strong>
 </div>
 
-> Chelix is a fork of [Moltis](https://github.com/moltis-org/moltis).
+> Chelix is a fork of [Chelix](https://github.com/agentics-skills/chelix).
 
 Chelix compiles your entire AI gateway — web UI, LLM providers, tools, and all assets — into a single self-contained executable. There's no Node.js to babysit, no `node_modules` to sync, no V8 garbage collector introducing latency spikes.
 
@@ -52,7 +52,7 @@ See the full list of [supported providers](providers.md).
 curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/install.sh | sh
 
 # Run
-moltis
+chelix
 ```
 
 On first launch:
@@ -100,7 +100,7 @@ Authentication is only required when accessing Chelix from a non-localhost addre
 ### Getting Started
 - **[Quickstart](quickstart.md)** — Up and running in 5 minutes
 - **[Installation](installation.md)** — All installation methods
-- **[Configuration](configuration.md)** — `moltis.toml` reference
+- **[Configuration](configuration.md)** — `chelix.toml` reference
 - **[End-to-End Testing](e2e-testing.md)** — Browser regression coverage for the web UI
 
 ### Features

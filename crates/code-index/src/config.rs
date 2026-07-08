@@ -112,7 +112,7 @@ pub struct CodeIndexConfig {
     /// Path prefixes to skip (e.g. "vendor/", "node_modules/").
     pub skip_paths: Vec<String>,
     /// Root directory for snapshot storage.
-    /// Defaults to `<moltis_data_dir>/code-index/` when `None`.
+    /// Defaults to `<chelix_data_dir>/code-index/` when `None`.
     #[serde(skip)]
     pub data_dir: Option<PathBuf>,
 }
@@ -130,9 +130,9 @@ impl Default for CodeIndexConfig {
     }
 }
 
-impl From<&moltis_config::CodeIndexTomlConfig> for CodeIndexConfig {
-    fn from(toml: &moltis_config::CodeIndexTomlConfig) -> Self {
-        let max_file_size_bytes = moltis_config::parse_byte_size(&toml.max_file_size)
+impl From<&chelix_config::CodeIndexTomlConfig> for CodeIndexConfig {
+    fn from(toml: &chelix_config::CodeIndexTomlConfig) -> Self {
+        let max_file_size_bytes = chelix_config::parse_byte_size(&toml.max_file_size)
             .unwrap_or_else(|e| {
                 #[cfg(feature = "tracing")]
                 tracing::warn!(
@@ -254,7 +254,7 @@ mod tests {
         let config = CodeIndexConfig::default();
         assert!(config.path_skipped("vendor/lib/foo.rs"));
         assert!(config.path_skipped("node_modules/react/index.js"));
-        assert!(config.path_skipped("target/debug/moltis"));
+        assert!(config.path_skipped("target/debug/chelix"));
         assert!(!config.path_skipped("src/main.rs"));
         // Nested path matching — pattern at non-root depth.
         assert!(config.path_skipped("src/vendor/lib/foo.rs"));

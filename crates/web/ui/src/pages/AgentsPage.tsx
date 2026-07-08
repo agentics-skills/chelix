@@ -940,7 +940,7 @@ function PresetCard({ preset, creating, onCreate, onEdit, onDelete, onRevert }: 
 							type="button"
 							className="provider-btn provider-btn-secondary provider-btn-sm"
 							onClick={() => onEdit(preset)}
-							title={preset.provenance === "built_in" ? "Creates a user override in ~/.moltis/agents/" : undefined}
+							title={preset.provenance === "built_in" ? "Creates a user override in ~/.chelix/agents/" : undefined}
 						>
 							{preset.provenance === "built_in" ? "Override" : "Edit"}
 						</button>
@@ -1144,7 +1144,7 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 	function onRevertPreset(id: string): void {
 		confirmDialog(`Revert preset "${id}" to the built-in default? Your local override will be removed.`).then((yes) => {
 			if (!yes) return;
-			// Remove the user override by saving an empty TOML (removes from moltis.toml)
+			// Remove the user override by saving an empty TOML (removes from chelix.toml)
 			sendRpc("agents.preset.save", { id, toml: "" }).then((res) => {
 				if (res?.ok) {
 					fetchConfigPresets();
@@ -1310,7 +1310,7 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 					<div className="flex flex-col gap-1">
 						<h3 className="text-xs font-medium text-[var(--muted)]">Sub-Agent Presets</h3>
 						<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: 0 }}>
-							Web UI edits are stored as markdown files in <code>~/.moltis/agents</code>. These roles are usable by
+							Web UI edits are stored as markdown files in <code>~/.chelix/agents</code>. These roles are usable by
 							spawn_agent for delegated work. Add one to chat to make it a persistent agent with memory and sessions.
 						</p>
 					</div>
@@ -1339,7 +1339,7 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 					<div className="flex flex-col gap-1">
 						<h3 className="text-xs font-medium text-[var(--muted)]">Modes</h3>
 						<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: 0 }}>
-							Defined in <code>[modes]</code> in <code>moltis.toml</code>. Temporary per-session prompt overlays. Use
+							Defined in <code>[modes]</code> in <code>chelix.toml</code>. Temporary per-session prompt overlays. Use
 							/mode in chat or any connected channel to switch how the current agent works without changing its
 							identity, memory, or presets.
 						</p>

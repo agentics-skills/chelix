@@ -1,6 +1,6 @@
 [package]
 edition.workspace    = true
-name                 = "moltis-external-agents"
+name                 = "chelix-external-agents"
 repository.workspace = true
 version.workspace    = true
 
@@ -9,7 +9,7 @@ acp         = []
 claude-code = []
 codex       = []
 default     = ["acp", "claude-code", "codex", "opencode", "pi-agent"]
-metrics     = ["dep:moltis-metrics"]
+metrics     = ["dep:chelix-metrics"]
 opencode    = []
 pi-agent    = []
 tracing     = ["dep:tracing"]
@@ -19,9 +19,9 @@ agent-client-protocol = { workspace = true }
 anyhow          = { workspace = true }
 async-trait     = { workspace = true }
 futures         = { workspace = true }
-moltis-config   = { workspace = true }
-moltis-metrics  = { optional = true, workspace = true }
-moltis-sessions = { workspace = true }
+chelix-config   = { workspace = true }
+chelix-metrics  = { optional = true, workspace = true }
+chelix-sessions = { workspace = true }
 serde           = { workspace = true }
 serde_json      = { workspace = true }
 sha2            = { workspace = true }

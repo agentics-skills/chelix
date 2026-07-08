@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use {
     mockito::Matcher,
-    moltis_oauth::{
+    chelix_oauth::{
         OAuthConfig, OAuthFlow, TokenStore, callback_port, load_oauth_config, pkce::generate_pkce,
     },
     secrecy::{ExposeSecret, Secret},
@@ -181,7 +181,7 @@ fn token_store_roundtrip() {
     let path = dir.path().join("tokens.json");
 
     let store = TokenStore::with_path(path);
-    let tokens = moltis_oauth::OAuthTokens {
+    let tokens = chelix_oauth::OAuthTokens {
         access_token: Secret::new("test-access".into()),
         refresh_token: Some(Secret::new("test-refresh".into())),
         id_token: None,

@@ -1,13 +1,13 @@
 [package]
-description       = "Codebase indexing for moltis — git-tracked file discovery, filtering, chunking, and project-scoped search"
+description       = "Codebase indexing for chelix — git-tracked file discovery, filtering, chunking, and project-scoped search"
 edition.workspace = true
-name              = "moltis-code-index"
+name              = "chelix-code-index"
 version.workspace = true
 
 [features]
 default = ["builtin", "tracing"]
-qmd = ["dep:moltis-qmd", "dep:moltis-agents"]
-builtin = ["dep:moltis-memory", "dep:moltis-agents", "dep:sqlx", "dep:tokio"]
+qmd = ["dep:chelix-qmd", "dep:chelix-agents"]
+builtin = ["dep:chelix-memory", "dep:chelix-agents", "dep:sqlx", "dep:tokio"]
 file-watcher = ["dep:notify-debouncer-full", "dep:tokio", "dep:tokio-util"]
 tracing = ["dep:tracing"]
 metrics = ["dep:metrics"]
@@ -16,12 +16,12 @@ metrics = ["dep:metrics"]
 anyhow           = { workspace = true }
 async-trait      = { workspace = true }
 gix              = { workspace = true }
-moltis-agents    = { optional = true, workspace = true }
-moltis-memory    = { optional = true, workspace = true }
-moltis-qmd       = { optional = true, workspace = true }
-moltis-config    = { workspace = true }
-moltis-splitter  = { workspace = true }
-moltis-tools     = { workspace = true }
+chelix-agents    = { optional = true, workspace = true }
+chelix-memory    = { optional = true, workspace = true }
+chelix-qmd       = { optional = true, workspace = true }
+chelix-config    = { workspace = true }
+chelix-splitter  = { workspace = true }
+chelix-tools     = { workspace = true }
 notify-debouncer-full = { optional = true, workspace = true }
 serde            = { workspace = true }
 serde_json       = { workspace = true }

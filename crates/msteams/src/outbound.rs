@@ -5,11 +5,11 @@ use {
 };
 
 use {
-    moltis_channels::{
+    chelix_channels::{
         Error as ChannelError, Result as ChannelResult,
         plugin::{ChannelOutbound, ChannelStreamOutbound, StreamEvent, StreamReceiver},
     },
-    moltis_common::types::ReplyPayload,
+    chelix_common::types::ReplyPayload,
 };
 
 use crate::{
@@ -137,9 +137,9 @@ impl MsTeamsOutbound {
                 let activity_id = body["id"].as_str().map(String::from);
 
                 #[cfg(feature = "metrics")]
-                moltis_metrics::counter!(
-                    moltis_metrics::channels::MESSAGES_SENT_TOTAL,
-                    moltis_metrics::labels::CHANNEL => "msteams"
+                chelix_metrics::counter!(
+                    chelix_metrics::channels::MESSAGES_SENT_TOTAL,
+                    chelix_metrics::labels::CHANNEL => "msteams"
                 )
                 .increment(1);
 
@@ -554,7 +554,7 @@ impl ChannelOutbound for MsTeamsOutbound {
         &self,
         account_id: &str,
         to: &str,
-        message: &moltis_channels::InteractiveMessage,
+        message: &chelix_channels::InteractiveMessage,
         reply_to: Option<&str>,
     ) -> ChannelResult<()> {
         // Build an Adaptive Card with action buttons.

@@ -12,11 +12,11 @@ use std::{collections::HashMap, pin::Pin, sync::Arc, time::Duration};
 
 use {
     async_trait::async_trait,
-    moltis_agents::model::{
+    chelix_agents::model::{
         AgentToolControls, ChatMessage, CompletionResponse, LlmProvider, ModelMetadata,
         ReasoningEffort, StreamEvent,
     },
-    moltis_config::WireApi,
+    chelix_config::WireApi,
     secrecy::Secret,
     tokio_stream::Stream,
 };
@@ -184,7 +184,7 @@ impl LlmProvider for ZenProvider {
         self.inner.supports_vision()
     }
 
-    fn tool_mode(&self) -> Option<moltis_config::ToolMode> {
+    fn tool_mode(&self) -> Option<chelix_config::ToolMode> {
         self.inner.tool_mode()
     }
 

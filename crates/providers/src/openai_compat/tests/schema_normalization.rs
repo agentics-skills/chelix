@@ -9,7 +9,7 @@ use {
         strict_mode::patch_schema_for_strict_mode,
         strip_think_tags, to_openai_tools, to_responses_api_tools,
     },
-    moltis_agents::model::StreamEvent,
+    chelix_agents::model::StreamEvent,
 };
 
 #[test]

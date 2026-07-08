@@ -15,7 +15,7 @@ use {
     tracing::warn,
 };
 
-use moltis_channels::{Error as ChannelError, Result};
+use chelix_channels::{Error as ChannelError, Result};
 
 use super::{
     TELEGRAM_RETRY_AFTER_MAX_RETRIES, TelegramOutbound, formatting::telegram_html_to_plain_text,

@@ -212,7 +212,7 @@ export interface UpdateAvailability {
 // ── GonData ─────────────────────────────────────────────────
 
 /**
- * Server-side data injected into every page as `window.__MOLTIS__`.
+ * Server-side data injected into every page as `window.__CHELIX__`.
  * Mirrors the Rust `GonData` struct in `crates/web/src/templates.rs`.
  */
 export interface GonData {

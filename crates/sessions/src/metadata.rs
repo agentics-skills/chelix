@@ -12,7 +12,7 @@ use crate::Result;
 
 /// External agent transport kind for session binding.
 ///
-/// Defined in `moltis-sessions` so runtime crates can share the persisted type
+/// Defined in `chelix-sessions` so runtime crates can share the persisted type
 /// without introducing a dependency from session storage to agent runtimes.
 /// Serialises to kebab-case strings matching the canonical agent identifiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

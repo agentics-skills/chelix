@@ -1,13 +1,13 @@
 //! Microsoft Teams webhook verifier implementing [`ChannelWebhookVerifier`].
 //!
 //! Uses a shared-secret query parameter (injected as the
-//! `x-moltis-webhook-secret` header by the gateway route handler) with
+//! `x-chelix-webhook-secret` header by the gateway route handler) with
 //! constant-time comparison.
 
 use {
     bytes::Bytes,
     http::HeaderMap,
-    moltis_channels::{
+    chelix_channels::{
         channel_webhook_middleware::{
             ChannelWebhookRejection, ChannelWebhookVerifier, VerifiedChannelWebhook,
         },
@@ -20,7 +20,7 @@ use {
 /// Teams webhook verifier using shared-secret comparison.
 ///
 /// The gateway route handler extracts `?secret=<value>` from the query string
-/// and places it in the `x-moltis-webhook-secret` header before calling this
+/// and places it in the `x-chelix-webhook-secret` header before calling this
 /// verifier.
 pub struct TeamsChannelWebhookVerifier {
     webhook_secret: Option<Secret<String>>,
@@ -49,7 +49,7 @@ impl ChannelWebhookVerifier for TeamsChannelWebhookVerifier {
             .filter(|s| !s.is_empty())
         {
             let provided = headers
-                .get("x-moltis-webhook-secret")
+                .get("x-chelix-webhook-secret")
                 .and_then(|v| v.to_str().ok());
 
             let matches = provided.is_some_and(|p| p.as_bytes().ct_eq(expected.as_bytes()).into());
@@ -89,7 +89,7 @@ mod tests {
 
     fn headers_with_secret(secret: &str) -> HeaderMap {
         let mut headers = HeaderMap::new();
-        headers.insert("x-moltis-webhook-secret", secret.parse().unwrap());
+        headers.insert("x-chelix-webhook-secret", secret.parse().unwrap());
         headers
     }
 
@@ -189,7 +189,7 @@ mod tests {
     fn contract_rejects_empty_signature() {
         // With require_secret=true, missing headers → BadSignature.
         let verifier = TeamsChannelWebhookVerifier::new(Some(Secret::new("secret".into())), true);
-        moltis_channels::contract::channel_webhook_verifier_rejects_empty_signature(&verifier);
+        chelix_channels::contract::channel_webhook_verifier_rejects_empty_signature(&verifier);
     }
 
     #[test]
@@ -197,7 +197,7 @@ mod tests {
         let verifier =
             TeamsChannelWebhookVerifier::new(Some(Secret::new("correct-secret".into())), true);
         let headers = headers_with_secret("wrong-secret");
-        moltis_channels::contract::channel_webhook_verifier_rejects_bad_signature(
+        chelix_channels::contract::channel_webhook_verifier_rejects_bad_signature(
             &verifier, &headers,
         );
     }
@@ -205,18 +205,18 @@ mod tests {
     #[test]
     fn contract_has_channel_type() {
         let verifier = TeamsChannelWebhookVerifier::new(None, false);
-        moltis_channels::contract::channel_webhook_verifier_has_channel_type(&verifier);
+        chelix_channels::contract::channel_webhook_verifier_has_channel_type(&verifier);
     }
 
     #[test]
     fn contract_has_positive_max_age() {
         let verifier = TeamsChannelWebhookVerifier::new(None, false);
-        moltis_channels::contract::channel_webhook_verifier_has_positive_max_age(&verifier);
+        chelix_channels::contract::channel_webhook_verifier_has_positive_max_age(&verifier);
     }
 
     #[test]
     fn contract_has_valid_rate_policy() {
         let verifier = TeamsChannelWebhookVerifier::new(None, false);
-        moltis_channels::contract::channel_webhook_verifier_has_valid_rate_policy(&verifier);
+        chelix_channels::contract::channel_webhook_verifier_has_valid_rate_policy(&verifier);
     }
 }

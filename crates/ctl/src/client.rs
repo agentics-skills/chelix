@@ -1,4 +1,4 @@
-//! WebSocket RPC client for communicating with the Moltis gateway.
+//! WebSocket RPC client for communicating with the Chelix gateway.
 //!
 //! Implements the v4 protocol handshake and request/response framing.
 
@@ -13,7 +13,7 @@ use {
 
 use crate::error::CtlError;
 
-// ── Protocol types (minimal subset of moltis-protocol) ──────────────────────
+// ── Protocol types (minimal subset of chelix-protocol) ──────────────────────
 
 #[derive(Serialize)]
 struct RequestFrame {
@@ -87,7 +87,7 @@ pub struct CtlClient {
 }
 
 impl CtlClient {
-    /// Connect to the Moltis gateway and perform the v4 handshake.
+    /// Connect to the Chelix gateway and perform the v4 handshake.
     pub async fn connect(gateway_url: &str, api_key: &str) -> Result<Self, CtlError> {
         let ws_url = to_ws_url(gateway_url);
 
@@ -104,7 +104,7 @@ impl CtlClient {
             params: ConnectParams {
                 protocol: ProtocolRange { min: 4, max: 4 },
                 client: ClientInfo {
-                    id: "moltis-ctl".into(),
+                    id: "chelix-ctl".into(),
                     version: env!("CARGO_PKG_VERSION").into(),
                     platform: "cli".into(),
                     mode: "operator".into(),
@@ -280,8 +280,8 @@ mod tests {
     fn http_to_ws_conversion() {
         assert_eq!(to_ws_url("http://localhost:8080"), "ws://localhost:8080/ws");
         assert_eq!(
-            to_ws_url("https://moltis.example.com"),
-            "wss://moltis.example.com/ws"
+            to_ws_url("https://chelix.example.com"),
+            "wss://chelix.example.com/ws"
         );
         assert_eq!(
             to_ws_url("http://localhost:8080/"),

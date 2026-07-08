@@ -1,4 +1,4 @@
-# Deploy Moltis on a VPS
+# Deploy Chelix on a VPS
 
 Run your own AI agent on a $5/month VPS. This guide covers provisioning,
 installation, and connecting channels (Telegram, Discord, etc.) so you can
@@ -14,7 +14,7 @@ talk to your agent from anywhere.
 ## Option A: Docker (recommended)
 
 Docker is the fastest path. It handles sandbox isolation and upgrades via image
-pulls. For browser-trusted TLS on a VPS, put Moltis behind a reverse proxy
+pulls. For browser-trusted TLS on a VPS, put Chelix behind a reverse proxy
 such as Caddy, nginx, or Traefik and let the proxy manage public certificates.
 
 ### 1. Install Docker
@@ -25,14 +25,14 @@ sudo usermod -aG docker $USER
 # Log out and back in for group membership to take effect
 ```
 
-### 2. Deploy Moltis
+### 2. Deploy Chelix
 
 ```bash
-mkdir -p ~/moltis && cd ~/moltis
-curl -fsSL https://raw.githubusercontent.com/moltis-org/moltis/main/deploy/docker-compose.yml -o docker-compose.yml
+mkdir -p ~/chelix && cd ~/chelix
+curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/main/deploy/docker-compose.yml -o docker-compose.yml
 
 # Set your password
-export MOLTIS_PASSWORD="your-secure-password"
+export CHELIX_PASSWORD="your-secure-password"
 
 # Start
 docker compose up -d
@@ -44,24 +44,24 @@ For a production VPS, use a domain name and terminate TLS at a reverse proxy:
 
 ```yaml
 services:
-  moltis:
-    image: ghcr.io/moltis-org/moltis:latest
+  chelix:
+    image: ghcr.io/agentics-skills/chelix:latest
     command: ["--bind", "0.0.0.0", "--port", "13131", "--no-tls"]
     environment:
-      - MOLTIS_BEHIND_PROXY=true
-      - MOLTIS_EXTERNAL_URL=https://chat.example.com
+      - CHELIX_BEHIND_PROXY=true
+      - CHELIX_EXTERNAL_URL=https://chat.example.com
 ```
 
-Point your proxy at `http://<moltis-host>:13131`, then open your public URL,
+Point your proxy at `http://<chelix-host>:13131`, then open your public URL,
 for example `https://chat.example.com`.
 
-Moltis can also auto-generate a local CA and server certificate, but that mode
+Chelix can also auto-generate a local CA and server certificate, but that mode
 is meant for local development or private networks. Trusting the generated CA
 only makes the issuer trusted; the browser still requires the certificate's
 Subject Alternative Name (SAN) to match the exact hostname or IP you open.
 An IP-address URL such as `https://<your-server-ip>:13131` only works if the
 certificate contains that IP address as an IP SAN, and normal public TLS setups
-are domain-name based. Inside Docker, Moltis usually cannot know your VPS public
+are domain-name based. Inside Docker, Chelix usually cannot know your VPS public
 IP or provider domain, so direct IP access may fail with a certificate name
 mismatch even after importing the CA. To use direct IP access with the
 auto-generated certificate, set the public IP explicitly:
@@ -71,9 +71,9 @@ auto-generated certificate, set the public IP explicitly:
 public_ip = "203.0.113.10"
 ```
 
-Then restart Moltis so it regenerates the server certificate and import the
+Then restart Chelix so it regenerates the server certificate and import the
 generated CA from `http://<your-server-ip>:13132/certs/ca.pem`. If you want
-Moltis to serve HTTPS directly on a public domain, configure `tls.cert_path` and
+Chelix to serve HTTPS directly on a public domain, configure `tls.cert_path` and
 `tls.key_path` with a certificate issued for that domain.
 
 Log in with the password you set, then configure your LLM provider in
@@ -87,44 +87,44 @@ For servers without Docker, install the binary directly.
 
 ```bash
 # Replace VERSION with the latest release (e.g. 20260420.01)
-VERSION=$(curl -s https://api.github.com/repos/moltis-org/moltis/releases/latest | grep tag_name | cut -d '"' -f 4)
+VERSION=$(curl -s https://api.github.com/repos/agentics-skills/chelix/releases/latest | grep tag_name | cut -d '"' -f 4)
 ARCH=$(uname -m | sed 's/x86_64/x86_64/;s/aarch64/aarch64/')
 
-curl -fsSL "https://github.com/moltis-org/moltis/releases/download/${VERSION}/moltis-${VERSION}-linux-${ARCH}.tar.gz" | sudo tar xz -C /usr/local/bin
+curl -fsSL "https://github.com/agentics-skills/chelix/releases/download/${VERSION}/chelix-${VERSION}-linux-${ARCH}.tar.gz" | sudo tar xz -C /usr/local/bin
 ```
 
 ### 2. Create user and directories
 
 ```bash
-sudo useradd -r -s /usr/sbin/nologin moltis
-sudo mkdir -p /var/lib/moltis /etc/moltis
-sudo chown moltis:moltis /var/lib/moltis /etc/moltis
+sudo useradd -r -s /usr/sbin/nologin chelix
+sudo mkdir -p /var/lib/chelix /etc/chelix
+sudo chown chelix:chelix /var/lib/chelix /etc/chelix
 ```
 
 ### 3. Install the systemd service
 
 ```bash
-sudo curl -fsSL https://raw.githubusercontent.com/moltis-org/moltis/main/deploy/moltis.service -o /etc/systemd/system/moltis.service
+sudo curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/main/deploy/chelix.service -o /etc/systemd/system/chelix.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now moltis
+sudo systemctl enable --now chelix
 ```
 
 ### 4. Set your password
 
 ```bash
-sudo -u moltis MOLTIS_DATA_DIR=/var/lib/moltis MOLTIS_CONFIG_DIR=/etc/moltis moltis auth reset-password
+sudo -u chelix CHELIX_DATA_DIR=/var/lib/chelix CHELIX_CONFIG_DIR=/etc/chelix chelix auth reset-password
 ```
 
 ### 5. Check status
 
 ```bash
-sudo systemctl status moltis
-sudo journalctl -u moltis -f
+sudo systemctl status chelix
+sudo journalctl -u chelix -f
 ```
 
 ## Connecting channels
 
-Once Moltis is running, add messaging channels from Settings > Channels in
+Once Chelix is running, add messaging channels from Settings > Channels in
 the web UI. Each channel has its own setup flow:
 
 | Channel | What you need |
@@ -141,11 +141,11 @@ instructions.
 ## Firewall
 
 If you use the recommended reverse proxy setup, expose only the proxy ports
-(`80` and `443`) publicly and keep Moltis' `13131` port private to the host or
+(`80` and `443`) publicly and keep Chelix' `13131` port private to the host or
 container network.
 
-Only expose `13131` directly if you intentionally serve Moltis without a proxy.
-Only expose `13132` if you intentionally use Moltis' local CA download endpoint.
+Only expose `13131` directly if you intentionally serve Chelix without a proxy.
+Only expose `13132` if you intentionally use Chelix' local CA download endpoint.
 
 ```bash
 # UFW example for the recommended reverse proxy setup
@@ -159,9 +159,9 @@ sudo ufw allow 443/tcp
 
 **Binary:** Download the new release binary and restart the service:
 ```bash
-sudo systemctl stop moltis
+sudo systemctl stop chelix
 # Download new binary (same curl as step 1)
-sudo systemctl start moltis
+sudo systemctl start chelix
 ```
 
 ## Resource requirements

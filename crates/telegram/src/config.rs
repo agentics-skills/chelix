@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use {
-    moltis_channels::{
+    chelix_channels::{
         config_view::ChannelConfigView,
         gating::{DmPolicy, GroupPolicy, MentionMode},
     },
-    moltis_common::secret_serde,
+    chelix_common::secret_serde,
     secrecy::Secret,
     serde::{Deserialize, Serialize, ser::SerializeStruct},
 };

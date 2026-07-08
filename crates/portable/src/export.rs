@@ -1,4 +1,4 @@
-//! Export Moltis data into a `.tar.gz` archive.
+//! Export Chelix data into a `.tar.gz` archive.
 
 use std::{
     io::Write,
@@ -43,7 +43,7 @@ impl Default for ExportOptions {
     }
 }
 
-/// Auth tables to clear from the exported moltis.db snapshot.
+/// Auth tables to clear from the exported chelix.db snapshot.
 const AUTH_TABLES_TO_CLEAR: &[&str] = &[
     "auth_password",
     "auth_sessions",
@@ -72,7 +72,7 @@ pub async fn export_archive<W: Write>(
     add_config_file(
         &mut builder,
         config_dir,
-        "moltis.toml",
+        "chelix.toml",
         &prefix,
         &mut inventory,
     )?;
@@ -126,14 +126,14 @@ pub async fn export_archive<W: Write>(
     }
 
     // ── SQLite databases ─────────────────────────────────────────────
-    let moltis_db = data_dir.join("moltis.db");
-    if moltis_db.exists() {
-        let snapshot = vacuum_snapshot(&moltis_db).await?;
+    let chelix_db = data_dir.join("chelix.db");
+    if chelix_db.exists() {
+        let snapshot = vacuum_snapshot(&chelix_db).await?;
         let _guard = TempFileGuard(snapshot.clone());
         strip_auth_tables(&snapshot).await?;
-        add_file_to_tar(&mut builder, &snapshot, &format!("{prefix}/db/moltis.db"))?;
-        inventory.has_moltis_db = true;
-        info!("exported moltis.db snapshot");
+        add_file_to_tar(&mut builder, &snapshot, &format!("{prefix}/db/chelix.db"))?;
+        inventory.has_chelix_db = true;
+        info!("exported chelix.db snapshot");
     }
 
     let memory_db = data_dir.join("memory.db");
@@ -185,12 +185,12 @@ pub async fn export_archive<W: Write>(
         .format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_else(|_| "unknown".into());
 
-    let moltis_version =
-        std::env::var("MOLTIS_VERSION").unwrap_or_else(|_| env!("CARGO_PKG_VERSION").into());
+    let chelix_version =
+        std::env::var("CHELIX_VERSION").unwrap_or_else(|_| env!("CARGO_PKG_VERSION").into());
 
     let manifest = ExportManifest {
         format_version: FORMAT_VERSION,
-        moltis_version,
+        chelix_version,
         created_at,
         inventory,
     };
@@ -219,7 +219,7 @@ pub async fn export_archive<W: Write>(
 fn archive_prefix() -> String {
     let now = time::OffsetDateTime::now_utc();
     format!(
-        "moltis-backup-{:04}{:02}{:02}-{:02}{:02}{:02}",
+        "chelix-backup-{:04}{:02}{:02}-{:02}{:02}{:02}",
         now.year(),
         now.month() as u8,
         now.day(),
@@ -354,8 +354,8 @@ mod tests {
     #[test]
     fn archive_prefix_format() {
         let prefix = archive_prefix();
-        assert!(prefix.starts_with("moltis-backup-"));
-        // e.g. moltis-backup-20260501-143022
-        assert_eq!(prefix.len(), "moltis-backup-YYYYMMDD-HHMMSS".len());
+        assert!(prefix.starts_with("chelix-backup-"));
+        // e.g. chelix-backup-20260501-143022
+        assert_eq!(prefix.len(), "chelix-backup-YYYYMMDD-HHMMSS".len());
     }
 }

@@ -1,7 +1,7 @@
-//! Project management for moltis.
+//! Project management for chelix.
 //!
 //! A project represents a codebase directory. When a session is bound to a
-//! project, moltis loads `CLAUDE.md` and `AGENTS.md` context files from the
+//! project, chelix loads `CLAUDE.md` and `AGENTS.md` context files from the
 //! directory hierarchy and can create git worktrees for session isolation.
 
 pub mod complete;

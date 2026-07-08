@@ -9,7 +9,7 @@ use {
     tracing::{debug, info},
 };
 
-use moltis_oauth::{TokenStore, normalize_loopback_redirect};
+use chelix_oauth::{TokenStore, normalize_loopback_redirect};
 
 use crate::config_helpers::home_token_store;
 
@@ -21,18 +21,18 @@ use crate::config_helpers::home_token_store;
 ///
 /// Built-in defaults (e.g. `openai-codex`) already use
 /// `http://localhost:1455/auth/callback`, but `load_oauth_config` also
-/// reads from `~/.config/moltis/oauth_providers.json` and
-/// `MOLTIS_OAUTH_{PROVIDER}_REDIRECT_URI`, either of which could
+/// reads from `~/.config/chelix/oauth_providers.json` and
+/// `CHELIX_OAUTH_{PROVIDER}_REDIRECT_URI`, either of which could
 /// accidentally specify `https://localhost`. Without normalization:
 ///
 /// * `callback_port` would parse the port from the HTTPS form and the
-///   spawned `CallbackServer` would try to bind on Moltis's main TLS
+///   spawned `CallbackServer` would try to bind on Chelix's main TLS
 ///   port, which is already in use by the gateway.
 /// * Strict authorization servers would reject the authorization
 ///   request with `invalid_redirect_uri`.
 ///
 /// No-op for empty or non-loopback URIs.
-pub(crate) fn normalize_loaded_redirect_uri(config: &mut moltis_oauth::OAuthConfig) {
+pub(crate) fn normalize_loaded_redirect_uri(config: &mut chelix_oauth::OAuthConfig) {
     if config.redirect_uri.is_empty() {
         return;
     }
@@ -60,7 +60,7 @@ pub(crate) fn codex_cli_auth_has_access_token(path: &Path) -> bool {
 }
 
 /// Parse Codex CLI `auth.json` content into `OAuthTokens`.
-fn parse_codex_cli_tokens(data: &str) -> Option<moltis_oauth::OAuthTokens> {
+fn parse_codex_cli_tokens(data: &str) -> Option<chelix_oauth::OAuthTokens> {
     let json: Value = serde_json::from_str(data).ok()?;
     let tokens = json.get("tokens")?;
     let access_token = tokens.get("access_token")?.as_str()?.to_string();
@@ -79,7 +79,7 @@ fn parse_codex_cli_tokens(data: &str) -> Option<moltis_oauth::OAuthTokens> {
         .get("refresh_token")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
-    Some(moltis_oauth::OAuthTokens {
+    Some(chelix_oauth::OAuthTokens {
         access_token: Secret::new(access_token),
         refresh_token: refresh_token.map(Secret::new),
         id_token: id_token.map(Secret::new),
@@ -124,7 +124,7 @@ pub fn import_detected_oauth_tokens(
 /// Build provider-specific extra headers for device-flow OAuth calls.
 pub(crate) fn build_provider_headers(provider: &str) -> Option<reqwest::header::HeaderMap> {
     match provider {
-        "kimi-code" => Some(moltis_oauth::kimi_headers()),
+        "kimi-code" => Some(chelix_oauth::kimi_headers()),
         _ => None,
     }
 }
@@ -183,10 +183,10 @@ pub(crate) fn has_oauth_tokens(provider_name: &str, token_store: &TokenStore) ->
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use {super::*, moltis_oauth::OAuthTokens};
+    use {super::*, chelix_oauth::OAuthTokens};
 
-    fn make_oauth_config(redirect_uri: &str) -> moltis_oauth::OAuthConfig {
-        moltis_oauth::OAuthConfig {
+    fn make_oauth_config(redirect_uri: &str) -> chelix_oauth::OAuthConfig {
+        chelix_oauth::OAuthConfig {
             client_id: "client".into(),
             client_secret: None,
             auth_url: "https://example.com/authorize".into(),
@@ -229,9 +229,9 @@ mod tests {
 
     #[test]
     fn normalize_loaded_redirect_uri_preserves_real_hostname() {
-        let mut config = make_oauth_config("https://moltis.lan/auth/callback");
+        let mut config = make_oauth_config("https://chelix.lan/auth/callback");
         normalize_loaded_redirect_uri(&mut config);
-        assert_eq!(config.redirect_uri, "https://moltis.lan/auth/callback");
+        assert_eq!(config.redirect_uri, "https://chelix.lan/auth/callback");
     }
 
     #[test]
@@ -244,7 +244,7 @@ mod tests {
     /// Regression guard for the full integration path.
     #[test]
     fn loaded_openai_codex_redirect_parses_to_http_loopback() {
-        use moltis_oauth::load_oauth_config;
+        use chelix_oauth::load_oauth_config;
         let mut config = load_oauth_config("openai-codex").expect("openai-codex should exist");
         normalize_loaded_redirect_uri(&mut config);
         let parsed = url::Url::parse(&config.redirect_uri).expect("parsable URL");

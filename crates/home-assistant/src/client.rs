@@ -5,7 +5,7 @@ use std::time::Duration;
 use {reqwest::Client, secrecy::ExposeSecret};
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, histogram, home_assistant as ha_metrics};
+use chelix_metrics::{counter, histogram, home_assistant as ha_metrics};
 
 use crate::{
     config::HomeAssistantAccountConfig,

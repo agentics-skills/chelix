@@ -1,4 +1,4 @@
-//! Moltis documentation exposed to agent prompts.
+//! Chelix documentation exposed to agent prompts.
 
 use std::{
     fs,
@@ -11,67 +11,67 @@ use {
     tracing::{debug, warn},
 };
 
-pub const MOLTIS_DOCS_URL: &str = "https://github.com/agentics-skills/chelix/tree/master/docs/src";
-pub const BUNDLED_DOCS_RELATIVE_DIR: &str = "docs/moltis";
+pub const CHELIX_DOCS_URL: &str = "https://github.com/agentics-skills/chelix/tree/master/docs/src";
+pub const BUNDLED_DOCS_RELATIVE_DIR: &str = "docs/chelix";
 pub const CONFIG_TEMPLATE_DOC: &str = "config-template.md";
 
 static BUNDLED_DOCS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../docs/src");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MoltisDocsReference {
+pub struct ChelixDocsReference {
     pub docs_dir: PathBuf,
     pub config_template_path: Option<PathBuf>,
 }
 
-static DOCS_REFERENCE: OnceLock<Option<MoltisDocsReference>> = OnceLock::new();
+static DOCS_REFERENCE: OnceLock<Option<ChelixDocsReference>> = OnceLock::new();
 
-pub fn cached_moltis_docs_reference(data_dir: &Path, port: u16) -> Option<MoltisDocsReference> {
+pub fn cached_chelix_docs_reference(data_dir: &Path, port: u16) -> Option<ChelixDocsReference> {
     DOCS_REFERENCE
-        .get_or_init(|| resolve_moltis_docs_reference(data_dir, port))
+        .get_or_init(|| resolve_chelix_docs_reference(data_dir, port))
         .clone()
 }
 
 #[must_use]
-pub fn is_usable_moltis_docs_dir(path: &Path) -> bool {
+pub fn is_usable_chelix_docs_dir(path: &Path) -> bool {
     path.join("SUMMARY.md").is_file()
 }
 
-pub fn resolve_moltis_docs_reference(data_dir: &Path, port: u16) -> Option<MoltisDocsReference> {
+pub fn resolve_chelix_docs_reference(data_dir: &Path, port: u16) -> Option<ChelixDocsReference> {
     let config_template_path = write_config_template(data_dir, port);
 
-    if let Some(dir) = std::env::var("MOLTIS_DOCS_DIR")
+    if let Some(dir) = std::env::var("CHELIX_DOCS_DIR")
         .ok()
         .map(PathBuf::from)
-        .filter(|dir| is_usable_moltis_docs_dir(dir))
+        .filter(|dir| is_usable_chelix_docs_dir(dir))
     {
-        debug!(path = %dir.display(), "using Moltis docs from MOLTIS_DOCS_DIR");
-        return Some(MoltisDocsReference {
+        debug!(path = %dir.display(), "using Chelix docs from CHELIX_DOCS_DIR");
+        return Some(ChelixDocsReference {
             docs_dir: dir,
             config_template_path,
         });
     }
 
-    if let Some(dir) = moltis_config::share_dir()
+    if let Some(dir) = chelix_config::share_dir()
         .map(|share| share.join("docs"))
-        .filter(|dir| is_usable_moltis_docs_dir(dir))
+        .filter(|dir| is_usable_chelix_docs_dir(dir))
     {
-        debug!(path = %dir.display(), "using Moltis docs from external share dir");
-        return Some(MoltisDocsReference {
+        debug!(path = %dir.display(), "using Chelix docs from external share dir");
+        return Some(ChelixDocsReference {
             docs_dir: dir,
             config_template_path,
         });
     }
 
     let source_docs = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/src");
-    if is_usable_moltis_docs_dir(&source_docs) {
-        debug!(path = %source_docs.display(), "using Moltis docs from source tree");
-        return Some(MoltisDocsReference {
+    if is_usable_chelix_docs_dir(&source_docs) {
+        debug!(path = %source_docs.display(), "using Chelix docs from source tree");
+        return Some(ChelixDocsReference {
             docs_dir: source_docs,
             config_template_path,
         });
     }
 
-    ensure_embedded_moltis_docs_dir(data_dir).map(|docs_dir| MoltisDocsReference {
+    ensure_embedded_chelix_docs_dir(data_dir).map(|docs_dir| ChelixDocsReference {
         docs_dir,
         config_template_path,
     })
@@ -82,8 +82,8 @@ fn write_config_template(data_dir: &Path, port: u16) -> Option<PathBuf> {
         .join(BUNDLED_DOCS_RELATIVE_DIR)
         .join(CONFIG_TEMPLATE_DOC);
     let config_template = format!(
-        "# Moltis configuration template\n\n```toml\n{}\n```\n",
-        moltis_config::template::default_config_template(port)
+        "# Chelix configuration template\n\n```toml\n{}\n```\n",
+        chelix_config::template::default_config_template(port)
     );
     let mut updated = 0usize;
     let mut errors = 0usize;
@@ -94,10 +94,10 @@ fn write_config_template(data_dir: &Path, port: u16) -> Option<PathBuf> {
     }
 }
 
-fn ensure_embedded_moltis_docs_dir(data_dir: &Path) -> Option<PathBuf> {
+fn ensure_embedded_chelix_docs_dir(data_dir: &Path) -> Option<PathBuf> {
     let docs_dir = data_dir.join(BUNDLED_DOCS_RELATIVE_DIR);
     if let Err(error) = fs::create_dir_all(&docs_dir) {
-        warn!(path = %docs_dir.display(), error = %error, "failed to create bundled Moltis docs directory");
+        warn!(path = %docs_dir.display(), error = %error, "failed to create bundled Chelix docs directory");
         return None;
     }
 
@@ -106,12 +106,12 @@ fn ensure_embedded_moltis_docs_dir(data_dir: &Path) -> Option<PathBuf> {
     write_dir_entries(&docs_dir, BUNDLED_DOCS.entries(), &mut updated, &mut errors);
 
     if errors > 0 {
-        warn!(path = %docs_dir.display(), errors, "failed to write some bundled Moltis docs");
+        warn!(path = %docs_dir.display(), errors, "failed to write some bundled Chelix docs");
     } else if updated > 0 {
-        debug!(path = %docs_dir.display(), updated, "bundled Moltis docs refreshed");
+        debug!(path = %docs_dir.display(), updated, "bundled Chelix docs refreshed");
     }
 
-    is_usable_moltis_docs_dir(&docs_dir).then_some(docs_dir)
+    is_usable_chelix_docs_dir(&docs_dir).then_some(docs_dir)
 }
 
 fn write_dir_entries(
@@ -170,7 +170,7 @@ fn write_if_changed(path: &Path, content: &[u8], updated: &mut usize, errors: &m
         },
         Err(error) => {
             *errors += 1;
-            warn!(path = %path.display(), error = %error, "failed to write bundled Moltis doc");
+            warn!(path = %path.display(), error = %error, "failed to write bundled Chelix doc");
             false
         },
     }
@@ -188,14 +188,14 @@ mod tests {
 
     impl ShareDirOverrideGuard {
         fn set(path: PathBuf) -> Self {
-            moltis_config::set_share_dir(path);
+            chelix_config::set_share_dir(path);
             Self
         }
     }
 
     impl Drop for ShareDirOverrideGuard {
         fn drop(&mut self) {
-            moltis_config::clear_share_dir();
+            chelix_config::clear_share_dir();
         }
     }
 
@@ -203,7 +203,7 @@ mod tests {
     fn materializes_bundled_docs_and_config_template() {
         let temp = tempfile::tempdir().unwrap_or_else(|error| panic!("tempdir failed: {error}"));
 
-        let reference = resolve_moltis_docs_reference(temp.path(), 18789)
+        let reference = resolve_chelix_docs_reference(temp.path(), 18789)
             .unwrap_or_else(|| panic!("docs reference was not resolved"));
 
         assert!(reference.docs_dir.join("SUMMARY.md").is_file());
@@ -212,7 +212,7 @@ mod tests {
             .unwrap_or_else(|| panic!("config template path was not resolved"));
         let config_template = fs::read_to_string(config_template_path)
             .unwrap_or_else(|error| panic!("read config template failed: {error}"));
-        assert!(config_template.contains("# Moltis configuration template"));
+        assert!(config_template.contains("# Chelix configuration template"));
         assert!(config_template.contains("port = 18789"));
     }
 
@@ -229,7 +229,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("write summary failed: {error}"));
 
         let _share_dir = ShareDirOverrideGuard::set(share.path().to_path_buf());
-        let reference = resolve_moltis_docs_reference(data.path(), 18789)
+        let reference = resolve_chelix_docs_reference(data.path(), 18789)
             .unwrap_or_else(|| panic!("docs reference was not resolved"));
 
         assert_eq!(reference.docs_dir, docs);
@@ -242,10 +242,10 @@ mod tests {
     #[test]
     fn usable_docs_dir_requires_summary() {
         let temp = tempfile::tempdir().unwrap_or_else(|error| panic!("tempdir failed: {error}"));
-        assert!(!is_usable_moltis_docs_dir(temp.path()));
+        assert!(!is_usable_chelix_docs_dir(temp.path()));
 
         fs::write(temp.path().join("SUMMARY.md"), "# Summary\n")
             .unwrap_or_else(|error| panic!("write summary failed: {error}"));
-        assert!(is_usable_moltis_docs_dir(temp.path()));
+        assert!(is_usable_chelix_docs_dir(temp.path()));
     }
 }

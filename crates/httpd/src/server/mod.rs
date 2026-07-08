@@ -1,8 +1,8 @@
 //! HTTP server entry points, middleware stack, and router construction.
 //!
-//! This module contains the HTTP-specific layer of the moltis gateway:
+//! This module contains the HTTP-specific layer of the chelix gateway:
 //! `AppState`, router building, middleware, handlers, and server startup.
-//! Core business logic lives in `moltis-gateway`; this crate depends on it
+//! Core business logic lives in `chelix-gateway`; this crate depends on it
 //! but never the reverse.
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
@@ -17,11 +17,11 @@ use {
     tracing::{info, warn},
 };
 
-use moltis_protocol::TICK_INTERVAL_MS;
+use chelix_protocol::TICK_INTERVAL_MS;
 
-use moltis_sessions::session_events::{SessionEvent, SessionEventBus};
+use chelix_sessions::session_events::{SessionEvent, SessionEventBus};
 
-use moltis_gateway::{
+use chelix_gateway::{
     auth,
     auth_webauthn::SharedWebAuthnRegistry,
     broadcast::{BroadcastOpts, broadcast, broadcast_tick},
@@ -30,12 +30,12 @@ use moltis_gateway::{
 };
 
 #[cfg(test)]
-use moltis_gateway::methods::MethodRegistry;
+use chelix_gateway::methods::MethodRegistry;
 
 use crate::ws::handle_connection;
 
 #[cfg(feature = "tls")]
-use moltis_tls::CertManager;
+use chelix_tls::CertManager;
 
 // ── Submodules ───────────────────────────────────────────────────────────────
 

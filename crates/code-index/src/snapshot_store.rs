@@ -36,9 +36,9 @@ impl SnapshotStore {
 
     /// Create a store using the default data directory layout.
     ///
-    /// Resolves to `<moltis_data_dir>/code-index/`.
+    /// Resolves to `<chelix_data_dir>/code-index/`.
     pub fn default_path() -> Self {
-        let base_dir = moltis_config::data_dir().join(SNAPSHOT_DIR);
+        let base_dir = chelix_config::data_dir().join(SNAPSHOT_DIR);
         Self::new(base_dir)
     }
 

@@ -11,7 +11,7 @@ CLAUDE.local.md
 .entire/
 .playwright-mcp/
 features/
-.moltis/
+.chelix/
 docs/book/
 docs/.astro/
 docs/dist/

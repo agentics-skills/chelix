@@ -4,7 +4,7 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 #[cfg(any(feature = "msteams", feature = "telephony"))]
-use moltis_channels::ChannelPlugin;
+use chelix_channels::ChannelPlugin;
 
 use {
     axum::{
@@ -12,8 +12,8 @@ use {
         http::StatusCode,
         response::{IntoResponse, Json},
     },
-    moltis_gateway::server::{PreparedGatewayCore, prepare_gateway_core},
-    moltis_sessions::session_events::SessionEventBus,
+    chelix_gateway::server::{PreparedGatewayCore, prepare_gateway_core},
+    chelix_sessions::session_events::SessionEventBus,
 };
 
 use super::{
@@ -39,7 +39,7 @@ fn telephony_webhook_url(
     endpoint: &str,
     headers: &axum::http::HeaderMap,
     account_config: Option<serde_json::Value>,
-    config: &moltis_config::schema::MoltisConfig,
+    config: &chelix_config::schema::ChelixConfig,
 ) -> Option<String> {
     let base_url = account_config
         .as_ref()
@@ -105,7 +105,7 @@ pub async fn prepare_gateway(
     bind: &str,
     port: u16,
     no_tls: bool,
-    log_buffer: Option<moltis_gateway::logs::LogBuffer>,
+    log_buffer: Option<chelix_gateway::logs::LogBuffer>,
     config_dir: Option<PathBuf>,
     data_dir: Option<PathBuf>,
     extra_routes: Option<RouteEnhancer>,
@@ -238,11 +238,11 @@ pub async fn prepare_gateway(
                         if let Some(secret) = query.get("secret")
                             && let Ok(val) = secret.parse()
                         {
-                            merged_headers.insert("x-moltis-webhook-secret", val);
+                            merged_headers.insert("x-chelix-webhook-secret", val);
                         }
 
                         // Run the middleware pipeline.
-                        match moltis_gateway::channel_webhook_middleware::channel_webhook_gate(
+                        match chelix_gateway::channel_webhook_middleware::channel_webhook_gate(
                             verifier.as_ref(),
                             &gw_state.channel_webhook_dedup,
                             &gw_state.channel_webhook_rate_limiter,
@@ -255,12 +255,12 @@ pub async fn prepare_gateway(
                                     rejection,
                                 )
                             },
-                            Ok((_, moltis_channels::ChannelWebhookDedupeResult::Duplicate)) => (
+                            Ok((_, chelix_channels::ChannelWebhookDedupeResult::Duplicate)) => (
                                 StatusCode::OK,
                                 Json(serde_json::json!({ "ok": true, "deduplicated": true })),
                             )
                                 .into_response(),
-                            Ok((verified, moltis_channels::ChannelWebhookDedupeResult::New)) => {
+                            Ok((verified, chelix_channels::ChannelWebhookDedupeResult::New)) => {
                                 // Parse verified body.
                                 let payload: serde_json::Value =
                                     match serde_json::from_slice(&verified.body) {
@@ -332,7 +332,7 @@ pub async fn prepare_gateway(
                         };
 
                         // Run the middleware pipeline.
-                        match moltis_gateway::channel_webhook_middleware::channel_webhook_gate(
+                        match chelix_gateway::channel_webhook_middleware::channel_webhook_gate(
                             verifier.as_ref(),
                             &gw_state.channel_webhook_dedup,
                             &gw_state.channel_webhook_rate_limiter,
@@ -345,12 +345,12 @@ pub async fn prepare_gateway(
                                     rejection,
                                 )
                             },
-                            Ok((_, moltis_channels::ChannelWebhookDedupeResult::Duplicate)) => (
+                            Ok((_, chelix_channels::ChannelWebhookDedupeResult::Duplicate)) => (
                                 StatusCode::OK,
                                 Json(serde_json::json!({ "ok": true, "deduplicated": true })),
                             )
                                 .into_response(),
-                            Ok((verified, moltis_channels::ChannelWebhookDedupeResult::New)) => {
+                            Ok((verified, chelix_channels::ChannelWebhookDedupeResult::New)) => {
                                 // Dispatch to Slack plugin with verified body.
                                 let result = {
                                     let p = plugin.read().await;
@@ -418,7 +418,7 @@ pub async fn prepare_gateway(
                         };
 
                         // Run the middleware pipeline.
-                        match moltis_gateway::channel_webhook_middleware::channel_webhook_gate(
+                        match chelix_gateway::channel_webhook_middleware::channel_webhook_gate(
                             verifier.as_ref(),
                             &gw_state.channel_webhook_dedup,
                             &gw_state.channel_webhook_rate_limiter,
@@ -431,12 +431,12 @@ pub async fn prepare_gateway(
                                     rejection,
                                 )
                             },
-                            Ok((_, moltis_channels::ChannelWebhookDedupeResult::Duplicate)) => (
+                            Ok((_, chelix_channels::ChannelWebhookDedupeResult::Duplicate)) => (
                                 StatusCode::OK,
                                 Json(serde_json::json!({ "ok": true, "deduplicated": true })),
                             )
                                 .into_response(),
-                            Ok((verified, moltis_channels::ChannelWebhookDedupeResult::New)) => {
+                            Ok((verified, chelix_channels::ChannelWebhookDedupeResult::New)) => {
                                 // Dispatch to Slack plugin with verified body.
                                 let result = {
                                     let p = plugin.read().await;
@@ -491,7 +491,7 @@ pub async fn prepare_gateway(
                         };
 
                         // Run the middleware pipeline.
-                        match moltis_gateway::channel_webhook_middleware::channel_webhook_gate(
+                        match chelix_gateway::channel_webhook_middleware::channel_webhook_gate(
                             verifier.as_ref(),
                             &gw_state.channel_webhook_dedup,
                             &gw_state.channel_webhook_rate_limiter,
@@ -504,13 +504,13 @@ pub async fn prepare_gateway(
                                     rejection,
                                 )
                             },
-                            Ok((_, moltis_channels::ChannelWebhookDedupeResult::Duplicate)) => {
+                            Ok((_, chelix_channels::ChannelWebhookDedupeResult::Duplicate)) => {
                                 // Slash commands display the response body in
                                 // Slack, so return an empty 200 for deduped
                                 // requests instead of JSON the user would see.
                                 StatusCode::OK.into_response()
                             },
-                            Ok((verified, moltis_channels::ChannelWebhookDedupeResult::New)) => {
+                            Ok((verified, chelix_channels::ChannelWebhookDedupeResult::New)) => {
                                 // Dispatch to Slack plugin with verified body.
                                 let result = {
                                     let p = plugin.read().await;
@@ -664,7 +664,7 @@ pub async fn prepare_gateway(
                             };
 
                             match event {
-                                moltis_telephony::types::CallEvent::Initiated {
+                                chelix_telephony::types::CallEvent::Initiated {
                                     ref provider_call_id,
                                 } => {
                                     let (_, caller, called) = telnyx_call_fields(&body);
@@ -675,14 +675,14 @@ pub async fn prepare_gateway(
                                     {
                                         let policy = config_view.dm_policy();
                                         let rejected = match policy {
-                                            moltis_channels::gating::DmPolicy::Disabled => true,
-                                            moltis_channels::gating::DmPolicy::Allowlist => {
-                                                !moltis_channels::gating::is_allowed(
+                                            chelix_channels::gating::DmPolicy::Disabled => true,
+                                            chelix_channels::gating::DmPolicy::Allowlist => {
+                                                !chelix_channels::gating::is_allowed(
                                                     &caller,
                                                     config_view.allowlist(),
                                                 )
                                             },
-                                            moltis_channels::gating::DmPolicy::Open => false,
+                                            chelix_channels::gating::DmPolicy::Open => false,
                                         };
                                         if rejected {
                                             tracing::info!(account_id = %account_id, caller = %caller, "rejecting Telnyx inbound call");
@@ -705,7 +705,7 @@ pub async fn prepare_gateway(
                                         .map(|call| {
                                             matches!(
                                                 call.mode,
-                                                moltis_telephony::types::CallMode::Conversation
+                                                chelix_telephony::types::CallMode::Conversation
                                             )
                                         })
                                         .unwrap_or(true);
@@ -726,7 +726,7 @@ pub async fn prepare_gateway(
                                         tracing::warn!(account_id = %account_id, provider_call_id = %provider_call_id, "failed to start Telnyx transcription: {e}");
                                     }
                                 },
-                                moltis_telephony::types::CallEvent::Speech {
+                                chelix_telephony::types::CallEvent::Speech {
                                     ref provider_call_id,
                                     ref text,
                                     ..
@@ -813,12 +813,12 @@ pub async fn prepare_gateway(
                             // Outbound call we initiated — use its mode and message.
                             let msg = call.initial_message.as_deref();
                             let twiml = match call.mode {
-                                moltis_telephony::types::CallMode::Notify => {
+                                chelix_telephony::types::CallMode::Notify => {
                                     // Speak the message, then hang up.
                                     let say_msg = msg.unwrap_or("This is a notification.");
                                     provider.build_answer_response(Some(say_msg), None)
                                 },
-                                moltis_telephony::types::CallMode::Conversation => {
+                                chelix_telephony::types::CallMode::Conversation => {
                                     let greeting = msg.unwrap_or(
                                         "Hello, you've reached the AI assistant. How can I help you?",
                                     );
@@ -835,23 +835,23 @@ pub async fn prepare_gateway(
 
                         // New inbound call — enforce access policy.
                         {
-                            use moltis_channels::ChannelPlugin as _;
+                            use chelix_channels::ChannelPlugin as _;
                             if let Some(config_view) = plugin_guard.account_config(&account_id) {
                                 let policy = config_view.dm_policy();
                                 match policy {
-                                    moltis_channels::gating::DmPolicy::Disabled => {
+                                    chelix_channels::gating::DmPolicy::Disabled => {
                                         tracing::info!(account_id = %account_id, caller = %caller, "rejecting inbound call: inbound_policy=disabled");
                                         let twiml = provider.build_hangup_response();
                                         return (StatusCode::OK, [(axum::http::header::CONTENT_TYPE, "text/xml")], twiml).into_response();
                                     },
-                                    moltis_channels::gating::DmPolicy::Allowlist => {
-                                        if !moltis_channels::gating::is_allowed(caller, config_view.allowlist()) {
+                                    chelix_channels::gating::DmPolicy::Allowlist => {
+                                        if !chelix_channels::gating::is_allowed(caller, config_view.allowlist()) {
                                             tracing::info!(account_id = %account_id, caller = %caller, "rejecting inbound call: not on allowlist");
                                             let twiml = provider.build_hangup_response();
                                             return (StatusCode::OK, [(axum::http::header::CONTENT_TYPE, "text/xml")], twiml).into_response();
                                         }
                                     },
-                                    moltis_channels::gating::DmPolicy::Open => {},
+                                    chelix_channels::gating::DmPolicy::Open => {},
                                 }
                             }
                         }
@@ -932,7 +932,7 @@ pub async fn prepare_gateway(
                         match provider.parse_webhook_event(&headers, &body) {
                             Ok(event) => {
                                 match &event {
-                                    moltis_telephony::types::CallEvent::Speech {
+                                    chelix_telephony::types::CallEvent::Speech {
                                         provider_call_id,
                                         text,
                                         confidence,
@@ -943,7 +943,7 @@ pub async fn prepare_gateway(
                                         confidence = ?confidence,
                                         "telephony gather received speech"
                                     ),
-                                    moltis_telephony::types::CallEvent::Dtmf {
+                                    chelix_telephony::types::CallEvent::Dtmf {
                                         provider_call_id,
                                         ..
                                     } => tracing::debug!(
@@ -962,7 +962,7 @@ pub async fn prepare_gateway(
                                 manager.handle_event(&event);
 
                                 // If speech was recognized, dispatch to the agent loop.
-                                if let moltis_telephony::types::CallEvent::Speech {
+                                if let chelix_telephony::types::CallEvent::Speech {
                                     ref provider_call_id,
                                     ref text,
                                     ..
@@ -1137,7 +1137,7 @@ pub async fn prepare_gateway(
                             let mut webhook = webhook;
 
                             #[cfg(feature = "vault")]
-                            if let Err(error) = moltis_gateway::webhooks::decrypt_webhook_secrets(
+                            if let Err(error) = chelix_gateway::webhooks::decrypt_webhook_secrets(
                                 &mut webhook,
                                 gw.vault.as_ref(),
                             )
@@ -1199,7 +1199,7 @@ pub async fn prepare_gateway(
                             }
 
                             // Verify authentication.
-                            if let Err(e) = moltis_webhooks::auth::verify(
+                            if let Err(e) = chelix_webhooks::auth::verify(
                                 &webhook.auth_mode,
                                 webhook.auth_config.as_ref(),
                                 &headers,
@@ -1220,7 +1220,7 @@ pub async fn prepare_gateway(
 
                             // Parse event type and delivery key from source profile.
                             let profile_registry =
-                                moltis_webhooks::profiles::ProfileRegistry::new();
+                                chelix_webhooks::profiles::ProfileRegistry::new();
                             let profile = profile_registry.get(&webhook.source_profile);
                             let event_type =
                                 profile.and_then(|p| p.parse_event_type(&headers, &body));
@@ -1255,7 +1255,7 @@ pub async fn prepare_gateway(
 
                             // Dedup check.
                             if let Some(ref dk) = delivery_key {
-                                match moltis_webhooks::dedup::check_duplicate(
+                                match chelix_webhooks::dedup::check_duplicate(
                                     store.as_ref(),
                                     webhook.id,
                                     Some(dk.as_str()),
@@ -1301,7 +1301,7 @@ pub async fn prepare_gateway(
 
                             // Extract safe headers for audit logging.
                             let safe_headers =
-                                moltis_webhooks::normalize::extract_safe_headers(&headers);
+                                chelix_webhooks::normalize::extract_safe_headers(&headers);
                             let headers_json = serde_json::to_string(&safe_headers).ok();
 
                             let content_type = headers
@@ -1310,10 +1310,10 @@ pub async fn prepare_gateway(
                                 .map(String::from);
 
                             // Persist delivery.
-                            let delivery = moltis_webhooks::store::NewDelivery {
+                            let delivery = chelix_webhooks::store::NewDelivery {
                                 webhook_id: webhook.id,
                                 received_at: received_at.clone(),
-                                status: moltis_webhooks::types::DeliveryStatus::Queued,
+                                status: chelix_webhooks::types::DeliveryStatus::Queued,
                                 event_type: event_type.clone(),
                                 entity_key,
                                 delivery_key,

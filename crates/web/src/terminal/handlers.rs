@@ -7,7 +7,7 @@ use {
         http::StatusCode,
         response::IntoResponse,
     },
-    moltis_httpd::AppState,
+    chelix_httpd::AppState,
     tracing::warn,
 };
 

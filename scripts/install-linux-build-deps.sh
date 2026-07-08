@@ -68,7 +68,7 @@ install_vulkan_sdk() {
 install_nccl() {
   # Install NCCL dev headers matching the container's pre-installed runtime.
   # llama-cpp-sys-2's CMake auto-detects NCCL and compiles with GGML_USE_NCCL;
-  # our build.rs in moltis-providers bridges the missing cargo:rustc-link-lib=nccl.
+  # our build.rs in chelix-providers bridges the missing cargo:rustc-link-lib=nccl.
   local installed_ver
   installed_ver="$(dpkg-query -W -f='${Version}' libnccl2 2>/dev/null || true)"
 

@@ -1,6 +1,6 @@
 // ── Server-injected data (gon pattern) ────────────────────
 //
-// The server injects `window.__MOLTIS__ = { ... }` into every
+// The server injects `window.__CHELIX__ = { ... }` into every
 // page <head> before any module script runs.  This module
 // provides typed access, runtime updates, and a refresh
 // mechanism that re-fetches the data from `/api/gon`.
@@ -12,13 +12,13 @@ import type { GonData, GonKey } from "./types/gon";
 
 declare global {
 	interface Window {
-		__MOLTIS__?: Partial<GonData>;
+		__CHELIX__?: Partial<GonData>;
 	}
 }
 
 type GonListener<K extends GonKey = GonKey> = (value: GonData[K]) => void;
 
-const gon: Partial<GonData> = window.__MOLTIS__ || {};
+const gon: Partial<GonData> = window.__CHELIX__ || {};
 const listeners: Partial<Record<GonKey, GonListener[]>> = {};
 
 export function get<K extends GonKey>(key: K): GonData[K] | null {

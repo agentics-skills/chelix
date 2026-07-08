@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use {
     async_trait::async_trait,
-    moltis_agents::tool_registry::AgentTool,
-    moltis_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
+    chelix_agents::tool_registry::AgentTool,
+    chelix_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
     serde_json::{Value, json},
 };
 
@@ -131,7 +131,7 @@ impl AgentTool for BranchSessionTool {
 mod tests {
     use {
         super::*,
-        moltis_sessions::{MessageContent, PersistedMessage},
+        chelix_sessions::{MessageContent, PersistedMessage},
     };
 
     fn user_message(text: impl Into<String>) -> Value {

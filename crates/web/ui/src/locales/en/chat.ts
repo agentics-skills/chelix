@@ -164,7 +164,7 @@ export default {
 	downloadingModel: "Downloading {{modelName}}\u2026",
 	downloadProgressWithTotal: "{{downloaded}} / {{total}} MB",
 	downloadProgressNoTotal: "{{downloaded}} MB",
-	connectedToGateway: "Connected to moltis gateway v{{version}} at {{time}}",
+	connectedToGateway: "Connected to chelix gateway v{{version}} at {{time}}",
 	statusHandshakeFailed: "handshake failed",
 	handshakeFailed: "Handshake failed: {{reason}}",
 	statusDisconnectedReconnecting: "disconnected \u2014 reconnecting\u2026",

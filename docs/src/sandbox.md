@@ -1,11 +1,11 @@
 # Sandbox Backends
 
-Moltis runs LLM-generated commands inside containers to protect your host
+Chelix runs LLM-generated commands inside containers to protect your host
 system. The sandbox backend controls which container technology is used.
 
 ## Backend Selection
 
-Configure in `moltis.toml`:
+Configure in `chelix.toml`:
 
 ```toml
 [tools.execute_command.sandbox]
@@ -17,7 +17,7 @@ backend = "auto"          # default — picks the best available
 # backend = "restricted-host"  # env clearing + rlimits only
 ```
 
-With `"auto"` (the default), Moltis picks the strongest available backend:
+With `"auto"` (the default), Chelix picks the strongest available backend:
 
 | Priority | Backend           | Platform | Isolation          |
 |----------|-------------------|----------|--------------------|
@@ -64,7 +64,7 @@ container --version
 container run --rm ubuntu echo "hello from VM"
 ```
 
-Once installed, restart `moltis gateway` — the startup banner will show
+Once installed, restart `chelix gateway` — the startup banner will show
 `sandbox: apple-container backend`.
 
 ## Podman
@@ -95,7 +95,7 @@ podman --version
 podman run --rm docker.io/library/ubuntu echo "hello from podman"
 ```
 
-Once installed, restart `moltis gateway` — the startup banner will show
+Once installed, restart `chelix gateway` — the startup banner will show
 `sandbox: podman backend`. All Docker hardening flags (see below) apply
 identically to Podman containers.
 
@@ -109,7 +109,7 @@ Install from https://docs.docker.com/get-docker/
 
 ### Docker/Podman Hardening
 
-Docker and Podman containers launched by Moltis include the following security
+Docker and Podman containers launched by Chelix include the following security
 hardening flags by default:
 
 | Flag | Effect |
@@ -129,7 +129,7 @@ With `workspace_sysmount = "ro"` (the default), Docker/Podman sandbox
 containers keep `--cap-drop ALL` and `--security-opt no-new-privileges`, and
 prebuilt sandbox images also keep `--read-only`.
 
-With `workspace_sysmount = "rw"`, Moltis skips `--cap-drop ALL`,
+With `workspace_sysmount = "rw"`, Chelix skips `--cap-drop ALL`,
 `--security-opt no-new-privileges`, and `--read-only` so package managers can
 work against a writable root filesystem.
 
@@ -140,7 +140,7 @@ workspace_sysmount = "rw"   # default: "ro"
 
 The `/sys` tmpfs overlays prevent host hardware metadata (serial numbers, disk
 models, LUKS UUIDs) from being visible inside the container. Note that
-`tools.fs.deny_paths` only restricts Moltis file-access tools — these kernel
+`tools.fs.deny_paths` only restricts Chelix file-access tools — these kernel
 filesystem masks prevent leakage via shell commands as well.
 
 > **Podman note:** The sysfs tmpfs overlays are applied on Docker only. Podman's
@@ -166,7 +166,7 @@ The WASM sandbox has two execution tiers:
 `dirname`.
 
 These operate on a sandboxed directory tree, translating guest paths (e.g.
-`/home/sandbox/file.txt`) to host paths under `~/.moltis/sandbox/wasm/<id>/`.
+`/home/sandbox/file.txt`) to host paths under `~/.chelix/sandbox/wasm/<id>/`.
 Paths outside the sandbox root are rejected.
 
 Basic shell features are supported: `&&`, `||`, `;` sequences, `$VAR`
@@ -181,7 +181,7 @@ preopened directories, fuel metering, epoch interruption, and captured I/O.
 ### Filesystem Isolation
 
 ```
-~/.moltis/sandbox/wasm/<session-key>/
+~/.chelix/sandbox/wasm/<session-key>/
   home/        preopened as /home/sandbox (rw)
   tmp/         preopened as /tmp (rw)
 ```
@@ -239,7 +239,7 @@ default. To build without Wasmtime (saves ~30 MB binary size):
 cargo build --release --no-default-features --features lightweight
 ```
 
-When the feature is disabled and the config requests `backend = "wasm"`, Moltis
+When the feature is disabled and the config requests `backend = "wasm"`, Chelix
 falls back to `restricted-host` with a warning.
 
 ## Restricted Host Sandbox
@@ -270,7 +270,7 @@ environment is cleared, so the LLM tool can still pass required variables.
 - No filesystem isolation — commands run on the host filesystem
 - No network isolation — commands can make network requests
 - `ulimit` enforcement is best-effort
-- No image building — `moltis sandbox build` returns immediately
+- No image building — `chelix sandbox build` returns immediately
 
 For production use with untrusted workloads, prefer Apple Container or Docker.
 
@@ -282,13 +282,13 @@ recommended** for untrusted workloads.
 
 ## Failover Chain
 
-Moltis wraps the primary sandbox backend with automatic failover:
+Chelix wraps the primary sandbox backend with automatic failover:
 
 - **Apple Container → Docker → Restricted Host**: if Apple Container enters a
-  corrupted state (stale metadata, missing config, VM boot failure), Moltis
+  corrupted state (stale metadata, missing config, VM boot failure), Chelix
   fails over to Docker. If Docker is unavailable, it uses restricted-host.
 - **Docker → Restricted Host**: if Docker loses its daemon connection during a
-  session, Moltis fails over to the restricted-host sandbox.
+  session, Chelix fails over to the restricted-host sandbox.
 
 Failover is sticky for the lifetime of the gateway process — once triggered,
 all subsequent commands use the fallback backend. Restart the gateway to retry
@@ -323,19 +323,19 @@ home_persistence = "session"   # "off", "session", or "shared" (default)
 - `shared`: mount one shared host folder to `/home/sandbox` for all sessions
   (defaults to `data_dir()/sandbox/home/shared`, or `shared_home_dir` if set)
 
-Moltis stores persisted homes under `data_dir()/sandbox/home/`.
+Chelix stores persisted homes under `data_dir()/sandbox/home/`.
 
 ## Docker-in-Docker workspace mounts
 
-When Moltis runs inside a container and launches Docker-backed sandboxes via a
+When Chelix runs inside a container and launches Docker-backed sandboxes via a
 mounted container socket, the sandbox bind mount source must be a host-visible
-path. Moltis auto-detects this by inspecting the parent container's mounts. If
+path. Chelix auto-detects this by inspecting the parent container's mounts. If
 that lookup fails or you want to pin the value explicitly, set
 `host_data_dir`:
 
 ```toml
 [tools.execute_command.sandbox]
-host_data_dir = "/srv/moltis/data"
+host_data_dir = "/srv/chelix/data"
 ```
 
 This remaps sandbox workspace mounts and default sandbox persistence paths from

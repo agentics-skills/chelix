@@ -1,7 +1,7 @@
 //! Telephony account configuration.
 
 use {
-    moltis_channels::{
+    chelix_channels::{
         config_view::ChannelConfigView,
         gating::{DmPolicy, GroupPolicy},
     },

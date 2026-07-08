@@ -17,7 +17,7 @@ use super::{Context, Result};
 
 /// The hostname used for loopback URLs instead of raw `127.0.0.1`.
 /// Subdomains of `.localhost` resolve to loopback per RFC 6761.
-pub const LOCALHOST_DOMAIN: &str = "moltis.localhost";
+pub const LOCALHOST_DOMAIN: &str = "chelix.localhost";
 
 /// Additional SAN entries that should be present on the auto-generated server
 /// certificate for this runtime.
@@ -146,10 +146,10 @@ impl FsCertManager {
     }
 }
 
-/// Returns the certificate storage directory (`~/.config/moltis/certs/`).
+/// Returns the certificate storage directory (`~/.config/chelix/certs/`).
 pub fn cert_dir() -> Result<PathBuf> {
-    let dir = moltis_config::config_dir()
-        .unwrap_or_else(|| PathBuf::from(".moltis"))
+    let dir = chelix_config::config_dir()
+        .unwrap_or_else(|| PathBuf::from(".chelix"))
         .join("certs");
     std::fs::create_dir_all(&dir).context("failed to create certs directory")?;
     Ok(dir)
@@ -283,10 +283,10 @@ fn generate_all(required_sans: &[ServerSan]) -> Result<(String, String, String, 
     let mut ca_params = CertificateParams::new(Vec::<String>::new())?;
     ca_params
         .distinguished_name
-        .push(DnType::CommonName, "Moltis Local CA");
+        .push(DnType::CommonName, "Chelix Local CA");
     ca_params
         .distinguished_name
-        .push(DnType::OrganizationName, "Moltis");
+        .push(DnType::OrganizationName, "Chelix");
     ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
     ca_params.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
     // 10-year validity from today.

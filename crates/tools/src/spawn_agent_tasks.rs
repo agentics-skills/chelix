@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     async_trait::async_trait,
-    moltis_agents::tool_registry::AgentTool,
+    chelix_agents::tool_registry::AgentTool,
     serde_json::Value,
     time::{Duration, OffsetDateTime},
     tokio::sync::RwLock,
@@ -321,7 +321,7 @@ impl SpawnTaskStore {
 
         #[cfg(feature = "metrics")]
         if expired > 0 {
-            use moltis_metrics::{counter, spawn as spawn_metrics};
+            use chelix_metrics::{counter, spawn as spawn_metrics};
             counter!(spawn_metrics::TASKS_EXPIRED_TOTAL).increment(expired as u64);
         }
 

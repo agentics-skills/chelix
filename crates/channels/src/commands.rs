@@ -193,7 +193,7 @@ pub fn all_commands() -> &'static [CommandDef] {
         },
         CommandDef {
             name: "update",
-            description: "Update moltis to latest or specified version",
+            description: "Update chelix to latest or specified version",
             arg: Some(CommandArg {
                 name: "version",
                 description: "Version to update to",

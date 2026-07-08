@@ -8,9 +8,9 @@ use std::{
 
 use tracing::{debug, info, warn};
 
-use moltis_providers::ProviderRegistry;
+use chelix_providers::ProviderRegistry;
 
-use moltis_tools::approval::{ApprovalManager, ApprovalMode, SecurityLevel};
+use chelix_tools::approval::{ApprovalManager, ApprovalMode, SecurityLevel};
 
 // ── QMD helpers ──────────────────────────────────────────────────────────────
 
@@ -30,35 +30,35 @@ pub(crate) fn sanitize_qmd_index_name(root: &FsPath) -> String {
     }
     let sanitized = sanitized.trim_matches('_').to_string();
     if sanitized.is_empty() {
-        "moltis".into()
+        "chelix".into()
     } else {
-        format!("moltis-{sanitized}")
+        format!("chelix-{sanitized}")
     }
 }
 
 #[cfg(feature = "qmd")]
 pub(crate) fn build_qmd_collections(
     data_dir: &FsPath,
-    config: &moltis_config::schema::QmdConfig,
-) -> HashMap<String, moltis_qmd::QmdCollection> {
+    config: &chelix_config::schema::QmdConfig,
+) -> HashMap<String, chelix_qmd::QmdCollection> {
     if config.collections.is_empty() {
         return HashMap::from([
-            ("moltis-root-memory".into(), moltis_qmd::QmdCollection {
+            ("chelix-root-memory".into(), chelix_qmd::QmdCollection {
                 path: data_dir.to_path_buf(),
                 glob: "MEMORY.md".into(),
             }),
             (
-                "moltis-root-memory-lower".into(),
-                moltis_qmd::QmdCollection {
+                "chelix-root-memory-lower".into(),
+                chelix_qmd::QmdCollection {
                     path: data_dir.to_path_buf(),
                     glob: "memory.md".into(),
                 },
             ),
-            ("moltis-memory".into(), moltis_qmd::QmdCollection {
+            ("chelix-memory".into(), chelix_qmd::QmdCollection {
                 path: data_dir.join("memory"),
                 glob: "**/*.md".into(),
             }),
-            ("moltis-agents".into(), moltis_qmd::QmdCollection {
+            ("chelix-agents".into(), chelix_qmd::QmdCollection {
                 path: data_dir.join("agents"),
                 glob: "**/*.md".into(),
             }),
@@ -87,7 +87,7 @@ pub(crate) fn build_qmd_collections(
                 } else {
                     format!("{name}-{path_index}-{glob_index}")
                 };
-                collections.insert(key, moltis_qmd::QmdCollection {
+                collections.insert(key, chelix_qmd::QmdCollection {
                     path: root.clone(),
                     glob: glob.clone(),
                 });
@@ -101,22 +101,22 @@ pub(crate) fn build_qmd_collections(
 // ── Sandbox helpers ──────────────────────────────────────────────────────────
 
 pub(crate) fn should_prebuild_sandbox_image(
-    mode: &moltis_tools::sandbox::SandboxMode,
+    mode: &chelix_tools::sandbox::SandboxMode,
     packages: &[String],
 ) -> bool {
-    !matches!(mode, moltis_tools::sandbox::SandboxMode::Off) && !packages.is_empty()
+    !matches!(mode, chelix_tools::sandbox::SandboxMode::Off) && !packages.is_empty()
 }
 
-pub(crate) fn instance_slug(config: &moltis_config::MoltisConfig) -> String {
+pub(crate) fn instance_slug(config: &chelix_config::ChelixConfig) -> String {
     let mut raw_name = config.identity.name.clone();
-    if let Some(file_identity) = moltis_config::load_identity_for_agent("main")
+    if let Some(file_identity) = chelix_config::load_identity_for_agent("main")
         && file_identity.name.is_some()
     {
         raw_name = file_identity.name;
     }
 
     let base = raw_name
-        .unwrap_or_else(|| "moltis".to_string())
+        .unwrap_or_else(|| "chelix".to_string())
         .to_lowercase();
     let mut out = String::new();
     let mut last_dash = false;
@@ -138,18 +138,18 @@ pub(crate) fn instance_slug(config: &moltis_config::MoltisConfig) -> String {
     }
     let out = out.trim_matches('-').to_string();
     if out.is_empty() {
-        "moltis".to_string()
+        "chelix".to_string()
     } else {
         out
     }
 }
 
 pub(crate) fn sandbox_container_prefix(instance_slug: &str) -> String {
-    format!("moltis-{instance_slug}-sandbox")
+    format!("chelix-{instance_slug}-sandbox")
 }
 
 pub(crate) fn browser_container_prefix(instance_slug: &str) -> String {
-    format!("moltis-{instance_slug}-browser")
+    format!("chelix-{instance_slug}-browser")
 }
 
 // ── Environment helpers ──────────────────────────────────────────────────────
@@ -318,7 +318,7 @@ pub(crate) async fn ensure_ollama_model(base_url: &str, model: &str) {
 
 // ── Approval manager ─────────────────────────────────────────────────────────
 
-pub fn approval_manager_from_config(config: &moltis_config::MoltisConfig) -> ApprovalManager {
+pub fn approval_manager_from_config(config: &chelix_config::ChelixConfig) -> ApprovalManager {
     let mut manager = ApprovalManager::default();
 
     manager.mode =
@@ -347,7 +347,7 @@ pub fn approval_manager_from_config(config: &moltis_config::MoltisConfig) -> App
 
 #[cfg(feature = "fs-tools")]
 pub(crate) fn fs_tools_host_warning_message(
-    router: &moltis_tools::sandbox::SandboxRouter,
+    router: &chelix_tools::sandbox::SandboxRouter,
 ) -> Option<String> {
     if router.backend().is_real() {
         return None;
@@ -382,7 +382,7 @@ pub(crate) struct StartupMemProbe {
 
 impl StartupMemProbe {
     pub(crate) fn new() -> Self {
-        let enabled = env_flag_enabled("MOLTIS_STARTUP_MEM_TRACE");
+        let enabled = env_flag_enabled("CHELIX_STARTUP_MEM_TRACE");
         let last_rss_bytes = if enabled {
             process_rss_bytes()
         } else {
@@ -420,7 +420,7 @@ pub(crate) fn validate_proxy_tls_configuration(
 ) -> anyhow::Result<()> {
     if behind_proxy && tls_enabled && !allow_tls_behind_proxy {
         anyhow::bail!(
-            "MOLTIS_BEHIND_PROXY=true with Moltis TLS enabled is usually a proxy misconfiguration. Run with --no-tls (or MOLTIS_NO_TLS=true). If your proxy upstream is HTTPS/TCP passthrough by design, set MOLTIS_ALLOW_TLS_BEHIND_PROXY=true."
+            "CHELIX_BEHIND_PROXY=true with Chelix TLS enabled is usually a proxy misconfiguration. Run with --no-tls (or CHELIX_NO_TLS=true). If your proxy upstream is HTTPS/TCP passthrough by design, set CHELIX_ALLOW_TLS_BEHIND_PROXY=true."
         );
     }
     Ok(())
@@ -461,7 +461,7 @@ pub(crate) fn log_directory_write_probe(dir: &FsPath) {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     let probe_path = dir.join(format!(
-        ".moltis-write-check-{}-{nanos}.tmp",
+        ".chelix-write-check-{}-{nanos}.tmp",
         std::process::id()
     ));
 
@@ -504,9 +504,9 @@ pub(crate) fn log_directory_write_probe(dir: &FsPath) {
 // ── Config / storage startup logging ─────────────────────────────────────────
 
 pub(crate) fn log_startup_config_storage_diagnostics() {
-    let config_dir = moltis_config::config_dir().unwrap_or_else(|| PathBuf::from(".moltis"));
-    let discovered_config = moltis_config::loader::find_config_file();
-    let expected_config = moltis_config::find_or_default_config_path();
+    let config_dir = chelix_config::config_dir().unwrap_or_else(|| PathBuf::from(".chelix"));
+    let discovered_config = chelix_config::loader::find_config_file();
+    let expected_config = chelix_config::find_or_default_config_path();
     let provider_keys_path = config_dir.join("provider_keys.json");
 
     let discovered_display = discovered_config
@@ -537,7 +537,7 @@ pub(crate) fn log_startup_config_storage_diagnostics() {
     } else {
         warn!(
             path = %expected_config.display(),
-            "no config file detected on startup; Moltis is running with in-memory defaults until config is persisted"
+            "no config file detected on startup; Chelix is running with in-memory defaults until config is persisted"
         );
     }
 
@@ -579,8 +579,8 @@ pub(crate) fn log_startup_config_storage_diagnostics() {
 // ── Cron delivery ────────────────────────────────────────────────────────────
 
 pub(crate) async fn maybe_deliver_cron_output(
-    outbound: Option<Arc<dyn moltis_channels::ChannelOutbound>>,
-    req: &moltis_cron::service::AgentTurnRequest,
+    outbound: Option<Arc<dyn chelix_channels::ChannelOutbound>>,
+    req: &chelix_cron::service::AgentTurnRequest,
     delivery_text: &str,
 ) {
     if !req.deliver || delivery_text.trim().is_empty() {
@@ -612,12 +612,12 @@ pub(crate) async fn maybe_deliver_cron_output(
 
 #[cfg(feature = "file-watcher")]
 pub(crate) async fn start_skill_hot_reload_watcher() -> anyhow::Result<(
-    moltis_skills::watcher::SkillWatcher,
-    tokio::sync::mpsc::UnboundedReceiver<moltis_skills::watcher::SkillWatchEvent>,
+    chelix_skills::watcher::SkillWatcher,
+    tokio::sync::mpsc::UnboundedReceiver<chelix_skills::watcher::SkillWatchEvent>,
 )> {
-    let watch_specs = tokio::task::spawn_blocking(moltis_skills::watcher::default_watch_specs)
+    let watch_specs = tokio::task::spawn_blocking(chelix_skills::watcher::default_watch_specs)
         .await
         .map_err(|error| anyhow::anyhow!("skills watcher task failed: {error}"))??;
 
-    Ok(moltis_skills::watcher::SkillWatcher::start(watch_specs)?)
+    Ok(chelix_skills::watcher::SkillWatcher::start(watch_specs)?)
 }

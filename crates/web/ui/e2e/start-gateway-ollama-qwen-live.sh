@@ -4,15 +4,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../../../.." && pwd)"
 
-PORT="${MOLTIS_E2E_OLLAMA_QWEN_LIVE_PORT:-0}"
-OLLAMA_API_PORT="${MOLTIS_E2E_OLLAMA_QWEN_API_PORT:-11435}"
-MODEL="${MOLTIS_E2E_OLLAMA_QWEN_MODEL:-qwen2.5:0.5b}"
-RUNTIME_ROOT="${MOLTIS_E2E_OLLAMA_QWEN_LIVE_RUNTIME_DIR:-${REPO_ROOT}/target/e2e-runtime-ollama-qwen-live}"
+PORT="${CHELIX_E2E_OLLAMA_QWEN_LIVE_PORT:-0}"
+OLLAMA_API_PORT="${CHELIX_E2E_OLLAMA_QWEN_API_PORT:-11435}"
+MODEL="${CHELIX_E2E_OLLAMA_QWEN_MODEL:-qwen2.5:0.5b}"
+RUNTIME_ROOT="${CHELIX_E2E_OLLAMA_QWEN_LIVE_RUNTIME_DIR:-${REPO_ROOT}/target/e2e-runtime-ollama-qwen-live}"
 CONFIG_DIR="${RUNTIME_ROOT}/config"
 DATA_DIR="${RUNTIME_ROOT}/data"
 HOME_DIR="${RUNTIME_ROOT}/home"
-OLLAMA_ROOT="${MOLTIS_E2E_OLLAMA_QWEN_OLLAMA_ROOT:-${REPO_ROOT}/target/e2e-ollama-qwen-live}"
-OLLAMA_MODELS_DIR="${MOLTIS_E2E_OLLAMA_QWEN_MODELS_DIR:-${OLLAMA_ROOT}/models}"
+OLLAMA_ROOT="${CHELIX_E2E_OLLAMA_QWEN_OLLAMA_ROOT:-${REPO_ROOT}/target/e2e-ollama-qwen-live}"
+OLLAMA_MODELS_DIR="${CHELIX_E2E_OLLAMA_QWEN_MODELS_DIR:-${OLLAMA_ROOT}/models}"
 OLLAMA_LOG="${OLLAMA_ROOT}/ollama.log"
 ORIGINAL_HOME="${HOME:-}"
 OLLAMA_BIND="127.0.0.1:${OLLAMA_API_PORT}"
@@ -20,7 +20,7 @@ OLLAMA_PID=""
 GATEWAY_PID=""
 
 if ! command -v ollama >/dev/null 2>&1; then
-	echo "Missing ollama CLI. Install it or set MOLTIS_E2E_OLLAMA_QWEN_LIVE=0." >&2
+	echo "Missing ollama CLI. Install it or set CHELIX_E2E_OLLAMA_QWEN_LIVE=0." >&2
 	exit 1
 fi
 
@@ -53,7 +53,7 @@ name: e2e-bot
 
 # IDENTITY.md
 
-This file is managed by Moltis settings.
+This file is managed by Chelix settings.
 EOF
 
 cat > "${DATA_DIR}/USER.md" <<'EOF'
@@ -63,12 +63,12 @@ name: e2e-user
 
 # USER.md
 
-This file is managed by Moltis settings.
+This file is managed by Chelix settings.
 EOF
 
 touch "${DATA_DIR}/.onboarded"
 
-cat > "${CONFIG_DIR}/moltis.toml" <<EOF
+cat > "${CONFIG_DIR}/chelix.toml" <<EOF
 [providers]
 offered = ["custom-ollama-qwen"]
 
@@ -82,9 +82,9 @@ EOF
 
 cd "${REPO_ROOT}"
 
-export MOLTIS_CONFIG_DIR="${CONFIG_DIR}"
-export MOLTIS_DATA_DIR="${DATA_DIR}"
-export MOLTIS_SERVER__PORT="${PORT}"
+export CHELIX_CONFIG_DIR="${CONFIG_DIR}"
+export CHELIX_DATA_DIR="${DATA_DIR}"
+export CHELIX_SERVER__PORT="${PORT}"
 if [[ -z "${RUSTUP_HOME:-}" ]] && [[ -n "${ORIGINAL_HOME}" ]]; then
 	export RUSTUP_HOME="${ORIGINAL_HOME}/.rustup"
 fi
@@ -131,9 +131,9 @@ binary_is_stale() {
 		-print -quit | grep -q .
 }
 
-BINARY="${MOLTIS_BINARY:-}"
+BINARY="${CHELIX_BINARY:-}"
 if [[ -z "${BINARY}" ]]; then
-	for candidate in target/debug/moltis target/release/moltis; do
+	for candidate in target/debug/chelix target/release/chelix; do
 		if [[ -x "${candidate}" ]] && { [[ -z "${BINARY}" ]] || [[ "${candidate}" -nt "${BINARY}" ]]; }; then
 			BINARY="${candidate}"
 		fi
@@ -170,7 +170,7 @@ OLLAMA_HOST="${OLLAMA_BIND}" OLLAMA_MODELS="${OLLAMA_MODELS_DIR}" ollama pull "$
 if [[ -n "${BINARY}" ]]; then
 	"${BINARY}" --no-tls --bind 127.0.0.1 --port "${PORT}" &
 else
-	cargo run --bin moltis -- --no-tls --bind 127.0.0.1 --port "${PORT}" &
+	cargo run --bin chelix -- --no-tls --bind 127.0.0.1 --port "${PORT}" &
 fi
 GATEWAY_PID="$!"
 wait "${GATEWAY_PID}"

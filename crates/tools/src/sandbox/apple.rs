@@ -114,7 +114,7 @@ impl AppleContainerSandbox {
         self.config
             .container_prefix
             .as_deref()
-            .unwrap_or("moltis-sandbox")
+            .unwrap_or("chelix-sandbox")
     }
 
     fn base_container_name(&self, id: &SandboxId) -> String {
@@ -797,7 +797,7 @@ impl Sandbox for AppleContainerSandbox {
                 Err(CreateError::ServiceDown) => {
                     return Err(Error::message(
                         "apple container service is not running. \
-                         Start it with `container system start` and restart moltis",
+                         Start it with `container system start` and restart chelix",
                     ));
                 },
                 Err(CreateError::Other(stderr)) => {
@@ -998,7 +998,7 @@ impl Sandbox for AppleContainerSandbox {
             let proxy_url = format!(
                 "http://{}:{}",
                 gateway,
-                moltis_network_filter::DEFAULT_PROXY_PORT
+                chelix_network_filter::DEFAULT_PROXY_PORT
             );
             let escaped_proxy = proxy_url.replace('\'', "'\\''");
             for key in ["HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"] {
@@ -1154,7 +1154,7 @@ impl Sandbox for AppleContainerSandbox {
         }
 
         let tmp_dir =
-            std::env::temp_dir().join(format!("moltis-sandbox-build-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("chelix-sandbox-build-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&tmp_dir)?;
 
         let pkg_list = canonical_sandbox_packages(packages).join(" ");
@@ -1182,7 +1182,7 @@ impl Sandbox for AppleContainerSandbox {
             if stderr.contains("XPC connection error") || stderr.contains("Connection invalid") {
                 return Err(Error::message(
                     "apple container service is not running. \
-                     Start it with `container system start` and restart moltis",
+                     Start it with `container system start` and restart chelix",
                 ));
             }
             debug!(

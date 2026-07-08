@@ -9,11 +9,11 @@ use {
 };
 
 use {
-    moltis_channels::{
+    chelix_channels::{
         ChannelAttachment, ChannelDocumentFile, ChannelEventSink, ChannelMessageKind,
         ChannelReplyTarget, SavedChannelFile,
     },
-    moltis_common::types::ChatType,
+    chelix_common::types::ChatType,
 };
 
 use super::outbound_to_for_msg;
@@ -141,7 +141,7 @@ pub(super) fn extract_document_file(msg: &Message) -> Option<DocumentFileInfo> {
                         .file_name
                         .as_deref()
                         .and_then(|name| name.rsplit('.').next())
-                        .and_then(moltis_media::mime::mime_from_extension)
+                        .and_then(chelix_media::mime::mime_from_extension)
                         .map(str::to_string)
                         .unwrap_or(normalized)
                 } else {
@@ -182,7 +182,7 @@ pub(super) fn build_saved_document_filename(
     media_type: &str,
     file_id: &str,
 ) -> String {
-    let ext = moltis_media::mime::extension_for_mime(media_type);
+    let ext = chelix_media::mime::extension_for_mime(media_type);
     let file_id_prefix: String = sanitize_document_filename(file_id)
         .chars()
         .take(16)
@@ -505,7 +505,7 @@ pub(super) async fn handle_voice_message(
     account_id: &str,
     caption: Option<&str>,
     event_sink: Option<&Arc<dyn ChannelEventSink>>,
-    outbound: &dyn moltis_channels::ChannelOutbound,
+    outbound: &dyn chelix_channels::ChannelOutbound,
     voice_file: &VoiceFileInfo,
 ) -> Option<(String, Vec<ChannelAttachment>, Option<(Vec<u8>, String)>)> {
     let caption_text = caption
@@ -516,7 +516,7 @@ pub(super) async fn handle_voice_message(
     let reply_target = outbound_to_for_msg(msg);
 
     async fn send_direct_reply(
-        outbound: &dyn moltis_channels::ChannelOutbound,
+        outbound: &dyn chelix_channels::ChannelOutbound,
         account_id: &str,
         to: &str,
         text: &str,

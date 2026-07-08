@@ -3,7 +3,7 @@
 use std::sync::{Arc, Mutex, RwLock};
 
 use {
-    moltis_channels::{
+    chelix_channels::{
         ChannelEvent, ChannelEventSink, ChannelMessageKind, ChannelMessageMeta, ChannelReplyTarget,
         ChannelType,
         commands::{help_text, is_channel_command},
@@ -25,7 +25,7 @@ pub async fn handle_event(
     raw: &Value,
     client: &SignalClient,
     config: &Arc<RwLock<SignalAccountConfig>>,
-    otp: &Arc<Mutex<moltis_channels::otp::OtpState>>,
+    otp: &Arc<Mutex<chelix_channels::otp::OtpState>>,
     account_id: &str,
     event_sink: &Arc<dyn ChannelEventSink>,
 ) {
@@ -343,7 +343,7 @@ async fn handle_pending_otp(
     text: &str,
     sender: &str,
     sender_uuid: &Option<String>,
-    otp: &Arc<Mutex<moltis_channels::otp::OtpState>>,
+    otp: &Arc<Mutex<chelix_channels::otp::OtpState>>,
     client: &SignalClient,
     cfg: &SignalAccountConfig,
     account_id: &str,
@@ -419,7 +419,7 @@ async fn issue_otp_challenge(
     sender: &str,
     sender_uuid: Option<&str>,
     sender_name: Option<&str>,
-    otp: &Arc<Mutex<moltis_channels::otp::OtpState>>,
+    otp: &Arc<Mutex<chelix_channels::otp::OtpState>>,
     client: &SignalClient,
     cfg: &SignalAccountConfig,
     account_id: &str,
@@ -478,7 +478,7 @@ async fn send_direct_text(
     cfg: &SignalAccountConfig,
     to: &str,
     text: &str,
-) -> moltis_channels::Result<()> {
+) -> chelix_channels::Result<()> {
     let mut params = serde_json::json!({
         "message": text,
     });
@@ -501,7 +501,7 @@ async fn send_direct_text(
 mod tests {
     use {
         crate::config::SignalAccountConfig,
-        moltis_channels::gating::{DmPolicy, GroupPolicy, MentionMode},
+        chelix_channels::gating::{DmPolicy, GroupPolicy, MentionMode},
     };
 
     #[test]

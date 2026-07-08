@@ -25,7 +25,7 @@ impl AgentService for NoopAgentService {
     }
 
     async fn identity_get(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "name": "moltis", "avatar": null }))
+        Ok(serde_json::json!({ "name": "chelix", "avatar": null }))
     }
 
     async fn list(&self) -> ServiceResult {
@@ -841,7 +841,7 @@ impl OnboardingService for NoopOnboardingService {
     }
 
     async fn identity_get(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "name": "moltis", "avatar": null }))
+        Ok(serde_json::json!({ "name": "chelix", "avatar": null }))
     }
 
     async fn identity_update(&self, _params: Value) -> ServiceResult {

@@ -1,6 +1,6 @@
 use {async_trait::async_trait, sqlx::SqlitePool};
 
-use moltis_channels::{
+use chelix_channels::{
     Error as ChannelError, Result as ChannelResult,
     plugin::ChannelType,
     store::{ChannelStore, StoredChannel},
@@ -8,11 +8,11 @@ use moltis_channels::{
 
 #[cfg(feature = "vault")]
 use {
-    moltis_secret_store::{
+    chelix_secret_store::{
         decrypt_secret_fields, encrypt_secret_fields, has_encrypted_secret_fields,
         has_plaintext_secret_fields,
     },
-    moltis_vault::VaultStatus,
+    chelix_vault::VaultStatus,
     std::sync::Arc,
 };
 
@@ -92,7 +92,7 @@ fn channel_secret_aad_scope(channel_type: &str, account_id: &str) -> String {
 #[cfg(feature = "vault")]
 fn channel_secret_store_error(
     context: &'static str,
-    source: moltis_secret_store::Error,
+    source: chelix_secret_store::Error,
 ) -> ChannelError {
     ChannelError::external(context, source)
 }
@@ -101,12 +101,12 @@ fn channel_secret_store_error(
 #[cfg(feature = "vault")]
 pub struct VaultChannelStore {
     inner: Arc<dyn ChannelStore>,
-    vault: Option<Arc<moltis_vault::Vault>>,
+    vault: Option<Arc<chelix_vault::Vault>>,
 }
 
 #[cfg(feature = "vault")]
 impl VaultChannelStore {
-    pub fn new(inner: Arc<dyn ChannelStore>, vault: Option<Arc<moltis_vault::Vault>>) -> Self {
+    pub fn new(inner: Arc<dyn ChannelStore>, vault: Option<Arc<chelix_vault::Vault>>) -> Self {
         Self { inner, vault }
     }
 
@@ -305,7 +305,7 @@ mod tests {
     }
 
     #[cfg(feature = "vault")]
-    async fn test_vault(pool: SqlitePool) -> Arc<moltis_vault::Vault> {
+    async fn test_vault(pool: SqlitePool) -> Arc<chelix_vault::Vault> {
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS vault_metadata (
                 id                   INTEGER PRIMARY KEY CHECK (id = 1),
@@ -323,7 +323,7 @@ mod tests {
         .await
         .unwrap();
 
-        let vault = Arc::new(moltis_vault::Vault::new(pool).await.unwrap());
+        let vault = Arc::new(chelix_vault::Vault::new(pool).await.unwrap());
         vault.initialize("test-password").await.unwrap();
         vault
     }
@@ -504,7 +504,7 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
-        let vault = Arc::new(moltis_vault::Vault::new(pool.clone()).await.unwrap());
+        let vault = Arc::new(chelix_vault::Vault::new(pool.clone()).await.unwrap());
         let inner: Arc<dyn ChannelStore> = Arc::new(SqliteChannelStore::new(pool.clone()));
         let store = VaultChannelStore::new(inner, Some(vault));
         let timestamp = now();

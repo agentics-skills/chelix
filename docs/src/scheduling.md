@@ -1,6 +1,6 @@
 # Scheduling (Cron Jobs)
 
-Moltis includes a built-in cron system that lets the agent schedule and manage
+Chelix includes a built-in cron system that lets the agent schedule and manage
 recurring tasks. Jobs can fire agent turns, send system events, or trigger
 other actions on a flexible schedule.
 
@@ -16,13 +16,13 @@ directory. If the file is empty and no pending events exist, the heartbeat
 turn is skipped to save tokens.
 
 Heartbeat replies can also be delivered to a configured channel destination via
-`[heartbeat] deliver`, `channel`, and `to` in `moltis.toml`, or from the web UI
+`[heartbeat] deliver`, `channel`, and `to` in `chelix.toml`, or from the web UI
 under **Settings -> Heartbeat**.
 
 ## Event-Driven Heartbeat Wake
 
 Normally the heartbeat fires on its regular schedule. The **wake** system lets
-other parts of Moltis trigger an immediate heartbeat when something noteworthy
+other parts of Chelix trigger an immediate heartbeat when something noteworthy
 happens, so the agent can react in near real-time.
 
 ### Wake Mode
@@ -55,7 +55,7 @@ Aliases are accepted: `"immediate"`, `"immediately"` map to `"now"`;
 
 ### System Events Queue
 
-Moltis maintains an in-memory bounded queue of **system events** — short text
+Chelix maintains an in-memory bounded queue of **system events** — short text
 summaries of things that happened (command completions, cron triggers, etc.).
 When the heartbeat fires, any pending events are drained from the queue and
 prepended to the heartbeat prompt so the agent sees what occurred.
@@ -66,21 +66,21 @@ deduplicated. Events that arrive after the buffer is full are silently dropped
 
 ### Command Completion Events
 
-When a background command finishes (via the `execute_command` tool), Moltis automatically
+When a background command finishes (via the `execute_command` tool), Chelix automatically
 enqueues a summary event with the command name, exit code, and a short preview
 of stdout/stderr. If the heartbeat is idle, it is woken immediately so the
 agent can react to the result.
 
 Command-triggered wakes have a cooldown guard so a heartbeat turn that runs `execute_command`
 does not immediately re-wake itself in a loop. Configure it with
-`[heartbeat].wake_cooldown` in `moltis.toml`:
+`[heartbeat].wake_cooldown` in `chelix.toml`:
 
 ```toml
 [heartbeat]
 wake_cooldown = "5m" # default; set "0" to disable
 ```
 
-The value uses Moltis duration syntax such as `"30s"`, `"10m"`, or `"1h"`.
+The value uses Chelix duration syntax such as `"30s"`, `"10m"`, or `"1h"`.
 The cooldown applies only to command-completion wakes. Cron jobs with
 `wakeMode = "now"` still wake the heartbeat immediately.
 
@@ -149,7 +149,7 @@ Example:
 ```
 
 Channel delivery is separate from session targeting. The cron job still runs in
-an isolated cron session, then Moltis forwards the finished output to the
+an isolated cron session, then Chelix forwards the finished output to the
 requested channel destination.
 
 ## Session Targeting
@@ -171,10 +171,10 @@ sandbox isolation, and job notification details.
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `moltis_cron_jobs_scheduled` | Gauge | Number of scheduled jobs |
-| `moltis_cron_executions_total` | Counter | Job executions |
-| `moltis_cron_execution_duration_seconds` | Histogram | Job duration |
-| `moltis_cron_errors_total` | Counter | Failed jobs |
-| `moltis_cron_stuck_jobs_cleared_total` | Counter | Jobs exceeding 2h timeout |
-| `moltis_cron_input_tokens_total` | Counter | Input tokens from cron runs |
-| `moltis_cron_output_tokens_total` | Counter | Output tokens from cron runs |
+| `chelix_cron_jobs_scheduled` | Gauge | Number of scheduled jobs |
+| `chelix_cron_executions_total` | Counter | Job executions |
+| `chelix_cron_execution_duration_seconds` | Histogram | Job duration |
+| `chelix_cron_errors_total` | Counter | Failed jobs |
+| `chelix_cron_stuck_jobs_cleared_total` | Counter | Jobs exceeding 2h timeout |
+| `chelix_cron_input_tokens_total` | Counter | Input tokens from cron runs |
+| `chelix_cron_output_tokens_total` | Counter | Output tokens from cron runs |

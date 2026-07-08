@@ -467,7 +467,7 @@ use {
     std::io::Cursor,
 };
 
-use moltis_channels::Result as ChannelsResult;
+use chelix_channels::Result as ChannelsResult;
 
 enum MockTranscription {
     Success(String),

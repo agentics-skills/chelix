@@ -78,8 +78,8 @@ impl WasmToolLimits {
     }
 }
 
-impl From<&moltis_config::schema::ToolLimitOverrideConfig> for ToolLimitOverride {
-    fn from(value: &moltis_config::schema::ToolLimitOverrideConfig) -> Self {
+impl From<&chelix_config::schema::ToolLimitOverrideConfig> for ToolLimitOverride {
+    fn from(value: &chelix_config::schema::ToolLimitOverrideConfig) -> Self {
         Self {
             fuel: value.fuel,
             memory: value.memory,
@@ -87,8 +87,8 @@ impl From<&moltis_config::schema::ToolLimitOverrideConfig> for ToolLimitOverride
     }
 }
 
-impl From<&moltis_config::schema::WasmToolLimitsConfig> for WasmToolLimits {
-    fn from(value: &moltis_config::schema::WasmToolLimitsConfig) -> Self {
+impl From<&chelix_config::schema::WasmToolLimitsConfig> for WasmToolLimits {
+    fn from(value: &chelix_config::schema::WasmToolLimitsConfig) -> Self {
         let overrides = value
             .tool_overrides
             .iter()
@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn config_deser_and_conversion() {
-        let config: moltis_config::schema::WasmToolLimitsConfig =
+        let config: chelix_config::schema::WasmToolLimitsConfig =
             serde_json::from_value(serde_json::json!({
                 "default_memory": 2048,
                 "default_fuel": 999,

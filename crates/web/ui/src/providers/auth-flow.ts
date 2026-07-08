@@ -504,7 +504,7 @@ function saveAndFinishProvider(
 				if (modelServiceUnavailable) {
 					console.warn("models.test unavailable in provider settings, saved selected models without probe");
 				}
-				localStorage.setItem("moltis-model", firstModelForTest);
+				localStorage.setItem("chelix-model", firstModelForTest);
 			}
 
 			// Success

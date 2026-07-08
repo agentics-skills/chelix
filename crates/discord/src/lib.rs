@@ -1,4 +1,4 @@
-//! Discord channel plugin for moltis.
+//! Discord channel plugin for chelix.
 //!
 //! Connects to the Discord Gateway API via a persistent WebSocket using
 //! the serenity library. Handles inbound DMs and guild messages, applies

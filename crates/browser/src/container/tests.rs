@@ -8,17 +8,17 @@ fn test_find_available_port() {
 
 #[test]
 fn test_new_browser_container_name_prefix() {
-    let name = new_browser_container_name("moltis-test-browser");
-    assert!(name.starts_with("moltis-test-browser-"));
+    let name = new_browser_container_name("chelix-test-browser");
+    assert!(name.starts_with("chelix-test-browser-"));
 }
 
 #[test]
 fn test_parse_docker_container_names_filters_prefix() {
-    let input = b"moltis-test-browser-abc\nother-container\nmoltis-test-browser-def\n";
-    let parsed = parse_docker_container_names(input, "moltis-test-browser");
+    let input = b"chelix-test-browser-abc\nother-container\nchelix-test-browser-def\n";
+    let parsed = parse_docker_container_names(input, "chelix-test-browser");
     assert_eq!(parsed, vec![
-        "moltis-test-browser-abc".to_string(),
-        "moltis-test-browser-def".to_string()
+        "chelix-test-browser-abc".to_string(),
+        "chelix-test-browser-def".to_string()
     ]);
 }
 
@@ -26,14 +26,14 @@ fn test_parse_docker_container_names_filters_prefix() {
 #[test]
 fn test_parse_apple_container_names_filters_prefix() {
     let json = br#"[
-          {"configuration":{"id":"moltis-test-browser-123"}},
+          {"configuration":{"id":"chelix-test-browser-123"}},
           {"configuration":{"id":"not-browser"}},
-          {"configuration":{"id":"moltis-test-browser-456"}}
+          {"configuration":{"id":"chelix-test-browser-456"}}
         ]"#;
-    let parsed = parse_apple_container_names_for_prefix(json, "moltis-test-browser").unwrap();
+    let parsed = parse_apple_container_names_for_prefix(json, "chelix-test-browser").unwrap();
     assert_eq!(parsed, vec![
-        "moltis-test-browser-123".to_string(),
-        "moltis-test-browser-456".to_string()
+        "chelix-test-browser-123".to_string(),
+        "chelix-test-browser-456".to_string()
     ]);
 }
 
@@ -95,7 +95,7 @@ fn test_build_container_launch_args_without_profile_dir() {
 
 #[test]
 fn browser_profile_mount_path_uses_configured_host_data_dir() {
-    let guest_profile = moltis_config::data_dir()
+    let guest_profile = chelix_config::data_dir()
         .join("browser")
         .join("profile")
         .join("sandbox")
@@ -104,18 +104,18 @@ fn browser_profile_mount_path_uses_configured_host_data_dir() {
     let mount_dir = profile_mount_dir_for_backend(
         ContainerBackend::Docker,
         &guest_profile,
-        Some(Path::new("/host/moltis-data")),
+        Some(Path::new("/host/chelix-data")),
     );
 
     assert_eq!(
         mount_dir,
-        PathBuf::from("/host/moltis-data/browser/profile/sandbox/browser-abc")
+        PathBuf::from("/host/chelix-data/browser/profile/sandbox/browser-abc")
     );
 }
 
 #[test]
 fn browser_profile_mount_path_ignores_relative_host_data_dir() {
-    let guest_profile = moltis_config::data_dir()
+    let guest_profile = chelix_config::data_dir()
         .join("browser")
         .join("profile")
         .join("sandbox")
@@ -135,7 +135,7 @@ fn browser_profile_mount_path_keeps_custom_paths_outside_data_dir() {
     let mount_dir = profile_mount_dir_for_backend(
         ContainerBackend::Docker,
         Path::new("/custom/browser/profile"),
-        Some(Path::new("/host/moltis-data")),
+        Some(Path::new("/host/chelix-data")),
     );
 
     assert_eq!(mount_dir, PathBuf::from("/custom/browser/profile"));
@@ -143,8 +143,8 @@ fn browser_profile_mount_path_keeps_custom_paths_outside_data_dir() {
 
 #[test]
 fn browser_profile_precreate_uses_guest_path_when_mount_is_translated() {
-    let guest_dir = Path::new("/home/moltis/.moltis/browser/profile/sandbox/browser-abc");
-    let mount_dir = Path::new("/host/moltis-data/browser/profile/sandbox/browser-abc");
+    let guest_dir = Path::new("/home/chelix/.chelix/browser/profile/sandbox/browser-abc");
+    let mount_dir = Path::new("/host/chelix-data/browser/profile/sandbox/browser-abc");
 
     assert_eq!(
         profile_precreate_dir(Some(guest_dir), Some(mount_dir)),
@@ -168,14 +168,14 @@ fn browser_profile_permission_hint_points_to_host_data_dir() {
     let hint = browser_profile_permission_hint(
         Some(logs),
         Some(Path::new(
-            "/home/moltis/.moltis/browser/profile/sandbox/browser-abc",
+            "/home/chelix/.chelix/browser/profile/sandbox/browser-abc",
         )),
         None,
     )
     .unwrap();
 
     assert!(hint.contains("under `[tools.execute_command.sandbox]`"));
-    assert!(hint.contains("/home/moltis/.moltis/browser/profile/sandbox/browser-abc"));
+    assert!(hint.contains("/home/chelix/.chelix/browser/profile/sandbox/browser-abc"));
 }
 
 #[test]
@@ -186,9 +186,9 @@ fn browser_profile_permission_hint_skips_when_host_data_dir_is_configured() {
         browser_profile_permission_hint(
             Some(logs),
             Some(Path::new(
-                "/home/moltis/.moltis/browser/profile/sandbox/browser-abc"
+                "/home/chelix/.chelix/browser/profile/sandbox/browser-abc"
             )),
-            Some(Path::new("/host/moltis-data")),
+            Some(Path::new("/host/chelix-data")),
         ),
         None
     );
@@ -209,7 +209,7 @@ fn test_build_container_launch_args_docker_no_disable_shm() {
 }
 
 #[test]
-fn test_browserless_session_timeout_uses_moltis_lifecycle_floor() {
+fn test_browserless_session_timeout_uses_chelix_lifecycle_floor() {
     let timeout_ms = browserless_session_timeout_ms(300, 30_000, 1800);
     assert_eq!(timeout_ms, 1_800_000);
 }

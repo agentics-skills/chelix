@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use {moltis_service_traits::Services, serde_json::Value, tokio::sync::broadcast};
+use {chelix_service_traits::Services, serde_json::Value, tokio::sync::broadcast};
 
 /// Context injected into every GraphQL resolver via `Context::data()`.
 ///

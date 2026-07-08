@@ -1,4 +1,4 @@
-//! Integration tests for the moltis-graphql crate.
+//! Integration tests for the chelix-graphql crate.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 #[path = "integration/common.rs"]

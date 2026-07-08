@@ -15,12 +15,12 @@ pub(super) async fn request_disable_account(
 
     if let Some(state) = state.get() {
         // Note: We intentionally do NOT remove the channel from the database.
-        // The channel config should remain persisted so other moltis instances
+        // The channel config should remain persisted so other chelix instances
         // sharing the same database can still use it. The polling loop will
         // cancel itself after this call returns.
 
         // Broadcast an event so the UI can update.
-        let channel_type: moltis_channels::ChannelType = match channel_type.parse() {
+        let channel_type: chelix_channels::ChannelType = match channel_type.parse() {
             Ok(ct) => ct,
             Err(e) => {
                 warn!("request_disable_account: {e}");

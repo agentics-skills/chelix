@@ -82,7 +82,7 @@ test.describe("MCP page", () => {
 		const timeoutInput = requestTimeoutSection.locator('input[type="number"][min="1"]');
 		await expect(requestTimeoutSection.getByRole("heading", { name: "Request Timeout", exact: true })).toBeVisible();
 		await expect(
-			requestTimeoutSection.getByText("Controls how long Moltis waits for an MCP server response", { exact: false }),
+			requestTimeoutSection.getByText("Controls how long Chelix waits for an MCP server response", { exact: false }),
 		).toBeVisible();
 		await expect(timeoutInput).toBeVisible();
 		expect(Number.parseInt(await timeoutInput.inputValue(), 10)).toBeGreaterThan(0);

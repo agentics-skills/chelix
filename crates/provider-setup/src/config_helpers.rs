@@ -7,7 +7,7 @@ use std::{
 
 use secrecy::{ExposeSecret, Secret};
 
-use {moltis_config::schema::ProvidersConfig, moltis_oauth::TokenStore};
+use {chelix_config::schema::ProvidersConfig, chelix_oauth::TokenStore};
 
 use crate::{
     key_store::{KeyStore, ProviderConfig, normalize_model_list},
@@ -18,11 +18,11 @@ use crate::{
 // ── Config directory helpers ───────────────────────────────────────────────
 
 pub(crate) fn current_config_dir() -> PathBuf {
-    moltis_config::config_dir().unwrap_or_else(|| PathBuf::from(".config/moltis"))
+    chelix_config::config_dir().unwrap_or_else(|| PathBuf::from(".config/chelix"))
 }
 
 pub(crate) fn home_config_dir_if_different() -> Option<PathBuf> {
-    moltis_config::user_global_config_dir_if_different()
+    chelix_config::user_global_config_dir_if_different()
 }
 
 pub(crate) fn home_key_store() -> Option<(KeyStore, PathBuf)> {
@@ -38,33 +38,33 @@ pub(crate) fn home_token_store() -> Option<(TokenStore, PathBuf)> {
 }
 
 pub(crate) fn home_provider_config() -> Option<(ProvidersConfig, PathBuf)> {
-    let path = moltis_config::find_user_global_config_file()?;
+    let path = chelix_config::find_user_global_config_file()?;
     let home_dir = home_config_dir_if_different()?;
     if !path.starts_with(&home_dir) {
         return None;
     }
-    let loaded = moltis_config::loader::load_config(&path).ok()?;
+    let loaded = chelix_config::loader::load_config(&path).ok()?;
     Some((loaded.providers, path))
 }
 
 // ── Provider name helpers ──────────────────────────────────────────────────
 
 pub(crate) fn normalize_provider_name(value: &str) -> String {
-    moltis_config::normalize_provider_name(value).unwrap_or_default()
+    chelix_config::normalize_provider_name(value).unwrap_or_default()
 }
 
 pub(crate) fn env_value_with_overrides(
     env_overrides: &HashMap<String, String>,
     key: &str,
 ) -> Option<String> {
-    moltis_config::env_value_with_overrides(env_overrides, key)
+    chelix_config::env_value_with_overrides(env_overrides, key)
 }
 
 pub(crate) fn set_provider_enabled_in_config(
     provider: &str,
     enabled: bool,
-) -> moltis_service_traits::ServiceResult<()> {
-    moltis_config::update_config(|cfg| {
+) -> chelix_service_traits::ServiceResult<()> {
+    chelix_config::update_config(|cfg| {
         let entry = cfg
             .providers
             .providers
@@ -72,7 +72,7 @@ pub(crate) fn set_provider_enabled_in_config(
             .or_default();
         entry.enabled = enabled;
     })
-    .map_err(moltis_service_traits::ServiceError::message)?;
+    .map_err(chelix_service_traits::ServiceError::message)?;
     Ok(())
 }
 
@@ -239,7 +239,7 @@ pub fn detect_auto_provider_sources_with_overrides(
             sources.push(format!("env:{env_key}"));
         }
         if provider.auth_type == AuthType::ApiKey
-            && let Some(source) = moltis_config::generic_provider_env_source_for_provider(
+            && let Some(source) = chelix_config::generic_provider_env_source_for_provider(
                 provider.name,
                 env_overrides,
             )
@@ -319,7 +319,7 @@ pub fn detect_auto_provider_sources_with_overrides(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use {super::*, moltis_config::schema::ProviderEntry};
+    use {super::*, chelix_config::schema::ProviderEntry};
 
     #[test]
     fn config_with_saved_keys_merges_base_url_and_models() {

@@ -37,7 +37,7 @@ body:
       label: Proposed solution
       description: How would you like this to work? Describe the ideal experience.
       placeholder: |
-        A `[cron]` section in moltis.toml that lets me define
+        A `[cron]` section in chelix.toml that lets me define
         scheduled agent runs with a cron expression...
     validations:
       required: true

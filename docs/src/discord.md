@@ -1,6 +1,6 @@
 # Discord
 
-Moltis can connect to Discord as a bot, letting you chat with your agent from
+Chelix can connect to Discord as a bot, letting you chat with your agent from
 any Discord server or DM. The integration uses Discord's
 [Gateway API](https://discord.com/developers/docs/events/gateway) via a
 persistent WebSocket connection — no public URL or webhook endpoint is required.
@@ -15,7 +15,7 @@ persistent WebSocket connection — no public URL or webhook endpoint is require
                    │  persistent WebSocket
                    ▼
 ┌──────────────────────────────────────────────────────┐
-│               moltis-discord crate                    │
+│               chelix-discord crate                    │
 │  ┌────────────┐  ┌────────────┐  ┌────────────────┐  │
 │  │  Handler   │  │  Outbound  │  │     Plugin     │  │
 │  │ (inbound)  │  │ (replies)  │  │  (lifecycle)   │  │
@@ -24,7 +24,7 @@ persistent WebSocket connection — no public URL or webhook endpoint is require
                    │
                    ▼
 ┌──────────────────────────────────────────────────────┐
-│                 Moltis Gateway                        │
+│                 Chelix Gateway                        │
 │         (chat dispatch, tools, memory)                │
 └──────────────────────────────────────────────────────┘
 ```
@@ -36,7 +36,7 @@ on a home machine or behind a NAT.
 
 ## Prerequisites
 
-Before configuring Moltis, create a Discord bot:
+Before configuring Chelix, create a Discord bot:
 
 1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
 2. Click **New Application** and give it a name
@@ -50,14 +50,14 @@ Before configuring Moltis, create a Discord bot:
 
 ```admonish warning
 The bot token is a secret — treat it like a password. Never commit it to
-version control. Moltis stores it with `secrecy::Secret` and redacts it from
-logs, but your `moltis.toml` file is plain text on disk. Consider using
+version control. Chelix stores it with `secrecy::Secret` and redacts it from
+logs, but your `chelix.toml` file is plain text on disk. Consider using
 [Vault](vault.md) for encryption at rest.
 ```
 
 ## Configuration
 
-Add a `[channels.discord.<account-id>]` section to your `moltis.toml`:
+Add a `[channels.discord.<account-id>]` section to your `chelix.toml`:
 
 ```toml
 [channels.discord.my-bot]
@@ -164,7 +164,7 @@ unknown users who DM the bot receive a verification challenge. The flow:
 
 1. User sends a DM to the bot
 2. Bot responds with a challenge prompt (the 6-digit code is **not** shown to the user)
-3. The code appears in the Moltis web UI under **Channels → Senders**
+3. The code appears in the Chelix web UI under **Channels → Senders**
 4. The bot owner shares the code with the user out-of-band
 5. User replies with the 6-digit code
 6. On success, the user is automatically added to the allowlist
@@ -247,7 +247,7 @@ To use the bot in a Discord server you need to invite it first:
 6. Select the server you want to add the bot to and confirm
 
 ```admonish tip
-The Moltis web UI generates this invite link automatically when you paste your
+The Chelix web UI generates this invite link automatically when you paste your
 bot token. Look for the "Invite bot to a server" card in the Connect Discord
 dialog.
 ```
@@ -275,7 +275,7 @@ DMs. Set `dm_policy = "open"` to allow anyone to DM the bot.
 
 DMs work even if you and the bot don't share a server. Discord bots are
 reachable by username from any account. This makes DMs the simplest way to
-start chatting — just connect the bot in Moltis and message it directly.
+start chatting — just connect the bot in Chelix and message it directly.
 
 ## Message Handling
 
@@ -293,7 +293,7 @@ When a message arrives from Discord:
 
 ### Outbound Messages
 
-Discord enforces a **2,000-character limit** per message. Moltis automatically
+Discord enforces a **2,000-character limit** per message. Chelix automatically
 splits long responses into multiple messages, preferring to break at newline
 boundaries and avoiding splits inside fenced code blocks.
 
@@ -332,7 +332,7 @@ crates/discord/
     └── state.rs       # AccountState + AccountStateMap (includes OtpState)
 ```
 
-The crate implements the same trait set as `moltis-telegram` and `moltis-msteams`:
+The crate implements the same trait set as `chelix-telegram` and `chelix-msteams`:
 
 | Trait | Purpose |
 |-------|---------|
@@ -350,7 +350,7 @@ The crate implements the same trait set as `moltis-telegram` and `moltis-msteams
 - Ensure the bot has been invited to the server with the right permissions
 - Check `dm_policy` / `group_policy` — if set to `"allowlist"`, make sure
   your username or guild ID is listed
-- Look at logs: `RUST_LOG=moltis_discord=debug moltis`
+- Look at logs: `RUST_LOG=chelix_discord=debug chelix`
 
 ### "Gateway connection failed"
 

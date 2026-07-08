@@ -5,10 +5,10 @@ const path = require("node:path");
 
 const repoRoot = path.resolve(__dirname, "../../..");
 const isCi = Boolean(process.env.CI);
-const configuredShardCount = Number.parseInt(process.env.MOLTIS_E2E_SHARDS || "", 10);
+const configuredShardCount = Number.parseInt(process.env.CHELIX_E2E_SHARDS || "", 10);
 const defaultShardCount = Number.isFinite(configuredShardCount) && configuredShardCount > 0 ? configuredShardCount : 4;
-const processShardIndex = Number.parseInt(process.env.MOLTIS_E2E_PROCESS_SHARD_INDEX || "", 10);
-const processShardTotal = Number.parseInt(process.env.MOLTIS_E2E_PROCESS_SHARD_TOTAL || "", 10);
+const processShardIndex = Number.parseInt(process.env.CHELIX_E2E_PROCESS_SHARD_INDEX || "", 10);
+const processShardTotal = Number.parseInt(process.env.CHELIX_E2E_PROCESS_SHARD_TOTAL || "", 10);
 const processDefaultShard =
 	isCi &&
 	Number.isFinite(processShardIndex) &&
@@ -16,8 +16,8 @@ const processDefaultShard =
 	processShardIndex > 0 &&
 	processShardTotal > 0 &&
 	processShardIndex <= processShardTotal;
-const skipDefaultProjects = isCi && process.env.MOLTIS_E2E_SKIP_DEFAULT_PROJECTS === "1";
-const onlyProject = process.env.MOLTIS_E2E_ONLY_PROJECT || "";
+const skipDefaultProjects = isCi && process.env.CHELIX_E2E_SKIP_DEFAULT_PROJECTS === "1";
+const onlyProject = process.env.CHELIX_E2E_ONLY_PROJECT || "";
 
 function includeProject(name) {
 	return !onlyProject || onlyProject === name;
@@ -122,40 +122,40 @@ function matchSpecFiles(files) {
 }
 
 const usedPorts = new Set();
-const defaultPorts = skipDefaultProjects ? [] : [resolvePort("MOLTIS_E2E_PORT", usedPorts)];
-const defaultBaseURLs = defaultPorts.map((defaultPort) => process.env.MOLTIS_E2E_BASE_URL || `http://127.0.0.1:${defaultPort}`);
+const defaultPorts = skipDefaultProjects ? [] : [resolvePort("CHELIX_E2E_PORT", usedPorts)];
+const defaultBaseURLs = defaultPorts.map((defaultPort) => process.env.CHELIX_E2E_BASE_URL || `http://127.0.0.1:${defaultPort}`);
 const port = defaultPorts[0];
 const baseURL = defaultBaseURLs[0];
 
-const agentsPort = resolvePort("MOLTIS_E2E_AGENTS_PORT", usedPorts);
-const agentsBaseURL = process.env.MOLTIS_E2E_AGENTS_BASE_URL || `http://127.0.0.1:${agentsPort}`;
+const agentsPort = resolvePort("CHELIX_E2E_AGENTS_PORT", usedPorts);
+const agentsBaseURL = process.env.CHELIX_E2E_AGENTS_BASE_URL || `http://127.0.0.1:${agentsPort}`;
 
-const authPort = resolvePort("MOLTIS_E2E_AUTH_PORT", usedPorts);
-const authBaseURL = process.env.MOLTIS_E2E_AUTH_BASE_URL || `http://127.0.0.1:${authPort}`;
+const authPort = resolvePort("CHELIX_E2E_AUTH_PORT", usedPorts);
+const authBaseURL = process.env.CHELIX_E2E_AUTH_BASE_URL || `http://127.0.0.1:${authPort}`;
 
-const onboardingPort = resolvePort("MOLTIS_E2E_ONBOARDING_PORT", usedPorts);
-const onboardingBaseURL = process.env.MOLTIS_E2E_ONBOARDING_BASE_URL || `http://127.0.0.1:${onboardingPort}`;
+const onboardingPort = resolvePort("CHELIX_E2E_ONBOARDING_PORT", usedPorts);
+const onboardingBaseURL = process.env.CHELIX_E2E_ONBOARDING_BASE_URL || `http://127.0.0.1:${onboardingPort}`;
 
-const onboardingAuthPort = resolvePort("MOLTIS_E2E_ONBOARDING_AUTH_PORT", usedPorts);
+const onboardingAuthPort = resolvePort("CHELIX_E2E_ONBOARDING_AUTH_PORT", usedPorts);
 const onboardingAuthBaseURL = `http://127.0.0.1:${onboardingAuthPort}`;
 
-const oauthPort = resolvePort("MOLTIS_E2E_OAUTH_PORT", usedPorts);
+const oauthPort = resolvePort("CHELIX_E2E_OAUTH_PORT", usedPorts);
 const oauthBaseURL = `http://127.0.0.1:${oauthPort}`;
-const onboardingAnthropicPort = resolvePort("MOLTIS_E2E_ONBOARDING_ANTHROPIC_PORT", usedPorts);
+const onboardingAnthropicPort = resolvePort("CHELIX_E2E_ONBOARDING_ANTHROPIC_PORT", usedPorts);
 const onboardingAnthropicBaseURL =
-	process.env.MOLTIS_E2E_ONBOARDING_ANTHROPIC_BASE_URL || `http://127.0.0.1:${onboardingAnthropicPort}`;
-const openaiLivePort = resolvePort("MOLTIS_E2E_OPENAI_LIVE_PORT", usedPorts);
-const openaiLiveBaseURL = process.env.MOLTIS_E2E_OPENAI_LIVE_BASE_URL || `http://127.0.0.1:${openaiLivePort}`;
-const openAiLiveKey = process.env.MOLTIS_E2E_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "";
+	process.env.CHELIX_E2E_ONBOARDING_ANTHROPIC_BASE_URL || `http://127.0.0.1:${onboardingAnthropicPort}`;
+const openaiLivePort = resolvePort("CHELIX_E2E_OPENAI_LIVE_PORT", usedPorts);
+const openaiLiveBaseURL = process.env.CHELIX_E2E_OPENAI_LIVE_BASE_URL || `http://127.0.0.1:${openaiLivePort}`;
+const openAiLiveKey = process.env.CHELIX_E2E_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "";
 const enableOpenAiLiveProject = openAiLiveKey !== "";
-const ollamaQwenLiveEnabled = process.env.MOLTIS_E2E_OLLAMA_QWEN_LIVE === "1";
-const ollamaQwenLivePort = resolvePort("MOLTIS_E2E_OLLAMA_QWEN_LIVE_PORT", usedPorts);
+const ollamaQwenLiveEnabled = process.env.CHELIX_E2E_OLLAMA_QWEN_LIVE === "1";
+const ollamaQwenLivePort = resolvePort("CHELIX_E2E_OLLAMA_QWEN_LIVE_PORT", usedPorts);
 const ollamaQwenLiveBaseURL =
-	process.env.MOLTIS_E2E_OLLAMA_QWEN_LIVE_BASE_URL || `http://127.0.0.1:${ollamaQwenLivePort}`;
+	process.env.CHELIX_E2E_OLLAMA_QWEN_LIVE_BASE_URL || `http://127.0.0.1:${ollamaQwenLivePort}`;
 // Reliability first: fresh local gateway instances by default avoid
-// hidden cross-run state leaks. Set MOLTIS_E2E_REUSE_SERVER=1 to trade
+// hidden cross-run state leaks. Set CHELIX_E2E_REUSE_SERVER=1 to trade
 // determinism for faster startup in ad-hoc local runs.
-const reuseExistingServer = !process.env.CI && process.env.MOLTIS_E2E_REUSE_SERVER === "1";
+const reuseExistingServer = !process.env.CI && process.env.CHELIX_E2E_REUSE_SERVER === "1";
 const defaultProjectIgnore = [
 	/agents\.spec/,
 	/auth\.spec/,
@@ -299,8 +299,8 @@ function gatewayServer({ baseURL: serverBaseURL, name, port: serverPort }) {
 		timeout: 60_000,
 		env: {
 			...process.env,
-			MOLTIS_E2E_PORT: serverPort,
-			MOLTIS_E2E_RUNTIME_DIR: path.join(repoRoot, "target", `e2e-runtime-${name}`),
+			CHELIX_E2E_PORT: serverPort,
+			CHELIX_E2E_RUNTIME_DIR: path.join(repoRoot, "target", `e2e-runtime-${name}`),
 		},
 	};
 }
@@ -323,7 +323,7 @@ const defaultWebServers = includeProject("default") && !skipDefaultProjects && i
 				timeout: 60_000,
 				env: {
 					...process.env,
-					MOLTIS_E2E_PORT: port,
+					CHELIX_E2E_PORT: port,
 				},
 			},
 			]
@@ -347,7 +347,7 @@ const webServer = defaultWebServers.concat(
 					timeout: 60_000,
 					env: {
 						...process.env,
-						MOLTIS_E2E_ONBOARDING_PORT: onboardingPort,
+						CHELIX_E2E_ONBOARDING_PORT: onboardingPort,
 					},
 				}
 			: null,
@@ -360,7 +360,7 @@ const webServer = defaultWebServers.concat(
 					timeout: 60_000,
 					env: {
 						...process.env,
-						MOLTIS_E2E_ONBOARDING_AUTH_PORT: onboardingAuthPort,
+						CHELIX_E2E_ONBOARDING_AUTH_PORT: onboardingAuthPort,
 					},
 				}
 			: null,
@@ -373,7 +373,7 @@ const webServer = defaultWebServers.concat(
 					timeout: 60_000,
 					env: {
 						...process.env,
-						MOLTIS_E2E_OAUTH_PORT: oauthPort,
+						CHELIX_E2E_OAUTH_PORT: oauthPort,
 					},
 				}
 			: null,
@@ -386,7 +386,7 @@ const webServer = defaultWebServers.concat(
 					timeout: 60_000,
 					env: {
 						...process.env,
-						MOLTIS_E2E_ONBOARDING_ANTHROPIC_PORT: onboardingAnthropicPort,
+						CHELIX_E2E_ONBOARDING_ANTHROPIC_PORT: onboardingAnthropicPort,
 					},
 				}
 			: null,
@@ -402,7 +402,7 @@ if (enableOpenAiLiveProject && includeProject("openai-live")) {
 		timeout: 60_000,
 		env: {
 			...process.env,
-			MOLTIS_E2E_OPENAI_LIVE_PORT: openaiLivePort,
+			CHELIX_E2E_OPENAI_LIVE_PORT: openaiLivePort,
 		},
 	});
 }
@@ -416,7 +416,7 @@ if (ollamaQwenLiveEnabled && includeProject("ollama-qwen-live")) {
 		timeout: 60_000,
 		env: {
 			...process.env,
-			MOLTIS_E2E_OLLAMA_QWEN_LIVE_PORT: ollamaQwenLivePort,
+			CHELIX_E2E_OLLAMA_QWEN_LIVE_PORT: ollamaQwenLivePort,
 		},
 	});
 }

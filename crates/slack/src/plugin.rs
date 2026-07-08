@@ -9,7 +9,7 @@ use {
     tracing::{info, warn},
 };
 
-use moltis_channels::{
+use chelix_channels::{
     ChannelConfigView, Error as ChannelError, Result as ChannelResult,
     message_log::MessageLog,
     plugin::{
@@ -262,7 +262,7 @@ impl ChannelPlugin for SlackPlugin {
     fn channel_webhook_verifier(
         &self,
         account_id: &str,
-    ) -> Option<Box<dyn moltis_channels::channel_webhook_middleware::ChannelWebhookVerifier>> {
+    ) -> Option<Box<dyn chelix_channels::channel_webhook_middleware::ChannelWebhookVerifier>> {
         let accounts = self.accounts.read().unwrap_or_else(|e| e.into_inner());
         let state = accounts.get(account_id)?;
         let secret = state.config.signing_secret.as_ref()?;
@@ -377,7 +377,7 @@ mod tests {
 
     #[test]
     fn descriptor_coherence() {
-        use moltis_channels::{ChannelType, InboundMode};
+        use chelix_channels::{ChannelType, InboundMode};
         let plugin = SlackPlugin::new();
         let desc = ChannelType::Slack.descriptor();
 

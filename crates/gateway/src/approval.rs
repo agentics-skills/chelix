@@ -9,9 +9,9 @@ use {
 };
 
 use {
-    moltis_channels::ChannelReplyTarget,
-    moltis_sessions::metadata::SessionEntry,
-    moltis_tools::approval::{ApprovalBroadcaster, ApprovalDecision, ApprovalManager},
+    chelix_channels::ChannelReplyTarget,
+    chelix_sessions::metadata::SessionEntry,
+    chelix_tools::approval::{ApprovalBroadcaster, ApprovalDecision, ApprovalManager},
 };
 
 use crate::{
@@ -110,7 +110,7 @@ impl GatewayApprovalBroadcaster {
         &self,
         session_key: Option<&str>,
         command: &str,
-    ) -> moltis_tools::Result<()> {
+    ) -> chelix_tools::Result<()> {
         let Some(session_key) = session_key else {
             return Ok(());
         };
@@ -136,7 +136,7 @@ impl GatewayApprovalBroadcaster {
         outbound
             .send_text(&target.account_id, &target.outbound_to(), &message, None)
             .await
-            .map_err(|error| moltis_tools::Error::external("send approval notification", error))
+            .map_err(|error| chelix_tools::Error::external("send approval notification", error))
     }
 }
 
@@ -147,7 +147,7 @@ impl ApprovalBroadcaster for GatewayApprovalBroadcaster {
         request_id: &str,
         command: &str,
         session_key: Option<&str>,
-    ) -> moltis_tools::Result<()> {
+    ) -> chelix_tools::Result<()> {
         broadcast(
             &self.state,
             "command.approval.requested",

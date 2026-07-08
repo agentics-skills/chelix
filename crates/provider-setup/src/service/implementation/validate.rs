@@ -2,7 +2,7 @@
 
 use {secrecy::Secret, serde_json::Value, tracing::info};
 
-use moltis_service_traits::{ServiceError, ServiceResult};
+use chelix_service_traits::{ServiceError, ServiceResult};
 
 use {
     super::{
@@ -133,10 +133,10 @@ impl LiveProviderSetupService {
         };
 
         // Build a temporary ProvidersConfig with just this provider.
-        let mut temp_config = moltis_config::schema::ProvidersConfig::default();
+        let mut temp_config = chelix_config::schema::ProvidersConfig::default();
         temp_config.providers.insert(
             validation_provider_name.clone(),
-            moltis_config::schema::ProviderEntry {
+            chelix_config::schema::ProviderEntry {
                 enabled: true,
                 api_key: api_key.map(|k| Secret::new(k.to_string())),
                 base_url: normalized_base_url,
@@ -185,7 +185,7 @@ impl LiveProviderSetupService {
 
         let model_list: Vec<Value> = models
             .iter()
-            .filter(|m| moltis_providers::is_chat_capable_model(&m.id))
+            .filter(|m| chelix_providers::is_chat_capable_model(&m.id))
             .map(|m| {
                 let supports_tools = temp_registry.get(&m.id).is_some_and(|p| p.supports_tools());
                 serde_json::json!({
@@ -327,7 +327,7 @@ impl LiveProviderSetupService {
         api_key: &str,
         base_url: &str,
     ) -> ServiceResult {
-        match moltis_providers::openai::fetch_models_from_api(
+        match chelix_providers::openai::fetch_models_from_api(
             Secret::new(api_key.to_string()),
             base_url.to_string(),
         )

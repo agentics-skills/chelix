@@ -2,7 +2,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use tracing::info;
 
-use moltis_channels::ChannelPlugin;
+use chelix_channels::ChannelPlugin;
 
 use crate::services::GatewayServices;
 
@@ -11,12 +11,12 @@ use crate::services::GatewayServices;
 pub(crate) struct ChannelInitResult {
     pub(crate) services: GatewayServices,
     #[cfg(feature = "msteams")]
-    pub(crate) msteams_webhook_plugin: Arc<tokio::sync::RwLock<moltis_msteams::MsTeamsPlugin>>,
+    pub(crate) msteams_webhook_plugin: Arc<tokio::sync::RwLock<chelix_msteams::MsTeamsPlugin>>,
     #[cfg(feature = "slack")]
-    pub(crate) slack_webhook_plugin: Arc<tokio::sync::RwLock<moltis_slack::SlackPlugin>>,
+    pub(crate) slack_webhook_plugin: Arc<tokio::sync::RwLock<chelix_slack::SlackPlugin>>,
     #[cfg(feature = "telephony")]
     pub(crate) telephony_webhook_plugin:
-        Arc<tokio::sync::RwLock<moltis_telephony::TelephonyPlugin>>,
+        Arc<tokio::sync::RwLock<chelix_telephony::TelephonyPlugin>>,
 }
 
 /// Wire the channel store, channel registry, and all channel plugins.
@@ -25,18 +25,18 @@ pub(crate) struct ChannelInitResult {
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn init_channels(
     mut services: GatewayServices,
-    config: &moltis_config::MoltisConfig,
+    config: &chelix_config::ChelixConfig,
     db_pool: sqlx::SqlitePool,
-    #[cfg(feature = "vault")] vault: Option<Arc<moltis_vault::Vault>>,
-    message_log: Arc<dyn moltis_channels::message_log::MessageLog>,
-    session_metadata: Arc<moltis_sessions::metadata::SqliteSessionMetadata>,
+    #[cfg(feature = "vault")] vault: Option<Arc<chelix_vault::Vault>>,
+    message_log: Arc<dyn chelix_channels::message_log::MessageLog>,
+    session_metadata: Arc<chelix_sessions::metadata::SqliteSessionMetadata>,
     deferred_state: Arc<tokio::sync::OnceCell<Arc<crate::state::GatewayState>>>,
     data_dir: &std::path::Path,
 ) -> ChannelInitResult {
     #[cfg(not(feature = "whatsapp"))]
     let _ = data_dir;
 
-    use moltis_channels::{
+    use chelix_channels::{
         registry::{ChannelRegistry, RegistryOutboundRouter},
         store::ChannelStore,
     };
@@ -56,7 +56,7 @@ pub(crate) async fn init_channels(
         crate::channel_store::SqliteChannelStore::new(db_pool.clone()),
     );
 
-    let channel_sink: Arc<dyn moltis_channels::ChannelEventSink> = Arc::new(
+    let channel_sink: Arc<dyn chelix_channels::ChannelEventSink> = Arc::new(
         crate::channel_events::GatewayChannelEventSink::new(Arc::clone(&deferred_state)),
     );
 
@@ -66,7 +66,7 @@ pub(crate) async fn init_channels(
     #[cfg(feature = "telegram")]
     {
         let tg_plugin = Arc::new(tokio::sync::RwLock::new(
-            moltis_telegram::TelegramPlugin::new()
+            chelix_telegram::TelegramPlugin::new()
                 .with_message_log(Arc::clone(&message_log))
                 .with_event_sink(Arc::clone(&channel_sink)),
         ));
@@ -76,11 +76,11 @@ pub(crate) async fn init_channels(
     }
 
     #[cfg(feature = "msteams")]
-    let msteams_webhook_plugin: Arc<tokio::sync::RwLock<moltis_msteams::MsTeamsPlugin>>;
+    let msteams_webhook_plugin: Arc<tokio::sync::RwLock<chelix_msteams::MsTeamsPlugin>>;
     #[cfg(feature = "msteams")]
     {
         let msteams_plugin = Arc::new(tokio::sync::RwLock::new(
-            moltis_msteams::MsTeamsPlugin::new()
+            chelix_msteams::MsTeamsPlugin::new()
                 .with_message_log(Arc::clone(&message_log))
                 .with_event_sink(Arc::clone(&channel_sink)),
         ));
@@ -93,7 +93,7 @@ pub(crate) async fn init_channels(
     #[cfg(feature = "discord")]
     {
         let discord_plugin = Arc::new(tokio::sync::RwLock::new(
-            moltis_discord::DiscordPlugin::new()
+            chelix_discord::DiscordPlugin::new()
                 .with_message_log(Arc::clone(&message_log))
                 .with_event_sink(Arc::clone(&channel_sink)),
         ));
@@ -105,7 +105,7 @@ pub(crate) async fn init_channels(
     #[cfg(feature = "matrix")]
     {
         let matrix_plugin = Arc::new(tokio::sync::RwLock::new(
-            moltis_matrix::MatrixPlugin::new()
+            chelix_matrix::MatrixPlugin::new()
                 .with_message_log(Arc::clone(&message_log))
                 .with_event_sink(Arc::clone(&channel_sink)),
         ));
@@ -117,7 +117,7 @@ pub(crate) async fn init_channels(
     #[cfg(feature = "nostr")]
     {
         let nostr_plugin = Arc::new(tokio::sync::RwLock::new(
-            moltis_nostr::NostrPlugin::new()
+            chelix_nostr::NostrPlugin::new()
                 .with_message_log(Arc::clone(&message_log))
                 .with_event_sink(Arc::clone(&channel_sink)),
         ));
@@ -129,7 +129,7 @@ pub(crate) async fn init_channels(
     #[cfg(feature = "signal")]
     {
         let signal_plugin = Arc::new(tokio::sync::RwLock::new(
-            moltis_signal::SignalPlugin::new()
+            chelix_signal::SignalPlugin::new()
                 .with_message_log(Arc::clone(&message_log))
                 .with_event_sink(Arc::clone(&channel_sink)),
         ));
@@ -145,7 +145,7 @@ pub(crate) async fn init_channels(
             tracing::warn!("failed to create whatsapp data dir: {e}");
         }
         let whatsapp_plugin = Arc::new(tokio::sync::RwLock::new(
-            moltis_whatsapp::WhatsAppPlugin::new(wa_data_dir)
+            chelix_whatsapp::WhatsAppPlugin::new(wa_data_dir)
                 .with_message_log(Arc::clone(&message_log))
                 .with_event_sink(Arc::clone(&channel_sink)),
         ));
@@ -157,11 +157,11 @@ pub(crate) async fn init_channels(
     let _ = &channel_sink; // silence unused warning
 
     #[cfg(feature = "telephony")]
-    let telephony_webhook_plugin: Arc<tokio::sync::RwLock<moltis_telephony::TelephonyPlugin>>;
+    let telephony_webhook_plugin: Arc<tokio::sync::RwLock<chelix_telephony::TelephonyPlugin>>;
     #[cfg(feature = "telephony")]
     {
         let telephony_plugin = Arc::new(tokio::sync::RwLock::new(
-            moltis_telephony::TelephonyPlugin::new()
+            chelix_telephony::TelephonyPlugin::new()
                 .with_message_log(Arc::clone(&message_log))
                 .with_event_sink(Arc::clone(&channel_sink)),
         ));
@@ -172,11 +172,11 @@ pub(crate) async fn init_channels(
     }
 
     #[cfg(feature = "slack")]
-    let slack_webhook_plugin: Arc<tokio::sync::RwLock<moltis_slack::SlackPlugin>>;
+    let slack_webhook_plugin: Arc<tokio::sync::RwLock<chelix_slack::SlackPlugin>>;
     #[cfg(feature = "slack")]
     {
         let slack_plugin = Arc::new(tokio::sync::RwLock::new(
-            moltis_slack::SlackPlugin::new()
+            chelix_slack::SlackPlugin::new()
                 .with_message_log(Arc::clone(&message_log))
                 .with_event_sink(Arc::clone(&channel_sink)),
         ));
@@ -286,10 +286,10 @@ pub(crate) async fn init_channels(
 
     services = services.with_channel_registry(Arc::clone(&registry));
     services = services.with_channel_store(Arc::clone(&channel_store));
-    let outbound_router = Arc::clone(&router) as Arc<dyn moltis_channels::ChannelOutbound>;
+    let outbound_router = Arc::clone(&router) as Arc<dyn chelix_channels::ChannelOutbound>;
     services = services.with_channel_outbound(Arc::clone(&outbound_router));
     services = services
-        .with_channel_stream_outbound(router as Arc<dyn moltis_channels::ChannelStreamOutbound>);
+        .with_channel_stream_outbound(router as Arc<dyn chelix_channels::ChannelStreamOutbound>);
 
     services.channel = Arc::new(crate::channel::LiveChannelService::new(
         registry,

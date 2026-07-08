@@ -13,7 +13,7 @@ import type { IdentityInfo } from "../types";
 export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: (() => void) | null }): VNode {
 	const identityData = (getGon("identity") as IdentityInfo) || {};
 	const [userName, setUserName] = useState(identityData.user_name || "");
-	const [name, setName] = useState(identityData.name || "Moltis");
+	const [name, setName] = useState(identityData.name || "Chelix");
 	const [emoji, setEmoji] = useState(identityData.emoji || "\u{1f916}");
 	const [theme, setTheme] = useState(identityData.theme || "");
 	const [saving, setSaving] = useState(false);
@@ -25,7 +25,7 @@ export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 			if (cancelled) return;
 			const refreshed = (getGon("identity") as IdentityInfo) || {};
 			if (refreshed.user_name) setUserName((prev: string) => prev || refreshed.user_name || "");
-			if (refreshed.name) setName((prev: string) => (prev && prev !== "Moltis" ? prev : refreshed.name || ""));
+			if (refreshed.name) setName((prev: string) => (prev && prev !== "Chelix" ? prev : refreshed.name || ""));
 			if (refreshed.emoji) setEmoji((prev: string) => (prev && prev !== "\u{1f916}" ? prev : refreshed.emoji || ""));
 			if (refreshed.theme) setTheme((prev: string) => prev || refreshed.theme || "");
 		});

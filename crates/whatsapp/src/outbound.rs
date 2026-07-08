@@ -12,11 +12,11 @@ use {
 };
 
 use {
-    moltis_channels::{
+    chelix_channels::{
         Result as ChannelResult,
         plugin::{ChannelOutbound, ChannelStreamOutbound, StreamEvent, StreamReceiver},
     },
-    moltis_common::types::ReplyPayload,
+    chelix_common::types::ReplyPayload,
 };
 
 use crate::state::{AccountStateMap, BOT_WATERMARK};
@@ -25,7 +25,7 @@ use crate::state::{AccountStateMap, BOT_WATERMARK};
 fn resolve_jid(to: &str) -> ChannelResult<Jid> {
     if to.contains('@') {
         to.parse()
-            .map_err(|e| moltis_channels::Error::invalid_input(format!("invalid JID: {e:?}")))
+            .map_err(|e| chelix_channels::Error::invalid_input(format!("invalid JID: {e:?}")))
     } else {
         Ok(Jid::pn(to))
     }
@@ -37,11 +37,11 @@ fn resolve_jid(to: &str) -> ChannelResult<Jid> {
 fn decode_data_url(url: &str) -> ChannelResult<Vec<u8>> {
     let comma_pos = url
         .find(',')
-        .ok_or_else(|| moltis_channels::Error::invalid_input("invalid data URI: no comma"))?;
+        .ok_or_else(|| chelix_channels::Error::invalid_input("invalid data URI: no comma"))?;
     let base64_data = &url[comma_pos + 1..];
     base64::engine::general_purpose::STANDARD
         .decode(base64_data)
-        .map_err(|e| moltis_channels::Error::invalid_input(format!("base64 decode: {e}")))
+        .map_err(|e| chelix_channels::Error::invalid_input(format!("base64 decode: {e}")))
 }
 
 /// Map a MIME type to the WhatsApp `MediaType` used for encryption/upload.
@@ -139,7 +139,7 @@ impl WhatsAppOutbound {
         accounts
             .get(account_id)
             .map(|s| std::sync::Arc::clone(&s.client))
-            .ok_or_else(|| moltis_channels::Error::unknown_account(account_id))
+            .ok_or_else(|| chelix_channels::Error::unknown_account(account_id))
     }
 
     /// Record a sent message ID for self-chat loop detection.
@@ -179,13 +179,13 @@ impl ChannelOutbound for WhatsAppOutbound {
         let msg_id = client
             .send_message(jid, msg)
             .await
-            .map_err(|e| moltis_channels::Error::unavailable(format!("whatsapp send_text: {e}")))?;
+            .map_err(|e| chelix_channels::Error::unavailable(format!("whatsapp send_text: {e}")))?;
         self.record_sent_id(account_id, &msg_id);
 
         #[cfg(feature = "metrics")]
-        moltis_metrics::counter!(
-            moltis_metrics::channels::MESSAGES_SENT_TOTAL,
-            moltis_metrics::labels::CHANNEL => "whatsapp"
+        chelix_metrics::counter!(
+            chelix_metrics::channels::MESSAGES_SENT_TOTAL,
+            chelix_metrics::labels::CHANNEL => "whatsapp"
         )
         .increment(1);
 
@@ -237,20 +237,20 @@ impl ChannelOutbound for WhatsAppOutbound {
         let jid = resolve_jid(to)?;
 
         let upload = client.upload(bytes, media_type).await.map_err(|e| {
-            moltis_channels::Error::unavailable(format!("whatsapp media upload: {e}"))
+            chelix_channels::Error::unavailable(format!("whatsapp media upload: {e}"))
         })?;
 
         let msg = build_media_message(&media.mime_type, caption, &upload);
 
         let msg_id = client.send_message(jid, msg).await.map_err(|e| {
-            moltis_channels::Error::unavailable(format!("whatsapp send_media: {e}"))
+            chelix_channels::Error::unavailable(format!("whatsapp send_media: {e}"))
         })?;
         self.record_sent_id(account_id, &msg_id);
 
         #[cfg(feature = "metrics")]
-        moltis_metrics::counter!(
-            moltis_metrics::channels::MESSAGES_SENT_TOTAL,
-            moltis_metrics::labels::CHANNEL => "whatsapp"
+        chelix_metrics::counter!(
+            chelix_metrics::channels::MESSAGES_SENT_TOTAL,
+            chelix_metrics::labels::CHANNEL => "whatsapp"
         )
         .increment(1);
 
@@ -265,7 +265,7 @@ impl ChannelOutbound for WhatsAppOutbound {
             .chatstate()
             .send(&jid, ChatStateType::Composing)
             .await
-            .map_err(|e| moltis_channels::Error::unavailable(format!("whatsapp chatstate: {e}")))?;
+            .map_err(|e| chelix_channels::Error::unavailable(format!("whatsapp chatstate: {e}")))?;
         Ok(())
     }
 }

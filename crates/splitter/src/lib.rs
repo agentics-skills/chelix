@@ -1,4 +1,4 @@
-//! Text and code splitting for moltis.
+//! Text and code splitting for chelix.
 //!
 //! Provides [`Chunk`] for split results and [`chunk_content`] as the primary entry point.
 //! When the `code-splitter-base` feature is enabled and a tree-sitter grammar is available

@@ -29,7 +29,7 @@ The Skills page exposes these bundle flows directly:
 
 ## Provenance Pinning
 
-Moltis records a pinned `commit_sha` for installed repos:
+Chelix records a pinned `commit_sha` for installed repos:
 
 - via `git rev-parse HEAD` after clone
 - via GitHub commits API for tarball fallback installs
@@ -70,7 +70,7 @@ plugins immediately.
 
 Security-sensitive skill/plugin actions are appended to:
 
-`~/.moltis/logs/security-audit.jsonl`
+`~/.chelix/logs/security-audit.jsonl`
 
 Logged events include installs, removals, trust changes, enable/disable,
 dependency install attempts, and source drift detection.

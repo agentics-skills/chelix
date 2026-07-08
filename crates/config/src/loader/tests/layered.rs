@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 use secrecy::ExposeSecret;
 
-use crate::{AgentIdentity, schema::MoltisConfig};
+use crate::{AgentIdentity, schema::ChelixConfig};
 
 use super::*;
 
@@ -13,7 +13,7 @@ use super::*;
 #[test]
 fn gh770_env_section_vars_resolve_in_config_placeholders() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("moltis.toml");
+    let path = dir.path().join("chelix.toml");
     let expected = "sk-test-from-env-section";
     std::fs::write(
         &path,
@@ -55,8 +55,8 @@ fn gh770_process_env_takes_precedence_over_env_section() {
     // chains std::env::var → overrides.  We verify the same chain
     // through substitute_env_with using a controlled mock.
     let result = crate::env_subst::substitute_env_with_overrides(
-        "${MOLTIS_GH770_PRECEDENCE_TEST}",
-        &HashMap::from([("MOLTIS_GH770_PRECEDENCE_TEST".into(), "from-map".into())]),
+        "${CHELIX_GH770_PRECEDENCE_TEST}",
+        &HashMap::from([("CHELIX_GH770_PRECEDENCE_TEST".into(), "from-map".into())]),
     );
     // The var is not in the process env, so the map value is used.
     assert_eq!(result, "from-map");
@@ -70,9 +70,9 @@ fn gh770_process_env_takes_precedence_over_env_section() {
 #[test]
 fn gh770_resubstitute_config_resolves_db_env_vars() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("moltis.toml");
+    let path = dir.path().join("chelix.toml");
     // Use a var name that definitely does not exist in the process env.
-    let var = "MOLTIS_GH770_ONLY_IN_DB_42";
+    let var = "CHELIX_GH770_ONLY_IN_DB_42";
     let expected_after = "sk-or-from-db";
     std::fs::write(
         &path,
@@ -125,8 +125,8 @@ model = "sonar"
 #[test]
 fn gh770_resubstitute_preserves_resolved_values() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("moltis.toml");
-    let var = "MOLTIS_GH770_UNRESOLVABLE_43";
+    let path = dir.path().join("chelix.toml");
+    let var = "CHELIX_GH770_UNRESOLVABLE_43";
     let expected = "resolved-later";
     std::fs::write(
         &path,
@@ -175,8 +175,8 @@ model = "sonar"
 #[test]
 fn gh770_resubstitute_handles_special_chars_in_values() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("moltis.toml");
-    let var = "MOLTIS_GH770_SPECIAL_CHARS";
+    let path = dir.path().join("chelix.toml");
+    let var = "CHELIX_GH770_SPECIAL_CHARS";
     std::fs::write(
         &path,
         format!(
@@ -218,11 +218,11 @@ model = "sonar"
 fn defaults_toml_is_generated_and_parseable() {
     let content = crate::defaults::generate_defaults_toml().expect("generate defaults");
     assert!(
-        content.contains("MOLTIS-MANAGED DEFAULTS"),
+        content.contains("CHELIX-MANAGED DEFAULTS"),
         "defaults.toml should contain ownership header"
     );
-    let config: MoltisConfig =
-        toml::from_str(&content).expect("defaults.toml should parse as valid MoltisConfig");
+    let config: ChelixConfig =
+        toml::from_str(&content).expect("defaults.toml should parse as valid ChelixConfig");
     // Verify it matches the built-in defaults.
     assert_eq!(config.tools.agent_timeout_secs, 600);
     assert_eq!(config.tools.agent_max_iterations, 25);
@@ -280,13 +280,13 @@ name = "Rex"
 #[test]
 fn save_user_config_does_not_materialize_defaults() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("moltis.toml");
+    let path = dir.path().join("chelix.toml");
 
     // Start with a minimal user config.
     std::fs::write(&path, "[server]\nport = 12345\n").expect("write seed");
 
     let raw = std::fs::read_to_string(&path).expect("read seed");
-    let mut config: MoltisConfig = parse_config(&raw, &path).expect("parse");
+    let mut config: ChelixConfig = parse_config(&raw, &path).expect("parse");
     // Make one change.
     config.auth.disabled = true;
 
@@ -318,7 +318,7 @@ fn save_user_config_does_not_materialize_defaults() {
 fn update_config_preserves_override_boundary() {
     let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
-    let config_path = dir.path().join("moltis.toml");
+    let config_path = dir.path().join("chelix.toml");
 
     // Seed a minimal user config.
     std::fs::write(
@@ -355,7 +355,7 @@ fn update_config_preserves_override_boundary() {
 fn layered_load_user_override_wins_over_defaults() {
     let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
-    let config_path = dir.path().join("moltis.toml");
+    let config_path = dir.path().join("chelix.toml");
 
     // Write defaults.toml first.
     crate::defaults::write_defaults_toml(dir.path()).expect("write defaults");
@@ -385,7 +385,7 @@ fn upgrade_adds_new_defaults_automatically() {
     // Simulate: defaults.toml has new settings that weren't in the old version.
     // User config only has port. After layered load, new defaults should appear.
     let dir = tempfile::tempdir().expect("tempdir");
-    let config_path = dir.path().join("moltis.toml");
+    let config_path = dir.path().join("chelix.toml");
 
     // Write a minimal user config (no tools section).
     std::fs::write(&config_path, "[server]\nport = 22222\n").expect("write user config");
@@ -408,7 +408,7 @@ fn upgrade_adds_new_defaults_automatically() {
 fn user_override_survives_defaults_refresh() {
     let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
-    let config_path = dir.path().join("moltis.toml");
+    let config_path = dir.path().join("chelix.toml");
 
     // User overrides timeout.
     std::fs::write(
@@ -436,16 +436,16 @@ fn user_override_survives_defaults_refresh() {
     clear_config_dir();
 }
 
-/// Upgrade scenario: existing user has defaults spelled out in moltis.toml
+/// Upgrade scenario: existing user has defaults spelled out in chelix.toml
 /// (from the old template). An unrelated config write must NOT strip those
 /// values — they are intentional freezes from the prior version.
 #[test]
 fn upgrade_existing_config_preserves_explicit_defaults() {
     let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
-    let config_path = dir.path().join("moltis.toml");
+    let config_path = dir.path().join("chelix.toml");
 
-    // Simulate an old-style moltis.toml with many active defaults.
+    // Simulate an old-style chelix.toml with many active defaults.
     std::fs::write(
         &config_path,
         r#"[server]
@@ -500,7 +500,7 @@ disabled = false
 fn initialize_config_preserves_explicit_default_coqui_endpoint() {
     let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
-    let config_path = dir.path().join("moltis.toml");
+    let config_path = dir.path().join("chelix.toml");
 
     std::fs::write(
         &config_path,
@@ -535,7 +535,7 @@ endpoint = "http://localhost:5002"
 fn initialize_config_port_persistence_preserves_explicit_default_coqui_endpoint() {
     let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
-    let config_path = dir.path().join("moltis.toml");
+    let config_path = dir.path().join("chelix.toml");
 
     std::fs::write(
         &config_path,
@@ -627,7 +627,7 @@ agent_timeout_secs = 600
 fn revert_preset_removes_from_user_config() {
     let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
-    let config_path = dir.path().join("moltis.toml");
+    let config_path = dir.path().join("chelix.toml");
 
     // User config with a custom preset.
     std::fs::write(
@@ -667,7 +667,7 @@ delegate_only = true
 
 #[test]
 fn preset_provenance_custom_preset() {
-    let mut config = MoltisConfig::default();
+    let mut config = ChelixConfig::default();
     config
         .agents
         .presets

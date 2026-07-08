@@ -1,17 +1,17 @@
 [package]
 edition.workspace    = true
-name                 = "moltis-providers"
+name                 = "chelix-providers"
 repository.workspace = true
 version.workspace    = true
 
 [features]
 default                 = ["metrics", "provider-async-openai", "provider-genai"]
-metrics                 = ["dep:moltis-metrics"]
+metrics                 = ["dep:chelix-metrics"]
 provider-async-openai   = ["dep:async-openai"]
 provider-genai          = ["dep:genai"]
-provider-github-copilot = ["dep:moltis-oauth"]
-provider-kimi-code      = ["dep:moltis-oauth"]
-provider-openai-codex   = ["dep:base64", "dep:moltis-oauth"]
+provider-github-copilot = ["dep:chelix-oauth"]
+provider-kimi-code      = ["dep:chelix-oauth"]
+provider-openai-codex   = ["dep:base64", "dep:chelix-oauth"]
 
 [dependencies]
 anyhow            = { workspace = true }
@@ -20,9 +20,9 @@ async-trait       = { workspace = true }
 futures           = { workspace = true }
 http              = { workspace = true }
 json_schema_ast   = { workspace = true }
-moltis-agents     = { path = "../agents" }
-moltis-common     = { workspace = true }
-moltis-config     = { workspace = true }
+chelix-agents     = { path = "../agents" }
+chelix-common     = { workspace = true }
+chelix-config     = { workspace = true }
 reqwest           = { workspace = true }
 schemars          = { workspace = true }
 secrecy           = { workspace = true }
@@ -38,8 +38,8 @@ tracing           = { workspace = true }
 async-openai   = { optional = true, workspace = true }
 base64         = { optional = true, workspace = true }
 genai          = { optional = true, workspace = true }
-moltis-metrics = { optional = true, workspace = true }
-moltis-oauth   = { optional = true, workspace = true }
+chelix-metrics = { optional = true, workspace = true }
+chelix-oauth   = { optional = true, workspace = true }
 
 [dev-dependencies]
 axum     = { workspace = true }

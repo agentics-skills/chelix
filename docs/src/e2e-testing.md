@@ -1,6 +1,6 @@
 # End-to-End Testing
 
-This project uses Playwright to run browser-level tests against a real `moltis` gateway process.
+This project uses Playwright to run browser-level tests against a real `chelix` gateway process.
 
 The goal is simple: catch web UI regressions before they ship.
 
@@ -26,11 +26,11 @@ The e2e harness lives in `crates/web/ui`:
 
 1. Creates isolated runtime directories under `target/e2e-runtime`.
 2. Seeds `IDENTITY.md` and `USER.md` so onboarding does not block tests.
-3. Exports `MOLTIS_CONFIG_DIR`, `MOLTIS_DATA_DIR`, and test port env.
+3. Exports `CHELIX_CONFIG_DIR`, `CHELIX_DATA_DIR`, and test port env.
 4. Starts the gateway with:
 
 ```bash
-cargo run --bin moltis -- --no-tls --bind 127.0.0.1 --port <PORT>
+cargo run --bin chelix -- --no-tls --bind 127.0.0.1 --port <PORT>
 ```
 
 `--no-tls` is intentional here so Playwright can probe `http://.../health` during readiness checks.
@@ -93,5 +93,5 @@ Playwright project:
 
 ```bash
 cd crates/web/ui
-MOLTIS_E2E_OLLAMA_QWEN_LIVE=1 npx playwright test --project=ollama-qwen-live e2e/specs/ollama-qwen-live.spec.js
+CHELIX_E2E_OLLAMA_QWEN_LIVE=1 npx playwright test --project=ollama-qwen-live e2e/specs/ollama-qwen-live.spec.js
 ```

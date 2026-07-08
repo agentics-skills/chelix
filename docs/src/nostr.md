@@ -1,6 +1,6 @@
 # Nostr
 
-Moltis can receive and send encrypted direct messages over
+Chelix can receive and send encrypted direct messages over
 [Nostr](https://nostr.com), the decentralized social protocol. The integration
 uses [NIP-04](https://github.com/nostr-protocol/nips/blob/master/04.md)
 encrypted DMs (kind:4) and connects to relays via `nostr-sdk` — no public URL
@@ -16,7 +16,7 @@ or server infrastructure is required.
                    │  WebSocket subscription (kind:4)
                    ▼
 ┌──────────────────────────────────────────────────────┐
-│                moltis-nostr crate                     │
+│                chelix-nostr crate                     │
 │  ┌────────────┐  ┌────────────┐  ┌────────────────┐  │
 │  │    Bus     │  │  Outbound  │  │     Plugin     │  │
 │  │ (inbound)  │  │ (replies)  │  │  (lifecycle)   │  │
@@ -25,7 +25,7 @@ or server infrastructure is required.
                    │
                    ▼
 ┌──────────────────────────────────────────────────────┐
-│                 Moltis Gateway                        │
+│                 Chelix Gateway                        │
 │         (chat dispatch, tools, memory)                │
 └──────────────────────────────────────────────────────┘
 ```
@@ -36,7 +36,7 @@ between the sender and the bot using NIP-04.
 
 ## Prerequisites
 
-Before configuring Moltis, you need a Nostr secret key:
+Before configuring Chelix, you need a Nostr secret key:
 
 1. Generate a new key pair using any Nostr client (e.g.
    [Damus](https://damus.io), [Amethyst](https://github.com/vitorpamplona/amethyst),
@@ -48,14 +48,14 @@ Before configuring Moltis, you need a Nostr secret key:
 
 ```admonish warning
 The secret key is highly sensitive — it controls the bot's Nostr identity.
-Never commit it to version control. Moltis stores it with `secrecy::Secret` and
-redacts it from logs, but your `moltis.toml` file is plain text on disk.
+Never commit it to version control. Chelix stores it with `secrecy::Secret` and
+redacts it from logs, but your `chelix.toml` file is plain text on disk.
 Consider using [Vault](vault.md) for encryption at rest.
 ```
 
 ## Configuration
 
-Add a `[channels.nostr.<account-id>]` section to your `moltis.toml`:
+Add a `[channels.nostr.<account-id>]` section to your `chelix.toml`:
 
 ```toml
 [channels.nostr.my-bot]
@@ -111,7 +111,7 @@ otp_self_approval = true
 otp_cooldown_secs = 300
 
 [channels.nostr.my-bot.profile]
-name = "Moltis Bot"
+name = "Chelix Bot"
 about = "AI assistant on Nostr"
 nip05 = "bot@example.com"
 ```

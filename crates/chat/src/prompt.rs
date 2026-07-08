@@ -5,16 +5,16 @@ use std::sync::Arc;
 use {serde_json::Value, tracing::warn};
 
 use {
-    moltis_agents::{
+    chelix_agents::{
         prompt::{
             PromptBuildLimits, PromptHostRuntimeContext, PromptModeRuntimeContext, PromptNodeInfo,
             PromptNodesRuntimeContext, PromptRuntimeContext, PromptSandboxRuntimeContext,
         },
         tool_registry::ToolSource,
     },
-    moltis_config::{AgentMemoryWriteMode, LoadedWorkspaceMarkdown, MemoryStyle, PromptMemoryMode},
-    moltis_sessions::{metadata::SessionEntry, state_store::SessionStateStore},
-    moltis_tools::policy::{PolicyContext, resolve_effective_policy},
+    chelix_config::{AgentMemoryWriteMode, LoadedWorkspaceMarkdown, MemoryStyle, PromptMemoryMode},
+    chelix_sessions::{metadata::SessionEntry, state_store::SessionStateStore},
+    chelix_tools::policy::{PolicyContext, resolve_effective_policy},
 };
 
 use crate::{
@@ -89,7 +89,7 @@ pub(crate) fn resolve_prompt_agent_id(session_entry: Option<&SessionEntry>) -> S
     else {
         return "main".to_string();
     };
-    if moltis_config::agent_workspace_dir(agent_id).exists() {
+    if chelix_config::agent_workspace_dir(agent_id).exists() {
         return agent_id.to_string();
     }
     warn!(
@@ -101,7 +101,7 @@ pub(crate) fn resolve_prompt_agent_id(session_entry: Option<&SessionEntry>) -> S
 }
 
 pub(crate) fn resolve_prompt_mode_context(
-    config: &moltis_config::MoltisConfig,
+    config: &chelix_config::ChelixConfig,
     session_entry: Option<&SessionEntry>,
 ) -> Option<PromptModeRuntimeContext> {
     let mode_id = session_entry?
@@ -123,22 +123,22 @@ pub(crate) fn resolve_prompt_mode_context(
 
 /// Load identity, user profile, soul, and workspace text for one agent.
 pub(crate) fn load_prompt_persona_base_for_agent(agent_id: &str) -> PromptPersona {
-    let config = moltis_config::discover_and_load();
+    let config = chelix_config::discover_and_load();
     let prompt_memory_mode = config.chat.prompt_memory_mode;
     let agent_write_mode = config.memory.agent_write_mode;
     let memory_style = config.memory.style;
     let identity =
-        moltis_config::load_identity_for_agent(agent_id).unwrap_or_else(|| config.identity.clone());
-    let user = moltis_config::resolve_user_profile_from_config(&config);
+        chelix_config::load_identity_for_agent(agent_id).unwrap_or_else(|| config.identity.clone());
+    let user = chelix_config::resolve_user_profile_from_config(&config);
     PromptPersona {
         config,
         identity,
         user,
-        soul_text: moltis_config::load_soul_for_agent(agent_id),
-        boot_text: moltis_config::load_boot_md_for_agent(agent_id),
-        agents_text: moltis_config::load_agents_md_for_agent(agent_id),
-        tools_text: moltis_config::load_tools_md_for_agent(agent_id),
-        guidelines_text: moltis_config::load_guidelines_md_for_agent(agent_id),
+        soul_text: chelix_config::load_soul_for_agent(agent_id),
+        boot_text: chelix_config::load_boot_md_for_agent(agent_id),
+        agents_text: chelix_config::load_agents_md_for_agent(agent_id),
+        tools_text: chelix_config::load_tools_md_for_agent(agent_id),
+        guidelines_text: chelix_config::load_guidelines_md_for_agent(agent_id),
         memory_text: None,
         memory_status: prompt_memory_status(
             memory_style,
@@ -156,7 +156,7 @@ pub(crate) fn load_prompt_persona_for_agent(agent_id: &str) -> PromptPersona {
     let mode = persona.config.chat.prompt_memory_mode;
     let write_mode = persona.config.memory.agent_write_mode;
     let memory = if memory_style_allows_prompt(style) {
-        moltis_config::load_memory_md_for_agent_with_source(agent_id)
+        chelix_config::load_memory_md_for_agent_with_source(agent_id)
     } else {
         None
     };
@@ -171,7 +171,7 @@ pub(crate) async fn load_prompt_memory_for_session(
     mode: PromptMemoryMode,
     state_store: Option<&SessionStateStore>,
 ) -> (Option<LoadedWorkspaceMarkdown>, bool) {
-    let live_memory = || moltis_config::load_memory_md_for_agent_with_source(agent_id);
+    let live_memory = || chelix_config::load_memory_md_for_agent_with_source(agent_id);
 
     if !matches!(mode, PromptMemoryMode::FrozenAtSessionStart) {
         return (live_memory(), false);
@@ -252,7 +252,7 @@ pub(crate) async fn load_prompt_persona_for_session(
 }
 
 pub(crate) fn prompt_build_limits_from_config(
-    config: &moltis_config::MoltisConfig,
+    config: &chelix_config::ChelixConfig,
 ) -> PromptBuildLimits {
     PromptBuildLimits {
         workspace_file_max_chars: config.chat.workspace_file_max_chars,
@@ -266,20 +266,20 @@ pub(crate) fn prompt_build_limits_from_config(
 /// unconditionally feed the result into prompt building / tool filtering without
 /// injecting skills into the LLM context when the operator has disabled them.
 pub(crate) async fn discover_skills_if_enabled(
-    config: &moltis_config::MoltisConfig,
-) -> Vec<moltis_skills::types::SkillMetadata> {
+    config: &chelix_config::ChelixConfig,
+) -> Vec<chelix_skills::types::SkillMetadata> {
     if !config.skills.enabled {
         return Vec::new();
     }
-    let fs_discoverer = moltis_skills::discover::FsSkillDiscoverer::new(
-        moltis_skills::discover::FsSkillDiscoverer::default_paths(),
+    let fs_discoverer = chelix_skills::discover::FsSkillDiscoverer::new(
+        chelix_skills::discover::FsSkillDiscoverer::default_paths(),
     );
 
     #[cfg(feature = "bundled-skills")]
     let skills = {
-        use moltis_skills::discover::SkillDiscoverer;
-        let bundled = Arc::new(moltis_skills::bundled::BundledSkillStore::new());
-        let composite = moltis_skills::discover::CompositeSkillDiscoverer::new(
+        use chelix_skills::discover::SkillDiscoverer;
+        let bundled = Arc::new(chelix_skills::bundled::BundledSkillStore::new());
+        let composite = chelix_skills::discover::CompositeSkillDiscoverer::new(
             Box::new(fs_discoverer),
             bundled,
         );
@@ -287,7 +287,7 @@ pub(crate) async fn discover_skills_if_enabled(
     };
     #[cfg(not(feature = "bundled-skills"))]
     let skills = {
-        use moltis_skills::discover::SkillDiscoverer;
+        use chelix_skills::discover::SkillDiscoverer;
         fs_discoverer.discover().await
     };
 
@@ -300,7 +300,7 @@ pub(crate) async fn discover_skills_if_enabled(
             .into_iter()
             .filter(|s| {
                 // Only filter bundled skills; non-bundled skills pass through.
-                if s.source != Some(moltis_skills::types::SkillSource::Bundled) {
+                if s.source != Some(chelix_skills::types::SkillSource::Bundled) {
                     return true;
                 }
                 config
@@ -320,9 +320,9 @@ pub(crate) async fn discover_skills_if_enabled(
 /// When the agent preset has a `skills.allow` list, only skills matching
 /// by name or category are kept. Skills in `skills.deny` are then removed.
 pub(crate) fn filter_skills_for_agent(
-    skills: Vec<moltis_skills::types::SkillMetadata>,
-    policy: &moltis_config::schema::PresetSkillPolicy,
-) -> Vec<moltis_skills::types::SkillMetadata> {
+    skills: Vec<chelix_skills::types::SkillMetadata>,
+    policy: &chelix_config::schema::PresetSkillPolicy,
+) -> Vec<chelix_skills::types::SkillMetadata> {
     if policy.is_empty() {
         return skills;
     }
@@ -354,8 +354,8 @@ pub(crate) fn filter_skills_for_agent(
 pub(crate) fn resolve_channel_runtime_context(
     session_key: &str,
     session_entry: Option<&SessionEntry>,
-) -> moltis_common::hooks::ChannelBinding {
-    match moltis_channels::resolve_session_channel_binding(
+) -> chelix_common::hooks::ChannelBinding {
+    match chelix_channels::resolve_session_channel_binding(
         session_key,
         session_entry.and_then(|entry| entry.channel_binding.as_deref()),
     ) {
@@ -366,16 +366,16 @@ pub(crate) fn resolve_channel_runtime_context(
                 session = %session_key,
                 "failed to parse channel_binding JSON; falling back to web"
             );
-            moltis_channels::web_session_channel_binding()
+            chelix_channels::web_session_channel_binding()
         },
     }
 }
 
 pub(crate) fn channel_binding_from_runtime_context(
     runtime_context: Option<&PromptRuntimeContext>,
-) -> Option<moltis_common::hooks::ChannelBinding> {
+) -> Option<chelix_common::hooks::ChannelBinding> {
     let host = &runtime_context?.host;
-    let binding = moltis_common::hooks::ChannelBinding {
+    let binding = chelix_common::hooks::ChannelBinding {
         surface: host.surface.clone(),
         session_kind: host.session_kind.clone(),
         channel_type: host.channel_type.clone(),
@@ -412,15 +412,15 @@ pub(crate) fn build_tool_context(
 
 pub(crate) async fn build_prompt_runtime_context(
     state: &Arc<dyn ChatRuntime>,
-    config: &moltis_config::MoltisConfig,
-    provider: &Arc<dyn moltis_agents::model::LlmProvider>,
+    config: &chelix_config::ChelixConfig,
+    provider: &Arc<dyn chelix_agents::model::LlmProvider>,
     session_key: &str,
     session_entry: Option<&SessionEntry>,
 ) -> PromptRuntimeContext {
-    let data_dir = moltis_config::data_dir();
+    let data_dir = chelix_config::data_dir();
     let data_dir_display = data_dir.display().to_string();
     let docs_reference =
-        moltis_agents::docs::cached_moltis_docs_reference(&data_dir, config.server.port);
+        chelix_agents::docs::cached_chelix_docs_reference(&data_dir, config.server.port);
 
     let sudo_fut = detect_host_sudo_access();
     let sandbox_fut = async {
@@ -563,12 +563,12 @@ pub(crate) fn apply_request_runtime_context(host: &mut PromptHostRuntimeContext,
 }
 
 pub(crate) fn apply_runtime_tool_filters(
-    base: &moltis_agents::tool_registry::ToolRegistry,
-    config: &moltis_config::MoltisConfig,
-    _skills: &[moltis_skills::types::SkillMetadata],
+    base: &chelix_agents::tool_registry::ToolRegistry,
+    config: &chelix_config::ChelixConfig,
+    _skills: &[chelix_skills::types::SkillMetadata],
     mcp_disabled: bool,
     policy_context: &PolicyContext,
-) -> moltis_agents::tool_registry::ToolRegistry {
+) -> chelix_agents::tool_registry::ToolRegistry {
     let base_registry = if mcp_disabled {
         base.clone_without_mcp()
     } else {
@@ -581,11 +581,11 @@ pub(crate) fn apply_runtime_tool_filters(
     // tools from listed servers pass through. This is handled here (not
     // in the policy deny layer) because ToolPolicy's deny-wins-over-allow
     // semantics can't express "deny all MCP except these servers".
-    let mcp_allow: Option<&[moltis_config::schema::McpServerId]> = config
+    let mcp_allow: Option<&[chelix_config::schema::McpServerId]> = config
         .agents
         .get_preset(&policy_context.agent_id)
         .and_then(|p| match &p.mcp {
-            moltis_config::schema::PresetMcpPolicy::Allow(servers) => Some(servers.as_slice()),
+            chelix_config::schema::PresetMcpPolicy::Allow(servers) => Some(servers.as_slice()),
             _ => None,
         });
 
@@ -636,7 +636,7 @@ mod tests {
     struct DummyTool(&'static str);
 
     #[async_trait::async_trait]
-    impl moltis_agents::tool_registry::AgentTool for DummyTool {
+    impl chelix_agents::tool_registry::AgentTool for DummyTool {
         fn name(&self) -> &str {
             self.0
         }
@@ -654,8 +654,8 @@ mod tests {
         }
     }
 
-    fn registry_with_mcp_tools() -> moltis_agents::tool_registry::ToolRegistry {
-        let mut registry = moltis_agents::tool_registry::ToolRegistry::new();
+    fn registry_with_mcp_tools() -> chelix_agents::tool_registry::ToolRegistry {
+        let mut registry = chelix_agents::tool_registry::ToolRegistry::new();
         registry.register(Box::new(DummyTool("execute_command")));
         registry.register(Box::new(DummyTool("mcp__github__builtin_named_like_mcp")));
         registry.register_mcp(Box::new(DummyTool("mcp__github__search")), "github".into());
@@ -672,13 +672,13 @@ mod tests {
 
     #[test]
     fn mcp_allow_empty_denies_all_mcp_tools_only() {
-        let mut config = moltis_config::MoltisConfig::default();
+        let mut config = chelix_config::ChelixConfig::default();
         config.tools.policy.allow = vec!["*".into()];
         config
             .agents
             .presets
-            .insert("locked".into(), moltis_config::schema::AgentPreset {
-                mcp: moltis_config::schema::PresetMcpPolicy::Allow(vec![]),
+            .insert("locked".into(), chelix_config::schema::AgentPreset {
+                mcp: chelix_config::schema::PresetMcpPolicy::Allow(vec![]),
                 ..Default::default()
             });
 
@@ -702,13 +702,13 @@ mod tests {
 
     #[test]
     fn mcp_allow_keeps_only_listed_mcp_server() {
-        let mut config = moltis_config::MoltisConfig::default();
+        let mut config = chelix_config::ChelixConfig::default();
         config.tools.policy.allow = vec!["*".into()];
         config
             .agents
             .presets
-            .insert("github-only".into(), moltis_config::schema::AgentPreset {
-                mcp: moltis_config::schema::PresetMcpPolicy::Allow(vec!["github".into()]),
+            .insert("github-only".into(), chelix_config::schema::AgentPreset {
+                mcp: chelix_config::schema::PresetMcpPolicy::Allow(vec!["github".into()]),
                 ..Default::default()
             });
 
@@ -728,23 +728,23 @@ mod tests {
     #[test]
     fn skill_policy_allows_then_denies_by_name_or_category() {
         let skills = vec![
-            moltis_skills::types::SkillMetadata {
+            chelix_skills::types::SkillMetadata {
                 name: "web-search".into(),
                 category: Some("research".into()),
                 ..Default::default()
             },
-            moltis_skills::types::SkillMetadata {
+            chelix_skills::types::SkillMetadata {
                 name: "games".into(),
                 category: Some("gaming".into()),
                 ..Default::default()
             },
-            moltis_skills::types::SkillMetadata {
+            chelix_skills::types::SkillMetadata {
                 name: "writer".into(),
                 category: Some("creative".into()),
                 ..Default::default()
             },
         ];
-        let policy = moltis_config::schema::PresetSkillPolicy {
+        let policy = chelix_config::schema::PresetSkillPolicy {
             allow: Some(vec!["research".into(), "writer".into()]),
             deny: Some(vec!["writer".into()]),
         };

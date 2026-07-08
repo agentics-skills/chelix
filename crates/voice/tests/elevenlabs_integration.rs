@@ -4,7 +4,7 @@
 //! the environment. They are `#[ignore]`d by default so `cargo test` skips them.
 //!
 //! Run with:
-//!   cargo test -p moltis-voice --test elevenlabs_integration -- --ignored
+//!   cargo test -p chelix-voice --test elevenlabs_integration -- --ignored
 //!
 //! Covers regressions for:
 //! - #735: custom ElevenLabs voices don't work
@@ -12,7 +12,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use {
-    moltis_voice::tts::{AudioFormat, ElevenLabsTts, SynthesizeRequest, TtsProvider},
+    chelix_voice::tts::{AudioFormat, ElevenLabsTts, SynthesizeRequest, TtsProvider},
     secrecy::Secret,
 };
 

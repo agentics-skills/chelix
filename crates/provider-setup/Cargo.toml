@@ -1,17 +1,17 @@
 [package]
 edition.workspace    = true
-name                 = "moltis-provider-setup"
+name                 = "chelix-provider-setup"
 repository.workspace = true
 version.workspace    = true
 
 [dependencies]
 async-trait           = { workspace = true }
-moltis-agents         = { workspace = true }
-moltis-config         = { workspace = true }
-moltis-oauth          = { workspace = true }
-moltis-providers      = { workspace = true }
-moltis-service-traits = { workspace = true }
-moltis-vault          = { optional = true, workspace = true }
+chelix-agents         = { workspace = true }
+chelix-config         = { workspace = true }
+chelix-oauth          = { workspace = true }
+chelix-providers      = { workspace = true }
+chelix-service-traits = { workspace = true }
+chelix-vault          = { optional = true, workspace = true }
 reqwest               = { workspace = true }
 secrecy               = { workspace = true }
 serde                 = { workspace = true }
@@ -22,7 +22,7 @@ tracing               = { workspace = true }
 url                   = { workspace = true }
 
 [features]
-vault = ["dep:moltis-vault"]
+vault = ["dep:chelix-vault"]
 
 [dev-dependencies]
 axum     = { workspace = true }

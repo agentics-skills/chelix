@@ -2,11 +2,11 @@
 //
 // With Vite bundling, individual modules are no longer served. The real
 // code-highlight module lives inside the bundle but is exposed on
-// window.__moltis_modules["code-highlight"] from main.tsx.
+// window.__chelix_modules["code-highlight"] from main.tsx.
 //
 // This shim re-exports everything the e2e tests need.
 
-const M = window.__moltis_modules?.["code-highlight"] || {};
+const M = window.__chelix_modules?.["code-highlight"] || {};
 
 export default M;
 

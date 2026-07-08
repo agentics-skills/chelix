@@ -29,7 +29,7 @@ impl FileStore {
 
     /// Create a store using the default `<data_dir>/cron/` layout.
     pub fn default_path() -> Result<Self> {
-        let base = moltis_config::data_dir().join("cron");
+        let base = chelix_config::data_dir().join("cron");
         Ok(Self::new(base.join("jobs.json"), base.join("runs")))
     }
 

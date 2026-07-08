@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 use tracing::{info, warn};
 
-use moltis_common::hooks::{ChannelBinding, HookAction, HookPayload, HookRegistry};
+use chelix_common::hooks::{ChannelBinding, HookAction, HookPayload, HookRegistry};
 
 use crate::{
     model::{
@@ -218,7 +218,7 @@ pub(crate) fn sanitize_tool_name(name: &str) -> Cow<'_, str> {
 /// The runner enriches each tool call's arguments with an internal execution
 /// context (session key, channel binding, connection id, accept-language)
 /// before dispatch. Those keys are all `_`-prefixed by convention (mirroring
-/// the MCP bridge contract in `moltis-mcp`'s `tool_bridge`) and are meant only
+/// the MCP bridge contract in `chelix-mcp`'s `tool_bridge`) and are meant only
 /// for tool implementations, never for humans. Emitting them in
 /// `RunnerEvent::ToolCallStart` leaks browser/session metadata into the UI
 /// tool-call bubble title, so strip every `_`-prefixed key here.

@@ -9,7 +9,7 @@ fn test_cgroup_scope_name() {
         scope: SandboxScope::Session,
         key: "sess1".into(),
     };
-    assert_eq!(cgroup.scope_name(&id), "moltis-sandbox-sess1");
+    assert_eq!(cgroup.scope_name(&id), "chelix-sandbox-sess1");
 }
 
 #[test]

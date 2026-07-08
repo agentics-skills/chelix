@@ -39,10 +39,10 @@ impl FsHookDiscoverer {
     ///
     /// Workspace root is always the configured data directory.
     pub fn default_paths() -> Vec<(PathBuf, HookSource)> {
-        let workspace_root = moltis_config::data_dir();
+        let workspace_root = chelix_config::data_dir();
         vec![
-            (workspace_root.join(".moltis/hooks"), HookSource::Project),
-            (moltis_config::data_dir().join("hooks"), HookSource::User),
+            (workspace_root.join(".chelix/hooks"), HookSource::Project),
+            (chelix_config::data_dir().join("hooks"), HookSource::User),
         ]
     }
 }

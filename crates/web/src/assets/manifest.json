@@ -1,6 +1,6 @@
 {
-  "name": "moltis",
-  "short_name": "moltis",
+  "name": "chelix",
+  "short_name": "chelix",
   "description": "AI-powered command gateway",
   "start_url": "/chats",
   "scope": "/",

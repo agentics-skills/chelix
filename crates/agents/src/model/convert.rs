@@ -42,7 +42,7 @@ fn document_absolute_path_from_media_ref(media_ref: &str) -> String {
         return media_ref.to_string();
     }
 
-    moltis_config::data_dir()
+    chelix_config::data_dir()
         .join("sessions")
         .join(media_ref)
         .to_string_lossy()

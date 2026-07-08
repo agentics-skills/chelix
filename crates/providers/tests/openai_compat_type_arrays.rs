@@ -1,4 +1,4 @@
-use moltis_providers::openai_compat::{patch_schema_for_strict_mode, to_openai_tools};
+use chelix_providers::openai_compat::{patch_schema_for_strict_mode, to_openai_tools};
 
 fn array_value<'a>(value: &'a serde_json::Value, context: &str) -> &'a [serde_json::Value] {
     match value.as_array() {

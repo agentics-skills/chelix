@@ -1,4 +1,4 @@
-use moltis_channels::Error as ChannelError;
+use chelix_channels::Error as ChannelError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

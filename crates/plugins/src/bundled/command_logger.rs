@@ -4,7 +4,7 @@ use std::{path::PathBuf, sync::Mutex};
 
 use {async_trait::async_trait, time::OffsetDateTime, tracing::warn};
 
-use moltis_common::{
+use chelix_common::{
     Result,
     hooks::{HookAction, HookEvent, HookHandler, HookPayload},
 };
@@ -24,9 +24,9 @@ impl CommandLoggerHook {
         }
     }
 
-    /// Default log path: `~/.moltis/logs/commands.log`
+    /// Default log path: `~/.chelix/logs/commands.log`
     pub fn default_path() -> Option<PathBuf> {
-        Some(moltis_config::data_dir().join("logs/commands.log"))
+        Some(chelix_config::data_dir().join("logs/commands.log"))
     }
 
     fn ensure_file(&self) -> Result<()> {

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use moltis_protocol::{ErrorShape, error_codes};
+use chelix_protocol::{ErrorShape, error_codes};
 
 use crate::{
     auth::{SshAuthMode, SshResolvedTarget, SshTargetEntry},
@@ -10,7 +10,7 @@ use crate::{
 use super::MethodRegistry;
 
 fn configured_ssh_target() -> Option<String> {
-    let config = moltis_config::discover_and_load();
+    let config = chelix_config::discover_and_load();
     config
         .tools
         .execute_command
@@ -389,7 +389,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 };
 
                 // Send invoke event to the node.
-                let invoke_event = moltis_protocol::EventFrame::new(
+                let invoke_event = chelix_protocol::EventFrame::new(
                     "node.invoke.request",
                     serde_json::json!({
                         "invokeId": invoke_id,
@@ -594,16 +594,16 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         loc.get("latitude").and_then(|v| v.as_f64()),
                         loc.get("longitude").and_then(|v| v.as_f64()),
                     ) {
-                        let geo = moltis_config::GeoLocation::now(lat, lon, None);
+                        let geo = chelix_config::GeoLocation::now(lat, lon, None);
                         ctx.state.inner.write().await.cached_location = Some(geo.clone());
 
-                        let write_mode = moltis_config::discover_and_load()
+                        let write_mode = chelix_config::discover_and_load()
                             .memory
                             .user_profile_write_mode;
                         if write_mode.allows_auto_write() {
-                            let mut user = moltis_config::resolve_user_profile();
+                            let mut user = chelix_config::resolve_user_profile();
                             user.location = Some(geo);
-                            if let Err(e) = moltis_config::save_user_with_mode(&user, write_mode) {
+                            if let Err(e) = chelix_config::save_user_with_mode(&user, write_mode) {
                                 tracing::warn!(error = %e, "failed to persist location to USER.md");
                             }
                         }

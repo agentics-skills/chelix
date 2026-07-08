@@ -263,12 +263,12 @@ mod tests {
             protocol_version: PROTOCOL_VERSION.into(),
             capabilities: ClientCapabilities::default(),
             client_info: ClientInfo {
-                name: "moltis".into(),
+                name: "chelix".into(),
                 version: "0.1.0".into(),
             },
         };
         let json = serde_json::to_value(&params).unwrap();
         assert_eq!(json["protocolVersion"], PROTOCOL_VERSION);
-        assert_eq!(json["clientInfo"]["name"], "moltis");
+        assert_eq!(json["clientInfo"]["name"], "chelix");
     }
 }

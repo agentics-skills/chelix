@@ -1,24 +1,24 @@
-//! Moltis-managed `defaults.toml` — shipped defaults that users are not
+//! Chelix-managed `defaults.toml` — shipped defaults that users are not
 //! expected to edit directly.
 //!
 //! This file is regenerated on every startup so that new defaults are picked
-//! up after an upgrade.  User overrides in `moltis.toml` take precedence.
+//! up after an upgrade.  User overrides in `chelix.toml` take precedence.
 
 use {
-    crate::schema::MoltisConfig,
+    crate::schema::ChelixConfig,
     std::path::{Path, PathBuf},
     tracing::{debug, warn},
 };
 
-/// Filename for the Moltis-managed defaults file.
+/// Filename for the Chelix-managed defaults file.
 pub const DEFAULTS_FILENAME: &str = "defaults.toml";
 
-/// Generate the defaults TOML string from `MoltisConfig::default()`.
+/// Generate the defaults TOML string from `ChelixConfig::default()`.
 ///
 /// The output is a complete serialization of the built-in defaults with a
 /// header comment explaining the ownership model.
 pub fn generate_defaults_toml() -> crate::Result<String> {
-    let config = MoltisConfig::default();
+    let config = ChelixConfig::default();
     let body = toml::to_string_pretty(&config)
         .map_err(|source| crate::Error::external("serialize defaults", source))?;
     Ok(format!("{DEFAULTS_HEADER}{body}"))
@@ -27,27 +27,27 @@ pub fn generate_defaults_toml() -> crate::Result<String> {
 /// Write (or refresh) `defaults.toml` in the given config directory.
 ///
 /// This is called on every startup.  The file is always overwritten because
-/// it is Moltis-managed — user edits belong in `moltis.toml`.
+/// it is Chelix-managed — user edits belong in `chelix.toml`.
 pub fn write_defaults_toml(config_dir: &Path) -> crate::Result<PathBuf> {
     let path = config_dir.join(DEFAULTS_FILENAME);
     std::fs::create_dir_all(config_dir)?;
     let content = generate_defaults_toml()?;
     std::fs::write(&path, &content)?;
-    debug!(path = %path.display(), "wrote Moltis-managed defaults.toml");
+    debug!(path = %path.display(), "wrote Chelix-managed defaults.toml");
     Ok(path)
 }
 
 /// Load and parse `defaults.toml` from the given config directory.
 ///
-/// Returns `MoltisConfig::default()` if the file does not exist or fails
+/// Returns `ChelixConfig::default()` if the file does not exist or fails
 /// to parse (with a warning).
-pub fn load_defaults(config_dir: &Path) -> MoltisConfig {
+pub fn load_defaults(config_dir: &Path) -> ChelixConfig {
     let path = config_dir.join(DEFAULTS_FILENAME);
     if !path.exists() {
-        return MoltisConfig::default();
+        return ChelixConfig::default();
     }
     match std::fs::read_to_string(&path) {
-        Ok(raw) => match toml::from_str::<MoltisConfig>(&raw) {
+        Ok(raw) => match toml::from_str::<ChelixConfig>(&raw) {
             Ok(cfg) => cfg,
             Err(e) => {
                 warn!(
@@ -55,7 +55,7 @@ pub fn load_defaults(config_dir: &Path) -> MoltisConfig {
                     error = %e,
                     "failed to parse defaults.toml, using in-memory defaults"
                 );
-                MoltisConfig::default()
+                ChelixConfig::default()
             },
         },
         Err(e) => {
@@ -64,7 +64,7 @@ pub fn load_defaults(config_dir: &Path) -> MoltisConfig {
                 error = %e,
                 "failed to read defaults.toml, using in-memory defaults"
             );
-            MoltisConfig::default()
+            ChelixConfig::default()
         },
     }
 }
@@ -78,12 +78,12 @@ pub fn load_defaults(config_dir: &Path) -> MoltisConfig {
 /// - Keys present in both are overridden by the user value.
 /// - Keys present only in the user file are added (custom user config).
 ///
-/// The merged document is then parsed into `MoltisConfig`.
+/// The merged document is then parsed into `ChelixConfig`.
 pub fn merge_defaults_with_user_toml(
     defaults_toml: &str,
     user_toml: &str,
     path: &Path,
-) -> crate::Result<MoltisConfig> {
+) -> crate::Result<ChelixConfig> {
     let mut base_doc = defaults_toml
         .parse::<toml_edit::DocumentMut>()
         .map_err(|source| crate::Error::external("parse defaults TOML", source))?;
@@ -94,7 +94,7 @@ pub fn merge_defaults_with_user_toml(
     apply_user_overrides(base_doc.as_table_mut(), user_doc.as_table());
 
     let merged_str = base_doc.to_string();
-    let config: MoltisConfig = toml::from_str(&merged_str).map_err(|source| {
+    let config: ChelixConfig = toml::from_str(&merged_str).map_err(|source| {
         crate::Error::external(
             format!("deserialize merged config from {}", path.display()),
             source,
@@ -129,9 +129,9 @@ fn apply_user_overrides(defaults: &mut toml_edit::Table, user: &toml_edit::Table
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConfigSource {
-    /// Shipped built-in default (from `MoltisConfig::default()`).
+    /// Shipped built-in default (from `ChelixConfig::default()`).
     BuiltIn,
-    /// User override (from `moltis.toml`).
+    /// User override (from `chelix.toml`).
     UserOverride,
     /// Custom value not present in defaults (user-added).
     Custom,
@@ -151,7 +151,7 @@ pub struct PresetProvenance {
 /// Compares the effective config's presets against the built-in defaults
 /// to determine which are built-in, overridden, or custom.
 pub fn compute_preset_provenance(effective: &crate::schema::AgentsConfig) -> Vec<PresetProvenance> {
-    let defaults = MoltisConfig::default();
+    let defaults = ChelixConfig::default();
     let default_presets = &defaults.agents.presets;
 
     effective
@@ -239,17 +239,17 @@ fn collect_shadowed_keys(
 
 const DEFAULTS_HEADER: &str = "\
 # ┌─────────────────────────────────────────────────────────────────────┐
-# │  MOLTIS-MANAGED DEFAULTS — DO NOT EDIT                             │
+# │  CHELIX-MANAGED DEFAULTS — DO NOT EDIT                             │
 # │                                                                     │
 # │  This file is regenerated on every startup.  Any manual edits       │
-# │  will be lost.  To override a value, set it in moltis.toml         │
+# │  will be lost.  To override a value, set it in chelix.toml         │
 # │  instead.                                                           │
 # │                                                                     │
 # │  Merge order:                                                       │
 # │    1. Built-in Rust defaults                                        │
 # │    2. This file (defaults.toml)                                     │
-# │    3. User overrides (moltis.toml)                                  │
-# │    4. Environment variable overrides (MOLTIS_*)                     │
+# │    3. User overrides (chelix.toml)                                  │
+# │    4. Environment variable overrides (CHELIX_*)                     │
 # └─────────────────────────────────────────────────────────────────────┘
 
 ";

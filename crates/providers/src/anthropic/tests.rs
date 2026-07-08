@@ -126,8 +126,8 @@ fn apply_thinking_injects_budget_for_high_effort() {
         base_url: "https://api.anthropic.com".into(),
         client: crate::shared_http_client(),
         alias: None,
-        reasoning_effort: Some(moltis_agents::model::ReasoningEffort::High),
-        cache_retention: moltis_config::CacheRetention::Short,
+        reasoning_effort: Some(chelix_agents::model::ReasoningEffort::High),
+        cache_retention: chelix_config::CacheRetention::Short,
     };
     let mut body = serde_json::json!({ "model": "claude-opus-4-5-20251101", "max_tokens": 4096 });
     provider.apply_thinking(&mut body);
@@ -159,8 +159,8 @@ fn apply_thinking_low_effort_budget() {
         base_url: "https://api.anthropic.com".into(),
         client: crate::shared_http_client(),
         alias: None,
-        reasoning_effort: Some(moltis_agents::model::ReasoningEffort::Low),
-        cache_retention: moltis_config::CacheRetention::Short,
+        reasoning_effort: Some(chelix_agents::model::ReasoningEffort::Low),
+        cache_retention: chelix_config::CacheRetention::Short,
     };
     let mut body = serde_json::json!({ "model": "test", "max_tokens": 4096 });
     provider.apply_thinking(&mut body);
@@ -181,11 +181,11 @@ fn with_reasoning_effort_creates_new_provider() {
     assert!(provider.reasoning_effort().is_none());
 
     let with_effort = provider
-        .with_reasoning_effort(moltis_agents::model::ReasoningEffort::High)
+        .with_reasoning_effort(chelix_agents::model::ReasoningEffort::High)
         .expect("anthropic supports reasoning_effort");
     assert_eq!(
         with_effort.reasoning_effort(),
-        Some(moltis_agents::model::ReasoningEffort::High)
+        Some(chelix_agents::model::ReasoningEffort::High)
     );
     assert_eq!(with_effort.id(), "claude-opus-4-5-20251101");
 }
@@ -330,7 +330,7 @@ async fn fetch_models_from_api_errors_when_no_chat_models_are_returned() {
 
 #[test]
 fn to_anthropic_messages_merges_all_system_into_top_level() {
-    use moltis_agents::model::{ChatMessage, UserContent};
+    use chelix_agents::model::{ChatMessage, UserContent};
 
     let messages = vec![
         ChatMessage::system("You are a helpful assistant."),
@@ -514,7 +514,7 @@ fn cache_retention_none_skips_cache_control() {
         client: crate::shared_http_client(),
         alias: None,
         reasoning_effort: None,
-        cache_retention: moltis_config::CacheRetention::None,
+        cache_retention: chelix_config::CacheRetention::None,
     };
     assert!(!provider.caching_enabled());
 }

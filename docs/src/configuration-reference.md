@@ -4,7 +4,7 @@
 
 >
 
-> Every valid `moltis.toml` option, organized by domain.
+> Every valid `chelix.toml` option, organized by domain.
 
 > Types: `string`, `bool`, `integer`, `float`, `array`, `map`, `optional`, `enum(...)`.
 
@@ -131,7 +131,7 @@ Gateway server configuration.
 | `update_releases_url` | optional string | — | URL of the releases manifest (`releases.json`) used by the update checker. Defaults to `https://github.com/agentics-skills/chelix` when unset. |
 | `db_pool_max_connections` | integer | `5` | Maximum number of SQLite pool connections. Lower values reduce memory usage for personal gateways. |
 | `shiki_cdn_url` | optional string | — | Base URL for the Shiki syntax-highlighting library loaded by the web UI. Defaults to `https://esm.sh/shiki@3.2.1?bundle` when unset. |
-| `terminal_enabled` | bool | `true` | Enable or disable the host terminal in the web UI. Set to `false` to prevent an unsandboxed shell. The `MOLTIS_TERMINAL_DISABLED` env var (`1` or `true`) takes precedence. |
+| `terminal_enabled` | bool | `true` | Enable or disable the host terminal in the web UI. Set to `false` to prevent an unsandboxed shell. The `CHELIX_TERMINAL_DISABLED` env var (`1` or `true`) takes precedence. |
 
 
 ### `auth` — AuthConfig
@@ -155,7 +155,7 @@ TLS configuration for the gateway HTTPS server.
 | `cert_path` | optional string | — | Path to a custom server certificate (PEM). Overrides auto-generation. |
 | `key_path` | optional string | — | Path to a custom server private key (PEM). Overrides auto-generation. |
 | `ca_cert_path` | optional string | — | Path to the CA certificate (PEM) used for trust instructions. |
-| `public_ip` | optional string | — | Public IPv4 or IPv6 address to include as an IP SAN in auto-generated certificates. Use this for direct `https://<public-ip>` access after trusting Moltis' local CA. |
+| `public_ip` | optional string | — | Public IPv4 or IPv6 address to include as an IP SAN in auto-generated certificates. Use this for direct `https://<public-ip>` access after trusting Chelix' local CA. |
 | `http_redirect_port` | optional integer | — | Port for the plain-HTTP redirect/CA-download server. Defaults to the gateway port + 1 when not set. |
 
 
@@ -214,7 +214,7 @@ Agent identity (name, emoji, theme).
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `name` | optional string | — | Agent display name. Falls back to `"moltis"` when unset. |
+| `name` | optional string | — | Agent display name. Falls back to `"chelix"` when unset. |
 | `emoji` | optional string | — | Agent emoji icon. |
 | `theme` | optional string | — | Agent theme identifier. |
 
@@ -257,7 +257,7 @@ User profile collected during onboarding.
 | `tool_prune_char_threshold` | integer | `200` | Tool-result content longer than this is replaced with a placeholder in the collapsed middle region. |
 | `summary_model` | optional string | `null` | Provider-qualified model for LLM summary calls (e.g. `"openrouter/google/gemini-2.5-flash"`). ⚠️ **Not yet implemented** — setting this field triggers a warning. |
 | `max_summary_tokens` | integer | `8192` | Maximum output tokens for LLM summary calls. `0` accepts provider default. ⚠️ **Not yet implemented** — has no effect. |
-| `show_settings_hint` | bool | `true` | Whether the "Change `chat.compaction.mode` in moltis.toml…" hint is included in compaction notifications. |
+| `show_settings_hint` | bool | `true` | Whether the "Change `chat.compaction.mode` in chelix.toml…" hint is included in compaction notifications. |
 
 
 ### `agents` — AgentsConfig
@@ -304,7 +304,7 @@ User profile collected during onboarding.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `scope` | enum: `user`, `project`, `local` | `"user"` | Memory scope: `user` stores in `~/.moltis/agent-memory/<preset>/`, `project` in `.moltis/agent-memory/<preset>/`, `local` in `.moltis/agent-memory-local/<preset>/`. |
+| `scope` | enum: `user`, `project`, `local` | `"user"` | Memory scope: `user` stores in `~/.chelix/agent-memory/<preset>/`, `project` in `.chelix/agent-memory/<preset>/`, `local` in `.chelix/agent-memory-local/<preset>/`. |
 | `max_lines` | integer | `200` | Maximum lines to load from `MEMORY.md`. |
 
 ### `modes` — ModesConfig
@@ -365,7 +365,7 @@ not create chat agents, change memory, or affect `spawn_agent` presets.
 | `scope` | string | `"session"` | Container lifetime (`"session"` or `"per-command"`). |
 | `workspace_mount` | string | `"ro"` | Workspace mount mode (`"ro"`, `"rw"`, `"none"`). |
 | `workspace_sysmount` | string | `"ro"` | Sandbox hardening mode for rootfs/capabilities (`"ro"` keeps `--cap-drop ALL`, `--security-opt no-new-privileges`, and `--read-only` for prebuilt images; `"rw"` skips those flags). |
-| `host_data_dir` | optional string | `null` | Host-visible path for Moltis `data_dir()` when creating sandbox or browser containers from inside another container. |
+| `host_data_dir` | optional string | `null` | Host-visible path for Chelix `data_dir()` when creating sandbox or browser containers from inside another container. |
 | `home_persistence` | enum: `"off"`, `"session"`, `"shared"` | `"shared"` | Persistence strategy for `/home/sandbox` in sandbox containers. |
 | `shared_home_dir` | optional string | `null` | Host directory for shared `/home/sandbox` persistence. Relative paths resolved against `data_dir()`. |
 | `image` | optional string | `null` | Docker/Podman image for sandbox containers. |
@@ -446,7 +446,7 @@ Default `tool_overrides` entries:
 | `low_memory_threshold_mb` | integer | `2048` | System RAM threshold (MB) below which memory-saving Chrome flags are injected (0 to disable). |
 | `persist_profile` | bool | `true` | Persist Chrome user profile (cookies, auth, local storage) across sessions. |
 | `profile_dir` | optional string | `null` | Custom path for persistent Chrome profile directory. Implies `persist_profile = true`. |
-| `container_host` | string | `"127.0.0.1"` | Hostname/IP to connect to the browser container from the host. Use `"host.docker.internal"` when Moltis runs inside Docker. |
+| `container_host` | string | `"127.0.0.1"` | Hostname/IP to connect to the browser container from the host. Use `"host.docker.internal"` when Chelix runs inside Docker. |
 | `browserless_api_version` | enum: `"v1"`, `"v2"` | `"v1"` | Browserless API compatibility mode for websocket endpoints. |
 
 ---
@@ -671,7 +671,7 @@ Each channel account (`channels.<channel_type>.<account_name>`) is an arbitrary 
 |-----|------|---------|-------------|
 | `style` | enum (`hybrid`, `prompt-only`, `search-only`, `off`) | `"hybrid"` | High-level memory orchestration style. |
 | `agent_write_mode` | enum (`hybrid`, `prompt-only`, `search-only`, `off`) | `"hybrid"` | Where agent-authored memory writes are allowed to land. |
-| `user_profile_write_mode` | enum (`explicit-and-auto`, `explicit-only`, `off`) | `"explicit-and-auto"` | How Moltis writes the managed `USER.md` profile surface. |
+| `user_profile_write_mode` | enum (`explicit-and-auto`, `explicit-only`, `off`) | `"explicit-and-auto"` | How Chelix writes the managed `USER.md` profile surface. |
 | `backend` | enum (`builtin`, `qmd`) | `"builtin"` | Memory backend used for search, retrieval, and indexing. |
 | `provider` | optional enum (`local`, `ollama`, `openai`, `custom`) | *auto-detect* | Embedding provider. Alias: `embedding_provider`. |
 | `disable_rag` | bool | `false` | Disable RAG embeddings and force keyword-only memory search. |
@@ -1068,7 +1068,7 @@ context_window = 1_000_000
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `binary_path` | optional string | `null` | Path to whisper-cli binary. If not set, looks in `PATH` |
-| `model_path` | optional string | `null` | Path to the GGML model file (e.g. `"~/.moltis/models/ggml-base.en.bin"`) |
+| `model_path` | optional string | `null` | Path to the GGML model file (e.g. `"~/.chelix/models/ggml-base.en.bin"`) |
 | `language` | optional string | `null` | Language hint (ISO 639-1 code) |
 
 
@@ -1090,7 +1090,7 @@ context_window = 1_000_000
 
 ### `env`
 
-**Struct:** top-level `HashMap<String, String>` on `MoltisConfig`
+**Struct:** top-level `HashMap<String, String>` on `ChelixConfig`
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|

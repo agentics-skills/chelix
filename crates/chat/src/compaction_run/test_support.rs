@@ -14,7 +14,7 @@ use {
     anyhow::Result,
     async_trait::async_trait,
     futures::Stream,
-    moltis_agents::model::{
+    chelix_agents::model::{
         ChatMessage, CompletionResponse, ContentPart, LlmProvider, StreamEvent, Usage, UserContent,
     },
     serde_json::Value,

@@ -5,7 +5,7 @@ use {
 
 #[test]
 fn agent_runtime_limits_use_global_fallbacks() {
-    let config: MoltisConfig = toml::from_str(
+    let config: ChelixConfig = toml::from_str(
         r#"
 [tools]
 agent_timeout_secs = 120
@@ -29,7 +29,7 @@ model = "openai/gpt-5.2"
 
 #[test]
 fn agent_runtime_limits_use_partial_preset_overrides() {
-    let config: MoltisConfig = toml::from_str(
+    let config: ChelixConfig = toml::from_str(
         r#"
 [tools]
 agent_timeout_secs = 120
@@ -53,7 +53,7 @@ timeout_secs = 5
 
 #[test]
 fn spawned_agent_runtime_limits_preserve_default_no_timeout() {
-    let config: MoltisConfig = toml::from_str(
+    let config: ChelixConfig = toml::from_str(
         r#"
 [agents.presets.quick]
 max_iterations = 7
@@ -69,7 +69,7 @@ max_iterations = 7
 
 #[test]
 fn spawned_agent_runtime_limits_require_preset_timeout() {
-    let config: MoltisConfig = toml::from_str(
+    let config: ChelixConfig = toml::from_str(
         r#"
 [tools]
 agent_timeout_secs = 1800
@@ -89,7 +89,7 @@ max_iterations = 80
 
 #[test]
 fn spawned_agent_runtime_limits_use_preset_timeout() {
-    let config: MoltisConfig = toml::from_str(
+    let config: ChelixConfig = toml::from_str(
         r#"
 [tools]
 agent_timeout_secs = 1800

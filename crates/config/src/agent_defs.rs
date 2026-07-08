@@ -1,6 +1,6 @@
 //! Markdown-based agent definitions with YAML frontmatter.
 //!
-//! Scans `~/.moltis/agents/` and `.moltis/agents/` for `.md` files,
+//! Scans `~/.chelix/agents/` and `.chelix/agents/` for `.md` files,
 //! parsing YAML frontmatter into [`AgentPreset`] fields and using the
 //! body as `system_prompt_suffix`.
 //!
@@ -270,17 +270,17 @@ fn split_frontmatter(content: &str) -> anyhow::Result<(String, String)> {
 
 /// Discover agent definition files from standard directories.
 ///
-/// Scans `~/.moltis/agents/` (user-global) then `.moltis/agents/` (project-local).
+/// Scans `~/.chelix/agents/` (user-global) then `.chelix/agents/` (project-local).
 /// Project-local files override user-global ones with the same name.
 pub fn discover_agent_defs() -> HashMap<String, AgentPreset> {
     let mut defs = HashMap::new();
 
-    // User-global: ~/.moltis/agents/
+    // User-global: ~/.chelix/agents/
     let user_dir = crate::loader::data_dir().join("agents");
     load_defs_from_dir(&user_dir, &mut defs);
 
-    // Project-local: .moltis/agents/
-    let project_dir = std::path::PathBuf::from(".moltis").join("agents");
+    // Project-local: .chelix/agents/
+    let project_dir = std::path::PathBuf::from(".chelix").join("agents");
     load_defs_from_dir(&project_dir, &mut defs);
 
     defs

@@ -6,7 +6,7 @@ interface Props {
   description?: string
 }
 
-const { title, description = "Documentation for Moltis, a secure persistent personal agent server." } = Astro.props
+const { title, description = "Documentation for Chelix, a secure persistent personal agent server." } = Astro.props
 ---
 
 <!doctype html>
@@ -18,7 +18,7 @@ const { title, description = "Documentation for Moltis, a secure persistent pers
     <meta name="theme-color" content="#f7f7f5" />
     <title>{title}</title>
     <script is:inline>
-      const storedTheme = localStorage.getItem('moltis-docs-theme') || 'auto'
+      const storedTheme = localStorage.getItem('chelix-docs-theme') || 'auto'
       const media = window.matchMedia('(prefers-color-scheme: dark)')
       const resolvedTheme = storedTheme === 'auto' ? (media.matches ? 'dark' : 'light') : storedTheme
       document.documentElement.dataset.theme = resolvedTheme

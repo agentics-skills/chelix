@@ -15,5 +15,5 @@ pub struct AccountState {
     pub client: SignalClient,
     pub config: Arc<RwLock<SignalAccountConfig>>,
     pub cancel: CancellationToken,
-    pub otp: Arc<Mutex<moltis_channels::otp::OtpState>>,
+    pub otp: Arc<Mutex<chelix_channels::otp::OtpState>>,
 }

@@ -2,8 +2,8 @@
 
 export default {
 	install: {
-		title: "Install moltis on your device",
-		quickAccessTitle: "Install moltis for quick access",
+		title: "Install chelix on your device",
+		quickAccessTitle: "Install chelix for quick access",
 		quickAccessDesc: "Get a native app experience with offline support.",
 	},
 	ios: {

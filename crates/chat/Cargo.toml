@@ -1,6 +1,6 @@
 [package]
 edition.workspace    = true
-name                 = "moltis-chat"
+name                 = "chelix-chat"
 repository.workspace = true
 version.workspace    = true
 
@@ -11,21 +11,21 @@ base64                = { workspace = true }
 chrono                = { features = ["serde"], optional = true, workspace = true }
 chrono-tz             = { workspace = true }
 futures               = { workspace = true }
-moltis-agents         = { workspace = true }
-moltis-channels       = { workspace = true }
-moltis-common         = { workspace = true }
-moltis-config         = { workspace = true }
-moltis-memory         = { workspace = true }
-moltis-metrics        = { optional = true, workspace = true }
-moltis-plugins        = { workspace = true }
-moltis-projects       = { workspace = true }
-moltis-providers      = { workspace = true }
-moltis-service-traits = { workspace = true }
-moltis-sessions       = { workspace = true }
-moltis-skills         = { workspace = true }
-moltis-telegram       = { optional = true, workspace = true }
-moltis-tools          = { workspace = true }
-moltis-voice          = { workspace = true }
+chelix-agents         = { workspace = true }
+chelix-channels       = { workspace = true }
+chelix-common         = { workspace = true }
+chelix-config         = { workspace = true }
+chelix-memory         = { workspace = true }
+chelix-metrics        = { optional = true, workspace = true }
+chelix-plugins        = { workspace = true }
+chelix-projects       = { workspace = true }
+chelix-providers      = { workspace = true }
+chelix-service-traits = { workspace = true }
+chelix-sessions       = { workspace = true }
+chelix-skills         = { workspace = true }
+chelix-telegram       = { optional = true, workspace = true }
+chelix-tools          = { workspace = true }
+chelix-voice          = { workspace = true }
 serde                 = { workspace = true }
 serde_json            = { workspace = true }
 thiserror             = { workspace = true }
@@ -40,18 +40,18 @@ uuid                  = { workspace = true }
 # Default-on so users get full compaction out of the box. Disabling this
 # removes the streaming-summary path and LLM modes become a runtime config
 # error; the `deterministic` and `recency_preserving` modes remain available.
-bundled-skills     = ["moltis-skills/bundled-skills"]
+bundled-skills     = ["chelix-skills/bundled-skills"]
 llm-compaction     = []
-metrics            = ["dep:moltis-metrics", "moltis-metrics/sqlite"]
+metrics            = ["dep:chelix-metrics", "chelix-metrics/sqlite"]
 push-notifications = ["dep:chrono"]
 web-ui             = ["dep:chrono"]
-telegram           = ["dep:moltis-telegram"]
+telegram           = ["dep:chelix-telegram"]
 
 default = ["llm-compaction"]
 
 [dev-dependencies]
 async-stream    = { workspace = true }
-moltis-channels = { workspace = true }
+chelix-channels = { workspace = true }
 sqlx            = { workspace = true }
 tempfile        = { workspace = true }
 tokio           = { workspace = true }

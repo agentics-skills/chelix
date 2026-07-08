@@ -6,7 +6,7 @@
 //! 3. Build core gateway state (sessions, services, methods)
 //! 4. Spawn background tasks (cron, update checks, MCP health)
 //!
-//! HTTP transport (routes, middleware, WebSocket upgrade) lives in `moltis-httpd`.
+//! HTTP transport (routes, middleware, WebSocket upgrade) lives in `chelix-httpd`.
 //! All domain logic (agents, channels, etc.) lives in other crates and is
 //! invoked through method handlers registered in `methods.rs`.
 

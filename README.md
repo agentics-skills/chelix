@@ -33,7 +33,7 @@ Please [open an issue](https://github.com/agentics-skills/chelix/issues) for any
 curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/install.sh | sh
 
 # Docker (multi-arch: amd64/arm64)
-docker pull ghcr.io/moltis-org/moltis:latest
+docker pull ghcr.io/agentics-skills/chelix:latest
 ```
 
 ## Architecture — Crate Map
@@ -44,34 +44,34 @@ Current Rust workspace: ~270K LoC across 59 crates. The table below groups the m
 
 | Crate | LoC | Role |
 |-------|-----|------|
-| `moltis-gateway` | 37.4K | HTTP/WS server, RPC, auth, startup wiring |
-| `moltis-tools` | 37.0K | Tool execution, sandboxing, WASM tools |
-| `moltis-providers` | 18.9K | LLM provider implementations |
-| `moltis-agents` | 14.5K | Agent loop, streaming, prompt assembly |
-| `moltis-chat` | 14.2K | Chat engine, agent orchestration |
-| `moltis-config` | 10.3K | Configuration, validation |
-| `moltis-httpd` | 9.9K | HTTP server primitives and middleware |
-| `moltis` (CLI) | 4.7K | Entry point, CLI commands |
-| `moltis-sessions` | 3.5K | Session persistence |
-| `moltis-common` | 1.5K | Shared utilities |
-| `moltis-service-traits` | 1.2K | Shared service interfaces |
-| `moltis-protocol` | 0.7K | Wire protocol types |
+| `chelix-gateway` | 37.4K | HTTP/WS server, RPC, auth, startup wiring |
+| `chelix-tools` | 37.0K | Tool execution, sandboxing, WASM tools |
+| `chelix-providers` | 18.9K | LLM provider implementations |
+| `chelix-agents` | 14.5K | Agent loop, streaming, prompt assembly |
+| `chelix-chat` | 14.2K | Chat engine, agent orchestration |
+| `chelix-config` | 10.3K | Configuration, validation |
+| `chelix-httpd` | 9.9K | HTTP server primitives and middleware |
+| `chelix` (CLI) | 4.7K | Entry point, CLI commands |
+| `chelix-sessions` | 3.5K | Session persistence |
+| `chelix-common` | 1.5K | Shared utilities |
+| `chelix-service-traits` | 1.2K | Shared service interfaces |
+| `chelix-protocol` | 0.7K | Wire protocol types |
 
 **Feature and integration crates**:
 
 | Category | Crates | Combined LoC |
 |----------|--------|-------------|
-| Channels | `moltis-telegram`, `moltis-whatsapp`, `moltis-signal`, `moltis-discord`, `moltis-msteams`, `moltis-matrix`, `moltis-slack`, `moltis-nostr`, `moltis-channels` | 34.0K |
-| Web and APIs | `moltis-web`, `moltis-graphql`, `moltis-webhooks` | 10.8K |
-| Extensibility | `moltis-mcp`, `moltis-mcp-agent-bridge`, `moltis-skills`, `moltis-plugins` | 11.5K |
-| Memory and context | `moltis-memory`, `moltis-qmd`, `moltis-code-index`, `moltis-projects` | 11.7K |
-| Voice and browser | `moltis-voice`, `moltis-browser` | 9.2K |
-| Auth and security | `moltis-auth`, `moltis-oauth`, `moltis-vault`, `moltis-secret-store`, `moltis-network-filter`, `moltis-tls` | 8.5K |
-| Scheduling and automation | `moltis-cron`, `moltis-caldav`, `moltis-auto-reply` | 4.7K |
-| Setup and import | `moltis-provider-setup`, `moltis-onboarding` | 11.7K |
-| Native and node hosts | `moltis-node-host`, `moltis-courier` | 5.7K |
-| WASM tools | `moltis-wasm-precompile`, `moltis-wasm-calc`, `moltis-wasm-web-fetch`, `moltis-wasm-web-search` | 1.4K |
-| Supporting crates | `moltis-media`, `moltis-metrics`, `moltis-routing`, `moltis-canvas`, `moltis-schema-export`, `benchmarks` | 2.1K |
+| Channels | `chelix-telegram`, `chelix-whatsapp`, `chelix-signal`, `chelix-discord`, `chelix-msteams`, `chelix-matrix`, `chelix-slack`, `chelix-nostr`, `chelix-channels` | 34.0K |
+| Web and APIs | `chelix-web`, `chelix-graphql`, `chelix-webhooks` | 10.8K |
+| Extensibility | `chelix-mcp`, `chelix-mcp-agent-bridge`, `chelix-skills`, `chelix-plugins` | 11.5K |
+| Memory and context | `chelix-memory`, `chelix-qmd`, `chelix-code-index`, `chelix-projects` | 11.7K |
+| Voice and browser | `chelix-voice`, `chelix-browser` | 9.2K |
+| Auth and security | `chelix-auth`, `chelix-oauth`, `chelix-vault`, `chelix-secret-store`, `chelix-network-filter`, `chelix-tls` | 8.5K |
+| Scheduling and automation | `chelix-cron`, `chelix-caldav`, `chelix-auto-reply` | 4.7K |
+| Setup and import | `chelix-provider-setup`, `chelix-onboarding` | 11.7K |
+| Native and node hosts | `chelix-node-host`, `chelix-courier` | 5.7K |
+| WASM tools | `chelix-wasm-precompile`, `chelix-wasm-calc`, `chelix-wasm-web-fetch`, `chelix-wasm-web-search` | 1.4K |
+| Supporting crates | `chelix-media`, `chelix-metrics`, `chelix-routing`, `chelix-canvas`, `chelix-schema-export`, `benchmarks` | 2.1K |
 
 Use `--no-default-features --features lightweight` for constrained devices (Raspberry Pi, etc.).
 
@@ -153,17 +153,17 @@ git clone https://github.com/agentics-skills/chelix.git
 cd chelix
 just build-css                  # Build Tailwind CSS for the web UI
 just build-release              # Build in release mode
-cargo run --release --bin moltis
+cargo run --release --bin chelix
 ```
 
 For a full release build including WASM sandbox tools:
 
 ```bash
 just build-release-with-wasm    # Builds WASM artifacts + release binary
-cargo run --release --bin moltis
+cargo run --release --bin chelix
 ```
 
-Open `https://moltis.localhost:3000`. On first run, a setup code is printed to
+Open `https://chelix.localhost:3000`. On first run, a setup code is printed to
 the terminal — enter it in the web UI to set your password or register a passkey.
 
 Optional flags: `--config-dir /path/to/config --data-dir /path/to/data`
@@ -173,24 +173,24 @@ Optional flags: `--config-dir /path/to/config --data-dir /path/to/data`
 ```bash
 # Docker / OrbStack
 docker run -d \
-  --name moltis \
+  --name chelix \
   -p 13131:13131 \
   -p 13132:13132 \
   -p 1455:1455 \
-  -v moltis-config:/home/moltis/.config/moltis \
-  -v moltis-data:/home/moltis/.moltis \
+  -v chelix-config:/home/chelix/.config/chelix \
+  -v chelix-data:/home/chelix/.chelix \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  ghcr.io/moltis-org/moltis:latest
+  ghcr.io/agentics-skills/chelix:latest
 ```
 
 Open `https://localhost:13131` and complete the setup. For unattended Docker
-deployments, set `MOLTIS_PASSWORD`, `MOLTIS_PROVIDER`, and `MOLTIS_API_KEY`
+deployments, set `CHELIX_PASSWORD`, `CHELIX_PROVIDER`, and `CHELIX_API_KEY`
 before first boot to skip the setup wizard. See [Docker docs](docs/src/docker.md)
 for Podman, OrbStack, TLS trust, and persistence details.
 
 ### Cloud Deployment
 
-Chelix publishes `ghcr.io/moltis-org/moltis:latest` and includes deployment
+Chelix publishes `ghcr.io/agentics-skills/chelix:latest` and includes deployment
 examples for supported container platforms.
 
 All cloud configs use `--no-tls` because the provider handles TLS termination.

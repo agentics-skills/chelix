@@ -1,7 +1,7 @@
 function runLabel() {
-	const project = process.env.MOLTIS_E2E_ONLY_PROJECT || "e2e";
-	const shardIndex = process.env.MOLTIS_E2E_PROCESS_SHARD_INDEX || "";
-	const shardTotal = process.env.MOLTIS_E2E_PROCESS_SHARD_TOTAL || "";
+	const project = process.env.CHELIX_E2E_ONLY_PROJECT || "e2e";
+	const shardIndex = process.env.CHELIX_E2E_PROCESS_SHARD_INDEX || "";
+	const shardTotal = process.env.CHELIX_E2E_PROCESS_SHARD_TOTAL || "";
 	if (project === "default" && shardIndex && shardTotal) {
 		return `${project} ${shardIndex}/${shardTotal}`;
 	}

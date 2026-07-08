@@ -13,7 +13,7 @@ use {
 use std::sync::Arc;
 
 #[cfg(feature = "vault")]
-use moltis_vault::Vault;
+use chelix_vault::Vault;
 
 fn fixture_secret(_tag: &str) -> String {
     generate_token()
@@ -207,8 +207,8 @@ async fn test_reset_all_removes_managed_ssh_material() {
         .create_ssh_key(
             "prod-key",
             "PRIVATE KEY",
-            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoltis test@example",
-            "256 SHA256:test moltis:test (ED25519)",
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIChelix test@example",
+            "256 SHA256:test chelix:test (ED25519)",
         )
         .await
         .unwrap();
@@ -299,8 +299,8 @@ async fn test_credential_store_ssh_keys_and_targets() {
         .create_ssh_key(
             "prod-key",
             "PRIVATE KEY",
-            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoltis test@example",
-            "256 SHA256:test moltis:test (ED25519)",
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIChelix test@example",
+            "256 SHA256:test chelix:test (ED25519)",
         )
         .await
         .unwrap();
@@ -309,7 +309,7 @@ async fn test_credential_store_ssh_keys_and_targets() {
             "prod-box",
             "deploy@example.com",
             Some(2222),
-            Some("|1|salt= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoltisHostPin"),
+            Some("|1|salt= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIChelixHostPin"),
             SshAuthMode::Managed,
             Some(key_id),
             true,
@@ -329,7 +329,7 @@ async fn test_credential_store_ssh_keys_and_targets() {
     assert_eq!(targets[0].port, Some(2222));
     assert_eq!(
         targets[0].known_host.as_deref(),
-        Some("|1|salt= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoltisHostPin")
+        Some("|1|salt= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIChelixHostPin")
     );
     assert_eq!(targets[0].auth_mode, SshAuthMode::Managed);
     assert_eq!(targets[0].key_name.as_deref(), Some("prod-key"));
@@ -340,7 +340,7 @@ async fn test_credential_store_ssh_keys_and_targets() {
     assert_eq!(resolved.target, "deploy@example.com");
     assert_eq!(
         resolved.known_host.as_deref(),
-        Some("|1|salt= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoltisHostPin")
+        Some("|1|salt= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIChelixHostPin")
     );
 
     let default_target = store.get_default_ssh_target().await.unwrap().unwrap();
@@ -370,8 +370,8 @@ async fn test_first_ssh_target_becomes_default_and_delete_promotes_replacement()
         .create_ssh_key(
             "prod-key",
             "PRIVATE KEY",
-            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoltis test@example",
-            "256 SHA256:test moltis:test (ED25519)",
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIChelix test@example",
+            "256 SHA256:test chelix:test (ED25519)",
         )
         .await
         .unwrap();
@@ -418,8 +418,8 @@ async fn test_delete_ssh_key_rejects_in_use_key() {
         .create_ssh_key(
             "prod-key",
             "PRIVATE KEY",
-            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoltis test@example",
-            "256 SHA256:test moltis:test (ED25519)",
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIChelix test@example",
+            "256 SHA256:test chelix:test (ED25519)",
         )
         .await
         .unwrap();
@@ -465,7 +465,7 @@ async fn test_update_ssh_target_known_host_round_trips() {
     store
         .update_ssh_target_known_host(
             target_id,
-            Some("prod.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoltisHostPin"),
+            Some("prod.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIChelixHostPin"),
         )
         .await
         .unwrap();
@@ -476,7 +476,7 @@ async fn test_update_ssh_target_known_host_round_trips() {
         .unwrap();
     assert_eq!(
         pinned.known_host.as_deref(),
-        Some("prod.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoltisHostPin")
+        Some("prod.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIChelixHostPin")
     );
 
     store
@@ -494,13 +494,13 @@ async fn test_update_ssh_target_known_host_round_trips() {
 #[cfg(feature = "vault")]
 async fn vault_store(password: &str) -> (CredentialStore, Arc<Vault>) {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    moltis_vault::run_migrations(&pool).await.unwrap();
+    chelix_vault::run_migrations(&pool).await.unwrap();
     let vault = Vault::new(pool.clone()).await.unwrap();
     vault.initialize(password).await.unwrap();
     let vault = Arc::new(vault);
     let store = CredentialStore::with_vault(
         pool,
-        &moltis_config::AuthConfig::default(),
+        &chelix_config::AuthConfig::default(),
         Some(vault.clone()),
     )
     .await
@@ -512,13 +512,13 @@ async fn vault_store(password: &str) -> (CredentialStore, Arc<Vault>) {
 #[tokio::test]
 async fn test_ssh_keys_encrypt_when_vault_is_unsealed() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    moltis_vault::run_migrations(&pool).await.unwrap();
+    chelix_vault::run_migrations(&pool).await.unwrap();
     let vault = Arc::new(Vault::new(pool.clone()).await.unwrap());
     let vault_password = fixture_secret("vault-ssh-key-password");
     vault.initialize(&vault_password).await.unwrap();
     let store = CredentialStore::with_vault(
         pool.clone(),
-        &moltis_config::AuthConfig::default(),
+        &chelix_config::AuthConfig::default(),
         Some(Arc::clone(&vault)),
     )
     .await
@@ -528,8 +528,8 @@ async fn test_ssh_keys_encrypt_when_vault_is_unsealed() {
         .create_ssh_key(
             "enc-key",
             "TOP SECRET KEY",
-            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoltis enc@example",
-            "256 SHA256:enc moltis:enc (ED25519)",
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIChelix enc@example",
+            "256 SHA256:enc chelix:enc (ED25519)",
         )
         .await
         .unwrap();

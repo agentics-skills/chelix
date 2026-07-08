@@ -1,4 +1,4 @@
-const M = (window.__moltis_modules || {})["stores/node-store"] || {};
+const M = (window.__chelix_modules || {})["stores/node-store"] || {};
 export default M;
 export const nodes = M.nodes;
 export const selectedNodeId = M.selectedNodeId;

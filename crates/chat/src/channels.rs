@@ -8,7 +8,7 @@ use {
     tracing::{debug, info, warn},
 };
 
-use moltis_sessions::store::SessionStore;
+use chelix_sessions::store::SessionStore;
 
 use crate::{
     agent_loop::ChannelReplyTargetKey, compaction_run, error, runtime::ChatRuntime, types::*,
@@ -183,8 +183,8 @@ fn format_logbook_html(entries: &[String]) -> String {
 }
 
 async fn send_channel_logbook_follow_up_to_targets(
-    outbound: Arc<dyn moltis_channels::plugin::ChannelOutbound>,
-    targets: Vec<moltis_channels::ChannelReplyTarget>,
+    outbound: Arc<dyn chelix_channels::plugin::ChannelOutbound>,
+    targets: Vec<chelix_channels::ChannelReplyTarget>,
     logbook_html: &str,
 ) {
     if targets.is_empty() || logbook_html.is_empty() {
@@ -260,10 +260,10 @@ fn format_channel_compaction_notice(
     include_settings_hint: bool,
 ) -> String {
     let mode_label = match outcome.effective_mode {
-        moltis_config::CompactionMode::Deterministic => "Deterministic",
-        moltis_config::CompactionMode::RecencyPreserving => "Recency preserving",
-        moltis_config::CompactionMode::Structured => "Structured",
-        moltis_config::CompactionMode::LlmReplace => "LLM replace",
+        chelix_config::CompactionMode::Deterministic => "Deterministic",
+        chelix_config::CompactionMode::RecencyPreserving => "Recency preserving",
+        chelix_config::CompactionMode::Structured => "Structured",
+        chelix_config::CompactionMode::LlmReplace => "LLM replace",
     };
     let total = outcome.total_tokens();
     let token_line = if total == 0 {
@@ -456,8 +456,8 @@ pub(crate) async fn deliver_channel_error(
 }
 
 async fn deliver_channel_replies_to_targets(
-    outbound: Arc<dyn moltis_channels::plugin::ChannelOutbound>,
-    targets: Vec<moltis_channels::ChannelReplyTarget>,
+    outbound: Arc<dyn chelix_channels::plugin::ChannelOutbound>,
+    targets: Vec<chelix_channels::ChannelReplyTarget>,
     session_key: &str,
     text: &str,
     state: Arc<dyn ChatRuntime>,
@@ -487,7 +487,7 @@ async fn deliver_channel_replies_to_targets(
             };
             let reply_to = target.message_id.as_deref();
             match target.channel_type {
-                moltis_channels::ChannelType::Telegram => match tts_payload {
+                chelix_channels::ChannelType::Telegram => match tts_payload {
                     Some(mut payload) => {
                         let transcript = std::mem::take(&mut payload.text);
 
@@ -523,7 +523,7 @@ async fn deliver_channel_replies_to_targets(
                             // send voice + follow-up text.
                             #[cfg(feature = "telegram")]
                             let fits_in_caption = transcript.len()
-                                <= moltis_telegram::markdown::TELEGRAM_CAPTION_LIMIT;
+                                <= chelix_telegram::markdown::TELEGRAM_CAPTION_LIMIT;
                             #[cfg(not(feature = "telegram"))]
                             let fits_in_caption = false;
 
@@ -752,7 +752,7 @@ pub(crate) async fn generate_tts_audio(
     }
 
     // Layer 2: strip markdown/URLs the LLM may have included despite the prompt.
-    let text = moltis_voice::tts::sanitize_text_for_tts(text);
+    let text = chelix_voice::tts::sanitize_text_for_tts(text);
     let text = text.trim();
     if text.is_empty() {
         return Err(error::Error::message("response has no speakable text"));
@@ -786,10 +786,10 @@ pub(crate) async fn generate_tts_audio(
 async fn build_tts_payload(
     state: &Arc<dyn ChatRuntime>,
     session_key: &str,
-    target: &moltis_channels::ChannelReplyTarget,
+    target: &chelix_channels::ChannelReplyTarget,
     text: &str,
-) -> Option<moltis_common::types::ReplyPayload> {
-    use moltis_common::types::{MediaAttachment, ReplyPayload};
+) -> Option<chelix_common::types::ReplyPayload> {
+    use chelix_common::types::{MediaAttachment, ReplyPayload};
 
     let tts_status = state.tts_service().status().await.ok()?;
     let status: TtsStatusResponse = serde_json::from_value(tts_status).ok()?;
@@ -799,7 +799,7 @@ async fn build_tts_payload(
 
     // Strip markdown/URLs the LLM may have included — use sanitized text
     // only for TTS conversion, but keep the original for the caption.
-    let sanitized = moltis_voice::tts::sanitize_text_for_tts(text);
+    let sanitized = chelix_voice::tts::sanitize_text_for_tts(text);
 
     let channel_key = format!("{}:{}", target.channel_type.as_str(), target.account_id);
     let (channel_override, session_override) = state.tts_overrides(session_key, &channel_key).await;
@@ -1067,8 +1067,8 @@ pub(crate) async fn send_screenshot_to_channels(
 fn build_screenshot_reply_payload(
     screenshot_data: &str,
     caption: Option<&str>,
-) -> moltis_common::types::ReplyPayload {
-    use moltis_common::types::{MediaAttachment, ReplyPayload};
+) -> chelix_common::types::ReplyPayload {
+    use chelix_common::types::{MediaAttachment, ReplyPayload};
 
     // Extract actual MIME from "data:image/jpeg;base64,..." instead of
     // hardcoding PNG — supports JPEG, GIF, WebP from send_image tool.
@@ -1091,8 +1091,8 @@ fn build_screenshot_reply_payload(
 }
 
 async fn dispatch_screenshot_to_targets(
-    outbound: Arc<dyn moltis_channels::ChannelOutbound>,
-    targets: Vec<moltis_channels::ChannelReplyTarget>,
+    outbound: Arc<dyn chelix_channels::ChannelOutbound>,
+    targets: Vec<chelix_channels::ChannelReplyTarget>,
     screenshot_data: &str,
     caption: Option<&str>,
 ) {
@@ -1145,7 +1145,7 @@ async fn dispatch_screenshot_to_targets(
 pub(crate) async fn dispatch_document_to_channels(
     state: &Arc<dyn ChatRuntime>,
     session_key: &str,
-    payload: moltis_common::types::ReplyPayload,
+    payload: chelix_common::types::ReplyPayload,
 ) {
     let targets = state.peek_channel_replies(session_key).await;
     if targets.is_empty() {
@@ -1201,8 +1201,8 @@ pub(crate) fn document_payload_from_data_uri(
     data_uri: &str,
     filename: Option<&str>,
     caption: Option<&str>,
-) -> moltis_common::types::ReplyPayload {
-    use moltis_common::types::{MediaAttachment, ReplyPayload};
+) -> chelix_common::types::ReplyPayload {
+    use chelix_common::types::{MediaAttachment, ReplyPayload};
 
     let mime_type = data_uri
         .strip_prefix("data:")
@@ -1231,8 +1231,8 @@ pub(crate) async fn document_payload_from_ref(
     mime_type: &str,
     filename: Option<&str>,
     caption: Option<&str>,
-) -> Option<moltis_common::types::ReplyPayload> {
-    use moltis_common::types::{MediaAttachment, ReplyPayload};
+) -> Option<chelix_common::types::ReplyPayload> {
+    use chelix_common::types::{MediaAttachment, ReplyPayload};
 
     let store = match session_store {
         Some(s) => s,
@@ -1344,8 +1344,8 @@ mod tests {
     use {
         super::*,
         async_trait::async_trait,
-        moltis_channels::{ChannelReplyTarget, ChannelType},
-        moltis_common::types::ReplyPayload,
+        chelix_channels::{ChannelReplyTarget, ChannelType},
+        chelix_common::types::ReplyPayload,
         std::sync::{Arc, Mutex},
     };
 
@@ -1363,14 +1363,14 @@ mod tests {
     }
 
     #[async_trait]
-    impl moltis_channels::ChannelOutbound for RecordingOutbound {
+    impl chelix_channels::ChannelOutbound for RecordingOutbound {
         async fn send_text(
             &self,
             _account_id: &str,
             _to: &str,
             _text: &str,
             _reply_to: Option<&str>,
-        ) -> moltis_channels::Result<()> {
+        ) -> chelix_channels::Result<()> {
             Ok(())
         }
 
@@ -1380,7 +1380,7 @@ mod tests {
             to: &str,
             payload: &ReplyPayload,
             reply_to: Option<&str>,
-        ) -> moltis_channels::Result<()> {
+        ) -> chelix_channels::Result<()> {
             self.sent_media
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())

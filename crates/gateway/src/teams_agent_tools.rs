@@ -6,13 +6,13 @@
 use {
     anyhow::Result,
     async_trait::async_trait,
-    moltis_agents::tool_registry::AgentTool,
+    chelix_agents::tool_registry::AgentTool,
     serde_json::{Value, json},
     std::sync::Arc,
     tokio::sync::RwLock,
 };
 
-type TeamsPlugin = Arc<RwLock<moltis_msteams::MsTeamsPlugin>>;
+type TeamsPlugin = Arc<RwLock<chelix_msteams::MsTeamsPlugin>>;
 
 /// Resolve account_id: use the provided value or fall back to the first
 /// configured Teams account.
@@ -99,7 +99,7 @@ impl AgentTool for TeamsSearchMessagesTool {
         };
 
         let result =
-            moltis_msteams::graph::search_messages(&http, &token, chat_id, query, from, limit)
+            chelix_msteams::graph::search_messages(&http, &token, chat_id, query, from, limit)
                 .await?;
 
         let messages: Vec<Value> = result
@@ -171,7 +171,7 @@ impl AgentTool for TeamsMemberInfoTool {
             p.graph_client(&account_id).await?
         };
 
-        let info = moltis_msteams::graph::get_member_info(&http, &token, user_id).await?;
+        let info = chelix_msteams::graph::get_member_info(&http, &token, user_id).await?;
 
         Ok(json!({
             "ok": true,
@@ -257,7 +257,7 @@ impl AgentTool for TeamsPinMessageTool {
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("'pin' action requires message_id"))?;
                 let pinned_id =
-                    moltis_msteams::graph::pin_message(&http, &token, chat_id, message_id).await?;
+                    chelix_msteams::graph::pin_message(&http, &token, chat_id, message_id).await?;
                 Ok(json!({
                     "ok": true,
                     "action": "pin",
@@ -269,12 +269,12 @@ impl AgentTool for TeamsPinMessageTool {
                 let pinned_message_id = params["pinned_message_id"].as_str().ok_or_else(|| {
                     anyhow::anyhow!("'unpin' action requires pinned_message_id (from 'list')")
                 })?;
-                moltis_msteams::graph::unpin_message(&http, &token, chat_id, pinned_message_id)
+                chelix_msteams::graph::unpin_message(&http, &token, chat_id, pinned_message_id)
                     .await?;
                 Ok(json!({ "ok": true, "action": "unpin" }))
             },
             "list" => {
-                let pins = moltis_msteams::graph::list_pins(&http, &token, chat_id).await?;
+                let pins = chelix_msteams::graph::list_pins(&http, &token, chat_id).await?;
                 let items: Vec<Value> = pins
                     .iter()
                     .map(|p| {
@@ -440,7 +440,7 @@ impl AgentTool for TeamsReadMessageTool {
             p.graph_client(&account_id).await?
         };
 
-        let msg = moltis_msteams::graph::get_message(&http, &token, chat_id, message_id).await?;
+        let msg = chelix_msteams::graph::get_message(&http, &token, chat_id, message_id).await?;
 
         Ok(json!({
             "ok": true,

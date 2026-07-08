@@ -10,8 +10,8 @@
 use {
     crate::sandbox::SandboxRouter,
     async_trait::async_trait,
-    moltis_agents::tool_registry::AgentTool,
-    moltis_browser::{BrowserManager, BrowserRequest},
+    chelix_agents::tool_registry::AgentTool,
+    chelix_browser::{BrowserManager, BrowserRequest},
     std::{borrow::Cow, collections::HashMap, sync::Arc},
     tokio::sync::{OnceCell, RwLock},
     tracing::debug,
@@ -31,7 +31,7 @@ use crate::error::Error;
 /// chat session. This prevents pool exhaustion without leaking browser state
 /// across unrelated chats.
 pub struct BrowserTool {
-    config: moltis_browser::BrowserConfig,
+    config: chelix_browser::BrowserConfig,
     manager: OnceCell<Arc<BrowserManager>>,
     sandbox_router: Option<Arc<SandboxRouter>>,
     /// Track the most recent browser session ID per chat/session context.
@@ -50,7 +50,7 @@ impl BrowserTool {
     const MAX_TRACKED_SESSIONS: usize = 128;
 
     /// Create a new browser tool from browser configuration.
-    pub fn new(config: moltis_browser::BrowserConfig) -> Self {
+    pub fn new(config: chelix_browser::BrowserConfig) -> Self {
         Self {
             config,
             manager: OnceCell::new(),
@@ -66,21 +66,21 @@ impl BrowserTool {
     }
 
     /// Create from config; returns `None` if browser is disabled.
-    pub fn from_config(config: &moltis_config::schema::BrowserConfig) -> Option<Self> {
+    pub fn from_config(config: &chelix_config::schema::BrowserConfig) -> Option<Self> {
         if !config.enabled {
             return None;
         }
-        let browser_config = moltis_browser::BrowserConfig::from(config);
+        let browser_config = chelix_browser::BrowserConfig::from(config);
         Some(Self::new(browser_config))
     }
 
     /// Create from the full tools config so browser sandbox containers can
     /// share command sandbox host path resolution.
-    pub fn from_tools_config(config: &moltis_config::schema::ToolsConfig) -> Option<Self> {
+    pub fn from_tools_config(config: &chelix_config::schema::ToolsConfig) -> Option<Self> {
         if !config.browser.enabled {
             return None;
         }
-        let mut browser_config = moltis_browser::BrowserConfig::from(&config.browser);
+        let mut browser_config = chelix_browser::BrowserConfig::from(&config.browser);
         browser_config.host_data_dir = config
             .execute_command
             .sandbox
@@ -135,7 +135,7 @@ impl BrowserTool {
                     let config = self.config.clone();
                     match tokio::task::spawn_blocking(move || {
                         // Browser detection/container cleanup can block.
-                        moltis_browser::detect::check_and_warn(config.chrome_path.as_deref());
+                        chelix_browser::detect::check_and_warn(config.chrome_path.as_deref());
                         Arc::new(BrowserManager::new(config))
                     })
                     .await
@@ -147,7 +147,7 @@ impl BrowserTool {
                                 "browser tool warmup worker failed, falling back to inline initialization"
                             );
                             let config = self.config.clone();
-                            moltis_browser::detect::check_and_warn(config.chrome_path.as_deref());
+                            chelix_browser::detect::check_and_warn(config.chrome_path.as_deref());
                             Arc::new(BrowserManager::new(config))
                         },
                     }
@@ -171,7 +171,7 @@ impl AgentTool for BrowserTool {
          {\"action\": \"navigate\", \"url\": \"https://example.com\"}\n\n\
          Actions: navigate, screenshot, snapshot, click, type, scroll, evaluate, wait, close\n\n\
          BROWSER CHOICE: optionally set \"browser\" to choose one (auto, chrome, chromium, \
-         edge, brave, opera, vivaldi, arc, obscura, lightpanda). If no browser is installed, Moltis will try \
+         edge, brave, opera, vivaldi, arc, obscura, lightpanda). If no browser is installed, Chelix will try \
          to auto-install one.\n\n\
          SESSION: The browser session is automatically tracked per chat session. \
          After 'navigate', subsequent actions in the same chat will reuse the same \
@@ -343,7 +343,7 @@ mod tests {
 
     #[test]
     fn test_tool_name() {
-        let config = moltis_config::schema::BrowserConfig {
+        let config = chelix_config::schema::BrowserConfig {
             enabled: true,
             ..Default::default()
         };
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn test_disabled_returns_none() {
-        let config = moltis_config::schema::BrowserConfig {
+        let config = chelix_config::schema::BrowserConfig {
             enabled: false,
             ..Default::default()
         };
@@ -362,21 +362,21 @@ mod tests {
 
     #[test]
     fn from_tools_config_carries_command_sandbox_host_data_dir() {
-        let mut config = moltis_config::schema::ToolsConfig::default();
+        let mut config = chelix_config::schema::ToolsConfig::default();
         config.browser.enabled = true;
-        config.execute_command.sandbox.host_data_dir = Some("/host/moltis-data".to_string());
+        config.execute_command.sandbox.host_data_dir = Some("/host/chelix-data".to_string());
 
         let tool = BrowserTool::from_tools_config(&config).unwrap();
 
         assert_eq!(
             tool.config.host_data_dir.as_deref(),
-            Some(std::path::Path::new("/host/moltis-data"))
+            Some(std::path::Path::new("/host/chelix-data"))
         );
     }
 
     #[test]
     fn test_parameters_schema_has_required_action() {
-        let config = moltis_config::schema::BrowserConfig {
+        let config = chelix_config::schema::BrowserConfig {
             enabled: true,
             ..Default::default()
         };
@@ -396,7 +396,7 @@ mod tests {
 
     #[tokio::test]
     async fn saved_browser_sessions_are_scoped_by_chat_session() {
-        let config = moltis_config::schema::BrowserConfig {
+        let config = chelix_config::schema::BrowserConfig {
             enabled: true,
             ..Default::default()
         };
@@ -420,7 +420,7 @@ mod tests {
 
     #[tokio::test]
     async fn empty_session_id_is_not_saved() {
-        let config = moltis_config::schema::BrowserConfig {
+        let config = chelix_config::schema::BrowserConfig {
             enabled: true,
             ..Default::default()
         };
@@ -431,7 +431,7 @@ mod tests {
 
     #[tokio::test]
     async fn session_cache_evicts_when_full() {
-        let config = moltis_config::schema::BrowserConfig {
+        let config = chelix_config::schema::BrowserConfig {
             enabled: true,
             ..Default::default()
         };
@@ -456,7 +456,7 @@ mod tests {
 
     #[tokio::test]
     async fn clearing_one_chat_session_keeps_other_browser_sessions() {
-        let config = moltis_config::schema::BrowserConfig {
+        let config = chelix_config::schema::BrowserConfig {
             enabled: true,
             ..Default::default()
         };

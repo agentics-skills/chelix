@@ -1,4 +1,4 @@
-//! Telegram channel plugin for moltis.
+//! Telegram channel plugin for chelix.
 //!
 //! Implements `ChannelPlugin` using the teloxide library to receive and send
 //! messages via the Telegram Bot API, including edit-in-place streaming.

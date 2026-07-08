@@ -112,7 +112,7 @@ pub(crate) fn build_watch_specs(
 }
 
 pub fn default_watch_specs() -> Result<Vec<WatchSpec>> {
-    let data_dir = moltis_config::data_dir();
+    let data_dir = chelix_config::data_dir();
     let search_paths = FsSkillDiscoverer::default_paths();
     let manifest_path = ManifestStore::default_path()?;
     let manifest = ManifestStore::new(manifest_path).load().unwrap_or_default();
@@ -214,7 +214,7 @@ mod tests {
     fn build_watch_specs_limits_registry_watch_roots_to_enabled_skills() {
         let tmp = tempfile::tempdir().unwrap();
         let data_dir = tmp.path();
-        let project_dir = data_dir.join(".moltis/skills");
+        let project_dir = data_dir.join(".chelix/skills");
         let personal_dir = data_dir.join("skills");
         let search_paths = vec![
             (project_dir.clone(), SkillSource::Project),

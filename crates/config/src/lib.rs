@@ -1,7 +1,7 @@
 //! Configuration loading, validation, env substitution, and legacy migration.
 //!
-//! Config files: `moltis.toml`, `moltis.yaml`, or `moltis.json`
-//! Searched in `./` then `~/.config/moltis/`.
+//! Config files: `chelix.toml`, `chelix.yaml`, or `chelix.json`
+//! Searched in `./` then `~/.config/chelix/`.
 //!
 //! Supports `${ENV_VAR}` substitution in all string values.
 
@@ -52,7 +52,7 @@ pub use {
         CompactionConfig, CompactionMode, GeoLocation, GroupToolPolicy, HeartbeatConfig,
         HomeAssistantAccountConfig, HomeAssistantConfig, MemoryBackend, MemoryCitationsMode,
         MemoryProvider, MemoryScope, MemorySearchMergeStrategy, MemoryStyle, MessageQueueMode,
-        ModePreset, ModesConfig, MoltisConfig, PresetMemoryConfig, PresetToolPolicy,
+        ModePreset, ModesConfig, ChelixConfig, PresetMemoryConfig, PresetToolPolicy,
         PromptMemoryMode, ResolvedIdentity, SessionAccessPolicyConfig, SessionExportMode, Timezone,
         ToolMode, ToolPolicyConfig, ToolRegistryMode, UserProfile, UserProfileWriteMode,
         VoiceConfig, VoiceElevenLabsConfig, VoiceOpenAiConfig, VoiceSttConfig, VoiceSttProvider,

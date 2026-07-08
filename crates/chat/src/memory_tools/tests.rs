@@ -4,8 +4,8 @@ use std::{pin::Pin, sync::Arc};
 
 use {
     super::*,
-    moltis_agents::model::{CompletionResponse, StreamEvent, Usage, UserContent},
-    moltis_memory::{
+    chelix_agents::model::{CompletionResponse, StreamEvent, Usage, UserContent},
+    chelix_memory::{
         config::MemoryConfig, embeddings::EmbeddingProvider, manager::MemoryManager,
         schema::run_migrations, store_sqlite::SqliteMemoryStore,
     },
@@ -21,7 +21,7 @@ struct DataDirGuard;
 
 impl Drop for DataDirGuard {
     fn drop(&mut self) {
-        moltis_config::clear_data_dir();
+        chelix_config::clear_data_dir();
     }
 }
 
@@ -29,7 +29,7 @@ struct MockEmbedder;
 
 #[async_trait]
 impl EmbeddingProvider for MockEmbedder {
-    async fn embed(&self, text: &str) -> moltis_memory::Result<Vec<f32>> {
+    async fn embed(&self, text: &str) -> chelix_memory::Result<Vec<f32>> {
         let lower = text.to_lowercase();
         Ok(KEYWORDS
             .iter()
@@ -155,14 +155,14 @@ async fn setup_agent_memory(
     content: &str,
     chunk_size: usize,
 ) -> (
-    moltis_memory::runtime::DynMemoryRuntime,
+    chelix_memory::runtime::DynMemoryRuntime,
     TempDir,
     std::path::PathBuf,
 ) {
     let tmp = TempDir::new().unwrap();
-    moltis_config::set_data_dir(tmp.path().to_path_buf());
+    chelix_config::set_data_dir(tmp.path().to_path_buf());
 
-    let workspace = moltis_config::agent_workspace_dir(agent_id);
+    let workspace = chelix_config::agent_workspace_dir(agent_id);
     std::fs::create_dir_all(workspace.join("memory")).unwrap();
     let memory_path = workspace.join("MEMORY.md");
     std::fs::write(&memory_path, content).unwrap();

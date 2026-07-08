@@ -8,7 +8,7 @@ import { sendRpc } from "../../helpers";
 import type { RpcResponse } from "./_shared";
 import { ClaudeImportSection } from "./ClaudeImportSection";
 import { CodexImportSection } from "./CodexImportSection";
-import { MoltisDataSection } from "./MoltisDataSection";
+import { ChelixDataSection } from "./ChelixDataSection";
 
 interface ImportTabDef {
 	id: string;
@@ -57,7 +57,7 @@ function getAllTabs(): ImportTabDef[] {
 
 export function ImportSection(): VNode {
 	const detectedTabs = getAllTabs().filter((t) => t.detected);
-	const [activeTab, setActiveTab] = useState("moltis");
+	const [activeTab, setActiveTab] = useState("chelix");
 	const [badges, setBadges] = useState<Record<string, number>>({});
 
 	useEffect(() => {
@@ -73,10 +73,10 @@ export function ImportSection(): VNode {
 		}
 	}, []);
 
-	// Moltis tab is always first, then detected external sources.
-	const moltisTab = {
-		id: "moltis",
-		label: "Moltis",
+	// Chelix tab is always first, then detected external sources.
+	const chelixTab = {
+		id: "chelix",
+		label: "Chelix",
 		icon: <span className="icon icon-download" />,
 		badge: undefined as number | undefined,
 	};
@@ -88,9 +88,9 @@ export function ImportSection(): VNode {
 		badge: badges[t.id] as number | undefined,
 	}));
 
-	const tabs = [moltisTab, ...externalTabs];
+	const tabs = [chelixTab, ...externalTabs];
 
-	// Only Moltis tab — render directly without tab bar
+	// Only Chelix tab — render directly without tab bar
 	if (tabs.length === 1) {
 		return <div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">{renderTab(tabs[0].id)}</div>;
 	}
@@ -107,8 +107,8 @@ export function ImportSection(): VNode {
 
 function renderTab(id: string): VNode | null {
 	switch (id) {
-		case "moltis":
-			return <MoltisDataSection />;
+		case "chelix":
+			return <ChelixDataSection />;
 		case "claude":
 			return <ClaudeImportSection />;
 		case "codex":

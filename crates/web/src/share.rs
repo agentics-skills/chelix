@@ -10,7 +10,7 @@ use {
         CookieJar,
         cookie::{Cookie, SameSite},
     },
-    moltis_httpd::AppState,
+    chelix_httpd::AppState,
     tracing::warn,
 };
 
@@ -21,7 +21,7 @@ fn not_found_share_response() -> axum::response::Response {
 }
 
 fn share_cookie_name(share_id: &str) -> String {
-    format!("moltis_share_{}", share_id)
+    format!("chelix_share_{}", share_id)
 }
 
 fn request_origin(headers: &axum::http::HeaderMap, tls_active: bool) -> Option<String> {
@@ -67,7 +67,7 @@ pub async fn share_page_handler(
         return not_found_share_response();
     }
 
-    let static_path = moltis_config::data_dir()
+    let static_path = chelix_config::data_dir()
         .join("shares")
         .join(format!("{share_id}.html"));
     if let Ok(html) = tokio::fs::read_to_string(&static_path).await {
@@ -89,20 +89,20 @@ pub async fn share_page_handler(
 
     let cookie_name = share_cookie_name(&share.id);
     let cookie_access_granted = jar.get(&cookie_name).is_some_and(|cookie| {
-        moltis_gateway::share_store::ShareStore::verify_access_key(&share, cookie.value())
+        chelix_gateway::share_store::ShareStore::verify_access_key(&share, cookie.value())
     });
     let query_access_granted = query
         .k
         .as_deref()
-        .is_some_and(|key| moltis_gateway::share_store::ShareStore::verify_access_key(&share, key));
+        .is_some_and(|key| chelix_gateway::share_store::ShareStore::verify_access_key(&share, key));
 
-    if share.visibility == moltis_gateway::share_store::ShareVisibility::Private
+    if share.visibility == chelix_gateway::share_store::ShareVisibility::Private
         && !(cookie_access_granted || query_access_granted)
     {
         return not_found_share_response();
     }
 
-    if share.visibility == moltis_gateway::share_store::ShareVisibility::Private
+    if share.visibility == chelix_gateway::share_store::ShareVisibility::Private
         && query_access_granted
         && !cookie_access_granted
     {
@@ -126,7 +126,7 @@ pub async fn share_page_handler(
         .await
         .unwrap_or(share.views);
 
-    let snapshot: moltis_gateway::share_store::ShareSnapshot =
+    let snapshot: chelix_gateway::share_store::ShareSnapshot =
         match serde_json::from_str(&share.snapshot_json) {
             Ok(snapshot) => snapshot,
             Err(e) => {
@@ -205,7 +205,7 @@ pub async fn share_social_image_handler(
         return not_found_share_response();
     }
 
-    let static_path = moltis_config::data_dir()
+    let static_path = chelix_config::data_dir()
         .join("shares")
         .join(format!("{share_id}-og.svg"));
     if let Ok(svg) = tokio::fs::read_to_string(&static_path).await {
@@ -227,20 +227,20 @@ pub async fn share_social_image_handler(
 
     let cookie_name = share_cookie_name(&share.id);
     let cookie_access_granted = jar.get(&cookie_name).is_some_and(|cookie| {
-        moltis_gateway::share_store::ShareStore::verify_access_key(&share, cookie.value())
+        chelix_gateway::share_store::ShareStore::verify_access_key(&share, cookie.value())
     });
     let query_access_granted = query
         .k
         .as_deref()
-        .is_some_and(|key| moltis_gateway::share_store::ShareStore::verify_access_key(&share, key));
+        .is_some_and(|key| chelix_gateway::share_store::ShareStore::verify_access_key(&share, key));
 
-    if share.visibility == moltis_gateway::share_store::ShareVisibility::Private
+    if share.visibility == chelix_gateway::share_store::ShareVisibility::Private
         && !(cookie_access_granted || query_access_granted)
     {
         return not_found_share_response();
     }
 
-    let snapshot: moltis_gateway::share_store::ShareSnapshot =
+    let snapshot: chelix_gateway::share_store::ShareSnapshot =
         match serde_json::from_str(&share.snapshot_json) {
             Ok(snapshot) => snapshot,
             Err(e) => {

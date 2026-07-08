@@ -8,7 +8,7 @@ use {
     serde::Serialize,
 };
 
-use moltis_gateway::auth::EnvVarEntry;
+use chelix_gateway::auth::EnvVarEntry;
 
 // ── Typed responses ──────────────────────────────────────────────────────────
 

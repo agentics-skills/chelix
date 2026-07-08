@@ -1,4 +1,4 @@
-pub use moltis_auth::*;
+pub use chelix_auth::*;
 
 /// Generate a random 8-character alphanumeric setup code (~48 bits of entropy).
 ///

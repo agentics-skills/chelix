@@ -1,11 +1,11 @@
 # Compaction
 
-When a chat session fills up the model's context window, Moltis compacts the
+When a chat session fills up the model's context window, Chelix compacts the
 conversation so the agent can keep working. Compaction replaces (or rewrites)
 older messages with a summary so the retry fits inside the context budget.
 
 The **compaction mode** you choose controls the cost/fidelity trade-off:
-faster and free, or slower and higher quality. Moltis supports four modes
+faster and free, or slower and higher quality. Chelix supports four modes
 out of the box.
 
 ## Why compaction matters
@@ -170,7 +170,7 @@ behaviour).
 
 ## Configuration
 
-All compaction settings live under `[chat.compaction]` in `moltis.toml`:
+All compaction settings live under `[chat.compaction]` in `chelix.toml`:
 
 ```toml
 [chat.compaction]
@@ -182,7 +182,7 @@ tail_budget_ratio = 0.20            # Tail size as fraction of threshold_percent
 tool_prune_char_threshold = 200     # Middle tool results longer than this get placeholder-replaced.
 summary_model = "openrouter/google/gemini-2.5-flash"   # RESERVED — see note below.
 max_summary_tokens = 8192           # RESERVED — see note below.
-show_settings_hint = true           # Show "Change chat.compaction.mode in moltis.toml…" footer.
+show_settings_hint = true           # Show "Change chat.compaction.mode in chelix.toml…" footer.
 ```
 
 ### Hiding the settings hint
@@ -190,7 +190,7 @@ show_settings_hint = true           # Show "Change chat.compaction.mode in molti
 By default, every compaction notice (web UI compact card and channel
 messages) includes a short footer pointing at the config key:
 
-> *Change `chat.compaction.mode` in `moltis.toml` (or the web UI settings
+> *Change `chat.compaction.mode` in `chelix.toml` (or the web UI settings
 > panel) to pick a different compaction strategy.*
 
 Once you know the setting exists, this becomes noise. Set:
@@ -274,11 +274,11 @@ just like the pre-PR behaviour did.
 
 ## Tracking issues
 
-- Epic: **moltis-dxw** — pluggable compaction modes
-- **moltis-g37** — config scaffolding, docs, `llm_replace` mode ✓
-- **moltis-h0c** — `recency_preserving` mode ✓
-- **moltis-aff** — `structured` mode ✓
-- **moltis-8me** — auxiliary-model subsystem for cheap summary models *(follow-up, lets users route compaction to a cheap auxiliary model instead of the session's primary model)*
+- Epic: **chelix-dxw** — pluggable compaction modes
+- **chelix-g37** — config scaffolding, docs, `llm_replace` mode ✓
+- **chelix-h0c** — `recency_preserving` mode ✓
+- **chelix-aff** — `structured` mode ✓
+- **chelix-8me** — auxiliary-model subsystem for cheap summary models *(follow-up, lets users route compaction to a cheap auxiliary model instead of the session's primary model)*
 
 ## Further reading
 

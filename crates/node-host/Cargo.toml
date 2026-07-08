@@ -1,19 +1,19 @@
 [package]
 edition.workspace = true
-name              = "moltis-node-host"
+name              = "chelix-node-host"
 version.workspace = true
 
 [features]
 default = ["metrics"]
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 
 [dependencies]
 base64            = { workspace = true }
 ed25519-dalek     = { workspace = true }
 futures           = { workspace = true }
-moltis-config     = { workspace = true }
-moltis-metrics    = { optional = true, workspace = true }
-moltis-protocol   = { workspace = true }
+chelix-config     = { workspace = true }
+chelix-metrics    = { optional = true, workspace = true }
+chelix-protocol   = { workspace = true }
 rand              = { workspace = true }
 reqwest           = { workspace = true }
 rustls            = { workspace = true }

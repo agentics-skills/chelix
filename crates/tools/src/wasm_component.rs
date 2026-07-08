@@ -29,23 +29,23 @@ pub mod http_tool {
 }
 
 #[cfg(feature = "wasm")]
-pub type PureToolValue = pure_tool::moltis::tool::types::ToolValue;
+pub type PureToolValue = pure_tool::chelix::tool::types::ToolValue;
 #[cfg(feature = "wasm")]
-pub type PureToolResult = pure_tool::moltis::tool::types::ToolResult;
+pub type PureToolResult = pure_tool::chelix::tool::types::ToolResult;
 #[cfg(feature = "wasm")]
-pub type PureToolError = pure_tool::moltis::tool::types::ToolError;
+pub type PureToolError = pure_tool::chelix::tool::types::ToolError;
 #[cfg(feature = "wasm")]
-pub type HttpRequest = http_tool::moltis::tool::outgoing_handler::HttpRequest;
+pub type HttpRequest = http_tool::chelix::tool::outgoing_handler::HttpRequest;
 #[cfg(feature = "wasm")]
-pub type HttpResponse = http_tool::moltis::tool::outgoing_handler::HttpResponse;
+pub type HttpResponse = http_tool::chelix::tool::outgoing_handler::HttpResponse;
 #[cfg(feature = "wasm")]
-pub type HttpError = http_tool::moltis::tool::outgoing_handler::HttpError;
+pub type HttpError = http_tool::chelix::tool::outgoing_handler::HttpError;
 #[cfg(feature = "wasm")]
-pub type HttpToolValue = http_tool::moltis::tool::types::ToolValue;
+pub type HttpToolValue = http_tool::chelix::tool::types::ToolValue;
 #[cfg(feature = "wasm")]
-pub type HttpToolResult = http_tool::moltis::tool::types::ToolResult;
+pub type HttpToolResult = http_tool::chelix::tool::types::ToolResult;
 #[cfg(feature = "wasm")]
-pub type HttpToolError = http_tool::moltis::tool::types::ToolError;
+pub type HttpToolError = http_tool::chelix::tool::types::ToolError;
 
 /// Host-injected headers keyed by lowercase domain.
 ///
@@ -92,7 +92,7 @@ impl HttpHostImpl {
         });
         let client = if tokio::runtime::Handle::try_current().is_ok() {
             thread::Builder::new()
-                .name("moltis-wasm-http-client-init".to_string())
+                .name("chelix-wasm-http-client-init".to_string())
                 .spawn(move || build_blocking_client(timeout))
                 .context("failed to spawn blocking HTTP client init thread")?
                 .join()
@@ -252,7 +252,7 @@ impl HttpHostImpl {
 }
 
 #[cfg(feature = "wasm")]
-impl http_tool::moltis::tool::outgoing_handler::Host for HttpHostImpl {
+impl http_tool::chelix::tool::outgoing_handler::Host for HttpHostImpl {
     fn handle(&mut self, request: HttpRequest) -> Result<HttpResponse, HttpError> {
         self.handle_request(request)
     }
@@ -266,7 +266,7 @@ pub fn add_http_outgoing_handler_to_linker<T>(
 where
     T: 'static,
 {
-    http_tool::moltis::tool::outgoing_handler::add_to_linker::<
+    http_tool::chelix::tool::outgoing_handler::add_to_linker::<
         T,
         wasmtime::component::HasSelf<HttpHostImpl>,
     >(linker, host_getter)

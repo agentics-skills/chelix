@@ -96,7 +96,7 @@ pub(crate) async fn generate_title_for_session(
         .get(session_key)
         .await
         .and_then(|e| e.model);
-    let provider: Arc<dyn moltis_agents::model::LlmProvider> = {
+    let provider: Arc<dyn chelix_agents::model::LlmProvider> = {
         let inner = state.inner.read().await;
         let Some(ref registry) = inner.llm_providers else {
             debug!("auto-title: no provider registry available");
@@ -128,8 +128,8 @@ pub(crate) async fn generate_title_for_session(
         }
     };
 
-    let chat_msgs = moltis_agents::model::values_to_chat_messages(&history);
-    let title = moltis_agents::title::generate_title(provider, &chat_msgs).await?;
+    let chat_msgs = chelix_agents::model::values_to_chat_messages(&history);
+    let title = chelix_agents::title::generate_title(provider, &chat_msgs).await?;
     // Persist the title as the session label and read back the
     // entry atomically so the broadcast version is consistent.
     let entry = session_metadata
@@ -162,10 +162,10 @@ mod tests {
 
     use {
         async_trait::async_trait,
-        moltis_agents::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent, Usage},
-        moltis_auth::{AuthMode, ResolvedAuth},
-        moltis_providers::{ModelCapabilities, ModelInfo, ProviderRegistry},
-        moltis_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
+        chelix_agents::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent, Usage},
+        chelix_auth::{AuthMode, ResolvedAuth},
+        chelix_providers::{ModelCapabilities, ModelInfo, ProviderRegistry},
+        chelix_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
         tokio::sync::RwLock,
         tokio_stream::Stream,
     };
@@ -214,7 +214,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-        moltis_projects::run_migrations(&pool).await.unwrap();
+        chelix_projects::run_migrations(&pool).await.unwrap();
         SqliteSessionMetadata::init(&pool).await.unwrap();
         let session_metadata = Arc::new(SqliteSessionMetadata::new(pool));
         let services = GatewayServices::noop()
@@ -247,7 +247,7 @@ mod tests {
         session_store
             .append(
                 "session:test",
-                &serde_json::json!({"role": "user", "content": "How do I deploy Moltis?"}),
+                &serde_json::json!({"role": "user", "content": "How do I deploy Chelix?"}),
             )
             .await
             .unwrap();
@@ -311,7 +311,7 @@ mod tests {
         store
             .append(
                 "main",
-                &serde_json::json!({"role": "user", "content": "How do I configure Moltis?"}),
+                &serde_json::json!({"role": "user", "content": "How do I configure Chelix?"}),
             )
             .await
             .unwrap();

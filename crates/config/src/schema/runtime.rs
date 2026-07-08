@@ -227,7 +227,7 @@ pub struct McpOAuthOverrideEntry {
 
 /// Built-in channel type identifiers recognised by the validator.
 ///
-/// Kept in `moltis-config` (not `moltis-channels`) so the config crate stays
+/// Kept in `chelix-config` (not `chelix-channels`) so the config crate stays
 /// independent of the channels crate while still validating channel names.
 pub const KNOWN_CHANNEL_TYPES: &[&str] = &[
     "telegram",

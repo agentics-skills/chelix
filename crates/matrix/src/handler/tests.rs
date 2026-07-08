@@ -22,11 +22,11 @@ use {
             serde::Raw,
         },
     },
-    moltis_channels::{
+    chelix_channels::{
         gating::{DmPolicy, GroupPolicy},
         plugin::ChannelMessageKind,
     },
-    moltis_common::types::ChatType,
+    chelix_common::types::ChatType,
     serde_json::json,
     std::{
         collections::HashMap,
@@ -68,7 +68,7 @@ fn account_state_map(initial_sync_complete: bool) -> AccountStateMap {
         ownership_startup_error: None,
         initial_sync_complete: AtomicBool::new(initial_sync_complete),
         pending_identity_reset: Mutex::new(None),
-        otp: Mutex::new(moltis_channels::otp::OtpState::new(300)),
+        otp: Mutex::new(chelix_channels::otp::OtpState::new(300)),
         verification: Mutex::new(Default::default()),
         oidc_pending: Mutex::new(None),
     });
@@ -543,7 +543,7 @@ fn otp_request_message_does_not_leak_codes() {
 #[test]
 fn help_text_lists_all_commands() {
     let help = super::channel_help_text();
-    for cmd in moltis_channels::commands::all_commands() {
+    for cmd in chelix_channels::commands::all_commands() {
         let slash_cmd = format!("/{}", cmd.name);
         assert!(
             help.contains(&slash_cmd),

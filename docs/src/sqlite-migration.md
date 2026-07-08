@@ -1,6 +1,6 @@
 # SQLite Database Migrations
 
-Moltis uses [sqlx](https://github.com/launchbadge/sqlx) for database access and its
+Chelix uses [sqlx](https://github.com/launchbadge/sqlx) for database access and its
 built-in migration system for schema management. Each crate owns its migrations,
 keeping schema definitions close to the code that uses them.
 
@@ -28,7 +28,7 @@ crates/
 │   ├── migrations/
 │   │   └── 20240205100003_init.sql   # auth, message_log, channels, agents, ...
 │   └── src/server/
-│       └── prepare_core.rs            # orchestrates moltis.db migrations
+│       └── prepare_core.rs            # orchestrates chelix.db migrations
 ├── webhooks/
 │   ├── migrations/
 │   │   └── 20260407000000_initial.sql # webhooks, webhook_deliveries, ...
@@ -51,13 +51,13 @@ Each crate is autonomous and owns its schema:
 
 | Crate | Database | Tables | Migration File |
 |-------|----------|--------|----------------|
-| `moltis-projects` | `moltis.db` | `projects` | `20240205100000_init.sql` |
-| `moltis-sessions` | `moltis.db` | `sessions`, `channel_sessions`, `session_state` | `20240205100001_init.sql` + 9 migrations |
-| `moltis-cron` | `moltis.db` | `cron_jobs`, `cron_runs` | `20240205100002_init.sql` + 1 migration |
-| `moltis-gateway` | `moltis.db` | `auth_*`, `passkeys`, `api_keys`, `env_variables`, `message_log`, `channels`, `agents`, `session_shares`, `device_pairing`, `ssh_keys`, `ssh_targets`, `auth_audit_log` | `20240205100003_init.sql` + 12 migrations |
-| `moltis-webhooks` | `moltis.db` | `webhooks`, `webhook_deliveries`, `webhook_response_actions` | `20260407000000_initial.sql` + 1 migration |
-| `moltis-vault` | `moltis.db` | `vault_metadata` | `20260214000001_vault_metadata.sql` (feature-gated) |
-| `moltis-memory` | `memory.db` | `files`, `chunks`, `embedding_cache`, `chunks_fts` | `20240205100004_init.sql` |
+| `chelix-projects` | `chelix.db` | `projects` | `20240205100000_init.sql` |
+| `chelix-sessions` | `chelix.db` | `sessions`, `channel_sessions`, `session_state` | `20240205100001_init.sql` + 9 migrations |
+| `chelix-cron` | `chelix.db` | `cron_jobs`, `cron_runs` | `20240205100002_init.sql` + 1 migration |
+| `chelix-gateway` | `chelix.db` | `auth_*`, `passkeys`, `api_keys`, `env_variables`, `message_log`, `channels`, `agents`, `session_shares`, `device_pairing`, `ssh_keys`, `ssh_targets`, `auth_audit_log` | `20240205100003_init.sql` + 12 migrations |
+| `chelix-webhooks` | `chelix.db` | `webhooks`, `webhook_deliveries`, `webhook_response_actions` | `20260407000000_initial.sql` + 1 migration |
+| `chelix-vault` | `chelix.db` | `vault_metadata` | `20260214000001_vault_metadata.sql` (feature-gated) |
+| `chelix-memory` | `memory.db` | `files`, `chunks`, `embedding_cache`, `chunks_fts` | `20240205100004_init.sql` |
 
 ### Startup Sequence
 
@@ -65,13 +65,13 @@ The gateway runs migrations in dependency order via
 `crates/gateway/src/server/prepare_core.rs`:
 
 ```rust
-moltis_projects::run_migrations(&db_pool).await?;    // 1. projects first
-moltis_sessions::run_migrations(&db_pool).await?;    // 2. sessions (FK → projects)
-moltis_cron::run_migrations(&db_pool).await?;        // 3. cron (independent)
-moltis_webhooks::run_migrations(&db_pool).await?;    // 4. webhooks (independent)
+chelix_projects::run_migrations(&db_pool).await?;    // 1. projects first
+chelix_sessions::run_migrations(&db_pool).await?;    // 2. sessions (FK → projects)
+chelix_cron::run_migrations(&db_pool).await?;        // 3. cron (independent)
+chelix_webhooks::run_migrations(&db_pool).await?;    // 4. webhooks (independent)
 crate::run_migrations(&db_pool).await?;              // 5. gateway tables
 #[cfg(feature = "vault")]
-moltis_vault::run_migrations(&db_pool).await?;      // 6. vault (feature-gated)
+chelix_vault::run_migrations(&db_pool).await?;      // 6. vault (feature-gated)
 ```
 
 Sessions depends on projects due to a foreign key (`sessions.project_id` references
@@ -93,8 +93,8 @@ must be globally unique across all crates.
 
 | Database | Location | Crates |
 |----------|----------|--------|
-| `moltis.db` | `~/.moltis/moltis.db` | projects, sessions, cron, gateway, webhooks, vault |
-| `memory.db` | `~/.moltis/memory.db` | memory (separate, managed internally) |
+| `chelix.db` | `~/.chelix/chelix.db` | projects, sessions, cron, gateway, webhooks, vault |
+| `memory.db` | `~/.chelix/memory.db` | memory (separate, managed internally) |
 
 ## Adding New Migrations
 
@@ -168,7 +168,7 @@ pub async fn run_migrations(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
 4. Call it from `prepare_core.rs` in the appropriate order:
 
 ```rust
-moltis_new_feature::run_migrations(&db_pool).await?;
+chelix_new_feature::run_migrations(&db_pool).await?;
 ```
 
 ## Timestamp Convention
@@ -244,7 +244,7 @@ In production, migrations handle schema creation.
 
 ### "failed to run migrations"
 
-1. Check file permissions on `~/.moltis/`
+1. Check file permissions on `~/.chelix/`
 2. Ensure the database file isn't locked by another process
 3. Check for syntax errors in migration SQL files
 
@@ -256,14 +256,14 @@ tables must be created before child tables with FK references.
 ### Checking Migration Status
 
 ```bash
-sqlite3 ~/.moltis/moltis.db "SELECT version, description, success FROM _sqlx_migrations ORDER BY version"
+sqlite3 ~/.chelix/chelix.db "SELECT version, description, success FROM _sqlx_migrations ORDER BY version"
 ```
 
 ### Resetting Migrations (Development Only)
 
 ```bash
 # Backup first!
-rm ~/.moltis/moltis.db
+rm ~/.chelix/chelix.db
 cargo run  # Creates fresh database with all migrations
 ```
 

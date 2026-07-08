@@ -136,7 +136,7 @@ export function rememberChatHistory(text: string): void {
 	if (!text) return;
 	S.chatHistory.push(text);
 	if (S.chatHistory.length > 200) S.setChatHistory(S.chatHistory.slice(-200));
-	localStorage.setItem("moltis-chat-history", JSON.stringify(S.chatHistory));
+	localStorage.setItem("chelix-chat-history", JSON.stringify(S.chatHistory));
 }
 
 export function resetComposerAfterSend(): void {

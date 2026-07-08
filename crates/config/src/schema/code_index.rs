@@ -1,4 +1,4 @@
-/// Code-index configuration for `moltis.toml`.
+/// Code-index configuration for `chelix.toml`.
 ///
 /// Controls how codebases are indexed for `codebase_search`, `codebase_peek`,
 /// and `codebase_status` agent tools.

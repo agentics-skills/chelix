@@ -1,19 +1,19 @@
 [package]
 edition.workspace = true
-name              = "moltis-canvas"
+name              = "chelix-canvas"
 version.workspace = true
 
 [dependencies]
 axum           = { workspace = true }
-moltis-common  = { workspace = true }
-moltis-metrics = { optional = true, workspace = true }
+chelix-common  = { workspace = true }
+chelix-metrics = { optional = true, workspace = true }
 thiserror      = { workspace = true }
 tokio          = { workspace = true }
 tracing        = { workspace = true }
 
 [features]
 default = []
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 
 [lints]
 workspace = true

@@ -18,7 +18,7 @@ use {
         Error,
         params::{require_str, str_param, str_param_any},
     },
-    moltis_agents::tool_registry::AgentTool,
+    chelix_agents::tool_registry::AgentTool,
 };
 
 /// Status of a task in the shared list.

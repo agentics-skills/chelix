@@ -1,4 +1,4 @@
-//! Slack channel plugin for moltis.
+//! Slack channel plugin for chelix.
 //!
 //! Connects to Slack via Socket Mode using the `slack-morphism` crate.
 //! Handles inbound DMs and channel messages, applies access control

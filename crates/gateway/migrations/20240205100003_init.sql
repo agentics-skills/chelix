@@ -1,5 +1,5 @@
 -- Gateway tables schema
--- Owned by: moltis-gateway crate
+-- Owned by: chelix-gateway crate
 -- Contains: auth, message_log, channels
 
 -- ============================================================================

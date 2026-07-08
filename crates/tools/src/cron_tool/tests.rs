@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use moltis_cron::{
+use chelix_cron::{
     service::{AgentTurnFn, CronService, SystemEventFn},
     store_memory::InMemoryStore,
 };
@@ -16,7 +16,7 @@ fn noop_sys() -> SystemEventFn {
 fn noop_agent() -> AgentTurnFn {
     Arc::new(|_| {
         Box::pin(async {
-            Ok(moltis_cron::service::AgentTurnResult {
+            Ok(chelix_cron::service::AgentTurnResult {
                 output: "ok".into(),
                 input_tokens: None,
                 output_tokens: None,

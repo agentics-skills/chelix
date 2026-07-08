@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-/// Errors produced by the `moltis-auth` crate.
+/// Errors produced by the `chelix-auth` crate.
 #[derive(Debug, Error)]
 pub enum Error {
     /// SQLite / sqlx database error.
@@ -13,7 +13,7 @@ pub enum Error {
 
     /// Configuration file read/write error.
     #[error(transparent)]
-    Config(#[from] moltis_config::Error),
+    Config(#[from] chelix_config::Error),
 
     /// JSON serialization / deserialization error.
     #[error(transparent)]

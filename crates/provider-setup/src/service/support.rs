@@ -49,6 +49,6 @@ pub(crate) fn default_error_parser(raw: &str, _provider: Option<&str>) -> Value 
 #[derive(Clone)]
 pub(crate) struct PendingOAuthFlow {
     pub(crate) provider_name: String,
-    pub(crate) oauth_config: moltis_oauth::OAuthConfig,
+    pub(crate) oauth_config: chelix_oauth::OAuthConfig,
     pub(crate) verifier: String,
 }

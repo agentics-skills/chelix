@@ -1,14 +1,14 @@
 ---
 name: data-sync
-description: Sync and archive data from messaging platforms (WhatsApp, Discord, Slack, Twitter/X, Google) into Moltis memory as daily digest summaries. Orchestrates crawl tools and writes structured markdown to the memory system.
+description: Sync and archive data from messaging platforms (WhatsApp, Discord, Slack, Twitter/X, Google) into Chelix memory as daily digest summaries. Orchestrates crawl tools and writes structured markdown to the memory system.
 origin:
-  source: moltis
-  url: https://github.com/moltis-org/moltis
+  source: chelix
+  url: https://github.com/agentics-skills/chelix
 ---
 
 # data-sync — Crawl-to-Memory Pipeline
 
-Orchestrate data archiving tools to sync external platform data into Moltis memory as searchable daily digest summaries.
+Orchestrate data archiving tools to sync external platform data into Chelix memory as searchable daily digest summaries.
 
 ## Supported Sources
 

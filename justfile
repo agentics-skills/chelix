@@ -34,7 +34,7 @@ lint: lockfile-check
     #!/usr/bin/env bash
     set -euo pipefail
     if [ "$(uname -s)" = "Darwin" ]; then
-        cargo +{{nightly_toolchain}} clippy -Z unstable-options --workspace --all-targets --exclude moltis-matrix --timings -- -D warnings
+        cargo +{{nightly_toolchain}} clippy -Z unstable-options --workspace --all-targets --exclude chelix-matrix --timings -- -D warnings
     else
         cargo +{{nightly_toolchain}} clippy -Z unstable-options --workspace --all-features --all-targets --timings -- -D warnings
     fi
@@ -62,12 +62,12 @@ codesign-debug:
     #!/usr/bin/env bash
     [ "$(uname -s)" = "Darwin" ] || exit 0
     [ -n "${MACOS_CODESIGN_IDENTITY:-}" ] || exit 0
-    id="${MACOS_CODESIGN_IDENTIFIER:-org.moltis.dev}"
+    id="${MACOS_CODESIGN_IDENTIFIER:-org.chelix.dev}"
     sign() { codesign --force --sign "$MACOS_CODESIGN_IDENTITY" --identifier "$id" "$1" 2>/dev/null || true; }
     # Main binary
-    if [ -f target/debug/moltis ]; then sign target/debug/moltis; fi
+    if [ -f target/debug/chelix ]; then sign target/debug/chelix; fi
     # Test binaries (Mach-O executables, skip .d/.fingerprint/dylib)
-    for bin in target/debug/deps/moltis*; do
+    for bin in target/debug/deps/chelix*; do
         if [ -f "$bin" ] && [ -x "$bin" ] && [ "${bin##*.}" != "d" ]; then sign "$bin"; fi
     done
 
@@ -78,26 +78,26 @@ build: build-web-assets
 
 # Build in release mode
 build-release:
-    ./scripts/cargo-build-moltis.sh --release
+    ./scripts/cargo-build-chelix.sh --release
 
 # Build embedded WASM guest tools and pre-compile to .cwasm for AOT loading.
 wasm-tools:
-    cargo build --target wasm32-wasip2 -p moltis-wasm-calc -p moltis-wasm-web-fetch -p moltis-wasm-web-search --release
-    cargo run -p moltis-wasm-precompile --release
+    cargo build --target wasm32-wasip2 -p chelix-wasm-calc -p chelix-wasm-web-fetch -p chelix-wasm-web-search --release
+    cargo run -p chelix-wasm-precompile --release
 
 # Build just the release WASM artifacts expected by embedded-wasm builds.
 build-wasm-artifacts: wasm-tools
-    @echo "Built target/wasm32-wasip2/release/{moltis_wasm_calc,moltis_wasm_web_fetch,moltis_wasm_web_search}.{wasm,cwasm}"
+    @echo "Built target/wasm32-wasip2/release/{chelix_wasm_calc,chelix_wasm_web_fetch,chelix_wasm_web_search}.{wasm,cwasm}"
 
 # Build release after ensuring embedded WASM artifacts are present.
 build-release-with-wasm: build-wasm-artifacts
-    ./scripts/cargo-build-moltis.sh --release
+    ./scripts/cargo-build-chelix.sh --release
 
 # Run local dev server with workspace-local config/data dirs.
 dev-server:
-    cargo build --bin moltis
+    cargo build --bin chelix
     just codesign-debug
-    MOLTIS_CONFIG_DIR=.moltis/config MOLTIS_DATA_DIR=.moltis/ cargo run --bin moltis
+    CHELIX_CONFIG_DIR=.chelix/config CHELIX_DATA_DIR=.chelix/ cargo run --bin chelix
 
 # Run all CI checks (format, lint, build, test)
 ci: format-check lint i18n-check build-web-assets build test
@@ -202,10 +202,10 @@ test:
 
 # Run contract test suites (channel, provider, memory, tools)
 contract-tests:
-    cargo test -p moltis-channels contract
-    cargo test -p moltis-providers contract
-    cargo test -p moltis-memory contract
-    cargo test -p moltis-tools contract
+    cargo test -p chelix-channels contract
+    cargo test -p chelix-providers contract
+    cargo test -p chelix-memory contract
+    cargo test -p chelix-tools contract
 
 # Verify locale key parity across frontend i18n bundles.
 i18n-check:
@@ -217,23 +217,23 @@ ui-e2e-install:
 
 # Run gateway web UI e2e tests (Playwright).
 ui-e2e:
-    cargo +{{nightly_toolchain}} build --bin moltis
+    cargo +{{nightly_toolchain}} build --bin chelix
     just codesign-debug
     cd crates/web/ui && npm run e2e
 
 # Run gateway web UI e2e tests with headed browser.
 ui-e2e-headed:
-    cargo +{{nightly_toolchain}} build --bin moltis
+    cargo +{{nightly_toolchain}} build --bin chelix
     just codesign-debug
     cd crates/web/ui && npm run e2e:headed
 
 # Build the APNS push relay.
 courier-build:
-    cargo build -p moltis-courier --release
+    cargo build -p chelix-courier --release
 
 # Cross-compile courier for linux/x86_64.
 courier-cross:
-    cargo build -p moltis-courier --release --target x86_64-unknown-linux-gnu
+    cargo build -p chelix-courier --release --target x86_64-unknown-linux-gnu
 
 # Deploy courier to remote server(s) via Ansible.
 courier-deploy:
@@ -241,5 +241,5 @@ courier-deploy:
 
 # Run the APNS push relay (dev).
 courier-run *ARGS:
-    cargo run -p moltis-courier -- {{ARGS}}
+    cargo run -p chelix-courier -- {{ARGS}}
 

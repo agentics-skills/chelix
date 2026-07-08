@@ -15,7 +15,7 @@ import type { ReadonlySignal } from "@preact/signals";
 import { signal, useComputed } from "@preact/signals";
 import i18next from "i18next";
 
-const STORAGE_KEY = "moltis-locale";
+const STORAGE_KEY = "chelix-locale";
 let initPromise: Promise<void> | null = null;
 const SUPPORTED_LOCALES = new Set(["en"]);
 export const supportedLocales: readonly string[] = Object.freeze(["en"]);
@@ -187,7 +187,7 @@ export function setLocale(lng: string): Promise<void> {
 			applyDocumentLocale(normalized);
 			// Re-translate any static data-i18n elements.
 			translateStaticElements(document.documentElement);
-			window.dispatchEvent(new CustomEvent("moltis:locale-changed", { detail: { locale: normalized } }));
+			window.dispatchEvent(new CustomEvent("chelix:locale-changed", { detail: { locale: normalized } }));
 		}),
 	);
 }

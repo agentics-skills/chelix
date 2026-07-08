@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tracing::{debug, error, warn};
 
-use moltis_channels::{ChannelAttachment, ChannelMessageMeta, ChannelReplyTarget};
+use chelix_channels::{ChannelAttachment, ChannelMessageMeta, ChannelReplyTarget};
 
 use crate::{
     broadcast::{BroadcastOpts, broadcast},

@@ -1,6 +1,6 @@
 //! Shared model override parsing for session tools.
 
-use {moltis_config::schema::ReasoningEffort, serde_json::Value};
+use {chelix_config::schema::ReasoningEffort, serde_json::Value};
 
 use crate::{Error, Result, params::str_param};
 

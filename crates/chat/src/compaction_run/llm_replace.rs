@@ -6,8 +6,8 @@
 //! the pre-PR behaviour or need maximum token reduction.
 
 use {
-    moltis_agents::model::{ChatMessage, LlmProvider, StreamEvent, Usage, values_to_chat_messages},
-    moltis_config::{CompactionConfig, CompactionMode},
+    chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent, Usage, values_to_chat_messages},
+    chelix_config::{CompactionConfig, CompactionMode},
     serde_json::Value,
     tokio_stream::StreamExt,
     tracing::info,
@@ -93,7 +93,7 @@ pub(super) async fn run(
 mod tests {
     use {
         super::{super::test_support::StubProvider, *},
-        moltis_config::CompactionMode,
+        chelix_config::CompactionMode,
         serde_json::json,
     };
 

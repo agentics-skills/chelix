@@ -3,15 +3,15 @@
 use std::{collections::HashSet, sync::Arc, time::Instant};
 
 use {
-    moltis_config::schema::ToolMode,
+    chelix_config::schema::ToolMode,
     serde_json::Value,
     tokio::sync::{Mutex, RwLock, mpsc},
     tracing::{debug, info, warn},
 };
 
 use {
-    moltis_agents::{runner::RunnerEvent, tool_registry::ToolRegistry},
-    moltis_sessions::{PersistedMessage, store::SessionStore},
+    chelix_agents::{runner::RunnerEvent, tool_registry::ToolRegistry},
+    chelix_sessions::{PersistedMessage, store::SessionStore},
 };
 
 use crate::{
@@ -130,15 +130,15 @@ const CHANNEL_STREAM_BUFFER_SIZE: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct ChannelReplyTargetKey {
-    channel_type: moltis_channels::ChannelType,
+    channel_type: chelix_channels::ChannelType,
     account_id: String,
     chat_id: String,
     message_id: Option<String>,
     thread_id: Option<String>,
 }
 
-impl From<&moltis_channels::ChannelReplyTarget> for ChannelReplyTargetKey {
-    fn from(target: &moltis_channels::ChannelReplyTarget) -> Self {
+impl From<&chelix_channels::ChannelReplyTarget> for ChannelReplyTargetKey {
+    fn from(target: &chelix_channels::ChannelReplyTarget) -> Self {
         Self {
             channel_type: target.channel_type,
             account_id: target.account_id.clone(),
@@ -150,7 +150,7 @@ impl From<&moltis_channels::ChannelReplyTarget> for ChannelReplyTargetKey {
 }
 
 struct ChannelStreamWorker {
-    sender: moltis_channels::StreamSender,
+    sender: chelix_channels::StreamSender,
     receives_progress_deltas: bool,
 }
 
@@ -160,8 +160,8 @@ struct ChannelStreamWorker {
 /// during long-running tool execution before the first text delta arrives.
 /// Stream-dedup only applies after at least one delta has been sent.
 pub(crate) struct ChannelStreamDispatcher {
-    outbound: Arc<dyn moltis_channels::plugin::ChannelStreamOutbound>,
-    targets: Vec<moltis_channels::ChannelReplyTarget>,
+    outbound: Arc<dyn chelix_channels::plugin::ChannelStreamOutbound>,
+    targets: Vec<chelix_channels::ChannelReplyTarget>,
     workers: Vec<ChannelStreamWorker>,
     tasks: Vec<tokio::task::JoinHandle<()>>,
     completed: Arc<Mutex<HashSet<ChannelReplyTargetKey>>>,
@@ -175,7 +175,7 @@ impl ChannelStreamDispatcher {
         session_key: &str,
     ) -> Option<Self> {
         let outbound = state.channel_stream_outbound()?;
-        let targets: Vec<moltis_channels::ChannelReplyTarget> = state
+        let targets: Vec<chelix_channels::ChannelReplyTarget> = state
             .peek_channel_replies(session_key)
             .await
             .into_iter()
@@ -266,7 +266,7 @@ impl ChannelStreamDispatcher {
         self.sent_final_delta = true;
         self.ensure_started().await;
         self.send_to_workers(
-            moltis_channels::StreamEvent::Delta(delta.to_string()),
+            chelix_channels::StreamEvent::Delta(delta.to_string()),
             "delta",
         )
         .await;
@@ -277,7 +277,7 @@ impl ChannelStreamDispatcher {
             return;
         }
         self.ensure_started().await;
-        let event = moltis_channels::StreamEvent::ProgressDelta(delta.to_string());
+        let event = chelix_channels::StreamEvent::ProgressDelta(delta.to_string());
         for worker in &self.workers {
             if worker.receives_progress_deltas && worker.sender.send(event.clone()).await.is_err() {
                 debug!("channel stream progress delta dropped: worker closed");
@@ -285,7 +285,7 @@ impl ChannelStreamDispatcher {
         }
     }
 
-    async fn send_to_workers(&mut self, event: moltis_channels::StreamEvent, label: &str) {
+    async fn send_to_workers(&mut self, event: chelix_channels::StreamEvent, label: &str) {
         for worker in &self.workers {
             if worker.sender.send(event.clone()).await.is_err() {
                 debug!("channel stream {label} dropped: worker closed");
@@ -294,11 +294,11 @@ impl ChannelStreamDispatcher {
     }
 
     pub(crate) async fn finish(&mut self) {
-        self.send_terminal(moltis_channels::StreamEvent::Done).await;
+        self.send_terminal(chelix_channels::StreamEvent::Done).await;
         self.join_workers().await;
     }
 
-    async fn send_terminal(&mut self, event: moltis_channels::StreamEvent) {
+    async fn send_terminal(&mut self, event: chelix_channels::StreamEvent) {
         if self.workers.is_empty() {
             return;
         }
@@ -515,8 +515,8 @@ pub(crate) async fn run_explicit_shell_command(
         String::new(),
         None,
         UsageSnapshot::new(
-            moltis_agents::model::Usage::default(),
-            Some(moltis_agents::model::Usage::default()),
+            chelix_agents::model::Usage::default(),
+            Some(chelix_agents::model::Usage::default()),
         ),
         started.elapsed().as_millis() as u64,
         user_message_index + 3, // +1 tool call assistant, +1 tool result, +1 final assistant
@@ -536,8 +536,8 @@ pub(crate) async fn run_explicit_shell_command(
     build_assistant_turn_output(
         final_text,
         UsageSnapshot::new(
-            moltis_agents::model::Usage::default(),
-            Some(moltis_agents::model::Usage::default()),
+            chelix_agents::model::Usage::default(),
+            Some(chelix_agents::model::Usage::default()),
         ),
         started.elapsed().as_millis() as u64,
         None,
@@ -553,7 +553,7 @@ pub(crate) async fn run_explicit_shell_command(
 /// - `Native` — provider handles tool schemas via API (OpenAI function calling, etc.)
 /// - `Text` — tools are described in the prompt; the runner parses tool calls from text
 /// - `Off` — no tools at all
-pub(crate) fn effective_tool_mode(provider: &dyn moltis_agents::model::LlmProvider) -> ToolMode {
+pub(crate) fn effective_tool_mode(provider: &dyn chelix_agents::model::LlmProvider) -> ToolMode {
     match provider.tool_mode() {
         Some(ToolMode::Native) => ToolMode::Native,
         Some(ToolMode::Text) => ToolMode::Text,
@@ -571,8 +571,8 @@ pub(crate) fn effective_tool_mode(provider: &dyn moltis_agents::model::LlmProvid
 pub(crate) async fn compact_session(
     store: &Arc<SessionStore>,
     session_key: &str,
-    config: &moltis_config::CompactionConfig,
-    provider: Option<&dyn moltis_agents::model::LlmProvider>,
+    config: &chelix_config::CompactionConfig,
+    provider: Option<&dyn chelix_agents::model::LlmProvider>,
 ) -> error::Result<compaction_run::CompactionOutcome> {
     let history = store
         .read(session_key)

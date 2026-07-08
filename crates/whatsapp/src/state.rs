@@ -8,7 +8,7 @@ use std::{
 
 use {tokio::sync::Notify, tokio_util::sync::CancellationToken, whatsapp_rust::client::Client};
 
-use moltis_channels::{ChannelEventSink, message_log::MessageLog};
+use chelix_channels::{ChannelEventSink, message_log::MessageLog};
 
 use crate::{config::WhatsAppAccountConfig, otp::OtpState};
 

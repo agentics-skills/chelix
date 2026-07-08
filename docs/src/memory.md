@@ -1,6 +1,6 @@
 # Memory System
 
-Moltis provides a powerful memory system that enables the agent to recall past conversations, notes, and context across sessions. This document explains the available backends, features, and configuration options.
+Chelix provides a powerful memory system that enables the agent to recall past conversations, notes, and context across sessions. This document explains the available backends, features, and configuration options.
 
 If you are trying to understand the difference between short-term session
 state, long-term memory files, and sandbox persistence, start with
@@ -8,7 +8,7 @@ state, long-term memory files, and sandbox persistence, start with
 
 ## Backends
 
-Moltis supports two memory backends:
+Chelix supports two memory backends:
 
 | Feature | Built-in | QMD |
 |---------|----------|-----|
@@ -27,7 +27,7 @@ Moltis supports two memory backends:
 
 The default backend uses SQLite for storage with FTS5 for keyword search and optional vector embeddings for semantic search. Key advantages:
 
-- **Zero external dependencies**: Everything is embedded in the moltis binary
+- **Zero external dependencies**: Everything is embedded in the chelix binary
 - **Fallback chain**: Automatically switches between embedding providers if one fails
 - **Batch embedding**: Reduces OpenAI API costs by 50% for large sync operations
 - **Embedding cache**: Avoids re-embedding unchanged content
@@ -45,7 +45,7 @@ To use QMD:
 2. Verify the binary is on your `PATH`: `qmd --version`
 3. Enable it in Settings > Memory > Backend
 
-Moltis invokes the `qmd` CLI directly for indexing and search, so the memory
+Chelix invokes the `qmd` CLI directly for indexing and search, so the memory
 backend does not require a separate background daemon.
 
 ## Features
@@ -87,7 +87,7 @@ LLM reranking uses the configured language model to re-score and reorder search 
 
 ## Configuration
 
-Memory settings can be configured in `moltis.toml`:
+Memory settings can be configured in `chelix.toml`:
 
 ```toml
 [memory]
@@ -153,7 +153,7 @@ mode controls whether prompt-visible `MEMORY.md` is live-reloaded or frozen
 per session.
 
 The web settings page exposes both knobs in the Memory section so you can
-experiment without hand-editing `moltis.toml`.
+experiment without hand-editing `chelix.toml`.
 
 `agent_write_mode` is a separate axis again. It controls where agent-authored
 memory writes may land:
@@ -171,8 +171,8 @@ memory files:
   allows silent browser/channel timezone or location capture
 - `explicit-only` mirrors explicit settings saves to `USER.md`, but disables
   silent browser/channel capture
-- `off` stops Moltis from writing `USER.md`; the canonical user profile remains
-  in `moltis.toml [user]`
+- `off` stops Chelix from writing `USER.md`; the canonical user profile remains
+  in `chelix.toml [user]`
 
 `citations` and `search_merge_strategy` are typed config enums too:
 
@@ -225,11 +225,11 @@ The system auto-detects available providers and creates a fallback chain:
 
 ## Memory Directories
 
-By default, moltis indexes markdown files from:
+By default, chelix indexes markdown files from:
 
-- `~/.moltis/MEMORY.md` - Main long-term memory file
-- `~/.moltis/memory/*.md` - Additional memory files
-- `~/.moltis/memory/sessions/*.md` - Exported session transcripts
+- `~/.chelix/MEMORY.md` - Main long-term memory file
+- `~/.chelix/memory/*.md` - Additional memory files
+- `~/.chelix/memory/sessions/*.md` - Exported session transcripts
 
 Prompt injection from `MEMORY.md` is controlled separately via
 `[chat].prompt_memory_mode`. Use `live-reload` to reread `MEMORY.md` before
@@ -388,7 +388,7 @@ is removed. It is the low-level exact-delete primitive that powers
 ## Silent Memory Turn (Pre-Compaction Flush)
 
 Before compacting a session (summarizing old messages to free context window
-space), Moltis runs a **silent agentic turn** that reviews the conversation
+space), Chelix runs a **silent agentic turn** that reviews the conversation
 and saves important information to memory files. This ensures durable memories
 survive compaction.
 
@@ -464,7 +464,7 @@ flush is skipped entirely.
 ### Search returns no results
 
 1. Check that memory files exist in the expected directories
-2. Trigger a manual sync by restarting moltis
+2. Trigger a manual sync by restarting chelix
 3. Check logs for sync errors
 
 ### QMD not available

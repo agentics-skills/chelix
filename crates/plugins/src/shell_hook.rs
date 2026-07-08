@@ -20,7 +20,7 @@ use {
 
 use {
     crate::hooks::{HookAction, HookEvent, HookHandler, HookPayload, ShellHookConfig},
-    moltis_common::{Error as HookError, Result as HookResult},
+    chelix_common::{Error as HookError, Result as HookResult},
 };
 
 /// Response format expected from shell hooks on stdout.
@@ -62,7 +62,7 @@ impl ShellHookHandler {
 
     /// Create from a [`ShellHookConfig`].
     ///
-    /// Config-based hooks (from `moltis.toml`) don't have a hook directory,
+    /// Config-based hooks (from `chelix.toml`) don't have a hook directory,
     /// so `working_dir` is `None`.
     pub fn from_config(config: &ShellHookConfig) -> Self {
         Self::new(
@@ -364,7 +364,7 @@ mod tests {
 
     #[tokio::test]
     async fn shell_hook_working_dir() {
-        let tmp = std::env::temp_dir().join("moltis_hook_wd_test");
+        let tmp = std::env::temp_dir().join("chelix_hook_wd_test");
         std::fs::create_dir_all(&tmp).unwrap();
 
         let handler = ShellHookHandler::new(

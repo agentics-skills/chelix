@@ -42,16 +42,16 @@ mod voicecall_commands;
 use {
     anyhow::anyhow,
     clap::{Parser, Subcommand},
-    moltis_gateway::logs::{EnabledLogLevels, LogBroadcastLayer, LogBuffer},
+    chelix_gateway::logs::{EnabledLogLevels, LogBroadcastLayer, LogBuffer},
     tracing::info,
     tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt},
 };
 
 #[derive(Parser)]
 #[command(
-    name = "moltis",
-    about = "Moltis — personal AI gateway",
-    version = moltis_config::VERSION
+    name = "chelix",
+    about = "Chelix — personal AI gateway",
+    version = chelix_config::VERSION
 )]
 struct Cli {
     #[command(subcommand)]
@@ -72,18 +72,18 @@ struct Cli {
     /// Port to listen on (overrides config value).
     #[arg(long, global = true)]
     port: Option<u16>,
-    /// Custom config directory (overrides default ~/.config/moltis/).
-    #[arg(long, global = true, env = "MOLTIS_CONFIG_DIR")]
+    /// Custom config directory (overrides default ~/.config/chelix/).
+    #[arg(long, global = true, env = "CHELIX_CONFIG_DIR")]
     config_dir: Option<std::path::PathBuf>,
     /// Custom data directory (overrides default data dir).
-    #[arg(long, global = true, env = "MOLTIS_DATA_DIR")]
+    #[arg(long, global = true, env = "CHELIX_DATA_DIR")]
     data_dir: Option<std::path::PathBuf>,
     /// Custom share directory for external web/WASM assets (overrides default discovery).
-    #[arg(long, global = true, env = "MOLTIS_SHARE_DIR")]
+    #[arg(long, global = true, env = "CHELIX_SHARE_DIR")]
     share_dir: Option<std::path::PathBuf>,
     /// Disable TLS (for cloud deployments where the provider handles TLS).
     #[cfg(feature = "tls")]
-    #[arg(long, global = true, env = "MOLTIS_NO_TLS")]
+    #[arg(long, global = true, env = "CHELIX_NO_TLS")]
     no_tls: bool,
 }
 
@@ -151,7 +151,7 @@ enum Commands {
         #[command(subcommand)]
         action: browser_commands::BrowserAction,
     },
-    /// Export and import Moltis data archives.
+    /// Export and import Chelix data archives.
     Data {
         #[command(subcommand)]
         action: data_commands::DataAction,
@@ -171,7 +171,7 @@ enum Commands {
         #[command(subcommand)]
         action: node_commands::NodeAction,
     },
-    /// Install or manage moltis as an OS service.
+    /// Install or manage chelix as an OS service.
     Service {
         #[command(subcommand)]
         action: service_commands::ServiceAction,
@@ -186,7 +186,7 @@ enum Commands {
         #[command(subcommand)]
         action: voicecall_commands::VoiceCallAction,
     },
-    /// Install the Moltis CA certificate into the system trust store.
+    /// Install the Chelix CA certificate into the system trust store.
     #[cfg(feature = "tls")]
     TrustCa,
 }
@@ -216,13 +216,13 @@ enum SkillAction {
     Export {
         /// Source in owner/repo format.
         source: String,
-        /// Output file or directory. Defaults to ~/.moltis/skill-exports/.
+        /// Output file or directory. Defaults to ~/.chelix/skill-exports/.
         #[arg(long)]
         output: Option<String>,
     },
     /// Import a portable skill bundle into the local registry in quarantine.
     Import {
-        /// Path to a .tar.gz bundle created by `moltis skills export`.
+        /// Path to a .tar.gz bundle created by `chelix skills export`.
         path: String,
     },
     /// Show details about a skill.
@@ -283,7 +283,7 @@ fn init_telemetry(cli: &Cli, log_buffer: Option<LogBuffer>) {
 
 #[cfg(feature = "tls")]
 async fn trust_ca() -> anyhow::Result<()> {
-    let cert_dir = moltis_httpd::tls::cert_dir()?;
+    let cert_dir = chelix_httpd::tls::cert_dir()?;
     let ca_path = cert_dir.join("ca.pem");
 
     if !ca_path.exists() {
@@ -322,7 +322,7 @@ async fn trust_ca() -> anyhow::Result<()> {
 
     #[cfg(target_os = "linux")]
     {
-        let dest = std::path::PathBuf::from("/usr/local/share/ca-certificates/moltis-ca.crt");
+        let dest = std::path::PathBuf::from("/usr/local/share/ca-certificates/chelix-ca.crt");
         eprintln!("Copying CA to {} (may require sudo)", dest.display());
         let status = std::process::Command::new("sudo")
             .args(["cp"])
@@ -362,7 +362,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Create the log buffer only for the gateway command so the web UI can
     // display captured log entries. Default capacity (1000) can be overridden
-    // via `server.log_buffer_size` in moltis.toml.
+    // via `server.log_buffer_size` in chelix.toml.
     let log_buffer = if matches!(cli.command, None | Some(Commands::Gateway)) {
         Some(LogBuffer::default())
     } else {
@@ -371,24 +371,24 @@ async fn main() -> anyhow::Result<()> {
 
     init_telemetry(&cli, log_buffer.clone());
 
-    info!(version = moltis_config::VERSION, "moltis starting");
+    info!(version = chelix_config::VERSION, "chelix starting");
 
     // Apply directory overrides before any command so all subcommands
     // (config check, db, sandbox, etc.) respect --config-dir / --data-dir.
     if let Some(ref dir) = cli.config_dir {
-        moltis_config::set_config_dir(dir.clone());
+        chelix_config::set_config_dir(dir.clone());
     }
     if let Some(ref dir) = cli.data_dir {
-        moltis_config::set_data_dir(dir.clone());
+        chelix_config::set_data_dir(dir.clone());
     }
     if let Some(ref dir) = cli.share_dir {
-        moltis_config::set_share_dir(dir.clone());
+        chelix_config::set_share_dir(dir.clone());
     }
 
     // Ensure config/data directories exist for every command path. This is a
     // hard requirement for startup; fail fast if directory initialization fails.
     let config_dir =
-        moltis_config::config_dir().ok_or_else(|| anyhow!("unable to resolve config directory"))?;
+        chelix_config::config_dir().ok_or_else(|| anyhow!("unable to resolve config directory"))?;
     std::fs::create_dir_all(&config_dir).unwrap_or_else(|e| {
         panic!(
             "failed to create config directory {}: {e}",
@@ -396,7 +396,7 @@ async fn main() -> anyhow::Result<()> {
         )
     });
 
-    let data_dir = moltis_config::data_dir();
+    let data_dir = chelix_config::data_dir();
     std::fs::create_dir_all(&data_dir).unwrap_or_else(|e| {
         panic!(
             "failed to create data directory {}: {e}",
@@ -406,13 +406,13 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize config directory once for all subcommands
     // (write defaults.toml, compact, persist random port).
-    moltis_config::initialize_config();
+    chelix_config::initialize_config();
 
     match cli.command {
         // Default: start gateway when no subcommand is provided
         None | Some(Commands::Gateway) => {
             // Load config to get server settings
-            let config = moltis_config::discover_and_load();
+            let config = chelix_config::discover_and_load();
 
             // CLI args override config values
             let bind = cli.bind.unwrap_or(config.server.bind);
@@ -423,11 +423,11 @@ async fn main() -> anyhow::Result<()> {
             #[cfg(not(feature = "tls"))]
             let no_tls = false;
             #[cfg(feature = "web-ui")]
-            let extra_routes: Option<moltis_httpd::RouteEnhancer> = Some(moltis_web::web_routes);
+            let extra_routes: Option<chelix_httpd::RouteEnhancer> = Some(chelix_web::web_routes);
             #[cfg(not(feature = "web-ui"))]
-            let extra_routes: Option<moltis_httpd::RouteEnhancer> = None;
+            let extra_routes: Option<chelix_httpd::RouteEnhancer> = None;
 
-            moltis_httpd::start_gateway(
+            chelix_httpd::start_gateway(
                 &bind,
                 port,
                 no_tls,
@@ -440,12 +440,12 @@ async fn main() -> anyhow::Result<()> {
             .map_err(Into::into)
         },
         Some(Commands::Agent { message, .. }) => {
-            let result = moltis_agents::runner::run_agent("default", "main", &message).await?;
+            let result = chelix_agents::runner::run_agent("default", "main", &message).await?;
             println!("{result}");
             Ok(())
         },
         Some(Commands::Onboard) => {
-            moltis_onboarding::wizard::run_onboarding().await?;
+            chelix_onboarding::wizard::run_onboarding().await?;
             Ok(())
         },
         Some(Commands::Channels { action }) => channel_commands::handle_channels(action).await,
@@ -473,7 +473,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn handle_skills(action: SkillAction) -> anyhow::Result<()> {
-    use moltis_skills::{
+    use chelix_skills::{
         discover::FsSkillDiscoverer,
         install,
         registry::{InMemoryRegistry, SkillRegistry},
@@ -513,7 +513,7 @@ async fn handle_skills(action: SkillAction) -> anyhow::Result<()> {
         },
         SkillAction::Export { source, output } => {
             let install_dir = install::default_install_dir()?;
-            let exported = moltis_skills::portability::export_repo_bundle(
+            let exported = chelix_skills::portability::export_repo_bundle(
                 &source,
                 &install_dir,
                 output.as_deref().map(std::path::Path::new),
@@ -527,7 +527,7 @@ async fn handle_skills(action: SkillAction) -> anyhow::Result<()> {
         },
         SkillAction::Import { path } => {
             let install_dir = install::default_install_dir()?;
-            let imported = moltis_skills::portability::import_repo_bundle(
+            let imported = chelix_skills::portability::import_repo_bundle(
                 std::path::Path::new(&path),
                 &install_dir,
             )

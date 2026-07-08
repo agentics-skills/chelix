@@ -12,8 +12,8 @@ use std::collections::HashSet;
 
 use {
     futures::StreamExt,
-    moltis_agents::model::{ChatMessage, LlmProvider, StreamEvent, ToolCall},
-    moltis_providers::openai::OpenAiProvider,
+    chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent, ToolCall},
+    chelix_providers::openai::OpenAiProvider,
     secrecy::{ExposeSecret, Secret},
 };
 

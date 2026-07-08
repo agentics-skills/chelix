@@ -4,7 +4,7 @@ export default {
 	// ── Page-level ──────────────────────────────────────────
 	title: "Sandboxes",
 	description:
-		"Container images cached by moltis for sandbox execution. You can delete individual images or prune all. Build custom images from a base with apt packages.",
+		"Container images cached by chelix for sandbox execution. You can delete individual images or prune all. Build custom images from a base with apt packages.",
 	appleContainerNote:
 		"Apple Container provides VM-isolated execution but does not support building images. Docker (or OrbStack) is required alongside Apple Container to build and cache custom images. Sandboxed commands run via Apple Container; image builds use Docker.",
 	sandboxDisabledHint:
@@ -61,7 +61,7 @@ export default {
 			"No container runtime detected. Install Docker for sandboxed execution, or ensure systemd is available for cgroup isolation.",
 		noRuntimeGeneric: "No container runtime detected. Install Docker for sandboxed execution.",
 		macosDockerTip:
-			"Apple Container provides stronger VM-level isolation on macOS 26+. Install it for automatic use (moltis prefers it over Docker). Run: brew install container",
+			"Apple Container provides stronger VM-level isolation on macOS 26+. Install it for automatic use (chelix prefers it over Docker). Run: brew install container",
 		linuxDockerTip:
 			"Docker is a good choice on Linux. For lighter-weight isolation without Docker overhead, systemd cgroup sandboxing is also supported.",
 		restrictedHostTip:

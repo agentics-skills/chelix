@@ -16,7 +16,7 @@ use {
 };
 
 use {
-    moltis_agents::{
+    chelix_agents::{
         ChatMessage, UserContent,
         model::{ReasoningEffort, values_to_chat_messages},
         prompt::{
@@ -24,10 +24,10 @@ use {
             build_system_prompt_with_session_runtime_details,
         },
     },
-    moltis_config::ToolMode,
-    moltis_service_traits::{ChatService, ServiceError, ServiceResult},
-    moltis_sessions::{ContentBlock, MessageContent, PersistedMessage},
-    moltis_tools::policy::{PolicyContext, ToolPolicy},
+    chelix_config::ToolMode,
+    chelix_service_traits::{ChatService, ServiceError, ServiceResult},
+    chelix_sessions::{ContentBlock, MessageContent, PersistedMessage},
+    chelix_tools::policy::{PolicyContext, ToolPolicy},
 };
 
 use crate::{
@@ -54,7 +54,7 @@ use crate::{
 use super::*;
 
 pub(super) fn resolved_turn_reasoning_effort(
-    session_entry: Option<&moltis_sessions::metadata::SessionEntry>,
+    session_entry: Option<&chelix_sessions::metadata::SessionEntry>,
     persona: &PromptPersona,
     agent_id: &str,
 ) -> Option<String> {
@@ -87,9 +87,9 @@ pub(super) fn requested_reasoning_effort(
 }
 
 pub(super) fn apply_reasoning_effort_to_provider(
-    provider: Arc<dyn moltis_agents::model::LlmProvider>,
+    provider: Arc<dyn chelix_agents::model::LlmProvider>,
     reasoning_effort: Option<&str>,
-) -> Result<Arc<dyn moltis_agents::model::LlmProvider>, String> {
+) -> Result<Arc<dyn chelix_agents::model::LlmProvider>, String> {
     let Some(reasoning_effort) = reasoning_effort
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -109,7 +109,7 @@ pub(super) fn apply_reasoning_effort_to_provider(
 
 fn send_sync_model_id<'a>(
     explicit_model: Option<&'a str>,
-    session_entry: Option<&'a moltis_sessions::metadata::SessionEntry>,
+    session_entry: Option<&'a chelix_sessions::metadata::SessionEntry>,
 ) -> Option<&'a str> {
     explicit_model.or_else(|| session_entry.and_then(|entry| entry.model.as_deref()))
 }
@@ -147,7 +147,7 @@ impl ChatService for LiveChatService {
         let explicit_model = params.get("model").and_then(|v| v.as_str());
         let requested_reasoning_effort_override = requested_reasoning_effort(&params)?;
         let tool_controls =
-            moltis_config::schema::AgentToolControls::from_tool_context(Some(&params));
+            chelix_config::schema::AgentToolControls::from_tool_context(Some(&params));
         let stream_only = !self.has_tools_sync();
 
         // Resolve session key from explicit override.
@@ -204,7 +204,7 @@ impl ChatService for LiveChatService {
         let model_id = send_sync_model_id(explicit_model, session_entry.as_ref()).ok_or_else(|| {
             format!("session '{session_key}' has no model; pass 'model' explicitly or set the session model")
         })?;
-        let provider: Arc<dyn moltis_agents::model::LlmProvider> = {
+        let provider: Arc<dyn chelix_agents::model::LlmProvider> = {
             let reg = self.providers.read().await;
             reg.get(model_id)
                 .ok_or_else(|| format!("model '{model_id}' not found"))?
@@ -613,7 +613,7 @@ impl ChatService for LiveChatService {
 
         // Dispatch BeforeCompaction hook.
         if let Some(ref hooks) = self.hook_registry {
-            let payload = moltis_common::hooks::HookPayload::BeforeCompaction {
+            let payload = chelix_common::hooks::HookPayload::BeforeCompaction {
                 session_key: session_key.clone(),
                 message_count: history.len(),
             };
@@ -628,20 +628,20 @@ impl ChatService for LiveChatService {
         if let Some(mm) = self.state.memory_manager()
             && let Ok(provider) = self.resolve_provider(&session_key, &history).await
         {
-            let write_mode = moltis_config::discover_and_load().memory.agent_write_mode;
+            let write_mode = chelix_config::discover_and_load().memory.agent_write_mode;
             if !memory_write_mode_allows_save(write_mode) {
                 debug!(
                     "compact: agent-authored memory writes disabled, skipping silent memory turn"
                 );
             } else {
                 let chat_history_for_memory = values_to_chat_messages(&history);
-                let writer: Arc<dyn moltis_agents::memory_writer::MemoryWriter> =
+                let writer: Arc<dyn chelix_agents::memory_writer::MemoryWriter> =
                     Arc::new(AgentScopedMemoryWriter::new(
                         Arc::clone(mm),
                         session_agent_id.clone(),
                         write_mode,
                     ));
-                match moltis_agents::silent_turn::run_silent_memory_turn(
+                match chelix_agents::silent_turn::run_silent_memory_turn(
                     provider,
                     &chat_history_for_memory,
                     writer,
@@ -769,7 +769,7 @@ impl ChatService for LiveChatService {
 
         // Save compaction summary to memory file and trigger sync.
         if let Some(mm) = self.state.memory_manager() {
-            let memory_dir = moltis_config::agent_workspace_dir(&session_agent_id).join("memory");
+            let memory_dir = chelix_config::agent_workspace_dir(&session_agent_id).join("memory");
             if let Err(e) = tokio::fs::create_dir_all(&memory_dir).await {
                 warn!(error = %e, "compact: failed to create memory dir");
             } else {
@@ -797,7 +797,7 @@ impl ChatService for LiveChatService {
 
         // Dispatch AfterCompaction hook.
         if let Some(ref hooks) = self.hook_registry {
-            let payload = moltis_common::hooks::HookPayload::AfterCompaction {
+            let payload = chelix_common::hooks::HookPayload::AfterCompaction {
                 session_key: session_key.clone(),
                 summary_len: summary_for_memory.len(),
             };
@@ -871,7 +871,7 @@ impl ChatService for LiveChatService {
                 Ok(val) => {
                     let dir = val.get("directory").and_then(|v| v.as_str());
                     let context_files = if let Some(d) = dir {
-                        match moltis_projects::context::load_context_files(Path::new(d)) {
+                        match chelix_projects::context::load_context_files(Path::new(d)) {
                             Ok(files) => files
                                 .iter()
                                 .map(|f| {
@@ -905,7 +905,7 @@ impl ChatService for LiveChatService {
             .as_ref()
             .and_then(|e| e.mcp_disabled)
             .unwrap_or(false);
-        let config = moltis_config::discover_and_load();
+        let config = chelix_config::discover_and_load();
         let tools: Vec<Value> = if supports_tools {
             let registry_guard = self.tool_registry.read().await;
             let list_agent_id = resolve_prompt_agent_id(session_entry.as_ref());
@@ -972,7 +972,7 @@ impl ChatService for LiveChatService {
                     config
                         .container_prefix
                         .as_deref()
-                        .unwrap_or("moltis-sandbox"),
+                        .unwrap_or("chelix-sandbox"),
                     id.key
                 )
             };
@@ -1487,7 +1487,7 @@ impl ChatService for LiveChatService {
 
 #[cfg(test)]
 mod tests {
-    use moltis_sessions::metadata::SessionEntry;
+    use chelix_sessions::metadata::SessionEntry;
 
     use super::send_sync_model_id;
 

@@ -46,7 +46,7 @@ export function renderProjectDropdownList(): void {
 
 export function selectProject(id: string, label: string): void {
 	S.setActiveProjectId(id);
-	localStorage.setItem("moltis-project", S.activeProjectId);
+	localStorage.setItem("chelix-project", S.activeProjectId);
 	if (S.projectComboLabel) S.projectComboLabel.textContent = label;
 	closeProjectDropdown();
 	if (S.connected && S.activeSessionKey) {
@@ -85,7 +85,7 @@ document.addEventListener("click", (e: MouseEvent) => {
 	}
 });
 
-window.addEventListener("moltis:locale-changed", () => {
+window.addEventListener("chelix:locale-changed", () => {
 	updateSessionProjectSelect(S.activeProjectId);
 	if (S.projectDropdown && !S.projectDropdown.classList.contains("hidden")) {
 		renderProjectDropdownList();

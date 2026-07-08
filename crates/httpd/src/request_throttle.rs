@@ -15,7 +15,7 @@ use {
         response::{IntoResponse, Json, Response},
     },
     dashmap::{DashMap, mapref::entry::Entry},
-    moltis_auth::locality::is_local_connection,
+    chelix_auth::locality::is_local_connection,
 };
 
 use crate::server::AppState;

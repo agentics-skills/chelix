@@ -305,7 +305,7 @@ export function buildCommands(): Command[] {
 			action: () => {
 				const current = document.documentElement.getAttribute("data-theme");
 				const next = current === "dark" ? "light" : "dark";
-				localStorage.setItem("moltis-theme", next);
+				localStorage.setItem("chelix-theme", next);
 				applyTheme(next);
 			},
 		},

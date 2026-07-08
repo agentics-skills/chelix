@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 #[cfg(feature = "vault")]
-use moltis_vault::Vault;
+use chelix_vault::Vault;
 
 #[cfg(feature = "vault")]
 use crate::Error;

@@ -1,7 +1,7 @@
 [package]
-description       = "Text and code splitting for moltis — AST-aware chunking via tree-sitter with line-based fallback"
+description       = "Text and code splitting for chelix — AST-aware chunking via tree-sitter with line-based fallback"
 edition.workspace = true
-name              = "moltis-splitter"
+name              = "chelix-splitter"
 version.workspace = true
 
 [features]

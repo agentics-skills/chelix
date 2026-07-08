@@ -6,12 +6,12 @@ use std::sync::Arc;
 use {serde_json::Value, tracing::info};
 
 use {
-    moltis_oauth::{
+    chelix_oauth::{
         CallbackServer, OAuthFlow, callback_port, device_flow, load_oauth_config,
         normalize_loopback_redirect,
     },
-    moltis_providers::ProviderRegistry,
-    moltis_service_traits::{ServiceError, ServiceResult},
+    chelix_providers::ProviderRegistry,
+    chelix_service_traits::{ServiceError, ServiceResult},
 };
 
 use {
@@ -31,7 +31,7 @@ impl LiveProviderSetupService {
     async fn oauth_start_device_flow(
         &self,
         provider_name: String,
-        oauth_config: moltis_oauth::OAuthConfig,
+        oauth_config: chelix_oauth::OAuthConfig,
     ) -> ServiceResult {
         let client = reqwest::Client::new();
         let extra_headers = build_provider_headers(&provider_name);
@@ -286,7 +286,7 @@ impl LiveProviderSetupService {
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .map(moltis_oauth::parse_callback_input)
+            .map(chelix_oauth::parse_callback_input)
             .transpose()
             .map_err(ServiceError::message)?;
 

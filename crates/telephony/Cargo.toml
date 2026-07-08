@@ -1,6 +1,6 @@
 [package]
 edition.workspace = true
-name              = "moltis-telephony"
+name              = "chelix-telephony"
 version.workspace = true
 
 [dependencies]
@@ -12,11 +12,11 @@ dashmap         = { workspace = true }
 hex             = { workspace = true }
 hmac            = { workspace = true }
 http            = { workspace = true }
-moltis-agents   = { workspace = true }
-moltis-channels = { workspace = true }
-moltis-common   = { workspace = true }
-moltis-metrics  = { optional = true, workspace = true }
-moltis-voice    = { workspace = true }
+chelix-agents   = { workspace = true }
+chelix-channels = { workspace = true }
+chelix-common   = { workspace = true }
+chelix-metrics  = { optional = true, workspace = true }
+chelix-voice    = { workspace = true }
 reqwest         = { workspace = true }
 ring            = { workspace = true }
 secrecy         = { workspace = true }
@@ -33,7 +33,7 @@ uuid            = { workspace = true }
 
 [features]
 default = []
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 
 [dev-dependencies]
 tokio = { workspace = true }

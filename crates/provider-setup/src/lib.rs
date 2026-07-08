@@ -22,7 +22,7 @@ pub trait SetupBroadcaster: Send + Sync {
 
 // ── Re-exports ─────────────────────────────────────────────────────────────
 // Preserve the existing public API: all items previously accessible as
-// `moltis_provider_setup::Foo` remain accessible at the crate root.
+// `chelix_provider_setup::Foo` remain accessible at the crate root.
 
 pub use {
     config_helpers::{

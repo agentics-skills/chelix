@@ -2,15 +2,15 @@
 //! checks on OpenAI-compatible providers.
 //!
 //! Requires provider credentials in the environment. Run with:
-//!   cargo test -p moltis-providers --test tool_arg_serialization_integration -- --ignored --nocapture
+//!   cargo test -p chelix-providers --test tool_arg_serialization_integration -- --ignored --nocapture
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::{collections::BTreeMap, time::Duration};
 
 use {
-    moltis_agents::model::{ChatMessage, LlmProvider},
-    moltis_providers::openai::OpenAiProvider,
+    chelix_agents::model::{ChatMessage, LlmProvider},
+    chelix_providers::openai::OpenAiProvider,
     secrecy::Secret,
     serde::Deserialize,
 };
@@ -143,7 +143,7 @@ async fn complete_scenario_with_retries(
     provider: &OpenAiProvider,
     provider_name: &str,
     scenario: &Scenario,
-) -> Option<moltis_agents::model::CompletionResponse> {
+) -> Option<chelix_agents::model::CompletionResponse> {
     for attempt in 0..3 {
         let result = provider
             .complete(

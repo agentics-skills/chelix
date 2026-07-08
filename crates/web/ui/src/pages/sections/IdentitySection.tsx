@@ -17,7 +17,7 @@ import { identity, loading, rerender } from "./_shared";
 
 export function IdentitySection(): VNode {
 	const id = identity.value;
-	const storedLocale = localStorage.getItem("moltis-locale");
+	const storedLocale = localStorage.getItem("chelix-locale");
 
 	const [userName, setUserName] = useState(id?.user_name || "");
 	const [uiLanguage, setUiLanguage] = useState(storedLocale || "auto");
@@ -95,7 +95,7 @@ export function IdentitySection(): VNode {
 		setLocale(nextLanguage)
 			.then(() => {
 				if (uiLanguage === "auto") {
-					localStorage.removeItem("moltis-locale");
+					localStorage.removeItem("chelix-locale");
 				}
 				setLanguageSaving(false);
 				setLanguageSaved(true);
@@ -120,7 +120,7 @@ export function IdentitySection(): VNode {
 				<div>
 					<SubHeading title="Your Name" />
 					<p className="text-xs text-[var(--muted)]" style={{ margin: "0 0 8px" }}>
-						Saved to your user profile. Depending on memory settings, Moltis may also mirror it to <code>USER.md</code>.
+						Saved to your user profile. Depending on memory settings, Chelix may also mirror it to <code>USER.md</code>.
 					</p>
 					<div className="flex items-center gap-2">
 						<input

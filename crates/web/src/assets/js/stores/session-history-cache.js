@@ -1,4 +1,4 @@
-const M = (window.__moltis_modules || {})["stores/session-history-cache"] || {};
+const M = (window.__chelix_modules || {})["stores/session-history-cache"] || {};
 export default M;
 export const getSessionHistory = (...args) => M.getSessionHistory?.(...args);
 export const setSessionHistory = (...args) => M.setSessionHistory?.(...args);

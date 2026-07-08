@@ -10,7 +10,7 @@ use {
     tracing::{info, instrument, warn},
 };
 
-use moltis_channels::{
+use chelix_channels::{
     ChannelConfigView, Error as ChannelError, Result as ChannelResult,
     message_log::MessageLog,
     otp::{OtpChallengeInfo, OtpState},
@@ -47,7 +47,7 @@ fn recovery_state_label(state: RecoveryState) -> &'static str {
 fn ownership_mode_label(mode: MatrixOwnershipMode) -> &'static str {
     match mode {
         MatrixOwnershipMode::UserManaged => "user_managed",
-        MatrixOwnershipMode::MoltisOwned => "moltis_owned",
+        MatrixOwnershipMode::ChelixOwned => "chelix_owned",
     }
 }
 
@@ -142,7 +142,7 @@ async fn matrix_status_extra(snapshot: MatrixStatusSnapshot) -> serde_json::Valu
     })
 }
 
-/// Matrix/Element channel plugin for Moltis.
+/// Matrix/Element channel plugin for Chelix.
 pub struct MatrixPlugin {
     accounts: AccountStateMap,
     outbound: MatrixOutbound,
@@ -222,7 +222,7 @@ fn has_explicit_secret(update: &serde_json::Map<String, serde_json::Value>, fiel
         .get(field)
         .and_then(serde_json::Value::as_str)
         .is_some_and(|value| {
-            !value.trim().is_empty() && value != moltis_common::secret_serde::REDACTED
+            !value.trim().is_empty() && value != chelix_common::secret_serde::REDACTED
         })
 }
 
@@ -235,7 +235,7 @@ fn sanitize_secret_update_fields(update: &mut serde_json::Map<String, serde_json
         .and_then(serde_json::Value::as_str)
         .is_some_and(|value| {
             value.trim().is_empty() && !switching_to_password
-                || value == moltis_common::secret_serde::REDACTED
+                || value == chelix_common::secret_serde::REDACTED
         })
     {
         update.remove("access_token");
@@ -246,7 +246,7 @@ fn sanitize_secret_update_fields(update: &mut serde_json::Map<String, serde_json
         .and_then(serde_json::Value::as_str)
         .is_some_and(|value| {
             value.trim().is_empty() && !switching_to_access_token
-                || value == moltis_common::secret_serde::REDACTED
+                || value == chelix_common::secret_serde::REDACTED
         })
     {
         update.remove("password");
@@ -696,7 +696,7 @@ mod tests {
             state::{AccountState, VerificationPrompt},
         },
         matrix_sdk::encryption::recovery::RecoveryState,
-        moltis_channels::{ChannelPlugin, ChannelStatus, ChannelType, InboundMode, otp::OtpState},
+        chelix_channels::{ChannelPlugin, ChannelStatus, ChannelType, InboundMode, otp::OtpState},
         secrecy::{ExposeSecret, Secret},
         std::sync::{Mutex, atomic::AtomicBool},
         tokio_util::sync::CancellationToken,
@@ -715,7 +715,7 @@ mod tests {
             config: MatrixAccountConfig {
                 homeserver: "https://matrix.example.com".into(),
                 access_token: Secret::new("test_token".into()),
-                user_id: Some("@moltis:example.com".into()),
+                user_id: Some("@chelix:example.com".into()),
                 ..Default::default()
             },
             client: runtime
@@ -728,7 +728,7 @@ mod tests {
             message_log: None,
             event_sink: None,
             cancel,
-            bot_user_id: "@moltis:example.com".into(),
+            bot_user_id: "@chelix:example.com".into(),
             ownership_startup_error: None,
             initial_sync_complete: AtomicBool::new(true),
             pending_identity_reset: Mutex::new(None),
@@ -807,11 +807,11 @@ mod tests {
         {
             let mut map = plugin.accounts.write().unwrap_or_else(|e| e.into_inner());
             let mut state = test_account_state(cancel);
-            state.config.ownership_mode = crate::config::MatrixOwnershipMode::MoltisOwned;
+            state.config.ownership_mode = crate::config::MatrixOwnershipMode::ChelixOwned;
             state.config.password = Some(Secret::new("wordpass".into()));
             state.config.access_token = Secret::new(String::new());
-            state.config.device_id = Some("MOLTISBOT".into());
-            state.config.device_display_name = Some("Moltis Matrix Bot".into());
+            state.config.device_id = Some("CHELIXBOT".into());
+            state.config.device_display_name = Some("Chelix Matrix Bot".into());
             state.ownership_startup_error = Some("ownership setup failed".into());
             map.insert("test".into(), state);
         }
@@ -829,11 +829,11 @@ mod tests {
         let extra = snapshot
             .extra
             .unwrap_or_else(|| panic!("matrix probe should include extra status"));
-        assert_eq!(extra["matrix"]["ownership_mode"], "moltis_owned");
+        assert_eq!(extra["matrix"]["ownership_mode"], "chelix_owned");
         assert_eq!(extra["matrix"]["auth_mode"], "password");
-        assert_eq!(extra["matrix"]["user_id"], "@moltis:example.com");
-        assert_eq!(extra["matrix"]["device_id"], "MOLTISBOT");
-        assert_eq!(extra["matrix"]["device_display_name"], "Moltis Matrix Bot");
+        assert_eq!(extra["matrix"]["user_id"], "@chelix:example.com");
+        assert_eq!(extra["matrix"]["device_id"], "CHELIXBOT");
+        assert_eq!(extra["matrix"]["device_display_name"], "Chelix Matrix Bot");
         assert_eq!(extra["matrix"]["ownership_error"], "ownership setup failed");
     }
 
@@ -888,7 +888,7 @@ mod tests {
             serde_json::json!({
                 "homeserver": "https://matrix.example.com",
                 "access_token": "test_token",
-                "user_id": "@moltis:example.com",
+                "user_id": "@chelix:example.com",
                 "allowlist": ["alice"],
                 "otp_cooldown_secs": 1,
             }),
@@ -915,19 +915,19 @@ mod tests {
             let mut otp = state.otp.lock().unwrap_or_else(|e| e.into_inner());
             assert_eq!(
                 otp.verify("alice", "000000"),
-                moltis_channels::otp::OtpVerifyResult::WrongCode { attempts_left: 2 }
+                chelix_channels::otp::OtpVerifyResult::WrongCode { attempts_left: 2 }
             );
             assert_eq!(
                 otp.verify("alice", "000001"),
-                moltis_channels::otp::OtpVerifyResult::WrongCode { attempts_left: 1 }
+                chelix_channels::otp::OtpVerifyResult::WrongCode { attempts_left: 1 }
             );
             assert_eq!(
                 otp.verify("alice", "000002"),
-                moltis_channels::otp::OtpVerifyResult::LockedOut
+                chelix_channels::otp::OtpVerifyResult::LockedOut
             );
             assert_eq!(
                 otp.initiate("alice", Some("alice".into()), None),
-                moltis_channels::otp::OtpInitResult::LockedOut
+                chelix_channels::otp::OtpInitResult::LockedOut
             );
         }
 
@@ -941,7 +941,7 @@ mod tests {
             let mut otp = state.otp.lock().unwrap_or_else(|e| e.into_inner());
             assert!(matches!(
                 otp.initiate("alice", Some("alice".into()), None),
-                moltis_channels::otp::OtpInitResult::Created(_)
+                chelix_channels::otp::OtpInitResult::Created(_)
             ));
         }
     }
@@ -970,11 +970,11 @@ mod tests {
             panic!("test account inserted");
         };
         assert_eq!(state.config.homeserver, "https://matrix.example.com");
-        assert_eq!(state.config.user_id.as_deref(), Some("@moltis:example.com"));
+        assert_eq!(state.config.user_id.as_deref(), Some("@chelix:example.com"));
         assert_eq!(state.config.access_token.expose_secret(), "test_token");
         assert_eq!(
             state.config.dm_policy,
-            moltis_channels::gating::DmPolicy::Open
+            chelix_channels::gating::DmPolicy::Open
         );
     }
 
@@ -985,7 +985,7 @@ mod tests {
         {
             let mut map = plugin.accounts.write().unwrap_or_else(|e| e.into_inner());
             let mut state = test_account_state(cancel);
-            state.config.mention_mode = moltis_channels::gating::MentionMode::Always;
+            state.config.mention_mode = chelix_channels::gating::MentionMode::Always;
             state.config.reply_to_message = false;
             state.config.auto_join = AutoJoinPolicy::Allowlist;
             map.insert("test".into(), state);
@@ -1006,13 +1006,13 @@ mod tests {
         };
         assert_eq!(
             state.config.mention_mode,
-            moltis_channels::gating::MentionMode::Always
+            chelix_channels::gating::MentionMode::Always
         );
         assert!(!state.config.reply_to_message);
         assert_eq!(state.config.auto_join, AutoJoinPolicy::Allowlist);
         assert_eq!(
             state.config.dm_policy,
-            moltis_channels::gating::DmPolicy::Open
+            chelix_channels::gating::DmPolicy::Open
         );
     }
 
@@ -1030,7 +1030,7 @@ mod tests {
             serde_json::json!({
                 "access_token": "",
                 "password": "wordpass",
-                "user_id": "@moltis:example.com",
+                "user_id": "@chelix:example.com",
             }),
         ) {
             panic!("auth mode switch should succeed: {error}");
@@ -1091,7 +1091,7 @@ mod tests {
         );
         assert_eq!(
             state.config.room_policy,
-            moltis_channels::gating::GroupPolicy::Open
+            chelix_channels::gating::GroupPolicy::Open
         );
     }
 

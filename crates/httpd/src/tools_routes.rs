@@ -1,6 +1,6 @@
 //! API routes for configuration editing.
 //!
-//! Provides endpoints to get, validate, and save the full moltis config as TOML.
+//! Provides endpoints to get, validate, and save the full chelix config as TOML.
 //!
 //! SECURITY: These endpoints expose sensitive configuration including API keys.
 //! They are protected by auth middleware, but also have explicit checks to ensure
@@ -8,7 +8,7 @@
 
 use {
     axum::{Json, extract::State, http::StatusCode, response::IntoResponse},
-    moltis_gateway::auth::AuthIdentity,
+    chelix_gateway::auth::AuthIdentity,
 };
 
 const CONFIG_AUTH_REQUIRED: &str = "CONFIG_AUTH_REQUIRED";
@@ -113,7 +113,7 @@ pub async fn config_get(State(state): State<crate::server::AppState>) -> impl In
 
     // Read raw file from disk to preserve comments.
     // Fall back to the documented template if no config file exists yet.
-    let path = moltis_config::find_or_default_config_path();
+    let path = chelix_config::find_or_default_config_path();
     let toml_str = if path.exists() {
         match std::fs::read_to_string(&path) {
             Ok(s) => s,
@@ -129,8 +129,8 @@ pub async fn config_get(State(state): State<crate::server::AppState>) -> impl In
             },
         }
     } else {
-        let config = moltis_config::discover_and_load();
-        moltis_config::template::default_config_template(config.server.port)
+        let config = chelix_config::discover_and_load();
+        chelix_config::template::default_config_template(config.server.port)
     };
 
     Json(serde_json::json!({
@@ -159,8 +159,8 @@ pub async fn config_validate(
             .into_response();
     };
 
-    // Try to parse the TOML as MoltisConfig
-    match toml::from_str::<moltis_config::MoltisConfig>(toml_str) {
+    // Try to parse the TOML as ChelixConfig
+    match toml::from_str::<chelix_config::ChelixConfig>(toml_str) {
         Ok(config) => {
             // Run validation checks
             let warnings = validate_config(&config);
@@ -193,8 +193,8 @@ pub async fn config_template(State(state): State<crate::server::AppState>) -> im
     }
 
     // Load current config to preserve the port
-    let config = moltis_config::discover_and_load();
-    let template = moltis_config::template::default_config_template(config.server.port);
+    let config = chelix_config::discover_and_load();
+    let template = chelix_config::template::default_config_template(config.server.port);
 
     Json(serde_json::json!({
         "toml": template,
@@ -212,16 +212,16 @@ pub async fn config_provenance(State(state): State<crate::server::AppState>) -> 
     }
 
     // Use read-only load to avoid writing defaults.toml on every GET request.
-    let config = moltis_config::discover_and_load_readonly();
+    let config = chelix_config::discover_and_load_readonly();
 
     // Preset provenance
-    let presets = moltis_config::defaults::compute_preset_provenance(&config.agents);
+    let presets = chelix_config::defaults::compute_preset_provenance(&config.agents);
 
     // Shadowed defaults (keys in user config that shadow built-ins)
-    let path = moltis_config::find_or_default_config_path();
+    let path = chelix_config::find_or_default_config_path();
     let shadowed = if path.exists() {
         std::fs::read_to_string(&path)
-            .map(|raw| moltis_config::defaults::find_shadowed_defaults(&raw))
+            .map(|raw| chelix_config::defaults::find_shadowed_defaults(&raw))
             .unwrap_or_default()
     } else {
         Vec::new()
@@ -254,7 +254,7 @@ pub async fn config_save(
     };
 
     // Validate by parsing, then write raw string to preserve comments.
-    if let Err(e) = toml::from_str::<moltis_config::MoltisConfig>(toml_str) {
+    if let Err(e) = toml::from_str::<chelix_config::ChelixConfig>(toml_str) {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({
@@ -266,7 +266,7 @@ pub async fn config_save(
             .into_response();
     }
 
-    match moltis_config::save_raw_config(toml_str) {
+    match chelix_config::save_raw_config(toml_str) {
         Ok(path) => {
             tracing::info!(path = %path.display(), "saved config (raw)");
             Json(serde_json::json!({
@@ -287,7 +287,7 @@ pub async fn config_save(
     }
 }
 
-/// Restart the moltis process.
+/// Restart the chelix process.
 ///
 /// This re-runs the current binary with the same arguments. On Unix, it uses the exec
 /// syscall to replace the current process. On other platforms, it spawns a new process.
@@ -304,11 +304,11 @@ pub async fn restart(
     }
 
     // Validate the on-disk config before restarting to avoid crash loops.
-    let config_path = moltis_config::find_or_default_config_path();
+    let config_path = chelix_config::find_or_default_config_path();
     if config_path.exists() {
         match std::fs::read_to_string(&config_path) {
             Ok(toml_str) => {
-                if let Err(e) = toml::from_str::<moltis_config::MoltisConfig>(&toml_str) {
+                if let Err(e) = toml::from_str::<chelix_config::ChelixConfig>(&toml_str) {
                     tracing::warn!(
                         path = %config_path.display(),
                         error = %e,
@@ -389,7 +389,7 @@ pub async fn restart(
 
     Json(serde_json::json!({
         "ok": true,
-        "message": "Moltis is restarting..."
+        "message": "Chelix is restarting..."
     }))
     .into_response()
 }
@@ -413,12 +413,12 @@ pub async fn update(
         .and_then(|Json(v)| v.get("version"))
         .and_then(|v| v.as_str());
 
-    let releases_url = moltis_gateway::update_check::resolve_releases_url(
+    let releases_url = chelix_gateway::update_check::resolve_releases_url(
         state.gateway.config.server.update_releases_url.as_deref(),
     );
 
     let client = match reqwest::Client::builder()
-        .user_agent(format!("moltis-gateway/{}", state.gateway.version))
+        .user_agent(format!("chelix-gateway/{}", state.gateway.version))
         .build()
     {
         Ok(c) => c,
@@ -431,14 +431,14 @@ pub async fn update(
         },
     };
 
-    match moltis_gateway::updater::perform_update(&client, &releases_url, requested_version).await {
-        Ok(ref outcome @ moltis_gateway::updater::UpdateOutcome::Updated { .. })
-        | Ok(ref outcome @ moltis_gateway::updater::UpdateOutcome::DockerUpdated { .. }) => {
+    match chelix_gateway::updater::perform_update(&client, &releases_url, requested_version).await {
+        Ok(ref outcome @ chelix_gateway::updater::UpdateOutcome::Updated { .. })
+        | Ok(ref outcome @ chelix_gateway::updater::UpdateOutcome::DockerUpdated { .. }) => {
             let restarting = true;
             tokio::spawn(async {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                 tracing::info!("restarting after update via API");
-                moltis_gateway::updater::restart_process();
+                chelix_gateway::updater::restart_process();
             });
             let mut json = serde_json::to_value(outcome).unwrap_or_default();
             if let serde_json::Value::Object(ref mut map) = json {
@@ -456,7 +456,7 @@ pub async fn update(
 }
 
 /// Validate config and return warnings.
-fn validate_config(config: &moltis_config::MoltisConfig) -> Vec<String> {
+fn validate_config(config: &chelix_config::ChelixConfig) -> Vec<String> {
     let mut warnings = Vec::new();
 
     // Check browser config
@@ -464,7 +464,7 @@ fn validate_config(config: &moltis_config::MoltisConfig) -> Vec<String> {
         // Browser sandbox mode follows session sandbox mode (controlled by execute_command.sandbox.mode).
         // If sandbox mode is available, check if container runtime exists.
         if config.tools.execute_command.sandbox.mode != "off"
-            && !moltis_browser::container::is_container_available()
+            && !chelix_browser::container::is_container_available()
         {
             warnings.push(
                 "Sandbox mode is available but no container runtime found. \

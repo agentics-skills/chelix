@@ -5,7 +5,7 @@ use {
     tracing::{info, warn},
 };
 
-use moltis_channels::{ChannelEventSink, message_log::MessageLog};
+use chelix_channels::{ChannelEventSink, message_log::MessageLog};
 
 use crate::{
     config::WhatsAppAccountConfig,
@@ -66,11 +66,11 @@ pub async fn start_connection(
         .with_runtime(whatsapp_rust::TokioRuntime)
         .skip_history_sync()
         .with_device_props(
-            Some("Moltis".to_string()),
+            Some("Chelix".to_string()),
             None,
             Some(waproto::whatsapp::device_props::PlatformType::Desktop),
         )
-        .with_push_name("Moltis")
+        .with_push_name("Chelix")
         .on_event(move |event, client| {
             let state_ref = Arc::clone(&state_ref_handler);
             let accounts = Arc::clone(&accounts_handler);

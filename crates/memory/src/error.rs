@@ -1,4 +1,4 @@
-//! Crate-level error type for `moltis-memory`.
+//! Crate-level error type for `chelix-memory`.
 
 use thiserror::Error;
 

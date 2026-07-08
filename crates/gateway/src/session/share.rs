@@ -148,7 +148,7 @@ impl LiveSessionService {
             .map_err(ServiceError::message)?;
 
         // Remove pre-rendered static files.
-        let shares_dir = moltis_config::data_dir().join("shares");
+        let shares_dir = chelix_config::data_dir().join("shares");
         let _ = std::fs::remove_file(shares_dir.join(format!("{id}.html")));
         let _ = std::fs::remove_file(shares_dir.join(format!("{id}-og.svg")));
 

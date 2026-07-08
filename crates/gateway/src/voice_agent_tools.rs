@@ -2,7 +2,7 @@ use {
     anyhow::Result,
     async_trait::async_trait,
     base64::Engine,
-    moltis_agents::tool_registry::AgentTool,
+    chelix_agents::tool_registry::AgentTool,
     serde::{Deserialize, Serialize},
     serde_json::{Value, json},
     std::{path::PathBuf, sync::Arc},
@@ -270,7 +270,7 @@ impl AgentTool for TranscribeTool {
 }
 
 fn write_tool_audio_file(file_name: &str, bytes: &[u8]) -> Result<String> {
-    let dir = moltis_config::data_dir().join("tool-audio");
+    let dir = chelix_config::data_dir().join("tool-audio");
     std::fs::create_dir_all(&dir)?;
     let path: PathBuf = dir.join(file_name);
     std::fs::write(&path, bytes)?;

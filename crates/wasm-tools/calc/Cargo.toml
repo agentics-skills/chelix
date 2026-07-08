@@ -1,6 +1,6 @@
 [package]
 edition.workspace = true
-name              = "moltis-wasm-calc"
+name              = "chelix-wasm-calc"
 version.workspace = true
 
 [lib]

@@ -90,7 +90,7 @@ pub struct WebAuthnState {
 impl WebAuthnState {
     /// Create a new WebAuthn state.
     ///
-    /// `rp_id` is typically the hostname (e.g. "localhost" or "moltis.example.com").
+    /// `rp_id` is typically the hostname (e.g. "localhost" or "chelix.example.com").
     /// `rp_origin` is the full origin URL (e.g. "https://localhost:18080").
     /// `extra_origins` are additional origins accepted during verification (e.g.
     /// `http://m4max.local:18080` when accessing via mDNS hostname).
@@ -101,7 +101,7 @@ impl WebAuthnState {
             builder = builder.append_allowed_origin(origin);
         }
         let webauthn = builder
-            .rp_name("moltis")
+            .rp_name("chelix")
             .build()
             .map_err(|e| Error::WebAuthn(format!("webauthn build error: {e}")))?;
 
@@ -344,39 +344,39 @@ mod tests {
     #[test]
     fn normalize_host_strips_port_and_lowercases() {
         assert_eq!(normalize_host("Example.COM:443"), "example.com");
-        assert_eq!(normalize_host("moltis.local"), "moltis.local");
+        assert_eq!(normalize_host("chelix.local"), "chelix.local");
         assert_eq!(normalize_host("[::1]:8443"), "::1");
     }
 
     #[test]
     fn potentially_trustworthy_origins_require_https_or_localhost_http() {
         assert!(is_origin_potentially_trustworthy(
-            &Url::parse("https://moltis.example.com").unwrap()
+            &Url::parse("https://chelix.example.com").unwrap()
         ));
         assert!(is_origin_potentially_trustworthy(
             &Url::parse("http://localhost:18080").unwrap()
         ));
         assert!(is_origin_potentially_trustworthy(
-            &Url::parse("http://moltis.localhost:18080").unwrap()
+            &Url::parse("http://chelix.localhost:18080").unwrap()
         ));
         assert!(!is_origin_potentially_trustworthy(
-            &Url::parse("http://moltis.local:18080").unwrap()
+            &Url::parse("http://chelix.local:18080").unwrap()
         ));
         assert!(!is_origin_potentially_trustworthy(
-            &Url::parse("http://moltis:18080").unwrap()
+            &Url::parse("http://chelix:18080").unwrap()
         ));
     }
 
     #[test]
     fn registry_matches_extra_origin_host() {
         let rp_origin = Url::parse("https://localhost:18080").unwrap();
-        let extra = vec![Url::parse("https://moltis.localhost:18080").unwrap()];
+        let extra = vec![Url::parse("https://chelix.localhost:18080").unwrap()];
         let state = WebAuthnState::new("localhost", &rp_origin, &extra).unwrap();
 
         let mut registry = WebAuthnRegistry::new();
         registry.add("localhost".to_string(), state);
 
-        assert!(registry.get_for_host("moltis.localhost:18080").is_some());
-        assert!(registry.contains_host("moltis.localhost"));
+        assert!(registry.get_for_host("chelix.localhost:18080").is_some());
+        assert!(registry.contains_host("chelix.localhost"));
     }
 }

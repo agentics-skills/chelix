@@ -1,4 +1,4 @@
-// Service Worker for moltis PWA
+// Service Worker for chelix PWA
 // Handles caching for offline support and push notifications
 
 /// <reference lib="webworker" />
@@ -7,7 +7,7 @@
 // The double cast is unavoidable when both DOM and WebWorker types coexist in tsconfig.
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
-const CACHE_NAME = "moltis-v2";
+const CACHE_NAME = "chelix-v2";
 const STATIC_ASSETS: string[] = [
 	"/manifest.json",
 	"/assets/css/base.css",
@@ -122,14 +122,14 @@ sw.addEventListener("push", (event: PushEvent) => {
 	try {
 		data = event.data ? event.data.json() : {};
 	} catch (_e) {
-		data = { body: event.data ? event.data.text() : "New message from moltis" };
+		data = { body: event.data ? event.data.text() : "New message from chelix" };
 	}
 
 	const options: NotificationOptions & { actions?: Array<{ action: string; title: string }>; vibrate?: number[] } = {
 		body: (data.body as string) || "New response available",
 		icon: "/assets/icons/icon-192.png",
 		badge: "/assets/icons/icon-72.png",
-		tag: (data.sessionKey as string) || "moltis-notification",
+		tag: (data.sessionKey as string) || "chelix-notification",
 		data: {
 			url: (data.url as string) || "/chats",
 			sessionKey: data.sessionKey,
@@ -142,7 +142,7 @@ sw.addEventListener("push", (event: PushEvent) => {
 		requireInteraction: false,
 	};
 
-	event.waitUntil(sw.registration.showNotification((data.title as string) || "moltis", options));
+	event.waitUntil(sw.registration.showNotification((data.title as string) || "chelix", options));
 });
 
 // Notification click event

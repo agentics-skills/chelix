@@ -1,22 +1,22 @@
 [package]
 edition.workspace    = true
-name                 = "moltis-mcp-agent-bridge"
+name                 = "chelix-mcp-agent-bridge"
 repository.workspace = true
 version.workspace    = true
 
 [dependencies]
 anyhow         = { workspace = true }
 async-trait    = { workspace = true }
-moltis-agents  = { workspace = true }
-moltis-mcp     = { workspace = true }
-moltis-metrics = { optional = true, workspace = true }
+chelix-agents  = { workspace = true }
+chelix-mcp     = { workspace = true }
+chelix-metrics = { optional = true, workspace = true }
 serde_json     = { workspace = true }
 tokio          = { workspace = true }
 tracing        = { optional = true, workspace = true }
 
 [features]
 default = ["metrics", "tracing"]
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 tracing = ["dep:tracing"]
 
 [lints]

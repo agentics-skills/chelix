@@ -1,6 +1,6 @@
-# Moltis Courier
+# Chelix Courier
 
-Privacy-preserving APNS push relay for self-hosted Moltis gateways.
+Privacy-preserving APNS push relay for self-hosted Chelix gateways.
 
 Courier holds a single Apple Push Notification Service (APNS) key and forwards
 opaque silent "wake up" pushes (`content-available: 1`) on behalf of gateways.
@@ -18,11 +18,11 @@ own gateway to fetch actual content.
 ## Running
 
 ```bash
-moltis-courier \
+chelix-courier \
   --key-path /path/to/AuthKey_XXXXXXXXXX.p8 \
   --key-id XXXXXXXXXX \
   --team-id YYYYYYYYYY \
-  --bundle-id org.moltis.app \
+  --bundle-id org.chelix.app \
   --auth-token "your-shared-secret"
 ```
 

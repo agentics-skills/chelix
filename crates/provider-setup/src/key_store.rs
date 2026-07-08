@@ -6,7 +6,7 @@ use std::{
 
 use {serde_json::Value, tracing::warn};
 
-use moltis_providers::model_id::raw_model_id;
+use chelix_providers::model_id::raw_model_id;
 
 // ── Model normalization helpers ────────────────────────────────────────────
 
@@ -98,7 +98,7 @@ where
 
 // ── KeyStore ───────────────────────────────────────────────────────────────
 
-/// File-based provider config storage at `~/.config/moltis/provider_keys.json`.
+/// File-based provider config storage at `~/.config/chelix/provider_keys.json`.
 /// Stores per-provider configuration including API keys, base URLs, and models.
 #[derive(Debug, Clone)]
 pub struct KeyStore {
@@ -118,8 +118,8 @@ impl Default for KeyStore {
 
 impl KeyStore {
     pub fn new() -> Self {
-        let path = moltis_config::config_dir()
-            .unwrap_or_else(|| PathBuf::from(".config/moltis"))
+        let path = chelix_config::config_dir()
+            .unwrap_or_else(|| PathBuf::from(".config/chelix"))
             .join("provider_keys.json");
         Self {
             inner: Arc::new(Mutex::new(KeyStoreInner { path })),
@@ -301,9 +301,9 @@ impl KeyStore {
     /// newer than the encrypted copy (indicating a sync write occurred since
     /// the last vault-unseal encryption).
     #[cfg(feature = "vault")]
-    pub async fn load_all_configs_encrypted<C: moltis_vault::Cipher>(
+    pub async fn load_all_configs_encrypted<C: chelix_vault::Cipher>(
         &self,
-        vault: Option<&moltis_vault::Vault<C>>,
+        vault: Option<&chelix_vault::Vault<C>>,
     ) -> HashMap<String, ProviderConfig> {
         let path = self.path();
 
@@ -321,7 +321,7 @@ impl KeyStore {
             }
         }
 
-        match moltis_vault::migration::load_encrypted_or_plaintext(vault, &path, "provider_keys")
+        match chelix_vault::migration::load_encrypted_or_plaintext(vault, &path, "provider_keys")
             .await
         {
             Ok(Some(content)) => {
@@ -348,7 +348,7 @@ impl KeyStore {
                 HashMap::new()
             },
             Ok(None) => HashMap::new(),
-            Err(moltis_vault::VaultError::Sealed) => {
+            Err(chelix_vault::VaultError::Sealed) => {
                 warn!("vault sealed, falling back to plaintext provider key store");
                 Self::load_all_configs_from_path(&path)
             },
@@ -365,9 +365,9 @@ impl KeyStore {
     /// Always writes the plaintext `.json` too so sync callers continue to
     /// work until the full async migration is complete.
     #[cfg(feature = "vault")]
-    pub async fn save_all_configs_encrypted<C: moltis_vault::Cipher>(
+    pub async fn save_all_configs_encrypted<C: chelix_vault::Cipher>(
         &self,
-        vault: Option<&moltis_vault::Vault<C>>,
+        vault: Option<&chelix_vault::Vault<C>>,
         configs: &HashMap<String, ProviderConfig>,
     ) -> crate::error::Result<()> {
         let path = self.path();
@@ -380,7 +380,7 @@ impl KeyStore {
                 warn!(error = %error, "failed to serialize provider key store");
                 error
             })?;
-            if let Err(e) = moltis_vault::migration::save_encrypted_or_plaintext(
+            if let Err(e) = chelix_vault::migration::save_encrypted_or_plaintext(
                 Some(vault),
                 &path,
                 "provider_keys",

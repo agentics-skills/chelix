@@ -138,13 +138,13 @@ mod tests {
     }
 
     #[test]
-    fn test_discover_on_moltis_repo() {
+    fn test_discover_on_chelix_repo() {
         let Some(repo_dir) = repo_root_if_git() else {
             eprintln!("skipping: no .git directory (archive checkout)");
             return;
         };
         let files = discover_tracked_files(repo_dir).unwrap();
-        assert!(!files.is_empty(), "moltis repo should have tracked files");
+        assert!(!files.is_empty(), "chelix repo should have tracked files");
 
         // Key files that must be present.
         assert!(

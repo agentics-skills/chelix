@@ -4,7 +4,7 @@
 use std::sync::{Arc, atomic::Ordering};
 
 use {
-    moltis_tools::sandbox::SandboxConfig,
+    chelix_tools::sandbox::SandboxConfig,
     tracing::{debug, info, warn},
 };
 
@@ -22,18 +22,18 @@ pub(super) fn build_sandbox_router(
     sandbox_config: &SandboxConfig,
     container_prefix: &str,
     timezone: Option<&str>,
-) -> moltis_tools::sandbox::SandboxRouter {
+) -> chelix_tools::sandbox::SandboxRouter {
     let mut config = sandbox_config.clone();
     config.container_prefix = Some(container_prefix.to_string());
     config.timezone = timezone.map(ToOwned::to_owned);
 
-    moltis_tools::sandbox::SandboxRouter::new(config)
+    chelix_tools::sandbox::SandboxRouter::new(config)
 }
 
 /// Spawn background sandbox tasks: image pre-build, host provisioning, and
 /// startup container GC.
 pub(super) fn spawn_sandbox_background_tasks(
-    sandbox_router: &Arc<moltis_tools::sandbox::SandboxRouter>,
+    sandbox_router: &Arc<chelix_tools::sandbox::SandboxRouter>,
     deferred_state: &Arc<DeferredState>,
 ) {
     // Background image pre-build.
@@ -46,7 +46,7 @@ pub(super) fn spawn_sandbox_background_tasks(
             .config()
             .image
             .clone()
-            .unwrap_or_else(|| moltis_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string());
+            .unwrap_or_else(|| chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string());
 
         if should_prebuild_sandbox_image(router.mode(), &packages) {
             let deferred_for_build = Arc::clone(deferred_state);
@@ -198,7 +198,7 @@ pub(super) fn spawn_sandbox_background_tasks(
         let packages = sandbox_router.config().packages.clone();
         if sandbox_router.backend_name() == "none"
             && !packages.is_empty()
-            && moltis_tools::sandbox::is_debian_host()
+            && chelix_tools::sandbox::is_debian_host()
         {
             let deferred_for_host = Arc::clone(deferred_state);
             let pkg_count = packages.len();
@@ -219,7 +219,7 @@ pub(super) fn spawn_sandbox_background_tasks(
                     .await;
                 }
 
-                match moltis_tools::sandbox::provision_host_packages(&packages).await {
+                match chelix_tools::sandbox::provision_host_packages(&packages).await {
                     Ok(Some(result)) => {
                         info!(
                             installed = result.installed.len(),
@@ -275,7 +275,7 @@ pub(super) fn spawn_sandbox_background_tasks(
         let prefix = sandbox_router.config().container_prefix.clone();
         tokio::spawn(async move {
             if let Some(prefix) = prefix {
-                match moltis_tools::sandbox::clean_all_containers(&prefix).await {
+                match chelix_tools::sandbox::clean_all_containers(&prefix).await {
                     Ok(0) => {},
                     Ok(n) => info!(
                         removed = n,
@@ -288,7 +288,7 @@ pub(super) fn spawn_sandbox_background_tasks(
     }
 }
 
-fn concise_error_summary(error: &moltis_tools::error::Error) -> String {
+fn concise_error_summary(error: &chelix_tools::error::Error) -> String {
     const MAX_SUMMARY_CHARS: usize = 160;
 
     let mut summary = error
@@ -311,14 +311,14 @@ mod tests {
 
     #[test]
     fn concise_error_summary_uses_first_line() {
-        let error = moltis_tools::error::Error::message("exit code 1\n#1 DONE 0.0s");
+        let error = chelix_tools::error::Error::message("exit code 1\n#1 DONE 0.0s");
 
         assert_eq!(concise_error_summary(&error), "exit code 1");
     }
 
     #[test]
     fn concise_error_summary_truncates_long_single_line_errors() {
-        let error = moltis_tools::error::Error::message("x".repeat(200));
+        let error = chelix_tools::error::Error::message("x".repeat(200));
 
         assert_eq!(
             concise_error_summary(&error),

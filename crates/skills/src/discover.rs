@@ -32,7 +32,7 @@ impl FsSkillDiscoverer {
     ///
     /// Workspace root is always the configured data directory.
     pub fn default_paths() -> Vec<(PathBuf, SkillSource)> {
-        Self::default_paths_for(&moltis_config::data_dir())
+        Self::default_paths_for(&chelix_config::data_dir())
     }
 
     /// Build the default search paths rooted at an explicit workspace / data
@@ -41,11 +41,11 @@ impl FsSkillDiscoverer {
     /// Prefer this over [`default_paths`](Self::default_paths) when the caller
     /// already has a `data_dir` in hand (e.g. the gateway's `bootstrap` scope)
     /// so the read and write sides stay consistent even if
-    /// `moltis_config::data_dir()` is ever reconfigured at runtime.
+    /// `chelix_config::data_dir()` is ever reconfigured at runtime.
     #[must_use]
     pub fn default_paths_for(data_dir: &Path) -> Vec<(PathBuf, SkillSource)> {
         vec![
-            (data_dir.join(".moltis/skills"), SkillSource::Project),
+            (data_dir.join(".chelix/skills"), SkillSource::Project),
             (data_dir.join("skills"), SkillSource::Personal),
             (data_dir.join("installed-skills"), SkillSource::Registry),
             (data_dir.join("installed-plugins"), SkillSource::Plugin),
@@ -176,7 +176,7 @@ fn discover_flat(base_path: &Path, source: &SkillSource, skills: &mut Vec<SkillM
 /// Plugin skills don't have SKILL.md — they are normalized by format adapters.
 /// This returns lightweight metadata from the manifest for prompt injection.
 fn discover_plugins(install_dir: &Path, skills: &mut Vec<SkillMetadata>) {
-    let manifest_path = moltis_config::data_dir().join("plugins-manifest.json");
+    let manifest_path = chelix_config::data_dir().join("plugins-manifest.json");
     let store = ManifestStore::new(manifest_path);
     let manifest = match store.load() {
         Ok(m) => m,
@@ -292,7 +292,7 @@ mod tests {
         let data_dir = PathBuf::from("/tmp/data");
         let paths = FsSkillDiscoverer::default_paths_for(&data_dir);
         assert_eq!(paths.len(), 4);
-        assert_eq!(paths[0].0, PathBuf::from("/tmp/data/.moltis/skills"));
+        assert_eq!(paths[0].0, PathBuf::from("/tmp/data/.chelix/skills"));
         assert_eq!(paths[0].1, SkillSource::Project);
         assert_eq!(paths[1].0, PathBuf::from("/tmp/data/skills"));
         assert_eq!(paths[1].1, SkillSource::Personal);
@@ -305,10 +305,10 @@ mod tests {
     #[test]
     fn default_paths_matches_default_paths_for_with_data_dir() {
         // The zero-arg helper must reduce to the explicit-`data_dir`
-        // variant applied to `moltis_config::data_dir()`. Any future
+        // variant applied to `chelix_config::data_dir()`. Any future
         // refactor that breaks this symmetry would cause the prompt
         // builder and the read tool to see different filesystem layouts.
-        let explicit = FsSkillDiscoverer::default_paths_for(&moltis_config::data_dir());
+        let explicit = FsSkillDiscoverer::default_paths_for(&chelix_config::data_dir());
         let implicit = FsSkillDiscoverer::default_paths();
         assert_eq!(explicit, implicit);
     }

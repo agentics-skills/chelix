@@ -145,8 +145,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 let skill_names: Vec<String> = if let Some(s) = source {
                     let s = s.to_string();
                     tokio::task::spawn_blocking(move || {
-                        let path = moltis_skills::manifest::ManifestStore::default_path().ok()?;
-                        let store = moltis_skills::manifest::ManifestStore::new(path);
+                        let path = chelix_skills::manifest::ManifestStore::default_path().ok()?;
+                        let store = chelix_skills::manifest::ManifestStore::new(path);
                         let manifest = store.load().ok()?;
                         let repo = manifest.find_repo(&s)?;
                         Some(
@@ -554,7 +554,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "mcp.config.get",
         Box::new(|_ctx| {
             Box::pin(async move {
-                let config = moltis_config::discover_and_load();
+                let config = chelix_config::discover_and_load();
                 Ok(serde_json::json!({
                     "request_timeout_secs": config.mcp.request_timeout_secs,
                 }))
@@ -597,7 +597,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     .await
                     .map_err(ErrorShape::from)?;
 
-                if let Err(e) = moltis_config::update_config(|cfg| {
+                if let Err(e) = chelix_config::update_config(|cfg| {
                     cfg.mcp.request_timeout_secs = request_timeout_secs;
                 }) {
                     tracing::warn!(error = %e, "failed to persist MCP config");

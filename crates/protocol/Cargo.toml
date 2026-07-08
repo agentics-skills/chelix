@@ -1,17 +1,17 @@
 [package]
 edition.workspace = true
-name              = "moltis-protocol"
+name              = "chelix-protocol"
 version.workspace = true
 
 [dependencies]
-moltis-metrics = { optional = true, workspace = true }
+chelix-metrics = { optional = true, workspace = true }
 serde          = { workspace = true }
 serde_json     = { workspace = true }
 thiserror      = { workspace = true }
 
 [features]
 default = []
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 
 [lints]
 workspace = true

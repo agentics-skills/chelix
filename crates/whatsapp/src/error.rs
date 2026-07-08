@@ -12,7 +12,7 @@ pub enum Error {
 
     /// Channel layer error.
     #[error(transparent)]
-    Channel(#[from] moltis_channels::Error),
+    Channel(#[from] chelix_channels::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

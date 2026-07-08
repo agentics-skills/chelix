@@ -1,6 +1,6 @@
 # MCP Servers
 
-Moltis supports the [Model Context Protocol (MCP)](https://modelcontextprotocol.io) for connecting to external tool servers. MCP servers extend your agent's capabilities without modifying Moltis itself.
+Chelix supports the [Model Context Protocol (MCP)](https://modelcontextprotocol.io) for connecting to external tool servers. MCP servers extend your agent's capabilities without modifying Chelix itself.
 
 ## What is MCP?
 
@@ -26,11 +26,11 @@ MCP is an open protocol that lets AI assistants connect to external tools and da
 3. For remote Streamable HTTP servers, enter the server URL and any optional request headers
 4. Click **Save**
 
-After saving a remote server, Moltis only shows a sanitized URL plus header names/count in the UI and status views. Stored header values stay hidden.
+After saving a remote server, Chelix only shows a sanitized URL plus header names/count in the UI and status views. Stored header values stay hidden.
 
 ### Via Configuration
 
-Add servers to `moltis.toml`:
+Add servers to `chelix.toml`:
 
 ```toml
 [mcp]
@@ -57,7 +57,7 @@ url = "https://mcp.example.com/mcp"
 headers = { Authorization = "Bearer ${API_KEY}" }
 ```
 
-Remote URLs and headers support `$NAME` and `${NAME}` placeholders. For live remote servers, placeholder values resolve from Moltis-managed env overrides, either `[env]` in config or **Settings** → **Environment Variables**.
+Remote URLs and headers support `$NAME` and `${NAME}` placeholders. For live remote servers, placeholder values resolve from Chelix-managed env overrides, either `[env]` in config or **Settings** → **Environment Variables**.
 
 ## Popular MCP Servers
 
@@ -100,7 +100,7 @@ headers = { "x-api-key" = "$REMOTE_MCP_KEY" }  # Optional request headers
 
 ## Request Timeouts
 
-Moltis applies MCP request timeouts in two layers:
+Chelix applies MCP request timeouts in two layers:
 
 - `mcp.request_timeout_secs` sets the global default for every MCP server
 - `mcp.servers.<name>.request_timeout_secs` optionally overrides that default for a specific server
@@ -121,7 +121,7 @@ In the web UI, the MCP settings page lets you edit both the global default timeo
 
 ## Remote Server Secrets and Placeholders
 
-Remote MCP servers (SSE or Streamable HTTP) often expect API keys or bearer tokens in the URL query string or request headers. Moltis supports both patterns.
+Remote MCP servers (SSE or Streamable HTTP) often expect API keys or bearer tokens in the URL query string or request headers. Chelix supports both patterns.
 
 ```toml
 [mcp.servers.linear_remote]
@@ -134,9 +134,9 @@ headers = {
 ```
 
 - Use `$NAME` or `${NAME}` placeholders in remote `url` and `headers`
-- Placeholder values resolve from Moltis-managed env overrides, either `[env]` in config or **Settings** → **Environment Variables**
+- Placeholder values resolve from Chelix-managed env overrides, either `[env]` in config or **Settings** → **Environment Variables**
 - UI and API status payloads only expose sanitized URLs plus header names/count, not raw header values
-- Query-string secrets are redacted when Moltis displays a remote URL after save
+- Query-string secrets are redacted when Chelix displays a remote URL after save
 
 ## Server Lifecycle
 
@@ -158,7 +158,7 @@ headers = {
 
 ### Health Monitoring
 
-Moltis monitors MCP servers and automatically:
+Chelix monitors MCP servers and automatically:
 
 - Detects crashes via process exit
 - Restarts with exponential backoff
@@ -220,7 +220,7 @@ const transport = new StdioServerTransport();
 await server.connect(transport);
 ```
 
-### Configure in Moltis
+### Configure in Chelix
 
 ```toml
 [mcp.servers.my_server]
@@ -241,11 +241,11 @@ In the web UI, go to **Settings** → **MCP Servers** to see:
 
 ### View Logs
 
-MCP server stderr is captured in Moltis logs:
+MCP server stderr is captured in Chelix logs:
 
 ```bash
 # View gateway logs
-tail -f ~/.moltis/logs.jsonl | grep -i mcp
+tail -f ~/.chelix/logs.jsonl | grep -i mcp
 ```
 
 ### Test Locally
@@ -258,14 +258,14 @@ echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | node server.js
 
 ## OAuth Authentication
 
-Remote MCP servers can require OAuth 2.1 authentication. Moltis handles this automatically — when a server returns `401 Unauthorized`, the OAuth flow starts without any manual configuration.
+Remote MCP servers can require OAuth 2.1 authentication. Chelix handles this automatically — when a server returns `401 Unauthorized`, the OAuth flow starts without any manual configuration.
 
 ### How It Works
 
-1. Moltis connects to the remote MCP server
+1. Chelix connects to the remote MCP server
 2. The server returns `401 Unauthorized` with a `WWW-Authenticate` header
-3. Moltis discovers the authorization server via [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728) (Protected Resource Metadata)
-4. Moltis performs [dynamic client registration](https://www.rfc-editor.org/rfc/rfc7591) (RFC 7591)
+3. Chelix discovers the authorization server via [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728) (Protected Resource Metadata)
+4. Chelix performs [dynamic client registration](https://www.rfc-editor.org/rfc/rfc7591) (RFC 7591)
 5. A PKCE authorization code flow opens your browser for login
 6. After login, tokens are stored and used for all subsequent requests
 
@@ -291,15 +291,15 @@ scopes = ["mcp:read", "mcp:write"]
 
 ### Re-authentication
 
-If your session expires or tokens are revoked, Moltis automatically re-authenticates on the next `401` response. You can also trigger re-authentication manually via the `mcp.reauth` RPC method.
+If your session expires or tokens are revoked, Chelix automatically re-authenticates on the next `401` response. You can also trigger re-authentication manually via the `mcp.reauth` RPC method.
 
 ## Running MCP Servers in Docker
 
-When running Moltis in Docker, you have two options for stdio-based MCP servers:
+When running Chelix in Docker, you have two options for stdio-based MCP servers:
 
 ### Using the built-in Node.js
 
-The Moltis Docker image includes Node.js and npm, so most MCP servers work out of the box:
+The Chelix Docker image includes Node.js and npm, so most MCP servers work out of the box:
 
 ```toml
 [mcp.servers.filesystem]
@@ -307,20 +307,20 @@ command = "npx"
 args = ["-y", "@modelcontextprotocol/server-filesystem", "/data"]
 ```
 
-> **Tip:** Mount `/home/moltis/.npm` as a named volume so packages are only
+> **Tip:** Mount `/home/chelix/.npm` as a named volume so packages are only
 > downloaded once, and bind-mount any directories the MCP server needs to
 > access:
 >
 > ```sh
 > docker run \
->   -v moltis-npm-cache:/home/moltis/.npm \
+>   -v chelix-npm-cache:/home/chelix/.npm \
 >   -v /host/path/to/data:/data \
 >   ...
 > ```
 
 ### Using Docker containers
 
-Since the Moltis image ships the Docker CLI (`docker-ce-cli`), and given a Docker daemon is reachable via the mounted socket, you can also run MCP servers as isolated containers. This is useful when you need a specific Node version, want stronger isolation, or prefer official MCP Docker images:
+Since the Chelix image ships the Docker CLI (`docker-ce-cli`), and given a Docker daemon is reachable via the mounted socket, you can also run MCP servers as isolated containers. This is useful when you need a specific Node version, want stronger isolation, or prefer official MCP Docker images:
 
 ```toml
 # Run an npm-based MCP server in a container
@@ -329,10 +329,10 @@ command = "docker"
 args = [
   "run", "--rm", "-i",
   # NOTE: bind-mount paths resolve against the HOST filesystem, not the
-  # Moltis container. Use the same host path you mounted into Moltis.
+  # Chelix container. Use the same host path you mounted into Chelix.
   "-v", "/data:/data",
   # Cache npm downloads across container restarts
-  "-v", "moltis-npx-cache:/root/.npm",
+  "-v", "chelix-npx-cache:/root/.npm",
   "--entrypoint", "npx",
   "node:22-alpine",
   "-y", "@modelcontextprotocol/server-filesystem", "/data",
@@ -344,14 +344,14 @@ command = "docker"
 args = ["run", "--rm", "-i", "mcp/memory"]
 ```
 
-The named volume `moltis-npx-cache` persists the npm cache across container restarts, avoiding re-downloads on every MCP server restart. For air-gapped environments, consider pre-building a custom image with the MCP package installed.
+The named volume `chelix-npx-cache` persists the npm cache across container restarts, avoiding re-downloads on every MCP server restart. For air-gapped environments, consider pre-building a custom image with the MCP package installed.
 
-When using containerized MCP servers, remember to mount any directories the server needs access to with `-v`. Because Moltis talks to the Docker daemon via the mounted socket, bind-mount paths (`-v`) always reference the **host** filesystem — not the Moltis container's filesystem.
+When using containerized MCP servers, remember to mount any directories the server needs access to with `-v`. Because Chelix talks to the Docker daemon via the mounted socket, bind-mount paths (`-v`) always reference the **host** filesystem — not the Chelix container's filesystem.
 
 ## Security Considerations
 
 ```admonish warning
-MCP servers run with the same permissions as Moltis. Only use servers from trusted sources.
+MCP servers run with the same permissions as Chelix. Only use servers from trusted sources.
 ```
 
 - **Review server code** before running

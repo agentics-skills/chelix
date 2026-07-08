@@ -9,14 +9,14 @@ use {
 ///
 /// This is the **single source of truth** for provider name validation.
 /// Config validation (`semantic.rs`) uses this to detect typos, and
-/// `moltis-providers` cross-validates its registrations against it.
+/// `chelix-providers` cross-validates its registrations against it.
 ///
 /// The list includes both canonical provider names (used in registration)
 /// and config-key aliases that users may write in `[providers.<name>]`
 /// sections.
 ///
 /// When adding a new provider, add its config name here.  A compile-time
-/// test in `moltis-providers` will fail if a registered provider is
+/// test in `chelix-providers` will fail if a registered provider is
 /// missing from this list.
 pub const KNOWN_PROVIDER_NAMES: &[&str] = &[
     // Built-in providers (always available)
@@ -66,7 +66,7 @@ pub struct OAuthProviderConfig {
 /// Override configuration for a specific model.
 ///
 /// Used in both `[models.<id>]` (global) and `[providers.<name>.model_overrides.<id>]`
-/// (provider-scoped) sections of `moltis.toml`.
+/// (provider-scoped) sections of `chelix.toml`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ModelOverride {

@@ -13,7 +13,7 @@ fn write_config_hook(config_dir: &std::path::Path, command: &str, env: Option<(&
         .map(|(key, value)| format!("\n[hooks.hooks.env]\n{key} = {value:?}\n"))
         .unwrap_or_default();
     std::fs::write(
-        config_dir.join("moltis.toml"),
+        config_dir.join("chelix.toml"),
         format!(
             r#"[hooks]
 
@@ -55,14 +55,14 @@ async fn discover_hooks_registers_builtin_handlers() {
     let old_cwd = std::env::current_dir().unwrap();
     std::env::set_current_dir(project_dir.path()).unwrap();
     std::fs::write(
-        config_dir.path().join("moltis.toml"),
+        config_dir.path().join("chelix.toml"),
         "[memory]\nsession_export = \"on-new-or-reset\"\n",
     )
     .unwrap();
-    moltis_config::set_config_dir(config_dir.path().to_path_buf());
+    chelix_config::set_config_dir(config_dir.path().to_path_buf());
     let sessions_dir = tmp.path().join("sessions");
     std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(moltis_sessions::store::SessionStore::new(sessions_dir));
+    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
 
     let (registry, info) = discover_and_build_hooks(&HashSet::new(), Some(&session_store)).await;
     let registry = registry.expect("expected hook registry to be created");
@@ -80,7 +80,7 @@ async fn discover_hooks_registers_builtin_handlers() {
     );
 
     std::env::set_current_dir(old_cwd).unwrap();
-    moltis_config::clear_config_dir();
+    chelix_config::clear_config_dir();
 }
 
 #[tokio::test]
@@ -92,15 +92,15 @@ async fn discover_hooks_respects_session_export_mode_off() {
     let old_cwd = std::env::current_dir().unwrap();
     std::env::set_current_dir(project_dir.path()).unwrap();
     std::fs::write(
-        config_dir.path().join("moltis.toml"),
+        config_dir.path().join("chelix.toml"),
         "[memory]\nsession_export = \"off\"\n",
     )
     .unwrap();
-    moltis_config::set_config_dir(config_dir.path().to_path_buf());
+    chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
     let sessions_dir = tmp.path().join("sessions");
     std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(moltis_sessions::store::SessionStore::new(sessions_dir));
+    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
 
     let (registry, info) = discover_and_build_hooks(&HashSet::new(), Some(&session_store)).await;
     let registry = registry.expect("expected hook registry to be created");
@@ -114,7 +114,7 @@ async fn discover_hooks_respects_session_export_mode_off() {
     );
 
     std::env::set_current_dir(old_cwd).unwrap();
-    moltis_config::clear_config_dir();
+    chelix_config::clear_config_dir();
 }
 
 #[tokio::test]
@@ -125,14 +125,14 @@ async fn discover_hooks_registers_config_shell_hooks() {
     write_config_hook(
         config_dir.path(),
         "printf ''",
-        Some(("MOLTIS_TEST_HOOK", "1")),
+        Some(("CHELIX_TEST_HOOK", "1")),
     );
-    moltis_config::set_data_dir(data_dir.path().to_path_buf());
-    moltis_config::set_config_dir(config_dir.path().to_path_buf());
+    chelix_config::set_data_dir(data_dir.path().to_path_buf());
+    chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
     let sessions_dir = data_dir.path().join("sessions");
     std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(moltis_sessions::store::SessionStore::new(sessions_dir));
+    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
 
     let (registry, info) = discover_and_build_hooks(&HashSet::new(), Some(&session_store)).await;
     let registry = registry.expect("expected hook registry to be created");
@@ -150,8 +150,8 @@ async fn discover_hooks_registers_config_shell_hooks() {
     assert!(hook_info.enabled);
     assert!(hook_info.eligible);
 
-    moltis_config::clear_config_dir();
-    moltis_config::clear_data_dir();
+    chelix_config::clear_config_dir();
+    chelix_config::clear_data_dir();
 }
 
 #[tokio::test]
@@ -160,12 +160,12 @@ async fn discover_hooks_lists_disabled_config_hooks_without_registering() {
     let data_dir = tempfile::tempdir().unwrap();
     let config_dir = tempfile::tempdir().unwrap();
     write_config_hook(config_dir.path(), "printf ''", None);
-    moltis_config::set_data_dir(data_dir.path().to_path_buf());
-    moltis_config::set_config_dir(config_dir.path().to_path_buf());
+    chelix_config::set_data_dir(data_dir.path().to_path_buf());
+    chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
     let sessions_dir = data_dir.path().join("sessions");
     std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(moltis_sessions::store::SessionStore::new(sessions_dir));
+    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
     let disabled = HashSet::from(["config-test-hook".to_string()]);
 
     let (registry, info) = discover_and_build_hooks(&disabled, Some(&session_store)).await;
@@ -181,8 +181,8 @@ async fn discover_hooks_lists_disabled_config_hooks_without_registering() {
     assert!(!hook_info.enabled);
     assert!(hook_info.eligible);
 
-    moltis_config::clear_config_dir();
-    moltis_config::clear_data_dir();
+    chelix_config::clear_config_dir();
+    chelix_config::clear_data_dir();
 }
 
 #[tokio::test]
@@ -191,7 +191,7 @@ async fn config_hook_info_lists_only_parsed_events() {
     let data_dir = tempfile::tempdir().unwrap();
     let config_dir = tempfile::tempdir().unwrap();
     std::fs::write(
-        config_dir.path().join("moltis.toml"),
+        config_dir.path().join("chelix.toml"),
         r#"[hooks]
 
 [[hooks.hooks]]
@@ -202,12 +202,12 @@ timeout = 7
 "#,
     )
     .unwrap();
-    moltis_config::set_data_dir(data_dir.path().to_path_buf());
-    moltis_config::set_config_dir(config_dir.path().to_path_buf());
+    chelix_config::set_data_dir(data_dir.path().to_path_buf());
+    chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
     let sessions_dir = data_dir.path().join("sessions");
     std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(moltis_sessions::store::SessionStore::new(sessions_dir));
+    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
 
     let (registry, info) = discover_and_build_hooks(&HashSet::new(), Some(&session_store)).await;
     let registry = registry.expect("expected hook registry to be created");
@@ -222,8 +222,8 @@ timeout = 7
     assert!(hook_info.enabled);
     assert!(hook_info.eligible);
 
-    moltis_config::clear_config_dir();
-    moltis_config::clear_data_dir();
+    chelix_config::clear_config_dir();
+    chelix_config::clear_data_dir();
 }
 
 #[tokio::test]
@@ -235,7 +235,7 @@ async fn duplicate_config_hook_names_keep_first_entry() {
     let first_command = format!("printf first > {:?}", output_path);
     let second_command = format!("printf second > {:?}", output_path);
     std::fs::write(
-        config_dir.path().join("moltis.toml"),
+        config_dir.path().join("chelix.toml"),
         format!(
             r#"[hooks]
 
@@ -254,12 +254,12 @@ timeout = 7
         ),
     )
     .unwrap();
-    moltis_config::set_data_dir(data_dir.path().to_path_buf());
-    moltis_config::set_config_dir(config_dir.path().to_path_buf());
+    chelix_config::set_data_dir(data_dir.path().to_path_buf());
+    chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
     let sessions_dir = data_dir.path().join("sessions");
     std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(moltis_sessions::store::SessionStore::new(sessions_dir));
+    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
     let (registry, info) = discover_and_build_hooks(&HashSet::new(), Some(&session_store)).await;
     let registry = registry.expect("expected hook registry to be created");
 
@@ -271,7 +271,7 @@ timeout = 7
     );
 
     registry
-        .dispatch(&moltis_common::hooks::HookPayload::BeforeLLMCall {
+        .dispatch(&chelix_common::hooks::HookPayload::BeforeLLMCall {
             session_key: "config-hook-test".to_string(),
             provider: "test-provider".to_string(),
             model: "test-model".to_string(),
@@ -285,8 +285,8 @@ timeout = 7
     let captured = std::fs::read_to_string(&output_path).unwrap();
     assert_eq!(captured, "first");
 
-    moltis_config::clear_config_dir();
-    moltis_config::clear_data_dir();
+    chelix_config::clear_config_dir();
+    chelix_config::clear_data_dir();
 }
 
 #[tokio::test]
@@ -305,12 +305,12 @@ async fn filesystem_hook_takes_precedence_over_same_named_config_hook() {
         &format!("printf config > {:?}", output_path),
         None,
     );
-    moltis_config::set_data_dir(data_dir.path().to_path_buf());
-    moltis_config::set_config_dir(config_dir.path().to_path_buf());
+    chelix_config::set_data_dir(data_dir.path().to_path_buf());
+    chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
     let sessions_dir = data_dir.path().join("sessions");
     std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(moltis_sessions::store::SessionStore::new(sessions_dir));
+    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
     let (registry, info) = discover_and_build_hooks(&HashSet::new(), Some(&session_store)).await;
     let registry = registry.expect("expected hook registry to be created");
 
@@ -325,7 +325,7 @@ async fn filesystem_hook_takes_precedence_over_same_named_config_hook() {
     );
 
     registry
-        .dispatch(&moltis_common::hooks::HookPayload::BeforeLLMCall {
+        .dispatch(&chelix_common::hooks::HookPayload::BeforeLLMCall {
             session_key: "config-hook-test".to_string(),
             provider: "test-provider".to_string(),
             model: "test-model".to_string(),
@@ -339,8 +339,8 @@ async fn filesystem_hook_takes_precedence_over_same_named_config_hook() {
     let captured = std::fs::read_to_string(&output_path).unwrap();
     assert_eq!(captured, "fs");
 
-    moltis_config::clear_config_dir();
-    moltis_config::clear_data_dir();
+    chelix_config::clear_config_dir();
+    chelix_config::clear_data_dir();
 }
 
 #[tokio::test]
@@ -351,23 +351,23 @@ async fn config_shell_hook_runs_when_event_dispatches() {
     let output_path = data_dir.path().join("hook-payload.json");
     write_config_hook(
         config_dir.path(),
-        "cat > \"$MOLTIS_TEST_HOOK_OUTPUT\"",
+        "cat > \"$CHELIX_TEST_HOOK_OUTPUT\"",
         Some((
-            "MOLTIS_TEST_HOOK_OUTPUT",
+            "CHELIX_TEST_HOOK_OUTPUT",
             output_path.to_string_lossy().as_ref(),
         )),
     );
-    moltis_config::set_data_dir(data_dir.path().to_path_buf());
-    moltis_config::set_config_dir(config_dir.path().to_path_buf());
+    chelix_config::set_data_dir(data_dir.path().to_path_buf());
+    chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
     let sessions_dir = data_dir.path().join("sessions");
     std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(moltis_sessions::store::SessionStore::new(sessions_dir));
+    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
     let (registry, _info) = discover_and_build_hooks(&HashSet::new(), Some(&session_store)).await;
     let registry = registry.expect("expected hook registry to be created");
 
     let action = registry
-        .dispatch(&moltis_common::hooks::HookPayload::BeforeLLMCall {
+        .dispatch(&chelix_common::hooks::HookPayload::BeforeLLMCall {
             session_key: "config-hook-test".to_string(),
             provider: "test-provider".to_string(),
             model: "test-model".to_string(),
@@ -378,13 +378,13 @@ async fn config_shell_hook_runs_when_event_dispatches() {
         .await
         .unwrap();
 
-    assert!(matches!(action, moltis_common::hooks::HookAction::Continue));
+    assert!(matches!(action, chelix_common::hooks::HookAction::Continue));
     let captured = std::fs::read_to_string(&output_path).unwrap();
     assert!(captured.contains("BeforeLLMCall"));
     assert!(captured.contains("config-hook-test"));
 
-    moltis_config::clear_config_dir();
-    moltis_config::clear_data_dir();
+    chelix_config::clear_config_dir();
+    chelix_config::clear_data_dir();
 }
 
 #[tokio::test]
@@ -392,7 +392,7 @@ async fn command_hook_dispatch_saves_session_memory_file() {
     let tmp = tempfile::tempdir().unwrap();
     let sessions_dir = tmp.path().join("sessions");
     std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(moltis_sessions::store::SessionStore::new(sessions_dir));
+    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
 
     session_store
         .append(
@@ -409,21 +409,21 @@ async fn command_hook_dispatch_saves_session_memory_file() {
         .await
         .unwrap();
 
-    let mut registry = moltis_common::hooks::HookRegistry::new();
+    let mut registry = chelix_common::hooks::HookRegistry::new();
     registry.register(Arc::new(
-        moltis_plugins::bundled::session_memory::SessionMemoryHook::new(
+        chelix_plugins::bundled::session_memory::SessionMemoryHook::new(
             tmp.path().to_path_buf(),
             Arc::clone(&session_store),
         ),
     ));
 
-    let payload = moltis_common::hooks::HookPayload::Command {
+    let payload = chelix_common::hooks::HookPayload::Command {
         session_key: "smoke-session".into(),
         action: "new".into(),
         sender_id: None,
     };
     let result = registry.dispatch(&payload).await.unwrap();
-    assert!(matches!(result, moltis_common::hooks::HookAction::Continue));
+    assert!(matches!(result, chelix_common::hooks::HookAction::Continue));
 
     let memory_dir = tmp.path().join("memory");
     assert!(memory_dir.is_dir());
@@ -472,7 +472,7 @@ fn dcg_guard_hook_md_removes_cargo_install() {
 async fn seed_dcg_guard_hook_writes_handler_with_path_fix() {
     let _guard = LocalModelConfigTestGuard::new();
     let tmp = tempfile::tempdir().expect("tempdir");
-    moltis_config::set_data_dir(tmp.path().to_path_buf());
+    chelix_config::set_data_dir(tmp.path().to_path_buf());
 
     seed_dcg_guard_hook().await;
 
@@ -492,7 +492,7 @@ async fn seed_dcg_guard_hook_writes_handler_with_path_fix() {
 async fn seed_dcg_guard_hook_refreshes_stale_handler() {
     let _guard = LocalModelConfigTestGuard::new();
     let tmp = tempfile::tempdir().expect("tempdir");
-    moltis_config::set_data_dir(tmp.path().to_path_buf());
+    chelix_config::set_data_dir(tmp.path().to_path_buf());
 
     let hook_dir = tmp.path().join("hooks/dcg-guard");
     std::fs::create_dir_all(&hook_dir).expect("create hook dir");
@@ -555,7 +555,7 @@ async fn seed_dcg_guard_hook_logs_status_even_if_mkdir_fails() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let blocker = tmp.path().join("blocker");
     std::fs::write(&blocker, b"not a directory").expect("write blocker file");
-    moltis_config::set_data_dir(blocker.clone());
+    chelix_config::set_data_dir(blocker.clone());
 
     assert!(std::fs::create_dir_all(blocker.join("hooks/dcg-guard")).is_err());
 

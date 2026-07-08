@@ -9,7 +9,7 @@ pub use {
     },
 };
 
-use {crate::ModelCapabilities, moltis_agents::model::ModelMetadata};
+use {crate::ModelCapabilities, chelix_agents::model::ModelMetadata};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RateLimitPolicy {
@@ -107,14 +107,14 @@ pub struct OpenAiProvider {
     base_url: String,
     provider_name: String,
     client: &'static reqwest::Client,
-    stream_transport: moltis_config::schema::ProviderStreamTransport,
-    wire_api: moltis_config::schema::WireApi,
+    stream_transport: chelix_config::schema::ProviderStreamTransport,
+    wire_api: chelix_config::schema::WireApi,
     metadata_cache: tokio::sync::OnceCell<ModelMetadata>,
-    tool_mode_override: Option<moltis_config::ToolMode>,
+    tool_mode_override: Option<chelix_config::ToolMode>,
     /// Optional reasoning effort level for o-series models.
-    reasoning_effort: Option<moltis_agents::model::ReasoningEffort>,
+    reasoning_effort: Option<chelix_agents::model::ReasoningEffort>,
     /// Prompt cache retention policy (used for OpenRouter Anthropic passthrough).
-    cache_retention: moltis_config::CacheRetention,
+    cache_retention: chelix_config::CacheRetention,
     /// Explicit override for strict tool schema mode. `None` = auto-detect.
     strict_tools_override: Option<bool>,
     /// Explicit override for reasoning_content requirement. `None` = auto-detect.

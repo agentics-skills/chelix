@@ -16,17 +16,17 @@ use {
 /// scheme. Strict authorization servers (e.g. Attio) reject
 /// `https://localhost` during RFC 7591 dynamic client registration with
 /// `invalid_redirect_uri`, and some also reject it during the authorization
-/// request. Moltis serves the web UI over TLS, so the origin-derived
+/// request. Chelix serves the web UI over TLS, so the origin-derived
 /// callback arrives as `https://localhost:<port>/auth/callback`.
 ///
 /// The main TLS listener's peek-based HTTP→HTTPS redirect (see
-/// `moltis_tls::serve_tls_with_http_redirect`) transparently bounces the
+/// `chelix_tls::serve_tls_with_http_redirect`) transparently bounces the
 /// plain-HTTP OAuth callback back onto the real HTTPS callback handler,
 /// preserving path and query string, so this rewrite is safe for any
 /// deployment where the web UI is reached via a loopback host
 /// (`localhost`, `127.0.0.1`, `::1`).
 ///
-/// Non-loopback hosts (`moltis.lan`, real TLS hostnames) and non-`https`
+/// Non-loopback hosts (`chelix.lan`, real TLS hostnames) and non-`https`
 /// schemes are returned unchanged — a confidential-client HTTPS redirect
 /// on a real hostname is a perfectly valid web-app redirect URI and is
 /// unaffected by §8.3.
@@ -110,12 +110,12 @@ mod tests {
     #[test]
     fn preserves_real_hostname() {
         assert_eq!(
-            normalize_loopback_redirect("https://moltis.lan/auth/callback"),
-            "https://moltis.lan/auth/callback",
+            normalize_loopback_redirect("https://chelix.lan/auth/callback"),
+            "https://chelix.lan/auth/callback",
         );
         assert_eq!(
-            normalize_loopback_redirect("https://moltis.example.com:1455/auth/callback"),
-            "https://moltis.example.com:1455/auth/callback",
+            normalize_loopback_redirect("https://chelix.example.com:1455/auth/callback"),
+            "https://chelix.example.com:1455/auth/callback",
         );
     }
 

@@ -8,16 +8,16 @@ use crate::{auth_webauthn::SharedWebAuthnRegistry, state::GatewayState};
 
 fn spawn_post_listener_warmups(
     browser_service: Arc<dyn crate::services::BrowserService>,
-    browser_tool: Option<Arc<dyn moltis_agents::tool_registry::AgentTool>>,
+    browser_tool: Option<Arc<dyn chelix_agents::tool_registry::AgentTool>>,
 ) {
     // Warm the container CLI OnceLock off the async worker threads.
     tokio::task::spawn_blocking(|| {
-        let cli = moltis_tools::sandbox::container_cli();
+        let cli = chelix_tools::sandbox::container_cli();
         debug!(cli, "container CLI detected");
     });
 
-    if !super::helpers::env_flag_enabled("MOLTIS_BROWSER_WARMUP") {
-        debug!("startup browser warmup disabled (set MOLTIS_BROWSER_WARMUP=1 to enable)");
+    if !super::helpers::env_flag_enabled("CHELIX_BROWSER_WARMUP") {
+        debug!("startup browser warmup disabled (set CHELIX_BROWSER_WARMUP=1 to enable)");
         return;
     }
 
@@ -34,7 +34,7 @@ fn spawn_post_listener_warmups(
 /// Start browser warmup after the transport listener is ready.
 pub fn start_browser_warmup_after_listener(
     browser_service: Arc<dyn crate::services::BrowserService>,
-    browser_tool: Option<Arc<dyn moltis_agents::tool_registry::AgentTool>>,
+    browser_tool: Option<Arc<dyn chelix_agents::tool_registry::AgentTool>>,
 ) {
     spawn_post_listener_warmups(browser_service, browser_tool);
 }
@@ -141,7 +141,7 @@ pub async fn sync_runtime_webauthn_host_and_notice(
 
 #[cfg(feature = "claude-import")]
 pub fn claude_detected_for_ui() -> bool {
-    moltis_claude_import::detect::detect().is_some()
+    chelix_claude_import::detect::detect().is_some()
 }
 
 #[cfg(not(feature = "claude-import"))]
@@ -151,7 +151,7 @@ pub fn claude_detected_for_ui() -> bool {
 
 #[cfg(feature = "codex-import")]
 pub fn codex_detected_for_ui() -> bool {
-    moltis_codex_import::detect::detect().is_some()
+    chelix_codex_import::detect::detect().is_some()
 }
 
 #[cfg(not(feature = "codex-import"))]

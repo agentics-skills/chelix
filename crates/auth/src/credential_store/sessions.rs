@@ -6,7 +6,7 @@ use std::sync::Arc;
 use sqlx::SqlitePool;
 
 #[cfg(feature = "vault")]
-use moltis_vault::Vault;
+use chelix_vault::Vault;
 
 use crate::{
     Error, Result,
@@ -32,7 +32,7 @@ pub enum PasswordVaultChangeError {
     #[error(transparent)]
     Auth(#[from] Error),
     #[error(transparent)]
-    Vault(#[from] moltis_vault::VaultError),
+    Vault(#[from] chelix_vault::VaultError),
 }
 
 #[cfg(feature = "vault")]
@@ -47,20 +47,20 @@ pub enum VaultInitializeError {
     #[error(transparent)]
     Auth(#[from] Error),
     #[error(transparent)]
-    Vault(#[from] moltis_vault::VaultError),
+    Vault(#[from] chelix_vault::VaultError),
 }
 
 #[cfg(feature = "vault")]
 pub struct VaultInitializeOutcome {
-    pub recovery_key: moltis_vault::RecoveryKey,
+    pub recovery_key: chelix_vault::RecoveryKey,
     pub unsealed: bool,
 }
 
 #[cfg(feature = "vault")]
-fn map_vault_password_change_error(error: moltis_vault::VaultError) -> PasswordVaultChangeError {
+fn map_vault_password_change_error(error: chelix_vault::VaultError) -> PasswordVaultChangeError {
     match error {
-        moltis_vault::VaultError::BadCredential => PasswordVaultChangeError::VaultBadCredential,
-        moltis_vault::VaultError::Sealed => PasswordVaultChangeError::VaultStateChanged,
+        chelix_vault::VaultError::BadCredential => PasswordVaultChangeError::VaultBadCredential,
+        chelix_vault::VaultError::Sealed => PasswordVaultChangeError::VaultStateChanged,
         other => PasswordVaultChangeError::Vault(other),
     }
 }
@@ -80,14 +80,14 @@ impl CredentialStore {
     /// Create a new store and initialize tables.
     /// Reads `auth.disabled` from the discovered config file.
     pub async fn new(pool: SqlitePool) -> Result<Self> {
-        let config = moltis_config::discover_and_load();
+        let config = chelix_config::discover_and_load();
         Self::with_config(pool, &config.auth).await
     }
 
     /// Create a new store with explicit auth config (avoids reading from disk).
     pub async fn with_config(
         pool: SqlitePool,
-        auth_config: &moltis_config::AuthConfig,
+        auth_config: &chelix_config::AuthConfig,
     ) -> Result<Self> {
         let store = Self {
             pool,
@@ -120,7 +120,7 @@ impl CredentialStore {
     #[cfg(feature = "vault")]
     pub async fn with_vault(
         pool: SqlitePool,
-        auth_config: &moltis_config::AuthConfig,
+        auth_config: &chelix_config::AuthConfig,
         vault: Option<Arc<Vault>>,
     ) -> Result<Self> {
         let store = Self {
@@ -303,7 +303,7 @@ impl CredentialStore {
         })
         .execute(&self.pool)
         .await?;
-        moltis_config::update_config(|c| c.auth.disabled = disabled)?;
+        chelix_config::update_config(|c| c.auth.disabled = disabled)?;
         Ok(())
     }
 
@@ -336,7 +336,7 @@ impl CredentialStore {
     pub async fn set_initial_password_and_prepare_vault(
         &self,
         password: &str,
-    ) -> std::result::Result<Option<moltis_vault::RecoveryKey>, PasswordVaultChangeError> {
+    ) -> std::result::Result<Option<chelix_vault::RecoveryKey>, PasswordVaultChangeError> {
         if self.is_setup_complete() {
             return Err(Error::Validation("password already set".into()).into());
         }
@@ -364,7 +364,7 @@ impl CredentialStore {
     pub async fn add_password_and_prepare_vault(
         &self,
         password: &str,
-    ) -> std::result::Result<Option<moltis_vault::RecoveryKey>, PasswordVaultChangeError> {
+    ) -> std::result::Result<Option<chelix_vault::RecoveryKey>, PasswordVaultChangeError> {
         self.insert_password_and_prepare_vault(password).await
     }
 
@@ -372,13 +372,13 @@ impl CredentialStore {
     async fn insert_password_and_prepare_vault(
         &self,
         password: &str,
-    ) -> std::result::Result<Option<moltis_vault::RecoveryKey>, PasswordVaultChangeError> {
+    ) -> std::result::Result<Option<chelix_vault::RecoveryKey>, PasswordVaultChangeError> {
         let Some(ref vault) = self.vault else {
             self.add_password(password).await?;
             return Ok(None);
         };
 
-        if matches!(vault.status().await?, moltis_vault::VaultStatus::Sealed) {
+        if matches!(vault.status().await?, chelix_vault::VaultStatus::Sealed) {
             vault
                 .unseal(password)
                 .await
@@ -395,13 +395,13 @@ impl CredentialStore {
         }
 
         let recovery_key = match vault.status().await? {
-            moltis_vault::VaultStatus::Uninitialized => {
+            chelix_vault::VaultStatus::Uninitialized => {
                 Some(vault.initialize_in_transaction(password, &mut tx).await?)
             },
-            moltis_vault::VaultStatus::Sealed => {
+            chelix_vault::VaultStatus::Sealed => {
                 return Err(PasswordVaultChangeError::VaultStateChanged);
             },
-            moltis_vault::VaultStatus::Unsealed => {
+            chelix_vault::VaultStatus::Unsealed => {
                 vault
                     .rewrap_unsealed_in_transaction(password, &mut tx)
                     .await
@@ -433,7 +433,7 @@ impl CredentialStore {
         }
         self.setup_complete.store(true, Ordering::Relaxed);
         self.auth_disabled.store(false, Ordering::Relaxed);
-        moltis_config::update_config(|c| c.auth.disabled = false).map_err(Error::from)?;
+        chelix_config::update_config(|c| c.auth.disabled = false).map_err(Error::from)?;
         Ok(recovery_key)
     }
 
@@ -526,7 +526,7 @@ impl CredentialStore {
             return Err(PasswordVaultChangeError::IncorrectCurrentPassword);
         }
 
-        if matches!(vault.status().await?, moltis_vault::VaultStatus::Sealed) {
+        if matches!(vault.status().await?, chelix_vault::VaultStatus::Sealed) {
             vault
                 .unseal(current)
                 .await
@@ -534,17 +534,17 @@ impl CredentialStore {
         }
 
         match vault.status().await? {
-            moltis_vault::VaultStatus::Uninitialized => {},
-            moltis_vault::VaultStatus::Sealed => {
+            chelix_vault::VaultStatus::Uninitialized => {},
+            chelix_vault::VaultStatus::Sealed => {
                 return Err(PasswordVaultChangeError::VaultStateChanged);
             },
-            moltis_vault::VaultStatus::Unsealed => {
+            chelix_vault::VaultStatus::Unsealed => {
                 match vault
                     .change_password_in_transaction(current, new_password, &mut tx)
                     .await
                 {
                     Ok(()) => {},
-                    Err(moltis_vault::VaultError::BadCredential) => {
+                    Err(chelix_vault::VaultError::BadCredential) => {
                         vault
                             .rewrap_unsealed_in_transaction(new_password, &mut tx)
                             .await
@@ -577,7 +577,7 @@ impl CredentialStore {
         current: &str,
     ) -> std::result::Result<VaultInitializeOutcome, VaultInitializeError> {
         let Some(ref vault) = self.vault else {
-            return Err(moltis_vault::VaultError::NotInitialized.into());
+            return Err(chelix_vault::VaultError::NotInitialized.into());
         };
 
         let mut tx = self.pool.begin().await?;
@@ -593,10 +593,10 @@ impl CredentialStore {
         }
 
         let recovery_key = match vault.status().await? {
-            moltis_vault::VaultStatus::Uninitialized => {
+            chelix_vault::VaultStatus::Uninitialized => {
                 vault.initialize_in_transaction(current, &mut tx).await?
             },
-            moltis_vault::VaultStatus::Sealed | moltis_vault::VaultStatus::Unsealed => {
+            chelix_vault::VaultStatus::Sealed | chelix_vault::VaultStatus::Unsealed => {
                 return Err(VaultInitializeError::AlreadyInitialized);
             },
         };

@@ -1,4 +1,4 @@
-//! Import data from OpenAI Codex CLI into Moltis.
+//! Import data from OpenAI Codex CLI into Chelix.
 //!
 //! Supports detection, scanning, and selective import of:
 //! - MCP server configurations (from `~/.codex/config.toml`)

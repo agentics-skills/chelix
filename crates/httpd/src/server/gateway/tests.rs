@@ -16,7 +16,7 @@ fn telephony_webhook_url_builds_absolute_url_from_forwarded_headers() {
         "gather",
         &headers,
         None,
-        &moltis_config::schema::MoltisConfig::default(),
+        &chelix_config::schema::ChelixConfig::default(),
     )
     .unwrap_or_default();
 
@@ -37,7 +37,7 @@ fn telephony_webhook_url_prefers_account_webhook_base() {
         "answer",
         &HeaderMap::new(),
         Some(account_config),
-        &moltis_config::schema::MoltisConfig::default(),
+        &chelix_config::schema::ChelixConfig::default(),
     )
     .unwrap_or_default();
 

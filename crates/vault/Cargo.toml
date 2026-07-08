@@ -1,11 +1,11 @@
 [package]
 edition.workspace = true
-name              = "moltis-vault"
+name              = "chelix-vault"
 version.workspace = true
 
 [features]
 default = ["metrics", "tracing"]
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 tracing = ["dep:tracing"]
 
 [dependencies]
@@ -13,7 +13,7 @@ anyhow           = { workspace = true }
 argon2           = { workspace = true }
 base64           = { workspace = true }
 chacha20poly1305 = { workspace = true }
-moltis-metrics   = { optional = true, workspace = true }
+chelix-metrics   = { optional = true, workspace = true }
 rand             = { workspace = true }
 serde            = { workspace = true }
 serde_json       = { workspace = true }

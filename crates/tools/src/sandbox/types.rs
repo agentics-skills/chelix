@@ -175,12 +175,12 @@ impl std::fmt::Display for HomePersistence {
     }
 }
 
-impl From<&moltis_config::schema::HomePersistenceConfig> for HomePersistence {
-    fn from(value: &moltis_config::schema::HomePersistenceConfig) -> Self {
+impl From<&chelix_config::schema::HomePersistenceConfig> for HomePersistence {
+    fn from(value: &chelix_config::schema::HomePersistenceConfig) -> Self {
         match value {
-            moltis_config::schema::HomePersistenceConfig::Off => Self::Off,
-            moltis_config::schema::HomePersistenceConfig::Session => Self::Session,
-            moltis_config::schema::HomePersistenceConfig::Shared => Self::Shared,
+            chelix_config::schema::HomePersistenceConfig::Off => Self::Off,
+            chelix_config::schema::HomePersistenceConfig::Session => Self::Session,
+            chelix_config::schema::HomePersistenceConfig::Shared => Self::Shared,
         }
     }
 }
@@ -197,7 +197,7 @@ pub struct ResourceLimits {
     pub pids_max: Option<u32>,
 }
 
-pub use moltis_network_filter::NetworkPolicy;
+pub use chelix_network_filter::NetworkPolicy;
 
 /// Configuration for sandbox behavior.
 #[derive(Debug, Clone, Deserialize)]
@@ -208,7 +208,7 @@ pub struct SandboxConfig {
     pub workspace_mount: WorkspaceMount,
     /// Root filesystem and privilege-hardening mode for sandbox containers.
     pub workspace_sysmount: WorkspaceSysmount,
-    /// Host-visible path for Moltis `data_dir()` when running container-backed
+    /// Host-visible path for Chelix `data_dir()` when running container-backed
     /// sandboxes from inside another container.
     pub host_data_dir: Option<PathBuf>,
     /// Persistence strategy for `/home/sandbox`.
@@ -270,8 +270,8 @@ impl Default for SandboxConfig {
     }
 }
 
-impl From<&moltis_config::schema::SandboxConfig> for SandboxConfig {
-    fn from(cfg: &moltis_config::schema::SandboxConfig) -> Self {
+impl From<&chelix_config::schema::SandboxConfig> for SandboxConfig {
+    fn from(cfg: &chelix_config::schema::SandboxConfig) -> Self {
         Self {
             mode: match cfg.mode.as_str() {
                 "all" => SandboxMode::All,
@@ -350,7 +350,7 @@ impl std::fmt::Display for SandboxId {
 /// Result of a `build_image` call.
 #[derive(Debug, Clone)]
 pub struct BuildImageResult {
-    /// The full image tag (e.g. `moltis-sandbox:abc123`).
+    /// The full image tag (e.g. `chelix-sandbox:abc123`).
     pub tag: String,
     /// Whether the build was actually performed (false = image already existed).
     pub built: bool,

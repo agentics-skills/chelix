@@ -1,6 +1,6 @@
 //! Bridge between MCP tools and the agent tool registry.
 //!
-//! Adapts [`McpToolBridge`](moltis_mcp::tool_bridge::McpToolBridge) (mcp crate)
+//! Adapts [`McpToolBridge`](chelix_mcp::tool_bridge::McpToolBridge) (mcp crate)
 //! to [`AgentTool`] (agents crate) and provides sync logic to register MCP tools
 //! into a [`ToolRegistry`].
 
@@ -12,8 +12,8 @@ use {async_trait::async_trait, tokio::sync::RwLock};
 use tracing::info;
 
 use {
-    moltis_agents::tool_registry::{AgentTool, ToolRegistry},
-    moltis_mcp::tool_bridge::{McpAgentTool, McpToolBridge},
+    chelix_agents::tool_registry::{AgentTool, ToolRegistry},
+    chelix_mcp::tool_bridge::{McpAgentTool, McpToolBridge},
 };
 
 /// Thin adapter that implements `AgentTool` (agents crate) by delegating to
@@ -44,7 +44,7 @@ impl AgentTool for McpToolAdapter {
 /// Removes all existing `mcp__*` tools and re-registers current bridges.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(tool_count)))]
 pub async fn sync_mcp_tools(
-    manager: &moltis_mcp::McpManager,
+    manager: &chelix_mcp::McpManager,
     registry: &Arc<RwLock<ToolRegistry>>,
 ) {
     let bridges = manager.tool_bridges().await;
@@ -69,7 +69,7 @@ pub async fn sync_mcp_tools(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, moltis_mcp::McpRegistry};
+    use {super::*, chelix_mcp::McpRegistry};
 
     /// Minimal fake tool implementing AgentTool for testing sync logic.
     struct FakeTool(&'static str);
@@ -97,7 +97,7 @@ mod tests {
     async fn test_sync_mcp_tools_empty_manager() {
         let registry = Arc::new(RwLock::new(ToolRegistry::new()));
         let reg = McpRegistry::load(&std::path::PathBuf::from("/nonexistent")).unwrap_or_default();
-        let manager = moltis_mcp::McpManager::new_with_env_overrides(
+        let manager = chelix_mcp::McpManager::new_with_env_overrides(
             reg,
             std::collections::HashMap::new(),
             std::time::Duration::from_secs(30),
@@ -112,7 +112,7 @@ mod tests {
     async fn test_sync_mcp_tools_removes_stale_tools() {
         let registry = Arc::new(RwLock::new(ToolRegistry::new()));
         let reg = McpRegistry::load(&std::path::PathBuf::from("/nonexistent")).unwrap_or_default();
-        let manager = moltis_mcp::McpManager::new_with_env_overrides(
+        let manager = chelix_mcp::McpManager::new_with_env_overrides(
             reg,
             std::collections::HashMap::new(),
             std::time::Duration::from_secs(30),
@@ -136,7 +136,7 @@ mod tests {
     async fn test_sync_preserves_non_mcp_tools() {
         let registry = Arc::new(RwLock::new(ToolRegistry::new()));
         let reg = McpRegistry::load(&std::path::PathBuf::from("/nonexistent")).unwrap_or_default();
-        let manager = moltis_mcp::McpManager::new_with_env_overrides(
+        let manager = chelix_mcp::McpManager::new_with_env_overrides(
             reg,
             std::collections::HashMap::new(),
             std::time::Duration::from_secs(30),

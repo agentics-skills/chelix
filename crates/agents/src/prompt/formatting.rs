@@ -3,7 +3,7 @@ use crate::prompt::types::{
     PromptSandboxRuntimeContext, WorkspaceFilePromptStatus,
 };
 
-use moltis_config::version::{IS_DEV_BUILD, VERSION};
+use chelix_config::version::{IS_DEV_BUILD, VERSION};
 
 /// Build model-family-aware tool call guidance for text-based tool mode.
 pub(crate) fn tool_call_guidance(model_id: Option<&str>) -> String {
@@ -143,11 +143,11 @@ pub(crate) fn push_non_empty_runtime_field(
     }
 }
 
-pub(crate) fn format_moltis_runtime_line() -> String {
+pub(crate) fn format_chelix_runtime_line() -> String {
     if IS_DEV_BUILD {
-        format!("Moltis v{VERSION} (dev build)")
+        format!("Chelix v{VERSION} (dev build)")
     } else {
-        format!("Moltis v{VERSION}")
+        format!("Chelix v{VERSION}")
     }
 }
 

@@ -1,4 +1,4 @@
-use moltis_config::{AgentPreset, AgentsConfig, PresetToolPolicy};
+use chelix_config::{AgentPreset, AgentsConfig, PresetToolPolicy};
 
 #[test]
 fn sync_persona_into_preset_creates_new_entry() {

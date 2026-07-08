@@ -9,13 +9,13 @@ use std::{
 use {async_trait::async_trait, tokio::net::TcpListener};
 
 use {
-    moltis_gateway::{
+    chelix_gateway::{
         auth,
         methods::MethodRegistry,
         services::{ChatService, GatewayServices, ServiceResult},
         state::GatewayState,
     },
-    moltis_httpd::server::{build_gateway_base, finalize_gateway_app},
+    chelix_httpd::server::{build_gateway_base, finalize_gateway_app},
     serde_json::{Value, json},
 };
 
@@ -101,8 +101,8 @@ impl ChatService for RecordingChatService {
 
 async fn start_graphql_server() -> (SocketAddr, Arc<GatewayState>, tempfile::TempDir) {
     let tmp = tempfile::tempdir().unwrap();
-    moltis_config::set_config_dir(tmp.path().to_path_buf());
-    moltis_config::set_data_dir(tmp.path().to_path_buf());
+    chelix_config::set_config_dir(tmp.path().to_path_buf());
+    chelix_config::set_data_dir(tmp.path().to_path_buf());
 
     let state = GatewayState::new(auth::resolve_auth(None, None), GatewayServices::noop());
     let state_clone = Arc::clone(&state);

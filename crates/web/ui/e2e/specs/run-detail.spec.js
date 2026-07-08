@@ -25,7 +25,7 @@ test.describe("Run detail panel", () => {
 		// Call the RPC directly and verify the response structure.
 		const result = await page.evaluate(async () => {
 			// Access the sendRpc function via the global WebSocket.
-			const ws = window.__moltis_ws;
+			const ws = window.__chelix_ws;
 			if (!ws) return { error: "no websocket" };
 
 			return new Promise((resolve) => {

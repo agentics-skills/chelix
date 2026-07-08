@@ -12,8 +12,8 @@ use std::{
 
 use {
     futures::StreamExt,
-    moltis_agents::model::{ChatMessage, LlmProvider, ReasoningEffort, StreamEvent, ToolCall},
-    moltis_providers::openai::OpenAiProvider,
+    chelix_agents::model::{ChatMessage, LlmProvider, ReasoningEffort, StreamEvent, ToolCall},
+    chelix_providers::openai::OpenAiProvider,
     secrecy::{ExposeSecret, Secret},
 };
 

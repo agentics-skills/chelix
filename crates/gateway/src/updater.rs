@@ -1,6 +1,6 @@
-//! In-place update logic for moltis.
+//! In-place update logic for chelix.
 //!
-//! Detects how moltis was installed and performs the appropriate upgrade:
+//! Detects how chelix was installed and performs the appropriate upgrade:
 //! - Binary installs: download tarball, verify checksum, replace binary.
 //! - Docker: replace binary in-place + warn about image persistence.
 
@@ -17,12 +17,12 @@ use crate::update_check;
 /// Global guard to prevent concurrent update attempts.
 static UPDATE_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
-const GITHUB_REPO: &str = "moltis-org/moltis";
+const GITHUB_REPO: &str = "agentics-skills/chelix";
 const GPG_KEY_URL: &str = "https://pen.so/gpg.asc";
 
 // ── Types ────────────────────────────────────────────────────
 
-/// How moltis was installed on this system.
+/// How chelix was installed on this system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InstallMethod {
@@ -72,7 +72,7 @@ pub enum UpdateError {
 
 // ── Install method detection ─────────────────────────────────
 
-/// Detect whether moltis is running in a container or as a standalone binary.
+/// Detect whether chelix is running in a container or as a standalone binary.
 pub fn detect_install_method() -> InstallMethod {
     if is_running_in_container() {
         InstallMethod::Docker
@@ -133,7 +133,7 @@ pub async fn perform_update(
     releases_url: &str,
     requested_version: Option<&str>,
 ) -> Result<UpdateOutcome, UpdateError> {
-    if moltis_config::version::IS_DEV_BUILD {
+    if chelix_config::version::IS_DEV_BUILD {
         return Err(UpdateError::DevBuild);
     }
 
@@ -161,7 +161,7 @@ async fn perform_update_inner(
     releases_url: &str,
     requested_version: Option<&str>,
 ) -> Result<UpdateOutcome, UpdateError> {
-    let current = moltis_config::version::VERSION;
+    let current = chelix_config::version::VERSION;
     let target = resolve_target_version(client, releases_url, requested_version).await?;
 
     if target == current {
@@ -191,7 +191,7 @@ async fn resolve_target_version(
     }
 
     // Fetch latest from the releases manifest (same logic as update_check).
-    let current = moltis_config::version::VERSION;
+    let current = chelix_config::version::VERSION;
     let availability = update_check::fetch_update_availability(client, releases_url, current).await;
 
     if let Some(ver) = availability.latest_version {
@@ -213,7 +213,7 @@ async fn do_binary_update(
 ) -> Result<UpdateOutcome, UpdateError> {
     let triple = target_triple()?;
     let tag = release_tag(target);
-    let tarball_name = format!("moltis-{target}-{triple}.tar.gz");
+    let tarball_name = format!("chelix-{target}-{triple}.tar.gz");
     let base_url = format!("https://github.com/{GITHUB_REPO}/releases/download/{tag}");
     let tarball_url = format!("{base_url}/{tarball_name}");
     let checksum_url = format!("{tarball_url}.sha256");
@@ -410,8 +410,8 @@ fn extract_binary_from_tarball(tarball: &Path, dest_dir: &Path) -> Result<PathBu
         .unpack(dest_dir)
         .map_err(|e| UpdateError::Extraction(format!("unpack: {e}")))?;
 
-    // The tarball should contain a `moltis` binary at the top level.
-    let binary = dest_dir.join("moltis");
+    // The tarball should contain a `chelix` binary at the top level.
+    let binary = dest_dir.join("chelix");
     if binary.exists() {
         return Ok(binary);
     }
@@ -421,14 +421,14 @@ fn extract_binary_from_tarball(tarball: &Path, dest_dir: &Path) -> Result<PathBu
         .map_err(|e| UpdateError::Extraction(format!("read dir: {e}")))?
     {
         let entry = entry.map_err(|e| UpdateError::Extraction(format!("dir entry: {e}")))?;
-        let candidate = entry.path().join("moltis");
+        let candidate = entry.path().join("chelix");
         if candidate.exists() {
             return Ok(candidate);
         }
     }
 
     Err(UpdateError::Extraction(
-        "moltis binary not found in tarball".into(),
+        "chelix binary not found in tarball".into(),
     ))
 }
 
@@ -436,7 +436,7 @@ fn replace_binary(new_binary: &Path, current_exe: &Path) -> Result<(), UpdateErr
     let parent = current_exe
         .parent()
         .ok_or_else(|| UpdateError::Replacement("no parent directory".into()))?;
-    let old_path = parent.join(".moltis.old");
+    let old_path = parent.join(".chelix.old");
 
     // Move current binary aside
     if let Err(e) = std::fs::rename(current_exe, &old_path) {

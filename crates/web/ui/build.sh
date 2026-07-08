@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build Tailwind CSS for moltis gateway web UI.
+# Build Tailwind CSS for chelix gateway web UI.
 #
 # Usage:
 #   ./build.sh          # production (minified)

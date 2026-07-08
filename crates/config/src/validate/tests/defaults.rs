@@ -76,7 +76,7 @@ agent_timeout_secs = 600
         .map(|d| d.message.as_str());
 
     assert!(
-        msg.is_some_and(|m| m.contains("remove it from moltis.toml")),
+        msg.is_some_and(|m| m.contains("remove it from chelix.toml")),
         "message should suggest removing the shadowed key"
     );
 }

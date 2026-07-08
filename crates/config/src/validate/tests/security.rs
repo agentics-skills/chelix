@@ -153,7 +153,7 @@ public_ip = "203.0.113.10"
 fn external_url_bad_scheme_is_error() {
     let toml = r#"
 [server]
-external_url = "ftp://moltis.example.com"
+external_url = "ftp://chelix.example.com"
 "#;
     let result = validate_toml_str(toml);
     let error = result.diagnostics.iter().find(|d| {
@@ -172,7 +172,7 @@ external_url = "ftp://moltis.example.com"
 fn external_url_trailing_slash_is_warning() {
     let toml = r#"
 [server]
-external_url = "https://moltis.example.com/"
+external_url = "https://chelix.example.com/"
 "#;
     let result = validate_toml_str(toml);
     let warning = result.diagnostics.iter().find(|d| {
@@ -191,7 +191,7 @@ external_url = "https://moltis.example.com/"
 fn external_url_valid_https_no_diagnostics() {
     let toml = r#"
 [server]
-external_url = "https://moltis.example.com"
+external_url = "https://chelix.example.com"
 "#;
     let result = validate_toml_str(toml);
     let issues: Vec<_> = result
@@ -209,7 +209,7 @@ external_url = "https://moltis.example.com"
 fn external_url_valid_http_no_diagnostics() {
     let toml = r#"
 [server]
-external_url = "http://moltis.local:8080"
+external_url = "http://chelix.local:8080"
 "#;
     let result = validate_toml_str(toml);
     let issues: Vec<_> = result

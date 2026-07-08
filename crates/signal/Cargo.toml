@@ -1,13 +1,13 @@
 [package]
 edition.workspace = true
-name              = "moltis-signal"
+name              = "chelix-signal"
 version.workspace = true
 
 [dependencies]
 async-trait     = { workspace = true }
 futures         = { workspace = true }
-moltis-channels = { workspace = true }
-moltis-common   = { workspace = true }
+chelix-channels = { workspace = true }
+chelix-common   = { workspace = true }
 reqwest         = { workspace = true }
 serde           = { workspace = true }
 serde_json      = { workspace = true }

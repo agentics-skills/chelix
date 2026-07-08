@@ -1,5 +1,5 @@
 -- Projects table schema
--- Owned by: moltis-projects crate
+-- Owned by: chelix-projects crate
 
 CREATE TABLE IF NOT EXISTS projects (
     id               TEXT    PRIMARY KEY,

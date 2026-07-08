@@ -1,6 +1,6 @@
 # Authentication
 
-Moltis uses a unified authentication gate that protects all routes with a
+Chelix uses a unified authentication gate that protects all routes with a
 single source of truth. This page explains how authentication works, the
 decision logic, and the different credential types.
 
@@ -71,13 +71,13 @@ The decision matrix above implements a three-tier authentication model:
 | Local browser on `localhost:18789` | Full access (Tier 2) | Login required (Tier 1) |
 | Local CLI/wscat on `localhost:18789` | Full access (Tier 2) | Login required (Tier 1) |
 | Internet via reverse proxy | Onboarding only (Tier 3) | Login required (Tier 1) |
-| `MOLTIS_BEHIND_PROXY=true`, any source | Onboarding only (Tier 3) | Login required (Tier 1) |
+| `CHELIX_BEHIND_PROXY=true`, any source | Onboarding only (Tier 3) | Login required (Tier 1) |
 
 ### How "local" is determined
 
 A connection is classified as **local** only when **all four** checks pass:
 
-1. `MOLTIS_BEHIND_PROXY` env var is **not** set
+1. `CHELIX_BEHIND_PROXY` env var is **not** set
 2. No proxy headers present (`X-Forwarded-For`, `X-Real-IP`,
    `CF-Connecting-IP`, `Forwarded`)
 3. The `Host` header resolves to a loopback address (or is absent)
@@ -107,12 +107,12 @@ If **any** check fails, the connection is treated as remote.
 
 ### Session cookie
 
-- HTTP-only `moltis_session` cookie, `SameSite=Strict`
+- HTTP-only `chelix_session` cookie, `SameSite=Strict`
 - Created on successful login (password or passkey)
 - 30-day expiry
 - Validated against `auth_sessions` table
 - When the request arrives on a `.localhost` subdomain (e.g.
-  `moltis.localhost`), the cookie includes `Domain=localhost` so it is
+  `chelix.localhost`), the cookie includes `Domain=localhost` so it is
   shared across all loopback hostnames
 
 ### API key
@@ -157,7 +157,7 @@ are configured:
 
 ## Request Throttling
 
-Moltis applies built-in endpoint throttling per client IP only when auth is
+Chelix applies built-in endpoint throttling per client IP only when auth is
 required for the current request.
 
 Requests bypass IP throttling when:
@@ -183,7 +183,7 @@ When a limit is exceeded:
 - JSON API responses also include `retry_after_seconds`
 
 ```admonish note
-When `MOLTIS_BEHIND_PROXY=true`, throttling is keyed by forwarded client IP
+When `CHELIX_BEHIND_PROXY=true`, throttling is keyed by forwarded client IP
 headers (`X-Forwarded-For`, `X-Real-IP`, `CF-Connecting-IP`) instead of the
 direct socket address.
 ```
@@ -254,7 +254,7 @@ local-connection detection:
 - **Most proxies** add `X-Forwarded-For` or similar headers, which
   automatically classify connections as remote
 - **Bare proxies** (no forwarding headers) can appear local — set
-  `MOLTIS_BEHIND_PROXY=true` to force all connections to be treated as
+  `CHELIX_BEHIND_PROXY=true` to force all connections to be treated as
   remote
 - The proxy must preserve the browser origin host for WebSocket CSWSH
   protection (forward `Host`, or `X-Forwarded-Host` when rewriting `Host`)

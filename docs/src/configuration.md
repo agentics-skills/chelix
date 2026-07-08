@@ -1,13 +1,13 @@
 # Configuration
 
-Moltis uses a **layered config model** with two files:
+Chelix uses a **layered config model** with two files:
 
 | File | Owner | Purpose |
 |------|-------|---------|
-| `defaults.toml` | **Moltis** | Shipped defaults, regenerated on every startup |
-| `moltis.toml` | **You** | Your overrides only |
+| `defaults.toml` | **Chelix** | Shipped defaults, regenerated on every startup |
+| `chelix.toml` | **You** | Your overrides only |
 
-On first run, both files are created in `~/.config/moltis/`. Your `moltis.toml`
+On first run, both files are created in `~/.config/chelix/`. Your `chelix.toml`
 starts nearly empty — only the installation-specific port is set. All other
 settings inherit from `defaults.toml` automatically.
 
@@ -15,18 +15,18 @@ settings inherit from `defaults.toml` automatically.
 
 Settings are resolved in this order (later wins):
 
-1. **Built-in defaults** — compiled into Moltis (`MoltisConfig::default()`)
-2. **`defaults.toml`** — Moltis-managed, refreshed on every startup
-3. **`moltis.toml`** — your overrides (additive deep merge)
-4. **`MOLTIS_*` environment variables** — highest precedence
+1. **Built-in defaults** — compiled into Chelix (`ChelixConfig::default()`)
+2. **`defaults.toml`** — Chelix-managed, refreshed on every startup
+3. **`chelix.toml`** — your overrides (additive deep merge)
+4. **`CHELIX_*` environment variables** — highest precedence
 
-This means you only need to put values in `moltis.toml` that you intentionally
-want to differ from the shipped defaults. When Moltis upgrades and improves a
+This means you only need to put values in `chelix.toml` that you intentionally
+want to differ from the shipped defaults. When Chelix upgrades and improves a
 default, your installation picks it up automatically — unless you've overridden
 that specific setting.
 
-```admonish tip title="Don't copy defaults into moltis.toml"
-Copying a built-in default into `moltis.toml` "freezes" it — future built-in
+```admonish tip title="Don't copy defaults into chelix.toml"
+Copying a built-in default into `chelix.toml` "freezes" it — future built-in
 improvements for that setting won't apply. The Settings UI shows **Built-in**,
 **Overridden**, and **Custom** badges so you can see which values are yours
 and which are inherited.
@@ -36,34 +36,34 @@ and which are inherited.
 
 | Platform | Default Path |
 |----------|--------------|
-| macOS/Linux | `~/.config/moltis/moltis.toml` |
-| Custom | Set via `--config-dir` or `MOLTIS_CONFIG_DIR` |
+| macOS/Linux | `~/.config/chelix/chelix.toml` |
+| Custom | Set via `--config-dir` or `CHELIX_CONFIG_DIR` |
 
 The `defaults.toml` file lives in the same directory. Do not edit it — your
 changes will be overwritten on the next startup.
 
 ## Checking Config
 
-`moltis config check` validates your override file (`moltis.toml`) against the
-known config schema. It also checks that Moltis-managed `defaults.toml` exists
+`chelix config check` validates your override file (`chelix.toml`) against the
+known config schema. It also checks that Chelix-managed `defaults.toml` exists
 and can be parsed, but it does not treat `defaults.toml` as user-authored input.
 
 New config fields should be added to the Rust config schema and its `Default`
-implementation. Moltis regenerates `defaults.toml` from those built-in defaults
-on startup, while `moltis.toml` should contain only values you intentionally
+implementation. Chelix regenerates `defaults.toml` from those built-in defaults
+on startup, while `chelix.toml` should contain only values you intentionally
 override.
 
 ## Agent-Readable Docs
 
-Moltis packages the documentation as local markdown files with release
+Chelix packages the documentation as local markdown files with release
 artifacts that support external share files. Agents are pointed at those local
 files through the system prompt so they can read setup, configuration, channel,
 and troubleshooting docs without needing web access.
 
-Resolution order is `MOLTIS_DOCS_DIR`, the packaged share docs directory
+Resolution order is `CHELIX_DOCS_DIR`, the packaged share docs directory
 (`<share>/docs`), the source checkout docs in development, then an embedded
-fallback copied to `~/.moltis/docs/moltis/`. Moltis also writes a generated
-`config-template.md` under `~/.moltis/docs/moltis/` for the current server port
+fallback copied to `~/.chelix/docs/chelix/`. Chelix also writes a generated
+`config-template.md` under `~/.chelix/docs/chelix/` for the current server port
 and points agents at it separately.
 
 ## Basic Settings
@@ -74,7 +74,7 @@ port = 13131                    # HTTP/WebSocket port
 bind = "0.0.0.0"               # Listen address
 
 [identity]
-name = "Moltis"                 # Agent display name
+name = "Chelix"                 # Agent display name
 
 [tools]
 agent_timeout_secs = 600        # Agent run timeout (seconds, 0 = no timeout)
@@ -83,7 +83,7 @@ agent_max_iterations = 25       # Max tool call iterations per run
 
 ## LLM Providers
 
-Configure providers through the web UI or directly in `moltis.toml`. API keys can be set
+Configure providers through the web UI or directly in `chelix.toml`. API keys can be set
 via environment variables (e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) or
 in the config file.
 
@@ -120,26 +120,26 @@ host = "local"                 # "local", "node", or "ssh"
 # ssh_target = "deploy@box"    # default SSH target when host = "ssh"
 ```
 
-When `host = "ssh"`, Moltis can work in two modes:
+When `host = "ssh"`, Chelix can work in two modes:
 
 - **System OpenSSH**: reuse your existing host aliases, agent forwarding policy,
   and `~/.ssh/config`.
 - **Managed targets**: create or import a deploy key in **Settings → SSH**,
-  then bind that key to a named target. Moltis stores the private key in its
+  then bind that key to a named target. Chelix stores the private key in its
   credential store and encrypts it with the vault whenever the vault is
-  unsealed. Imported keys may be passphrase-protected, Moltis strips the
+  unsealed. Imported keys may be passphrase-protected, Chelix strips the
   passphrase during import so runtime execution can stay non-interactive.
 
 For stricter SSH verification, managed targets also accept a pasted
 `known_hosts` line from `ssh-keyscan -H host`. The SSH settings page can scan
 that for you, and saved targets can refresh or clear their stored pin later.
-When present, Moltis uses that pin instead of your global OpenSSH known-host
+When present, Chelix uses that pin instead of your global OpenSSH known-host
 policy for that target.
 
 Managed targets appear in the Nodes page and chat node picker, so users can see
 where `execute_command` will run without digging through config. If multiple managed
 targets exist, the default one is used when `tools.execute_command.host = "ssh"` and no
-session-specific route is selected. `moltis doctor` also reports remote command
+session-specific route is selected. `chelix doctor` also reports remote command
 inventory, active backend mode, and obvious SSH setup problems from the CLI.
 
 `Settings -> Tools` shows the effective tool inventory for the active session
@@ -177,13 +177,13 @@ packages = [
 ]
 ```
 
-If Moltis runs inside Docker and also mounts the host container socket
-(`/var/run/docker.sock`), Moltis now auto-detects the host path backing
-`/home/moltis/.moltis` from the parent container's mount table. If that
+If Chelix runs inside Docker and also mounts the host container socket
+(`/var/run/docker.sock`), Chelix now auto-detects the host path backing
+`/home/chelix/.chelix` from the parent container's mount table. If that
 inspection cannot resolve the correct path, set `host_data_dir` explicitly.
 
 ```admonish info
-When you modify the packages list and restart, Moltis automatically rebuilds the sandbox image with a new tag.
+When you modify the packages list and restart, Chelix automatically rebuilds the sandbox image with a new tag.
 ```
 
 ## Web Search
@@ -208,8 +208,8 @@ duckduckgo_fallback = false      # Default: do not use DuckDuckGo fallback
 
 If no search API key is configured:
 
-- with `duckduckgo_fallback = false` (default), Moltis returns a clear hint to set `BRAVE_API_KEY` or `PERPLEXITY_API_KEY`
-- with `duckduckgo_fallback = true`, Moltis attempts DuckDuckGo HTML search, which may hit CAPTCHA/rate limits
+- with `duckduckgo_fallback = false` (default), Chelix returns a clear hint to set `BRAVE_API_KEY` or `PERPLEXITY_API_KEY`
+- with `duckduckgo_fallback = true`, Chelix attempts DuckDuckGo HTML search, which may hit CAPTCHA/rate limits
 
 ## Skills
 
@@ -223,12 +223,12 @@ enable_agent_sidecar_files = false  # Opt-in: allow agents to write sidecar text
 enable_self_improvement = true     # System prompt guidance for autonomous skill creation/update
 ```
 
-`enable_agent_sidecar_files` is disabled by default. When enabled, Moltis
+`enable_agent_sidecar_files` is disabled by default. When enabled, Chelix
 registers the `write_skill_files` tool so agents can write supplementary files
 such as `script.sh`, `Dockerfile`, templates, or `_meta.json` inside
 `<data_dir>/skills/<name>/`. Writes stay confined to that personal skill
 directory, reject path traversal and symlink escapes, and are recorded in
-`~/.moltis/logs/security-audit.jsonl`.
+`~/.chelix/logs/security-audit.jsonl`.
 
 `enable_self_improvement` (default: true) injects system prompt guidance that
 encourages the agent to proactively create and update skills after complex
@@ -238,7 +238,7 @@ entire skill body.
 
 ## Chat Message Queue
 
-When a new message arrives while an agent run is already active, Moltis can either
+When a new message arrives while an agent run is already active, Chelix can either
 replay queued messages one-by-one or merge them into a single follow-up message.
 
 ```toml
@@ -276,16 +276,16 @@ See [Memory Surfaces](memory-surfaces.md) for the boundary between
 `memory.style` chooses the high-level behavior, while
 `chat.prompt_memory_mode` only affects prompt-visible `MEMORY.md`.
 `memory.agent_write_mode` controls where agent-authored writes are allowed to
-land. `memory.user_profile_write_mode` controls whether Moltis writes the
+land. `memory.user_profile_write_mode` controls whether Chelix writes the
 managed `USER.md` surface, and whether browser/channel timezone or location
 signals may update it silently. `memory.session_export` controls whether
 session rollover exports are written at all.
 
 ## Authentication
 
-Authentication is **only required when accessing Moltis from a non-localhost address**. When running on `localhost` or `127.0.0.1`, no authentication is needed by default.
+Authentication is **only required when accessing Chelix from a non-localhost address**. When running on `localhost` or `127.0.0.1`, no authentication is needed by default.
 
-When you access Moltis from a network address (e.g., `http://192.168.1.100:13131`), a one-time setup code is printed to the terminal. Use it to set up a password or passkey.
+When you access Chelix from a network address (e.g., `http://192.168.1.100:13131`), a one-time setup code is printed to the terminal. Use it to set up a password or passkey.
 
 ```toml
 [auth]
@@ -293,7 +293,7 @@ disabled = false                # Set true to disable auth entirely
 ```
 
 ```admonish warning
-Only set `disabled = true` if Moltis is running on a trusted private network. Never expose an unauthenticated instance to the internet.
+Only set `disabled = true` if Chelix is running on a trusted private network. Never expose an unauthenticated instance to the internet.
 ```
 
 ## Hooks
@@ -344,7 +344,7 @@ url = "https://mcp.example.com/mcp"
 headers = { Authorization = "Bearer ${API_KEY}" }
 ```
 
-Remote MCP URLs and headers support `$NAME` or `${NAME}` placeholders. For live remote servers, values resolve from Moltis-managed env overrides, either `[env]` in config or **Settings** → **Environment Variables**.
+Remote MCP URLs and headers support `$NAME` or `${NAME}` placeholders. For live remote servers, values resolve from Chelix-managed env overrides, either `[env]` in config or **Settings** → **Environment Variables**.
 
 ## Telegram Integration
 
@@ -392,9 +392,9 @@ See [Slack](slack.md) for full configuration reference and setup instructions.
 ```toml
 [tls]
 enabled = true
-cert_path = "~/.config/moltis/cert.pem"
-key_path = "~/.config/moltis/key.pem"
-# If custom paths are not set and auto_generate is true, Moltis generates a
+cert_path = "~/.config/chelix/cert.pem"
+key_path = "~/.config/chelix/key.pem"
+# If custom paths are not set and auto_generate is true, Chelix generates a
 # local CA and server certificate for localhost/private-network names. Public
 # VPS IP access should set public_ip; public domains should use a reverse proxy
 # or custom CA-issued certificates.
@@ -405,7 +405,7 @@ key_path = "~/.config/moltis/key.pem"
 # http_redirect_port = 13132
 ```
 
-Override via environment variable: `MOLTIS_TLS__HTTP_REDIRECT_PORT=8080`.
+Override via environment variable: `CHELIX_TLS__HTTP_REDIRECT_PORT=8080`.
 
 ## Observability
 
@@ -417,7 +417,7 @@ prometheus_endpoint = true
 
 ## Process Environment Variables (`[env]`)
 
-The `[env]` section injects variables into the Moltis process at startup.
+The `[env]` section injects variables into the Chelix process at startup.
 This is useful in Docker deployments where passing individual `-e` flags is
 inconvenient, or when you want API keys stored in the config file rather
 than the host environment.
@@ -435,7 +435,7 @@ If `BRAVE_API_KEY` is already set via `docker -e` or the host shell, the
 
 ```admonish info title="Settings UI vs [env]"
 Environment variables configured through the Settings UI (Settings >
-Environment) are also injected into the Moltis process at startup.
+Environment) are also injected into the Chelix process at startup.
 Precedence: host/`docker -e` > config `[env]` > Settings UI.
 ```
 
@@ -445,17 +445,17 @@ All settings can be overridden via environment variables:
 
 | Variable | Description |
 |----------|-------------|
-| `MOLTIS_CONFIG_DIR` | Configuration directory |
-| `MOLTIS_DATA_DIR` | Data directory |
-| `MOLTIS_SERVER__PORT` | Server port override |
-| `MOLTIS_SERVER__BIND` | Server bind address override |
-| `MOLTIS_TOOLS__AGENT_TIMEOUT_SECS` | Agent run timeout override |
-| `MOLTIS_TOOLS__AGENT_MAX_ITERATIONS` | Agent loop iteration cap override |
+| `CHELIX_CONFIG_DIR` | Configuration directory |
+| `CHELIX_DATA_DIR` | Data directory |
+| `CHELIX_SERVER__PORT` | Server port override |
+| `CHELIX_SERVER__BIND` | Server bind address override |
+| `CHELIX_TOOLS__AGENT_TIMEOUT_SECS` | Agent run timeout override |
+| `CHELIX_TOOLS__AGENT_MAX_ITERATIONS` | Agent loop iteration cap override |
 
 ## CLI Flags
 
 ```bash
-moltis --config-dir /path/to/config --data-dir /path/to/data
+chelix --config-dir /path/to/config --data-dir /path/to/data
 ```
 
 ## Complete Example

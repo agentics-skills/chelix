@@ -6,8 +6,8 @@
 
 use {
     async_trait::async_trait,
-    moltis_agents::tool_registry::AgentTool,
-    moltis_providers::openai_codex_image::{
+    chelix_agents::tool_registry::AgentTool,
+    chelix_providers::openai_codex_image::{
         GeneratedImage, ImageGenerationRequest, OpenAiCodexImageProvider,
     },
     serde_json::{Value, json},

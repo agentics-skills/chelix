@@ -15,7 +15,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use moltis_browser::{BrowserManager, BrowserConfig, BrowserRequest, BrowserAction};
+//! use chelix_browser::{BrowserManager, BrowserConfig, BrowserRequest, BrowserAction};
 //!
 //! let config = BrowserConfig { enabled: true, ..Default::default() };
 //! let manager = BrowserManager::new(config);

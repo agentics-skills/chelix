@@ -476,7 +476,7 @@ export function VoiceStep({ onNext, onBack }: { onNext: () => void; onBack: () =
 			try {
 				const identity = getGon("identity") as IdentityInfo | null;
 				const user = identity?.user_name || "friend";
-				const bot = identity?.name || "Moltis";
+				const bot = identity?.name || "Chelix";
 				const ttsText = await fetchPhrase("onboarding", user, bot);
 				const res = (await testTts(ttsText, providerId)) as {
 					ok?: boolean;

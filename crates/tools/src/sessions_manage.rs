@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use {async_trait::async_trait, futures::future::BoxFuture, serde_json::Value};
 
-use {moltis_agents::tool_registry::AgentTool, moltis_sessions::metadata::SqliteSessionMetadata};
+use {chelix_agents::tool_registry::AgentTool, chelix_sessions::metadata::SqliteSessionMetadata};
 
 use crate::{
     Error,

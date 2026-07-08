@@ -11,7 +11,7 @@ use axum::{
 use axum::{http::header, response::Response};
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::MetricsSnapshot;
+use chelix_metrics::MetricsSnapshot;
 
 #[cfg(feature = "metrics")]
 use crate::server::AppState;
@@ -207,7 +207,7 @@ pub async fn api_metrics_insights_handler(
     let mut provider_totals: std::collections::HashMap<String, serde_json::Value> =
         std::collections::HashMap::new();
 
-    let mut prev: Option<&moltis_metrics::MetricsHistoryPoint> = None;
+    let mut prev: Option<&chelix_metrics::MetricsHistoryPoint> = None;
     for point in &history {
         if let Some(p) = prev {
             total_completions += point.llm_completions.saturating_sub(p.llm_completions);

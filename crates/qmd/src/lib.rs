@@ -1,4 +1,4 @@
-//! QMD memory backend for moltis.
+//! QMD memory backend for chelix.
 //!
 //! This crate provides an alternative memory backend that uses the QMD sidecar process
 //! for hybrid search (BM25 + vector + LLM reranking).

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use {
-    moltis_channels::{Error as ChannelError, Result as ChannelResult},
-    moltis_sessions::metadata::SqliteSessionMetadata,
+    chelix_channels::{Error as ChannelError, Result as ChannelResult},
+    chelix_sessions::metadata::SqliteSessionMetadata,
 };
 
 use crate::{
@@ -40,7 +40,7 @@ pub(in crate::channel_events) async fn handle_btw(
     } else {
         None
     };
-    let provider: Arc<dyn moltis_agents::model::LlmProvider> = {
+    let provider: Arc<dyn chelix_agents::model::LlmProvider> = {
         let reg = registry.read().await;
         let resolved = session_model
             .as_deref()
@@ -55,7 +55,7 @@ pub(in crate::channel_events) async fn handle_btw(
     // Read recent session history for context (last ~20 messages).
     let context_msgs = if let Some(ref store) = state.services.session_store {
         let history = store.read(session_key).await.unwrap_or_default();
-        let chat_msgs = moltis_agents::model::values_to_chat_messages(&history);
+        let chat_msgs = chelix_agents::model::values_to_chat_messages(&history);
         let tail_start = chat_msgs.len().saturating_sub(20);
         chat_msgs[tail_start..].to_vec()
     } else {
@@ -65,9 +65,9 @@ pub(in crate::channel_events) async fn handle_btw(
     // Build a minimal prompt and call the LLM with no tools.
     let system_prompt = "You are a helpful assistant. Answer the user's side question \
                          concisely. You have no tools available — answer from context only.";
-    let mut messages = vec![moltis_agents::ChatMessage::system(system_prompt)];
+    let mut messages = vec![chelix_agents::ChatMessage::system(system_prompt)];
     messages.extend(context_msgs);
-    messages.push(moltis_agents::ChatMessage::user(args));
+    messages.push(chelix_agents::ChatMessage::user(args));
 
     match provider.complete(&messages, &[]).await {
         Ok(response) => {
@@ -170,8 +170,8 @@ pub(in crate::channel_events) async fn handle_rollback(
     session_key: &str,
     args: &str,
 ) -> ChannelResult<String> {
-    let data_dir = moltis_config::data_dir();
-    let manager = moltis_tools::checkpoints::CheckpointManager::new(data_dir);
+    let data_dir = chelix_config::data_dir();
+    let manager = chelix_tools::checkpoints::CheckpointManager::new(data_dir);
 
     if args.is_empty() {
         // List recent turns.

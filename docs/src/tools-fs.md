@@ -226,9 +226,9 @@ require_approval = true
 
 ## Structured Audit
 
-Every tool invocation is a structured event through moltis's existing
-tracing layer and the `moltis_tool_executions_total` /
-`moltis_tool_execution_errors_total` metrics. Writes appear in traces as
+Every tool invocation is a structured event through chelix's existing
+tracing layer and the `chelix_tool_executions_total` /
+`chelix_tool_execution_errors_total` metrics. Writes appear in traces as
 structured key/value pairs — `tool=Write file_path=... bytes=... outcome=ok`
 — dramatically easier to review than an opaque shell command string, and
 the second big win (alongside model-quality improvements) that motivated

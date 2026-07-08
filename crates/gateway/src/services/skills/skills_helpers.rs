@@ -13,7 +13,7 @@ pub(super) fn local_repo_head_sha(repo_dir: &Path) -> Option<String> {
 }
 
 pub(super) fn detect_and_mark_repo_drift(
-    manifest: &mut moltis_skills::types::SkillsManifest,
+    manifest: &mut chelix_skills::types::SkillsManifest,
     install_dir: &Path,
 ) -> (bool, HashSet<String>) {
     let mut changed = false;
@@ -69,14 +69,14 @@ pub(super) fn delete_discovered_skill(source_type: &str, params: &Value) -> Serv
         )));
     }
 
-    if !moltis_skills::parse::validate_name(skill_name) {
+    if !chelix_skills::parse::validate_name(skill_name) {
         return Err(format!("invalid skill name '{skill_name}'").into());
     }
 
     let search_dir = if source_type == "personal" {
-        moltis_config::data_dir().join("skills")
+        chelix_config::data_dir().join("skills")
     } else {
-        moltis_config::data_dir().join(".moltis/skills")
+        chelix_config::data_dir().join(".chelix/skills")
     };
 
     let skill_dir = search_dir.join(skill_name);
@@ -100,13 +100,13 @@ pub(super) fn delete_discovered_skill(source_type: &str, params: &Value) -> Serv
 
 /// Load skill detail for a personal or project skill by name.
 pub(super) fn skill_detail_discovered(source_type: &str, skill_name: &str) -> ServiceResult {
-    use moltis_skills::requirements::check_requirements;
+    use chelix_skills::requirements::check_requirements;
 
     // Build search paths for the requested source type.
     let search_dir = if source_type == "personal" {
-        moltis_config::data_dir().join("skills")
+        chelix_config::data_dir().join("skills")
     } else {
-        moltis_config::data_dir().join(".moltis/skills")
+        chelix_config::data_dir().join(".chelix/skills")
     };
 
     let skill_dir = search_dir.join(skill_name);
@@ -114,7 +114,7 @@ pub(super) fn skill_detail_discovered(source_type: &str, skill_name: &str) -> Se
     let raw = std::fs::read_to_string(&skill_md)
         .map_err(|e| format!("failed to read SKILL.md for '{skill_name}': {e}"))?;
 
-    let content = moltis_skills::parse::parse_skill(&raw, &skill_dir)
+    let content = chelix_skills::parse::parse_skill(&raw, &skill_dir)
         .map_err(|e| format!("failed to parse SKILL.md: {e}"))?;
 
     let elig = check_requirements(&content.metadata);
@@ -143,9 +143,9 @@ pub(super) fn skill_detail_discovered(source_type: &str, skill_name: &str) -> Se
 /// Load skill detail for a bundled skill by name.
 #[cfg(feature = "bundled-skills")]
 pub(super) fn skill_detail_bundled(skill_name: &str) -> ServiceResult {
-    use moltis_skills::requirements::check_requirements;
+    use chelix_skills::requirements::check_requirements;
 
-    let store = moltis_skills::bundled::BundledSkillStore::new();
+    let store = chelix_skills::bundled::BundledSkillStore::new();
     let skills = store.discover();
     let meta = skills
         .iter()
@@ -158,7 +158,7 @@ pub(super) fn skill_detail_bundled(skill_name: &str) -> ServiceResult {
 
     let elig = check_requirements(meta);
 
-    let config = moltis_config::discover_and_load();
+    let config = chelix_config::discover_and_load();
     let enabled = config
         .skills
         .is_bundled_skill_enabled(&meta.name, meta.category.as_deref());
@@ -196,7 +196,7 @@ pub(super) fn toggle_bundled_skill(params: &Value, enabled: bool) -> ServiceResu
     // Find the category for this bundled skill.
     #[cfg(feature = "bundled-skills")]
     {
-        let store = moltis_skills::bundled::BundledSkillStore::new();
+        let store = chelix_skills::bundled::BundledSkillStore::new();
         let skills = store.discover();
         let skill = skills
             .iter()
@@ -206,7 +206,7 @@ pub(super) fn toggle_bundled_skill(params: &Value, enabled: bool) -> ServiceResu
 
         let skill_name = skill_name.to_string();
         let mut effective_enabled = enabled;
-        if let Err(e) = moltis_config::update_config(|cfg| {
+        if let Err(e) = chelix_config::update_config(|cfg| {
             if enabled {
                 cfg.skills
                     .disabled_bundled_skills
@@ -263,12 +263,12 @@ pub(super) fn toggle_skill(params: &Value, enabled: bool) -> ServiceResult {
         .ok_or_else(|| "missing 'skill' parameter".to_string())?;
 
     let manifest_path =
-        moltis_skills::manifest::ManifestStore::default_path().map_err(ServiceError::message)?;
-    let store = moltis_skills::manifest::ManifestStore::new(manifest_path);
+        chelix_skills::manifest::ManifestStore::default_path().map_err(ServiceError::message)?;
+    let store = chelix_skills::manifest::ManifestStore::new(manifest_path);
     let mut manifest = store.load().map_err(ServiceError::message)?;
 
     let install_dir =
-        moltis_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
     let (drift_changed, drifted_sources) = detect_and_mark_repo_drift(&mut manifest, &install_dir);
     if drift_changed {
         store.save(&manifest).map_err(ServiceError::message)?;
@@ -346,8 +346,8 @@ pub(super) fn set_skill_trusted(params: &Value, trusted: bool) -> ServiceResult 
         .ok_or_else(|| "missing 'skill' parameter".to_string())?;
 
     let manifest_path =
-        moltis_skills::manifest::ManifestStore::default_path().map_err(ServiceError::message)?;
-    let store = moltis_skills::manifest::ManifestStore::new(manifest_path);
+        chelix_skills::manifest::ManifestStore::default_path().map_err(ServiceError::message)?;
+    let store = chelix_skills::manifest::ManifestStore::new(manifest_path);
     let mut manifest = store.load().map_err(ServiceError::message)?;
 
     if !manifest.set_skill_trusted(source, skill_name, trusted) {

@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use {
     async_trait::async_trait,
-    moltis_config::GeoLocation,
+    chelix_config::GeoLocation,
     serde::{Deserialize, Serialize},
     tracing::warn,
 };
@@ -177,7 +177,7 @@ async fn reverse_geocode_with_client(
     );
     let resp = client
         .get(&url)
-        .header("User-Agent", "moltis/0.3")
+        .header("User-Agent", "chelix/0.3")
         .timeout(std::time::Duration::from_secs(5))
         .send()
         .await
@@ -275,7 +275,7 @@ impl LocationTool {
 }
 
 #[async_trait]
-impl moltis_agents::tool_registry::AgentTool for LocationTool {
+impl chelix_agents::tool_registry::AgentTool for LocationTool {
     fn name(&self) -> &str {
         "get_user_location"
     }
@@ -412,7 +412,7 @@ impl moltis_agents::tool_registry::AgentTool for LocationTool {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use {super::*, moltis_agents::tool_registry::AgentTool};
+    use {super::*, chelix_agents::tool_registry::AgentTool};
 
     /// Mock requester that returns a fixed response.
     struct MockRequester {
@@ -834,7 +834,7 @@ mod tests {
         );
         let resp = client
             .get(&url)
-            .header("User-Agent", "moltis/0.3-test")
+            .header("User-Agent", "chelix/0.3-test")
             .send()
             .await
             .unwrap();
@@ -865,7 +865,7 @@ mod tests {
         let url = format!("{}/reverse?lat=0&lon=0&format=json&zoom=14", server.url());
         let resp = client
             .get(&url)
-            .header("User-Agent", "moltis/0.3-test")
+            .header("User-Agent", "chelix/0.3-test")
             .send()
             .await
             .unwrap();

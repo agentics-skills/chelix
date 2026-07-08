@@ -42,7 +42,7 @@ use {
 };
 
 #[cfg(feature = "metrics")]
-use moltis_metrics::{counter, home_assistant as ha_metrics};
+use chelix_metrics::{counter, home_assistant as ha_metrics};
 
 use crate::{
     error::{Error, Result},

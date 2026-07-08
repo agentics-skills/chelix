@@ -1,6 +1,6 @@
-# Memory: Moltis vs OpenClaw
+# Memory: Chelix vs OpenClaw
 
-This page provides a detailed comparison of the memory systems in Moltis and
+This page provides a detailed comparison of the memory systems in Chelix and
 [OpenClaw](https://github.com/openclaw/openclaw). Both projects share the
 same core architecture for long-term memory, but differ in implementation
 details, tool surface, and configuration.
@@ -17,7 +17,7 @@ general-purpose).
 
 ### Storage and Indexing
 
-| Feature | Moltis | OpenClaw |
+| Feature | Chelix | OpenClaw |
 |---------|--------|----------|
 | **Storage format** | Markdown files on disk | Markdown files on disk |
 | **Index storage** | SQLite (per data dir) | SQLite (per agent) |
@@ -33,7 +33,7 @@ general-purpose).
 
 ### Embedding Providers
 
-| Provider | Moltis | OpenClaw |
+| Provider | Chelix | OpenClaw |
 |----------|--------|----------|
 | **Local GGUF** | EmbeddingGemma-300M via llama-cpp-2 | Auto-download GGUF (~0.6 GB) |
 | **Ollama** | nomic-embed-text | Not listed |
@@ -47,9 +47,9 @@ general-purpose).
 
 ### Memory Files
 
-| Aspect | Moltis | OpenClaw |
+| Aspect | Chelix | OpenClaw |
 |--------|--------|----------|
-| **Data directory** | `~/.moltis/` (configurable) | `~/.openclaw/workspace/` |
+| **Data directory** | `~/.chelix/` (configurable) | `~/.openclaw/workspace/` |
 | **Long-term memory** | `MEMORY.md` | `MEMORY.md` |
 | **Daily logs** | `memory/YYYY-MM-DD.md` | `memory/YYYY-MM-DD.md` |
 | **Session transcripts** | `memory/sessions/*.md` | Session JSONL files (separate) |
@@ -60,7 +60,7 @@ general-purpose).
 
 This is where the two systems differ most significantly in approach.
 
-| Tool | Moltis | OpenClaw |
+| Tool | Chelix | OpenClaw |
 |------|--------|----------|
 | **memory_search** | Dedicated tool, hybrid search | Dedicated tool, hybrid search |
 | **memory_get** | Dedicated tool, by chunk ID | Dedicated tool, by path + optional line range |
@@ -75,7 +75,7 @@ This is where the two systems differ most significantly in approach.
 When a user says "remember that I prefer dark mode", here is how each system
 handles it:
 
-**Moltis:**
+**Chelix:**
 The agent calls the `memory_save` tool directly:
 ```json
 {
@@ -103,7 +103,7 @@ itself has no special memory awareness -- it is a general-purpose file writer.
 The memory indexer's file watcher detects the change and re-indexes
 asynchronously (1.5s debounce).
 
-**Key difference:** Moltis uses purpose-built `memory_save`,
+**Key difference:** Chelix uses purpose-built `memory_save`,
 `memory_forget`, and `memory_delete` tools with built-in path validation
 (only `MEMORY.md` and `memory/*.md` are mutable) and immediate re-indexing.
 OpenClaw uses a general-purpose `write_file` tool that can write anywhere,
@@ -112,7 +112,7 @@ watcher to re-index.
 
 ### Session Memory and Compaction
 
-| Feature | Moltis | OpenClaw |
+| Feature | Chelix | OpenClaw |
 |---------|--------|----------|
 | **Session storage** | SQLite database | JSONL files (append-only, tree structure) |
 | **Auto-compaction** | Yes, near context window limit | Yes, near context window limit |
@@ -128,7 +128,7 @@ watcher to re-index.
 Both systems run a hidden LLM turn before compaction to persist important
 context. The implementation differs:
 
-**Moltis:**
+**Chelix:**
 - The gateway detects that compaction is needed
 - A `run_silent_memory_turn()` call creates a temporary agent loop with a
   `write_file` tool backed by `MemoryWriter`
@@ -150,7 +150,7 @@ context. The implementation differs:
 
 ### Write Path Security
 
-| Aspect | Moltis | OpenClaw |
+| Aspect | Chelix | OpenClaw |
 |--------|--------|----------|
 | **Path validation** | Strict allowlist (MEMORY.md, memory.md, memory/*.md) | No special memory path restrictions |
 | **Traversal prevention** | Rejects `..`, absolute paths, non-.md extensions | Relies on workspace sandboxing |
@@ -160,7 +160,7 @@ context. The implementation differs:
 
 ### Search Features
 
-| Feature | Moltis | OpenClaw |
+| Feature | Chelix | OpenClaw |
 |---------|--------|----------|
 | **LLM reranking** | Optional (configurable) | Built-in with QMD |
 | **Citations** | Configurable (auto/on/off) | Configurable (auto/on/off) |
@@ -169,7 +169,7 @@ context. The implementation differs:
 
 ### Configuration
 
-| Setting | Moltis (`moltis.toml`) | OpenClaw (`openclaw.json`) |
+| Setting | Chelix (`chelix.toml`) | OpenClaw (`openclaw.json`) |
 |---------|------------------------|---------------------------|
 | **Backend** | `memory.backend = "builtin"` | `memory.backend = "builtin"` |
 | **Provider** | `memory.provider = "local"` | Auto-detect from available keys |
@@ -181,7 +181,7 @@ context. The implementation differs:
 
 ### CLI Commands
 
-| Command | Moltis | OpenClaw |
+| Command | Chelix | OpenClaw |
 |---------|--------|----------|
 | **Status** | Settings > Memory (web UI) | `openclaw memory status [--deep]` |
 | **Index/reindex** | Automatic on startup | `openclaw memory index [--verbose]` |
@@ -190,15 +190,15 @@ context. The implementation differs:
 
 ### Architecture
 
-| Aspect | Moltis | OpenClaw |
+| Aspect | Chelix | OpenClaw |
 |--------|--------|----------|
 | **Language** | Rust | TypeScript/Node.js |
-| **Memory crate/module** | `moltis-memory` crate | `memory-core` plugin |
+| **Memory crate/module** | `chelix-memory` crate | `memory-core` plugin |
 | **Write abstraction** | `MemoryWriter` trait (shared by tools and silent turn) | Direct file I/O via `write_file` tool |
 | **Plugin system** | Memory is a core crate | Memory is a swappable plugin slot |
 | **Multi-agent** | Single agent | Per-agent memory isolation |
 
-## What Moltis Has That OpenClaw Does Not
+## What Chelix Has That OpenClaw Does Not
 
 - **Dedicated `memory_save`, `memory_forget`, and `memory_delete` tools** with
   path validation and immediate re-indexing, reducing reliance on the system
@@ -209,7 +209,7 @@ context. The implementation differs:
 - **Web UI for memory configuration** (Settings > Memory page)
 - **Pure Rust implementation** with zero external runtime dependencies
 
-## What OpenClaw Has That Moltis Does Not (Yet)
+## What OpenClaw Has That Chelix Does Not (Yet)
 
 - **CLI memory commands** (`status`, `index`, `search`) for debugging
 - **Session pruning** (cache-TTL based trimming of old tool results)
@@ -226,18 +226,18 @@ context. The implementation differs:
 The two systems are architecturally equivalent -- both use Markdown files,
 hybrid search, and pre-compaction memory flushes. The main differences are:
 
-1. **Tool approach**: Moltis provides purpose-built `memory_save`,
+1. **Tool approach**: Chelix provides purpose-built `memory_save`,
    `memory_forget`, and `memory_delete` tools with security validation;
    OpenClaw uses a general-purpose `write_file` tool guided by the system
    prompt.
 
-2. **Write safety**: Moltis validates write paths at the tool level (allowlist
+2. **Write safety**: Chelix validates write paths at the tool level (allowlist
    + traversal checks); OpenClaw relies on workspace-level access control.
 
-3. **Implementation**: Moltis is pure Rust with a `MemoryWriter` trait
+3. **Implementation**: Chelix is pure Rust with a `MemoryWriter` trait
    abstraction; OpenClaw is TypeScript with direct file I/O through a plugin
    system.
 
 4. **Maturity**: OpenClaw has more CLI tooling and configuration knobs for
-   advanced memory management; Moltis has a simpler, more opinionated setup
+   advanced memory management; Chelix has a simpler, more opinionated setup
    with a web UI.

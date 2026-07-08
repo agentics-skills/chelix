@@ -160,7 +160,7 @@ impl SourceProfile for StripeProfile {
          1. Go to Stripe Dashboard -> Developers -> Webhooks -> Add endpoint\n\
          2. Endpoint URL: paste the webhook URL\n\
          3. Select events to listen to\n\
-         4. Copy the signing secret (`whsec_...`) into Moltis\n\n\
+         4. Copy the signing secret (`whsec_...`) into Chelix\n\n\
          For response actions, create a restricted API key with only needed permissions.\n\n\
          Reference: https://docs.stripe.com/webhooks"
     }

@@ -1,4 +1,4 @@
-//! Export/import Moltis data as `.tar.gz` archives.
+//! Export/import Chelix data as `.tar.gz` archives.
 //!
 //! - `GET  /api/data/export` — stream a backup archive
 //! - `POST /api/data/import` — upload and apply an archive
@@ -13,7 +13,7 @@ use {
         response::IntoResponse,
         routing::{get, post},
     },
-    moltis_portable::{ConflictStrategy, ExportOptions, ImportOptions},
+    chelix_portable::{ConflictStrategy, ExportOptions, ImportOptions},
     serde::Deserialize,
     tokio_util::io::ReaderStream,
     tracing::warn,
@@ -62,7 +62,7 @@ pub fn data_router() -> Router<AppState> {
 /// This avoids buffering the entire archive in memory while still allowing
 /// the synchronous `tar`/`flate2` writers to work naturally.
 async fn export_handler(Query(query): Query<ExportQuery>) -> impl IntoResponse {
-    let config_dir = match moltis_config::config_dir() {
+    let config_dir = match chelix_config::config_dir() {
         Some(d) => d,
         None => {
             return (
@@ -72,7 +72,7 @@ async fn export_handler(Query(query): Query<ExportQuery>) -> impl IntoResponse {
                 .into_response();
         },
     };
-    let data_dir = moltis_config::data_dir();
+    let data_dir = chelix_config::data_dir();
 
     let opts = ExportOptions {
         include_provider_keys: query.include_provider_keys,
@@ -106,7 +106,7 @@ async fn export_handler(Query(query): Query<ExportQuery>) -> impl IntoResponse {
             },
         };
 
-        if let Err(e) = moltis_portable::export_archive(&config_dir, &data_dir, &opts, file).await {
+        if let Err(e) = chelix_portable::export_archive(&config_dir, &data_dir, &opts, file).await {
             warn!(error = %e, "data export failed");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -136,7 +136,7 @@ async fn export_handler(Query(query): Query<ExportQuery>) -> impl IntoResponse {
 
     let now = time::OffsetDateTime::now_utc();
     let filename = format!(
-        "moltis-backup-{:04}{:02}{:02}-{:02}{:02}{:02}.tar.gz",
+        "chelix-backup-{:04}{:02}{:02}-{:02}{:02}{:02}.tar.gz",
         now.year(),
         now.month() as u8,
         now.day(),
@@ -177,7 +177,7 @@ async fn run_import(query: ImportQuery, body: Bytes, dry_run: bool) -> impl Into
             .into_response();
     }
 
-    let config_dir = match moltis_config::config_dir() {
+    let config_dir = match chelix_config::config_dir() {
         Some(d) => d,
         None => {
             return (
@@ -187,7 +187,7 @@ async fn run_import(query: ImportQuery, body: Bytes, dry_run: bool) -> impl Into
                 .into_response();
         },
     };
-    let data_dir = moltis_config::data_dir();
+    let data_dir = chelix_config::data_dir();
 
     let conflict = match query.conflict.as_deref() {
         Some("overwrite") => ConflictStrategy::Overwrite,
@@ -198,7 +198,7 @@ async fn run_import(query: ImportQuery, body: Bytes, dry_run: bool) -> impl Into
 
     // Cursor<Bytes> implements Read without copying the data.
     let reader = std::io::Cursor::new(body);
-    match moltis_portable::import_archive(&config_dir, &data_dir, &opts, reader).await {
+    match chelix_portable::import_archive(&config_dir, &data_dir, &opts, reader).await {
         Ok(result) => Json(serde_json::json!({
             "ok": true,
             "imported": result.imported,

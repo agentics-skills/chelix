@@ -357,7 +357,7 @@ function saveSharedHomeConfig(): void {
 		})
 		.then((data) => {
 			applySharedHomeConfig(data?.config || {});
-			sharedHomeMsg.value = "Saved. Restart Moltis to apply shared folder changes.";
+			sharedHomeMsg.value = "Saved. Restart Chelix to apply shared folder changes.";
 			if (sandboxInfo.value) {
 				sandboxInfo.value = {
 					...(sandboxInfo.value as SandboxInfoValue),
@@ -591,7 +591,7 @@ function backendRecommendation(info: SandboxInfoValue | null): { level: string; 
 	if (os === "macos" && backend === "docker") {
 		return {
 			level: "info",
-			text: "Apple Container provides stronger VM-level isolation on macOS 26+. Install it for automatic use (moltis prefers it over Docker). Run: brew install container",
+			text: "Apple Container provides stronger VM-level isolation on macOS 26+. Install it for automatic use (chelix prefers it over Docker). Run: brew install container",
 		};
 	}
 	if (os === "linux" && backend === "docker") {

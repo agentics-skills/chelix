@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use {
-    moltis_channels::{
+    chelix_channels::{
         config_view::ChannelConfigView,
         gating::{DmPolicy, GroupPolicy, MentionMode},
     },
-    moltis_common::secret_serde,
+    chelix_common::secret_serde,
     secrecy::Secret,
     serde::{Deserialize, Serialize, ser::SerializeStruct},
 };
@@ -39,7 +39,7 @@ pub enum StreamMode {
     Off,
 }
 
-/// How Moltis handles room invites.
+/// How Chelix handles room invites.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum AutoJoinPolicy {
@@ -52,7 +52,7 @@ pub enum AutoJoinPolicy {
     Off,
 }
 
-/// How Moltis authenticates to the Matrix homeserver.
+/// How Chelix authenticates to the Matrix homeserver.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum MatrixAuthMode {
@@ -68,11 +68,11 @@ pub enum MatrixAuthMode {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum MatrixOwnershipMode {
-    /// Moltis should not attempt to bootstrap cross-signing or recovery.
+    /// Chelix should not attempt to bootstrap cross-signing or recovery.
     #[default]
     UserManaged,
-    /// Moltis should bootstrap and manage this dedicated bot account.
-    MoltisOwned,
+    /// Chelix should bootstrap and manage this dedicated bot account.
+    ChelixOwned,
 }
 
 /// Configuration for a single Matrix account.
@@ -377,7 +377,7 @@ mod tests {
             "homeserver": "https://matrix.example.com",
             "access_token": "syt_test_token",
             "password": "wordpass",
-            "ownership_mode": "moltis_owned",
+            "ownership_mode": "chelix_owned",
             "dm_policy": "allowlist",
             "room_policy": "allowlist",
             "mention_mode": "mention",
@@ -408,7 +408,7 @@ mod tests {
             Some("wordpass")
         );
         assert_eq!(cfg.dm_policy, DmPolicy::Allowlist);
-        assert_eq!(cfg.ownership_mode, MatrixOwnershipMode::MoltisOwned);
+        assert_eq!(cfg.ownership_mode, MatrixOwnershipMode::ChelixOwned);
         assert_eq!(cfg.room_allowlist, vec!["!room:example.com"]);
         assert_eq!(cfg.mention_mode, MentionMode::Mention);
         assert_eq!(cfg.auto_join, AutoJoinPolicy::Allowlist);

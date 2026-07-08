@@ -13,12 +13,12 @@ export default {
 
 	// ── Loading & error states ─────────────────────────────
 	loadingMetrics: "Loading metrics\u2026",
-	metricsDisabled: "Metrics are not enabled. Enable them in moltis.toml with [metrics] enabled = true",
+	metricsDisabled: "Metrics are not enabled. Enable them in chelix.toml with [metrics] enabled = true",
 
 	// ── Empty states ───────────────────────────────────────
 	noActivityTitle: "No activity yet",
 	noActivityDescription:
-		"Metrics will appear here once you start using moltis. Try sending a message or running a tool to see data.",
+		"Metrics will appear here once you start using chelix. Try sending a message or running a tool to see data.",
 	collectingTitle: "Collecting data\u2026",
 	collectingDescription:
 		"Historical charts will appear here after a few data points are collected. This typically takes about 20\u201330 seconds.",

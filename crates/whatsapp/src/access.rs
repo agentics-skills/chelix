@@ -1,4 +1,4 @@
-use moltis_channels::gating::{self, DmPolicy, GroupPolicy, MentionMode};
+use chelix_channels::gating::{self, DmPolicy, GroupPolicy, MentionMode};
 
 use crate::config::WhatsAppAccountConfig;
 

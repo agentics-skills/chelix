@@ -67,7 +67,7 @@ export function EditChannelModal(): VNode | null {
 		editMatrixAuthMode.value = ch?.config?.password ? "password" : "access_token";
 		editMatrixDeviceDisplayName.value = (ch?.config?.device_display_name as string) || "";
 		editMatrixOwnershipMode.value = normalizeMatrixOwnershipMode(
-			(ch?.config?.ownership_mode as string) || (ch?.config?.password ? "moltis_owned" : "user_managed"),
+			(ch?.config?.ownership_mode as string) || (ch?.config?.password ? "chelix_owned" : "user_managed"),
 		);
 		editMatrixOtpSelfApproval.value = ch?.config?.otp_self_approval !== false;
 		editMatrixOtpCooldown.value = String(ch?.config?.otp_cooldown_secs || 300);
@@ -320,7 +320,7 @@ export function EditChannelModal(): VNode | null {
 									onInput={(e) => {
 										editBotName.value = targetValue(e);
 									}}
-									placeholder="Moltis"
+									placeholder="Chelix"
 								/>
 							</div>
 							<label className="flex items-center gap-2 text-xs text-[var(--muted)] pb-2 cursor-pointer">
@@ -457,15 +457,15 @@ export function EditChannelModal(): VNode | null {
 							<label className="flex items-start gap-2 rounded-md border border-[var(--border)] bg-[var(--surface2)] px-3 py-2">
 								<input
 									type="checkbox"
-									aria-label="Let Moltis own this Matrix account"
-									checked={normalizeMatrixOwnershipMode(editMatrixOwnershipMode.value) === "moltis_owned"}
+									aria-label="Let Chelix own this Matrix account"
+									checked={normalizeMatrixOwnershipMode(editMatrixOwnershipMode.value) === "chelix_owned"}
 									onChange={(e) => {
-										editMatrixOwnershipMode.value = targetChecked(e) ? "moltis_owned" : "user_managed";
+										editMatrixOwnershipMode.value = targetChecked(e) ? "chelix_owned" : "user_managed";
 									}}
 								/>
 								<span className="flex flex-col gap-1">
 									<span className="text-xs font-medium text-[var(--text-strong)]">
-										Let Moltis own this Matrix account
+										Let Chelix own this Matrix account
 									</span>
 									<span className="text-xs text-[var(--muted)]">
 										{matrixOwnershipModeGuidance(editMatrixAuthMode.value, editMatrixOwnershipMode.value)}
@@ -519,11 +519,11 @@ export function EditChannelModal(): VNode | null {
 						/>
 						<div className="text-xs text-[var(--muted)]">
 							{editMatrixAuthMode.value === "password" ? (
-								"Password auth is required for encrypted Matrix chats because Moltis needs its own Matrix device keys."
+								"Password auth is required for encrypted Matrix chats because Chelix needs its own Matrix device keys."
 							) : (
 								<>
 									Access token mode does <span className="font-medium">not</span> support encrypted Matrix chats because
-									Moltis cannot import the existing device's private encryption keys.
+									Chelix cannot import the existing device's private encryption keys.
 								</>
 							)}{" "}
 							<a href={MATRIX_DOCS_URL} target="_blank" rel="noreferrer" className="text-[var(--accent)] underline">

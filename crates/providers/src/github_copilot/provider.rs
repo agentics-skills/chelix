@@ -11,7 +11,7 @@ use std::{collections::HashSet, pin::Pin, sync::mpsc, time::Duration};
 use {
     async_trait::async_trait,
     futures::StreamExt,
-    moltis_oauth::{OAuthTokens, TokenStore},
+    chelix_oauth::{OAuthTokens, TokenStore},
     secrecy::{ExposeSecret, Secret},
     tokio_stream::Stream,
     tracing::{debug, trace, warn},
@@ -24,7 +24,7 @@ use {
         parse_tool_calls, process_openai_sse_line, process_responses_sse_line,
         split_responses_instructions_and_input, to_openai_tools, to_responses_api_tools,
     },
-    moltis_agents::model::{
+    chelix_agents::model::{
         ChatMessage, CompletionResponse, LlmProvider, StreamEvent, ToolCall, Usage,
         decode_tool_call_arguments_from_str,
     },
@@ -176,7 +176,7 @@ impl GitHubCopilotProvider {
 }
 
 fn home_token_store_if_different() -> Option<TokenStore> {
-    let home = moltis_config::user_global_config_dir_if_different()?;
+    let home = chelix_config::user_global_config_dir_if_different()?;
     Some(TokenStore::with_path(home.join("oauth_tokens.json")))
 }
 
@@ -304,7 +304,7 @@ async fn fetch_copilot_auth(
         .header("Accept", "application/json")
         .header(
             "User-Agent",
-            "moltis/0.1.0 (GitHub Copilot compatible client)",
+            "chelix/0.1.0 (GitHub Copilot compatible client)",
         )
         .send()
         .await?;

@@ -1,6 +1,6 @@
 use {
     super::*,
-    crate::schema::{AgentIdentity, MoltisConfig, ResolvedIdentity, UserProfile},
+    crate::schema::{AgentIdentity, ChelixConfig, ResolvedIdentity, UserProfile},
     serde::{Deserialize, Serialize},
     std::path::{Path, PathBuf},
     tracing::debug,
@@ -58,7 +58,7 @@ pub fn load_identity_for_agent(agent_id: &str) -> Option<AgentIdentity> {
 }
 
 /// Build a fully-resolved identity by merging all sources:
-/// `moltis.toml` `[identity]` + `IDENTITY.md` frontmatter + `USER.md` + `SOUL.md`.
+/// `chelix.toml` `[identity]` + `IDENTITY.md` frontmatter + `USER.md` + `SOUL.md`.
 ///
 /// This is the single source of truth used by both the gateway (`identity_get`)
 /// and the Swift FFI bridge.
@@ -67,14 +67,14 @@ pub fn resolve_identity() -> ResolvedIdentity {
     resolve_identity_from_config(&config)
 }
 
-/// Build a fully-resolved user profile by merging `moltis.toml` `[user]` with `USER.md`.
+/// Build a fully-resolved user profile by merging `chelix.toml` `[user]` with `USER.md`.
 pub fn resolve_user_profile() -> UserProfile {
     let config = discover_and_load();
     resolve_user_profile_from_config(&config)
 }
 
 /// Like [`resolve_user_profile`] but accepts a pre-loaded config.
-pub fn resolve_user_profile_from_config(config: &MoltisConfig) -> UserProfile {
+pub fn resolve_user_profile_from_config(config: &ChelixConfig) -> UserProfile {
     let mut user = config.user.clone();
     if let Some(file_user) = load_user() {
         if file_user.name.is_some() {
@@ -91,7 +91,7 @@ pub fn resolve_user_profile_from_config(config: &MoltisConfig) -> UserProfile {
 }
 
 /// Like [`resolve_identity`] but accepts a pre-loaded config.
-pub fn resolve_identity_from_config(config: &MoltisConfig) -> ResolvedIdentity {
+pub fn resolve_identity_from_config(config: &ChelixConfig) -> ResolvedIdentity {
     let mut id = ResolvedIdentity::from_config(config);
 
     // Read from `agents/main/IDENTITY.md` first (primary), falling back to
@@ -181,7 +181,7 @@ _This file is yours to evolve. As you learn who you are, update it._";
 /// Load SOUL.md from the workspace root (`data_dir`) if present and non-empty.
 ///
 /// When the file does not exist, it is seeded with [`DEFAULT_SOUL`] (mirroring
-/// how `discover_and_load()` writes `moltis.toml` on first run).
+/// how `discover_and_load()` writes `chelix.toml` on first run).
 pub fn load_soul() -> Option<String> {
     let path = soul_path();
     match std::fs::read_to_string(&path) {
@@ -267,7 +267,7 @@ pub fn load_tools_md_for_agent(agent_id: &str) -> Option<String> {
     load_workspace_markdown(agent_path).or_else(load_tools_md)
 }
 
-/// Load GUIDELINES.md from the docs/moltis directory if present and non-empty.
+/// Load GUIDELINES.md from the docs/chelix directory if present and non-empty.
 pub fn load_guidelines_md() -> Option<String> {
     load_workspace_markdown(guidelines_path())
 }
@@ -390,7 +390,7 @@ pub fn save_identity(identity: &AgentIdentity) -> crate::Result<PathBuf> {
     }
     let yaml = yaml_lines.join("\n");
     let content = format!(
-        "---\n{}\n---\n\n# IDENTITY.md\n\nThis file is managed by Moltis settings.\n",
+        "---\n{}\n---\n\n# IDENTITY.md\n\nThis file is managed by Chelix settings.\n",
         yaml
     );
     std::fs::write(&path, content)?;
@@ -464,7 +464,7 @@ pub fn save_user(user: &UserProfile) -> crate::Result<PathBuf> {
     }
     let yaml = yaml_lines.join("\n");
     let content = format!(
-        "---\n{}\n---\n\n# USER.md\n\nThis file is managed by Moltis settings.\n",
+        "---\n{}\n---\n\n# USER.md\n\nThis file is managed by Chelix settings.\n",
         yaml
     );
     std::fs::write(&path, content)?;

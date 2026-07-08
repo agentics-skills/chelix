@@ -31,8 +31,8 @@ impl ChannelWebhookDedupeStore {
     pub fn new() -> Self {
         Self {
             entries: HashMap::new(),
-            ttl: std::time::Duration::from_millis(moltis_protocol::DEDUPE_TTL_MS),
-            max_entries: moltis_protocol::DEDUPE_MAX_ENTRIES,
+            ttl: std::time::Duration::from_millis(chelix_protocol::DEDUPE_TTL_MS),
+            max_entries: chelix_protocol::DEDUPE_MAX_ENTRIES,
         }
     }
 

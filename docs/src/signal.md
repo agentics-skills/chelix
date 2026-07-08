@@ -1,7 +1,7 @@
 # Signal
 
-Moltis can receive and send Signal messages through an external
-[`signal-cli`](https://github.com/AsamK/signal-cli) daemon. The Moltis process
+Chelix can receive and send Signal messages through an external
+[`signal-cli`](https://github.com/AsamK/signal-cli) daemon. The Chelix process
 talks to the daemon over local HTTP JSON-RPC for outbound messages and Server
 Sent Events for inbound messages.
 
@@ -11,13 +11,13 @@ Sent Events for inbound messages.
 Signal Network
       │
       ▼
-signal-cli daemon  ── HTTP JSON-RPC + SSE ──  moltis-signal
+signal-cli daemon  ── HTTP JSON-RPC + SSE ──  chelix-signal
       │                                      │
-      └──────── linked Signal account ──────┴── Moltis Gateway
+      └──────── linked Signal account ──────┴── Chelix Gateway
 ```
 
-Moltis does not embed libsignal directly. The Signal account, device link, and
-Signal protocol state stay inside signal-cli, which keeps the Moltis integration
+Chelix does not embed libsignal directly. The Signal account, device link, and
+Signal protocol state stay inside signal-cli, which keeps the Chelix integration
 smaller and avoids coupling releases to Signal's native protocol internals.
 
 ## Prerequisites
@@ -35,7 +35,7 @@ number. Keep the HTTP daemon reachable only from trusted local services.
 
 ## Configuration
 
-Add a `[channels.signal.<account-id>]` section to `moltis.toml`:
+Add a `[channels.signal.<account-id>]` section to `chelix.toml`:
 
 ```toml
 [channels.signal.personal]

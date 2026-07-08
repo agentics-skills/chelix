@@ -1,14 +1,14 @@
 [package]
-description            = "Privacy-preserving APNS push relay for Moltis gateways"
+description            = "Privacy-preserving APNS push relay for Chelix gateways"
 edition.workspace      = true
 license.workspace      = true
-name                   = "moltis-courier"
+name                   = "chelix-courier"
 repository.workspace   = true
 rust-version.workspace = true
 version.workspace      = true
 
 [[bin]]
-name = "moltis-courier"
+name = "chelix-courier"
 path = "src/main.rs"
 
 [dependencies]

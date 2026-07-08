@@ -1,4 +1,4 @@
-// ── Moltis data import/export section ─────────────────────────
+// ── Chelix data import/export section ─────────────────────────
 
 import type { VNode } from "preact";
 import { useRef, useState } from "preact/hooks";
@@ -14,12 +14,12 @@ interface ImportedItem {
 interface ImportPreview {
 	manifest: {
 		format_version: number;
-		moltis_version: string;
+		chelix_version: string;
 		created_at: string;
 		inventory: {
 			config_files: string[];
 			workspace_files: string[];
-			has_moltis_db: boolean;
+			has_chelix_db: boolean;
 			has_memory_db: boolean;
 			session_files: string[];
 			media_files: string[];
@@ -30,7 +30,7 @@ interface ImportPreview {
 	warnings: string[];
 }
 
-export function MoltisDataSection(): VNode {
+export function ChelixDataSection(): VNode {
 	return (
 		<div className="flex flex-col gap-6">
 			<ExportSection />
@@ -61,7 +61,7 @@ function ExportSection(): VNode {
 				return res.blob().then((blob) => {
 					const disposition = res.headers.get("content-disposition") || "";
 					const match = /filename="?([^"]+)"?/.exec(disposition);
-					const filename = match?.[1] || "moltis-backup.tar.gz";
+					const filename = match?.[1] || "chelix-backup.tar.gz";
 					const url = URL.createObjectURL(blob);
 					const a = document.createElement("a");
 					a.href = url;
@@ -83,7 +83,7 @@ function ExportSection(): VNode {
 		<div className="flex flex-col gap-3">
 			<SectionHeading title="Export" />
 			<p className="text-sm text-gray-400">
-				Download a backup of your Moltis config, databases, sessions, and workspace files.
+				Download a backup of your Chelix config, databases, sessions, and workspace files.
 			</p>
 			<div className="flex flex-col gap-2">
 				<CheckboxField
@@ -195,7 +195,7 @@ function ImportDataSection(): VNode {
 	return (
 		<div className="flex flex-col gap-3">
 			<SectionHeading title="Import" />
-			<p className="text-sm text-gray-400">Restore from a previously exported Moltis backup archive.</p>
+			<p className="text-sm text-gray-400">Restore from a previously exported Chelix backup archive.</p>
 
 			{/* Conflict strategy */}
 			<div className="flex flex-col gap-1">
@@ -285,13 +285,13 @@ function PreviewTable({ preview, onApply, applying }: PreviewTableProps): VNode 
 		<div className="flex flex-col gap-3 p-3 bg-gray-800 rounded-lg">
 			<SubHeading title="Archive preview" />
 			<p className="text-xs text-gray-400">
-				Moltis {preview.manifest.moltis_version} — {preview.manifest.created_at}
+				Chelix {preview.manifest.chelix_version} — {preview.manifest.created_at}
 			</p>
 			<table className="text-sm w-full">
 				<tbody>
 					<Row label="Config files" value={inv.config_files.length} />
 					<Row label="Workspace files" value={inv.workspace_files.length} />
-					<Row label="moltis.db" value={inv.has_moltis_db ? "Yes" : "No"} />
+					<Row label="chelix.db" value={inv.has_chelix_db ? "Yes" : "No"} />
 					<Row label="memory.db" value={inv.has_memory_db ? "Yes" : "No"} />
 					<Row label="Sessions" value={inv.session_files.filter((f) => f.endsWith(".jsonl")).length} />
 					<Row label="Media files" value={inv.media_files.length} />

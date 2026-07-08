@@ -9,8 +9,8 @@ use {
         http::StatusCode,
         response::{IntoResponse, Response},
     },
-    moltis_httpd::AppState,
-    moltis_tools::image_cache::ImageBuilder,
+    chelix_httpd::AppState,
+    chelix_tools::image_cache::ImageBuilder,
     tracing::warn,
 };
 
@@ -66,21 +66,21 @@ pub struct SandboxDefaultBackendUpdateRequest {
     backend: String,
 }
 
-fn shared_home_config_payload(config: &moltis_config::MoltisConfig) -> serde_json::Value {
+fn shared_home_config_payload(config: &chelix_config::ChelixConfig) -> serde_json::Value {
     let runtime_cfg =
-        moltis_tools::sandbox::SandboxConfig::from(&config.tools.execute_command.sandbox);
+        chelix_tools::sandbox::SandboxConfig::from(&config.tools.execute_command.sandbox);
     let mode = match config.tools.execute_command.sandbox.home_persistence {
-        moltis_config::schema::HomePersistenceConfig::Off => "off",
-        moltis_config::schema::HomePersistenceConfig::Session => "session",
-        moltis_config::schema::HomePersistenceConfig::Shared => "shared",
+        chelix_config::schema::HomePersistenceConfig::Off => "off",
+        chelix_config::schema::HomePersistenceConfig::Session => "session",
+        chelix_config::schema::HomePersistenceConfig::Shared => "shared",
     };
     serde_json::json!({
         "enabled": matches!(
             config.tools.execute_command.sandbox.home_persistence,
-            moltis_config::schema::HomePersistenceConfig::Shared
+            chelix_config::schema::HomePersistenceConfig::Shared
         ),
         "mode": mode,
-        "path": moltis_tools::sandbox::shared_home_dir_path(&runtime_cfg)
+        "path": chelix_tools::sandbox::shared_home_dir_path(&runtime_cfg)
             .display()
             .to_string(),
         "configured_path": config.tools.execute_command.sandbox.shared_home_dir.clone(),
@@ -385,7 +385,7 @@ pub async fn api_session_media_handler(
             let content_type = filename
                 .rsplit('.')
                 .next()
-                .and_then(moltis_media::mime::mime_from_extension)
+                .and_then(chelix_media::mime::mime_from_extension)
                 .unwrap_or("application/octet-stream");
             let disposition = media_content_disposition(&filename, content_type);
             (
@@ -419,7 +419,7 @@ pub async fn api_logs_download_handler(State(state): State<AppState>) -> impl In
         (header::CONTENT_TYPE, "application/x-ndjson"),
         (
             header::CONTENT_DISPOSITION,
-            "attachment; filename=\"moltis-logs.jsonl\"",
+            "attachment; filename=\"chelix-logs.jsonl\"",
         ),
     ];
     (headers, body).into_response()
@@ -436,7 +436,7 @@ pub async fn api_bootstrap_handler(
 }
 
 async fn api_bootstrap_with_query(
-    gw: &moltis_gateway::state::GatewayState,
+    gw: &chelix_gateway::state::GatewayState,
     query: &BootstrapQuery,
 ) -> Response {
     let channels_enabled = query.channels_enabled();
@@ -503,7 +503,7 @@ async fn api_bootstrap_with_query(
         serde_json::json!({
             "backend": "none",
             "os": std::env::consts::OS,
-            "default_image": moltis_tools::sandbox::DEFAULT_SANDBOX_IMAGE,
+            "default_image": chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE,
         })
     };
     Json(serde_json::json!({
@@ -547,7 +547,7 @@ where
     let Ok(path) = path_result else {
         return Vec::new();
     };
-    let store = moltis_skills::manifest::ManifestStore::new(path);
+    let store = chelix_skills::manifest::ManifestStore::new(path);
     store
         .load()
         .map(|m| {
@@ -579,28 +579,28 @@ pub async fn api_skills_handler(State(state): State<AppState>) -> impl IntoRespo
         .and_then(|v| v.as_array().cloned())
         .unwrap_or_default();
 
-    let config = moltis_config::discover_and_load();
-    let mut skills = enabled_from_manifest(moltis_skills::manifest::ManifestStore::default_path());
+    let config = chelix_config::discover_and_load();
+    let mut skills = enabled_from_manifest(chelix_skills::manifest::ManifestStore::default_path());
 
     {
-        use moltis_skills::discover::{FsSkillDiscoverer, SkillDiscoverer};
-        let data_dir = moltis_config::data_dir();
+        use chelix_skills::discover::{FsSkillDiscoverer, SkillDiscoverer};
+        let data_dir = chelix_config::data_dir();
         let search_paths = vec![
             (
                 data_dir.join("skills"),
-                moltis_skills::types::SkillSource::Personal,
+                chelix_skills::types::SkillSource::Personal,
             ),
             (
-                data_dir.join(".moltis/skills"),
-                moltis_skills::types::SkillSource::Project,
+                data_dir.join(".chelix/skills"),
+                chelix_skills::types::SkillSource::Project,
             ),
         ];
         let fs_discoverer = FsSkillDiscoverer::new(search_paths);
 
         #[cfg(feature = "bundled-skills")]
         let discovered = {
-            let bundled = std::sync::Arc::new(moltis_skills::bundled::BundledSkillStore::new());
-            let composite = moltis_skills::discover::CompositeSkillDiscoverer::new(
+            let bundled = std::sync::Arc::new(chelix_skills::bundled::BundledSkillStore::new());
+            let composite = chelix_skills::discover::CompositeSkillDiscoverer::new(
                 Box::new(fs_discoverer),
                 bundled,
             );
@@ -611,8 +611,8 @@ pub async fn api_skills_handler(State(state): State<AppState>) -> impl IntoRespo
 
         if let Ok(discovered) = discovered {
             for s in discovered {
-                let protected = moltis_gateway::services::is_protected_discovered_skill(&s.name);
-                let is_bundled = s.source == Some(moltis_skills::types::SkillSource::Bundled);
+                let protected = chelix_gateway::services::is_protected_discovered_skill(&s.name);
+                let is_bundled = s.source == Some(chelix_skills::types::SkillSource::Bundled);
                 let enabled = if is_bundled {
                     config
                         .skills
@@ -699,13 +699,13 @@ pub async fn api_skills_search_handler(
 // ── Images ───────────────────────────────────────────────────────────────────
 
 pub async fn api_cached_images_handler() -> impl IntoResponse {
-    let config = moltis_config::discover_and_load();
-    let builder = moltis_tools::image_cache::DockerImageBuilder::for_backend(
+    let config = chelix_config::discover_and_load();
+    let builder = chelix_tools::image_cache::DockerImageBuilder::for_backend(
         &config.tools.execute_command.sandbox.backend,
     );
     let (cached, sandbox) = tokio::join!(
         builder.list_cached(),
-        moltis_tools::sandbox::list_sandbox_images(),
+        chelix_tools::sandbox::list_sandbox_images(),
     );
 
     let mut images: Vec<serde_json::Value> = Vec::new();
@@ -747,16 +747,16 @@ pub async fn api_cached_images_handler() -> impl IntoResponse {
 
 pub async fn api_delete_cached_image_handler(Path(tag): Path<String>) -> impl IntoResponse {
     let result = if tag.contains("-sandbox:") {
-        moltis_tools::sandbox::remove_sandbox_image(&tag).await
+        chelix_tools::sandbox::remove_sandbox_image(&tag).await
     } else {
-        let cfg = moltis_config::discover_and_load();
-        let builder = moltis_tools::image_cache::DockerImageBuilder::for_backend(
+        let cfg = chelix_config::discover_and_load();
+        let builder = chelix_tools::image_cache::DockerImageBuilder::for_backend(
             &cfg.tools.execute_command.sandbox.backend,
         );
-        let full_tag = if tag.starts_with("moltis-cache/") {
+        let full_tag = if tag.starts_with("chelix-cache/") {
             tag
         } else {
-            format!("moltis-cache/{tag}")
+            format!("chelix-cache/{tag}")
         };
         builder.remove_cached(&full_tag).await
     };
@@ -771,13 +771,13 @@ pub async fn api_delete_cached_image_handler(Path(tag): Path<String>) -> impl In
 }
 
 pub async fn api_prune_cached_images_handler() -> impl IntoResponse {
-    let config = moltis_config::discover_and_load();
-    let builder = moltis_tools::image_cache::DockerImageBuilder::for_backend(
+    let config = chelix_config::discover_and_load();
+    let builder = chelix_tools::image_cache::DockerImageBuilder::for_backend(
         &config.tools.execute_command.sandbox.backend,
     );
     let (tool_result, sandbox_result) = tokio::join!(
         builder.prune_all(),
-        moltis_tools::sandbox::clean_sandbox_images(),
+        chelix_tools::sandbox::clean_sandbox_images(),
     );
     let mut count = 0;
     if let Ok(n) = tool_result {
@@ -830,8 +830,8 @@ pub async fn api_check_packages_handler(Json(body): Json<serde_json::Value>) -> 
         .collect();
     let script = checks.join("\n");
 
-    let config = moltis_config::discover_and_load();
-    let cli = moltis_tools::image_cache::DockerImageBuilder::for_backend(
+    let config = chelix_config::discover_and_load();
+    let cli = chelix_tools::image_cache::DockerImageBuilder::for_backend(
         &config.tools.execute_command.sandbox.backend,
     )
     .cli_name();
@@ -864,7 +864,7 @@ pub async fn api_get_default_image_handler(State(state): State<AppState>) -> imp
     let image = if let Some(ref router) = state.gateway.sandbox_router {
         router.resolve_default_image_nowait().await
     } else {
-        moltis_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string()
+        chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string()
     };
     Json(serde_json::json!({ "image": image }))
 }
@@ -890,7 +890,7 @@ pub async fn api_set_default_image_handler(
 }
 
 pub async fn api_get_shared_home_handler() -> impl IntoResponse {
-    let config = moltis_config::discover_and_load();
+    let config = chelix_config::discover_and_load();
     Json(shared_home_config_payload(&config))
 }
 
@@ -904,23 +904,23 @@ pub async fn api_set_shared_home_handler(
         .filter(|p| !p.is_empty())
         .map(ToOwned::to_owned);
 
-    let update_result = moltis_config::update_config(|cfg| {
+    let update_result = chelix_config::update_config(|cfg| {
         cfg.tools.execute_command.sandbox.shared_home_dir = path.clone();
         if body.enabled {
             cfg.tools.execute_command.sandbox.home_persistence =
-                moltis_config::schema::HomePersistenceConfig::Shared;
+                chelix_config::schema::HomePersistenceConfig::Shared;
         } else if matches!(
             cfg.tools.execute_command.sandbox.home_persistence,
-            moltis_config::schema::HomePersistenceConfig::Shared
+            chelix_config::schema::HomePersistenceConfig::Shared
         ) {
             cfg.tools.execute_command.sandbox.home_persistence =
-                moltis_config::schema::HomePersistenceConfig::Off;
+                chelix_config::schema::HomePersistenceConfig::Off;
         }
     });
 
     match update_result {
         Ok(saved_path) => {
-            let config = moltis_config::discover_and_load();
+            let config = chelix_config::discover_and_load();
             Json(serde_json::json!({
                 "ok": true,
                 "restart_required": true,
@@ -949,14 +949,14 @@ struct AvailableSandboxBackend {
 fn available_sandbox_backends() -> Vec<AvailableSandboxBackend> {
     let mut backends = Vec::new();
 
-    if moltis_tools::sandbox::is_cli_available("docker") {
+    if chelix_tools::sandbox::is_cli_available("docker") {
         backends.push(AvailableSandboxBackend {
             id: "docker",
             label: "Docker",
             kind: "local",
         });
     }
-    if moltis_tools::sandbox::is_cli_available("podman") {
+    if chelix_tools::sandbox::is_cli_available("podman") {
         backends.push(AvailableSandboxBackend {
             id: "podman",
             label: "Podman",
@@ -964,7 +964,7 @@ fn available_sandbox_backends() -> Vec<AvailableSandboxBackend> {
         });
     }
     #[cfg(target_os = "macos")]
-    if moltis_tools::sandbox::is_cli_available("container") {
+    if chelix_tools::sandbox::is_cli_available("container") {
         backends.push(AvailableSandboxBackend {
             id: "apple-container",
             label: "Apple Container (VM)",
@@ -1003,7 +1003,7 @@ fn available_backends_payload(default_backend: &str) -> serde_json::Value {
 /// Returns which sandbox backends are available/configured on this instance.
 /// Used by the UI to populate backend selectors.
 pub async fn api_available_backends_handler() -> impl IntoResponse {
-    let config = moltis_config::discover_and_load();
+    let config = chelix_config::discover_and_load();
     Json(available_backends_payload(
         &config.tools.execute_command.sandbox.backend,
     ))
@@ -1026,7 +1026,7 @@ pub async fn api_set_default_backend_handler(
         );
     }
 
-    let update_result = moltis_config::update_config(|cfg| {
+    let update_result = chelix_config::update_config(|cfg| {
         cfg.tools.execute_command.sandbox.backend = backend.to_string();
     });
 
@@ -1103,7 +1103,7 @@ ENV HOME=/home/sandbox\n\
 WORKDIR /home/sandbox\n"
     );
 
-    let tmp_dir = std::env::temp_dir().join(format!("moltis-build-{}", uuid::Uuid::new_v4()));
+    let tmp_dir = std::env::temp_dir().join(format!("chelix-build-{}", uuid::Uuid::new_v4()));
     if let Err(e) = std::fs::create_dir_all(&tmp_dir) {
         return api_error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1122,8 +1122,8 @@ WORKDIR /home/sandbox\n"
         );
     }
 
-    let config = moltis_config::discover_and_load();
-    let builder = moltis_tools::image_cache::DockerImageBuilder::for_backend(
+    let config = chelix_config::discover_and_load();
+    let builder = chelix_tools::image_cache::DockerImageBuilder::for_backend(
         &config.tools.execute_command.sandbox.backend,
     );
     tracing::debug!(
@@ -1173,10 +1173,10 @@ pub async fn api_list_containers_handler(State(state): State<AppState>) -> impl 
             r.config()
                 .container_prefix
                 .clone()
-                .unwrap_or_else(|| "moltis-sandbox".to_string())
+                .unwrap_or_else(|| "chelix-sandbox".to_string())
         })
-        .unwrap_or_else(|| "moltis-sandbox".to_string());
-    match moltis_tools::sandbox::list_running_containers(&prefix).await {
+        .unwrap_or_else(|| "chelix-sandbox".to_string());
+    match chelix_tools::sandbox::list_running_containers(&prefix).await {
         Ok(containers) => Json(serde_json::json!({ "containers": containers })).into_response(),
         Err(e) => api_error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1198,9 +1198,9 @@ pub async fn api_stop_container_handler(
             r.config()
                 .container_prefix
                 .clone()
-                .unwrap_or_else(|| "moltis-sandbox".to_string())
+                .unwrap_or_else(|| "chelix-sandbox".to_string())
         })
-        .unwrap_or_else(|| "moltis-sandbox".to_string());
+        .unwrap_or_else(|| "chelix-sandbox".to_string());
     if !name.starts_with(&prefix) {
         return api_error_response(
             StatusCode::FORBIDDEN,
@@ -1208,7 +1208,7 @@ pub async fn api_stop_container_handler(
             "container name does not match expected prefix",
         );
     }
-    match moltis_tools::sandbox::stop_container(&name).await {
+    match chelix_tools::sandbox::stop_container(&name).await {
         Ok(()) => Json(serde_json::json!({ "ok": true })).into_response(),
         Err(e) => api_error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1230,9 +1230,9 @@ pub async fn api_remove_container_handler(
             r.config()
                 .container_prefix
                 .clone()
-                .unwrap_or_else(|| "moltis-sandbox".to_string())
+                .unwrap_or_else(|| "chelix-sandbox".to_string())
         })
-        .unwrap_or_else(|| "moltis-sandbox".to_string());
+        .unwrap_or_else(|| "chelix-sandbox".to_string());
     if !name.starts_with(&prefix) {
         return api_error_response(
             StatusCode::FORBIDDEN,
@@ -1240,7 +1240,7 @@ pub async fn api_remove_container_handler(
             "container name does not match expected prefix",
         );
     }
-    match moltis_tools::sandbox::remove_container(&name).await {
+    match chelix_tools::sandbox::remove_container(&name).await {
         Ok(()) => Json(serde_json::json!({ "ok": true })).into_response(),
         Err(e) => api_error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1259,10 +1259,10 @@ pub async fn api_clean_all_containers_handler(State(state): State<AppState>) -> 
             r.config()
                 .container_prefix
                 .clone()
-                .unwrap_or_else(|| "moltis-sandbox".to_string())
+                .unwrap_or_else(|| "chelix-sandbox".to_string())
         })
-        .unwrap_or_else(|| "moltis-sandbox".to_string());
-    match moltis_tools::sandbox::clean_all_containers(&prefix).await {
+        .unwrap_or_else(|| "chelix-sandbox".to_string());
+    match chelix_tools::sandbox::clean_all_containers(&prefix).await {
         Ok(removed) => Json(serde_json::json!({ "ok": true, "removed": removed })).into_response(),
         Err(e) => api_error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1273,7 +1273,7 @@ pub async fn api_clean_all_containers_handler(State(state): State<AppState>) -> 
 }
 
 pub async fn api_disk_usage_handler() -> impl IntoResponse {
-    match moltis_tools::sandbox::container_disk_usage().await {
+    match chelix_tools::sandbox::container_disk_usage().await {
         Ok(usage) => Json(serde_json::json!({ "usage": usage })).into_response(),
         Err(e) => api_error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1284,7 +1284,7 @@ pub async fn api_disk_usage_handler() -> impl IntoResponse {
 }
 
 pub async fn api_restart_daemon_handler() -> impl IntoResponse {
-    match moltis_tools::sandbox::restart_container_daemon().await {
+    match chelix_tools::sandbox::restart_container_daemon().await {
         Ok(()) => Json(serde_json::json!({ "ok": true })).into_response(),
         Err(e) => api_error_response(
             StatusCode::INTERNAL_SERVER_ERROR,

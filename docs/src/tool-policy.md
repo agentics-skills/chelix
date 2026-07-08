@@ -61,7 +61,7 @@ non-empty allow replaces).
 
 ## Layer 1 — Global
 
-The base policy for all sessions. Set in `moltis.toml` under `[tools.policy]`:
+The base policy for all sessions. Set in `chelix.toml` under `[tools.policy]`:
 
 ```toml
 [tools.policy]

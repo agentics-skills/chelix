@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use moltis_config::VoiceSttProvider;
+use chelix_config::VoiceSttProvider;
 
 /// Check if Python 3.10+ is available.
 pub(super) async fn check_python_version() -> serde_json::Value {
@@ -213,7 +213,7 @@ impl VoiceProviderId {
                 key_url: Some("https://platform.openai.com/api-keys"),
                 key_url_label: Some("platform.openai.com/api-keys"),
                 hint: Some(
-                    "gpt-realtime-2, gpt-realtime-translate, and gpt-realtime-whisper are Realtime API models. Moltis currently records a clip and uses OpenAI's transcription endpoint for this provider.",
+                    "gpt-realtime-2, gpt-realtime-translate, and gpt-realtime-whisper are Realtime API models. Chelix currently records a clip and uses OpenAI's transcription endpoint for this provider.",
                 ),
             },
             Self::Groq => VoiceProviderMeta {
@@ -351,14 +351,14 @@ pub(super) struct VoiceProvidersResponse {
     stt: Vec<VoiceProviderInfo>,
 }
 
-fn openai_provider_base_url(config: &moltis_config::MoltisConfig) -> Option<&str> {
+fn openai_provider_base_url(config: &chelix_config::ChelixConfig) -> Option<&str> {
     config
         .providers
         .get("openai")
         .and_then(|provider| provider.base_url.as_deref())
 }
 
-fn openai_tts_base_url(config: &moltis_config::MoltisConfig) -> Option<&str> {
+fn openai_tts_base_url(config: &chelix_config::ChelixConfig) -> Option<&str> {
     config
         .voice
         .tts
@@ -368,7 +368,7 @@ fn openai_tts_base_url(config: &moltis_config::MoltisConfig) -> Option<&str> {
         .or_else(|| openai_provider_base_url(config))
 }
 
-fn whisper_base_url(config: &moltis_config::MoltisConfig) -> Option<&str> {
+fn whisper_base_url(config: &chelix_config::ChelixConfig) -> Option<&str> {
     config
         .voice
         .stt
@@ -380,7 +380,7 @@ fn whisper_base_url(config: &moltis_config::MoltisConfig) -> Option<&str> {
 
 /// Detect all available voice providers with their availability status.
 pub(super) async fn detect_voice_providers(
-    config: &moltis_config::MoltisConfig,
+    config: &chelix_config::ChelixConfig,
 ) -> serde_json::Value {
     use secrecy::ExposeSecret;
 
@@ -433,7 +433,7 @@ pub(super) async fn detect_voice_providers(
             config.voice.tts.elevenlabs.enabled
                 && config.voice.tts.enabled
                 && (config.voice.tts.elevenlabs.api_key.is_some() || env_elevenlabs_key.is_some()),
-            tts_pref == Some(moltis_config::VoiceTtsProvider::ElevenLabs),
+            tts_pref == Some(chelix_config::VoiceTtsProvider::ElevenLabs),
             key_source(
                 config.voice.tts.elevenlabs.api_key.is_some(),
                 env_elevenlabs_key.is_some(),
@@ -459,7 +459,7 @@ pub(super) async fn detect_voice_providers(
                     || env_openai_key.is_some()
                     || llm_openai_key.is_some()
                     || llm_openai_base_url.is_some()),
-            tts_pref == Some(moltis_config::VoiceTtsProvider::OpenAi),
+            tts_pref == Some(chelix_config::VoiceTtsProvider::OpenAi),
             key_source(
                 config.voice.tts.openai.api_key.is_some()
                     || config.voice.tts.openai.base_url.is_some(),
@@ -478,7 +478,7 @@ pub(super) async fn detect_voice_providers(
             config.voice.tts.google.enabled
                 && config.voice.tts.enabled
                 && (config.voice.tts.google.api_key.is_some() || env_google_key.is_some()),
-            tts_pref == Some(moltis_config::VoiceTtsProvider::Google),
+            tts_pref == Some(chelix_config::VoiceTtsProvider::Google),
             key_source(
                 config.voice.tts.google.api_key.is_some(),
                 env_google_key.is_some(),
@@ -497,7 +497,7 @@ pub(super) async fn detect_voice_providers(
                 && config.voice.tts.enabled
                 && piper_available.is_some()
                 && config.voice.tts.piper.model_path.is_some(),
-            tts_pref == Some(moltis_config::VoiceTtsProvider::Piper),
+            tts_pref == Some(chelix_config::VoiceTtsProvider::Piper),
             None,
             piper_available.clone(),
             if piper_available.is_none() {
@@ -519,7 +519,7 @@ pub(super) async fn detect_voice_providers(
             "local",
             coqui_server_running,
             config.voice.tts.coqui.enabled && config.voice.tts.enabled && coqui_server_running,
-            tts_pref == Some(moltis_config::VoiceTtsProvider::Coqui),
+            tts_pref == Some(chelix_config::VoiceTtsProvider::Coqui),
             None,
             tts_server_binary,
             if !coqui_server_running {
@@ -767,7 +767,7 @@ fn filter_listed_voice_providers(
 
 fn enrich_voice_provider(
     mut provider: VoiceProviderInfo,
-    config: &moltis_config::MoltisConfig,
+    config: &chelix_config::ChelixConfig,
 ) -> VoiceProviderInfo {
     let (capabilities, settings, summary) = match provider.id {
         VoiceProviderId::OpenaiTts => (
@@ -910,7 +910,7 @@ struct ElevenLabsModel {
 }
 
 pub(super) async fn fetch_elevenlabs_catalog(
-    config: &moltis_config::MoltisConfig,
+    config: &chelix_config::ChelixConfig,
 ) -> serde_json::Value {
     use secrecy::ExposeSecret;
 
@@ -1044,7 +1044,7 @@ fn key_source(in_config: bool, in_env: bool, in_llm_provider: bool) -> Option<&'
 }
 
 pub(super) fn apply_voice_provider_settings(
-    cfg: &mut moltis_config::MoltisConfig,
+    cfg: &mut chelix_config::ChelixConfig,
     provider: &str,
     params: &serde_json::Value,
 ) {
@@ -1197,7 +1197,7 @@ pub(super) fn toggle_voice_provider(
     enabled: bool,
     provider_type: &str,
 ) -> Result<(), anyhow::Error> {
-    moltis_config::update_config(|cfg| match provider_type {
+    chelix_config::update_config(|cfg| match provider_type {
         "tts" => {
             let config_provider = match provider {
                 "openai-tts" => "openai",
@@ -1213,7 +1213,7 @@ pub(super) fn toggle_voice_provider(
                 _ => {},
             }
             if !enabled
-                && cfg.voice.tts.provider == moltis_config::VoiceTtsProvider::parse(config_provider)
+                && cfg.voice.tts.provider == chelix_config::VoiceTtsProvider::parse(config_provider)
             {
                 cfg.voice.tts.provider = None;
             }
@@ -1332,7 +1332,7 @@ mod tests {
 
     #[tokio::test]
     async fn detect_voice_providers_marks_selected_stt_provider_when_some() {
-        let mut config = moltis_config::MoltisConfig::default();
+        let mut config = chelix_config::ChelixConfig::default();
         config.voice.stt.enabled = true;
         config.voice.stt.provider = Some(VoiceSttProvider::Whisper);
         config.voice.stt.whisper.api_key = Some(Secret::new("test-whisper-key".to_string()));
@@ -1350,7 +1350,7 @@ mod tests {
 
     #[tokio::test]
     async fn detect_voice_providers_does_not_mark_stt_preferred_when_none() {
-        let mut config = moltis_config::MoltisConfig::default();
+        let mut config = chelix_config::ChelixConfig::default();
         config.voice.stt.enabled = true;
         config.voice.stt.provider = None;
         config.voice.stt.whisper.api_key = Some(Secret::new("test-whisper-key".to_string()));
@@ -1369,7 +1369,7 @@ mod tests {
 
     #[test]
     fn apply_voice_provider_settings_stores_base_urls() {
-        let mut config = moltis_config::MoltisConfig::default();
+        let mut config = chelix_config::ChelixConfig::default();
 
         apply_voice_provider_settings(
             &mut config,
@@ -1405,7 +1405,7 @@ mod tests {
 
     #[test]
     fn apply_voice_provider_settings_clears_base_urls_when_requested() {
-        let mut config = moltis_config::MoltisConfig::default();
+        let mut config = chelix_config::ChelixConfig::default();
         config.voice.tts.openai.base_url = Some("http://127.0.0.1:8003/v1".to_string());
         config.voice.stt.whisper.base_url = Some("http://127.0.0.1:8001/v1".to_string());
         config.voice.stt.whisper.model = Some("gpt-4o-mini-transcribe".to_string());
@@ -1433,7 +1433,7 @@ mod tests {
 
     #[tokio::test]
     async fn detect_voice_providers_marks_whisper_available_when_base_url_configured() {
-        let mut config = moltis_config::MoltisConfig::default();
+        let mut config = chelix_config::ChelixConfig::default();
         config.voice.stt.whisper.base_url = Some("http://127.0.0.1:8001/v1".to_string());
 
         let detected = detect_voice_providers(&config).await;

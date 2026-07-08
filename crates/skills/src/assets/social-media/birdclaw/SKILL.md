@@ -11,8 +11,8 @@ requires:
       bins: [birdclaw]
       os: [darwin]
 origin:
-  source: moltis
-  url: https://github.com/moltis-org/moltis
+  source: chelix
+  url: https://github.com/agentics-skills/chelix
 ---
 
 # birdclaw — Twitter/X Local Workspace
@@ -26,7 +26,7 @@ This complements the `xurl` skill — xurl is for interacting with the X API (po
 - birdclaw delegates API access to `xurl` when configured — same secret safety rules apply.
 - **Never** read, print, or send `~/.birdclaw/config.json` or `~/.xurl` to LLM context.
 - **Never** ask the user to paste API credentials into chat.
-- Optional OpenAI API key for inbox AI scoring — set via `OPENAI_API_KEY` env var or Moltis credential store.
+- Optional OpenAI API key for inbox AI scoring — set via `OPENAI_API_KEY` env var or Chelix credential store.
 
 ## One-Time User Setup
 
@@ -100,7 +100,7 @@ birdclaw export --format jsonl --output /path/    # JSONL shards for Git backup
 
 ## Saving to Memory
 
-To archive Twitter data into Moltis memory:
+To archive Twitter data into Chelix memory:
 
 1. Run birdclaw search or inbox with `--json`
 2. Summarize key items into a daily digest

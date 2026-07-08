@@ -6,15 +6,15 @@ use {async_trait::async_trait, serde_json::Value};
 
 use crate::services::{OnboardingService, ServiceError, ServiceResult};
 
-/// Gateway-side onboarding service backed by `moltis_onboarding::service::LiveOnboardingService`.
+/// Gateway-side onboarding service backed by `chelix_onboarding::service::LiveOnboardingService`.
 pub struct GatewayOnboardingService {
-    inner: moltis_onboarding::service::LiveOnboardingService,
+    inner: chelix_onboarding::service::LiveOnboardingService,
     gateway_state: Arc<tokio::sync::OnceCell<Arc<crate::state::GatewayState>>>,
 }
 
 impl GatewayOnboardingService {
     pub fn new(
-        inner: moltis_onboarding::service::LiveOnboardingService,
+        inner: chelix_onboarding::service::LiveOnboardingService,
         gateway_state: Arc<tokio::sync::OnceCell<Arc<crate::state::GatewayState>>>,
     ) -> Self {
         Self {
@@ -82,11 +82,11 @@ impl OnboardingService for GatewayOnboardingService {
 
     #[cfg(feature = "claude-import")]
     async fn claude_detect(&self) -> ServiceResult {
-        let detection = moltis_claude_import::detect::detect();
+        let detection = chelix_claude_import::detect::detect();
         match detection {
             Some(d) => {
-                let skills = moltis_claude_import::skills::discover_skills(&d);
-                let commands = moltis_claude_import::skills::discover_commands(&d);
+                let skills = chelix_claude_import::skills::discover_skills(&d);
+                let commands = chelix_claude_import::skills::discover_commands(&d);
                 let has_mcp = d.user_claude_json_path.is_some() || d.desktop_config_path.is_some();
 
                 tracing::info!(
@@ -121,10 +121,10 @@ impl OnboardingService for GatewayOnboardingService {
 
     #[cfg(feature = "claude-import")]
     async fn claude_import(&self, params: Value) -> ServiceResult {
-        let detection = moltis_claude_import::detect::detect()
+        let detection = chelix_claude_import::detect::detect()
             .ok_or_else(|| "no Claude Code installation found".to_string())?;
 
-        let data_dir = moltis_config::data_dir();
+        let data_dir = chelix_config::data_dir();
         let mcp_path = data_dir.join("mcp-servers.json");
         let skills_dir = data_dir.join("skills");
 
@@ -144,18 +144,18 @@ impl OnboardingService for GatewayOnboardingService {
         let mut categories = Vec::new();
 
         if import_mcp {
-            categories.push(moltis_claude_import::mcp_servers::import_mcp_servers(
+            categories.push(chelix_claude_import::mcp_servers::import_mcp_servers(
                 &detection, &mcp_path,
             ));
         }
         if import_skills {
-            categories.push(moltis_claude_import::skills::import_skills(
+            categories.push(chelix_claude_import::skills::import_skills(
                 &detection,
                 &skills_dir,
             ));
         }
         if import_memory {
-            categories.push(moltis_claude_import::memory::import_memory(
+            categories.push(chelix_claude_import::memory::import_memory(
                 &detection, &data_dir,
             ));
         }
@@ -177,10 +177,10 @@ impl OnboardingService for GatewayOnboardingService {
 
     #[cfg(feature = "codex-import")]
     async fn codex_detect(&self) -> ServiceResult {
-        let detection = moltis_codex_import::detect::detect();
+        let detection = chelix_codex_import::detect::detect();
         match detection {
             Some(d) => {
-                let mcp_count = moltis_codex_import::mcp_servers::count_mcp_servers(&d);
+                let mcp_count = chelix_codex_import::mcp_servers::count_mcp_servers(&d);
 
                 tracing::info!(
                     has_config = d.config_path.is_some(),
@@ -211,10 +211,10 @@ impl OnboardingService for GatewayOnboardingService {
 
     #[cfg(feature = "codex-import")]
     async fn codex_import(&self, params: Value) -> ServiceResult {
-        let detection = moltis_codex_import::detect::detect()
+        let detection = chelix_codex_import::detect::detect()
             .ok_or_else(|| "no Codex CLI installation found".to_string())?;
 
-        let data_dir = moltis_config::data_dir();
+        let data_dir = chelix_config::data_dir();
         let mcp_path = data_dir.join("mcp-servers.json");
 
         let import_mcp = params
@@ -229,12 +229,12 @@ impl OnboardingService for GatewayOnboardingService {
         let mut categories = Vec::new();
 
         if import_mcp {
-            categories.push(moltis_codex_import::mcp_servers::import_mcp_servers(
+            categories.push(chelix_codex_import::mcp_servers::import_mcp_servers(
                 &detection, &mcp_path,
             ));
         }
         if import_memory {
-            categories.push(moltis_codex_import::memory::import_memory(
+            categories.push(chelix_codex_import::memory::import_memory(
                 &detection, &data_dir,
             ));
         }
@@ -253,7 +253,7 @@ impl OnboardingService for GatewayOnboardingService {
     }
 }
 
-fn parse_geo_location(value: &Value) -> Option<moltis_config::GeoLocation> {
+fn parse_geo_location(value: &Value) -> Option<chelix_config::GeoLocation> {
     let latitude = value.get("latitude").and_then(|v| v.as_f64())?;
     let longitude = value.get("longitude").and_then(|v| v.as_f64())?;
     let place = value
@@ -262,7 +262,7 @@ fn parse_geo_location(value: &Value) -> Option<moltis_config::GeoLocation> {
         .map(|v| v.to_string());
     let updated_at = value.get("updated_at").and_then(|v| v.as_i64());
 
-    Some(moltis_config::GeoLocation {
+    Some(chelix_config::GeoLocation {
         latitude,
         longitude,
         place,

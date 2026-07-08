@@ -5,11 +5,11 @@ test.describe("Terminal disabled state", () => {
 	test("shows disabled message when terminal_enabled is false in gon", async ({ page }) => {
 		var errors = watchPageErrors(page);
 
-		// Intercept the server's inline `window.__MOLTIS__ = {...}` assignment and
+		// Intercept the server's inline `window.__CHELIX__ = {...}` assignment and
 		// force terminal_enabled off while preserving the rest of the gon payload.
 		await page.addInitScript(() => {
 			var gonValue = { terminal_enabled: false };
-			Object.defineProperty(window, "__MOLTIS__", {
+			Object.defineProperty(window, "__CHELIX__", {
 				configurable: true,
 				get() {
 					return gonValue;

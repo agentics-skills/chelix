@@ -11,8 +11,8 @@ use {async_trait::async_trait, tracing::debug, url::Url};
 use crate::error::Error;
 
 use {
-    crate::ssrf::ssrf_check, moltis_agents::tool_registry::AgentTool,
-    moltis_config::schema::WebFetchConfig,
+    crate::ssrf::ssrf_check, chelix_agents::tool_registry::AgentTool,
+    chelix_config::schema::WebFetchConfig,
 };
 
 /// Cached fetch result with expiry.
@@ -98,7 +98,7 @@ impl WebFetchTool {
     /// relative to the HTML body).
     #[cfg(feature = "firecrawl")]
     #[must_use]
-    pub fn with_firecrawl(mut self, config: &moltis_config::schema::FirecrawlConfig) -> Self {
+    pub fn with_firecrawl(mut self, config: &chelix_config::schema::FirecrawlConfig) -> Self {
         if config.enabled && config.web_fetch_fallback {
             self.firecrawl_api_key = crate::firecrawl::resolve_api_key(config);
             self.firecrawl_base_url = if config.base_url.trim().is_empty() {
@@ -164,7 +164,7 @@ impl WebFetchTool {
             .redirect(reqwest::redirect::Policy::none()); // Manual redirect handling.
         // Prefer the sandbox proxy when set, otherwise fall through to the
         // upstream proxy (if configured).
-        let upstream = moltis_common::http_client::upstream_proxy_url();
+        let upstream = chelix_common::http_client::upstream_proxy_url();
         let effective_proxy = self.proxy_url.as_deref().or(upstream);
         if let Some(url) = effective_proxy
             && let Ok(proxy) = reqwest::Proxy::all(url)

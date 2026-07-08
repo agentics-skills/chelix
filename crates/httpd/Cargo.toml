@@ -1,6 +1,6 @@
 [package]
 edition.workspace    = true
-name                 = "moltis-httpd"
+name                 = "chelix-httpd"
 repository.workspace = true
 version.workspace    = true
 
@@ -19,29 +19,29 @@ dashmap               = { workspace = true }
 futures               = { workspace = true }
 hostname              = { workspace = true }
 ipnet                 = { workspace = true }
-moltis-agents         = { workspace = true }
-moltis-auth           = { workspace = true }
-moltis-browser        = { workspace = true }
-moltis-channels       = { workspace = true }
-moltis-common         = { workspace = true }
-moltis-config         = { workspace = true }
-moltis-cron           = { workspace = true }
-moltis-gateway        = { workspace = true }
-moltis-graphql        = { optional = true, workspace = true }
-moltis-matrix         = { optional = true, workspace = true }
-moltis-metrics        = { optional = true, workspace = true }
-moltis-msteams        = { optional = true, workspace = true }
-moltis-portable       = { workspace = true }
-moltis-protocol       = { workspace = true }
-moltis-service-traits = { workspace = true }
-moltis-sessions       = { workspace = true }
-moltis-skills         = { workspace = true }
-moltis-slack          = { optional = true, workspace = true }
-moltis-telephony      = { optional = true, workspace = true }
-moltis-tls            = { optional = true, workspace = true }
-moltis-tools          = { workspace = true }
-moltis-vault          = { optional = true, workspace = true }
-moltis-webhooks       = { workspace = true }
+chelix-agents         = { workspace = true }
+chelix-auth           = { workspace = true }
+chelix-browser        = { workspace = true }
+chelix-channels       = { workspace = true }
+chelix-common         = { workspace = true }
+chelix-config         = { workspace = true }
+chelix-cron           = { workspace = true }
+chelix-gateway        = { workspace = true }
+chelix-graphql        = { optional = true, workspace = true }
+chelix-matrix         = { optional = true, workspace = true }
+chelix-metrics        = { optional = true, workspace = true }
+chelix-msteams        = { optional = true, workspace = true }
+chelix-portable       = { workspace = true }
+chelix-protocol       = { workspace = true }
+chelix-service-traits = { workspace = true }
+chelix-sessions       = { workspace = true }
+chelix-skills         = { workspace = true }
+chelix-slack          = { optional = true, workspace = true }
+chelix-telephony      = { optional = true, workspace = true }
+chelix-tls            = { optional = true, workspace = true }
+chelix-tools          = { workspace = true }
+chelix-vault          = { optional = true, workspace = true }
+chelix-webhooks       = { workspace = true }
 rand                  = { workspace = true }
 reqwest               = { workspace = true }
 rustls                = { optional = true, workspace = true }
@@ -83,33 +83,33 @@ default = [
   "voice",
   "web-ui",
 ]
-discord = ["moltis-gateway/discord"]
+discord = ["chelix-gateway/discord"]
 graphql = [
   "dep:async-graphql",
   "dep:async-graphql-axum",
-  "dep:moltis-graphql",
-  "moltis-gateway/graphql",
+  "dep:chelix-graphql",
+  "chelix-gateway/graphql",
 ]
-matrix = ["dep:moltis-matrix", "moltis-gateway/matrix"]
-mdns = ["moltis-gateway/mdns"]
-metrics = ["dep:moltis-metrics", "moltis-gateway/metrics"]
-msteams = ["dep:moltis-msteams", "moltis-gateway/msteams"]
-nostr = ["moltis-gateway/nostr"]
-prometheus = ["metrics", "moltis-gateway/prometheus"]
-push-notifications = ["dep:chrono", "moltis-gateway/push-notifications"]
-signal = ["moltis-gateway/signal"]
-slack = ["dep:moltis-slack", "moltis-gateway/slack"]
-telephony = ["dep:moltis-telephony", "moltis-gateway/telephony"]
-tls = ["dep:moltis-tls", "dep:rustls", "moltis-gateway/tls"]
-trusted-network = ["moltis-gateway/trusted-network"]
-vault = ["dep:moltis-vault", "moltis-gateway/vault"]
-voice = ["moltis-gateway/voice"]
-web-ui = ["moltis-gateway/web-ui"]
+matrix = ["dep:chelix-matrix", "chelix-gateway/matrix"]
+mdns = ["chelix-gateway/mdns"]
+metrics = ["dep:chelix-metrics", "chelix-gateway/metrics"]
+msteams = ["dep:chelix-msteams", "chelix-gateway/msteams"]
+nostr = ["chelix-gateway/nostr"]
+prometheus = ["metrics", "chelix-gateway/prometheus"]
+push-notifications = ["dep:chrono", "chelix-gateway/push-notifications"]
+signal = ["chelix-gateway/signal"]
+slack = ["dep:chelix-slack", "chelix-gateway/slack"]
+telephony = ["dep:chelix-telephony", "chelix-gateway/telephony"]
+tls = ["dep:chelix-tls", "dep:rustls", "chelix-gateway/tls"]
+trusted-network = ["chelix-gateway/trusted-network"]
+vault = ["dep:chelix-vault", "chelix-gateway/vault"]
+voice = ["chelix-gateway/voice"]
+web-ui = ["chelix-gateway/web-ui"]
 
 [dev-dependencies]
-moltis-code-index.workspace = true
-moltis-providers            = { workspace = true }
-moltis-web                  = { workspace = true }
+chelix-code-index.workspace = true
+chelix-providers            = { workspace = true }
+chelix-web                  = { workspace = true }
 serial_test                 = { workspace = true }
 sqlx                        = { workspace = true }
 

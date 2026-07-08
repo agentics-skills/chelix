@@ -9,7 +9,7 @@ use std::{
 
 use {
     matrix_sdk::encryption::recovery::IdentityResetHandle,
-    moltis_channels::{ChannelEventSink, message_log::MessageLog, otp::OtpState},
+    chelix_channels::{ChannelEventSink, message_log::MessageLog, otp::OtpState},
     tokio_util::sync::CancellationToken,
 };
 

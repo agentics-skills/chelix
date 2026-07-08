@@ -1,6 +1,6 @@
 use {
     super::*,
-    crate::schema::{KNOWN_PROVIDER_NAMES, MoltisConfig, ToolChoice},
+    crate::schema::{KNOWN_PROVIDER_NAMES, ChelixConfig, ToolChoice},
     secrecy::ExposeSecret,
     std::path::Path,
 };
@@ -124,7 +124,7 @@ pub(super) fn check_provider_names(
 }
 
 /// Run semantic checks on a successfully parsed config.
-pub(super) fn check_semantic_warnings(config: &MoltisConfig, diagnostics: &mut Vec<Diagnostic>) {
+pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut Vec<Diagnostic>) {
     let is_localhost = config.server.bind == "127.0.0.1"
         || config.server.bind == "localhost"
         || config.server.bind == "::1";
@@ -957,7 +957,7 @@ fn validate_context_window(value: Option<u32>, path: &str, diagnostics: &mut Vec
 ///
 /// API keys should be supplied via environment variables (e.g. `${{ANTHROPIC_API_KEY}}`)
 /// or stored in the credential store (`provider_keys.json`), not hard-coded in
-/// `moltis.toml`.  The config file may be backed up, synced, or accidentally
+/// `chelix.toml`.  The config file may be backed up, synced, or accidentally
 /// committed to version control.
 fn looks_like_env_var(value: &str) -> bool {
     // ${VAR} or $VAR (POSIX)
@@ -971,7 +971,7 @@ fn looks_like_env_var(value: &str) -> bool {
     false
 }
 
-fn check_plaintext_api_keys(config: &MoltisConfig, diagnostics: &mut Vec<Diagnostic>) {
+fn check_plaintext_api_keys(config: &ChelixConfig, diagnostics: &mut Vec<Diagnostic>) {
     // LLM provider keys
     for (name, entry) in &config.providers.providers {
         if let Some(ref key) = entry.api_key {
@@ -1064,7 +1064,7 @@ pub(super) fn check_file_references(
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     // Only check if we can parse the config
-    let Ok(config) = toml::from_str::<MoltisConfig>(toml_str) else {
+    let Ok(config) = toml::from_str::<ChelixConfig>(toml_str) else {
         return;
     };
 
@@ -1089,7 +1089,7 @@ pub(super) fn check_file_references(
     }
 
     // Agent preset MCP allow/deny server validation — warn on unknown server names.
-    // Merge servers from both moltis.toml [mcp.servers] and the persistent
+    // Merge servers from both chelix.toml [mcp.servers] and the persistent
     // mcp-servers.json registry file so we don't false-positive on servers
     // added via the API.
     let mut known_mcp_servers: std::collections::HashSet<String> = config

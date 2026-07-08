@@ -214,7 +214,7 @@ export function ConfigSection(): VNode {
 			.catch((fetchErr: Error) => {
 				let errMsg = fetchErr.message || "Network error";
 				if (errMsg.includes("pattern")) {
-					errMsg = "Failed to connect to server. Please check if moltis is running.";
+					errMsg = "Failed to connect to server. Please check if chelix is running.";
 				}
 				setErr(errMsg);
 				setConfigLoading(false);
@@ -297,7 +297,7 @@ export function ConfigSection(): VNode {
 
 	function onRestart(): void {
 		setRestarting(true);
-		setMsg("Restarting moltis...");
+		setMsg("Restarting chelix...");
 		setErr(null);
 		rerender();
 
@@ -337,7 +337,7 @@ export function ConfigSection(): VNode {
 						setTimeout(check, 1000);
 					} else {
 						setRestarting(false);
-						setErr("Server did not come back up. Check if moltis is running.");
+						setErr("Server did not come back up. Check if chelix is running.");
 						rerender();
 					}
 				})
@@ -346,7 +346,7 @@ export function ConfigSection(): VNode {
 						setTimeout(check, 1000);
 					} else {
 						setRestarting(false);
-						setErr("Server did not come back up. Check if moltis is running.");
+						setErr("Server did not come back up. Check if chelix is running.");
 						rerender();
 					}
 				});
@@ -417,7 +417,7 @@ export function ConfigSection(): VNode {
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
 			<h2 className="text-lg font-medium text-[var(--text-strong)]">Configuration</h2>
 			<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ maxWidth: "700px", margin: 0 }}>
-				Edit the full moltis configuration. This includes server, tools, LLM providers, auth, and all other settings.
+				Edit the full chelix configuration. This includes server, tools, LLM providers, auth, and all other settings.
 				Test your changes before saving. Changes require a restart to take effect.{" "}
 				<a
 					href="https://github.com/agentics-skills/chelix/blob/master/docs/src/configuration.md"

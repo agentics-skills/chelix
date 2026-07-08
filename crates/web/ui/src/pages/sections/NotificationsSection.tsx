@@ -199,7 +199,7 @@ export function NotificationsSection(): VNode {
 						Installation required
 					</p>
 					<p className="text-xs text-[var(--muted)]" style={{ margin: "8px 0 0" }}>
-						On Safari, push notifications are only available for installed apps. Add moltis to your Dock using{" "}
+						On Safari, push notifications are only available for installed apps. Add chelix to your Dock using{" "}
 						<strong>File {"\u2192"} Add to Dock</strong> (or Share {"\u2192"} Add to Dock on iOS), then open it from
 						there.
 					</p>

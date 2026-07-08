@@ -15,12 +15,12 @@ pub(super) struct CredentialEnvVarProvider {
 }
 
 #[async_trait]
-impl moltis_tools::command::EnvVarProvider for CredentialEnvVarProvider {
+impl chelix_tools::command::EnvVarProvider for CredentialEnvVarProvider {
     async fn get_env_vars(&self) -> Vec<(String, Secret<String>)> {
         let mut vars = match self.store.get_all_env_values().await {
             Ok(values) => values
                 .into_iter()
-                .filter(|(key, _)| !key.starts_with("__MOLTIS_"))
+                .filter(|(key, _)| !key.starts_with("__CHELIX_"))
                 .map(|(key, value)| (key, Secret::new(value)))
                 .collect(),
             Err(error) => {
@@ -30,11 +30,11 @@ impl moltis_tools::command::EnvVarProvider for CredentialEnvVarProvider {
         };
 
         if let Some(ref url) = self.gateway_url {
-            vars.push(("MOLTIS_GATEWAY_URL".into(), Secret::new(url.clone())));
+            vars.push(("CHELIX_GATEWAY_URL".into(), Secret::new(url.clone())));
         }
         if let Some(ref key) = self.sandbox_api_key {
             vars.push((
-                "MOLTIS_API_KEY".into(),
+                "CHELIX_API_KEY".into(),
                 Secret::new(key.expose_secret().clone()),
             ));
         }
@@ -45,7 +45,7 @@ impl moltis_tools::command::EnvVarProvider for CredentialEnvVarProvider {
 
 pub(super) async fn ensure_sandbox_api_key(store: &auth::CredentialStore) -> Option<String> {
     if let Ok(vals) = store.get_all_env_values().await
-        && let Some((_, key)) = vals.iter().find(|(k, _)| k == "__MOLTIS_SANDBOX_API_KEY")
+        && let Some((_, key)) = vals.iter().find(|(k, _)| k == "__CHELIX_SANDBOX_API_KEY")
     {
         return Some(key.clone());
     }
@@ -54,12 +54,12 @@ pub(super) async fn ensure_sandbox_api_key(store: &auth::CredentialStore) -> Opt
     match store.create_api_key("sandbox-ctl", Some(&scopes)).await {
         Ok((_id, raw_key)) => {
             if let Err(e) = store
-                .set_env_var("__MOLTIS_SANDBOX_API_KEY", &raw_key)
+                .set_env_var("__CHELIX_SANDBOX_API_KEY", &raw_key)
                 .await
             {
                 warn!(error = %e, "failed to persist sandbox API key");
             }
-            info!("created sandbox-ctl API key for moltis-ctl");
+            info!("created sandbox-ctl API key for chelix-ctl");
             Some(raw_key)
         },
         Err(e) => {

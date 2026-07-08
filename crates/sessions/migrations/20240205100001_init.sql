@@ -1,6 +1,6 @@
 -- Sessions table schema
--- Owned by: moltis-sessions crate
--- Depends on: moltis-projects (sessions.project_id references projects.id)
+-- Owned by: chelix-sessions crate
+-- Depends on: chelix-projects (sessions.project_id references projects.id)
 
 CREATE TABLE IF NOT EXISTS sessions (
     key             TEXT    PRIMARY KEY,

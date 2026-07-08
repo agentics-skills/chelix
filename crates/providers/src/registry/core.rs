@@ -10,12 +10,12 @@ use std::{
 };
 
 use {
-    moltis_config::schema::{ProviderStreamTransport, ProvidersConfig},
+    chelix_config::schema::{ProviderStreamTransport, ProvidersConfig},
     secrecy::ExposeSecret,
     tokio_stream::Stream,
 };
 
-use moltis_agents::model::{AgentToolControls, ChatMessage, LlmProvider, StreamEvent};
+use chelix_agents::model::{AgentToolControls, ChatMessage, LlmProvider, StreamEvent};
 
 #[allow(unused_imports)]
 use crate::{
@@ -59,7 +59,7 @@ impl LlmProvider for RegistryModelProvider {
         &self,
         messages: &[ChatMessage],
         tools: &[serde_json::Value],
-    ) -> anyhow::Result<moltis_agents::model::CompletionResponse> {
+    ) -> anyhow::Result<chelix_agents::model::CompletionResponse> {
         self.inner.complete(messages, tools).await
     }
 
@@ -68,7 +68,7 @@ impl LlmProvider for RegistryModelProvider {
         messages: &[ChatMessage],
         tools: &[serde_json::Value],
         options: &AgentToolControls,
-    ) -> anyhow::Result<moltis_agents::model::CompletionResponse> {
+    ) -> anyhow::Result<chelix_agents::model::CompletionResponse> {
         self.inner
             .complete_with_options(messages, tools, options)
             .await
@@ -78,7 +78,7 @@ impl LlmProvider for RegistryModelProvider {
         self.inner.supports_tools()
     }
 
-    fn tool_mode(&self) -> Option<moltis_config::ToolMode> {
+    fn tool_mode(&self) -> Option<chelix_config::ToolMode> {
         self.inner.tool_mode()
     }
 
@@ -115,13 +115,13 @@ impl LlmProvider for RegistryModelProvider {
             .stream_with_tools_and_options(messages, tools, options)
     }
 
-    fn reasoning_effort(&self) -> Option<moltis_agents::model::ReasoningEffort> {
+    fn reasoning_effort(&self) -> Option<chelix_agents::model::ReasoningEffort> {
         self.inner.reasoning_effort()
     }
 
     fn with_reasoning_effort(
         self: Arc<Self>,
-        effort: moltis_agents::model::ReasoningEffort,
+        effort: chelix_agents::model::ReasoningEffort,
     ) -> Option<Arc<dyn LlmProvider>> {
         let new_inner = Arc::clone(&self.inner).with_reasoning_effort(effort)?;
         Some(Arc::new(RegistryModelProvider {
@@ -690,7 +690,7 @@ impl ProviderRegistry {
         base_url: &str,
         provider_label: &str,
         alias: Option<String>,
-        cache_retention: moltis_config::CacheRetention,
+        cache_retention: chelix_config::CacheRetention,
         provider_cw_overrides: HashMap<String, u32>,
     ) -> usize {
         let mut added = 0usize;
@@ -743,7 +743,7 @@ impl ProviderRegistry {
         base_url: &str,
         provider_label: &str,
         alias: Option<String>,
-        cache_retention: moltis_config::CacheRetention,
+        cache_retention: chelix_config::CacheRetention,
         provider_cw_overrides: HashMap<String, u32>,
     ) -> usize {
         let global = self.global_cw_overrides.clone();

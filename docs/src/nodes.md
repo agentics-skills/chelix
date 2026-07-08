@@ -1,6 +1,6 @@
 # Multi-Node
 
-Moltis can distribute work across multiple machines. A **node** is a remote
+Chelix can distribute work across multiple machines. A **node** is a remote
 device that connects to your gateway and executes commands on your behalf.
 This lets the AI agent run shell commands on a Linux server, query a Raspberry
 Pi, or leverage a GPU machine — all from a single chat session.
@@ -9,19 +9,19 @@ Pi, or leverage a GPU machine — all from a single chat session.
 
 ```
 ┌──────────────┐    WebSocket     ┌─────────────────┐
-│  Your laptop │◄────────────────►│  Moltis gateway  │
-│  (browser)   │                  │  (moltis)        │
+│  Your laptop │◄────────────────►│  Chelix gateway  │
+│  (browser)   │                  │  (chelix)        │
 └──────────────┘                  └────────┬─────────┘
                                            │ WebSocket
                                   ┌────────▼─────────┐
                                   │  Remote machine   │
-                                  │  (moltis node)    │
+                                  │  (chelix node)    │
                                   └──────────────────┘
 ```
 
 1. The gateway runs on your primary machine (or a server).
 2. On the gateway, briefly enable node pairing.
-3. On the remote machine, run `moltis node add` to register it with the gateway.
+3. On the remote machine, run `chelix node add` to register it with the gateway.
 4. The gateway authenticates the node using **Ed25519 challenge-response** (TOFU
    model).
 5. Once connected, the agent can execute commands on the node, query its
@@ -42,12 +42,12 @@ connection spam. Open the pairing window only while adding a node.
 
 1. On the gateway, enable pairing:
    ```bash
-   moltis node pairing enable
+   chelix node pairing enable
    ```
 
 2. On the remote machine:
    ```bash
-   moltis node add --host ws://your-gateway:9090/ws --name "Build Server"
+   chelix node add --host ws://your-gateway:9090/ws --name "Build Server"
    ```
    The node prints its fingerprint and waits for approval.
 
@@ -56,8 +56,8 @@ connection spam. Open the pairing window only while adding a node.
      click **Approve**.
    - **CLI** (headless gateways):
      ```bash
-     moltis node pending                 # list pending requests
-     moltis node approve <request-id>    # approve by ID
+     chelix node pending                 # list pending requests
+     chelix node approve <request-id>    # approve by ID
      ```
 
 4. The gateway sends a challenge nonce, the node signs it, and authentication
@@ -65,7 +65,7 @@ connection spam. Open the pairing window only while adding a node.
 
 5. Disable new pairing requests:
    ```bash
-   moltis node pairing disable
+   chelix node pairing disable
    ```
 
 ## Adding a Node
@@ -73,16 +73,16 @@ connection spam. Open the pairing window only while adding a node.
 On the remote machine, register it as a node:
 
 ```bash
-moltis node add --host ws://your-gateway:9090/ws --name "Build Server"
+chelix node add --host ws://your-gateway:9090/ws --name "Build Server"
 ```
 
-This saves the connection parameters to `~/.moltis/node.json` and installs an
+This saves the connection parameters to `~/.chelix/node.json` and installs an
 OS service that starts on boot and reconnects on failure:
 
 | Platform | Service file |
 |----------|-------------|
-| macOS | `~/Library/LaunchAgents/org.moltis.node.plist` |
-| Linux | `~/.config/systemd/user/moltis-node.service` |
+| macOS | `~/Library/LaunchAgents/org.chelix.node.plist` |
+| Linux | `~/.config/systemd/user/chelix-node.service` |
 
 Options:
 
@@ -95,7 +95,7 @@ Options:
 | `--timeout` | Max command timeout in seconds | `300` |
 | `--foreground` | Run in the terminal instead of installing a service | off |
 
-You can also set `MOLTIS_GATEWAY_URL` as an environment variable instead of
+You can also set `CHELIX_GATEWAY_URL` as an environment variable instead of
 passing `--host`.
 
 ### Foreground mode
@@ -104,7 +104,7 @@ For debugging or one-off use, pass `--foreground` to run the node in the
 current terminal session instead of installing a service:
 
 ```bash
-moltis node add --host ws://your-gateway:9090/ws --name "Build Server" --foreground
+chelix node add --host ws://your-gateway:9090/ws --name "Build Server" --foreground
 ```
 
 Press `Ctrl+C` to disconnect.
@@ -114,16 +114,16 @@ Press `Ctrl+C` to disconnect.
 To disconnect this machine and remove the background service:
 
 ```bash
-moltis node remove
+chelix node remove
 ```
 
 This stops the service, removes the service file, and deletes the saved
-configuration from `~/.moltis/node.json`.
+configuration from `~/.chelix/node.json`.
 
 ## Checking Status
 
 ```bash
-moltis node status
+chelix node status
 ```
 
 Shows the gateway URL, display name, and whether the background service is
@@ -132,7 +132,7 @@ running.
 ## Node Fingerprint
 
 ```bash
-moltis node fingerprint
+chelix node fingerprint
 ```
 
 Prints the Ed25519 public key fingerprint (`SHA256:<base64>`) for this node.
@@ -141,9 +141,9 @@ Use this to verify the key shown in the gateway UI during pairing.
 ## Logs
 
 ```bash
-moltis node logs
+chelix node logs
 # Tail the log:
-tail -f $(moltis node logs)
+tail -f $(chelix node logs)
 ```
 
 ## Selecting a Node in Chat
@@ -152,7 +152,7 @@ Once a node is connected, you can target it from a chat session:
 
 - **UI dropdown**: The chat toolbar shows a node selector next to the model
   picker. Select a node to route all `execute_command` commands to it. Select "Local" to
-  revert to local execution. When `tools.execute_command.host = "ssh"`, Moltis also shows
+  revert to local execution. When `tools.execute_command.host = "ssh"`, Chelix also shows
   either the configured SSH target from `tools.execute_command.ssh_target` or any
   managed SSH targets you created in **Settings → SSH** as first-class
   execution options.
@@ -195,7 +195,7 @@ Managed SSH targets now support:
 The Nodes page also includes a **Remote Command Status** panel that acts like a
 lightweight doctor:
 
-- shows whether Moltis is currently configured for `local`, `node`, or `ssh`
+- shows whether Chelix is currently configured for `local`, `node`, or `ssh`
 - reports paired-node inventory and managed SSH inventory
 - flags obvious misconfigurations, such as `tools.execute_command.host = "ssh"` with no
   active target or a managed key that cannot be decrypted because the vault is
@@ -205,7 +205,7 @@ lightweight doctor:
   doctor panel
 - lets you test the active SSH route without leaving the page
 
-The CLI now mirrors the basic setup view with `moltis doctor`, including:
+The CLI now mirrors the basic setup view with `chelix doctor`, including:
 
 - active remote command backend (`local`, `node`, or `ssh`)
 - SSH client discovery and version
@@ -216,19 +216,19 @@ The CLI now mirrors the basic setup view with `moltis doctor`, including:
 
 | Command | Description |
 |---------|-------------|
-| `moltis node add --host <url>` | Join this machine to a gateway as a node |
-| `moltis node add ... --foreground` | Run in the terminal instead of installing a service |
-| `moltis node fingerprint` | Print this node's Ed25519 fingerprint |
-| `moltis node list` | List all connected nodes |
-| `moltis node pairing status` | Show whether new node pairing requests are accepted |
-| `moltis node pairing enable` | Enable new node pairing requests |
-| `moltis node pairing disable` | Disable new node pairing requests |
-| `moltis node pending` | List pending pairing requests |
-| `moltis node approve <id>` | Approve a pending pairing request |
-| `moltis node reject <id>` | Reject a pending pairing request |
-| `moltis node remove` | Disconnect this machine and remove the service |
-| `moltis node status` | Show connection info and service status |
-| `moltis node logs` | Print log file path |
+| `chelix node add --host <url>` | Join this machine to a gateway as a node |
+| `chelix node add ... --foreground` | Run in the terminal instead of installing a service |
+| `chelix node fingerprint` | Print this node's Ed25519 fingerprint |
+| `chelix node list` | List all connected nodes |
+| `chelix node pairing status` | Show whether new node pairing requests are accepted |
+| `chelix node pairing enable` | Enable new node pairing requests |
+| `chelix node pairing disable` | Disable new node pairing requests |
+| `chelix node pending` | List pending pairing requests |
+| `chelix node approve <id>` | Approve a pending pairing request |
+| `chelix node reject <id>` | Reject a pending pairing request |
+| `chelix node remove` | Disconnect this machine and remove the service |
+| `chelix node status` | Show connection info and service status |
+| `chelix node logs` | Print log file path |
 
 ## Security
 
@@ -248,7 +248,7 @@ Trust On First Use model as SSH:
 - **Re-keying**: If a node legitimately needs a new key (e.g., after a disk
   wipe), revoke the old device from the Nodes page, then re-pair.
 
-The private key (`~/.moltis/node_key`) is stored with mode 0600. The gateway
+The private key (`~/.chelix/node_key`) is stored with mode 0600. The gateway
 only stores the public key. No shared secret crosses the wire.
 
 ### General

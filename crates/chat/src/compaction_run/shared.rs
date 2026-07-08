@@ -5,8 +5,8 @@
 //! shared code gets its own focused tests.
 
 use {
-    moltis_config::CompactionConfig,
-    moltis_sessions::{MessageContent, PersistedMessage},
+    chelix_config::CompactionConfig,
+    chelix_sessions::{MessageContent, PersistedMessage},
     serde_json::Value,
 };
 

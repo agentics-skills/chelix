@@ -8,7 +8,7 @@ use {
     tracing::{debug, warn},
 };
 
-use moltis_channels::{
+use chelix_channels::{
     Error as ChannelError, Result as ChannelResult,
     plugin::{
         ButtonStyle, ChannelOutbound, ChannelStreamOutbound, ChannelThreadContext,
@@ -16,7 +16,7 @@ use moltis_channels::{
     },
 };
 
-use moltis_common::types::ReplyPayload;
+use chelix_common::types::ReplyPayload;
 
 use crate::{
     config::StreamMode,
@@ -111,7 +111,7 @@ impl SlackOutbound {
         stream: &mut StreamReceiver,
     ) -> ChannelResult<()> {
         let bot_token = self.get_bot_token(account_id)?;
-        let http = moltis_common::http_client::build_default_http_client();
+        let http = chelix_common::http_client::build_default_http_client();
         let throttle = self.get_edit_throttle(account_id);
 
         let stream_id = start_native_stream(&http, &bot_token, to, thread_ts).await?;
@@ -464,9 +464,9 @@ impl ChannelOutbound for SlackOutbound {
         }
 
         #[cfg(feature = "metrics")]
-        moltis_metrics::counter!(
-            moltis_metrics::channels::MESSAGES_SENT_TOTAL,
-            moltis_metrics::labels::CHANNEL => "slack"
+        chelix_metrics::counter!(
+            chelix_metrics::channels::MESSAGES_SENT_TOTAL,
+            chelix_metrics::labels::CHANNEL => "slack"
         )
         .increment(1);
 

@@ -816,7 +816,7 @@ function syncModelComboLabel(): void {
 
 function resolveInitialSessionKey(sessionKeyFromUrl: string | null): string {
 	if (sessionKeyFromUrl) return sessionKeyFromUrl;
-	const sk = localStorage.getItem("moltis-session") || "main";
+	const sk = localStorage.getItem("chelix-session") || "main";
 	history.replaceState(null, "", sessionPath(sk));
 	return sk;
 }

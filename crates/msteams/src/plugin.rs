@@ -9,7 +9,7 @@ use {
     tracing::{debug, info, warn},
 };
 
-use moltis_channels::{
+use chelix_channels::{
     ChannelConfigView, ChannelEvent, ChannelEventSink, Error as ChannelError,
     Result as ChannelResult,
     gating::{DmPolicy, GroupPolicy, is_allowed},
@@ -304,9 +304,9 @@ impl MsTeamsPlugin {
         };
         let mention_allowed = if is_group {
             match effective_mention_mode {
-                moltis_channels::gating::MentionMode::Always => true,
-                moltis_channels::gating::MentionMode::Mention => activity.bot_is_mentioned(),
-                moltis_channels::gating::MentionMode::None => false,
+                chelix_channels::gating::MentionMode::Always => true,
+                chelix_channels::gating::MentionMode::Mention => activity.bot_is_mentioned(),
+                chelix_channels::gating::MentionMode::None => false,
             }
         } else {
             true
@@ -362,7 +362,7 @@ impl MsTeamsPlugin {
                 set.insert(chat_id.clone())
             };
             if is_new {
-                let bot_name = config.bot_name.as_deref().unwrap_or("Moltis");
+                let bot_name = config.bot_name.as_deref().unwrap_or("Chelix");
                 let card = cards::build_welcome_card(bot_name, &config.prompt_starters);
                 let card_activity = cards::card_activity(card, None);
                 if let Err(e) = self
@@ -413,24 +413,24 @@ impl MsTeamsPlugin {
             // buttons instead of plain text.  Each button uses `imBack` so
             // clicking it sends "/{cmd} {value}" back as a regular message.
             if is_bare
-                && let Some(def) = moltis_channels::commands::all_commands()
+                && let Some(def) = chelix_channels::commands::all_commands()
                     .iter()
                     .find(|c| c.name == cmd_name)
                 && let Some(arg) = &def.arg
                 && !arg.choices.is_empty()
             {
-                let rows: Vec<moltis_channels::ButtonRow> = arg
+                let rows: Vec<chelix_channels::ButtonRow> = arg
                     .choices
                     .iter()
                     .map(|&(label, value)| {
-                        vec![moltis_channels::InteractiveButton {
+                        vec![chelix_channels::InteractiveButton {
                             label: label.to_string(),
                             callback_data: format!("/{cmd_name} {value}"),
-                            style: moltis_channels::ButtonStyle::Default,
+                            style: chelix_channels::ButtonStyle::Default,
                         }]
                     })
                     .collect();
-                let card = moltis_channels::InteractiveMessage {
+                let card = chelix_channels::InteractiveMessage {
                     text: format!("/{cmd_name}:"),
                     button_rows: rows,
                     replace_message_id: None,
@@ -497,9 +497,9 @@ impl MsTeamsPlugin {
         }
 
         #[cfg(feature = "metrics")]
-        moltis_metrics::counter!(
-            moltis_metrics::channels::MESSAGES_RECEIVED_TOTAL,
-            moltis_metrics::labels::CHANNEL => "msteams"
+        chelix_metrics::counter!(
+            chelix_metrics::channels::MESSAGES_RECEIVED_TOTAL,
+            chelix_metrics::labels::CHANNEL => "msteams"
         )
         .increment(1);
 
@@ -555,7 +555,7 @@ impl MsTeamsPlugin {
 
         // Send welcome card/text.
         if is_group && config.group_welcome_card {
-            let bot_name = config.bot_name.as_deref().unwrap_or("Moltis");
+            let bot_name = config.bot_name.as_deref().unwrap_or("Chelix");
             let text = cards::build_group_welcome_text(bot_name);
             if let Err(e) = self
                 .outbound
@@ -570,7 +570,7 @@ impl MsTeamsPlugin {
                 set.insert(chat_id.to_string())
             };
             if is_new {
-                let bot_name = config.bot_name.as_deref().unwrap_or("Moltis");
+                let bot_name = config.bot_name.as_deref().unwrap_or("Chelix");
                 let card = cards::build_welcome_card(bot_name, &config.prompt_starters);
                 let card_activity = cards::card_activity(card, None);
                 if let Err(e) = self
@@ -665,7 +665,7 @@ impl ChannelPlugin for MsTeamsPlugin {
             ));
         }
 
-        let http = moltis_common::http_client::build_default_http_client();
+        let http = chelix_common::http_client::build_default_http_client();
 
         // Create JWT validator if tenant_id is configured.
         let jwt_validator = if !cfg.app_id.is_empty() {
@@ -770,7 +770,7 @@ impl ChannelPlugin for MsTeamsPlugin {
     fn channel_webhook_verifier(
         &self,
         account_id: &str,
-    ) -> Option<Box<dyn moltis_channels::channel_webhook_middleware::ChannelWebhookVerifier>> {
+    ) -> Option<Box<dyn chelix_channels::channel_webhook_middleware::ChannelWebhookVerifier>> {
         let accounts = self.accounts.read().unwrap_or_else(|e| e.into_inner());
         let state = accounts.get(account_id)?;
         Some(Box::new(
@@ -875,7 +875,7 @@ impl ChannelStatus for MsTeamsPlugin {
 mod tests {
     use {
         super::*,
-        moltis_channels::{InboundMode, plugin::ChannelType},
+        chelix_channels::{InboundMode, plugin::ChannelType},
     };
 
     #[test]

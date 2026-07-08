@@ -1,6 +1,6 @@
 # Frontend Architecture
 
-The moltis web UI is a TypeScript single-page application built with
+The chelix web UI is a TypeScript single-page application built with
 [Preact](https://preactjs.com/) and [Vite](https://vite.dev/).
 
 ## Directory Layout
@@ -130,15 +130,15 @@ Reusable components in `components/forms/`:
 
 ## Asset Serving
 
-The Rust `moltis-web` crate serves assets with three-tier resolution:
+The Rust `chelix-web` crate serves assets with three-tier resolution:
 
-1. **Dev filesystem** — `MOLTIS_ASSETS_DIR` env var or auto-detected
+1. **Dev filesystem** — `CHELIX_ASSETS_DIR` env var or auto-detected
    from the crate source tree (`cargo run` dev mode)
 2. **External share dir** — `share_dir()/web/` for packaged deployments
 3. **Embedded fallback** — `include_dir!` compiled into the binary
 
 HTML templates are rendered by [Askama](https://github.com/djc/askama)
-with server-injected data (`window.__MOLTIS__`, the "gon" pattern).
+with server-injected data (`window.__CHELIX__`, the "gon" pattern).
 
 ## E2E Test Compatibility
 
@@ -147,7 +147,7 @@ E2E tests dynamically import individual JS modules (e.g.,
 With Vite bundling, individual modules don't exist as standalone files.
 
 **Shim layer**: small proxy files in `src/assets/js/` re-export from
-`window.__moltis_modules` (populated by `app.tsx` at startup). This
+`window.__chelix_modules` (populated by `app.tsx` at startup). This
 lets tests import modules at their original paths without changes.
 
 The shims are only loaded by E2E tests, never by the production app.

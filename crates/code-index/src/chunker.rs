@@ -1,9 +1,9 @@
 //! Code chunking for embedding.
 //!
-//! Uses AST-aware splitting via `moltis-splitter` when a tree-sitter grammar is available
+//! Uses AST-aware splitting via `chelix-splitter` when a tree-sitter grammar is available
 //! for the file extension, falling back to line-based splitting otherwise.
 
-use {crate::store::CodeChunk, moltis_splitter::Chunk};
+use {crate::store::CodeChunk, chelix_splitter::Chunk};
 
 /// Configuration for code chunking.
 #[derive(Debug, Clone)]
@@ -33,7 +33,7 @@ pub fn chunk(
     config: &ChunkerConfig,
 ) -> Vec<CodeChunk> {
     let splitter_chunks =
-        moltis_splitter::chunk_content(content, config.chunk_size, config.chunk_overlap, extension);
+        chelix_splitter::chunk_content(content, config.chunk_size, config.chunk_overlap, extension);
 
     splitter_chunks
         .into_iter()

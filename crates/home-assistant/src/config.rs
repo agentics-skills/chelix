@@ -2,7 +2,7 @@
 
 use crate::error::{Error, Result};
 
-pub use moltis_config::{HomeAssistantAccountConfig, HomeAssistantConfig};
+pub use chelix_config::{HomeAssistantAccountConfig, HomeAssistantConfig};
 
 /// Resolve which HA instance to use, returning an error if unavailable.
 ///

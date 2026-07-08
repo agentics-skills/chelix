@@ -1,6 +1,6 @@
 use std::error::Error as StdError;
 
-use moltis_common::FromMessage;
+use chelix_common::FromMessage;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -52,4 +52,4 @@ impl FromMessage for Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-moltis_common::impl_context!();
+chelix_common::impl_context!();

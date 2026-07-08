@@ -5,12 +5,12 @@ pub(super) struct FinalizeGatewayArgs<'a> {
     pub port: u16,
     pub tls_enabled_for_gateway: bool,
     pub state: Arc<GatewayState>,
-    pub browser_for_lifecycle: Arc<dyn moltis_gateway::services::BrowserService>,
-    pub browser_tool_for_warmup: Option<Arc<dyn moltis_agents::tool_registry::AgentTool>>,
-    pub sandbox_router: Arc<moltis_tools::sandbox::SandboxRouter>,
-    pub cron_service: Arc<moltis_cron::service::CronService>,
-    pub log_buffer: Option<moltis_gateway::logs::LogBuffer>,
-    pub config: moltis_config::schema::MoltisConfig,
+    pub browser_for_lifecycle: Arc<dyn chelix_gateway::services::BrowserService>,
+    pub browser_tool_for_warmup: Option<Arc<dyn chelix_agents::tool_registry::AgentTool>>,
+    pub sandbox_router: Arc<chelix_tools::sandbox::SandboxRouter>,
+    pub cron_service: Arc<chelix_cron::service::CronService>,
+    pub log_buffer: Option<chelix_gateway::logs::LogBuffer>,
+    pub config: chelix_config::schema::ChelixConfig,
     pub data_dir: PathBuf,
     pub provider_summary: String,
     pub mcp_configured_count: usize,
@@ -18,22 +18,22 @@ pub(super) struct FinalizeGatewayArgs<'a> {
     pub setup_code_display: Option<String>,
     pub webauthn_registry: Option<SharedWebAuthnRegistry>,
     #[cfg(feature = "trusted-network")]
-    pub audit_buffer_for_broadcast: Option<moltis_gateway::network_audit::NetworkAuditBuffer>,
+    pub audit_buffer_for_broadcast: Option<chelix_gateway::network_audit::NetworkAuditBuffer>,
     #[cfg(feature = "trusted-network")]
     pub _proxy_shutdown_tx: Option<tokio::sync::watch::Sender<bool>>,
     pub app: Router,
 }
 #[cfg(feature = "mdns")]
-pub(super) fn instance_slug(config: &moltis_config::MoltisConfig) -> String {
+pub(super) fn instance_slug(config: &chelix_config::ChelixConfig) -> String {
     let mut raw_name = config.identity.name.clone();
-    if let Some(file_identity) = moltis_config::load_identity()
+    if let Some(file_identity) = chelix_config::load_identity()
         && file_identity.name.is_some()
     {
         raw_name = file_identity.name;
     }
 
     let base = raw_name
-        .unwrap_or_else(|| "moltis".to_string())
+        .unwrap_or_else(|| "chelix".to_string())
         .to_lowercase();
     let mut out = String::new();
     let mut last_dash = false;
@@ -55,7 +55,7 @@ pub(super) fn instance_slug(config: &moltis_config::MoltisConfig) -> String {
     }
     let out = out.trim_matches('-').to_string();
     if out.is_empty() {
-        "moltis".to_string()
+        "chelix".to_string()
     } else {
         out
     }
@@ -112,7 +112,7 @@ pub(super) async fn finalize_prepared_gateway(
         } else if tls_config.auto_generate {
             // Auto-generate certificates.
             let mgr =
-                moltis_tls::FsCertManager::new().map_err(|e| crate::Error::Tls(e.to_string()))?;
+                chelix_tls::FsCertManager::new().map_err(|e| crate::Error::Tls(e.to_string()))?;
             let mut runtime_sans = tls_runtime_sans(bind);
             runtime_sans.extend(
                 tls_configured_sans(tls_config.public_ip.as_deref())
@@ -142,7 +142,7 @@ pub(super) async fn finalize_prepared_gateway(
                                 ("content-type", "application/x-pem-file"),
                                 (
                                     "content-disposition",
-                                    "attachment; filename=\"moltis-ca.pem\"",
+                                    "attachment; filename=\"chelix-ca.pem\"",
                                 ),
                             ],
                             data.as_ref().clone(),
@@ -234,7 +234,7 @@ pub(super) async fn finalize_prepared_gateway(
                                 entry.channel_binding
                             {
                                 if let Ok(target) = serde_json::from_str::<
-                                    moltis_channels::ChannelReplyTarget,
+                                    chelix_channels::ChannelReplyTarget,
                                 >(binding_json)
                                 {
                                     metadata
@@ -308,7 +308,7 @@ pub(super) async fn finalize_prepared_gateway(
     let releases_url = resolve_releases_url(config.server.update_releases_url.as_deref());
     tokio::spawn(async move {
         let client = match reqwest::Client::builder()
-            .user_agent(format!("moltis-gateway/{}", update_state.version))
+            .user_agent(format!("chelix-gateway/{}", update_state.version))
             .timeout(std::time::Duration::from_secs(12))
             .build()
         {
@@ -351,7 +351,7 @@ pub(super) async fn finalize_prepared_gateway(
         let server_start = std::time::Instant::now();
         tokio::spawn(async move {
             enum MetricsPersistJob {
-                Save(moltis_gateway::state::MetricsHistoryPoint),
+                Save(chelix_gateway::state::MetricsHistoryPoint),
                 CleanupBefore(u64),
             }
 
@@ -418,7 +418,7 @@ pub(super) async fn finalize_prepared_gateway(
                 interval.tick().await;
                 if let Some(ref handle) = metrics_state.metrics_handle {
                     // Update gauges that are derived from server state, not events.
-                    moltis_metrics::gauge!(moltis_metrics::system::UPTIME_SECONDS)
+                    chelix_metrics::gauge!(chelix_metrics::system::UPTIME_SECONDS)
                         .set(server_start.elapsed().as_secs_f64());
                     let session_count = metrics_state
                         .client_registry
@@ -426,11 +426,11 @@ pub(super) async fn finalize_prepared_gateway(
                         .await
                         .active_sessions
                         .len() as f64;
-                    moltis_metrics::gauge!(moltis_metrics::session::ACTIVE).set(session_count);
+                    chelix_metrics::gauge!(chelix_metrics::session::ACTIVE).set(session_count);
 
                     let prometheus_text = handle.render();
                     let snapshot =
-                        moltis_metrics::MetricsSnapshot::from_prometheus_text(&prometheus_text);
+                        chelix_metrics::MetricsSnapshot::from_prometheus_text(&prometheus_text);
                     sys.refresh_memory();
                     if let Some(pid) = pid {
                         sys.refresh_processes_specifics(
@@ -450,7 +450,7 @@ pub(super) async fn finalize_prepared_gateway(
                         .by_provider
                         .iter()
                         .map(|(name, metrics)| {
-                            (name.clone(), moltis_metrics::ProviderTokens {
+                            (name.clone(), chelix_metrics::ProviderTokens {
                                 input_tokens: metrics.input_tokens,
                                 output_tokens: metrics.output_tokens,
                                 completions: metrics.completions,
@@ -459,7 +459,7 @@ pub(super) async fn finalize_prepared_gateway(
                         })
                         .collect();
 
-                    let point = moltis_gateway::state::MetricsHistoryPoint {
+                    let point = chelix_gateway::state::MetricsHistoryPoint {
                         timestamp: std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -496,7 +496,7 @@ pub(super) async fn finalize_prepared_gateway(
                     }
 
                     // Broadcast metrics update to all connected clients.
-                    let payload = moltis_gateway::state::MetricsUpdatePayload { snapshot, point };
+                    let payload = chelix_gateway::state::MetricsUpdatePayload { snapshot, point };
                     if let Ok(payload_json) = serde_json::to_value(&payload) {
                         broadcast(
                             &metrics_state,
@@ -540,7 +540,7 @@ pub(super) async fn finalize_prepared_gateway(
                 match event_rx.recv().await {
                     Ok(event) => {
                         let (event_name, payload) = match event {
-                            moltis_tools::sandbox::SandboxEvent::Preparing {
+                            chelix_tools::sandbox::SandboxEvent::Preparing {
                                 session_key,
                                 backend,
                                 image,
@@ -553,7 +553,7 @@ pub(super) async fn finalize_prepared_gateway(
                                     "image": image,
                                 }),
                             ),
-                            moltis_tools::sandbox::SandboxEvent::Prepared {
+                            chelix_tools::sandbox::SandboxEvent::Prepared {
                                 session_key,
                                 backend,
                                 image,
@@ -566,7 +566,7 @@ pub(super) async fn finalize_prepared_gateway(
                                     "image": image,
                                 }),
                             ),
-                            moltis_tools::sandbox::SandboxEvent::PrepareFailed {
+                            chelix_tools::sandbox::SandboxEvent::PrepareFailed {
                                 session_key,
                                 backend,
                                 image,
@@ -581,7 +581,7 @@ pub(super) async fn finalize_prepared_gateway(
                                     "error": error,
                                 }),
                             ),
-                            moltis_tools::sandbox::SandboxEvent::Provisioning {
+                            chelix_tools::sandbox::SandboxEvent::Provisioning {
                                 container,
                                 packages,
                             } => (
@@ -592,14 +592,14 @@ pub(super) async fn finalize_prepared_gateway(
                                     "packages": packages,
                                 }),
                             ),
-                            moltis_tools::sandbox::SandboxEvent::Provisioned { container } => (
+                            chelix_tools::sandbox::SandboxEvent::Provisioned { container } => (
                                 "sandbox.image.provision",
                                 serde_json::json!({
                                     "phase": "done",
                                     "container": container,
                                 }),
                             ),
-                            moltis_tools::sandbox::SandboxEvent::ProvisionFailed {
+                            chelix_tools::sandbox::SandboxEvent::ProvisionFailed {
                                 container,
                                 error,
                             } => (
@@ -684,7 +684,7 @@ pub(super) async fn finalize_prepared_gateway(
     // Upsert the built-in heartbeat job from config.
     // Use a fixed ID so run history persists across restarts.
     {
-        use moltis_cron::{
+        use chelix_cron::{
             heartbeat::{
                 DEFAULT_INTERVAL_MS, HeartbeatPromptSource, parse_interval_ms,
                 resolve_heartbeat_prompt,
@@ -695,7 +695,7 @@ pub(super) async fn finalize_prepared_gateway(
 
         let hb = &config.heartbeat;
         let interval_ms = parse_interval_ms(&hb.every).unwrap_or(DEFAULT_INTERVAL_MS);
-        let heartbeat_md = moltis_config::load_heartbeat_md();
+        let heartbeat_md = chelix_config::load_heartbeat_md();
         let (prompt, prompt_source) =
             resolve_heartbeat_prompt(hb.prompt.as_deref(), heartbeat_md.as_deref());
         if prompt_source == HeartbeatPromptSource::HeartbeatMd {
@@ -740,7 +740,7 @@ pub(super) async fn finalize_prepared_gateway(
                         to: hb.to.clone(),
                     }),
                     enabled: Some(true),
-                    sandbox: Some(moltis_cron::types::CronSandboxConfig {
+                    sandbox: Some(chelix_cron::types::CronSandboxConfig {
                         enabled: hb.sandbox_enabled,
                         image: hb.sandbox_image.clone(),
                         auto_prune_container: None,
@@ -774,12 +774,12 @@ pub(super) async fn finalize_prepared_gateway(
                     delete_after_run: false,
                     enabled: true,
                     system: true,
-                    sandbox: moltis_cron::types::CronSandboxConfig {
+                    sandbox: chelix_cron::types::CronSandboxConfig {
                         enabled: hb.sandbox_enabled,
                         image: hb.sandbox_image.clone(),
                         auto_prune_container: None,
                     },
-                    wake_mode: moltis_cron::types::CronWakeMode::default(),
+                    wake_mode: chelix_cron::types::CronWakeMode::default(),
                 };
                 match cron_service.add(create).await {
                     Ok(job) => tracing::info!(id = %job.id, "heartbeat job created"),
@@ -829,7 +829,7 @@ pub async fn prepare_gateway_embedded(
     bind: &str,
     port: u16,
     no_tls: bool,
-    log_buffer: Option<moltis_gateway::logs::LogBuffer>,
+    log_buffer: Option<chelix_gateway::logs::LogBuffer>,
     config_dir: Option<PathBuf>,
     data_dir: Option<PathBuf>,
     extra_routes: Option<RouteEnhancer>,
@@ -861,7 +861,7 @@ pub async fn start_gateway(
     bind: &str,
     port: u16,
     no_tls: bool,
-    log_buffer: Option<moltis_gateway::logs::LogBuffer>,
+    log_buffer: Option<chelix_gateway::logs::LogBuffer>,
     config_dir: Option<PathBuf>,
     data_dir: Option<PathBuf>,
     extra_routes: Option<RouteEnhancer>,
@@ -899,9 +899,9 @@ pub async fn start_gateway(
         let host = hostname::get()
             .ok()
             .and_then(|h| h.into_string().ok())
-            .unwrap_or_else(|| "moltis".to_string());
-        let instance = format!("Moltis on {host}");
-        match moltis_gateway::mdns::register(
+            .unwrap_or_else(|| "chelix".to_string());
+        let instance = format!("Chelix on {host}");
+        match chelix_gateway::mdns::register(
             &instance,
             port,
             env!("CARGO_PKG_VERSION"),
@@ -944,7 +944,7 @@ pub async fn start_gateway(
         } else if tls_config.auto_generate {
             // Auto-generate certificates.
             let mgr =
-                moltis_tls::FsCertManager::new().map_err(|e| crate::Error::Tls(e.to_string()))?;
+                chelix_tls::FsCertManager::new().map_err(|e| crate::Error::Tls(e.to_string()))?;
             let mut runtime_sans = tls_runtime_sans(bind);
             runtime_sans.extend(
                 tls_configured_sans(tls_config.public_ip.as_deref())
@@ -962,7 +962,7 @@ pub async fn start_gateway(
 
         ca_cert_path = ca_path.clone();
 
-        let mgr = moltis_tls::FsCertManager::new().map_err(|e| crate::Error::Tls(e.to_string()))?;
+        let mgr = chelix_tls::FsCertManager::new().map_err(|e| crate::Error::Tls(e.to_string()))?;
         rustls_config = Some(
             mgr.build_rustls_config(&cert_path, &key_path)
                 .map_err(|e| crate::Error::Tls(e.to_string()))?,
@@ -971,13 +971,13 @@ pub async fn start_gateway(
     }
 
     let (skill_count, repo_count) = {
-        use moltis_skills::discover::{FsSkillDiscoverer, SkillDiscoverer};
+        use chelix_skills::discover::{FsSkillDiscoverer, SkillDiscoverer};
         let discoverer = FsSkillDiscoverer::new(FsSkillDiscoverer::default_paths());
         let sc = discoverer.discover().await.map(|s| s.len()).unwrap_or(0);
-        let rc = moltis_skills::manifest::ManifestStore::default_path()
+        let rc = chelix_skills::manifest::ManifestStore::default_path()
             .ok()
             .map(|p| {
-                let store = moltis_skills::manifest::ManifestStore::new(p);
+                let store = chelix_skills::manifest::ManifestStore::new(p);
                 store.load().map(|m| m.repos.len()).unwrap_or(0)
             })
             .unwrap_or(0);
@@ -1011,10 +1011,10 @@ pub async fn start_gateway(
     };
     #[cfg_attr(not(feature = "tls"), allow(unused_mut))]
     let mut lines = vec![
-        format!("moltis gateway v{}", state.version),
+        format!("chelix gateway v{}", state.version),
         format!(
             "protocol v{}, listening on {}://{} ({})",
-            moltis_protocol::PROTOCOL_VERSION,
+            chelix_protocol::PROTOCOL_VERSION,
             scheme,
             display_host,
             if tls_active {
@@ -1048,7 +1048,7 @@ pub async fn start_gateway(
         format!("sandbox: {} backend", banner.sandbox_backend_name),
         format!(
             "config: {}",
-            moltis_config::find_or_default_config_path().display()
+            chelix_config::find_or_default_config_path().display()
         ),
         format!("data: {}", banner.data_dir.display()),
     ];
@@ -1085,7 +1085,7 @@ pub async fn start_gateway(
             ));
             lines.push(format!("  or: {}", ca.display()));
         }
-        lines.push("run `moltis trust-ca` to remove browser warnings".into());
+        lines.push("run `chelix trust-ca` to remove browser warnings".into());
     }
     let width = lines.iter().map(|l| l.len()).max().unwrap_or(0) + 4;
     info!("┌{}┐", "─".repeat(width));
@@ -1096,7 +1096,7 @@ pub async fn start_gateway(
 
     // Dispatch GatewayStart hook.
     if let Some(ref hooks) = state.inner.read().await.hook_registry {
-        let payload = moltis_common::hooks::HookPayload::GatewayStart {
+        let payload = chelix_common::hooks::HookPayload::GatewayStart {
             address: addr.to_string(),
         };
         if let Err(e) = hooks.dispatch(&payload).await {
@@ -1149,7 +1149,7 @@ pub async fn start_gateway(
 
             #[cfg(feature = "mdns")]
             if let Some(ref daemon) = _mdns_daemon {
-                moltis_gateway::mdns::shutdown(daemon);
+                chelix_gateway::mdns::shutdown(daemon);
             }
 
             let shutdown_grace = std::time::Duration::from_secs(5);
@@ -1185,7 +1185,7 @@ pub async fn start_gateway(
             let ca_clone = ca.clone();
             tokio::spawn(async move {
                 if let Err(e) =
-                    moltis_tls::start_http_redirect_server(&bind_clone, http_port, port, &ca_clone)
+                    chelix_tls::start_http_redirect_server(&bind_clone, http_port, port, &ca_clone)
                         .await
                 {
                     tracing::error!("HTTP redirect server failed: {e}");
@@ -1197,11 +1197,11 @@ pub async fn start_gateway(
         // Plain HTTP requests to this port get a 301 redirect instead of a TLS error.
         let tls_cfg = rustls_config.expect("rustls config must be set when TLS is active");
         let tcp_listener = tokio::net::TcpListener::bind(addr).await?;
-        moltis_gateway::server::start_browser_warmup_after_listener(
+        chelix_gateway::server::start_browser_warmup_after_listener(
             Arc::clone(&browser_for_warmup),
             browser_tool_for_warmup.clone(),
         );
-        moltis_tls::serve_tls_with_http_redirect(tcp_listener, Arc::new(tls_cfg), app, port, bind)
+        chelix_tls::serve_tls_with_http_redirect(tcp_listener, Arc::new(tls_cfg), app, port, bind)
             .await
             .map_err(|e| crate::Error::Tls(e.to_string()))?;
         return Ok(());
@@ -1209,7 +1209,7 @@ pub async fn start_gateway(
 
     // Plain HTTP server (existing behavior, or TLS feature disabled).
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    moltis_gateway::server::start_browser_warmup_after_listener(
+    chelix_gateway::server::start_browser_warmup_after_listener(
         Arc::clone(&browser_for_warmup),
         browser_tool_for_warmup,
     );

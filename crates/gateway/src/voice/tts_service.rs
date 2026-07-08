@@ -7,7 +7,7 @@ use {
     tracing::{debug, info, warn},
 };
 
-use moltis_voice::{
+use chelix_voice::{
     AudioFormat, CoquiTts, ElevenLabsTts, GoogleTts, OpenAiTts, PiperTts, SynthesizeRequest,
     TtsConfig, TtsProvider, TtsProviderId, parse_tts_directives, strip_ssml_tags,
 };
@@ -49,23 +49,23 @@ impl LiveTtsService {
         TtsConfig {
             enabled: cfg.voice.tts.enabled,
             provider: cfg.voice.tts.provider,
-            auto: moltis_voice::TtsAutoMode::Off,
+            auto: chelix_voice::TtsAutoMode::Off,
             max_text_length: 8000,
-            elevenlabs: moltis_voice::ElevenLabsConfig {
+            elevenlabs: chelix_voice::ElevenLabsConfig {
                 api_key: cfg.voice.tts.elevenlabs.api_key.clone(),
                 voice_id: cfg.voice.tts.elevenlabs.voice_id.clone(),
                 model: cfg.voice.tts.elevenlabs.model.clone(),
                 stability: None,
                 similarity_boost: None,
             },
-            openai: moltis_voice::OpenAiTtsConfig {
+            openai: chelix_voice::OpenAiTtsConfig {
                 api_key: resolve_openai_key(cfg.voice.tts.openai.api_key.as_ref(), &cfg),
                 base_url: resolve_openai_tts_base_url(&cfg),
                 voice: cfg.voice.tts.openai.voice.clone(),
                 model: cfg.voice.tts.openai.model.clone(),
                 speed: None,
             },
-            google: moltis_voice::GoogleTtsConfig {
+            google: chelix_voice::GoogleTtsConfig {
                 api_key: cfg.voice.tts.google.api_key.clone(),
                 voice: cfg.voice.tts.google.voice.clone(),
                 model: cfg.voice.tts.google.model.clone(),
@@ -73,14 +73,14 @@ impl LiveTtsService {
                 speaking_rate: cfg.voice.tts.google.speaking_rate,
                 pitch: cfg.voice.tts.google.pitch,
             },
-            piper: moltis_voice::PiperTtsConfig {
+            piper: chelix_voice::PiperTtsConfig {
                 binary_path: cfg.voice.tts.piper.binary_path.clone(),
                 model_path: cfg.voice.tts.piper.model_path.clone(),
                 config_path: None,
                 speaker_id: None,
                 length_scale: None,
             },
-            coqui: moltis_voice::CoquiTtsConfig {
+            coqui: chelix_voice::CoquiTtsConfig {
                 endpoint: cfg.voice.tts.coqui.endpoint.clone(),
                 model: cfg.voice.tts.coqui.model.clone(),
                 speaker: None,
@@ -221,7 +221,7 @@ impl TtsService for LiveTtsService {
         }
 
         // Update config file
-        moltis_config::update_config(|cfg| {
+        chelix_config::update_config(|cfg| {
             cfg.voice.tts.provider = Some(provider_id);
             cfg.voice.tts.enabled = true;
         })
@@ -236,7 +236,7 @@ impl TtsService for LiveTtsService {
     }
 
     async fn disable(&self) -> ServiceResult {
-        moltis_config::update_config(|cfg| {
+        chelix_config::update_config(|cfg| {
             cfg.voice.tts.enabled = false;
         })
         .map_err(|e| format!("failed to update config: {}", e))?;
@@ -274,13 +274,13 @@ impl TtsService for LiveTtsService {
         // Parse persona early so its preferred provider can influence provider selection.
         // Directive persona overrides the JSON persona param.
         // Directive persona overrides the JSON persona param.
-        let persona: Option<moltis_voice::VoicePersona> = if let Some(ref dir_persona) =
+        let persona: Option<chelix_voice::VoicePersona> = if let Some(ref dir_persona) =
             directives.persona
         {
             // Directive-specified persona — match against the resolved persona object.
             params
                 .get("persona")
-                .and_then(|v| serde_json::from_value::<moltis_voice::VoicePersona>(v.clone()).ok())
+                .and_then(|v| serde_json::from_value::<chelix_voice::VoicePersona>(v.clone()).ok())
                 .filter(|p| p.id == *dir_persona)
         } else {
             params
@@ -370,7 +370,7 @@ impl TtsService for LiveTtsService {
             match crate::voice_persona::apply_persona_to_request(&mut request, persona, provider_id)
             {
                 Ok(()) => "applied",
-                Err(moltis_voice::FallbackPolicy::ProviderDefaults) => "missing",
+                Err(chelix_voice::FallbackPolicy::ProviderDefaults) => "missing",
                 Err(_policy) => {
                     // Fail policy — try fallback providers below.
                     "blocked"
@@ -484,7 +484,7 @@ impl TtsService for LiveTtsService {
             return Err(format!("provider '{}' not configured", provider_id).into());
         }
 
-        moltis_config::update_config(|cfg| {
+        chelix_config::update_config(|cfg| {
             cfg.voice.tts.provider = Some(provider_id);
         })
         .map_err(|e| format!("failed to update config: {}", e))?;
@@ -515,10 +515,10 @@ mod tests {
                 .unwrap_or_else(|error| panic!("config tempdir should be created: {error}"));
             let data_dir = tempfile::tempdir()
                 .unwrap_or_else(|error| panic!("data tempdir should be created: {error}"));
-            std::fs::write(config_dir.path().join("moltis.toml"), config_toml)
+            std::fs::write(config_dir.path().join("chelix.toml"), config_toml)
                 .unwrap_or_else(|error| panic!("config should be written: {error}"));
-            moltis_config::set_config_dir(config_dir.path().to_path_buf());
-            moltis_config::set_data_dir(data_dir.path().to_path_buf());
+            chelix_config::set_config_dir(config_dir.path().to_path_buf());
+            chelix_config::set_data_dir(data_dir.path().to_path_buf());
             Self {
                 _lock: lock,
                 _config_dir: config_dir,
@@ -529,8 +529,8 @@ mod tests {
 
     impl Drop for VoiceConfigTestGuard {
         fn drop(&mut self) {
-            moltis_config::clear_config_dir();
-            moltis_config::clear_data_dir();
+            chelix_config::clear_config_dir();
+            chelix_config::clear_data_dir();
         }
     }
 

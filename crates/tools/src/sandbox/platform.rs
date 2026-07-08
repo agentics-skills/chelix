@@ -33,7 +33,7 @@ impl CgroupSandbox {
             .config
             .container_prefix
             .as_deref()
-            .unwrap_or("moltis-sandbox");
+            .unwrap_or("chelix-sandbox");
         format!("{}-{}", prefix, id.key)
     }
 
@@ -361,11 +361,11 @@ impl Sandbox for RestrictedHostSandbox {
 
 /// Validate that a file path is within the allowed set for the restricted-host
 /// sandbox. Without container-level filesystem isolation, we restrict access
-/// to the Moltis data directory and temp directories to prevent sandbox escapes.
+/// to the Chelix data directory and temp directories to prevent sandbox escapes.
 pub(crate) fn check_restricted_host_path(path: &str) -> Result<()> {
     let target = normalize_path(std::path::Path::new(path));
 
-    let data_dir = moltis_config::data_dir();
+    let data_dir = chelix_config::data_dir();
     if target.starts_with(&data_dir) {
         return Ok(());
     }
@@ -381,18 +381,18 @@ pub(crate) fn check_restricted_host_path(path: &str) -> Result<()> {
         return Ok(());
     }
 
-    // Allow access to Moltis-specific config/data subdirectories under $HOME.
-    if let Some(home) = moltis_config::home_dir() {
-        let moltis_config_dir = home.join(".config").join("moltis");
-        let moltis_home_dir = home.join(".moltis");
-        if target.starts_with(&moltis_config_dir) || target.starts_with(&moltis_home_dir) {
+    // Allow access to Chelix-specific config/data subdirectories under $HOME.
+    if let Some(home) = chelix_config::home_dir() {
+        let chelix_config_dir = home.join(".config").join("chelix");
+        let chelix_home_dir = home.join(".chelix");
+        if target.starts_with(&chelix_config_dir) || target.starts_with(&chelix_home_dir) {
             return Ok(());
         }
     }
 
     Err(Error::message(format!(
         "restricted-host sandbox: path '{}' is outside the allowed directories \
-         (Moltis data directory and /tmp). Install a container runtime \
+         (Chelix data directory and /tmp). Install a container runtime \
          (Docker, Podman, or Apple Container) for full filesystem isolation.",
         path
     )))

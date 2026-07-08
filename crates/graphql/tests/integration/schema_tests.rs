@@ -137,12 +137,12 @@ async fn parse_error_becomes_graphql_error() {
 
 #[test]
 fn json_wrapper_traits_and_generic_event_conversion() {
-    let parsed: moltis_graphql::scalars::Json =
+    let parsed: chelix_graphql::scalars::Json =
         serde_json::from_value(json!({"k": ["v", 2]})).expect("json deserialization");
     let cloned = parsed.clone();
     assert_eq!(cloned.0["k"][0], "v");
     assert!(format!("{cloned:?}").contains("Json("));
 
-    let event = moltis_graphql::types::GenericEvent::from(json!({"event": "x"}));
+    let event = chelix_graphql::types::GenericEvent::from(json!({"event": "x"}));
     assert_eq!(event.data.0["event"], "x");
 }

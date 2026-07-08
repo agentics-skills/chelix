@@ -13,7 +13,7 @@ use {
     },
     anyhow::Result,
     async_trait::async_trait,
-    moltis_common::hooks::{HookAction, HookEvent, HookHandler, HookPayload, HookRegistry},
+    chelix_common::hooks::{HookAction, HookEvent, HookHandler, HookPayload, HookRegistry},
     std::pin::Pin,
     tokio_stream::Stream,
 };
@@ -107,7 +107,7 @@ fn test_explicit_shell_command_extracts_command() {
 
 #[test]
 fn test_explicit_shell_command_supports_telegram_style_bot_mention() {
-    let uc = UserContent::text("/sh@MoltisBot uname -a");
+    let uc = UserContent::text("/sh@ChelixBot uname -a");
     assert_eq!(
         explicit_shell_command_from_user_content(&uc).as_deref(),
         Some("uname -a")
@@ -407,7 +407,7 @@ impl HookHandler for InjectBeforeLlmSystemHook {
         &self,
         _event: HookEvent,
         payload: &HookPayload,
-    ) -> moltis_common::error::Result<HookAction> {
+    ) -> chelix_common::error::Result<HookAction> {
         let HookPayload::BeforeLLMCall { messages, .. } = payload else {
             return Ok(HookAction::Continue);
         };

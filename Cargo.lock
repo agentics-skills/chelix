@@ -1007,15 +1007,15 @@ checksum = "32637268377fc7b10a8c6d51de3e7fba1ce5dd371a96e342b34e6078db558e7f"
 name = "benchmarks"
 version = "0.1.0"
 dependencies = [
+ "chelix-agents",
+ "chelix-code-index",
+ "chelix-config",
+ "chelix-providers",
+ "chelix-qmd",
+ "chelix-sessions",
  "codspeed-divan-compat",
  "grep-regex",
  "grep-searcher",
- "moltis-agents",
- "moltis-code-index",
- "moltis-config",
- "moltis-providers",
- "moltis-qmd",
- "moltis-sessions",
  "serde_json",
  "tempfile",
  "tokio",
@@ -1481,6 +1481,1511 @@ dependencies = [
  "cipher 0.4.4",
  "poly1305",
  "zeroize",
+]
+
+[[package]]
+name = "chelix"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chelix-agents",
+ "chelix-browser",
+ "chelix-claude-import",
+ "chelix-codex-import",
+ "chelix-common",
+ "chelix-config",
+ "chelix-cron",
+ "chelix-gateway",
+ "chelix-httpd",
+ "chelix-import-core",
+ "chelix-memory",
+ "chelix-node-host",
+ "chelix-oauth",
+ "chelix-onboarding",
+ "chelix-plugins",
+ "chelix-portable",
+ "chelix-projects",
+ "chelix-sessions",
+ "chelix-skills",
+ "chelix-tools",
+ "chelix-web",
+ "clap",
+ "dotenvy",
+ "open",
+ "rand 0.10.1",
+ "reqwest 0.13.2",
+ "secrecy 0.8.0",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "tikv-jemallocator",
+ "time",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "which 8.0.2",
+]
+
+[[package]]
+name = "chelix-agents"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "async-trait",
+ "axum",
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "chelix-sessions",
+ "chelix-skills",
+ "futures",
+ "http 1.4.0",
+ "include_dir",
+ "reqwest 0.13.2",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "chelix-auth"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "chelix-config",
+ "chelix-tools",
+ "chelix-vault",
+ "dashmap 6.1.0",
+ "hmac 0.12.1",
+ "openssl",
+ "password-hash",
+ "rand 0.10.1",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "webauthn-rs",
+ "webauthn-rs-proto",
+]
+
+[[package]]
+name = "chelix-auto-reply"
+version = "0.1.0"
+dependencies = [
+ "chelix-agents",
+ "chelix-common",
+ "chelix-metrics",
+ "chelix-routing",
+ "chelix-sessions",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-browser"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "chromiumoxide",
+ "futures",
+ "rand 0.10.1",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "sysinfo",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+ "which 8.0.2",
+]
+
+[[package]]
+name = "chelix-caldav"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chelix-agents",
+ "chelix-config",
+ "http 1.4.0",
+ "hyper",
+ "hyper-rustls 0.27.9",
+ "hyper-util",
+ "icalendar",
+ "libdav",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower-http",
+ "tower-service",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "chelix-canvas"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chelix-common",
+ "chelix-metrics",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-channels"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "http 1.4.0",
+ "rand 0.10.1",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-chat"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "async-trait",
+ "base64 0.22.1",
+ "chelix-agents",
+ "chelix-channels",
+ "chelix-common",
+ "chelix-config",
+ "chelix-memory",
+ "chelix-metrics",
+ "chelix-plugins",
+ "chelix-projects",
+ "chelix-providers",
+ "chelix-service-traits",
+ "chelix-sessions",
+ "chelix-skills",
+ "chelix-telegram",
+ "chelix-tools",
+ "chelix-voice",
+ "chrono",
+ "chrono-tz",
+ "futures",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "toml 0.8.23",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "chelix-claude-import"
+version = "0.1.0"
+dependencies = [
+ "chelix-import-core",
+ "dirs-next",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-code-index"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chelix-agents",
+ "chelix-config",
+ "chelix-memory",
+ "chelix-qmd",
+ "chelix-splitter",
+ "chelix-tools",
+ "gix",
+ "metrics 0.24.3",
+ "notify-debouncer-full",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-codex-import"
+version = "0.1.0"
+dependencies = [
+ "chelix-import-core",
+ "dirs-next",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml 0.8.23",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-common"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chelix-metrics",
+ "futures",
+ "ipnet",
+ "reqwest 0.13.2",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "chelix-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chelix-metrics",
+ "chrono-tz",
+ "directories",
+ "ipnet",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "thiserror 2.0.18",
+ "toml 0.8.23",
+ "toml_edit 0.22.27",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-courier"
+version = "0.1.0"
+dependencies = [
+ "a2",
+ "anyhow",
+ "axum",
+ "clap",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "chelix-cron"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chelix-agents",
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "chrono",
+ "chrono-tz",
+ "cron",
+ "rstest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "chelix-ctl"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "futures",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+ "uuid",
+]
+
+[[package]]
+name = "chelix-discord"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "chelix-channels",
+ "chelix-common",
+ "chelix-media",
+ "chelix-metrics",
+ "image",
+ "reqwest 0.13.2",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "serenity",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-external-agents"
+version = "0.1.0"
+dependencies = [
+ "agent-client-protocol",
+ "anyhow",
+ "async-trait",
+ "chelix-config",
+ "chelix-metrics",
+ "chelix-sessions",
+ "futures",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "tokio-test",
+ "tokio-util",
+ "tracing",
+ "which 8.0.2",
+]
+
+[[package]]
+name = "chelix-gateway"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "chelix-agents",
+ "chelix-auth",
+ "chelix-browser",
+ "chelix-caldav",
+ "chelix-canvas",
+ "chelix-channels",
+ "chelix-chat",
+ "chelix-claude-import",
+ "chelix-code-index",
+ "chelix-codex-import",
+ "chelix-common",
+ "chelix-config",
+ "chelix-cron",
+ "chelix-discord",
+ "chelix-external-agents",
+ "chelix-home-assistant",
+ "chelix-matrix",
+ "chelix-mcp",
+ "chelix-mcp-agent-bridge",
+ "chelix-media",
+ "chelix-memory",
+ "chelix-metrics",
+ "chelix-msteams",
+ "chelix-network-filter",
+ "chelix-nostr",
+ "chelix-oauth",
+ "chelix-onboarding",
+ "chelix-plugins",
+ "chelix-projects",
+ "chelix-protocol",
+ "chelix-provider-setup",
+ "chelix-providers",
+ "chelix-qmd",
+ "chelix-routing",
+ "chelix-secret-store",
+ "chelix-service-traits",
+ "chelix-sessions",
+ "chelix-signal",
+ "chelix-skills",
+ "chelix-slack",
+ "chelix-telegram",
+ "chelix-telephony",
+ "chelix-tools",
+ "chelix-vault",
+ "chelix-voice",
+ "chelix-webhooks",
+ "chelix-whatsapp",
+ "chrono",
+ "chrono-tz",
+ "dashmap 6.1.0",
+ "ed25519-dalek",
+ "flate2",
+ "futures",
+ "gix",
+ "hostname",
+ "http 1.4.0",
+ "include_dir",
+ "mdns-sd",
+ "p256",
+ "portable-pty",
+ "pulldown-cmark 0.12.2",
+ "qrcode",
+ "rand 0.10.1",
+ "reqwest 0.13.2",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "sha2 0.10.9",
+ "sqlx",
+ "sysinfo",
+ "tar",
+ "tempfile",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "toml 0.8.23",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "urlencoding",
+ "uuid",
+ "web-push",
+ "webauthn-rs",
+ "which 8.0.2",
+]
+
+[[package]]
+name = "chelix-graphql"
+version = "0.1.0"
+dependencies = [
+ "async-graphql",
+ "async-stream",
+ "async-trait",
+ "bytes",
+ "chelix-service-traits",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+]
+
+[[package]]
+name = "chelix-home-assistant"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "chelix-agents",
+ "chelix-config",
+ "chelix-metrics",
+ "dotenvy",
+ "futures-util",
+ "reqwest 0.13.2",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+ "tracing",
+ "urlencoding",
+ "wiremock",
+]
+
+[[package]]
+name = "chelix-httpd"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-graphql",
+ "async-graphql-axum",
+ "async-trait",
+ "axum",
+ "axum-extra",
+ "base64 0.22.1",
+ "bytes",
+ "chelix-agents",
+ "chelix-auth",
+ "chelix-browser",
+ "chelix-channels",
+ "chelix-code-index",
+ "chelix-common",
+ "chelix-config",
+ "chelix-cron",
+ "chelix-gateway",
+ "chelix-graphql",
+ "chelix-matrix",
+ "chelix-metrics",
+ "chelix-msteams",
+ "chelix-portable",
+ "chelix-protocol",
+ "chelix-providers",
+ "chelix-service-traits",
+ "chelix-sessions",
+ "chelix-skills",
+ "chelix-slack",
+ "chelix-telephony",
+ "chelix-tls",
+ "chelix-tools",
+ "chelix-vault",
+ "chelix-web",
+ "chelix-webhooks",
+ "chrono",
+ "chrono-tz",
+ "dashmap 6.1.0",
+ "futures",
+ "hostname",
+ "ipnet",
+ "rand 0.10.1",
+ "reqwest 0.13.2",
+ "rustls 0.23.39",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "sqlx",
+ "sysinfo",
+ "tempfile",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+ "tokio-util",
+ "toml 0.8.23",
+ "tower-http",
+ "tracing",
+ "url",
+ "urlencoding",
+ "uuid",
+ "webauthn-rs",
+]
+
+[[package]]
+name = "chelix-import-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-matrix"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "chelix-channels",
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "futures",
+ "matrix-sdk",
+ "reqwest 0.13.2",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "chelix-mcp"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "chelix-oauth",
+ "futures",
+ "mockito",
+ "reqwest 0.13.2",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "chelix-mcp-agent-bridge"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chelix-agents",
+ "chelix-mcp",
+ "chelix-metrics",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-media"
+version = "0.1.0"
+dependencies = [
+ "chelix-common",
+ "chelix-metrics",
+ "image",
+ "mime_guess",
+ "reqwest 0.13.2",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "chelix-memory"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytemuck",
+ "chelix-agents",
+ "chelix-common",
+ "chelix-metrics",
+ "chelix-splitter",
+ "chelix-tools",
+ "chrono",
+ "directories",
+ "futures",
+ "llama-cpp-2",
+ "notify-debouncer-full",
+ "reqwest 0.13.2",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "walkdir",
+]
+
+[[package]]
+name = "chelix-metrics"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "metrics 0.24.3",
+ "metrics-exporter-prometheus",
+ "metrics-tracing-context",
+ "once_cell",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "chelix-msteams"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "chelix-channels",
+ "chelix-common",
+ "chelix-metrics",
+ "http 1.4.0",
+ "jsonwebtoken",
+ "rand 0.10.1",
+ "reqwest 0.13.2",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "subtle",
+ "tokio",
+ "tracing",
+ "url",
+ "urlencoding",
+]
+
+[[package]]
+name = "chelix-network-filter"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chelix-metrics",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "chelix-node-host"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chelix-config",
+ "chelix-metrics",
+ "chelix-protocol",
+ "ed25519-dalek",
+ "futures",
+ "rand 0.10.1",
+ "reqwest 0.13.2",
+ "rustls 0.23.39",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sysinfo",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+ "tracing",
+ "url",
+ "uuid",
+ "which 8.0.2",
+]
+
+[[package]]
+name = "chelix-nostr"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chelix-channels",
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "nostr-sdk",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-oauth"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "mockito",
+ "rand 0.10.1",
+ "reqwest 0.13.2",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "chelix-onboarding"
+version = "0.1.0"
+dependencies = [
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-plugins"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "chelix-sessions",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-portable"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chelix-config",
+ "flate2",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "tar",
+ "tempfile",
+ "time",
+ "tokio",
+ "tracing",
+ "walkdir",
+]
+
+[[package]]
+name = "chelix-projects"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chelix-metrics",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "chelix-protocol"
+version = "0.1.0"
+dependencies = [
+ "chelix-metrics",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "chelix-provider-setup"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chelix-agents",
+ "chelix-config",
+ "chelix-oauth",
+ "chelix-providers",
+ "chelix-service-traits",
+ "chelix-vault",
+ "reqwest 0.13.2",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "chelix-providers"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-openai",
+ "async-stream",
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "chelix-agents",
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "chelix-oauth",
+ "futures",
+ "genai",
+ "http 1.4.0",
+ "json_schema_ast",
+ "reqwest 0.13.2",
+ "schemars 1.2.1",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite 0.26.2",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-qmd"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chelix-agents",
+ "chelix-memory",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-routing"
+version = "0.1.0"
+dependencies = [
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "chelix-sessions",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-schema-export"
+version = "0.1.0"
+dependencies = [
+ "chelix-graphql",
+ "chelix-service-traits",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "chelix-secret-store"
+version = "0.1.0"
+dependencies = [
+ "chelix-vault",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "chelix-service-traits"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "chelix-protocol",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-sessions"
+version = "0.1.0"
+dependencies = [
+ "chelix-common",
+ "chelix-metrics",
+ "fd-lock",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "chelix-signal"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chelix-channels",
+ "chelix-common",
+ "futures",
+ "reqwest 0.13.2",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "chelix-skills"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chelix-config",
+ "chelix-metrics",
+ "flate2",
+ "include_dir",
+ "notify-debouncer-full",
+ "reqwest 0.13.2",
+ "rstest",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tar",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "walkdir",
+ "zip",
+]
+
+[[package]]
+name = "chelix-slack"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "chelix-channels",
+ "chelix-common",
+ "chelix-metrics",
+ "hmac 0.12.1",
+ "http 1.4.0",
+ "reqwest 0.13.2",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "slack-morphism",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-splitter"
+version = "0.1.0"
+dependencies = [
+ "metrics 0.24.3",
+ "text-splitter",
+ "tracing",
+ "tree-sitter-bash",
+ "tree-sitter-c",
+ "tree-sitter-cpp",
+ "tree-sitter-css",
+ "tree-sitter-go",
+ "tree-sitter-html",
+ "tree-sitter-java",
+ "tree-sitter-javascript",
+ "tree-sitter-json",
+ "tree-sitter-md",
+ "tree-sitter-python",
+ "tree-sitter-ruby",
+ "tree-sitter-rust",
+ "tree-sitter-toml-ng",
+ "tree-sitter-typescript",
+]
+
+[[package]]
+name = "chelix-telegram"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "chelix-auto-reply",
+ "chelix-channels",
+ "chelix-common",
+ "chelix-media",
+ "chelix-metrics",
+ "pdf-extract",
+ "rand 0.10.1",
+ "reqwest 0.13.2",
+ "rstest",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "teloxide",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-telephony"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "chelix-agents",
+ "chelix-channels",
+ "chelix-common",
+ "chelix-metrics",
+ "chelix-voice",
+ "dashmap 6.1.0",
+ "hex",
+ "hmac 0.12.1",
+ "http 1.4.0",
+ "reqwest 0.13.2",
+ "ring",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "chelix-tls"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chelix-common",
+ "chelix-config",
+ "hostname",
+ "hyper-util",
+ "rcgen",
+ "rustls 0.23.39",
+ "rustls-pemfile",
+ "tempfile",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tokio-rustls 0.26.4",
+ "tower",
+ "tracing",
+]
+
+[[package]]
+name = "chelix-tools"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "chelix-agents",
+ "chelix-browser",
+ "chelix-common",
+ "chelix-config",
+ "chelix-cron",
+ "chelix-media",
+ "chelix-metrics",
+ "chelix-network-filter",
+ "chelix-providers",
+ "chelix-service-traits",
+ "chelix-sessions",
+ "chelix-skills",
+ "flate2",
+ "futures",
+ "globset",
+ "grep-matcher",
+ "grep-regex",
+ "grep-searcher",
+ "html2text",
+ "ignore",
+ "image",
+ "ipnet",
+ "mockito",
+ "pdf-extract",
+ "regex",
+ "reqwest 0.13.2",
+ "rstest",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "shell-words",
+ "sqlx",
+ "tar",
+ "tempfile",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "url",
+ "uuid",
+ "wasmtime",
+ "wasmtime-wasi",
+ "which 8.0.2",
+]
+
+[[package]]
+name = "chelix-vault"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "argon2",
+ "base64 0.22.1",
+ "chacha20poly1305",
+ "chelix-metrics",
+ "rand 0.10.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "zeroize",
+]
+
+[[package]]
+name = "chelix-voice"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "chelix-config",
+ "dirs",
+ "futures",
+ "reqwest 0.13.2",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "urlencoding",
+ "which 7.0.3",
+ "wiremock",
+]
+
+[[package]]
+name = "chelix-wasm-calc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde_json",
+ "wit-bindgen 0.41.0",
+ "wit-bindgen-rt",
+]
+
+[[package]]
+name = "chelix-wasm-precompile"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "wasmtime",
+]
+
+[[package]]
+name = "chelix-wasm-web-fetch"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "url",
+ "wit-bindgen 0.41.0",
+ "wit-bindgen-rt",
+]
+
+[[package]]
+name = "chelix-wasm-web-search"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "url",
+ "wit-bindgen 0.41.0",
+ "wit-bindgen-rt",
+]
+
+[[package]]
+name = "chelix-web"
+version = "0.1.0"
+dependencies = [
+ "askama",
+ "axum",
+ "axum-extra",
+ "base64 0.22.1",
+ "chelix-channels",
+ "chelix-config",
+ "chelix-cron",
+ "chelix-gateway",
+ "chelix-httpd",
+ "chelix-media",
+ "chelix-skills",
+ "chelix-tools",
+ "chrono",
+ "futures",
+ "gix",
+ "include_dir",
+ "portable-pty",
+ "secrecy 0.8.0",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "uuid",
+ "which 8.0.2",
+]
+
+[[package]]
+name = "chelix-webhooks"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "hex",
+ "hmac 0.12.1",
+ "ipnet",
+ "rand 0.10.1",
+ "rstest",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "subtle",
+ "tempfile",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "chelix-whatsapp"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "chelix-channels",
+ "chelix-common",
+ "chelix-config",
+ "chelix-media",
+ "chelix-metrics",
+ "dashmap 6.1.0",
+ "postcard",
+ "qrcode",
+ "rand 0.10.1",
+ "serde",
+ "serde_json",
+ "sled",
+ "tempfile",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "wacore",
+ "wacore-binary",
+ "waproto",
+ "whatsapp-rust",
+ "whatsapp-rust-tokio-transport",
+ "whatsapp-rust-ureq-http-client",
 ]
 
 [[package]]
@@ -6978,1511 +8483,6 @@ dependencies = [
  "smallvec",
  "tagptr",
  "uuid",
-]
-
-[[package]]
-name = "moltis"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "dotenvy",
- "moltis-agents",
- "moltis-browser",
- "moltis-claude-import",
- "moltis-codex-import",
- "moltis-common",
- "moltis-config",
- "moltis-cron",
- "moltis-gateway",
- "moltis-httpd",
- "moltis-import-core",
- "moltis-memory",
- "moltis-node-host",
- "moltis-oauth",
- "moltis-onboarding",
- "moltis-plugins",
- "moltis-portable",
- "moltis-projects",
- "moltis-sessions",
- "moltis-skills",
- "moltis-tools",
- "moltis-web",
- "open",
- "rand 0.10.1",
- "reqwest 0.13.2",
- "secrecy 0.8.0",
- "serde_json",
- "sqlx",
- "tempfile",
- "tikv-jemallocator",
- "time",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "which 8.0.2",
-]
-
-[[package]]
-name = "moltis-agents"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-stream",
- "async-trait",
- "axum",
- "futures",
- "http 1.4.0",
- "include_dir",
- "moltis-common",
- "moltis-config",
- "moltis-metrics",
- "moltis-sessions",
- "moltis-skills",
- "reqwest 0.13.2",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tokio-stream",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "moltis-auth"
-version = "0.1.0"
-dependencies = [
- "argon2",
- "async-trait",
- "axum",
- "base64 0.22.1",
- "dashmap 6.1.0",
- "hmac 0.12.1",
- "moltis-config",
- "moltis-tools",
- "moltis-vault",
- "openssl",
- "password-hash",
- "rand 0.10.1",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sqlx",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "webauthn-rs",
- "webauthn-rs-proto",
-]
-
-[[package]]
-name = "moltis-auto-reply"
-version = "0.1.0"
-dependencies = [
- "moltis-agents",
- "moltis-common",
- "moltis-metrics",
- "moltis-routing",
- "moltis-sessions",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "moltis-browser"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "chromiumoxide",
- "futures",
- "moltis-common",
- "moltis-config",
- "moltis-metrics",
- "rand 0.10.1",
- "serde",
- "serde_json",
- "serial_test",
- "sysinfo",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "url",
- "uuid",
- "which 8.0.2",
-]
-
-[[package]]
-name = "moltis-caldav"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "http 1.4.0",
- "hyper",
- "hyper-rustls 0.27.9",
- "hyper-util",
- "icalendar",
- "libdav",
- "moltis-agents",
- "moltis-config",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tower-http",
- "tower-service",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "moltis-canvas"
-version = "0.1.0"
-dependencies = [
- "axum",
- "moltis-common",
- "moltis-metrics",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "moltis-channels"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "http 1.4.0",
- "moltis-common",
- "moltis-config",
- "moltis-metrics",
- "rand 0.10.1",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "moltis-chat"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-stream",
- "async-trait",
- "base64 0.22.1",
- "chrono",
- "chrono-tz",
- "futures",
- "moltis-agents",
- "moltis-channels",
- "moltis-common",
- "moltis-config",
- "moltis-memory",
- "moltis-metrics",
- "moltis-plugins",
- "moltis-projects",
- "moltis-providers",
- "moltis-service-traits",
- "moltis-sessions",
- "moltis-skills",
- "moltis-telegram",
- "moltis-tools",
- "moltis-voice",
- "serde",
- "serde_json",
- "sqlx",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "toml 0.8.23",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "moltis-claude-import"
-version = "0.1.0"
-dependencies = [
- "dirs-next",
- "moltis-import-core",
- "serde",
- "serde_json",
- "tempfile",
- "tracing",
-]
-
-[[package]]
-name = "moltis-code-index"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "gix",
- "metrics 0.24.3",
- "moltis-agents",
- "moltis-config",
- "moltis-memory",
- "moltis-qmd",
- "moltis-splitter",
- "moltis-tools",
- "notify-debouncer-full",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sqlx",
- "tempfile",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "moltis-codex-import"
-version = "0.1.0"
-dependencies = [
- "dirs-next",
- "moltis-import-core",
- "serde",
- "serde_json",
- "tempfile",
- "toml 0.8.23",
- "tracing",
-]
-
-[[package]]
-name = "moltis-common"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "futures",
- "ipnet",
- "moltis-metrics",
- "reqwest 0.13.2",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "moltis-config"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono-tz",
- "directories",
- "ipnet",
- "moltis-metrics",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "serde_yaml",
- "tempfile",
- "thiserror 2.0.18",
- "toml 0.8.23",
- "toml_edit 0.22.27",
- "tracing",
-]
-
-[[package]]
-name = "moltis-courier"
-version = "0.1.0"
-dependencies = [
- "a2",
- "anyhow",
- "axum",
- "clap",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "moltis-cron"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "chrono-tz",
- "cron",
- "moltis-agents",
- "moltis-common",
- "moltis-config",
- "moltis-metrics",
- "rstest",
- "serde",
- "serde_json",
- "sqlx",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "moltis-ctl"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "futures",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-tungstenite 0.26.2",
- "uuid",
-]
-
-[[package]]
-name = "moltis-discord"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.22.1",
- "image",
- "moltis-channels",
- "moltis-common",
- "moltis-media",
- "moltis-metrics",
- "reqwest 0.13.2",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "serenity",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "moltis-external-agents"
-version = "0.1.0"
-dependencies = [
- "agent-client-protocol",
- "anyhow",
- "async-trait",
- "futures",
- "moltis-config",
- "moltis-metrics",
- "moltis-sessions",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tokio-test",
- "tokio-util",
- "tracing",
- "which 8.0.2",
-]
-
-[[package]]
-name = "moltis-gateway"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.22.1",
- "bytes",
- "chrono",
- "chrono-tz",
- "dashmap 6.1.0",
- "ed25519-dalek",
- "flate2",
- "futures",
- "gix",
- "hostname",
- "http 1.4.0",
- "include_dir",
- "mdns-sd",
- "moltis-agents",
- "moltis-auth",
- "moltis-browser",
- "moltis-caldav",
- "moltis-canvas",
- "moltis-channels",
- "moltis-chat",
- "moltis-claude-import",
- "moltis-code-index",
- "moltis-codex-import",
- "moltis-common",
- "moltis-config",
- "moltis-cron",
- "moltis-discord",
- "moltis-external-agents",
- "moltis-home-assistant",
- "moltis-matrix",
- "moltis-mcp",
- "moltis-mcp-agent-bridge",
- "moltis-media",
- "moltis-memory",
- "moltis-metrics",
- "moltis-msteams",
- "moltis-network-filter",
- "moltis-nostr",
- "moltis-oauth",
- "moltis-onboarding",
- "moltis-plugins",
- "moltis-projects",
- "moltis-protocol",
- "moltis-provider-setup",
- "moltis-providers",
- "moltis-qmd",
- "moltis-routing",
- "moltis-secret-store",
- "moltis-service-traits",
- "moltis-sessions",
- "moltis-signal",
- "moltis-skills",
- "moltis-slack",
- "moltis-telegram",
- "moltis-telephony",
- "moltis-tools",
- "moltis-vault",
- "moltis-voice",
- "moltis-webhooks",
- "moltis-whatsapp",
- "p256",
- "portable-pty",
- "pulldown-cmark 0.12.2",
- "qrcode",
- "rand 0.10.1",
- "reqwest 0.13.2",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "serial_test",
- "sha2 0.10.9",
- "sqlx",
- "sysinfo",
- "tar",
- "tempfile",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "toml 0.8.23",
- "tracing",
- "tracing-subscriber",
- "url",
- "urlencoding",
- "uuid",
- "web-push",
- "webauthn-rs",
- "which 8.0.2",
-]
-
-[[package]]
-name = "moltis-graphql"
-version = "0.1.0"
-dependencies = [
- "async-graphql",
- "async-stream",
- "async-trait",
- "bytes",
- "moltis-service-traits",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
-]
-
-[[package]]
-name = "moltis-home-assistant"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "bytes",
- "dotenvy",
- "futures-util",
- "moltis-agents",
- "moltis-config",
- "moltis-metrics",
- "reqwest 0.13.2",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tokio-tungstenite 0.26.2",
- "tracing",
- "urlencoding",
- "wiremock",
-]
-
-[[package]]
-name = "moltis-httpd"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-graphql",
- "async-graphql-axum",
- "async-trait",
- "axum",
- "axum-extra",
- "base64 0.22.1",
- "bytes",
- "chrono",
- "chrono-tz",
- "dashmap 6.1.0",
- "futures",
- "hostname",
- "ipnet",
- "moltis-agents",
- "moltis-auth",
- "moltis-browser",
- "moltis-channels",
- "moltis-code-index",
- "moltis-common",
- "moltis-config",
- "moltis-cron",
- "moltis-gateway",
- "moltis-graphql",
- "moltis-matrix",
- "moltis-metrics",
- "moltis-msteams",
- "moltis-portable",
- "moltis-protocol",
- "moltis-providers",
- "moltis-service-traits",
- "moltis-sessions",
- "moltis-skills",
- "moltis-slack",
- "moltis-telephony",
- "moltis-tls",
- "moltis-tools",
- "moltis-vault",
- "moltis-web",
- "moltis-webhooks",
- "rand 0.10.1",
- "reqwest 0.13.2",
- "rustls 0.23.39",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "serial_test",
- "sqlx",
- "sysinfo",
- "tempfile",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tokio-tungstenite 0.26.2",
- "tokio-util",
- "toml 0.8.23",
- "tower-http",
- "tracing",
- "url",
- "urlencoding",
- "uuid",
- "webauthn-rs",
-]
-
-[[package]]
-name = "moltis-import-core"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "tempfile",
- "tracing",
-]
-
-[[package]]
-name = "moltis-matrix"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "futures",
- "matrix-sdk",
- "moltis-channels",
- "moltis-common",
- "moltis-config",
- "moltis-metrics",
- "reqwest 0.13.2",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tokio-util",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "moltis-mcp"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "futures",
- "mockito",
- "moltis-common",
- "moltis-config",
- "moltis-metrics",
- "moltis-oauth",
- "reqwest 0.13.2",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-test",
- "tracing",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "moltis-mcp-agent-bridge"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "moltis-agents",
- "moltis-mcp",
- "moltis-metrics",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "moltis-media"
-version = "0.1.0"
-dependencies = [
- "image",
- "mime_guess",
- "moltis-common",
- "moltis-metrics",
- "reqwest 0.13.2",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "moltis-memory"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "bytemuck",
- "chrono",
- "directories",
- "futures",
- "llama-cpp-2",
- "moltis-agents",
- "moltis-common",
- "moltis-metrics",
- "moltis-splitter",
- "moltis-tools",
- "notify-debouncer-full",
- "reqwest 0.13.2",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sqlx",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "walkdir",
-]
-
-[[package]]
-name = "moltis-metrics"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "metrics 0.24.3",
- "metrics-exporter-prometheus",
- "metrics-tracing-context",
- "once_cell",
- "serde",
- "serde_json",
- "sqlx",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "moltis-msteams"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.22.1",
- "bytes",
- "http 1.4.0",
- "jsonwebtoken",
- "moltis-channels",
- "moltis-common",
- "moltis-metrics",
- "rand 0.10.1",
- "reqwest 0.13.2",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "subtle",
- "tokio",
- "tracing",
- "url",
- "urlencoding",
-]
-
-[[package]]
-name = "moltis-network-filter"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "moltis-metrics",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "moltis-node-host"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "ed25519-dalek",
- "futures",
- "moltis-config",
- "moltis-metrics",
- "moltis-protocol",
- "rand 0.10.1",
- "reqwest 0.13.2",
- "rustls 0.23.39",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sysinfo",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-tungstenite 0.26.2",
- "tracing",
- "url",
- "uuid",
- "which 8.0.2",
-]
-
-[[package]]
-name = "moltis-nostr"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "moltis-channels",
- "moltis-common",
- "moltis-config",
- "moltis-metrics",
- "nostr-sdk",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "moltis-oauth"
-version = "0.1.0"
-dependencies = [
- "axum",
- "base64 0.22.1",
- "mockito",
- "moltis-common",
- "moltis-config",
- "moltis-metrics",
- "rand 0.10.1",
- "reqwest 0.13.2",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "moltis-onboarding"
-version = "0.1.0"
-dependencies = [
- "moltis-common",
- "moltis-config",
- "moltis-metrics",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "toml 0.8.23",
- "tracing",
-]
-
-[[package]]
-name = "moltis-plugins"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "moltis-common",
- "moltis-config",
- "moltis-metrics",
- "moltis-sessions",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "toml 0.8.23",
- "tracing",
-]
-
-[[package]]
-name = "moltis-portable"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "flate2",
- "hex",
- "moltis-config",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sqlx",
- "tar",
- "tempfile",
- "time",
- "tokio",
- "tracing",
- "walkdir",
-]
-
-[[package]]
-name = "moltis-projects"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "moltis-metrics",
- "serde",
- "serde_json",
- "sqlx",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "toml 0.8.23",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "moltis-protocol"
-version = "0.1.0"
-dependencies = [
- "moltis-metrics",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "moltis-provider-setup"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "axum",
- "moltis-agents",
- "moltis-config",
- "moltis-oauth",
- "moltis-providers",
- "moltis-service-traits",
- "moltis-vault",
- "reqwest 0.13.2",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "moltis-providers"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-openai",
- "async-stream",
- "async-trait",
- "axum",
- "base64 0.22.1",
- "futures",
- "genai",
- "http 1.4.0",
- "json_schema_ast",
- "moltis-agents",
- "moltis-common",
- "moltis-config",
- "moltis-metrics",
- "moltis-oauth",
- "reqwest 0.13.2",
- "schemars 1.2.1",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tokio-tungstenite 0.26.2",
- "tracing",
-]
-
-[[package]]
-name = "moltis-qmd"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "moltis-agents",
- "moltis-memory",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sqlx",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "moltis-routing"
-version = "0.1.0"
-dependencies = [
- "moltis-common",
- "moltis-config",
- "moltis-metrics",
- "moltis-sessions",
- "serde_json",
- "thiserror 2.0.18",
- "tracing",
-]
-
-[[package]]
-name = "moltis-schema-export"
-version = "0.1.0"
-dependencies = [
- "moltis-graphql",
- "moltis-service-traits",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "moltis-secret-store"
-version = "0.1.0"
-dependencies = [
- "moltis-vault",
- "serde",
- "serde_json",
- "sqlx",
- "thiserror 2.0.18",
- "tokio",
-]
-
-[[package]]
-name = "moltis-service-traits"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "moltis-protocol",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "moltis-sessions"
-version = "0.1.0"
-dependencies = [
- "fd-lock",
- "moltis-common",
- "moltis-metrics",
- "serde",
- "serde_json",
- "sqlx",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "moltis-signal"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "futures",
- "moltis-channels",
- "moltis-common",
- "reqwest 0.13.2",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tokio-util",
- "tracing",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "moltis-skills"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "flate2",
- "include_dir",
- "moltis-config",
- "moltis-metrics",
- "notify-debouncer-full",
- "reqwest 0.13.2",
- "rstest",
- "serde",
- "serde_json",
- "serde_yaml",
- "tar",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "walkdir",
- "zip",
-]
-
-[[package]]
-name = "moltis-slack"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "bytes",
- "hmac 0.12.1",
- "http 1.4.0",
- "moltis-channels",
- "moltis-common",
- "moltis-metrics",
- "reqwest 0.13.2",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "slack-morphism",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "moltis-splitter"
-version = "0.1.0"
-dependencies = [
- "metrics 0.24.3",
- "text-splitter",
- "tracing",
- "tree-sitter-bash",
- "tree-sitter-c",
- "tree-sitter-cpp",
- "tree-sitter-css",
- "tree-sitter-go",
- "tree-sitter-html",
- "tree-sitter-java",
- "tree-sitter-javascript",
- "tree-sitter-json",
- "tree-sitter-md",
- "tree-sitter-python",
- "tree-sitter-ruby",
- "tree-sitter-rust",
- "tree-sitter-toml-ng",
- "tree-sitter-typescript",
-]
-
-[[package]]
-name = "moltis-telegram"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "axum",
- "base64 0.22.1",
- "moltis-auto-reply",
- "moltis-channels",
- "moltis-common",
- "moltis-media",
- "moltis-metrics",
- "pdf-extract",
- "rand 0.10.1",
- "reqwest 0.13.2",
- "rstest",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "teloxide",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "moltis-telephony"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.22.1",
- "bytes",
- "dashmap 6.1.0",
- "hex",
- "hmac 0.12.1",
- "http 1.4.0",
- "moltis-agents",
- "moltis-channels",
- "moltis-common",
- "moltis-metrics",
- "moltis-voice",
- "reqwest 0.13.2",
- "ring",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "sha1",
- "sha2 0.10.9",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tracing",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "moltis-tls"
-version = "0.1.0"
-dependencies = [
- "axum",
- "hostname",
- "hyper-util",
- "moltis-common",
- "moltis-config",
- "rcgen",
- "rustls 0.23.39",
- "rustls-pemfile",
- "tempfile",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tokio-rustls 0.26.4",
- "tower",
- "tracing",
-]
-
-[[package]]
-name = "moltis-tools"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.22.1",
- "bytes",
- "flate2",
- "futures",
- "globset",
- "grep-matcher",
- "grep-regex",
- "grep-searcher",
- "html2text",
- "ignore",
- "image",
- "ipnet",
- "mockito",
- "moltis-agents",
- "moltis-browser",
- "moltis-common",
- "moltis-config",
- "moltis-cron",
- "moltis-media",
- "moltis-metrics",
- "moltis-network-filter",
- "moltis-providers",
- "moltis-service-traits",
- "moltis-sessions",
- "moltis-skills",
- "pdf-extract",
- "regex",
- "reqwest 0.13.2",
- "rstest",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "shell-words",
- "sqlx",
- "tar",
- "tempfile",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tokio-stream",
- "tracing",
- "url",
- "uuid",
- "wasmtime",
- "wasmtime-wasi",
- "which 8.0.2",
-]
-
-[[package]]
-name = "moltis-vault"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "argon2",
- "base64 0.22.1",
- "chacha20poly1305",
- "moltis-metrics",
- "rand 0.10.1",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sqlx",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "zeroize",
-]
-
-[[package]]
-name = "moltis-voice"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.22.1",
- "bytes",
- "dirs",
- "futures",
- "moltis-config",
- "reqwest 0.13.2",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "urlencoding",
- "which 7.0.3",
- "wiremock",
-]
-
-[[package]]
-name = "moltis-wasm-calc"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde_json",
- "wit-bindgen 0.41.0",
- "wit-bindgen-rt",
-]
-
-[[package]]
-name = "moltis-wasm-precompile"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "wasmtime",
-]
-
-[[package]]
-name = "moltis-wasm-web-fetch"
-version = "0.1.0"
-dependencies = [
- "serde_json",
- "url",
- "wit-bindgen 0.41.0",
- "wit-bindgen-rt",
-]
-
-[[package]]
-name = "moltis-wasm-web-search"
-version = "0.1.0"
-dependencies = [
- "serde_json",
- "url",
- "wit-bindgen 0.41.0",
- "wit-bindgen-rt",
-]
-
-[[package]]
-name = "moltis-web"
-version = "0.1.0"
-dependencies = [
- "askama",
- "axum",
- "axum-extra",
- "base64 0.22.1",
- "chrono",
- "futures",
- "gix",
- "include_dir",
- "moltis-channels",
- "moltis-config",
- "moltis-cron",
- "moltis-gateway",
- "moltis-httpd",
- "moltis-media",
- "moltis-skills",
- "moltis-tools",
- "portable-pty",
- "secrecy 0.8.0",
- "serde",
- "serde_json",
- "sysinfo",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
- "url",
- "uuid",
- "which 8.0.2",
-]
-
-[[package]]
-name = "moltis-webhooks"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "hex",
- "hmac 0.12.1",
- "ipnet",
- "moltis-common",
- "moltis-config",
- "moltis-metrics",
- "rand 0.10.1",
- "rstest",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sqlx",
- "subtle",
- "tempfile",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "moltis-whatsapp"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "dashmap 6.1.0",
- "moltis-channels",
- "moltis-common",
- "moltis-config",
- "moltis-media",
- "moltis-metrics",
- "postcard",
- "qrcode",
- "rand 0.10.1",
- "serde",
- "serde_json",
- "sled",
- "tempfile",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tokio-util",
- "tracing",
- "wacore",
- "wacore-binary",
- "waproto",
- "whatsapp-rust",
- "whatsapp-rust-tokio-transport",
- "whatsapp-rust-ureq-http-client",
 ]
 
 [[package]]

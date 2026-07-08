@@ -2,7 +2,7 @@ use {clap::Subcommand, std::path::PathBuf};
 
 #[derive(Subcommand)]
 pub enum DbAction {
-    /// Delete all database files completely (moltis.db and memory.db).
+    /// Delete all database files completely (chelix.db and memory.db).
     Reset,
     /// Clear all data from tables but keep the schema intact.
     Clear,
@@ -12,8 +12,8 @@ pub enum DbAction {
 
 /// Returns the paths to the database files.
 fn db_paths() -> (PathBuf, PathBuf) {
-    let data_dir = moltis_config::data_dir();
-    let main_db = data_dir.join("moltis.db");
+    let data_dir = chelix_config::data_dir();
+    let main_db = data_dir.join("chelix.db");
     let memory_db = data_dir.join("memory.db");
     (main_db, memory_db)
 }
@@ -49,7 +49,7 @@ async fn reset_databases() -> anyhow::Result<()> {
     }
 
     if deleted {
-        println!("Database files deleted. Run `moltis db migrate` to recreate them.");
+        println!("Database files deleted. Run `chelix db migrate` to recreate them.");
     } else {
         println!("No database files found.");
     }
@@ -145,22 +145,22 @@ async fn run_migrations() -> anyhow::Result<()> {
     let pool = sqlx::SqlitePool::connect(&db_url).await?;
 
     // Run migrations in dependency order (same as server.rs)
-    moltis_projects::run_migrations(&pool)
+    chelix_projects::run_migrations(&pool)
         .await
         .map_err(|e| anyhow::anyhow!("projects migrations failed: {e}"))?;
     println!("  - projects migrations complete");
 
-    moltis_sessions::run_migrations(&pool)
+    chelix_sessions::run_migrations(&pool)
         .await
         .map_err(|e| anyhow::anyhow!("sessions migrations failed: {e}"))?;
     println!("  - sessions migrations complete");
 
-    moltis_cron::run_migrations(&pool)
+    chelix_cron::run_migrations(&pool)
         .await
         .map_err(|e| anyhow::anyhow!("cron migrations failed: {e}"))?;
     println!("  - cron migrations complete");
 
-    moltis_gateway::run_migrations(&pool)
+    chelix_gateway::run_migrations(&pool)
         .await
         .map_err(|e| anyhow::anyhow!("gateway migrations failed: {e}"))?;
     println!("  - gateway migrations complete");
@@ -172,7 +172,7 @@ async fn run_migrations() -> anyhow::Result<()> {
     let memory_url = format!("sqlite:{}?mode=rwc", memory_db.display());
     let memory_pool = sqlx::SqlitePool::connect(&memory_url).await?;
 
-    moltis_memory::schema::run_migrations(&memory_pool)
+    chelix_memory::schema::run_migrations(&memory_pool)
         .await
         .map_err(|e| anyhow::anyhow!("memory migrations failed: {e}"))?;
     println!("  - memory migrations complete");
@@ -193,8 +193,8 @@ mod tests {
         // Just verify the function constructs expected paths
         let paths = db_paths();
         assert!(
-            paths.0.to_string_lossy().contains("moltis.db"),
-            "main db path should contain moltis.db"
+            paths.0.to_string_lossy().contains("chelix.db"),
+            "main db path should contain chelix.db"
         );
         assert!(
             paths.1.to_string_lossy().contains("memory.db"),
@@ -209,10 +209,10 @@ mod tests {
         let temp = TempDir::new().unwrap();
 
         // Create dummy database files
-        let main_db = temp.path().join("moltis.db");
+        let main_db = temp.path().join("chelix.db");
         let memory_db = temp.path().join("memory.db");
-        let main_wal = temp.path().join("moltis.db-wal");
-        let main_shm = temp.path().join("moltis.db-shm");
+        let main_wal = temp.path().join("chelix.db-wal");
+        let main_shm = temp.path().join("chelix.db-shm");
 
         std::fs::write(&main_db, "test").unwrap();
         std::fs::write(&memory_db, "test").unwrap();
@@ -249,7 +249,7 @@ mod tests {
     #[tokio::test]
     async fn test_migrations_run_successfully_in_temp_dir() {
         let temp = TempDir::new().unwrap();
-        let main_db = temp.path().join("moltis.db");
+        let main_db = temp.path().join("chelix.db");
         let memory_db = temp.path().join("memory.db");
 
         // Run main database migrations
@@ -257,10 +257,10 @@ mod tests {
         let pool = sqlx::SqlitePool::connect(&db_url).await.unwrap();
 
         // Run migrations in dependency order
-        moltis_projects::run_migrations(&pool).await.unwrap();
-        moltis_sessions::run_migrations(&pool).await.unwrap();
-        moltis_cron::run_migrations(&pool).await.unwrap();
-        moltis_gateway::run_migrations(&pool).await.unwrap();
+        chelix_projects::run_migrations(&pool).await.unwrap();
+        chelix_sessions::run_migrations(&pool).await.unwrap();
+        chelix_cron::run_migrations(&pool).await.unwrap();
+        chelix_gateway::run_migrations(&pool).await.unwrap();
 
         // Verify tables were created by querying them
         let _: (i64,) = sqlx::query_as("SELECT count(*) FROM projects")
@@ -286,7 +286,7 @@ mod tests {
         let memory_url = format!("sqlite:{}?mode=rwc", memory_db.display());
         let memory_pool = sqlx::SqlitePool::connect(&memory_url).await.unwrap();
 
-        moltis_memory::schema::run_migrations(&memory_pool)
+        chelix_memory::schema::run_migrations(&memory_pool)
             .await
             .unwrap();
 
@@ -312,22 +312,22 @@ mod tests {
     #[tokio::test]
     async fn test_migrations_are_idempotent() {
         let temp = TempDir::new().unwrap();
-        let main_db = temp.path().join("moltis.db");
+        let main_db = temp.path().join("chelix.db");
 
         let db_url = format!("sqlite:{}?mode=rwc", main_db.display());
         let pool = sqlx::SqlitePool::connect(&db_url).await.unwrap();
 
         // Run all migrations
-        moltis_projects::run_migrations(&pool).await.unwrap();
-        moltis_sessions::run_migrations(&pool).await.unwrap();
-        moltis_cron::run_migrations(&pool).await.unwrap();
-        moltis_gateway::run_migrations(&pool).await.unwrap();
+        chelix_projects::run_migrations(&pool).await.unwrap();
+        chelix_sessions::run_migrations(&pool).await.unwrap();
+        chelix_cron::run_migrations(&pool).await.unwrap();
+        chelix_gateway::run_migrations(&pool).await.unwrap();
 
         // Run again - should still work due to set_ignore_missing
-        moltis_projects::run_migrations(&pool).await.unwrap();
-        moltis_sessions::run_migrations(&pool).await.unwrap();
-        moltis_cron::run_migrations(&pool).await.unwrap();
-        moltis_gateway::run_migrations(&pool).await.unwrap();
+        chelix_projects::run_migrations(&pool).await.unwrap();
+        chelix_sessions::run_migrations(&pool).await.unwrap();
+        chelix_cron::run_migrations(&pool).await.unwrap();
+        chelix_gateway::run_migrations(&pool).await.unwrap();
 
         pool.close().await;
     }

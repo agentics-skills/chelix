@@ -9,7 +9,7 @@ import { type OperationProgressPayload, type RpcResponse, WsEventName } from "./
 declare global {
 	interface Window {
 		webkitAudioContext?: typeof AudioContext;
-		__moltisTestRpcTimeoutMs?: number;
+		__chelixTestRpcTimeoutMs?: number;
 	}
 }
 
@@ -227,7 +227,7 @@ function extractAsciiTables(s: string): { text: string; tables: string[] } {
 	for (let i = 0; i < lines.length; ) {
 		const asciiTable = parseAsciiTable(lines, i);
 		if (asciiTable) {
-			out.push(`@@MOLTIS_ASCII_TABLE_${tables.length}@@`);
+			out.push(`@@CHELIX_ASCII_TABLE_${tables.length}@@`);
 			tables.push(asciiTable.html);
 			i = asciiTable.next;
 			continue;
@@ -275,7 +275,7 @@ const PROGRESS_RPC_IDLE_TIMEOUT_MS = 120_000;
 const PROGRESS_AWARE_METHODS = new Set(["sessions.reset", "sessions.compact", "chat.compact"]);
 
 function rpcIdleTimeoutMs(method: string, progressSeen: boolean): number {
-	if (window.__moltisTestRpcTimeoutMs != null) return window.__moltisTestRpcTimeoutMs;
+	if (window.__chelixTestRpcTimeoutMs != null) return window.__chelixTestRpcTimeoutMs;
 	if (progressSeen || PROGRESS_AWARE_METHODS.has(method)) return PROGRESS_RPC_IDLE_TIMEOUT_MS;
 	return DEFAULT_RPC_IDLE_TIMEOUT_MS;
 }
@@ -285,7 +285,7 @@ export function renderMarkdown(raw: string): string {
 	// Re-insert after marked is done so the HTML doesn't get escaped.
 	const { text, tables } = extractAsciiTables(raw);
 	let result = markedInstance.parse(text) as string;
-	result = result.replace(/@@MOLTIS_ASCII_TABLE_(\d+)@@/g, (_: string, idx: string) => tables[Number(idx)] || "");
+	result = result.replace(/@@CHELIX_ASCII_TABLE_(\d+)@@/g, (_: string, idx: string) => tables[Number(idx)] || "");
 	return result.trimEnd();
 }
 

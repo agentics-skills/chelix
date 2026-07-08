@@ -9,7 +9,7 @@ pub enum Error {
     Reqwest(#[from] reqwest::Error),
 
     #[error(transparent)]
-    Channel(#[from] moltis_channels::Error),
+    Channel(#[from] chelix_channels::Error),
 
     #[error("{message}")]
     Message { message: String },

@@ -1,7 +1,7 @@
 //! Web UI: static asset serving, SPA routing, share pages, terminal PTY,
 //! and all browser-facing handlers.
 //!
-//! This crate depends on `moltis-gateway` for [`AppState`] and server-side
+//! This crate depends on `chelix-gateway` for [`AppState`] and server-side
 //! services. It provides [`web_routes()`] which returns an Axum `Router` that
 //! the CLI (or any other host) can merge into the gateway router.
 
@@ -20,7 +20,7 @@ pub use error::{Error, Result};
 
 use {
     axum::{Router, routing::get},
-    moltis_httpd::AppState,
+    chelix_httpd::AppState,
 };
 
 /// Build the web-UI router: pages, API routes, assets, and SPA fallback.
@@ -139,79 +139,79 @@ fn build_api_routes() -> Router<AppState> {
         )
         .route(
             "/api/env",
-            get(moltis_httpd::env_routes::env_list).post(moltis_httpd::env_routes::env_set),
+            get(chelix_httpd::env_routes::env_list).post(chelix_httpd::env_routes::env_set),
         )
         .route(
             "/api/env/{id}",
-            axum::routing::delete(moltis_httpd::env_routes::env_delete),
+            axum::routing::delete(chelix_httpd::env_routes::env_delete),
         )
-        .route("/api/ssh", get(moltis_httpd::ssh_routes::ssh_status))
-        .route("/api/ssh/doctor", get(moltis_httpd::ssh_routes::ssh_doctor))
+        .route("/api/ssh", get(chelix_httpd::ssh_routes::ssh_status))
+        .route("/api/ssh/doctor", get(chelix_httpd::ssh_routes::ssh_doctor))
         .route(
             "/api/ssh/host-key/scan",
-            axum::routing::post(moltis_httpd::ssh_routes::ssh_scan_host_key),
+            axum::routing::post(chelix_httpd::ssh_routes::ssh_scan_host_key),
         )
         .route(
             "/api/ssh/doctor/test-active",
-            axum::routing::post(moltis_httpd::ssh_routes::ssh_doctor_test_active),
+            axum::routing::post(chelix_httpd::ssh_routes::ssh_doctor_test_active),
         )
         .route(
             "/api/ssh/keys/generate",
-            axum::routing::post(moltis_httpd::ssh_routes::ssh_generate_key),
+            axum::routing::post(chelix_httpd::ssh_routes::ssh_generate_key),
         )
         .route(
             "/api/ssh/keys/import",
-            axum::routing::post(moltis_httpd::ssh_routes::ssh_import_key),
+            axum::routing::post(chelix_httpd::ssh_routes::ssh_import_key),
         )
         .route(
             "/api/ssh/keys/{id}",
-            axum::routing::delete(moltis_httpd::ssh_routes::ssh_delete_key),
+            axum::routing::delete(chelix_httpd::ssh_routes::ssh_delete_key),
         )
         .route(
             "/api/ssh/targets",
-            axum::routing::post(moltis_httpd::ssh_routes::ssh_create_target),
+            axum::routing::post(chelix_httpd::ssh_routes::ssh_create_target),
         )
         .route(
             "/api/ssh/targets/{id}",
-            axum::routing::delete(moltis_httpd::ssh_routes::ssh_delete_target),
+            axum::routing::delete(chelix_httpd::ssh_routes::ssh_delete_target),
         )
         .route(
             "/api/ssh/targets/{id}/default",
-            axum::routing::post(moltis_httpd::ssh_routes::ssh_set_default_target),
+            axum::routing::post(chelix_httpd::ssh_routes::ssh_set_default_target),
         )
         .route(
             "/api/ssh/targets/{id}/test",
-            axum::routing::post(moltis_httpd::ssh_routes::ssh_test_target),
+            axum::routing::post(chelix_httpd::ssh_routes::ssh_test_target),
         )
         .route(
             "/api/ssh/targets/{id}/pin",
-            axum::routing::post(moltis_httpd::ssh_routes::ssh_pin_target_host_key)
-                .delete(moltis_httpd::ssh_routes::ssh_clear_target_host_key),
+            axum::routing::post(chelix_httpd::ssh_routes::ssh_pin_target_host_key)
+                .delete(chelix_httpd::ssh_routes::ssh_clear_target_host_key),
         )
         .route(
             "/api/config",
-            get(moltis_httpd::tools_routes::config_get)
-                .post(moltis_httpd::tools_routes::config_save),
+            get(chelix_httpd::tools_routes::config_get)
+                .post(chelix_httpd::tools_routes::config_save),
         )
         .route(
             "/api/config/validate",
-            axum::routing::post(moltis_httpd::tools_routes::config_validate),
+            axum::routing::post(chelix_httpd::tools_routes::config_validate),
         )
         .route(
             "/api/config/template",
-            get(moltis_httpd::tools_routes::config_template),
+            get(chelix_httpd::tools_routes::config_template),
         )
         .route(
             "/api/config/provenance",
-            get(moltis_httpd::tools_routes::config_provenance),
+            get(chelix_httpd::tools_routes::config_provenance),
         )
         .route(
             "/api/restart",
-            axum::routing::post(moltis_httpd::tools_routes::restart),
+            axum::routing::post(chelix_httpd::tools_routes::restart),
         )
         .route(
             "/api/system/update",
-            axum::routing::post(moltis_httpd::tools_routes::update),
+            axum::routing::post(chelix_httpd::tools_routes::update),
         )
         .route("/api/sessions", get(api::api_sessions_handler))
         .route(
@@ -220,8 +220,8 @@ fn build_api_routes() -> Router<AppState> {
         )
         .route(
             "/api/sessions/{session_key}/upload",
-            axum::routing::post(moltis_httpd::upload_routes::session_upload).layer(
-                axum::extract::DefaultBodyLimit::max(moltis_httpd::upload_routes::MAX_UPLOAD_SIZE),
+            axum::routing::post(chelix_httpd::upload_routes::session_upload).layer(
+                axum::extract::DefaultBodyLimit::max(chelix_httpd::upload_routes::MAX_UPLOAD_SIZE),
             ),
         )
         .route(
@@ -229,26 +229,26 @@ fn build_api_routes() -> Router<AppState> {
             get(api::api_session_media_handler),
         )
         .route("/api/logs/download", get(api::api_logs_download_handler))
-        .nest("/api/data", moltis_httpd::data_routes::data_router());
+        .nest("/api/data", chelix_httpd::data_routes::data_router());
 
     // Add metrics API routes (protected).
     #[cfg(feature = "metrics")]
     let protected = protected
         .route(
             "/api/metrics",
-            get(moltis_httpd::metrics_routes::api_metrics_handler),
+            get(chelix_httpd::metrics_routes::api_metrics_handler),
         )
         .route(
             "/api/metrics/summary",
-            get(moltis_httpd::metrics_routes::api_metrics_summary_handler),
+            get(chelix_httpd::metrics_routes::api_metrics_summary_handler),
         )
         .route(
             "/api/metrics/history",
-            get(moltis_httpd::metrics_routes::api_metrics_history_handler),
+            get(chelix_httpd::metrics_routes::api_metrics_history_handler),
         )
         .route(
             "/api/metrics/insights",
-            get(moltis_httpd::metrics_routes::api_metrics_insights_handler),
+            get(chelix_httpd::metrics_routes::api_metrics_insights_handler),
         );
 
     protected
@@ -257,7 +257,7 @@ fn build_api_routes() -> Router<AppState> {
 /// Add feature-specific routes to API routes.
 fn add_feature_routes(routes: Router<AppState>) -> Router<AppState> {
     #[cfg(feature = "push-notifications")]
-    let routes = routes.nest("/api/push", moltis_httpd::push_routes::push_router());
+    let routes = routes.nest("/api/push", chelix_httpd::push_routes::push_router());
 
     routes
 }

@@ -1,13 +1,13 @@
 [package]
 edition.workspace = true
-name              = "moltis-common"
+name              = "chelix-common"
 version.workspace = true
 
 [dependencies]
 async-trait    = { workspace = true }
 futures        = { workspace = true }
 ipnet          = { workspace = true }
-moltis-metrics = { optional = true, workspace = true }
+chelix-metrics = { optional = true, workspace = true }
 reqwest        = { workspace = true }
 secrecy        = { workspace = true }
 serde          = { workspace = true }
@@ -20,7 +20,7 @@ uuid           = { workspace = true }
 
 [features]
 default = []
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 
 [lints]
 workspace = true

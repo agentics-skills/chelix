@@ -8,7 +8,7 @@
 //! They are `#[ignore]`d by default so `cargo test` skips them.
 //!
 //! Run with:
-//!   cargo test -p moltis-nostr --test nostr_integration -- --ignored
+//!   cargo test -p chelix-nostr --test nostr_integration -- --ignored
 
 #![allow(clippy::unwrap_used, clippy::expect_used, unused_qualifications)]
 
@@ -37,7 +37,7 @@ fn sender_secret() -> Option<Secret<String>> {
 #[test]
 #[ignore]
 fn bot_key_parses_successfully() {
-    let keys = moltis_nostr::keys::derive_keys(&bot_secret());
+    let keys = chelix_nostr::keys::derive_keys(&bot_secret());
     assert!(keys.is_ok(), "bot key must parse: {keys:?}");
     let keys = keys.unwrap();
     let npub = keys.public_key().to_bech32().unwrap();
@@ -49,7 +49,7 @@ fn bot_key_parses_successfully() {
 #[tokio::test]
 #[ignore]
 async fn connects_to_default_relays() {
-    let keys = moltis_nostr::keys::derive_keys(&bot_secret()).unwrap();
+    let keys = chelix_nostr::keys::derive_keys(&bot_secret()).unwrap();
     let client = Client::new(keys);
 
     for relay in DEFAULT_RELAYS {
@@ -76,7 +76,7 @@ async fn connects_to_default_relays() {
 #[tokio::test]
 #[ignore]
 async fn publish_profile_metadata() {
-    let keys = moltis_nostr::keys::derive_keys(&bot_secret()).unwrap();
+    let keys = chelix_nostr::keys::derive_keys(&bot_secret()).unwrap();
     let client = Client::new(keys);
 
     for relay in DEFAULT_RELAYS {
@@ -85,13 +85,13 @@ async fn publish_profile_metadata() {
     client.connect().await;
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    let profile = moltis_nostr::config::NostrProfile {
-        name: Some("Moltis Integration Test".into()),
+    let profile = chelix_nostr::config::NostrProfile {
+        name: Some("Chelix Integration Test".into()),
         about: Some("Automated test bot — do not interact".into()),
         ..Default::default()
     };
 
-    let result = moltis_nostr::profile::publish_profile(&client, &profile).await;
+    let result = chelix_nostr::profile::publish_profile(&client, &profile).await;
     assert!(result.is_ok(), "profile publish failed: {result:?}");
 
     client.disconnect().await;
@@ -111,7 +111,7 @@ async fn send_and_receive_dm() {
     };
 
     // Set up bot (receiver) — get notifications receiver BEFORE connect
-    let bot_keys = moltis_nostr::keys::derive_keys(&bot_secret()).unwrap();
+    let bot_keys = chelix_nostr::keys::derive_keys(&bot_secret()).unwrap();
     let bot_pubkey = bot_keys.public_key();
     let bot_client = Client::new(bot_keys.clone());
     let mut notifications = bot_client.notifications();
@@ -121,7 +121,7 @@ async fn send_and_receive_dm() {
     bot_client.connect().await;
 
     // Set up sender
-    let sender_keys = moltis_nostr::keys::derive_keys(&sender_key).unwrap();
+    let sender_keys = chelix_nostr::keys::derive_keys(&sender_key).unwrap();
     let sender_client = Client::new(sender_keys.clone());
     for relay in DEFAULT_RELAYS {
         let _ = sender_client.add_relay(*relay).await;
@@ -209,9 +209,9 @@ async fn send_and_receive_dm() {
 #[test]
 #[ignore]
 fn nip44_encrypt_decrypt_round_trip() {
-    let bot_keys = moltis_nostr::keys::derive_keys(&bot_secret()).unwrap();
+    let bot_keys = chelix_nostr::keys::derive_keys(&bot_secret()).unwrap();
     let sender_keys = match sender_secret() {
-        Some(k) => moltis_nostr::keys::derive_keys(&k).unwrap(),
+        Some(k) => chelix_nostr::keys::derive_keys(&k).unwrap(),
         None => Keys::generate(),
     };
 
@@ -244,7 +244,7 @@ async fn nip59_gift_wrap_round_trip() {
 
     assert_eq!(event.kind, Kind::GiftWrap);
 
-    let unwrapped = moltis_nostr::gift_wrap::unwrap_gift_wrap(&receiver_keys, &event)
+    let unwrapped = chelix_nostr::gift_wrap::unwrap_gift_wrap(&receiver_keys, &event)
         .await
         .expect("unwrap gift wrap");
 
@@ -266,7 +266,7 @@ async fn send_and_receive_gift_wrapped_dm() {
     };
 
     // Set up bot (receiver)
-    let bot_keys = moltis_nostr::keys::derive_keys(&bot_secret()).unwrap();
+    let bot_keys = chelix_nostr::keys::derive_keys(&bot_secret()).unwrap();
     let bot_pubkey = bot_keys.public_key();
     let bot_client = Client::new(bot_keys.clone());
     let mut notifications = bot_client.notifications();
@@ -276,7 +276,7 @@ async fn send_and_receive_gift_wrapped_dm() {
     bot_client.connect().await;
 
     // Set up sender
-    let sender_keys = moltis_nostr::keys::derive_keys(&sender_key).unwrap();
+    let sender_keys = chelix_nostr::keys::derive_keys(&sender_key).unwrap();
     let sender_client = Client::new(sender_keys.clone());
     for relay in DEFAULT_RELAYS {
         let _ = sender_client.add_relay(*relay).await;
@@ -289,7 +289,7 @@ async fn send_and_receive_gift_wrapped_dm() {
     let since = Timestamp::from(
         u64::try_from(::time::OffsetDateTime::now_utc().unix_timestamp())
             .unwrap_or_default()
-            .saturating_sub(moltis_nostr::gift_wrap::TIMESTAMP_WINDOW_SECS),
+            .saturating_sub(chelix_nostr::gift_wrap::TIMESTAMP_WINDOW_SECS),
     );
     let filter = Filter::new()
         .kind(Kind::GiftWrap)
@@ -323,7 +323,7 @@ async fn send_and_receive_gift_wrapped_dm() {
                     && event.kind == Kind::GiftWrap
                 {
                     let (sender, content, _ts) =
-                        moltis_nostr::gift_wrap::unwrap_gift_wrap(&bot_keys, &event)
+                        chelix_nostr::gift_wrap::unwrap_gift_wrap(&bot_keys, &event)
                             .await
                             .expect("unwrap");
                     if sender == sender_keys.public_key() {

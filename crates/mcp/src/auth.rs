@@ -21,7 +21,7 @@ use crate::{
     remote::sanitize_url_for_display,
 };
 
-use moltis_oauth::{
+use chelix_oauth::{
     OAuthConfig, OAuthFlow, OAuthTokens, RegistrationStore, StoredRegistration, TokenStore,
     fetch_as_metadata, fetch_resource_metadata, normalize_loopback_redirect,
     parse_www_authenticate, register_client,
@@ -77,7 +77,7 @@ pub trait McpAuthProvider: Send + Sync {
 
 // ── Concrete OAuth provider ────────────────────────────────────────────────
 
-/// Manual OAuth override configuration (from `moltis.toml`).
+/// Manual OAuth override configuration (from `chelix.toml`).
 #[derive(Debug, Clone)]
 pub struct McpOAuthOverride {
     pub client_id: String,
@@ -117,7 +117,7 @@ impl McpOAuthProvider {
             server_name: server_name.to_string(),
             server_url: Secret::new(server_url.to_string()),
             server_url_display: sanitize_url_for_display(server_url),
-            http_client: moltis_common::http_client::build_default_http_client(),
+            http_client: chelix_common::http_client::build_default_http_client(),
             token_store: TokenStore::new(),
             registration_store: RegistrationStore::new(),
             state: RwLock::new(McpAuthState::NotRequired),
@@ -139,7 +139,7 @@ impl McpOAuthProvider {
             server_name: server_name.to_string(),
             server_url: Secret::new(server_url.to_string()),
             server_url_display: sanitize_url_for_display(server_url),
-            http_client: moltis_common::http_client::build_default_http_client(),
+            http_client: chelix_common::http_client::build_default_http_client(),
             token_store,
             registration_store,
             state: RwLock::new(McpAuthState::NotRequired),
@@ -240,11 +240,11 @@ impl McpOAuthProvider {
     ) -> Result<String> {
         // RFC 8252 §7.3/§8.3: loopback redirect URIs must use the `http`
         // scheme. Many authorization servers (e.g. Attio) reject
-        // `https://localhost` with `invalid_redirect_uri`. Moltis serves the
+        // `https://localhost` with `invalid_redirect_uri`. Chelix serves the
         // web UI over TLS, so the origin-derived callback arrives as
         // `https://localhost:<port>/auth/callback`. We rewrite the scheme for
         // loopback hosts; the TLS listener's peek-based HTTP→HTTPS redirect
-        // (see `moltis_tls::serve_tls_with_http_redirect`) transparently
+        // (see `chelix_tls::serve_tls_with_http_redirect`) transparently
         // bounces the browser back onto the real HTTPS callback handler,
         // preserving path and query string.
         let redirect_uri = normalize_loopback_redirect(redirect_uri);
@@ -510,7 +510,7 @@ impl McpOAuthProvider {
                 &self.http_client,
                 reg_endpoint,
                 vec![redirect_uri.to_string()],
-                &format!("moltis ({})", self.server_name),
+                &format!("chelix ({})", self.server_name),
             )
             .await
             .context("failed to register OAuth client")?;

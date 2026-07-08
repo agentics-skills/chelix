@@ -2,8 +2,8 @@ use std::{io::Write, path::PathBuf};
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-pub(crate) const HOST_TERMINAL_SESSION_NAME: &str = "moltis-host-terminal";
-pub(crate) const HOST_TERMINAL_TMUX_SOCKET_NAME: &str = "moltis-host-terminal";
+pub(crate) const HOST_TERMINAL_SESSION_NAME: &str = "chelix-host-terminal";
+pub(crate) const HOST_TERMINAL_TMUX_SOCKET_NAME: &str = "chelix-host-terminal";
 pub(crate) const HOST_TERMINAL_TMUX_CONFIG_PATH: &str = "/dev/null";
 pub(crate) const HOST_TERMINAL_MAX_INPUT_BYTES: usize = 8 * 1024;
 pub(crate) const HOST_TERMINAL_DEFAULT_COLS: u16 = 220;

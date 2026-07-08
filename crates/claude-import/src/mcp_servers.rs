@@ -1,7 +1,7 @@
 //! Import MCP server configurations from Claude Code and Claude Desktop.
 //!
 //! Collects MCP servers from three sources, deduplicates, and merges into
-//! Moltis's `mcp-servers.json`.
+//! Chelix's `mcp-servers.json`.
 //!
 //! Sources:
 //! 1. `~/.claude.json` → `mcpServers` (user-level)
@@ -11,7 +11,7 @@
 use std::{collections::HashMap, path::Path};
 
 use {
-    moltis_import_core::{
+    chelix_import_core::{
         mcp::{ImportMcpServer, merge_mcp_servers},
         report::CategoryReport,
     },
@@ -20,7 +20,7 @@ use {
 
 use crate::detect::ClaudeDetection;
 
-/// Import MCP servers from all Claude sources into Moltis.
+/// Import MCP servers from all Claude sources into Chelix.
 pub fn import_mcp_servers(detection: &ClaudeDetection, dest_path: &Path) -> CategoryReport {
     let mut all_servers: HashMap<String, ImportMcpServer> = HashMap::new();
 
@@ -253,7 +253,7 @@ mod tests {
         let report = import_mcp_servers(&detection, &dest);
         assert_eq!(
             report.status,
-            moltis_import_core::report::ImportStatus::Skipped
+            chelix_import_core::report::ImportStatus::Skipped
         );
     }
 }

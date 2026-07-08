@@ -2,7 +2,7 @@ const { expect, test } = require("../base-test");
 const { watchPageErrors } = require("../helpers");
 
 const LLM_STEP_HEADING = /^(Add LLMs|Add providers)$/;
-const ANTHROPIC_API_KEY = process.env.MOLTIS_E2E_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || "";
+const ANTHROPIC_API_KEY = process.env.CHELIX_E2E_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || "";
 
 function isVisible(locator) {
 	return locator.isVisible().catch(() => false);
@@ -68,7 +68,7 @@ async function selectModelAndSave(anthropicRow) {
 test.describe("Onboarding Anthropic provider", () => {
 	test.describe.configure({ mode: "serial" });
 
-	test.skip(!ANTHROPIC_API_KEY, "requires ANTHROPIC_API_KEY or MOLTIS_E2E_ANTHROPIC_API_KEY");
+	test.skip(!ANTHROPIC_API_KEY, "requires ANTHROPIC_API_KEY or CHELIX_E2E_ANTHROPIC_API_KEY");
 
 	test("configures Anthropic and loads models", async ({ page }) => {
 		test.setTimeout(90_000);

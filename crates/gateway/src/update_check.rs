@@ -41,13 +41,13 @@ pub fn resolve_releases_url(configured: Option<&str>) -> String {
 ///
 /// Returns a default (no update) on any error — 404, parse failure, network
 /// issues — so callers never have to handle errors.
-/// Dev builds (no `MOLTIS_VERSION` at compile time) always return "no update".
+/// Dev builds (no `CHELIX_VERSION` at compile time) always return "no update".
 pub async fn fetch_update_availability(
     client: &reqwest::Client,
     releases_url: &str,
     current_version: &str,
 ) -> UpdateAvailability {
-    if moltis_config::version::IS_DEV_BUILD {
+    if chelix_config::version::IS_DEV_BUILD {
         tracing::debug!("update check skipped: dev build");
         return UpdateAvailability::default();
     }
@@ -271,7 +271,7 @@ mod tests {
     fn builds_update_payload_from_release() {
         let update = update_from_release(
             "20260311.01",
-            Some("https://github.com/moltis-org/moltis/releases/tag/20260311.01"),
+            Some("https://github.com/agentics-skills/chelix/releases/tag/20260311.01"),
             "0.10.18",
         );
 
@@ -279,7 +279,7 @@ mod tests {
         assert_eq!(update.latest_version.as_deref(), Some("20260311.01"));
         assert_eq!(
             update.release_url.as_deref(),
-            Some("https://github.com/moltis-org/moltis/releases/tag/20260311.01")
+            Some("https://github.com/agentics-skills/chelix/releases/tag/20260311.01")
         );
     }
 
@@ -287,7 +287,7 @@ mod tests {
     fn builds_update_payload_date_to_date() {
         let update = update_from_release(
             "20260312.01",
-            Some("https://github.com/moltis-org/moltis/releases/tag/20260312.01"),
+            Some("https://github.com/agentics-skills/chelix/releases/tag/20260312.01"),
             "20260311.01",
         );
 
@@ -309,13 +309,13 @@ mod tests {
         let stable = ReleaseChannel {
             version: "20260311.01".into(),
             release_url: Some(
-                "https://github.com/moltis-org/moltis/releases/tag/20260311.01".into(),
+                "https://github.com/agentics-skills/chelix/releases/tag/20260311.01".into(),
             ),
         };
         let unstable = ReleaseChannel {
             version: "0.11.0-rc.2".into(),
             release_url: Some(
-                "https://github.com/moltis-org/moltis/releases/tag/v0.11.0-rc.2".into(),
+                "https://github.com/agentics-skills/chelix/releases/tag/v0.11.0-rc.2".into(),
             ),
         };
 

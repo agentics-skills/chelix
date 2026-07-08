@@ -91,7 +91,7 @@ fn host_visible_data_dir_with_references(
     if let Some(configured) = configured_host_data_dir(configured_data_dir) {
         return configured;
     }
-    moltis_config::container_mounts::detect_host_data_dir_with_references(
+    chelix_config::container_mounts::detect_host_data_dir_with_references(
         cli,
         guest_data_dir,
         references,
@@ -105,7 +105,7 @@ fn host_visible_path_with_references(
     path: &Path,
     references: &[String],
 ) -> PathBuf {
-    let guest_data_dir = moltis_config::data_dir();
+    let guest_data_dir = chelix_config::data_dir();
     let Ok(relative_path) = path.strip_prefix(&guest_data_dir) else {
         return path.to_path_buf();
     };
@@ -127,7 +127,7 @@ fn host_visible_path(cli: &str, configured_data_dir: Option<&Path>, path: &Path)
         cli,
         configured_data_dir,
         path,
-        &moltis_config::container_mounts::current_container_references(),
+        &chelix_config::container_mounts::current_container_references(),
     )
 }
 
@@ -171,7 +171,7 @@ fn browser_profile_permission_hint(
     }
     let mount_dir = profile_mount_dir?;
     Some(format!(
-        "Chrome could not write its browser profile at {CONTAINER_PROFILE_PATH}; Moltis mounted `{}` from the host. When Moltis runs inside Docker with the Docker socket mounted, add `host_data_dir = \"/absolute/host/path/to/moltis-data\"` under `[tools.execute_command.sandbox]` in moltis.toml to the host-visible path backing Moltis data, then restart Moltis",
+        "Chrome could not write its browser profile at {CONTAINER_PROFILE_PATH}; Chelix mounted `{}` from the host. When Chelix runs inside Docker with the Docker socket mounted, add `host_data_dir = \"/absolute/host/path/to/chelix-data\"` under `[tools.execute_command.sandbox]` in chelix.toml to the host-visible path backing Chelix data, then restart Chelix",
         mount_dir.display()
     ))
 }
@@ -465,9 +465,9 @@ impl BrowserContainer {
             if is_running_in_container() {
                 warn!(
                     container_host,
-                    "moltis appears to be running inside a container — if the browser \
+                    "chelix appears to be running inside a container — if the browser \
                      container is a sibling (not nested), set browser.container_host to \
-                     the Docker host IP or \"host.docker.internal\" in moltis.toml"
+                     the Docker host IP or \"host.docker.internal\" in chelix.toml"
                 );
             }
 
@@ -592,7 +592,7 @@ fn build_container_launch_args(
 /// to milliseconds, then floored against `navigation_timeout_ms` so that a single
 /// long navigation cannot exceed the container's own timeout. The final value is
 /// capped at `max_instance_lifetime_secs * 1000` to prevent disagree­ment with the
-/// Moltis-side hard TTL when `navigation_timeout_ms` is very large.
+/// Chelix-side hard TTL when `navigation_timeout_ms` is very large.
 pub(crate) fn browserless_session_timeout_ms(
     idle_timeout_secs: u64,
     navigation_timeout_ms: u64,

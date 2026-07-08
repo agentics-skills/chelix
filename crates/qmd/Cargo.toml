@@ -1,14 +1,14 @@
 [package]
-description       = "QMD memory backend for moltis - optional sidecar-based hybrid search"
+description       = "QMD memory backend for chelix - optional sidecar-based hybrid search"
 edition.workspace = true
-name              = "moltis-qmd"
+name              = "chelix-qmd"
 version.workspace = true
 
 [dependencies]
 anyhow        = { workspace = true }
 async-trait   = { workspace = true }
-moltis-agents = { workspace = true }
-moltis-memory = { workspace = true }
+chelix-agents = { workspace = true }
+chelix-memory = { workspace = true }
 serde         = { workspace = true }
 serde_json    = { workspace = true }
 thiserror     = { workspace = true }

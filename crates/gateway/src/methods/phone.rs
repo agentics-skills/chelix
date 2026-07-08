@@ -1,12 +1,12 @@
 //! Phone provider detection and configuration helpers.
 
 use {
-    moltis_config::schema::MoltisConfig,
+    chelix_config::schema::ChelixConfig,
     secrecy::{ExposeSecret, Secret},
 };
 
 #[cfg(feature = "telephony")]
-use moltis_channels::ChannelPlugin as _;
+use chelix_channels::ChannelPlugin as _;
 
 const PHONE_ACCOUNT_ID: &str = "default";
 const PHONE_CHANNEL_TYPE: &str = "telephony";
@@ -15,7 +15,7 @@ const PHONE_CHANNEL_TYPE: &str = "telephony";
 ///
 /// Phone credentials follow the same storage model as voice credentials: the
 /// TOML file stores non-secret settings, and `KeyStore` stores secrets.
-pub(crate) fn merge_phone_keys(cfg: &mut MoltisConfig) {
+pub(crate) fn merge_phone_keys(cfg: &mut ChelixConfig) {
     let store = crate::provider_setup::KeyStore::new();
 
     if let Some(stored) = store.load_config(&phone_key_store_name("twilio")) {
@@ -51,7 +51,7 @@ pub(crate) fn merge_phone_keys(cfg: &mut MoltisConfig) {
 /// The telephony plugin is still a channel plugin internally because that is
 /// how inbound/outbound agent routing works, but user-facing configuration
 /// lives in the dedicated Phone settings section.
-pub(crate) fn phone_channel_account(config: &MoltisConfig) -> Option<(String, serde_json::Value)> {
+pub(crate) fn phone_channel_account(config: &ChelixConfig) -> Option<(String, serde_json::Value)> {
     if !config.phone.enabled {
         return None;
     }
@@ -128,7 +128,7 @@ pub(crate) fn phone_channel_account(config: &MoltisConfig) -> Option<(String, se
 }
 
 /// Detect all available phone providers with their status.
-pub(super) fn detect_phone_providers(config: &MoltisConfig) -> serde_json::Value {
+pub(super) fn detect_phone_providers(config: &ChelixConfig) -> serde_json::Value {
     let mut effective_config = config.clone();
     merge_phone_keys(&mut effective_config);
     let mut providers = Vec::new();
@@ -233,7 +233,7 @@ pub(super) fn detect_phone_providers(config: &MoltisConfig) -> serde_json::Value
 
 /// Apply phone provider settings to the config.
 pub(super) fn apply_phone_provider_settings(
-    cfg: &mut MoltisConfig,
+    cfg: &mut ChelixConfig,
     provider: &str,
     params: &serde_json::Value,
 ) {
@@ -270,7 +270,7 @@ pub(super) fn apply_phone_provider_settings(
 }
 
 /// Remove inline credentials for a provider after they are moved into KeyStore.
-pub(super) fn clear_inline_phone_credentials(cfg: &mut MoltisConfig, provider: &str) {
+pub(super) fn clear_inline_phone_credentials(cfg: &mut ChelixConfig, provider: &str) {
     match provider {
         "twilio" => {
             cfg.phone.twilio.account_sid = None;
@@ -290,7 +290,7 @@ pub(super) fn clear_inline_phone_credentials(cfg: &mut MoltisConfig, provider: &
 
 /// Toggle a phone provider on/off.
 pub(super) fn toggle_phone_provider(provider: &str, enabled: bool) -> anyhow::Result<()> {
-    moltis_config::update_config(|cfg| {
+    chelix_config::update_config(|cfg| {
         if enabled {
             cfg.phone.enabled = true;
             cfg.phone.provider = provider.to_string();
@@ -317,7 +317,7 @@ pub(super) fn phone_key_store_name(provider: &str) -> String {
 pub(super) async fn reload_running_phone_account(
     state: &crate::state::GatewayState,
 ) -> anyhow::Result<()> {
-    let mut config = moltis_config::discover_and_load();
+    let mut config = chelix_config::discover_and_load();
     merge_phone_keys(&mut config);
 
     match phone_channel_account(&config) {
@@ -362,7 +362,7 @@ mod tests {
             apply_phone_provider_settings, clear_inline_phone_credentials, detect_phone_providers,
             phone_channel_account, phone_key_store_name,
         },
-        moltis_config::schema::MoltisConfig,
+        chelix_config::schema::ChelixConfig,
         secrecy::{ExposeSecret, Secret},
     };
 
@@ -379,8 +379,8 @@ mod tests {
                 .unwrap_or_else(|error| panic!("config tempdir should be created: {error}"));
             let data_dir = tempfile::tempdir()
                 .unwrap_or_else(|error| panic!("data tempdir should be created: {error}"));
-            moltis_config::set_config_dir(config_dir.path().to_path_buf());
-            moltis_config::set_data_dir(data_dir.path().to_path_buf());
+            chelix_config::set_config_dir(config_dir.path().to_path_buf());
+            chelix_config::set_data_dir(data_dir.path().to_path_buf());
             Self {
                 _lock: lock,
                 _config_dir: config_dir,
@@ -391,14 +391,14 @@ mod tests {
 
     impl Drop for PhoneConfigTestGuard {
         fn drop(&mut self) {
-            moltis_config::clear_config_dir();
-            moltis_config::clear_data_dir();
+            chelix_config::clear_config_dir();
+            chelix_config::clear_data_dir();
         }
     }
 
     #[test]
     fn detect_phone_providers_returns_all() {
-        let config = MoltisConfig::default();
+        let config = ChelixConfig::default();
         let result = detect_phone_providers(&config);
         let providers = result["providers"]
             .as_array()
@@ -411,7 +411,7 @@ mod tests {
 
     #[test]
     fn detect_phone_providers_marks_twilio_enabled() {
-        let mut config = MoltisConfig::default();
+        let mut config = ChelixConfig::default();
         config.phone.enabled = true;
         config.phone.provider = "twilio".to_string();
         config.phone.twilio.account_sid = Some(Secret::new("AC_test_sid".to_string()));
@@ -426,7 +426,7 @@ mod tests {
 
     #[test]
     fn detect_phone_providers_marks_telnyx_enabled() {
-        let mut config = MoltisConfig::default();
+        let mut config = ChelixConfig::default();
         config.phone.enabled = true;
         config.phone.provider = "telnyx".to_string();
         config.phone.telnyx.api_key = Some(Secret::new("KEY_test".to_string()));
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn apply_phone_provider_settings_updates_twilio() {
-        let mut config = MoltisConfig::default();
+        let mut config = ChelixConfig::default();
         let params = serde_json::json!({
             "from_number": "+15551234567",
             "webhook_url": "https://example.com/webhook",
@@ -455,7 +455,7 @@ mod tests {
 
     #[test]
     fn apply_phone_provider_settings_updates_telnyx() {
-        let mut config = MoltisConfig::default();
+        let mut config = ChelixConfig::default();
         let params = serde_json::json!({
             "from_number": "+15559876543",
             "connection_id": "conn_abc123",
@@ -480,7 +480,7 @@ mod tests {
 
     #[test]
     fn phone_channel_account_maps_twilio_phone_config_to_internal_channel() {
-        let mut config = MoltisConfig::default();
+        let mut config = ChelixConfig::default();
         config.phone.enabled = true;
         config.phone.provider = "twilio".to_string();
         config.phone.inbound_policy = "allowlist".to_string();
@@ -505,7 +505,7 @@ mod tests {
 
     #[test]
     fn clear_inline_phone_credentials_removes_selected_provider_only() {
-        let mut config = MoltisConfig::default();
+        let mut config = ChelixConfig::default();
         config.phone.twilio.account_sid = Some(Secret::new("AC_test_sid".to_string()));
         config.phone.twilio.auth_token = Some(Secret::new("test_token".to_string()));
         config.phone.telnyx.api_key = Some(Secret::new("KEY_test".to_string()));
@@ -536,17 +536,17 @@ mod tests {
                 services::GatewayServices,
                 state::GatewayState,
             },
-            moltis_channels::ChannelRegistry,
+            chelix_channels::ChannelRegistry,
             std::sync::Arc,
             tokio::sync::RwLock,
         };
 
         let _guard = PhoneConfigTestGuard::new();
-        let telephony_plugin = Arc::new(RwLock::new(moltis_telephony::TelephonyPlugin::new()));
+        let telephony_plugin = Arc::new(RwLock::new(chelix_telephony::TelephonyPlugin::new()));
         let mut registry = ChannelRegistry::new();
         registry
             .register(
-                Arc::clone(&telephony_plugin) as Arc<RwLock<dyn moltis_channels::ChannelPlugin>>
+                Arc::clone(&telephony_plugin) as Arc<RwLock<dyn chelix_channels::ChannelPlugin>>
             )
             .await;
         let registry = Arc::new(registry);
@@ -570,7 +570,7 @@ mod tests {
                 None,
             )
             .unwrap_or_else(|error| panic!("phone credentials should be stored: {error}"));
-        moltis_config::update_config(|cfg| {
+        chelix_config::update_config(|cfg| {
             cfg.phone.enabled = true;
             cfg.phone.provider = "twilio".to_string();
             cfg.phone.twilio.from_number = Some("+15550000001".to_string());
@@ -600,7 +600,7 @@ mod tests {
                 None,
             )
             .unwrap_or_else(|error| panic!("phone credentials should be updated: {error}"));
-        moltis_config::update_config(|cfg| {
+        chelix_config::update_config(|cfg| {
             cfg.phone.twilio.from_number = Some("+15550000002".to_string());
         })
         .unwrap_or_else(|error| panic!("phone config should be updated: {error}"));

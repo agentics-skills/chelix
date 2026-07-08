@@ -49,7 +49,7 @@ pub enum CronPayload {
         #[serde(skip_serializing_if = "Option::is_none")]
         timeout_secs: Option<u64>,
         #[serde(default, flatten)]
-        tool_controls: moltis_config::schema::AgentToolControls,
+        tool_controls: chelix_config::schema::AgentToolControls,
         #[serde(default)]
         deliver: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -303,9 +303,9 @@ mod tests {
             model: None,
             agent_id: None,
             timeout_secs: Some(120),
-            tool_controls: moltis_config::schema::AgentToolControls {
+            tool_controls: chelix_config::schema::AgentToolControls {
                 active_tools: Some(vec!["classify_destination".into()]),
-                tool_choice: Some(moltis_config::schema::ToolChoice::Tool {
+                tool_choice: Some(chelix_config::schema::ToolChoice::Tool {
                     name: "classify_destination".into(),
                 }),
             },

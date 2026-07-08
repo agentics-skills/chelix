@@ -1,6 +1,6 @@
 [package]
 edition.workspace = true
-name              = "moltis-browser"
+name              = "chelix-browser"
 version.workspace = true
 
 [dependencies]
@@ -8,9 +8,9 @@ async-trait    = "0.1"
 base64         = { workspace = true }
 chromiumoxide  = { default-features = false, features = ["tokio-runtime"], version = "0.8" }
 futures        = { workspace = true }
-moltis-common  = { workspace = true }
-moltis-config  = { workspace = true }
-moltis-metrics = { optional = true, workspace = true }
+chelix-common  = { workspace = true }
+chelix-config  = { workspace = true }
+chelix-metrics = { optional = true, workspace = true }
 rand           = { workspace = true }
 serde          = { workspace = true }
 serde_json     = { workspace = true }
@@ -28,7 +28,7 @@ tempfile    = { workspace = true }
 
 [features]
 default = []
-metrics = ["dep:moltis-metrics"]
+metrics = ["dep:chelix-metrics"]
 tracing = []
 
 [lints]

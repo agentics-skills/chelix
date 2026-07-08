@@ -7,7 +7,7 @@
 //! accept the retry.
 
 use {
-    moltis_config::{CompactionConfig, CompactionMode},
+    chelix_config::{CompactionConfig, CompactionMode},
     serde_json::Value,
     tracing::info,
 };
@@ -82,7 +82,7 @@ mod tests {
             super::shared::{is_tool_role_value, tool_result_call_id},
             *,
         },
-        moltis_config::CompactionMode,
+        chelix_config::CompactionMode,
         serde_json::json,
     };
 
