@@ -496,9 +496,8 @@ pub(in crate::channel_events) async fn handle_sandbox(
 
         // List available images.
         let cfg = chelix_config::discover_and_load();
-        let builder = chelix_tools::image_cache::DockerImageBuilder::for_backend(
-            &cfg.tools.execute_command.sandbox.backend,
-        );
+        let builder =
+            chelix_tools::image_cache::DockerImageBuilder::for_backend(&cfg.sandbox.backend);
         let cached = builder.list_cached().await.unwrap_or_default();
 
         let default_img = chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string();
@@ -567,9 +566,8 @@ pub(in crate::channel_events) async fn handle_sandbox(
 
         let default_img = chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string();
         let cfg = chelix_config::discover_and_load();
-        let builder = chelix_tools::image_cache::DockerImageBuilder::for_backend(
-            &cfg.tools.execute_command.sandbox.backend,
-        );
+        let builder =
+            chelix_tools::image_cache::DockerImageBuilder::for_backend(&cfg.sandbox.backend);
         let cached = builder.list_cached().await.unwrap_or_default();
         let mut images: Vec<String> = vec![default_img];
         for img in &cached {

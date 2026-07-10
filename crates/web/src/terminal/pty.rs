@@ -22,7 +22,7 @@ use super::tmux::{
 /// Build a command that opens a shell in the specified container via docker/podman exec.
 fn container_terminal_command_builder(container_name: &str) -> CommandBuilder {
     let config = chelix_config::discover_and_load();
-    let cli: &str = match config.tools.execute_command.sandbox.backend.as_str() {
+    let cli: &str = match config.sandbox.backend.as_str() {
         "apple-container" => "container",
         "docker" => "docker",
         "podman" => "podman",

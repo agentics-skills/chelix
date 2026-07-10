@@ -152,10 +152,9 @@ model or disabling MCP for a session changes what appears there.
 Commands run inside isolated containers for security:
 
 ```toml
-[tools.execute_command.sandbox]
+[sandbox]
 mode = "all"                    # "off", "non-main", or "all"
-scope = "session"               # "command", "session", or "global"
-workspace_mount = "ro"          # "ro", "rw", or "none"
+scope = "session"               # "session", "agent", or "shared"
 workspace_sysmount = "ro"       # "ro" keeps rootfs/cap-drop hardening, "rw" relaxes both
 # host_data_dir = "/host/path/data"  # Optional override if auto-detection cannot resolve the host path
 home_persistence = "shared"     # "off", "session", or "shared" (default: "shared")
@@ -175,7 +174,16 @@ packages = [
     "npm",
     "golang-go",
 ]
+
+[[sandbox.mounts]]
+host = "/srv/reference"
+guest = "/mnt/reference"
+mode = "ro"
 ```
+
+Chelix always mounts `data_dir()` read-write at the identical absolute path
+inside the sandbox. This mount cannot be disabled or redirected. Additional
+mounts are optional; do not use them to expose secret-bearing config files.
 
 If Chelix runs inside Docker and also mounts the host container socket
 (`/var/run/docker.sock`), Chelix now auto-detects the host path backing
@@ -475,10 +483,9 @@ agent_max_iterations = 25
 [providers]
 offered = ["anthropic", "openai", "gemini"]
 
-[tools.execute_command.sandbox]
+[sandbox]
 mode = "all"
 scope = "session"
-workspace_mount = "ro"
 workspace_sysmount = "ro"
 home_persistence = "session"
 # shared_home_dir = "/path/to/shared-home"

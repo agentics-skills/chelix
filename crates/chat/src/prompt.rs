@@ -437,8 +437,6 @@ pub(crate) async fn build_prompt_runtime_context(
             }
             let config = router.config();
             let backend_name = router.backend_name();
-            let workspace_mount = config.workspace_mount.to_string();
-            let workspace_path = (workspace_mount != "none").then(|| data_dir_display.clone());
             Some(PromptSandboxRuntimeContext {
                 command_sandboxed: true,
                 mode: Some(config.mode.to_string()),
@@ -446,8 +444,7 @@ pub(crate) async fn build_prompt_runtime_context(
                 scope: Some(config.scope.to_string()),
                 image: Some(router.resolve_image_nowait(session_key, None).await),
                 home: Some("/home/sandbox".to_string()),
-                workspace_mount: Some(workspace_mount),
-                workspace_path,
+                workspace_path: Some(data_dir_display.clone()),
                 network: Some(config.network.clone()),
                 session_override: session_entry.and_then(|entry| entry.sandbox_enabled),
             })

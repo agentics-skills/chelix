@@ -6,8 +6,8 @@ name              = "chelix-codex-import"
 version.workspace = true
 
 [dependencies]
-dirs-next          = { workspace = true }
 chelix-import-core = { workspace = true }
+dirs-next          = { workspace = true }
 serde              = { workspace = true }
 serde_json         = { workspace = true }
 toml               = { workspace = true }

@@ -85,7 +85,6 @@ pub(super) fn build_schema_map() -> KnownKeys {
         Struct(HashMap::from([
             ("mode", Leaf),
             ("scope", Leaf),
-            ("workspace_mount", Leaf),
             ("workspace_sysmount", Leaf),
             ("host_data_dir", Leaf),
             ("home_persistence", Leaf),
@@ -101,6 +100,14 @@ pub(super) fn build_schema_map() -> KnownKeys {
             ("wasm_epoch_interval_ms", Leaf),
             ("wasm_tool_limits", wasm_tool_limits()),
             ("tools_policy", tool_policy_entry()),
+            (
+                "mounts",
+                Array(Box::new(Struct(HashMap::from([
+                    ("host", Leaf),
+                    ("guest", Leaf),
+                    ("mode", Leaf),
+                ])))),
+            ),
         ]))
     };
 
@@ -156,7 +163,6 @@ pub(super) fn build_schema_map() -> KnownKeys {
             ("approval_mode", Leaf),
             ("security_level", Leaf),
             ("allowlist", Leaf),
-            ("sandbox", sandbox()),
             ("host", Leaf),
             ("node", Leaf),
             ("ssh_target", Leaf),
@@ -428,6 +434,7 @@ pub(super) fn build_schema_map() -> KnownKeys {
             Struct(HashMap::from([("presets", Map(Box::new(mode_preset())))])),
         ),
         ("tools", tools()),
+        ("sandbox", sandbox()),
         (
             "skills",
             Struct(HashMap::from([

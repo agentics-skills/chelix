@@ -881,8 +881,7 @@ pub async fn prepare_gateway_core(
     services = services.with_webhooks(live_webhooks);
 
     // Build sandbox router from config.
-    let sandbox_config =
-        chelix_tools::sandbox::SandboxConfig::from(&config.tools.execute_command.sandbox);
+    let sandbox_config = chelix_tools::sandbox::SandboxConfig::from(&config.sandbox);
     let sandbox_router = Arc::new(sandbox::build_sandbox_router(
         &sandbox_config,
         &sandbox_container_prefix,

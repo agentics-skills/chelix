@@ -577,8 +577,60 @@ fn sandbox_defaults_include_go_runtime() {
     assert!(sandbox.packages.iter().any(|pkg| pkg == "golang-go"));
     assert_eq!(sandbox.home_persistence, HomePersistenceConfig::Shared);
     assert!(sandbox.host_data_dir.is_none());
+    assert!(sandbox.mounts.is_empty());
     assert_eq!(sandbox.workspace_sysmount, "ro");
     assert!(sandbox.wasm_tool_limits.is_none());
+}
+
+#[test]
+fn chelix_config_parses_top_level_sandbox() {
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[sandbox]
+mode = "off"
+backend = "podman"
+host_data_dir = "/host/chelix-data"
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(config.sandbox.mode, "off");
+    assert_eq!(config.sandbox.backend, "podman");
+    assert_eq!(
+        config.sandbox.host_data_dir.as_deref(),
+        Some("/host/chelix-data")
+    );
+}
+
+#[test]
+fn sandbox_custom_mounts_deserialize_as_typed_array() {
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[[sandbox.mounts]]
+host = "/srv/reference"
+guest = "/mnt/reference"
+mode = "ro"
+
+[[sandbox.mounts]]
+host = "/srv/output"
+guest = "/mnt/output"
+mode = "rw"
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(config.sandbox.mounts, vec![
+        SandboxMount {
+            host: "/srv/reference".into(),
+            guest: "/mnt/reference".into(),
+            mode: MountMode::Ro,
+        },
+        SandboxMount {
+            host: "/srv/output".into(),
+            guest: "/mnt/output".into(),
+            mode: MountMode::Rw,
+        },
+    ]);
 }
 
 #[test]
@@ -595,7 +647,6 @@ fn sandbox_wasm_tool_limits_deserialize() {
         r#"
 mode = "all"
 scope = "session"
-workspace_mount = "ro"
 workspace_sysmount = "rw"
 host_data_dir = "/host/chelix-data"
 

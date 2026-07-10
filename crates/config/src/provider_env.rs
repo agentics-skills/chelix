@@ -247,7 +247,6 @@ mod tests {
             "google",
             "google-gemini",
             "grok",
-            "local",
             "z-ai",
             "z.ai",
             "zhipu",

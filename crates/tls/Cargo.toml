@@ -6,10 +6,10 @@ version.workspace    = true
 
 [dependencies]
 axum           = { workspace = true }
-hostname       = { workspace = true }
-hyper-util     = { workspace = true }
 chelix-common  = { workspace = true }
 chelix-config  = { workspace = true }
+hostname       = { workspace = true }
+hyper-util     = { workspace = true }
 rcgen          = { workspace = true }
 rustls         = { workspace = true }
 rustls-pemfile = { workspace = true }

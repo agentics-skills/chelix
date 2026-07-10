@@ -50,10 +50,10 @@
   - [`skills`](#skills)
 - **Tools — Execution**
   - [`tools.execute_command`](#toolsexecute_command)
-  - [`tools.execute_command.sandbox`](#toolsexecute_commandsandbox)
-  - [`tools.execute_command.sandbox.resource_limits`](#toolsexecute_commandsandboxresource-limits)
-  - [`tools.execute_command.sandbox.tools_policy`](#toolsexecute_commandsandboxtools-policy)
-  - [`tools.execute_command.sandbox.wasm_tool_limits`](#toolsexecute_commandsandboxwasm-tool-limits)
+  - [`sandbox`](#sandbox)
+  - [`sandbox.resource_limits`](#sandboxresource_limits)
+  - [`sandbox.tools_policy`](#sandboxtools_policy)
+  - [`sandbox.wasm_tool_limits`](#sandboxwasm_tool_limits)
   - [`tools.browser`](#toolsbrowser)
 - **Tools — Web & Data**
   - [`tools.web.search`](#toolswebsearch)
@@ -357,13 +357,12 @@ not create chat agents, change memory, or affect `spawn_agent` presets.
 | `ssh_target` | optional string | `null` | Default SSH target for remote execution (when `host = "ssh"`). |
 
 
-### `tools.execute_command.sandbox` — SandboxConfig
+### `sandbox` — SandboxConfig
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `mode` | string | `"all"` | When sandboxing is active (`"all"`, `"auto"`, `"off"`). |
-| `scope` | string | `"session"` | Container lifetime (`"session"` or `"per-command"`). |
-| `workspace_mount` | string | `"ro"` | Workspace mount mode (`"ro"`, `"rw"`, `"none"`). |
+| `mode` | string | `"all"` | When sandboxing is active (`"all"`, `"non-main"`, `"off"`). |
+| `scope` | string | `"session"` | Container lifetime (`"session"`, `"agent"`, or `"shared"`). |
 | `workspace_sysmount` | string | `"ro"` | Sandbox hardening mode for rootfs/capabilities (`"ro"` keeps `--cap-drop ALL`, `--security-opt no-new-privileges`, and `--read-only` for prebuilt images; `"rw"` skips those flags). |
 | `host_data_dir` | optional string | `null` | Host-visible path for Chelix `data_dir()` when creating sandbox or browser containers from inside another container. |
 | `home_persistence` | enum: `"off"`, `"session"`, `"shared"` | `"shared"` | Persistence strategy for `/home/sandbox` in sandbox containers. |
@@ -372,12 +371,18 @@ not create chat agents, change memory, or affect `spawn_agent` presets.
 | `container_prefix` | optional string | `null` | Name prefix for created containers. |
 | `network` | string | `"bridge"` | Docker/Podman network name passed as `--network=<name>`. |
 | `backend` | string | `"auto"` | Sandbox backend: `"auto"`, `"docker"`, `"podman"`, `"apple-container"`, `"restricted-host"`, or `"wasm"`. |
+| `mounts` | array of tables | `[]` | Additional mounts with `host`, absolute `guest`, and `mode` (`"ro"` or `"rw"`). |
 | `packages` | array | *(~130 packages)* | Packages to install via `apt-get` in the sandbox image. Empty list to skip. |
 | `wasm_fuel_limit` | optional integer | `null` | Fuel limit for WASM sandbox execution (instructions). |
 | `wasm_epoch_interval_ms` | optional integer | `null` | Epoch interruption interval in milliseconds for WASM sandbox. |
 
 
-### `tools.execute_command.sandbox.resource_limits` — ResourceLimitsConfig
+Chelix always mounts `data_dir()` read-write at the identical absolute path
+inside the sandbox. This invariant is not configurable. Add other mounts with
+`[[sandbox.mounts]]`; secret-bearing config files must not be mounted.
+
+
+### `sandbox.resource_limits` — ResourceLimitsConfig
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -386,7 +391,7 @@ not create chat agents, change memory, or affect `spawn_agent` presets.
 | `pids_max` | optional integer | `null` | Maximum number of PIDs allowed in the sandbox. |
 
 
-### `tools.execute_command.sandbox.tools_policy` — ToolPolicyConfig
+### `sandbox.tools_policy` — ToolPolicyConfig
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -395,7 +400,7 @@ not create chat agents, change memory, or affect `spawn_agent` presets.
 | `profile` | optional string | `null` | Named policy profile to apply (e.g. `"restricted"`). |
 
 
-### `tools.execute_command.sandbox.wasm_tool_limits` — WasmToolLimitsConfig
+### `sandbox.wasm_tool_limits` — WasmToolLimitsConfig
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -403,7 +408,7 @@ not create chat agents, change memory, or affect `spawn_agent` presets.
 | `default_fuel` | integer | `1000000` | Default WASM fuel limit (instructions). |
 | `tool_overrides` | map | *(see below)* | Per-tool overrides for WASM fuel and memory. |
 
-### tools.execute_command.sandbox.wasm_tool_limits.tool_overrides.<name> (ToolLimitOverrideConfig)
+### sandbox.wasm_tool_limits.tool_overrides.<name> (ToolLimitOverrideConfig)
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|

@@ -29,29 +29,29 @@ local-embeddings = ["dep:llama-cpp-2"]
 metrics          = ["dep:chelix-metrics"]
 
 [dependencies]
-anyhow                 = { workspace = true }
-async-trait            = { workspace = true }
-bytemuck               = { workspace = true }
-chrono                 = { features = ["serde"], workspace = true }
-directories.workspace  = true
-futures                = { workspace = true }
-llama-cpp-2            = { optional = true, workspace = true }
-chelix-agents          = { workspace = true }
-chelix-common          = { workspace = true }
-chelix-metrics         = { optional = true, workspace = true }
-chelix-splitter        = { workspace = true }
-chelix-tools           = { workspace = true }
-notify-debouncer-full  = { optional = true, workspace = true }
-reqwest                = { workspace = true }
-secrecy                = { workspace = true }
-serde                  = { workspace = true }
-serde_json             = { workspace = true }
-thiserror              = { workspace = true }
-sha2                   = { workspace = true }
-sqlx                   = { workspace = true }
-tokio                  = { workspace = true }
-tracing                = { workspace = true }
-walkdir                = { workspace = true }
+anyhow                = { workspace = true }
+async-trait           = { workspace = true }
+bytemuck              = { workspace = true }
+chelix-agents         = { workspace = true }
+chelix-common         = { workspace = true }
+chelix-metrics        = { optional = true, workspace = true }
+chelix-splitter       = { workspace = true }
+chelix-tools          = { workspace = true }
+chrono                = { features = ["serde"], workspace = true }
+directories.workspace = true
+futures               = { workspace = true }
+llama-cpp-2           = { optional = true, workspace = true }
+notify-debouncer-full = { optional = true, workspace = true }
+reqwest               = { workspace = true }
+secrecy               = { workspace = true }
+serde                 = { workspace = true }
+serde_json            = { workspace = true }
+sha2                  = { workspace = true }
+sqlx                  = { workspace = true }
+thiserror             = { workspace = true }
+tokio                 = { workspace = true }
+tracing               = { workspace = true }
+walkdir               = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

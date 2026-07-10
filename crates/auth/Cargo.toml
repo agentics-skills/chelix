@@ -13,11 +13,11 @@ argon2            = { workspace = true }
 async-trait       = { workspace = true }
 axum              = { workspace = true }
 base64            = { workspace = true }
-dashmap           = { workspace = true }
-hmac              = { workspace = true }
 chelix-config     = { workspace = true }
 chelix-tools      = { workspace = true }
 chelix-vault      = { optional = true, workspace = true }
+dashmap           = { workspace = true }
+hmac              = { workspace = true }
 password-hash     = { workspace = true }
 rand              = { workspace = true }
 secrecy           = { workspace = true }

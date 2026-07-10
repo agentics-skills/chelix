@@ -88,6 +88,10 @@ impl Sandbox for ConcurrentCommandProbeSandbox {
         "probe"
     }
 
+    fn provides_fs_isolation(&self) -> bool {
+        true
+    }
+
     async fn ensure_ready(
         &self,
         _id: &SandboxId,
@@ -865,7 +869,7 @@ async fn sandbox_write_via_registry_sends_base64_to_bridge() {
         SandboxConfig::default(),
         backend,
     ));
-    router.set_override("sandboxed", true).await;
+    router.set_override("sandboxed-write", true).await;
 
     let mut registry = ToolRegistry::new();
     register_fs_tools(&mut registry, FsToolsContext {
@@ -878,7 +882,7 @@ async fn sandbox_write_via_registry_sends_base64_to_bridge() {
         .execute(json!({
             "file_path": "/data/out.txt",
             "content": "sandboxed write",
-            "_session_key": "sandboxed",
+            "_session_key": "sandboxed-write",
         }))
         .await
         .unwrap();
@@ -897,7 +901,7 @@ async fn sandbox_write_serializes_same_file_mutations_via_registry() {
         SandboxConfig::default(),
         backend,
     ));
-    router.set_override("sandboxed", true).await;
+    router.set_override("sandboxed-serial", true).await;
 
     let mut registry = ToolRegistry::new();
     register_fs_tools(&mut registry, FsToolsContext {
@@ -913,7 +917,7 @@ async fn sandbox_write_serializes_same_file_mutations_via_registry() {
                 .execute(json!({
                     "file_path": "/data/out.txt",
                     "content": "first",
-                    "_session_key": "sandboxed",
+                    "_session_key": "sandboxed-serial",
                 }))
                 .await
         })
@@ -928,7 +932,7 @@ async fn sandbox_write_serializes_same_file_mutations_via_registry() {
                 .execute(json!({
                     "file_path": "/data/out.txt",
                     "content": "second",
-                    "_session_key": "sandboxed",
+                    "_session_key": "sandboxed-serial",
                 }))
                 .await
         })
@@ -1059,7 +1063,7 @@ async fn sandbox_write_requires_approval_before_bridge() {
         SandboxConfig::default(),
         backend,
     ));
-    router.set_override("sandboxed", true).await;
+    router.set_override("sandboxed-approval", true).await;
 
     let approval_manager = Arc::new(ApprovalManager::default());
     let broadcaster = Arc::new(TestBroadcaster::new());
@@ -1091,7 +1095,7 @@ async fn sandbox_write_requires_approval_before_bridge() {
         .execute(json!({
             "file_path": "/data/out.txt",
             "content": "sandboxed write",
-            "_session_key": "sandboxed",
+            "_session_key": "sandboxed-approval",
         }))
         .await
         .unwrap();

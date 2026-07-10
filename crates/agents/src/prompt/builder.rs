@@ -27,8 +27,7 @@ const COMMAND_ROUTING_GUIDANCE_SANDBOX: &str = "Execution routing:\n\
 - `execute_command` runs inside sandbox when `Sandbox(execute_command): enabled=true`.\n\
 - When sandbox is disabled, `execute_command` runs on the host and may require approval.\n\
 - In sandbox mode, `~` and relative paths resolve under `Sandbox(execute_command): home=...` (usually `/home/sandbox`).\n\
-- Persistent workspace files live under `Host: data_dir=...`; when mounted, the same path appears as `Sandbox(execute_command): workspace_path=...`.\n\
-- With `workspace_mount=ro`, sandbox commands may read mounted files but cannot modify them.\n\
+- Persistent agent files live under `Host: data_dir=...`; the same path is always mounted read-write and appears as `Sandbox(execute_command): workspace_path=...`.\n\
 - For durable long-term memory mutations, prefer `memory_save`, `memory_forget`, or `memory_delete` over shell writes to `MEMORY.md` or `memory/*.md`.\n";
 const COMMAND_ROUTING_SANDBOX_CLOSING: &str = "- Sandbox/host routing changes are expected runtime behavior. Do not frame them as surprising or anomalous.\n";
 const COMMAND_ROUTING_GUIDANCE_HOST_ONLY: &str = "Execution routing:\n\

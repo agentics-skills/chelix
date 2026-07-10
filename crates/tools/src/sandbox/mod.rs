@@ -6,6 +6,7 @@
 pub(crate) mod apple;
 pub(crate) mod containers;
 pub(crate) mod docker;
+pub mod env;
 pub(crate) mod file_system;
 pub(crate) mod host;
 pub(crate) mod paths;
@@ -34,12 +35,13 @@ pub use {
         remove_sandbox_image, restart_container_daemon, sandbox_image_tag, stop_container,
     },
     docker::{DockerSandbox, NoSandbox},
+    env::ExecEnv,
     host::{HostProvisionResult, is_debian_host, provision_host_packages},
     paths::shared_home_dir_path,
     platform::{RestrictedHostSandbox, is_wasm_sandbox_available},
     router::{FailoverSandbox, SandboxEvent, SandboxRouter, auto_detect_backend, create_sandbox},
     types::{
         BuildImageResult, DEFAULT_SANDBOX_IMAGE, HomePersistence, ResourceLimits, Sandbox,
-        SandboxBackendId, SandboxConfig, SandboxId, SandboxMode, SandboxScope, WorkspaceMount,
+        SandboxBackendId, SandboxConfig, SandboxId, SandboxMode, SandboxScope,
     },
 };

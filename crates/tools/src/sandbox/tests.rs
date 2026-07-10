@@ -17,7 +17,7 @@ use crate::sandbox::file_system::{
 #[cfg(target_os = "macos")]
 use std::env;
 use {
-    super::{containers::*, docker::*, host::*, paths::*, platform::*, router::*, types::*},
+    super::{containers::*, docker::*, host::*, platform::*, router::*, types::*},
     crate::{
         command::{CommandOptions, CommandOutput},
         error::{Error, Result},
@@ -157,45 +157,6 @@ async fn assert_runtime_oci_file_transfers(cli: &str) -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn test_ensure_sandbox_home_persistence_host_dir_propagates_guest_visible_create_error() {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let blocking_file = temp_dir.path().join("blocking-file");
-    std::fs::write(&blocking_file, "x").unwrap();
-    let config = SandboxConfig {
-        home_persistence: HomePersistence::Shared,
-        shared_home_dir: Some(blocking_file.join("nested")),
-        ..Default::default()
-    };
-    let id = SandboxId {
-        scope: SandboxScope::Session,
-        key: "sess-1".into(),
-    };
-
-    let result = ensure_sandbox_home_persistence_host_dir(&config, None, &id);
-    assert!(result.is_err());
-}
-
-#[test]
-fn test_ensure_sandbox_home_persistence_host_dir_allows_translated_create_error() {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let blocking_file = temp_dir.path().join("blocking-file");
-    std::fs::write(&blocking_file, "x").unwrap();
-    let config = SandboxConfig {
-        host_data_dir: Some(blocking_file.join("host")),
-        ..Default::default()
-    };
-    let id = SandboxId {
-        scope: SandboxScope::Session,
-        key: "sess-1".into(),
-    };
-
-    let result = ensure_sandbox_home_persistence_host_dir(&config, Some("docker"), &id)
-        .unwrap()
-        .unwrap();
-    assert_eq!(result, blocking_file.join("host/sandbox/home/shared"));
-}
-
 struct TestSandbox {
     name: &'static str,
     ensure_ready_error: Option<String>,
@@ -289,6 +250,8 @@ mod docker_router;
 mod linux;
 mod network;
 mod platform;
+mod resolve_env;
 mod restricted_host;
+mod skills;
 #[cfg(feature = "wasm")]
 mod wasm;

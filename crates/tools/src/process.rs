@@ -16,7 +16,7 @@ use chelix_agents::tool_registry::AgentTool;
 
 use crate::{
     command::{CommandOptions, CommandOutput, run_shell_command},
-    sandbox::{SandboxId, SandboxRouter},
+    sandbox::{ExecEnv, SandboxRouter},
 };
 
 /// Regex pattern for valid tmux session names: only `[a-zA-Z0-9_-]`.
@@ -114,7 +114,7 @@ impl ProcessTool {
         self
     }
 
-    /// Run a tmux command inside the sandbox container.
+    /// Run a tmux command in the session's resolved environment.
     async fn run_tmux(
         &self,
         session_key: &str,
@@ -122,34 +122,28 @@ impl ProcessTool {
         timeout_secs: u64,
     ) -> anyhow::Result<CommandOutput> {
         let command = format!("tmux {tmux_args}");
-        let opts = CommandOptions {
-            timeout: std::time::Duration::from_secs(timeout_secs),
-            working_dir: Some(std::path::PathBuf::from("/home/sandbox")),
-            ..Default::default()
+        let env = match self.sandbox_router.as_deref() {
+            Some(router) => router.resolve_env(session_key).await?,
+            None => ExecEnv::Host,
         };
 
-        if let Some(ref router) = self.sandbox_router {
-            let is_sandboxed = router.is_sandboxed(session_key).await;
-            if is_sandboxed {
-                let id = router.sandbox_id_for(session_key);
-                let backend = router.resolve_backend(session_key).await;
-                let image = router
-                    .resolve_image_for_backend_nowait(session_key, None, backend.backend_name())
-                    .await;
-                backend.ensure_ready(&id, Some(&image)).await?;
-                return Ok(backend.run_command(&id, &command, &opts).await?);
-            }
+        match env {
+            ExecEnv::Sandbox { backend, id } => {
+                let opts = CommandOptions {
+                    timeout: std::time::Duration::from_secs(timeout_secs),
+                    working_dir: Some(backend.workspace_dir().into()),
+                    ..Default::default()
+                };
+                Ok(backend.run_command(&id, &command, &opts).await?)
+            },
+            ExecEnv::Host => {
+                let opts = CommandOptions {
+                    timeout: std::time::Duration::from_secs(timeout_secs),
+                    ..Default::default()
+                };
+                Ok(run_shell_command(&command, &opts).await?)
+            },
         }
-
-        // Fallback: run directly on host (for non-sandboxed or no router).
-        Ok(run_shell_command(&command, &opts).await?)
-    }
-
-    /// Resolve the sandbox ID for a session key (for logging).
-    fn sandbox_id_for(&self, session_key: &str) -> Option<SandboxId> {
-        self.sandbox_router
-            .as_ref()
-            .map(|r| r.sandbox_id_for(session_key))
     }
 
     async fn handle_start(
@@ -421,11 +415,7 @@ impl AgentTool for ProcessTool {
             ProcessAction::List => "list",
         };
 
-        debug!(
-            action = action_label,
-            sandbox_id = ?self.sandbox_id_for(session_key),
-            "process tool invoked"
-        );
+        debug!(action = action_label, "process tool invoked");
 
         let result = match action {
             ProcessAction::Start {

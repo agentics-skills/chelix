@@ -27,7 +27,7 @@ use crate::{
     Result,
     error::Error,
     fs::shared::{FsPathPolicy, enforce_path_policy_deny_only, require_absolute, session_key_from},
-    sandbox::{SandboxRouter, file_system::sandbox_file_system_for_session},
+    sandbox::{ExecEnv, SandboxRouter, file_system::sandbox_file_system_for_session},
 };
 
 /// Maximum number of entries returned by a single `Glob` call.
@@ -252,80 +252,91 @@ impl AgentTool for GlobTool {
             .map(PathBuf::from);
         let session_key = session_key_from(&params).to_string();
 
+        let router = self.sandbox_router.as_deref();
+        let env = match router {
+            Some(router) => router.resolve_env(&session_key).await?,
+            None => ExecEnv::Host,
+        };
+
         // Sandbox dispatch: shell `find ROOT -type f` into the container
         // and apply the glob matcher + path policy on the host side.
         // Gitignore semantics are not honored in the sandbox walk; that
         // can be a follow-up.
-        if let Some(ref router) = self.sandbox_router
-            && router.is_sandboxed(&session_key).await
-        {
-            let root = match path.as_ref() {
-                Some(p) => p.clone(),
-                None => self.workspace_root.clone().ok_or_else(|| {
-                    Error::message(
-                        "Glob requires an absolute 'path' argument (no workspace root is configured)",
-                    )
-                })?,
-            };
-            // Root deny-only check, matching the host path.
-            if let Some(ref policy) = self.path_policy
-                && let Some(payload) = enforce_path_policy_deny_only(policy, &root)
-            {
+        match env {
+            ExecEnv::Sandbox { .. } => {
+                let router = router.ok_or_else(|| {
+                    Error::message("sandbox environment resolved without a sandbox router")
+                })?;
+                let root = match path.as_ref() {
+                    Some(p) => p.clone(),
+                    None => self.workspace_root.clone().ok_or_else(|| {
+                        Error::message(
+                            "Glob requires an absolute 'path' argument (no workspace root is configured)",
+                        )
+                    })?,
+                };
+                // Apply the policy before bridge dispatch because it protects
+                // the agent-facing namespace, not host filesystem access.
+                if let Some(ref policy) = self.path_policy
+                    && let Some(payload) = enforce_path_policy_deny_only(policy, &root)
+                {
+                    return Ok(payload);
+                }
+                let root_str = root
+                    .to_str()
+                    .ok_or_else(|| Error::message("Glob 'path' contains invalid UTF-8"))?;
+                let sandbox_fs = sandbox_file_system_for_session(router, &session_key).await?;
+                let listed = sandbox_fs.list_files(root_str).await?;
+                let matcher: GlobMatcher = GlobPattern::new(&pattern)
+                    .map_err(|e| Error::message(format!("invalid glob pattern '{pattern}': {e}")))?
+                    .compile_matcher();
+                let mut matched: Vec<String> = listed
+                    .files
+                    .into_iter()
+                    .filter(|f| {
+                        let relative = PathBuf::from(f)
+                            .strip_prefix(&root)
+                            .map(PathBuf::from)
+                            .unwrap_or_else(|_| PathBuf::from(f));
+                        if !matcher.is_match(&relative) {
+                            return false;
+                        }
+                        if let Some(ref policy) = self.path_policy
+                            && policy.check(&PathBuf::from(f)).is_some()
+                        {
+                            return false;
+                        }
+                        true
+                    })
+                    .collect();
+                let result_truncated = matched.len() > DEFAULT_GLOB_LIMIT;
+                if result_truncated {
+                    matched.truncate(DEFAULT_GLOB_LIMIT);
+                }
+                let truncated = listed.truncated || result_truncated;
+                #[cfg(feature = "metrics")]
+                counter!(
+                    tools_metrics::EXECUTIONS_TOTAL,
+                    labels::TOOL => "Glob".to_string(),
+                    labels::SUCCESS => "true".to_string()
+                )
+                .increment(1);
+                let mut payload = json!({
+                    "paths": matched,
+                    "truncated": truncated,
+                    "root": root.to_string_lossy(),
+                });
+                if listed.truncated {
+                    let limit = listed.limit.unwrap_or(0);
+                    payload["scan_truncated"] = json!(true);
+                    payload["scan_limit"] = json!(limit);
+                    payload["continuation_hint"] = json!(format!(
+                        "Sandbox file scan was capped at {limit} files. Narrow the search root or use a more specific glob pattern."
+                    ));
+                }
                 return Ok(payload);
-            }
-            let root_str = root
-                .to_str()
-                .ok_or_else(|| Error::message("Glob 'path' contains invalid UTF-8"))?;
-            let sandbox_fs = sandbox_file_system_for_session(router, &session_key).await?;
-            let listed = sandbox_fs.list_files(root_str).await?;
-            let matcher: GlobMatcher = GlobPattern::new(&pattern)
-                .map_err(|e| Error::message(format!("invalid glob pattern '{pattern}': {e}")))?
-                .compile_matcher();
-            let mut matched: Vec<String> = listed
-                .files
-                .into_iter()
-                .filter(|f| {
-                    let relative = PathBuf::from(f)
-                        .strip_prefix(&root)
-                        .map(PathBuf::from)
-                        .unwrap_or_else(|_| PathBuf::from(f));
-                    if !matcher.is_match(&relative) {
-                        return false;
-                    }
-                    if let Some(ref policy) = self.path_policy
-                        && policy.check(&PathBuf::from(f)).is_some()
-                    {
-                        return false;
-                    }
-                    true
-                })
-                .collect();
-            let result_truncated = matched.len() > DEFAULT_GLOB_LIMIT;
-            if result_truncated {
-                matched.truncate(DEFAULT_GLOB_LIMIT);
-            }
-            let truncated = listed.truncated || result_truncated;
-            #[cfg(feature = "metrics")]
-            counter!(
-                tools_metrics::EXECUTIONS_TOTAL,
-                labels::TOOL => "Glob".to_string(),
-                labels::SUCCESS => "true".to_string()
-            )
-            .increment(1);
-            let mut payload = json!({
-                "paths": matched,
-                "truncated": truncated,
-                "root": root.to_string_lossy(),
-            });
-            if listed.truncated {
-                let limit = listed.limit.unwrap_or(0);
-                payload["scan_truncated"] = json!(true);
-                payload["scan_limit"] = json!(limit);
-                payload["continuation_hint"] = json!(format!(
-                    "Sandbox file scan was capped at {limit} files. Narrow the search root or use a more specific glob pattern."
-                ));
-            }
-            return Ok(payload);
+            },
+            ExecEnv::Host => {},
         }
 
         let workspace_root = self.workspace_root.clone();

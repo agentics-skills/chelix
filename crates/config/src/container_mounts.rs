@@ -1,12 +1,466 @@
-//! Host path detection for containers launched from inside containers.
+//! Declarative sandbox mounts and host path detection for nested containers.
 
 use std::{
     collections::HashSet,
-    path::{Path, PathBuf},
+    fmt,
+    path::{Component, Path, PathBuf},
     process::Command,
 };
 
-use tracing::debug;
+use {
+    serde::{Deserialize, Serialize},
+    tracing::{debug, warn},
+};
+
+use crate::schema::{HomePersistenceConfig, SandboxConfig};
+
+pub const SANDBOX_HOME_DIR: &str = "/home/sandbox";
+pub const CHELIX_CTL_GUEST_PATH: &str = "/usr/local/bin/chelix-ctl";
+
+/// Access mode for a sandbox bind mount.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MountMode {
+    Ro,
+    Rw,
+}
+
+impl MountMode {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ro => "ro",
+            Self::Rw => "rw",
+        }
+    }
+}
+
+impl fmt::Display for MountMode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// A host-to-guest bind mount consumed by every sandbox backend.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxMount {
+    pub host: PathBuf,
+    pub guest: PathBuf,
+    pub mode: MountMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MountViolationKind {
+    Host,
+    Guest,
+    Mode,
+}
+
+impl MountViolationKind {
+    pub(crate) const fn field(self) -> &'static str {
+        match self {
+            Self::Host => "host",
+            Self::Guest => "guest",
+            Self::Mode => "mode",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MountViolationReason {
+    RelativeHost,
+    RelativeGuest,
+    DuplicateDataMount,
+    InvalidDataMapping,
+    ConfigExposure,
+    ManagedHomeConflict,
+    ManagedControlConflict,
+}
+
+impl MountViolationReason {
+    const fn safe_description(self) -> &'static str {
+        match self {
+            Self::RelativeHost => "host path is not absolute",
+            Self::RelativeGuest => "guest path is not absolute",
+            Self::DuplicateDataMount => "duplicates the mandatory data_dir mount",
+            Self::InvalidDataMapping => "conflicts with the mandatory data_dir mapping",
+            Self::ConfigExposure => "source overlaps the protected config directory",
+            Self::ManagedHomeConflict => "guest path conflicts with managed home persistence",
+            Self::ManagedControlConflict => "guest path conflicts with managed chelix-ctl",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MountViolation {
+    pub kind: MountViolationKind,
+    reason: MountViolationReason,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RejectedSandboxMount {
+    pub index: usize,
+    pub violation: MountViolation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SandboxMountValidation {
+    pub data_mount_exposes_config: bool,
+    pub shared_home_exposes_config: bool,
+    pub managed_guest_mounts_conflict: bool,
+    pub rejected_custom_mounts: Vec<RejectedSandboxMount>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SandboxMountAnalysis {
+    mounts: Vec<SandboxMount>,
+    validation: SandboxMountValidation,
+}
+
+#[derive(Debug)]
+struct MountPlanContext {
+    guest_data_dir: PathBuf,
+    host_data_dir: PathBuf,
+    config_dir: Option<PathBuf>,
+    chelix_ctl: Option<PathBuf>,
+}
+
+impl MountPlanContext {
+    fn active(cfg: &SandboxConfig) -> Self {
+        let guest_data_dir = normalize_path(&crate::data_dir());
+        let host_data_dir = effective_host_data_dir(cfg, &guest_data_dir);
+        Self {
+            guest_data_dir,
+            host_data_dir,
+            config_dir: crate::config_dir().map(|path| normalize_path(&path)),
+            chelix_ctl: chelix_ctl_host_path(),
+        }
+    }
+}
+
+/// Build the complete declarative mount plan for a sandbox.
+///
+/// The `data_dir` mount is an unconditional read-write invariant. For session
+/// home persistence the returned host path is the session *base* directory;
+/// the runtime layer appends the sanitized sandbox identifier before creating
+/// the bind mount.
+#[must_use]
+pub fn sandbox_mount_plan(cfg: &SandboxConfig) -> Vec<SandboxMount> {
+    let analysis = sandbox_mount_analysis_with_context(cfg, &MountPlanContext::active(cfg));
+    for rejected in &analysis.validation.rejected_custom_mounts {
+        warn!(
+            mount_index = rejected.index,
+            field = rejected.violation.kind.field(),
+            reason = rejected.violation.reason.safe_description(),
+            "ignoring invalid custom sandbox mount"
+        );
+    }
+    analysis.mounts
+}
+
+#[cfg(test)]
+fn sandbox_mount_plan_with_context(
+    cfg: &SandboxConfig,
+    context: &MountPlanContext,
+) -> Vec<SandboxMount> {
+    sandbox_mount_analysis_with_context(cfg, context).mounts
+}
+
+fn sandbox_mount_analysis_with_context(
+    cfg: &SandboxConfig,
+    context: &MountPlanContext,
+) -> SandboxMountAnalysis {
+    let mut mounts = vec![SandboxMount {
+        host: context.host_data_dir.clone(),
+        guest: context.guest_data_dir.clone(),
+        mode: MountMode::Rw,
+    }];
+
+    let managed_guest_conflict = managed_guest_mounts_conflict_with_context(cfg, context);
+    let shared_home_exposes_config = shared_home_exposes_config_with_context(cfg, context);
+    match cfg.home_persistence {
+        HomePersistenceConfig::Off => {},
+        HomePersistenceConfig::Session if !managed_guest_conflict => {
+            mounts.push(SandboxMount {
+                host: context
+                    .host_data_dir
+                    .join("sandbox")
+                    .join("home")
+                    .join("session"),
+                guest: PathBuf::from(SANDBOX_HOME_DIR),
+                mode: MountMode::Rw,
+            });
+        },
+        HomePersistenceConfig::Shared if !managed_guest_conflict && !shared_home_exposes_config => {
+            mounts.push(SandboxMount {
+                host: shared_home_host_path(cfg, context),
+                guest: PathBuf::from(SANDBOX_HOME_DIR),
+                mode: MountMode::Rw,
+            });
+        },
+        HomePersistenceConfig::Session | HomePersistenceConfig::Shared => {},
+    }
+
+    if let Some(host) = &context.chelix_ctl
+        && !paths_overlap(&context.guest_data_dir, Path::new(CHELIX_CTL_GUEST_PATH))
+    {
+        mounts.push(SandboxMount {
+            host: host.clone(),
+            guest: PathBuf::from(CHELIX_CTL_GUEST_PATH),
+            mode: MountMode::Ro,
+        });
+    }
+
+    let mut rejected_custom_mounts = Vec::new();
+    for (index, mount) in cfg.mounts.iter().enumerate() {
+        if let Some(violation) = custom_mount_violation_with_context(cfg, mount, context) {
+            rejected_custom_mounts.push(RejectedSandboxMount { index, violation });
+        } else {
+            mounts.push(mount.clone());
+        }
+    }
+
+    SandboxMountAnalysis {
+        mounts,
+        validation: SandboxMountValidation {
+            data_mount_exposes_config: data_mount_exposes_config_with_context(context),
+            shared_home_exposes_config,
+            managed_guest_mounts_conflict: managed_guest_conflict,
+            rejected_custom_mounts,
+        },
+    }
+}
+
+fn configured_host_data_dir(cfg: &SandboxConfig, guest_data_dir: &Path) -> Option<PathBuf> {
+    let configured = cfg
+        .host_data_dir
+        .as_deref()
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)?;
+    let resolved = if configured.is_absolute() {
+        configured
+    } else {
+        guest_data_dir.join(configured)
+    };
+    Some(normalize_path(&resolved))
+}
+
+#[must_use]
+pub(crate) fn effective_host_data_dir(cfg: &SandboxConfig, guest_data_dir: &Path) -> PathBuf {
+    configured_host_data_dir(cfg, guest_data_dir).unwrap_or_else(|| normalize_path(guest_data_dir))
+}
+
+fn shared_home_host_path(cfg: &SandboxConfig, context: &MountPlanContext) -> PathBuf {
+    let guest_path = cfg
+        .shared_home_dir
+        .as_deref()
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+        .map(|path| {
+            if path.is_absolute() {
+                path
+            } else {
+                context.guest_data_dir.join(path)
+            }
+        })
+        .unwrap_or_else(|| {
+            context
+                .guest_data_dir
+                .join("sandbox")
+                .join("home")
+                .join("shared")
+        });
+    translate_data_path_to_host(&guest_path, context)
+}
+
+fn translate_data_path_to_host(path: &Path, context: &MountPlanContext) -> PathBuf {
+    let normalized = normalize_path(path);
+    let Ok(relative) = normalized.strip_prefix(&context.guest_data_dir) else {
+        return normalized;
+    };
+    if relative.as_os_str().is_empty() {
+        context.host_data_dir.clone()
+    } else {
+        context.host_data_dir.join(relative)
+    }
+}
+
+fn chelix_ctl_host_path() -> Option<PathBuf> {
+    let executable = std::env::current_exe().ok()?;
+    let ctl = executable.parent()?.join("chelix-ctl");
+    ctl.is_file().then_some(ctl)
+}
+
+#[must_use]
+pub(crate) fn normalize_path(path: &Path) -> PathBuf {
+    path.components()
+        .fold(PathBuf::new(), |mut normalized, component| {
+            match component {
+                Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+                Component::RootDir => normalized.push(component.as_os_str()),
+                Component::CurDir => {},
+                Component::ParentDir => {
+                    normalized.pop();
+                },
+                Component::Normal(segment) => normalized.push(segment),
+            }
+            normalized
+        })
+}
+
+#[must_use]
+pub(crate) fn paths_overlap(first: &Path, second: &Path) -> bool {
+    let first = normalize_path(first);
+    let second = normalize_path(second);
+    first.starts_with(&second) || second.starts_with(&first)
+}
+
+fn comparable_host_path(path: &Path) -> PathBuf {
+    let normalized = normalize_path(path);
+    normalized
+        .canonicalize()
+        .map_or(normalized, |canonical| normalize_path(&canonical))
+}
+
+fn host_paths_overlap(first: &Path, second: &Path) -> bool {
+    let first = comparable_host_path(first);
+    let second = comparable_host_path(second);
+    first.starts_with(&second) || second.starts_with(&first)
+}
+
+fn data_mount_exposes_config_with_context(context: &MountPlanContext) -> bool {
+    context.config_dir.as_ref().is_some_and(|config_dir| {
+        paths_overlap(&context.guest_data_dir, config_dir)
+            || host_paths_overlap(&context.host_data_dir, config_dir)
+    })
+}
+
+#[must_use]
+pub(crate) fn sandbox_mount_validation(cfg: &SandboxConfig) -> SandboxMountValidation {
+    sandbox_mount_analysis_with_context(cfg, &MountPlanContext::active(cfg)).validation
+}
+
+fn shared_home_exposes_config_with_context(
+    cfg: &SandboxConfig,
+    context: &MountPlanContext,
+) -> bool {
+    cfg.home_persistence == HomePersistenceConfig::Shared
+        && context.config_dir.as_ref().is_some_and(|config_dir| {
+            host_paths_overlap(&shared_home_host_path(cfg, context), config_dir)
+        })
+}
+
+fn managed_guest_mounts_conflict_with_context(
+    cfg: &SandboxConfig,
+    context: &MountPlanContext,
+) -> bool {
+    (cfg.home_persistence != HomePersistenceConfig::Off
+        && paths_overlap(&context.guest_data_dir, Path::new(SANDBOX_HOME_DIR)))
+        || (context.chelix_ctl.is_some()
+            && paths_overlap(&context.guest_data_dir, Path::new(CHELIX_CTL_GUEST_PATH)))
+}
+
+fn custom_mount_violation_with_context(
+    cfg: &SandboxConfig,
+    mount: &SandboxMount,
+    context: &MountPlanContext,
+) -> Option<MountViolation> {
+    if !mount.host.is_absolute() {
+        return Some(MountViolation {
+            kind: MountViolationKind::Host,
+            reason: MountViolationReason::RelativeHost,
+            message: format!(
+                "sandbox mount host path must be absolute (got '{}')",
+                mount.host.display()
+            ),
+        });
+    }
+    if !mount.guest.is_absolute() {
+        return Some(MountViolation {
+            kind: MountViolationKind::Guest,
+            reason: MountViolationReason::RelativeGuest,
+            message: format!(
+                "sandbox mount guest path must be absolute (got '{}')",
+                mount.guest.display()
+            ),
+        });
+    }
+
+    let host = normalize_path(&mount.host);
+    let guest = normalize_path(&mount.guest);
+    let is_exact_data_mount = host == context.host_data_dir
+        && guest == context.guest_data_dir
+        && mount.mode == MountMode::Rw;
+    let data_host_overlap = host_paths_overlap(&host, &context.host_data_dir);
+    let data_guest_overlap = paths_overlap(&guest, &context.guest_data_dir);
+    if data_host_overlap || data_guest_overlap {
+        if is_exact_data_mount {
+            return Some(MountViolation {
+                kind: MountViolationKind::Guest,
+                reason: MountViolationReason::DuplicateDataMount,
+                message: "sandbox data_dir mount is built in and must not be duplicated".into(),
+            });
+        }
+        let kind = if host == context.host_data_dir && guest == context.guest_data_dir {
+            MountViolationKind::Mode
+        } else if data_host_overlap {
+            MountViolationKind::Guest
+        } else {
+            MountViolationKind::Host
+        };
+        return Some(MountViolation {
+            kind,
+            reason: MountViolationReason::InvalidDataMapping,
+            message: format!(
+                "sandbox data_dir must map only from '{}' to the identical agent path '{}' in rw mode",
+                context.host_data_dir.display(),
+                context.guest_data_dir.display()
+            ),
+        });
+    }
+
+    if let Some(config_dir) = &context.config_dir
+        && host_paths_overlap(&host, config_dir)
+    {
+        return Some(MountViolation {
+            kind: MountViolationKind::Host,
+            reason: MountViolationReason::ConfigExposure,
+            message: format!(
+                "sandbox mount source '{}' exposes the config directory '{}', which may contain credentials",
+                mount.host.display(),
+                config_dir.display()
+            ),
+        });
+    }
+
+    if cfg.home_persistence != HomePersistenceConfig::Off
+        && paths_overlap(&guest, Path::new(SANDBOX_HOME_DIR))
+    {
+        return Some(MountViolation {
+            kind: MountViolationKind::Guest,
+            reason: MountViolationReason::ManagedHomeConflict,
+            message: format!(
+                "sandbox mount guest '{}' conflicts with the managed home-persistence mount",
+                mount.guest.display()
+            ),
+        });
+    }
+
+    if context.chelix_ctl.is_some() && paths_overlap(&guest, Path::new(CHELIX_CTL_GUEST_PATH)) {
+        return Some(MountViolation {
+            kind: MountViolationKind::Guest,
+            reason: MountViolationReason::ManagedControlConflict,
+            message: format!(
+                "sandbox mount guest '{}' conflicts with the managed chelix-ctl mount",
+                mount.guest.display()
+            ),
+        });
+    }
+    None
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ContainerMount {
@@ -236,7 +690,256 @@ pub fn detect_host_data_dir_with_references(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used)]
+
     use super::*;
+
+    fn test_context() -> MountPlanContext {
+        MountPlanContext {
+            guest_data_dir: PathBuf::from("/agent/.chelix"),
+            host_data_dir: PathBuf::from("/host/chelix-data"),
+            config_dir: Some(PathBuf::from("/agent/.config/chelix")),
+            chelix_ctl: None,
+        }
+    }
+
+    #[test]
+    fn mount_mode_has_stable_container_value() {
+        assert_eq!(MountMode::Ro.as_str(), "ro");
+        assert_eq!(MountMode::Rw.to_string(), "rw");
+    }
+
+    #[test]
+    fn mount_plan_always_includes_rw_data_dir() {
+        let config = SandboxConfig {
+            home_persistence: HomePersistenceConfig::Off,
+            ..SandboxConfig::default()
+        };
+
+        let mounts = sandbox_mount_plan_with_context(&config, &test_context());
+
+        assert_eq!(mounts, vec![SandboxMount {
+            host: PathBuf::from("/host/chelix-data"),
+            guest: PathBuf::from("/agent/.chelix"),
+            mode: MountMode::Rw,
+        }]);
+    }
+
+    #[test]
+    fn mount_plan_maps_default_shared_home_through_host_data_dir() {
+        let mounts = sandbox_mount_plan_with_context(&SandboxConfig::default(), &test_context());
+
+        assert_eq!(mounts[1], SandboxMount {
+            host: PathBuf::from("/host/chelix-data/sandbox/home/shared"),
+            guest: PathBuf::from(SANDBOX_HOME_DIR),
+            mode: MountMode::Rw,
+        });
+    }
+
+    #[test]
+    fn mount_plan_uses_session_home_base() {
+        let config = SandboxConfig {
+            home_persistence: HomePersistenceConfig::Session,
+            ..SandboxConfig::default()
+        };
+
+        let mounts = sandbox_mount_plan_with_context(&config, &test_context());
+
+        assert_eq!(
+            mounts[1].host,
+            Path::new("/host/chelix-data/sandbox/home/session")
+        );
+        assert_eq!(mounts[1].guest, Path::new(SANDBOX_HOME_DIR));
+        assert_eq!(mounts[1].mode, MountMode::Rw);
+    }
+
+    #[test]
+    fn mount_plan_maps_shared_home_inside_guest_data_dir_to_host() {
+        let config = SandboxConfig {
+            shared_home_dir: Some("/agent/.chelix/custom/home".into()),
+            ..SandboxConfig::default()
+        };
+
+        let mounts = sandbox_mount_plan_with_context(&config, &test_context());
+
+        assert_eq!(mounts[1].host, Path::new("/host/chelix-data/custom/home"));
+    }
+
+    #[test]
+    fn mount_plan_includes_chelix_ctl_read_only_when_available() {
+        let mut context = test_context();
+        context.chelix_ctl = Some(PathBuf::from("/opt/chelix/bin/chelix-ctl"));
+        let config = SandboxConfig {
+            home_persistence: HomePersistenceConfig::Off,
+            ..SandboxConfig::default()
+        };
+
+        let mounts = sandbox_mount_plan_with_context(&config, &context);
+
+        assert_eq!(mounts[1], SandboxMount {
+            host: PathBuf::from("/opt/chelix/bin/chelix-ctl"),
+            guest: PathBuf::from(CHELIX_CTL_GUEST_PATH),
+            mode: MountMode::Ro,
+        });
+    }
+
+    #[test]
+    fn mount_plan_appends_valid_custom_mount() {
+        let custom = SandboxMount {
+            host: PathBuf::from("/datasets/reference"),
+            guest: PathBuf::from("/mnt/reference"),
+            mode: MountMode::Ro,
+        };
+        let config = SandboxConfig {
+            home_persistence: HomePersistenceConfig::Off,
+            mounts: vec![custom.clone()],
+            ..SandboxConfig::default()
+        };
+
+        let mounts = sandbox_mount_plan_with_context(&config, &test_context());
+
+        assert_eq!(mounts.last(), Some(&custom));
+    }
+
+    #[test]
+    fn mount_plan_reports_filtered_data_dir_alias_without_logging_paths() {
+        let valid_mount = SandboxMount {
+            host: PathBuf::from("/datasets/reference"),
+            guest: PathBuf::from("/mnt/reference"),
+            mode: MountMode::Ro,
+        };
+        let config = SandboxConfig {
+            home_persistence: HomePersistenceConfig::Off,
+            mounts: vec![valid_mount.clone(), SandboxMount {
+                host: PathBuf::from("/host/chelix-data"),
+                guest: PathBuf::from("/different/guest"),
+                mode: MountMode::Rw,
+            }],
+            ..SandboxConfig::default()
+        };
+
+        let analysis = sandbox_mount_analysis_with_context(&config, &test_context());
+
+        assert_eq!(analysis.mounts.len(), 2);
+        assert_eq!(analysis.mounts.last(), Some(&valid_mount));
+        let rejection = analysis
+            .validation
+            .rejected_custom_mounts
+            .first()
+            .expect("invalid custom mount must be reported");
+        assert_eq!(rejection.index, 1);
+        assert_eq!(rejection.violation.kind, MountViolationKind::Guest);
+        assert_eq!(
+            rejection.violation.reason.safe_description(),
+            "conflicts with the mandatory data_dir mapping"
+        );
+        assert!(!rejection.violation.reason.safe_description().contains('/'));
+    }
+
+    #[test]
+    fn mount_plan_filters_guest_ancestor_of_data_dir() {
+        let config = SandboxConfig {
+            home_persistence: HomePersistenceConfig::Off,
+            mounts: vec![SandboxMount {
+                host: PathBuf::from("/other/source"),
+                guest: PathBuf::from("/agent"),
+                mode: MountMode::Rw,
+            }],
+            ..SandboxConfig::default()
+        };
+
+        let mounts = sandbox_mount_plan_with_context(&config, &test_context());
+
+        assert_eq!(mounts.len(), 1);
+    }
+
+    #[test]
+    fn mount_plan_filters_config_dir_ancestor() {
+        let mount = SandboxMount {
+            host: PathBuf::from("/agent"),
+            guest: PathBuf::from("/mnt/agent"),
+            mode: MountMode::Ro,
+        };
+        let config = SandboxConfig {
+            home_persistence: HomePersistenceConfig::Off,
+            mounts: vec![mount.clone()],
+            ..SandboxConfig::default()
+        };
+
+        let context = test_context();
+        let violation = custom_mount_violation_with_context(&config, &mount, &context)
+            .expect("config directory ancestor must be rejected");
+        let mounts = sandbox_mount_plan_with_context(&config, &context);
+
+        assert_eq!(violation.kind, MountViolationKind::Host);
+        assert!(violation.message.contains("credentials"));
+        assert_eq!(mounts.len(), 1);
+    }
+
+    #[test]
+    fn mount_plan_filters_managed_shared_home_that_exposes_config_dir() {
+        let config = SandboxConfig {
+            shared_home_dir: Some("/agent".into()),
+            ..SandboxConfig::default()
+        };
+
+        let mounts = sandbox_mount_plan_with_context(&config, &test_context());
+
+        assert_eq!(mounts.len(), 1);
+        assert_eq!(mounts[0].guest, Path::new("/agent/.chelix"));
+    }
+
+    #[test]
+    fn mount_plan_does_not_overlay_data_dir_with_managed_home() {
+        let mut context = test_context();
+        context.guest_data_dir = PathBuf::from("/home/sandbox/data");
+
+        let mounts = sandbox_mount_plan_with_context(&SandboxConfig::default(), &context);
+
+        assert_eq!(mounts.len(), 1);
+        assert_eq!(mounts[0].guest, Path::new("/home/sandbox/data"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mount_plan_filters_symlink_to_config_dir() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join("config");
+        std::fs::create_dir(&config_dir).expect("config dir");
+        let link = temp.path().join("config-link");
+        std::os::unix::fs::symlink(&config_dir, &link).expect("config symlink");
+        let context = MountPlanContext {
+            guest_data_dir: PathBuf::from("/agent/.chelix"),
+            host_data_dir: temp.path().join("data"),
+            config_dir: Some(config_dir),
+            chelix_ctl: None,
+        };
+        let config = SandboxConfig {
+            home_persistence: HomePersistenceConfig::Off,
+            mounts: vec![SandboxMount {
+                host: link,
+                guest: PathBuf::from("/mnt/config"),
+                mode: MountMode::Ro,
+            }],
+            ..SandboxConfig::default()
+        };
+
+        let mounts = sandbox_mount_plan_with_context(&config, &context);
+
+        assert_eq!(mounts.len(), 1);
+    }
+
+    #[test]
+    fn normalizes_parent_components_before_security_checks() {
+        assert_eq!(
+            normalize_path(Path::new("/safe/../agent/.config/chelix")),
+            PathBuf::from("/agent/.config/chelix")
+        );
+        assert!(paths_overlap(
+            Path::new("/agent/.config/chelix"),
+            Path::new("/agent/.config/chelix/credentials.json")
+        ));
+    }
 
     #[test]
     fn normalizes_cgroup_container_ref() {

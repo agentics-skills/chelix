@@ -107,7 +107,6 @@ export default {
 		backend: "Backend",
 		mode: "Mode",
 		scope: "Scope",
-		workspaceMount: "Workspace Mount",
 		image: "Image",
 		container: "Container",
 		tokenUsage: "Token Usage",

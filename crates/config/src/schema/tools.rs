@@ -5,7 +5,9 @@ use {
     std::collections::HashMap,
 };
 
-/// Tools configuration (command execution, sandbox, policy, web, browser).
+pub use crate::container_mounts::{MountMode, SandboxMount};
+
+/// Tools configuration (command execution, policy, web, browser).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ToolsConfig {
@@ -561,7 +563,6 @@ pub struct ExecuteCommandConfig {
     pub approval_mode: String,
     pub security_level: String,
     pub allowlist: Vec<String>,
-    pub sandbox: SandboxConfig,
     /// Where to run commands: `"local"` (default), `"node"`, or `"ssh"`.
     pub host: String,
     /// Default node id or display name for remote execution (when `host = "node"`).
@@ -580,7 +581,6 @@ impl Default for ExecuteCommandConfig {
             approval_mode: "on-miss".into(),
             security_level: "allowlist".into(),
             allowlist: Vec::new(),
-            sandbox: SandboxConfig::default(),
             host: "local".into(),
             node: None,
             ssh_target: None,
@@ -669,7 +669,6 @@ pub enum HomePersistenceConfig {
 pub struct SandboxConfig {
     pub mode: String,
     pub scope: String,
-    pub workspace_mount: String,
     /// Root filesystem and privilege-hardening mode for sandbox containers:
     /// `"ro"` keeps Docker/Podman rootfs read-only for prebuilt images and
     /// retains capability-drop / no-new-privileges hardening, while `"rw"`
@@ -683,6 +682,9 @@ pub struct SandboxConfig {
     /// Optional host directory for shared `/home/sandbox` persistence.
     /// Relative paths are resolved against `data_dir()`.
     pub shared_home_dir: Option<String>,
+    /// Additional declarative host-to-guest sandbox mounts.
+    #[serde(default)]
+    pub mounts: Vec<SandboxMount>,
     pub image: Option<String>,
     pub container_prefix: Option<String>,
     /// Docker/Podman network name passed to `--network=<name>`.
@@ -896,11 +898,11 @@ impl Default for SandboxConfig {
         Self {
             mode: "all".into(),
             scope: "session".into(),
-            workspace_mount: "ro".into(),
             workspace_sysmount: "ro".into(),
             host_data_dir: None,
             home_persistence: HomePersistenceConfig::default(),
             shared_home_dir: None,
+            mounts: Vec::new(),
             image: None,
             container_prefix: None,
             network: "bridge".into(),

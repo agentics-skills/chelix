@@ -74,7 +74,6 @@ pub struct PromptSandboxRuntimeContext {
     pub scope: Option<String>,
     pub image: Option<String>,
     pub home: Option<String>,
-    pub workspace_mount: Option<String>,
     pub workspace_path: Option<String>,
     pub network: Option<String>,
     pub session_override: Option<bool>,

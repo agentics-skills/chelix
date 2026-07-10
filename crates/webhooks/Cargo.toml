@@ -7,11 +7,11 @@ version.workspace = true
 anyhow         = { workspace = true }
 async-trait    = { workspace = true }
 axum           = { workspace = true }
-hex            = { workspace = true }
-hmac           = { workspace = true }
 chelix-common  = { workspace = true }
 chelix-config  = { workspace = true }
 chelix-metrics = { optional = true, workspace = true }
+hex            = { workspace = true }
+hmac           = { workspace = true }
 rand           = { workspace = true }
 serde          = { workspace = true }
 serde_json     = { workspace = true }

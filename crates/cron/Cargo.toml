@@ -5,13 +5,13 @@ version.workspace = true
 
 [dependencies]
 async-trait    = { workspace = true }
-chrono         = { workspace = true }
-chrono-tz      = { workspace = true }
-cron           = { workspace = true }
 chelix-agents  = { workspace = true }
 chelix-common  = { workspace = true }
 chelix-config  = { workspace = true }
 chelix-metrics = { optional = true, workspace = true }
+chrono         = { workspace = true }
+chrono-tz      = { workspace = true }
+cron           = { workspace = true }
 serde          = { workspace = true }
 serde_json     = { workspace = true }
 sqlx           = { workspace = true }

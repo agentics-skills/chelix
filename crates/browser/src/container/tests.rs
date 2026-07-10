@@ -174,7 +174,7 @@ fn browser_profile_permission_hint_points_to_host_data_dir() {
     )
     .unwrap();
 
-    assert!(hint.contains("under `[tools.execute_command.sandbox]`"));
+    assert!(hint.contains("under `[sandbox]`"));
     assert!(hint.contains("/home/chelix/.chelix/browser/profile/sandbox/browser-abc"));
 }
 

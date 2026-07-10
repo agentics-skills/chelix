@@ -3,14 +3,11 @@ use super::*;
 #[test]
 fn sandbox_mode_off_warned() {
     let toml = r#"
-[tools.execute_command.sandbox]
+[sandbox]
 mode = "off"
 "#;
     let result = validate_toml_str(toml);
-    let warning = result
-        .diagnostics
-        .iter()
-        .find(|d| d.path == "tools.execute_command.sandbox.mode");
+    let warning = result.diagnostics.iter().find(|d| d.path == "sandbox.mode");
     assert!(warning.is_some(), "expected warning for sandbox mode off");
 }
 
@@ -31,14 +28,14 @@ port = 0
 #[test]
 fn unknown_sandbox_backend_warned() {
     let toml = r#"
-[tools.execute_command.sandbox]
+[sandbox]
 backend = "lxc"
 "#;
     let result = validate_toml_str(toml);
     let warning = result
         .diagnostics
         .iter()
-        .find(|d| d.path == "tools.execute_command.sandbox.backend");
+        .find(|d| d.path == "sandbox.backend");
     assert!(
         warning.is_some(),
         "expected warning for unknown sandbox backend"
@@ -48,17 +45,165 @@ backend = "lxc"
 #[test]
 fn podman_sandbox_backend_accepted() {
     let toml = r#"
-[tools.execute_command.sandbox]
+[sandbox]
 backend = "podman"
 "#;
     let result = validate_toml_str(toml);
     let warning = result
         .diagnostics
         .iter()
-        .find(|d| d.path == "tools.execute_command.sandbox.backend");
+        .find(|d| d.path == "sandbox.backend");
     assert!(
         warning.is_none(),
         "podman should be accepted as a valid sandbox backend"
+    );
+}
+
+#[test]
+fn removed_workspace_mount_is_rejected_as_unknown() {
+    let toml = r#"
+[sandbox]
+workspace_mount = "ro"
+"#;
+    let result = validate_toml_str(toml);
+    let unknown = result.diagnostics.iter().find(|diagnostic| {
+        diagnostic.category == "unknown-field" && diagnostic.path == "sandbox.workspace_mount"
+    });
+    assert!(
+        unknown.is_some(),
+        "removed workspace_mount setting must not be accepted, got: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn valid_declarative_sandbox_mount_is_accepted() {
+    let toml = r#"
+[[sandbox.mounts]]
+host = "/srv/reference"
+guest = "/mnt/reference"
+mode = "ro"
+"#;
+    let result = validate_toml_str(toml);
+    let mount_errors: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.path.starts_with("sandbox.mounts"))
+        .collect();
+    assert!(
+        mount_errors.is_empty(),
+        "valid custom mount should be accepted, got: {mount_errors:?}"
+    );
+}
+
+#[test]
+fn sandbox_data_dir_source_cannot_use_a_different_guest_path() {
+    let toml = r#"
+[sandbox]
+host_data_dir = "/host/chelix-data"
+
+[[sandbox.mounts]]
+host = "/host/chelix-data"
+guest = "/different/data"
+mode = "rw"
+"#;
+    let result = validate_toml_str(toml);
+    let error = result.diagnostics.iter().find(|diagnostic| {
+        diagnostic.path == "sandbox.mounts[0].guest"
+            && diagnostic.severity == Severity::Error
+            && diagnostic.message.contains("identical agent path")
+    });
+    assert!(
+        error.is_some(),
+        "expected mismatched data_dir guest path error, got: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn sandbox_custom_mount_paths_must_be_absolute() {
+    let toml = r#"
+[[sandbox.mounts]]
+host = "relative/source"
+guest = "/mnt/source"
+mode = "ro"
+"#;
+    let result = validate_toml_str(toml);
+    let error = result.diagnostics.iter().find(|diagnostic| {
+        diagnostic.path == "sandbox.mounts[0].host"
+            && diagnostic.severity == Severity::Error
+            && diagnostic.message.contains("must be absolute")
+    });
+    assert!(
+        error.is_some(),
+        "expected relative mount source error, got: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn sandbox_custom_mount_diagnostics_preserve_configured_index() {
+    let toml = r#"
+[[sandbox.mounts]]
+host = "/srv/reference"
+guest = "/mnt/reference"
+mode = "ro"
+
+[[sandbox.mounts]]
+host = "/srv/invalid"
+guest = "relative/guest"
+mode = "rw"
+"#;
+    let result = validate_toml_str(toml);
+    let error = result.diagnostics.iter().find(|diagnostic| {
+        diagnostic.path == "sandbox.mounts[1].guest"
+            && diagnostic.severity == Severity::Error
+            && diagnostic.message.contains("must be absolute")
+    });
+    assert!(
+        error.is_some(),
+        "expected indexed custom mount error, got: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn sandbox_data_mount_cannot_source_config_dir() {
+    let toml = r#"
+[sandbox]
+mode = "off"
+host_data_dir = "/"
+"#;
+    let result = validate_toml_str(toml);
+    let error = result.diagnostics.iter().find(|diagnostic| {
+        diagnostic.path == "sandbox.host_data_dir"
+            && diagnostic.severity == Severity::Error
+            && diagnostic.category == "security"
+    });
+    assert!(
+        error.is_some(),
+        "expected data/config overlap error, got: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn sandbox_shared_home_cannot_source_config_dir() {
+    let toml = r#"
+[sandbox]
+home_persistence = "shared"
+shared_home_dir = "/"
+"#;
+    let result = validate_toml_str(toml);
+    let error = result.diagnostics.iter().find(|diagnostic| {
+        diagnostic.path == "sandbox.shared_home_dir"
+            && diagnostic.severity == Severity::Error
+            && diagnostic.category == "security"
+    });
+    assert!(
+        error.is_some(),
+        "expected shared home/config overlap error, got: {:?}",
+        result.diagnostics
     );
 }
 

@@ -72,69 +72,6 @@ fn approval_manager_falls_back_for_invalid_values() {
     assert_eq!(manager.security_level, SecurityLevel::Allowlist);
 }
 
-#[cfg(feature = "fs-tools")]
-#[test]
-fn fs_tools_host_warning_message_only_triggers_without_real_backend() {
-    use {
-        chelix_tools::{
-            command::{CommandOptions, CommandOutput},
-            sandbox::{Sandbox, SandboxId},
-        },
-        std::sync::Arc,
-    };
-
-    struct TestRealSandbox;
-
-    #[async_trait::async_trait]
-    impl Sandbox for TestRealSandbox {
-        fn backend_name(&self) -> &'static str {
-            "test-real"
-        }
-
-        async fn ensure_ready(
-            &self,
-            _id: &SandboxId,
-            _image_override: Option<&str>,
-        ) -> chelix_tools::Result<()> {
-            Ok(())
-        }
-
-        async fn run_command(
-            &self,
-            _id: &SandboxId,
-            _command: &str,
-            _opts: &CommandOptions,
-        ) -> chelix_tools::Result<CommandOutput> {
-            Ok(CommandOutput {
-                stdout: String::new(),
-                stderr: String::new(),
-                exit_code: 0,
-            })
-        }
-
-        async fn cleanup(&self, _id: &SandboxId) -> chelix_tools::Result<()> {
-            Ok(())
-        }
-    }
-
-    let real_backend: Arc<dyn Sandbox> = Arc::new(TestRealSandbox);
-    let real_router = chelix_tools::sandbox::SandboxRouter::with_backend(
-        chelix_tools::sandbox::SandboxConfig::default(),
-        real_backend,
-    );
-    assert!(crate::server::helpers::fs_tools_host_warning_message(&real_router).is_none());
-
-    let no_backend: Arc<dyn Sandbox> = Arc::new(chelix_tools::sandbox::NoSandbox);
-    let no_router = chelix_tools::sandbox::SandboxRouter::with_backend(
-        chelix_tools::sandbox::SandboxConfig::default(),
-        no_backend,
-    );
-    let warning =
-        crate::server::helpers::fs_tools_host_warning_message(&no_router).expect("warning");
-    assert!(warning.contains("fs tools are registered"));
-    assert!(warning.contains("[tools.fs].allow_paths"));
-}
-
 #[test]
 fn prebuild_runs_only_when_mode_enabled_and_packages_present() {
     let packages = vec!["curl".to_string()];

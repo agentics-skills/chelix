@@ -239,7 +239,6 @@ pub(crate) fn format_sandbox_runtime_line(sandbox: &PromptSandboxRuntimeContext)
         ("scope", sandbox.scope.as_deref()),
         ("image", sandbox.image.as_deref()),
         ("home", sandbox.home.as_deref()),
-        ("workspace_mount", sandbox.workspace_mount.as_deref()),
         ("workspace_path", sandbox.workspace_path.as_deref()),
         ("network", sandbox.network.as_deref()),
     ] {

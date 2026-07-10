@@ -1,4 +1,11 @@
-use std::{net::TcpListener, path::PathBuf, sync::Mutex};
+use std::{
+    net::TcpListener,
+    path::PathBuf,
+    sync::{
+        Mutex,
+        atomic::{AtomicU16, Ordering},
+    },
+};
 
 #[path = "loader/config_io.rs"]
 mod config_io;
@@ -13,7 +20,21 @@ fn generate_random_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .and_then(|listener| listener.local_addr())
         .map(|addr| addr.port())
-        .unwrap_or(18789) // Fallback to default if binding fails
+        .unwrap_or_else(|_| next_fallback_port())
+}
+
+fn next_fallback_port() -> u16 {
+    static FALLBACK_PORT: AtomicU16 = AtomicU16::new(18789);
+
+    FALLBACK_PORT
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |port| {
+            Some(if port == u16::MAX {
+                1024
+            } else {
+                port + 1
+            })
+        })
+        .unwrap_or(18789)
 }
 
 /// Standard config file names, checked in order.

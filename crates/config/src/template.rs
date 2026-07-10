@@ -345,7 +345,7 @@ port = {port}                           # Port number (auto-generated for this i
 # [agents.presets.kids.mcp]
 # allow_servers = []                # No MCP tools at all
 # [agents.presets.kids.sandbox]
-# mode = "all"                      # Always sandbox this agent
+# mode = "all"                      # Always sandbox this agent (omit to inherit [sandbox])
 # [agents.presets.kids.skills]
 # deny = ["gaming", "social-media"] # Block specific skill categories
 #
@@ -354,7 +354,47 @@ port = {port}                           # Port number (auto-generated for this i
 # [agents.presets.admin.mcp]
 # allow_servers = ["github", "home-assistant", "memory"]
 # [agents.presets.admin.sandbox]
-# mode = "all"                      # Always sandbox this agent
+# mode = "all"                      # Always sandbox this agent (omit to inherit [sandbox])
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SANDBOX
+# ══════════════════════════════════════════════════════════════════════════════
+# Agent sessions and command execution can run inside isolated containers for security.
+
+# [sandbox]
+# mode = "all"                      # "off" | "non-main" | "all" (recommended)
+# scope = "session"                 # "session" | "agent" | "shared"
+# backend = "auto"                  # "auto" | "docker" | "podman" | "apple-container" | "restricted-host" | "wasm"
+# image = "custom-image:tag"        # Custom container image (default: auto-built)
+# network = "bridge"                # Docker/Podman network passed as --network=<name>
+# workspace_sysmount = "ro"         # "ro" | "rw" (rootfs + cap-drop/no-new-privileges hardening)
+# host_data_dir = "/host/chelix-data" # Host path for Chelix data when running Chelix inside Docker
+# home_persistence = "shared"       # "off" | "session" | "shared"
+# shared_home_dir = "sandbox/home"  # Directory for shared /home/sandbox persistence (relative to data_dir)
+# gpus = "all"                      # GPU passthrough: "all", "device=0", "device=0,1"
+# packages = []                     # Packages installed in sandbox containers (default list lives in defaults.toml)
+# wasm_fuel_limit = 1000000000      # Optional WASM fuel limit
+# wasm_epoch_interval_ms = 100      # Optional WASM epoch interruption interval
+
+# [sandbox.resource_limits]
+# memory_limit = "512M"             # Memory limit (e.g., "512M", "1G")
+# cpu_quota = 0.5                   # CPU quota as fraction
+# pids_max = 100                    # Maximum number of processes
+
+# [sandbox.wasm_tool_limits]
+# default_memory = 16777216         # Default WASM tool memory limit
+# default_fuel = 1000000            # Default WASM tool fuel limit
+
+# [sandbox.tools_policy]
+# allow = []                        # Tools allowed only when this sandbox policy layer applies
+# deny = []                         # Tools denied only when this sandbox policy layer applies
+
+# data_dir is always mounted read-write at the identical guest path.
+# Add optional non-secret mounts as array entries:
+# [[sandbox.mounts]]
+# host = "/srv/reference"            # Host path to mount
+# guest = "/mnt/reference"           # Absolute path inside the sandbox
+# mode = "ro"                        # "ro" | "rw"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SESSION MODES
@@ -422,28 +462,6 @@ port = {port}                           # Port number (auto-generated for this i
 # node = "mac-mini"                 # Default node when host = "node"
 # ssh_target = "deploy@box"         # SSH target when host = "ssh"
 
-# ── Sandbox Configuration ─────────────────────────────────────────────────────
-# Commands run inside isolated containers for security.
-
-# [tools.execute_command.sandbox]
-# mode = "all"                      # "off" | "non-main" | "all" (recommended)
-# scope = "session"                 # "command" | "session" (recommended) | "global"
-# workspace_mount = "ro"            # "ro" | "rw" | "none"
-# workspace_sysmount = "ro"         # "ro" | "rw" (rootfs + cap-drop/no-new-privileges hardening)
-# home_persistence = "shared"       # "off" | "session" | "shared"
-# backend = "auto"                  # "auto" | "docker" | "apple-container"
-# network = "bridge"                # Docker/Podman network passed as --network=<name>
-# image = "custom-image:tag"        # Custom Docker image (default: auto-built)
-# packages = [...]                  # Packages installed in sandbox containers
-# host_data_dir = "/host/chelix-data" # Host path for Chelix data when running Chelix inside Docker
-# gpus = "all"                      # GPU passthrough: "all", "device=0", "device=0,1"
-                                    # (Docker/Podman only, ignored for other backends)
-
-# [tools.execute_command.sandbox.resource_limits]
-# memory_limit = "512M"             # Memory limit (e.g., "512M", "1G")
-# cpu_quota = 0.5                   # CPU quota as fraction
-# pids_max = 100                    # Maximum number of processes
-
 # ── Tool Policy ───────────────────────────────────────────────────────────────
 # Control which tools the agent can use. Policies are layered (later wins for
 # allow, deny always accumulates across layers):
@@ -453,7 +471,7 @@ port = {port}                           # Port number (auto-generated for this i
 #   3. Per-agent     — [agents.presets.<id>.tools]
 #   4. Per-channel   — [channels.<type>.<account>.tools.groups.<chat_type>]
 #   5. Per-sender    — [...groups.<chat_type>.by_sender.<sender_id>]
-#   6. Sandbox       — [tools.execute_command.sandbox.tools_policy]
+#   6. Sandbox       — [sandbox.tools_policy]
 
 # [tools.policy]
 # allow = []                        # Tools to always allow (e.g., ["execute_command", "web_fetch"])

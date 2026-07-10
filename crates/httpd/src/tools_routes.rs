@@ -461,11 +461,9 @@ fn validate_config(config: &chelix_config::ChelixConfig) -> Vec<String> {
 
     // Check browser config
     if config.tools.browser.enabled {
-        // Browser sandbox mode follows session sandbox mode (controlled by execute_command.sandbox.mode).
+        // Browser sandbox mode follows session sandbox mode (controlled by sandbox.mode).
         // If sandbox mode is available, check if container runtime exists.
-        if config.tools.execute_command.sandbox.mode != "off"
-            && !chelix_browser::container::is_container_available()
-        {
+        if config.sandbox.mode != "off" && !chelix_browser::container::is_container_available() {
             warnings.push(
                 "Sandbox mode is available but no container runtime found. \
                  Browser sandbox (for sandboxed sessions) requires Docker, Podman, or Apple Container."
@@ -490,7 +488,7 @@ fn validate_config(config: &chelix_config::ChelixConfig) -> Vec<String> {
     }
 
     // Check command execution sandbox config
-    if config.tools.execute_command.sandbox.mode == "off" {
+    if config.sandbox.mode == "off" {
         warnings.push(
             "Sandbox mode is off. Commands will run directly on host without isolation."
                 .to_string(),

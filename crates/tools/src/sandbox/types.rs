@@ -115,27 +115,6 @@ impl std::fmt::Display for SandboxScope {
     }
 }
 
-/// Workspace mount mode.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-#[derive(Default)]
-pub enum WorkspaceMount {
-    None,
-    #[default]
-    Ro,
-    Rw,
-}
-
-impl std::fmt::Display for WorkspaceMount {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::None => f.write_str("none"),
-            Self::Ro => f.write_str("ro"),
-            Self::Rw => f.write_str("rw"),
-        }
-    }
-}
-
 /// Root filesystem and privilege-hardening mode for sandbox containers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -203,7 +182,6 @@ pub struct ResourceLimits {
 pub struct SandboxConfig {
     pub mode: SandboxMode,
     pub scope: SandboxScope,
-    pub workspace_mount: WorkspaceMount,
     /// Root filesystem and privilege-hardening mode for sandbox containers.
     pub workspace_sysmount: WorkspaceSysmount,
     /// Host-visible path for Chelix `data_dir()` when running container-backed
@@ -214,6 +192,8 @@ pub struct SandboxConfig {
     /// Host directory used for shared `/home/sandbox` persistence.
     /// Relative paths are resolved against `data_dir()`.
     pub shared_home_dir: Option<PathBuf>,
+    /// Additional declarative bind mounts copied from `[[sandbox.mounts]]`.
+    pub mounts: Vec<chelix_config::container_mounts::SandboxMount>,
     pub image: Option<String>,
     pub container_prefix: Option<String>,
     /// Docker/Podman network name passed to `--network=<name>`.
@@ -243,11 +223,11 @@ impl Default for SandboxConfig {
         Self {
             mode: SandboxMode::default(),
             scope: SandboxScope::default(),
-            workspace_mount: WorkspaceMount::default(),
             workspace_sysmount: WorkspaceSysmount::default(),
             host_data_dir: None,
             home_persistence: HomePersistence::default(),
             shared_home_dir: None,
+            mounts: Vec::new(),
             image: None,
             container_prefix: None,
             network: "bridge".into(),
@@ -276,11 +256,6 @@ impl From<&chelix_config::schema::SandboxConfig> for SandboxConfig {
                 "shared" => SandboxScope::Shared,
                 _ => SandboxScope::Session,
             },
-            workspace_mount: match cfg.workspace_mount.as_str() {
-                "rw" => WorkspaceMount::Rw,
-                "none" => WorkspaceMount::None,
-                _ => WorkspaceMount::Ro,
-            },
             workspace_sysmount: match cfg.workspace_sysmount.as_str() {
                 "rw" => WorkspaceSysmount::Rw,
                 _ => WorkspaceSysmount::Ro,
@@ -298,6 +273,7 @@ impl From<&chelix_config::schema::SandboxConfig> for SandboxConfig {
                 .map(str::trim)
                 .filter(|p| !p.is_empty())
                 .map(PathBuf::from),
+            mounts: cfg.mounts.clone(),
             image: cfg.image.clone(),
             container_prefix: cfg.container_prefix.clone(),
             network: normalize_container_network(&cfg.network),

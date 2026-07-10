@@ -981,7 +981,6 @@ impl ChatService for LiveChatService {
                 "backend": router.backend_name(),
                 "mode": config.mode,
                 "scope": config.scope,
-                "workspaceMount": config.workspace_mount,
                 "image": effective_image,
                 "containerName": container_name,
             })

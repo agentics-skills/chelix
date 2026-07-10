@@ -6,11 +6,11 @@ version.workspace = true
 [dependencies]
 async-trait    = "0.1"
 base64         = { workspace = true }
-chromiumoxide  = { default-features = false, features = ["tokio-runtime"], version = "0.8" }
-futures        = { workspace = true }
 chelix-common  = { workspace = true }
 chelix-config  = { workspace = true }
 chelix-metrics = { optional = true, workspace = true }
+chromiumoxide  = { default-features = false, features = ["tokio-runtime"], version = "0.8" }
+futures        = { workspace = true }
 rand           = { workspace = true }
 serde          = { workspace = true }
 serde_json     = { workspace = true }

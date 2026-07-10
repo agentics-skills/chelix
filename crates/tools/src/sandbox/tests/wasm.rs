@@ -53,7 +53,7 @@ mod wasm_tests {
             key: "test-wasm-ready".into(),
         };
         sandbox.ensure_ready(&id, None).await.unwrap();
-        assert!(sandbox.home_dir(&id).exists());
+        assert!(sandbox.home_dir(&id).unwrap().exists());
         assert!(sandbox.tmp_dir(&id).exists());
         // Cleanup.
         sandbox.cleanup(&id).await.unwrap();
@@ -418,6 +418,173 @@ mod wasm_tests {
             .await
             .unwrap();
         assert_eq!(result.exit_code, 1);
+        sandbox.cleanup(&id).await.unwrap();
+    }
+
+    #[test]
+    fn test_wasm_sandbox_maps_data_dir_at_identical_guest_path() {
+        let data_dir = chelix_config::data_dir();
+        let sandbox = WasmSandbox::new(test_config()).unwrap();
+        let id = SandboxId {
+            scope: SandboxScope::Session,
+            key: "test-wasm-data-mount".into(),
+        };
+        let mounts = sandbox.runtime_mounts(&id).unwrap();
+        let data_mount = mounts
+            .iter()
+            .find(|mount| mount.guest == data_dir)
+            .expect("data_dir mount");
+
+        assert_eq!(data_mount.host, data_dir);
+        assert_eq!(
+            data_mount.mode,
+            chelix_config::container_mounts::MountMode::Rw
+        );
+    }
+
+    #[test]
+    fn test_wasm_sandbox_does_not_shadow_declarative_tmp_mount() {
+        let host = tempfile::tempdir().unwrap();
+        let sandbox = WasmSandbox::new(SandboxConfig {
+            home_persistence: HomePersistence::Off,
+            mounts: vec![chelix_config::container_mounts::SandboxMount {
+                host: host.path().to_path_buf(),
+                guest: "/tmp".into(),
+                mode: chelix_config::container_mounts::MountMode::Ro,
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+        let id = SandboxId {
+            scope: SandboxScope::Session,
+            key: "test-wasm-custom-tmp".into(),
+        };
+        let mounts = sandbox.runtime_mounts(&id).unwrap();
+        let tmp_mounts: Vec<_> = mounts
+            .iter()
+            .filter(|mount| mount.guest == std::path::Path::new("/tmp"))
+            .collect();
+
+        assert_eq!(tmp_mounts.len(), 1);
+        assert_eq!(tmp_mounts[0].host, host.path());
+        assert_eq!(
+            tmp_mounts[0].mode,
+            chelix_config::container_mounts::MountMode::Ro
+        );
+    }
+
+    #[tokio::test]
+    async fn test_wasm_sandbox_custom_read_only_mount_blocks_writes() {
+        let host = tempfile::tempdir().unwrap();
+        std::fs::write(host.path().join("visible.txt"), "read only").unwrap();
+        let sandbox = WasmSandbox::new(SandboxConfig {
+            home_persistence: HomePersistence::Off,
+            mounts: vec![chelix_config::container_mounts::SandboxMount {
+                host: host.path().to_path_buf(),
+                guest: "/mnt/custom".into(),
+                mode: chelix_config::container_mounts::MountMode::Ro,
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+        let id = SandboxId {
+            scope: SandboxScope::Session,
+            key: "test-wasm-ro-mount".into(),
+        };
+        sandbox.ensure_ready(&id, None).await.unwrap();
+
+        let read = sandbox
+            .run_command(
+                &id,
+                "cat /mnt/custom/visible.txt",
+                &CommandOptions::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(read.exit_code, 0);
+        assert_eq!(read.stdout, "read only");
+
+        let write = sandbox
+            .run_command(
+                &id,
+                "echo changed > /mnt/custom/new.txt",
+                &CommandOptions::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(write.exit_code, 1);
+        assert!(!host.path().join("new.txt").exists());
+        sandbox.cleanup(&id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_wasm_sandbox_custom_rw_mount_allows_writes() {
+        let host = tempfile::tempdir().unwrap();
+        let sandbox = WasmSandbox::new(SandboxConfig {
+            home_persistence: HomePersistence::Off,
+            mounts: vec![chelix_config::container_mounts::SandboxMount {
+                host: host.path().to_path_buf(),
+                guest: "/mnt/custom".into(),
+                mode: chelix_config::container_mounts::MountMode::Rw,
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+        let id = SandboxId {
+            scope: SandboxScope::Session,
+            key: "test-wasm-rw-mount".into(),
+        };
+        sandbox.ensure_ready(&id, None).await.unwrap();
+
+        let write = sandbox
+            .run_command(
+                &id,
+                "echo changed > /mnt/custom/new.txt",
+                &CommandOptions::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(write.exit_code, 0);
+        assert_eq!(
+            std::fs::read_to_string(host.path().join("new.txt")).unwrap(),
+            "changed\n"
+        );
+        sandbox.cleanup(&id).await.unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_wasm_sandbox_mount_rejects_symlink_escape() {
+        let host = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("secret.txt"), "not visible").unwrap();
+        std::os::unix::fs::symlink(outside.path(), host.path().join("escape")).unwrap();
+        let sandbox = WasmSandbox::new(SandboxConfig {
+            home_persistence: HomePersistence::Off,
+            mounts: vec![chelix_config::container_mounts::SandboxMount {
+                host: host.path().to_path_buf(),
+                guest: "/mnt/custom".into(),
+                mode: chelix_config::container_mounts::MountMode::Rw,
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+        let id = SandboxId {
+            scope: SandboxScope::Session,
+            key: "test-wasm-symlink-escape".into(),
+        };
+        sandbox.ensure_ready(&id, None).await.unwrap();
+
+        let read = sandbox
+            .run_command(
+                &id,
+                "cat /mnt/custom/escape/secret.txt",
+                &CommandOptions::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(read.exit_code, 1);
+        assert!(!read.stdout.contains("not visible"));
         sandbox.cleanup(&id).await.unwrap();
     }
 

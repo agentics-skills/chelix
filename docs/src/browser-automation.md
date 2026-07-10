@@ -285,7 +285,7 @@ When the `metrics` feature is enabled, the browser module records:
 ## Sandbox Mode
 
 Browser sandbox mode **automatically follows the session's sandbox mode**. When
-a chat session uses sandbox mode (controlled by `[tools.execute_command.sandbox]`), the
+a chat session uses sandbox mode (controlled by `[sandbox]`), the
 browser tool will also run in a sandboxed container. When the session is not
 sandboxed, the browser runs directly on the host.
 
@@ -312,7 +312,7 @@ sandbox_image = "docker.io/browserless/chrome"  # Container image for sandboxed 
 Requirements:
 - Docker or Apple Container must be installed and running
 - The container image is pulled automatically on first use
-- Session sandbox mode must be enabled (`[tools.execute_command.sandbox] mode = "all"`)
+- Session sandbox mode must be enabled (`[sandbox] mode = "all"`)
 
 ### Chelix Inside Docker (Sibling Containers)
 
@@ -385,7 +385,7 @@ malicious sites could attempt to inject instructions.
    Use firewall rules for additional restrictions.
 
 5. **Sandbox scripts**: Browser scripts running in the command sandbox (Puppeteer,
-   Playwright) inherit `tools.execute_command.sandbox.network`, which defaults
+   Playwright) inherit `sandbox.network`, which defaults
    to the Docker/Podman `bridge` network.
 
 ## Browser Detection
