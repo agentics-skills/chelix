@@ -86,7 +86,7 @@ for all traffic except Telegram (see caveat above).
 
 `upstream_proxy` configures Chelix HTTP clients for provider, channel, and tool
 requests made by Chelix itself. Sandbox container networking is configured
-separately through `tools.execute_command.sandbox.network`.
+separately through `sandbox.network`.
 
 Docker and Podman sandboxes receive the configured network directly as
 `--network=<name>`. If sandboxed commands must use a corporate proxy, configure

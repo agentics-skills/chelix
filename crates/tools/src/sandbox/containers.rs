@@ -119,7 +119,7 @@ pub(crate) fn apple_container_run_args(
     name: &str,
     image: &str,
     tz: Option<&str>,
-    home_volume: Option<&str>,
+    mounts: &[String],
 ) -> Vec<String> {
     let mut args = vec![
         "run".to_string(),
@@ -133,8 +133,8 @@ pub(crate) fn apple_container_run_args(
     if let Some(tz) = tz {
         args.extend(["-e".to_string(), format!("TZ={tz}")]);
     }
-    if let Some(volume) = home_volume {
-        args.extend(["--volume".to_string(), volume.to_string()]);
+    for mount in mounts {
+        args.extend(["--mount".to_string(), mount.clone()]);
     }
 
     args.push(image.to_string());

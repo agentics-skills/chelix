@@ -4,10 +4,10 @@ name              = "chelix-media"
 version.workspace = true
 
 [dependencies]
-image          = { workspace = true }
-mime_guess     = { workspace = true }
 chelix-common  = { workspace = true }
 chelix-metrics = { optional = true, workspace = true }
+image          = { workspace = true }
+mime_guess     = { workspace = true }
 reqwest        = { workspace = true }
 thiserror      = { workspace = true }
 tokio          = { workspace = true }

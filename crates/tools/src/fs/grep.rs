@@ -39,7 +39,7 @@ use crate::{
         sandbox_bridge::{SandboxGrepMode, SandboxGrepOptions},
         shared::{FsPathPolicy, enforce_path_policy_deny_only, require_absolute, session_key_from},
     },
-    sandbox::{SandboxRouter, file_system::sandbox_file_system_for_session},
+    sandbox::{ExecEnv, SandboxRouter, file_system::sandbox_file_system_for_session},
 };
 
 /// Maximum bytes of a single file we will load for content searching.
@@ -394,28 +394,23 @@ fn collect_content_matches(
 
 /// Post-filter sandbox Grep results against the path policy.
 ///
-/// The sandbox bridge can't evaluate the policy inside the container,
-/// so we filter the structured JSON on the host side after the results
-/// come back. Mirrors the per-file filter in the host `grep_impl` and
-/// in `Glob`'s sandbox branch.
+/// The policy protects the agent-facing namespace before results cross the
+/// sandbox bridge; it does not select a host filesystem execution path.
 fn filter_sandbox_grep_by_policy(result: &mut Value, policy: &FsPathPolicy) {
     let denied = |path_value: &Value| -> bool {
         path_value
             .as_str()
-            .is_some_and(|p| policy.check(Path::new(p)).is_some())
+            .is_some_and(|path| policy.check(Path::new(path)).is_some())
     };
 
-    // files_with_matches mode
-    if let Some(arr) = result.get_mut("files").and_then(Value::as_array_mut) {
-        arr.retain(|f| !denied(f));
+    if let Some(files) = result.get_mut("files").and_then(Value::as_array_mut) {
+        files.retain(|file| !denied(file));
     }
-    // content mode
-    if let Some(arr) = result.get_mut("matches").and_then(Value::as_array_mut) {
-        arr.retain(|m| !denied(m.get("path").unwrap_or(&Value::Null)));
+    if let Some(matches) = result.get_mut("matches").and_then(Value::as_array_mut) {
+        matches.retain(|matched| !denied(matched.get("path").unwrap_or(&Value::Null)));
     }
-    // count mode
-    if let Some(arr) = result.get_mut("counts").and_then(Value::as_array_mut) {
-        arr.retain(|c| !denied(c.get("path").unwrap_or(&Value::Null)));
+    if let Some(counts) = result.get_mut("counts").and_then(Value::as_array_mut) {
+        counts.retain(|count| !denied(count.get("path").unwrap_or(&Value::Null)));
     }
 }
 
@@ -712,14 +707,21 @@ impl AgentTool for GrepTool {
             .map(|n| n as usize)
             .unwrap_or(0);
 
+        let session_key = session_key_from(&params).to_string();
+        let router = self.sandbox_router.as_deref();
+        let env = match router {
+            Some(router) => router.resolve_env(&session_key).await?,
+            None => ExecEnv::Host,
+        };
+
         // Sandbox dispatch: shell grep into the container, then apply
         // the same paging and truncation rules on the host side so the
         // LLM-facing payload stays consistent across routing modes.
-        if let Some(ref router) = self.sandbox_router {
-            let session_key = session_key_from(&params).to_string();
-            if router.is_sandboxed(&session_key).await {
-                // Enforce path policy before dispatching to the sandbox,
-                // matching Read/Write/Edit/MultiEdit.
+        match env {
+            ExecEnv::Sandbox { .. } => {
+                let router = router.ok_or_else(|| {
+                    Error::message("sandbox environment resolved without a sandbox router")
+                })?;
                 if let Some(ref policy) = self.path_policy
                     && let Some(payload) = enforce_path_policy_deny_only(policy, &path)
                 {
@@ -759,16 +761,12 @@ impl AgentTool for GrepTool {
                             .then_some(DEFAULT_GREP_MATCH_CAP),
                     })
                     .await?;
-
-                // Per-file path policy filter on sandbox results,
-                // mirroring what Glob's sandbox branch does and what
-                // the host grep_impl does via its walk filter.
                 if let Some(ref policy) = self.path_policy {
                     filter_sandbox_grep_by_policy(&mut result, policy);
                 }
-
                 return Ok(result);
-            }
+            },
+            ExecEnv::Host => {},
         }
 
         let opts = GrepOptions {

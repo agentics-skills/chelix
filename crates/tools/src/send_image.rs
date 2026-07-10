@@ -153,6 +153,10 @@ mod tests {
             "stub"
         }
 
+        fn provides_fs_isolation(&self) -> bool {
+            true
+        }
+
         async fn ensure_ready(&self, _id: &SandboxId, _image_override: Option<&str>) -> Result<()> {
             Ok(())
         }

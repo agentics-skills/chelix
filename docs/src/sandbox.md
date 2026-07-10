@@ -8,7 +8,7 @@ system. The sandbox backend controls which container technology is used.
 Configure in `chelix.toml`:
 
 ```toml
-[tools.execute_command.sandbox]
+[sandbox]
 backend = "auto"          # default — picks the best available
 # backend = "podman"      # force Podman (daemonless, rootless)
 # backend = "docker"      # force Docker
@@ -134,7 +134,7 @@ With `workspace_sysmount = "rw"`, Chelix skips `--cap-drop ALL`,
 work against a writable root filesystem.
 
 ```toml
-[tools.execute_command.sandbox]
+[sandbox]
 workspace_sysmount = "rw"   # default: "ro"
 ```
 
@@ -203,14 +203,14 @@ Home persistence is respected:
 ### Configuration
 
 ```toml
-[tools.execute_command.sandbox]
+[sandbox]
 backend = "wasm"
 
 # WASM-specific settings
 wasm_fuel_limit = 1000000000       # instruction fuel (default: 1 billion)
 wasm_epoch_interval_ms = 100       # epoch interruption interval (default: 100ms)
 
-[tools.execute_command.sandbox.resource_limits]
+[sandbox.resource_limits]
 memory_limit = "512M"    # Wasmtime memory reservation
 ```
 
@@ -313,7 +313,7 @@ auth/config files survive container recreation. You can change this with
 `home_persistence`:
 
 ```toml
-[tools.execute_command.sandbox]
+[sandbox]
 home_persistence = "session"   # "off", "session", or "shared" (default)
 # shared_home_dir = "/path/to/shared-home"  # optional, used when mode is "shared"
 ```
@@ -325,7 +325,7 @@ home_persistence = "session"   # "off", "session", or "shared" (default)
 
 Chelix stores persisted homes under `data_dir()/sandbox/home/`.
 
-## Docker-in-Docker workspace mounts
+## Docker-in-Docker data directory mounts
 
 When Chelix runs inside a container and launches Docker-backed sandboxes via a
 mounted container socket, the sandbox bind mount source must be a host-visible
@@ -334,12 +334,13 @@ that lookup fails or you want to pin the value explicitly, set
 `host_data_dir`:
 
 ```toml
-[tools.execute_command.sandbox]
+[sandbox]
 host_data_dir = "/srv/chelix/data"
 ```
 
-This remaps sandbox workspace mounts and default sandbox persistence paths from
-the guest `data_dir()` to the host path you provide. It is mainly an override
+This changes the host-visible source of the mandatory `data_dir()` mount and
+default sandbox persistence paths. The guest path remains the agent's absolute
+`data_dir()` path and the data mount remains read-write. This option is mainly
 for Docker-in-Docker deployments where mount auto-detection is unavailable or
 ambiguous.
 
@@ -350,7 +351,7 @@ The default is `bridge`, and Chelix passes the value to the container runtime
 as `--network=<name>`.
 
 ```toml
-[tools.execute_command.sandbox]
+[sandbox]
 network = "bridge"
 ```
 
@@ -358,7 +359,7 @@ Use any runtime network name accepted by Docker or Podman, for example a
 custom network created outside Chelix:
 
 ```toml
-[tools.execute_command.sandbox]
+[sandbox]
 network = "chelix-sandbox-net"
 ```
 
@@ -372,7 +373,7 @@ Chelix no longer has sandbox-specific network policy modes.
 ## Resource limits
 
 ```toml
-[tools.execute_command.sandbox.resource_limits]
+[sandbox.resource_limits]
 memory_limit = "512M"
 cpu_quota = 1.0
 pids_max = 256

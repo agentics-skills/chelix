@@ -304,6 +304,7 @@ pub struct ChelixConfig {
     pub providers: ProvidersConfig,
     pub chat: ChatConfig,
     pub tools: ToolsConfig,
+    pub sandbox: SandboxConfig,
     pub agents: AgentsConfig,
     pub modes: ModesConfig,
     pub skills: SkillsConfig,

@@ -2,7 +2,7 @@
 
 use std::{
     collections::HashMap,
-    path::{Path as FsPath, PathBuf},
+    path::{Component, Path as FsPath, PathBuf},
     sync::{Mutex, OnceLock},
 };
 
@@ -12,11 +12,11 @@ use {
     super::{
         containers::{is_cli_available, is_docker_daemon_available, should_use_docker_backend},
         types::{
-            HomePersistence, SANDBOX_HOME_DIR, SandboxConfig, SandboxId, WorkspaceMount,
-            sanitize_path_component,
+            HomePersistence, SANDBOX_HOME_DIR, SandboxConfig, SandboxId, sanitize_path_component,
         },
     },
     crate::error::Result,
+    chelix_config::container_mounts::{SandboxMount, sandbox_mount_plan},
 };
 
 pub(crate) static HOST_DATA_DIR_CACHE: OnceLock<Mutex<HashMap<String, PathBuf>>> = OnceLock::new();
@@ -86,6 +86,9 @@ pub(crate) fn detected_container_cli(config: &SandboxConfig) -> Option<&'static 
 
 pub(crate) fn host_visible_data_dir(config: &SandboxConfig, cli: Option<&str>) -> PathBuf {
     let guest_data_dir = chelix_config::data_dir();
+    if cli.is_none() {
+        return guest_data_dir;
+    }
     if let Some(configured) = configured_host_data_dir(config) {
         return configured;
     }
@@ -114,56 +117,16 @@ pub(crate) fn host_visible_path(
     }
 }
 
-pub(crate) fn resolve_workspace_guest_path_on_host(
-    config: &SandboxConfig,
-    cli: Option<&str>,
-    guest_path: &FsPath,
-) -> Option<PathBuf> {
-    if config.workspace_mount == WorkspaceMount::None {
-        return None;
-    }
-    let guest_workspace_dir = chelix_config::data_dir();
-    let relative_path = guest_path.strip_prefix(&guest_workspace_dir).ok()?;
-    let host_workspace_dir = host_visible_data_dir(config, cli);
-    Some(if relative_path.as_os_str().is_empty() {
-        host_workspace_dir
-    } else {
-        host_workspace_dir.join(relative_path)
-    })
-}
-
-pub(crate) fn sandbox_home_persistence_base_dir(
-    config: &SandboxConfig,
-    cli: Option<&str>,
-) -> PathBuf {
-    host_visible_path(
-        config,
-        cli,
-        &chelix_config::data_dir().join("sandbox").join("home"),
-    )
-}
-
-pub(crate) fn default_shared_home_dir(config: &SandboxConfig, cli: Option<&str>) -> PathBuf {
-    sandbox_home_persistence_base_dir(config, cli).join("shared")
-}
-
-pub(crate) fn resolve_shared_home_dir(config: &SandboxConfig, cli: Option<&str>) -> PathBuf {
-    let Some(path) = config
-        .shared_home_dir
-        .as_ref()
-        .filter(|path| !path.as_os_str().is_empty())
-    else {
-        return default_shared_home_dir(config, cli);
-    };
-    if path.is_absolute() {
-        return host_visible_path(config, cli, path);
-    }
-    host_visible_path(config, cli, &chelix_config::data_dir().join(path))
-}
-
 /// Effective host path used when shared home persistence is enabled.
 pub fn shared_home_dir_path(config: &SandboxConfig) -> PathBuf {
-    resolve_shared_home_dir(config, detected_container_cli(config))
+    let cli = detected_container_cli(config);
+    let mut mount_config = mount_plan_config(config, cli.is_some());
+    mount_config.home_persistence = chelix_config::schema::HomePersistenceConfig::Shared;
+    sandbox_mount_plan(&mount_config)
+        .into_iter()
+        .find(|mount| mount.guest == FsPath::new(SANDBOX_HOME_DIR))
+        .map(|mount| host_visible_mount_path(config, cli, &mount))
+        .unwrap_or_else(|| host_visible_data_dir(config, cli))
 }
 
 pub(crate) fn sandbox_home_persistence_host_dir(
@@ -171,77 +134,178 @@ pub(crate) fn sandbox_home_persistence_host_dir(
     cli: Option<&str>,
     id: &SandboxId,
 ) -> Option<PathBuf> {
-    let base = sandbox_home_persistence_base_dir(config, cli);
-    match config.home_persistence {
-        HomePersistence::Off => None,
-        HomePersistence::Shared => Some(resolve_shared_home_dir(config, cli)),
-        HomePersistence::Session => {
-            Some(base.join("session").join(sanitize_path_component(&id.key)))
+    resolved_sandbox_mount_plan(config, cli, id)
+        .ok()?
+        .into_iter()
+        .find(|mount| mount.guest == FsPath::new(SANDBOX_HOME_DIR))
+        .map(|mount| mount.host)
+}
+
+fn mount_plan_config(
+    config: &SandboxConfig,
+    include_host_data_dir: bool,
+) -> chelix_config::schema::SandboxConfig {
+    chelix_config::schema::SandboxConfig {
+        host_data_dir: if include_host_data_dir {
+            config
+                .host_data_dir
+                .as_ref()
+                .map(|path| path.display().to_string())
+        } else {
+            None
         },
+        home_persistence: match config.home_persistence {
+            HomePersistence::Off => chelix_config::schema::HomePersistenceConfig::Off,
+            HomePersistence::Session => chelix_config::schema::HomePersistenceConfig::Session,
+            HomePersistence::Shared => chelix_config::schema::HomePersistenceConfig::Shared,
+        },
+        shared_home_dir: config
+            .shared_home_dir
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        mounts: config.mounts.clone(),
+        ..Default::default()
     }
 }
 
-pub(crate) fn resolve_home_persistence_guest_path_on_host(
+fn host_visible_mount_path(
+    config: &SandboxConfig,
+    cli: Option<&str>,
+    mount: &SandboxMount,
+) -> PathBuf {
+    let guest_data_dir = chelix_config::data_dir();
+    if mount.guest == guest_data_dir {
+        return host_visible_data_dir(config, cli);
+    }
+
+    if let Some(configured_data_dir) = configured_host_data_dir(config)
+        && mount.host.starts_with(configured_data_dir)
+    {
+        return mount.host.clone();
+    }
+
+    host_visible_path(config, cli, &mount.host)
+}
+
+/// Resolve the declarative config plan into host-visible, session-specific mounts.
+pub(crate) fn resolved_sandbox_mount_plan(
     config: &SandboxConfig,
     cli: Option<&str>,
     id: &SandboxId,
-    guest_path: &FsPath,
-) -> Option<PathBuf> {
-    let guest_home_dir = FsPath::new(SANDBOX_HOME_DIR);
-    let relative_path = guest_path.strip_prefix(guest_home_dir).ok()?;
-    let host_home_dir = sandbox_home_persistence_host_dir(config, cli, id)?;
-    Some(if relative_path.as_os_str().is_empty() {
-        host_home_dir
-    } else {
-        host_home_dir.join(relative_path)
+) -> Result<Vec<SandboxMount>> {
+    let session_home = config.home_persistence == HomePersistence::Session;
+    let mut mounts = sandbox_mount_plan(&mount_plan_config(config, cli.is_some()));
+
+    for mount in &mut mounts {
+        if session_home && mount.guest == FsPath::new(SANDBOX_HOME_DIR) {
+            mount.host.push(sanitize_path_component(&id.key));
+        }
+        let guest_visible_path = mount.host.clone();
+        mount.host = host_visible_mount_path(config, cli, mount);
+        if mount.guest == FsPath::new(SANDBOX_HOME_DIR)
+            && let Err(error) = std::fs::create_dir_all(&mount.host)
+        {
+            if guest_visible_path == mount.host {
+                return Err(error.into());
+            }
+            warn!(
+                path = %mount.host.display(),
+                %error,
+                "could not pre-create translated sandbox persistence path; runtime may create it"
+            );
+        }
+    }
+
+    Ok(mounts)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MountAccess {
+    Read,
+    Write,
+}
+
+fn normalize_guest_path(path: &FsPath) -> Option<PathBuf> {
+    if !path.is_absolute() {
+        return None;
+    }
+    path.components()
+        .try_fold(PathBuf::new(), |mut normalized, component| {
+            match component {
+                Component::RootDir => normalized.push(component.as_os_str()),
+                Component::CurDir => {},
+                Component::ParentDir => {
+                    if !normalized.pop() {
+                        return None;
+                    }
+                },
+                Component::Normal(segment) => normalized.push(segment),
+                Component::Prefix(_) => return None,
+            }
+            Some(normalized)
+        })
+}
+
+pub(crate) fn sandbox_mount_target_overlaps(mounts: &[SandboxMount], guest_path: &FsPath) -> bool {
+    let Some(guest_path) = normalize_guest_path(guest_path) else {
+        return false;
+    };
+    mounts.iter().any(|mount| {
+        normalize_guest_path(&mount.guest).is_some_and(|mount_guest| {
+            mount_guest.starts_with(&guest_path) || guest_path.starts_with(mount_guest)
+        })
     })
 }
 
-pub(crate) fn guest_visible_sandbox_home_persistence_host_dir(
-    config: &SandboxConfig,
-    id: &SandboxId,
-) -> Option<PathBuf> {
-    let base = chelix_config::data_dir().join("sandbox").join("home");
-    match config.home_persistence {
-        HomePersistence::Off => None,
-        HomePersistence::Shared => Some(
-            config
-                .shared_home_dir
-                .as_ref()
-                .filter(|path| !path.as_os_str().is_empty())
-                .map(|path| {
-                    if path.is_absolute() {
-                        path.clone()
-                    } else {
-                        chelix_config::data_dir().join(path)
-                    }
-                })
-                .unwrap_or_else(|| base.join("shared")),
-        ),
-        HomePersistence::Session => {
-            Some(base.join("session").join(sanitize_path_component(&id.key)))
-        },
+fn path_stays_within_mount(host_path: &FsPath, mount_root: &FsPath) -> bool {
+    let Ok(canonical_root) = mount_root.canonicalize() else {
+        return false;
+    };
+    let mut existing = host_path;
+    while !existing.exists() {
+        let Some(parent) = existing.parent() else {
+            return false;
+        };
+        existing = parent;
     }
+    existing
+        .canonicalize()
+        .is_ok_and(|path| path.starts_with(canonical_root))
 }
 
-pub(crate) fn ensure_sandbox_home_persistence_host_dir(
-    config: &SandboxConfig,
-    cli: Option<&str>,
-    id: &SandboxId,
-) -> Result<Option<PathBuf>> {
-    let Some(path) = sandbox_home_persistence_host_dir(config, cli, id) else {
-        return Ok(None);
-    };
-    let guest_visible_path = guest_visible_sandbox_home_persistence_host_dir(config, id);
-    if let Err(error) = std::fs::create_dir_all(&path) {
-        if guest_visible_path.as_ref() == Some(&path) {
-            return Err(error.into());
-        }
-        warn!(
-            path = %path.display(),
-            %error,
-            "could not pre-create translated sandbox persistence path; runtime may create it"
-        );
+/// Resolve an absolute guest path through the most-specific declarative mount.
+///
+/// When multiple mounts have the same guest-path depth, the later entry in the
+/// plan wins. This matches OCI bind-mount ordering, where a later mount for the
+/// same target supersedes an earlier one.
+pub(crate) fn resolve_sandbox_mount_path(
+    mounts: &[SandboxMount],
+    guest_path: &FsPath,
+    access: MountAccess,
+) -> Option<PathBuf> {
+    let guest_path = normalize_guest_path(guest_path)?;
+    let (mount, relative) = mounts
+        .iter()
+        .filter_map(|mount| {
+            let guest_root = normalize_guest_path(&mount.guest)?;
+            let relative = guest_path.strip_prefix(&guest_root).ok()?.to_path_buf();
+            Some((guest_root.components().count(), mount, relative))
+        })
+        .max_by_key(|(depth, ..)| *depth)
+        .map(|(_, mount, relative)| (mount, relative))?;
+
+    if access == MountAccess::Write && mount.mode != chelix_config::container_mounts::MountMode::Rw
+    {
+        return None;
     }
-    Ok(Some(path))
+
+    if mount.host.is_file() && !relative.as_os_str().is_empty() {
+        return None;
+    }
+    let host_path = if relative.as_os_str().is_empty() {
+        mount.host.clone()
+    } else {
+        mount.host.join(relative)
+    };
+    path_stays_within_mount(&host_path, &mount.host).then_some(host_path)
 }

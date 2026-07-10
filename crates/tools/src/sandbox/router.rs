@@ -23,6 +23,7 @@ use {
             should_use_docker_backend,
         },
         docker::{DockerSandbox, NoSandbox},
+        env::ExecEnv,
         file_system::{SandboxGrepOptions, SandboxListFilesResult, SandboxReadResult},
         platform::RestrictedHostSandbox,
         types::{
@@ -530,7 +531,7 @@ pub enum SandboxEvent {
     ProvisionFailed { container: String, error: String },
 }
 
-/// Routes sandbox decisions per-session, with per-session overrides on top of global config.
+/// Routes sandbox decisions per-session, with per-session overrides on top of `[sandbox]`.
 ///
 /// Supports multiple named backends simultaneously. Each session can be routed
 /// to a different backend via per-session overrides, while the default backend
@@ -704,15 +705,11 @@ impl SandboxRouter {
         self.clear_synced_session(session_key).await;
     }
 
-    /// Check whether a session should run sandboxed.
-    /// Returns `false` when the session's resolved backend is not real, regardless
-    /// of config mode or per-session overrides. Otherwise, per-session override
-    /// takes priority, then falls back to global mode.
-    pub async fn is_sandboxed(&self, session_key: &str) -> bool {
-        let backend = self.resolve_backend(session_key).await;
-        if !backend.is_real() {
-            return false;
-        }
+    /// Resolve whether sandboxing is enabled by policy for a session.
+    ///
+    /// Explicit per-session policy takes priority over the agent policy, which
+    /// takes priority over the global mode.
+    async fn sandbox_enabled(&self, session_key: &str) -> bool {
         if let Some(&override_val) = self.overrides.read().await.get(session_key) {
             return override_val;
         }
@@ -724,6 +721,46 @@ impl SandboxRouter {
             SandboxMode::All => true,
             SandboxMode::NonMain => session_key != "main",
         }
+    }
+
+    /// Check whether a session currently has a usable sandbox backend.
+    ///
+    /// This existing query remains available until tools migrate to [`Self::resolve_env`].
+    pub async fn is_sandboxed(&self, session_key: &str) -> bool {
+        let backend = self.resolve_backend(session_key).await;
+        backend.is_real() && self.sandbox_enabled(session_key).await
+    }
+
+    /// Resolve and prepare the sole execution environment for a session.
+    ///
+    /// Host execution is returned only when sandboxing is explicitly disabled
+    /// by the effective session policy. Enabled sessions fail closed unless the
+    /// selected backend provides filesystem isolation and prepares successfully.
+    pub async fn resolve_env(&self, session_key: &str) -> Result<ExecEnv> {
+        if !self.sandbox_enabled(session_key).await {
+            return Ok(ExecEnv::Host);
+        }
+
+        let backend = self.resolve_backend(session_key).await;
+        Self::require_fs_isolation(session_key, &*backend)?;
+
+        let (backend, id) = self.prepare_command_session(session_key).await?;
+
+        // Preparation can switch a failover backend to a weaker implementation.
+        Self::require_fs_isolation(session_key, &*backend)?;
+
+        Ok(ExecEnv::Sandbox { backend, id })
+    }
+
+    fn require_fs_isolation(session_key: &str, backend: &dyn Sandbox) -> Result<()> {
+        if backend.provides_fs_isolation() {
+            return Ok(());
+        }
+
+        Err(Error::message(format!(
+            "sandbox is enabled for session {session_key:?}, but backend {:?} does not provide filesystem isolation",
+            backend.backend_name()
+        )))
     }
 
     /// Set a per-session sandbox override.
@@ -1148,7 +1185,7 @@ impl SandboxRouter {
     /// 2. Per-session override (`session.sandbox_image`)
     /// 3. Runtime backend override (`set_backend_image`)
     /// 4. Runtime global override (`set_global_image`)
-    /// 5. Global config (`config.tools.execute_command.sandbox.image`)
+    /// 5. Global config (`config.sandbox.image`)
     /// 6. Default constant (`DEFAULT_SANDBOX_IMAGE`)
     pub async fn resolve_image(&self, session_key: &str, skill_image: Option<&str>) -> String {
         let backend = self.resolve_backend(session_key).await;

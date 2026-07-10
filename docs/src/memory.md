@@ -236,11 +236,11 @@ Prompt injection from `MEMORY.md` is controlled separately via
 each turn, or `frozen-at-session-start` to keep a stable prompt-memory
 snapshot for the lifetime of a session.
 
-If sandboxing is enabled with the default `workspace_mount = "ro"`, sandboxed
-commands may still read mounted memory files, but they cannot modify them
-directly. Durable memory mutations should use `memory_save`,
-`memory_forget`, or `memory_delete` rather than shell redirection or direct
-file editing inside the sandbox.
+When sandboxing is enabled, Chelix mounts `data_dir()` at the identical
+absolute path in read-write mode, so sandboxed commands can read and write
+memory files directly. Durable memory mutations should still use
+`memory_save`, `memory_forget`, or `memory_delete` to preserve the memory
+system's intended semantics and safeguards.
 
 ## Tools
 

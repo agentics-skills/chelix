@@ -32,7 +32,7 @@ use crate::{
             with_fs_mutation_lock,
         },
     },
-    sandbox::{SandboxRouter, file_system::sandbox_file_system_for_session},
+    sandbox::{ExecEnv, SandboxRouter, file_system::sandbox_file_system_for_session},
 };
 
 /// Native `MultiEdit` tool implementation.
@@ -107,83 +107,92 @@ impl MultiEditTool {
         require_absolute(file_path, "file_path")?;
         let approval_request = format!("MultiEdit {file_path}");
 
-        // Sandbox dispatch: read once, apply all edits in host memory,
-        // write the final buffer back through the bridge atomically.
-        // Path policy and must-read-before-write are enforced host-side.
-        if let Some(ref router) = self.sandbox_router
-            && router.is_sandboxed(session_key).await
-        {
-            if let Some(ref policy) = self.path_policy
-                && let Some(payload) = enforce_path_policy(policy, std::path::Path::new(file_path))
-            {
-                return Ok(payload);
-            }
-            if let Some(payload) =
-                enforce_must_read_before_write(self.fs_state.as_ref(), session_key, file_path)
-            {
-                return Ok(payload);
-            }
-            return with_fs_mutation_lock(
-                sandbox_mutation_queue_key(session_key, file_path),
-                async {
-                    let sandbox_fs = sandbox_file_system_for_session(router, session_key).await?;
-                    let read_result = sandbox_fs
-                        .read_file(file_path, DEFAULT_MAX_READ_BYTES)
-                        .await?;
-                    let bytes = match read_result {
-                        SandboxReadResult::Ok(bytes) => bytes,
-                        other => {
-                            return Ok(other
-                                .into_typed_payload(file_path, DEFAULT_MAX_READ_BYTES)
-                                .unwrap_or(json!({})));
-                        },
-                    };
-                    let original = String::from_utf8(bytes).map_err(|e| {
-                        Error::message(format!(
-                            "sandbox file '{file_path}' is not valid UTF-8: {e}"
-                        ))
-                    })?;
+        let router = self.sandbox_router.as_deref();
+        let env = match router {
+            Some(router) => router.resolve_env(session_key).await?,
+            None => ExecEnv::Host,
+        };
 
-                    let mut buffer = original;
-                    let mut per_edit_replacements: Vec<usize> = Vec::with_capacity(edits.len());
-                    let mut any_crlf_recovery = false;
-                    for (idx, edit) in edits.iter().enumerate() {
-                        let outcome = apply_edit(
-                            &buffer,
-                            &edit.old_string,
-                            &edit.new_string,
-                            edit.replace_all,
-                        )
-                        .map_err(|e| Error::message(format!("edit #{}: {e}", idx + 1)))?;
-                        per_edit_replacements.push(outcome.replacements);
-                        if outcome.recovered_via_crlf {
-                            any_crlf_recovery = true;
+        match env {
+            ExecEnv::Sandbox { .. } => {
+                let router = router.ok_or_else(|| {
+                    Error::message("sandbox environment resolved without a sandbox router")
+                })?;
+                if let Some(ref policy) = self.path_policy
+                    && let Some(payload) =
+                        enforce_path_policy(policy, std::path::Path::new(file_path))
+                {
+                    return Ok(payload);
+                }
+                if let Some(payload) =
+                    enforce_must_read_before_write(self.fs_state.as_ref(), session_key, file_path)
+                {
+                    return Ok(payload);
+                }
+                return with_fs_mutation_lock(
+                    sandbox_mutation_queue_key(session_key, file_path),
+                    async {
+                        let sandbox_fs =
+                            sandbox_file_system_for_session(router, session_key).await?;
+                        let read_result = sandbox_fs
+                            .read_file(file_path, DEFAULT_MAX_READ_BYTES)
+                            .await?;
+                        let bytes = match read_result {
+                            SandboxReadResult::Ok(bytes) => bytes,
+                            other => {
+                                return Ok(other
+                                    .into_typed_payload(file_path, DEFAULT_MAX_READ_BYTES)
+                                    .unwrap_or(json!({})));
+                            },
+                        };
+                        let original = String::from_utf8(bytes).map_err(|e| {
+                            Error::message(format!(
+                                "sandbox file '{file_path}' is not valid UTF-8: {e}"
+                            ))
+                        })?;
+
+                        let mut buffer = original;
+                        let mut per_edit_replacements: Vec<usize> = Vec::with_capacity(edits.len());
+                        let mut any_crlf_recovery = false;
+                        for (idx, edit) in edits.iter().enumerate() {
+                            let outcome = apply_edit(
+                                &buffer,
+                                &edit.old_string,
+                                &edit.new_string,
+                                edit.replace_all,
+                            )
+                            .map_err(|e| Error::message(format!("edit #{}: {e}", idx + 1)))?;
+                            per_edit_replacements.push(outcome.replacements);
+                            if outcome.recovered_via_crlf {
+                                any_crlf_recovery = true;
+                            }
+                            buffer = outcome.content;
                         }
-                        buffer = outcome.content;
-                    }
 
-                    require_fs_mutation_approval(
-                        self.approval_manager.as_ref(),
-                        self.broadcaster.as_ref(),
-                        &approval_request,
-                    )
-                    .await?;
-                    if let Some(payload) =
-                        sandbox_fs.write_file(file_path, buffer.as_bytes()).await?
-                    {
-                        return Ok(payload);
-                    }
-                    note_fs_mutation(self.fs_state.as_ref(), session_key, file_path);
-                    Ok(json!({
-                        "file_path": file_path,
-                        "edits_applied": edits.len(),
-                        "replacements_per_edit": per_edit_replacements,
-                        "recovered_via_crlf": any_crlf_recovery,
-                        "checkpoint_id": Value::Null,
-                    }))
-                },
-            )
-            .await;
+                        require_fs_mutation_approval(
+                            self.approval_manager.as_ref(),
+                            self.broadcaster.as_ref(),
+                            &approval_request,
+                        )
+                        .await?;
+                        if let Some(payload) =
+                            sandbox_fs.write_file(file_path, buffer.as_bytes()).await?
+                        {
+                            return Ok(payload);
+                        }
+                        note_fs_mutation(self.fs_state.as_ref(), session_key, file_path);
+                        Ok(json!({
+                            "file_path": file_path,
+                            "edits_applied": edits.len(),
+                            "replacements_per_edit": per_edit_replacements,
+                            "recovered_via_crlf": any_crlf_recovery,
+                            "checkpoint_id": Value::Null,
+                        }))
+                    },
+                )
+                .await;
+            },
+            ExecEnv::Host => {},
         }
 
         reject_if_symlink(file_path).await?;

@@ -982,48 +982,6 @@ async fn is_symlink(path: &Path) -> Result<bool> {
     }
 }
 
-pub fn remap_host_files_to_guest(
-    guest_root: &str,
-    host_root: &Path,
-    host_files: Vec<String>,
-) -> Result<Vec<String>> {
-    let mut guest_files = Vec::with_capacity(host_files.len());
-    for host_file in host_files {
-        let relative = Path::new(&host_file)
-            .strip_prefix(host_root)
-            .map_err(|error| {
-                Error::message(format!(
-                    "failed to relativize host path '{host_file}' against '{}': {error}",
-                    host_root.display()
-                ))
-            })?;
-        let guest_path = if relative.as_os_str().is_empty() {
-            PathBuf::from(guest_root)
-        } else {
-            Path::new(guest_root).join(relative)
-        };
-        guest_files.push(guest_path.display().to_string());
-    }
-    guest_files.sort();
-    Ok(guest_files)
-}
-
-pub fn remap_host_list_result_to_guest(
-    guest_root: &str,
-    host_root: &Path,
-    host_result: SandboxListFilesResult,
-) -> Result<SandboxListFilesResult> {
-    let guest_files = remap_host_files_to_guest(guest_root, host_root, host_result.files)?;
-    Ok(if host_result.truncated {
-        SandboxListFilesResult::truncated(
-            guest_files,
-            host_result.limit.unwrap_or(MAX_SANDBOX_LIST_FILES),
-        )
-    } else {
-        SandboxListFilesResult::complete(guest_files)
-    })
-}
-
 /// Copy-based read implementation for OCI-compatible container CLIs.
 pub async fn oci_container_read_file(
     cli: &str,

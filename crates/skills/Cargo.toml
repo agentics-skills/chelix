@@ -5,10 +5,10 @@ version.workspace = true
 
 [dependencies]
 async-trait           = { workspace = true }
-flate2                = { workspace = true }
-include_dir           = { optional = true, workspace = true }
 chelix-config         = { workspace = true }
 chelix-metrics        = { optional = true, workspace = true }
+flate2                = { workspace = true }
+include_dir           = { optional = true, workspace = true }
 notify-debouncer-full = { optional = true, workspace = true }
 reqwest               = { workspace = true }
 serde                 = { workspace = true }
@@ -22,8 +22,8 @@ walkdir               = { workspace = true }
 zip                   = { workspace = true }
 
 [features]
-default        = []
 bundled-skills = ["dep:include_dir"]
+default        = []
 file-watcher   = ["dep:notify-debouncer-full"]
 metrics        = ["dep:chelix-metrics"]
 

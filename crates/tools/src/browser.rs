@@ -74,19 +74,17 @@ impl BrowserTool {
         Some(Self::new(browser_config))
     }
 
-    /// Create from the full tools config so browser sandbox containers can
-    /// share command sandbox host path resolution.
-    pub fn from_tools_config(config: &chelix_config::schema::ToolsConfig) -> Option<Self> {
-        if !config.browser.enabled {
+    /// Create from browser and sandbox config so browser sandbox containers can
+    /// share sandbox host path resolution.
+    pub fn from_config_with_sandbox(
+        browser: &chelix_config::schema::BrowserConfig,
+        sandbox: &chelix_config::schema::SandboxConfig,
+    ) -> Option<Self> {
+        if !browser.enabled {
             return None;
         }
-        let mut browser_config = chelix_browser::BrowserConfig::from(&config.browser);
-        browser_config.host_data_dir = config
-            .execute_command
-            .sandbox
-            .host_data_dir
-            .as_ref()
-            .map(std::path::PathBuf::from);
+        let mut browser_config = chelix_browser::BrowserConfig::from(browser);
+        browser_config.host_data_dir = sandbox.host_data_dir.as_ref().map(std::path::PathBuf::from);
         Some(Self::new(browser_config))
     }
 
@@ -361,12 +359,17 @@ mod tests {
     }
 
     #[test]
-    fn from_tools_config_carries_command_sandbox_host_data_dir() {
-        let mut config = chelix_config::schema::ToolsConfig::default();
-        config.browser.enabled = true;
-        config.execute_command.sandbox.host_data_dir = Some("/host/chelix-data".to_string());
+    fn from_config_with_sandbox_carries_host_data_dir() {
+        let browser = chelix_config::schema::BrowserConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let sandbox = chelix_config::schema::SandboxConfig {
+            host_data_dir: Some("/host/chelix-data".to_string()),
+            ..Default::default()
+        };
 
-        let tool = BrowserTool::from_tools_config(&config).unwrap();
+        let tool = BrowserTool::from_config_with_sandbox(&browser, &sandbox).unwrap();
 
         assert_eq!(
             tool.config.host_data_dir.as_deref(),

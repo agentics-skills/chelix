@@ -17,14 +17,10 @@ use {
             sandbox_image_tag,
         },
         host::provision_packages,
-        paths::{
-            ensure_sandbox_home_persistence_host_dir, host_visible_data_dir,
-            resolve_home_persistence_guest_path_on_host, resolve_workspace_guest_path_on_host,
-        },
+        paths::resolved_sandbox_mount_plan,
         types::{
-            BuildImageResult, DEFAULT_SANDBOX_IMAGE, SANDBOX_HOME_DIR, Sandbox, SandboxConfig,
-            SandboxId, WorkspaceMount, WorkspaceSysmount, canonical_sandbox_packages, tail_lines,
-            truncate_output_for_display,
+            BuildImageResult, DEFAULT_SANDBOX_IMAGE, Sandbox, SandboxConfig, SandboxId,
+            WorkspaceSysmount, canonical_sandbox_packages, tail_lines, truncate_output_for_display,
         },
     },
     crate::{
@@ -33,7 +29,7 @@ use {
         sandbox::file_system::{
             SandboxListFilesResult, SandboxReadResult, native_host_list_files,
             native_host_read_file, native_host_write_file, oci_container_list_files,
-            oci_container_read_file, oci_container_write_file, remap_host_list_result_to_guest,
+            oci_container_read_file, oci_container_write_file,
         },
     },
 };
@@ -83,6 +79,18 @@ impl DockerSandbox {
             kind: BackendKind::Podman,
             cli: "podman",
             backend_label: "podman",
+            provisioned: Mutex::new(HashSet::new()),
+            startup_gates: Mutex::new(HashMap::new()),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_cli(config: SandboxConfig, cli: &'static str) -> Self {
+        Self {
+            config,
+            kind: BackendKind::Docker,
+            cli,
+            backend_label: "test-oci",
             provisioned: Mutex::new(HashSet::new()),
             startup_gates: Mutex::new(HashMap::new()),
         }
@@ -144,20 +152,6 @@ impl DockerSandbox {
             return false;
         };
         String::from_utf8_lossy(&output.stdout).trim() == "true"
-    }
-
-    fn mounted_host_path(&self, id: &SandboxId, guest_path: &str) -> Option<std::path::PathBuf> {
-        let guest_path = std::path::Path::new(guest_path);
-        resolve_workspace_guest_path_on_host(&self.config, Some(self.cli), guest_path).or_else(
-            || {
-                resolve_home_persistence_guest_path_on_host(
-                    &self.config,
-                    Some(self.cli),
-                    id,
-                    guest_path,
-                )
-            },
-        )
     }
 
     pub(crate) fn resource_args(&self) -> Vec<String> {
@@ -234,58 +228,18 @@ impl DockerSandbox {
         args
     }
 
-    /// Mount the host `chelix-ctl` binary into the sandbox at `/usr/local/bin/chelix-ctl`.
-    ///
-    /// Locates the binary next to the current executable (same directory as `chelix`),
-    /// and if found, bind-mounts it read-only. This allows skills to call `chelix-ctl`
-    /// inside sandboxes to communicate with the gateway.
-    fn chelix_ctl_mount_args() -> Vec<String> {
-        let Ok(current_exe) = std::env::current_exe() else {
-            return Vec::new();
-        };
-        let Some(exe_dir) = current_exe.parent() else {
-            return Vec::new();
-        };
-        let ctl_binary = exe_dir.join("chelix-ctl");
-        if !ctl_binary.is_file() {
-            tracing::debug!(
-                path = %ctl_binary.display(),
-                "chelix-ctl binary not found next to server, skipping sandbox mount"
-            );
-            return Vec::new();
-        }
-        vec![
-            "-v".to_string(),
-            format!("{}:/usr/local/bin/chelix-ctl:ro", ctl_binary.display()),
-        ]
-    }
-
-    pub(crate) fn workspace_args(&self) -> Vec<String> {
-        let guest_workspace_dir = chelix_config::data_dir();
-        let host_workspace_dir = host_visible_data_dir(&self.config, Some(self.cli));
-        let guest_workspace_dir_str = guest_workspace_dir.display().to_string();
-        let host_workspace_dir_str = host_workspace_dir.display().to_string();
-        match self.config.workspace_mount {
-            WorkspaceMount::Ro => vec![
-                "-v".to_string(),
-                format!("{host_workspace_dir_str}:{guest_workspace_dir_str}:ro"),
-            ],
-            WorkspaceMount::Rw => vec![
-                "-v".to_string(),
-                format!("{host_workspace_dir_str}:{guest_workspace_dir_str}:rw"),
-            ],
-            WorkspaceMount::None => Vec::new(),
-        }
-    }
-
-    pub(crate) fn home_persistence_args(&self, id: &SandboxId) -> Result<Vec<String>> {
-        let Some(host_dir) =
-            ensure_sandbox_home_persistence_host_dir(&self.config, Some(self.cli), id)?
-        else {
-            return Ok(Vec::new());
-        };
-        let volume = format!("{}:{SANDBOX_HOME_DIR}:rw", host_dir.display());
-        Ok(vec!["-v".to_string(), volume])
+    pub(crate) fn mount_args(&self, id: &SandboxId) -> Result<Vec<String>> {
+        let mounts = resolved_sandbox_mount_plan(&self.config, Some(self.cli), id)?;
+        Ok(mounts
+            .into_iter()
+            .flat_map(|mount| {
+                let mode = mount.mode.as_str();
+                [
+                    "-v".to_string(),
+                    format!("{}:{}:{mode}", mount.host.display(), mount.guest.display()),
+                ]
+            })
+            .collect())
     }
 
     async fn resolve_local_image(&self, requested_image: &str) -> Result<String> {
@@ -439,9 +393,7 @@ impl DockerSandbox {
             self.kind,
             self.config.workspace_sysmount,
         ));
-        args.extend(self.workspace_args());
-        args.extend(self.home_persistence_args(id)?);
-        args.extend(Self::chelix_ctl_mount_args());
+        args.extend(self.mount_args(id)?);
 
         args.push(image);
         args.extend(["sleep".to_string(), "infinity".to_string()]);
@@ -701,29 +653,6 @@ impl Sandbox for DockerSandbox {
         file_path: &str,
         max_bytes: u64,
     ) -> Result<SandboxReadResult> {
-        let Some(host_path) = self.mounted_host_path(id, file_path) else {
-            let container_name = self.container_name(id);
-            return oci_container_read_file(self.cli, &container_name, file_path, max_bytes).await;
-        };
-
-        let host_result = native_host_read_file(
-            host_path
-                .to_str()
-                .ok_or_else(|| Error::message("mounted host path contains invalid UTF-8"))?,
-            max_bytes,
-        )
-        .await?;
-        if !matches!(host_result, SandboxReadResult::NotFound) {
-            return Ok(host_result);
-        }
-
-        debug!(
-            guest_path = file_path,
-            host_path = %host_path.display(),
-            result = ?host_result,
-            "mounted host read failed; falling back to container read"
-        );
-
         let container_name = self.container_name(id);
         oci_container_read_file(self.cli, &container_name, file_path, max_bytes).await
     }
@@ -734,42 +663,11 @@ impl Sandbox for DockerSandbox {
         file_path: &str,
         content: &[u8],
     ) -> Result<Option<serde_json::Value>> {
-        if let Some(host_path) = self.mounted_host_path(id, file_path) {
-            return native_host_write_file(
-                host_path
-                    .to_str()
-                    .ok_or_else(|| Error::message("mounted host path contains invalid UTF-8"))?,
-                content,
-            )
-            .await;
-        }
-
         let container_name = self.container_name(id);
         oci_container_write_file(self.cli, &container_name, file_path, content).await
     }
 
     async fn list_files(&self, id: &SandboxId, root: &str) -> Result<SandboxListFilesResult> {
-        // `mounted_host_path` is pure path arithmetic and does not verify that
-        // the translated host path is actually reachable from this process. The
-        // host fast-path is only valid when the mount is genuinely visible here
-        // (the same bytes are bind-mounted into the container). When Chelix
-        // itself runs inside a container, the persistence/workspace mount exists
-        // only inside the sandbox, so a host walk would report nothing while the
-        // container still sees the files. Probe the host path and use it only
-        // when present; otherwise defer to the container, which is the
-        // authoritative view of the guest filesystem.
-        if let Some(host_path) = self.mounted_host_path(id, root)
-            && tokio::fs::try_exists(&host_path).await.unwrap_or(false)
-        {
-            let host_files = native_host_list_files(
-                host_path
-                    .to_str()
-                    .ok_or_else(|| Error::message("mounted host path contains invalid UTF-8"))?,
-            )
-            .await?;
-            return remap_host_list_result_to_guest(root, &host_path, host_files);
-        }
-
         let container_name = self.container_name(id);
         oci_container_list_files(self.cli, &container_name, root).await
     }

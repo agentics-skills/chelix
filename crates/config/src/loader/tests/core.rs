@@ -203,6 +203,17 @@ fn write_default_config_writes_template_to_requested_path() {
         raw.contains("YOUR overrides only"),
         "generated template should explain it is override-only"
     );
+    assert!(
+        raw.contains("# [[sandbox.mounts]]")
+            && raw.contains("# host = \"/srv/reference\"")
+            && raw.contains("# guest = \"/mnt/reference\"")
+            && raw.contains("# mode = \"ro\""),
+        "generated template should document declarative sandbox mounts"
+    );
+    assert!(
+        !raw.contains("workspace_mount"),
+        "generated template must not document the removed workspace_mount setting"
+    );
 
     let parsed: ChelixConfig = parse_config(&raw, &path).expect("parse generated config");
     assert_eq!(

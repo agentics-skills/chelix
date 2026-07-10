@@ -27,7 +27,7 @@ use crate::{
         require_absolute, require_fs_mutation_approval, sandbox_mutation_queue_key,
         session_key_from, with_fs_mutation_lock,
     },
-    sandbox::{SandboxRouter, file_system::sandbox_file_system_for_session},
+    sandbox::{ExecEnv, SandboxRouter, file_system::sandbox_file_system_for_session},
 };
 
 /// Native `Write` tool implementation.
@@ -94,48 +94,55 @@ impl WriteTool {
         require_absolute(file_path, "file_path")?;
         let approval_request = format!("Write {file_path}");
 
-        // Sandbox dispatch: round-trip through the bridge when sandboxed.
-        // Symlink check is handled by the bridge script. Host-side
-        // canonicalization doesn't apply (the path lives inside the
-        // container). Path policy and must-read-before-write are
-        // enforced host-side before dispatching.
-        if let Some(ref router) = self.sandbox_router
-            && router.is_sandboxed(session_key).await
-        {
-            if let Some(ref policy) = self.path_policy
-                && let Some(payload) = enforce_path_policy(policy, std::path::Path::new(file_path))
-            {
-                return Ok(payload);
-            }
-            return with_fs_mutation_lock(
-                sandbox_mutation_queue_key(session_key, file_path),
-                async {
-                    // must-read-before-write: skip for sandbox Write because we
-                    // can't cheaply check whether the file exists inside the
-                    // container (that would cost an extra command round-trip). New
-                    // files would be falsely blocked. Edit/MultiEdit always read
-                    // before writing so they get the check naturally.
-                    require_fs_mutation_approval(
-                        self.approval_manager.as_ref(),
-                        self.broadcaster.as_ref(),
-                        &approval_request,
-                    )
-                    .await?;
-                    let sandbox_fs = sandbox_file_system_for_session(router, session_key).await?;
-                    if let Some(payload) =
-                        sandbox_fs.write_file(file_path, content.as_bytes()).await?
-                    {
-                        return Ok(payload);
-                    }
-                    note_fs_mutation(self.fs_state.as_ref(), session_key, file_path);
-                    Ok(json!({
-                        "file_path": file_path,
-                        "bytes_written": content.len(),
-                        "checkpoint_id": Value::Null,
-                    }))
-                },
-            )
-            .await;
+        let router = self.sandbox_router.as_deref();
+        let env = match router {
+            Some(router) => router.resolve_env(session_key).await?,
+            None => ExecEnv::Host,
+        };
+
+        match env {
+            ExecEnv::Sandbox { .. } => {
+                let router = router.ok_or_else(|| {
+                    Error::message("sandbox environment resolved without a sandbox router")
+                })?;
+                if let Some(ref policy) = self.path_policy
+                    && let Some(payload) =
+                        enforce_path_policy(policy, std::path::Path::new(file_path))
+                {
+                    return Ok(payload);
+                }
+                return with_fs_mutation_lock(
+                    sandbox_mutation_queue_key(session_key, file_path),
+                    async {
+                        // must-read-before-write: skip for sandbox Write because we
+                        // can't cheaply check whether the file exists inside the
+                        // container (that would cost an extra command round-trip). New
+                        // files would be falsely blocked. Edit/MultiEdit always read
+                        // before writing so they get the check naturally.
+                        require_fs_mutation_approval(
+                            self.approval_manager.as_ref(),
+                            self.broadcaster.as_ref(),
+                            &approval_request,
+                        )
+                        .await?;
+                        let sandbox_fs =
+                            sandbox_file_system_for_session(router, session_key).await?;
+                        if let Some(payload) =
+                            sandbox_fs.write_file(file_path, content.as_bytes()).await?
+                        {
+                            return Ok(payload);
+                        }
+                        note_fs_mutation(self.fs_state.as_ref(), session_key, file_path);
+                        Ok(json!({
+                            "file_path": file_path,
+                            "bytes_written": content.len(),
+                            "checkpoint_id": Value::Null,
+                        }))
+                    },
+                )
+                .await;
+            },
+            ExecEnv::Host => {},
         }
 
         let canonical = canonicalize_for_create(file_path).await?;

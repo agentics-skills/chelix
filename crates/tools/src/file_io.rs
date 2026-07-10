@@ -9,7 +9,7 @@ use crate::{
     Result,
     error::Error,
     sandbox::{
-        SandboxRouter,
+        ExecEnv, SandboxRouter,
         file_system::{SandboxReadResult, sandbox_file_system_for_session},
     },
 };
@@ -110,21 +110,20 @@ pub async fn read_file_for_session(
         return read_host_file(path).await;
     };
 
-    if !router.is_sandboxed(session_key).await {
-        return read_host_file(path).await;
-    }
-
-    match read_sandbox_file(router, session_key, path).await {
-        Ok(bytes) => Ok(bytes),
-        Err(error) => {
-            warn!(
-                session_key,
-                path,
-                error = %error,
-                "{tool_name} failed to read from sandbox"
-            );
-            Err(error)
+    match router.resolve_env(session_key).await? {
+        ExecEnv::Sandbox { .. } => match read_sandbox_file(router, session_key, path).await {
+            Ok(bytes) => Ok(bytes),
+            Err(error) => {
+                warn!(
+                    session_key,
+                    path,
+                    error = %error,
+                    "{tool_name} failed to read from sandbox"
+                );
+                Err(error)
+            },
         },
+        ExecEnv::Host => read_host_file(path).await,
     }
 }
 

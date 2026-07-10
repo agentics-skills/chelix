@@ -343,22 +343,6 @@ pub fn approval_manager_from_config(config: &chelix_config::ChelixConfig) -> App
     manager
 }
 
-// ── FS tools warning ─────────────────────────────────────────────────────────
-
-#[cfg(feature = "fs-tools")]
-pub(crate) fn fs_tools_host_warning_message(
-    router: &chelix_tools::sandbox::SandboxRouter,
-) -> Option<String> {
-    if router.backend().is_real() {
-        return None;
-    }
-
-    Some(format!(
-        "fs tools are registered but no real sandbox backend is available (backend: {}). Read/Write/Edit/MultiEdit/Glob/Grep will operate on the gateway host directly. Install Docker, Podman, or Apple Container, or disable fs tools via --no-default-features for isolation. If you must run without a container runtime, constrain access with [tools.fs].allow_paths = [...].",
-        router.backend_name()
-    ))
-}
-
 // ── Memory / process diagnostics ─────────────────────────────────────────────
 
 pub(crate) fn process_rss_bytes() -> u64 {

@@ -98,7 +98,7 @@ before pasting the command.
 ### Resource Limits
 
 ```toml
-[tools.execute_command.sandbox.resource_limits]
+[sandbox.resource_limits]
 memory_limit = "512M"
 cpu_quota = 1.0
 pids_max = 256
@@ -106,7 +106,7 @@ pids_max = 256
 
 ### Network Isolation
 
-Docker and Podman sandboxes use `tools.execute_command.sandbox.network` as the
+Docker and Podman sandboxes use `sandbox.network` as the
 container runtime network. The default is `bridge`, and Chelix passes the value
 to Docker/Podman as `--network=<name>`. Use runtime networks, firewall rules,
 or a dedicated network such as `none` when a sandbox must not reach external
@@ -591,8 +591,8 @@ disabled = false  # keep this false in production
 Always run with sandbox enabled in production:
 
 ```toml
-[tools.execute_command.sandbox]
-enabled = true
+[sandbox]
+mode = "all"
 backend = "auto"  # uses strongest available
 ```
 

@@ -175,7 +175,7 @@ fn test_apple_container_bootstrap_command_uses_portable_sleep() {
 
 #[test]
 fn test_apple_container_run_args_pin_workdir_and_bootstrap_home() {
-    let args = apple_container_run_args("chelix-sandbox-test", "ubuntu:26.04", Some("UTC"), None);
+    let args = apple_container_run_args("chelix-sandbox-test", "ubuntu:26.04", Some("UTC"), &[]);
     let expected = vec![
         "run",
         "-d",
@@ -197,13 +197,11 @@ fn test_apple_container_run_args_pin_workdir_and_bootstrap_home() {
 }
 
 #[test]
-fn test_apple_container_run_args_with_home_volume() {
-    let args = apple_container_run_args(
-        "chelix-sandbox-test",
-        "ubuntu:26.04",
-        Some("UTC"),
-        Some("/tmp/home:/home/sandbox"),
-    );
+fn test_apple_container_run_args_with_declarative_mounts() {
+    let args = apple_container_run_args("chelix-sandbox-test", "ubuntu:26.04", Some("UTC"), &[
+        "source=/tmp/data,target=/tmp/data".to_string(),
+        "source=/tmp/home,target=/home/sandbox,readonly".to_string(),
+    ]);
     let expected = vec![
         "run",
         "-d",
@@ -213,8 +211,10 @@ fn test_apple_container_run_args_with_home_volume() {
         "/tmp",
         "-e",
         "TZ=UTC",
-        "--volume",
-        "/tmp/home:/home/sandbox",
+        "--mount",
+        "source=/tmp/data,target=/tmp/data",
+        "--mount",
+        "source=/tmp/home,target=/home/sandbox,readonly",
         "ubuntu:26.04",
         "bash",
         "-c",
@@ -224,6 +224,68 @@ fn test_apple_container_run_args_with_home_volume() {
     .map(str::to_string)
     .collect::<Vec<_>>();
     assert_eq!(args, expected);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn test_apple_container_mount_specs_use_resolved_plan_and_modes() {
+    let host_data = tempfile::tempdir().unwrap();
+    let custom = tempfile::tempdir().unwrap();
+    let custom_file = tempfile::NamedTempFile::new().unwrap();
+    let sandbox = AppleContainerSandbox::new(SandboxConfig {
+        host_data_dir: Some(host_data.path().to_path_buf()),
+        mounts: vec![
+            chelix_config::container_mounts::SandboxMount {
+                host: custom.path().to_path_buf(),
+                guest: "/mnt/reference".into(),
+                mode: chelix_config::container_mounts::MountMode::Ro,
+            },
+            chelix_config::container_mounts::SandboxMount {
+                host: custom_file.path().to_path_buf(),
+                guest: "/mnt/single-file".into(),
+                mode: chelix_config::container_mounts::MountMode::Ro,
+            },
+        ],
+        ..Default::default()
+    });
+    let id = SandboxId {
+        scope: SandboxScope::Session,
+        key: "apple-mount-plan".into(),
+    };
+
+    let resolved_plan =
+        crate::sandbox::paths::resolved_sandbox_mount_plan(&sandbox.config, Some("container"), &id)
+            .unwrap();
+    assert!(
+        resolved_plan
+            .iter()
+            .any(|mount| mount.host == custom_file.path())
+    );
+
+    let specs = sandbox.mount_specs(&id).unwrap();
+    assert!(specs.contains(&format!(
+        "source={},target={}",
+        host_data.path().display(),
+        chelix_config::data_dir().display()
+    )));
+    assert!(specs.contains(&format!(
+        "source={},target=/home/sandbox",
+        host_data.path().join("sandbox/home/shared").display()
+    )));
+    assert!(specs.contains(&format!(
+        "source={},target=/mnt/reference,readonly",
+        custom.path().display()
+    )));
+    assert!(
+        specs
+            .iter()
+            .all(|spec| !spec.contains(&custom_file.path().display().to_string()))
+    );
+    assert!(
+        specs
+            .iter()
+            .all(|spec| !spec.contains("credentials.json") && !spec.contains("provider_keys.json"))
+    );
 }
 
 #[test]

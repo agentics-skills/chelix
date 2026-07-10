@@ -5,9 +5,9 @@ version.workspace = true
 
 [dependencies]
 async-trait    = { workspace = true }
+chelix-metrics = { optional = true, workspace = true }
 futures        = { workspace = true }
 ipnet          = { workspace = true }
-chelix-metrics = { optional = true, workspace = true }
 reqwest        = { workspace = true }
 secrecy        = { workspace = true }
 serde          = { workspace = true }

@@ -123,7 +123,7 @@ fn policy_from_config(cfg: &chelix_config::schema::ToolPolicyConfig) -> ToolPoli
 /// 3. Per-agent preset — `[agents.presets.<agent_id>.tools]`
 /// 4. Per-channel-group — `[channels.<type>.<account>.tools.groups.<chat_type>]`
 /// 5. Per-sender in group — `[channels.<type>.<account>.tools.groups.<chat_type>.by_sender.<id>]`
-/// 6. Sandbox overrides — `[tools.execute_command.sandbox.tools_policy]` (only when `context.sandboxed`)
+/// 6. Sandbox overrides — `[sandbox.tools_policy]` (only when `context.sandboxed`)
 pub fn resolve_effective_policy(
     config: &chelix_config::ChelixConfig,
     context: &PolicyContext,
@@ -216,9 +216,9 @@ pub fn resolve_effective_policy(
         }
     }
 
-    // Layer 6: Sandbox overrides — [tools.execute_command.sandbox.tools_policy]
+    // Layer 6: Sandbox overrides — [sandbox.tools_policy]
     if context.sandboxed
-        && let Some(ref sandbox_policy) = config.tools.execute_command.sandbox.tools_policy
+        && let Some(ref sandbox_policy) = config.sandbox.tools_policy
     {
         let p = policy_from_config(sandbox_policy);
         if !p.allow.is_empty() || !p.deny.is_empty() {
@@ -498,12 +498,11 @@ mod tests {
         cfg.tools.policy.allow = vec!["*".into()];
 
         // Configure sandbox-specific tool policy that denies browser.
-        cfg.tools.execute_command.sandbox.tools_policy =
-            Some(chelix_config::schema::ToolPolicyConfig {
-                allow: vec!["execute_command".into()],
-                deny: vec!["browser".into()],
-                profile: None,
-            });
+        cfg.sandbox.tools_policy = Some(chelix_config::schema::ToolPolicyConfig {
+            allow: vec!["execute_command".into()],
+            deny: vec!["browser".into()],
+            profile: None,
+        });
 
         // Without sandboxed flag — layer 6 is skipped.
         let ctx = PolicyContext {

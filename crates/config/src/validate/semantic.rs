@@ -1,6 +1,9 @@
 use {
     super::*,
-    crate::schema::{ChelixConfig, KNOWN_PROVIDER_NAMES, ToolChoice},
+    crate::{
+        container_mounts::sandbox_mount_validation,
+        schema::{ChelixConfig, KNOWN_PROVIDER_NAMES, ToolChoice},
+    },
     secrecy::ExposeSecret,
     std::path::Path,
 };
@@ -204,12 +207,99 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
     }
 
     // Sandbox mode off
-    if config.tools.execute_command.sandbox.mode == "off" {
+    if config.sandbox.mode == "off" {
         diagnostics.push(Diagnostic {
             severity: Severity::Warning,
             category: "security",
-            path: "tools.execute_command.sandbox.mode".into(),
+            path: "sandbox.mode".into(),
             message: "sandbox mode is disabled — commands run without isolation".into(),
+        });
+    }
+
+    // Unknown sandbox string enum values.
+    let valid_sandbox_modes = ["off", "non-main", "nonmain", "all"];
+    if !valid_sandbox_modes.contains(&config.sandbox.mode.as_str()) {
+        diagnostics.push(Diagnostic {
+            severity: Severity::Warning,
+            category: "unknown-field",
+            path: "sandbox.mode".into(),
+            message: format!(
+                "unknown sandbox mode \"{}\"; expected one of: {}",
+                config.sandbox.mode,
+                valid_sandbox_modes.join(", ")
+            ),
+        });
+    }
+
+    let valid_sandbox_scopes = ["session", "agent", "shared"];
+    if !valid_sandbox_scopes.contains(&config.sandbox.scope.as_str()) {
+        diagnostics.push(Diagnostic {
+            severity: Severity::Warning,
+            category: "unknown-field",
+            path: "sandbox.scope".into(),
+            message: format!(
+                "unknown sandbox scope \"{}\"; expected one of: {}",
+                config.sandbox.scope,
+                valid_sandbox_scopes.join(", ")
+            ),
+        });
+    }
+
+    let valid_workspace_sysmounts = ["ro", "rw"];
+    if !valid_workspace_sysmounts.contains(&config.sandbox.workspace_sysmount.as_str()) {
+        diagnostics.push(Diagnostic {
+            severity: Severity::Warning,
+            category: "unknown-field",
+            path: "sandbox.workspace_sysmount".into(),
+            message: format!(
+                "unknown workspace_sysmount \"{}\"; expected one of: {}",
+                config.sandbox.workspace_sysmount,
+                valid_workspace_sysmounts.join(", ")
+            ),
+        });
+    }
+
+    let mount_validation = sandbox_mount_validation(&config.sandbox);
+
+    if mount_validation.data_mount_exposes_config {
+        diagnostics.push(Diagnostic {
+            severity: Severity::Error,
+            category: "security",
+            path: "sandbox.host_data_dir".into(),
+            message: "sandbox data_dir mount overlaps the active config_dir and could expose credentials.json or provider_keys.json".into(),
+        });
+    }
+
+    if mount_validation.shared_home_exposes_config {
+        diagnostics.push(Diagnostic {
+            severity: Severity::Error,
+            category: "security",
+            path: "sandbox.shared_home_dir".into(),
+            message: "sandbox shared_home_dir overlaps the active config_dir and could expose credentials.json or provider_keys.json".into(),
+        });
+    }
+
+    if mount_validation.managed_guest_mounts_conflict {
+        diagnostics.push(Diagnostic {
+            severity: Severity::Error,
+            category: "invalid-value",
+            path: "sandbox.home_persistence".into(),
+            message: "managed sandbox mount targets overlap the mandatory data_dir guest namespace"
+                .into(),
+        });
+    }
+
+    for rejected in mount_validation.rejected_custom_mounts {
+        let violation = rejected.violation;
+        diagnostics.push(Diagnostic {
+            severity: Severity::Error,
+            category: "invalid-value",
+            path: format!(
+                "sandbox.mounts[{}].{}",
+                rejected.index,
+                violation.kind.field()
+            ),
+            message: violation.message,
         });
     }
 
@@ -591,21 +681,21 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         "restricted-host",
         "wasm",
     ];
-    if !valid_sandbox_backends.contains(&config.tools.execute_command.sandbox.backend.as_str()) {
+    if !valid_sandbox_backends.contains(&config.sandbox.backend.as_str()) {
         diagnostics.push(Diagnostic {
             severity: Severity::Warning,
             category: "unknown-field",
-            path: "tools.execute_command.sandbox.backend".into(),
+            path: "sandbox.backend".into(),
             message: format!(
                 "unknown sandbox backend \"{}\"; expected one of: {}",
-                config.tools.execute_command.sandbox.backend,
+                config.sandbox.backend,
                 valid_sandbox_backends.join(", ")
             ),
         });
     }
 
     // Sandbox GPU passthrough validation
-    if let Some(ref gpus) = config.tools.execute_command.sandbox.gpus {
+    if let Some(ref gpus) = config.sandbox.gpus {
         let valid = gpus == "all"
             || gpus.starts_with("device=")
             || gpus.chars().all(|c| c.is_ascii_digit() || c == ',');
@@ -613,7 +703,7 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
             diagnostics.push(Diagnostic {
                 severity: Severity::Warning,
                 category: "unknown-field",
-                path: "tools.execute_command.sandbox.gpus".into(),
+                path: "sandbox.gpus".into(),
                 message: format!(
                     "unrecognized gpus value \"{gpus}\"; expected \"all\", \"device=0\", \"device=0,1\", or a device index",
                 ),

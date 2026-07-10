@@ -5,40 +5,39 @@ name              = "chelix-code-index"
 version.workspace = true
 
 [features]
-default = ["builtin", "tracing"]
-qmd = ["dep:chelix-qmd", "dep:chelix-agents"]
-builtin = ["dep:chelix-memory", "dep:chelix-agents", "dep:sqlx", "dep:tokio"]
+builtin      = ["dep:chelix-agents", "dep:chelix-memory", "dep:sqlx", "dep:tokio"]
+default      = ["builtin", "tracing"]
 file-watcher = ["dep:notify-debouncer-full", "dep:tokio", "dep:tokio-util"]
-tracing = ["dep:tracing"]
-metrics = ["dep:metrics"]
+metrics      = ["dep:metrics"]
+qmd          = ["dep:chelix-agents", "dep:chelix-qmd"]
+tracing      = ["dep:tracing"]
 
 [dependencies]
-anyhow           = { workspace = true }
-async-trait      = { workspace = true }
-gix              = { workspace = true }
-chelix-agents    = { optional = true, workspace = true }
-chelix-memory    = { optional = true, workspace = true }
-chelix-qmd       = { optional = true, workspace = true }
-chelix-config    = { workspace = true }
-chelix-splitter  = { workspace = true }
-chelix-tools     = { workspace = true }
+anyhow                = { workspace = true }
+async-trait           = { workspace = true }
+chelix-agents         = { optional = true, workspace = true }
+chelix-config         = { workspace = true }
+chelix-memory         = { optional = true, workspace = true }
+chelix-qmd            = { optional = true, workspace = true }
+chelix-splitter       = { workspace = true }
+chelix-tools          = { workspace = true }
+gix                   = { workspace = true }
+metrics               = { optional = true, workspace = true }
 notify-debouncer-full = { optional = true, workspace = true }
-serde            = { workspace = true }
-serde_json       = { workspace = true }
-sha2             = { workspace = true }
-sqlx             = { optional = true, workspace = true }
-tempfile         = { workspace = true }
-thiserror        = { workspace = true }
-time             = { workspace = true }
-tokio            = { workspace = true, features = ["sync"], optional = true }
-tokio-util       = { workspace = true, optional = true }
-tracing          = { workspace = true, optional = true }
-metrics          = { workspace = true, optional = true }
-
+serde                 = { workspace = true }
+serde_json            = { workspace = true }
+sha2                  = { workspace = true }
+sqlx                  = { optional = true, workspace = true }
+tempfile              = { workspace = true }
+thiserror             = { workspace = true }
+time                  = { workspace = true }
+tokio                 = { features = ["sync"], optional = true, workspace = true }
+tokio-util            = { optional = true, workspace = true }
+tracing               = { optional = true, workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio      = { features = ["macros", "rt"], workspace = true }
 
 [lints]
 workspace = true

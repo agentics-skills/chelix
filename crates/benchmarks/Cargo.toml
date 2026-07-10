@@ -6,18 +6,18 @@ repository.workspace = true
 version.workspace    = true
 
 [dependencies]
-grep-regex       = { workspace = true }
-grep-searcher    = { workspace = true }
-chelix-agents    = { workspace = true }
+chelix-agents     = { workspace = true }
 chelix-code-index = { workspace = true }
-chelix-config    = { workspace = true }
-chelix-providers = { workspace = true }
-chelix-qmd       = { optional = true, workspace = true }
-chelix-sessions  = { workspace = true }
-serde_json       = { workspace = true }
-tempfile         = { workspace = true }
-tokio            = { workspace = true }
-toml             = { workspace = true }
+chelix-config     = { workspace = true }
+chelix-providers  = { workspace = true }
+chelix-qmd        = { optional = true, workspace = true }
+chelix-sessions   = { workspace = true }
+grep-regex        = { workspace = true }
+grep-searcher     = { workspace = true }
+serde_json        = { workspace = true }
+tempfile          = { workspace = true }
+tokio             = { workspace = true }
+toml              = { workspace = true }
 
 [dev-dependencies]
 divan = { package = "codspeed-divan-compat", version = "4.3" }

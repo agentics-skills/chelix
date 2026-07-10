@@ -836,7 +836,10 @@ fn apply_env_overrides_with_options(
         // CHELIX_AUTH__DISABLED → ["auth", "disabled"]
         let path_parts: Vec<String> = key["CHELIX_".len()..]
             .split("__")
-            .map(|segment| segment.to_lowercase())
+            .map(|segment| match segment.to_ascii_lowercase().as_str() {
+                "exec" => "execute_command".to_string(),
+                normalized => normalized.to_string(),
+            })
             .collect();
 
         if path_parts.is_empty() {

@@ -31,7 +31,7 @@ use crate::{
             session_key_from, with_fs_mutation_lock,
         },
     },
-    sandbox::{SandboxRouter, file_system::sandbox_file_system_for_session},
+    sandbox::{ExecEnv, SandboxRouter, file_system::sandbox_file_system_for_session},
 };
 
 /// Outcome of a successful [`apply_edit`] call.
@@ -296,67 +296,74 @@ impl EditTool {
         require_absolute(file_path, "file_path")?;
         let approval_request = format!("Edit {file_path}");
 
-        // Sandbox dispatch: read through the bridge, apply in host
-        // memory, write through the bridge. Path policy and must-read-
-        // before-write are enforced host-side before dispatching;
-        // symlink check is handled by the bridge script.
-        if let Some(ref router) = self.sandbox_router
-            && router.is_sandboxed(session_key).await
-        {
-            if let Some(ref policy) = self.path_policy
-                && let Some(payload) = enforce_path_policy(policy, Path::new(file_path))
-            {
-                return Ok(payload);
-            }
-            if let Some(payload) =
-                enforce_must_read_before_write(self.fs_state.as_ref(), session_key, file_path)
-            {
-                return Ok(payload);
-            }
-            return with_fs_mutation_lock(
-                sandbox_mutation_queue_key(session_key, file_path),
-                async {
-                    let sandbox_fs = sandbox_file_system_for_session(router, session_key).await?;
-                    let read_result = sandbox_fs
-                        .read_file(file_path, DEFAULT_MAX_READ_BYTES)
+        let router = self.sandbox_router.as_deref();
+        let env = match router {
+            Some(router) => router.resolve_env(session_key).await?,
+            None => ExecEnv::Host,
+        };
+
+        match env {
+            ExecEnv::Sandbox { .. } => {
+                let router = router.ok_or_else(|| {
+                    Error::message("sandbox environment resolved without a sandbox router")
+                })?;
+                if let Some(ref policy) = self.path_policy
+                    && let Some(payload) = enforce_path_policy(policy, Path::new(file_path))
+                {
+                    return Ok(payload);
+                }
+                if let Some(payload) =
+                    enforce_must_read_before_write(self.fs_state.as_ref(), session_key, file_path)
+                {
+                    return Ok(payload);
+                }
+                return with_fs_mutation_lock(
+                    sandbox_mutation_queue_key(session_key, file_path),
+                    async {
+                        let sandbox_fs =
+                            sandbox_file_system_for_session(router, session_key).await?;
+                        let read_result = sandbox_fs
+                            .read_file(file_path, DEFAULT_MAX_READ_BYTES)
+                            .await?;
+                        let bytes = match read_result {
+                            SandboxReadResult::Ok(bytes) => bytes,
+                            other => {
+                                return Ok(other
+                                    .into_typed_payload(file_path, DEFAULT_MAX_READ_BYTES)
+                                    .unwrap_or(json!({})));
+                            },
+                        };
+                        let content = String::from_utf8(bytes).map_err(|e| {
+                            Error::message(format!(
+                                "sandbox file '{file_path}' is not valid UTF-8: {e}"
+                            ))
+                        })?;
+                        let outcome = apply_edit(&content, old_string, new_string, replace_all)?;
+                        require_fs_mutation_approval(
+                            self.approval_manager.as_ref(),
+                            self.broadcaster.as_ref(),
+                            &approval_request,
+                        )
                         .await?;
-                    let bytes = match read_result {
-                        SandboxReadResult::Ok(bytes) => bytes,
-                        other => {
-                            return Ok(other
-                                .into_typed_payload(file_path, DEFAULT_MAX_READ_BYTES)
-                                .unwrap_or(json!({})));
-                        },
-                    };
-                    let content = String::from_utf8(bytes).map_err(|e| {
-                        Error::message(format!(
-                            "sandbox file '{file_path}' is not valid UTF-8: {e}"
-                        ))
-                    })?;
-                    let outcome = apply_edit(&content, old_string, new_string, replace_all)?;
-                    require_fs_mutation_approval(
-                        self.approval_manager.as_ref(),
-                        self.broadcaster.as_ref(),
-                        &approval_request,
-                    )
-                    .await?;
-                    if let Some(payload) = sandbox_fs
-                        .write_file(file_path, outcome.content.as_bytes())
-                        .await?
-                    {
-                        return Ok(payload);
-                    }
-                    note_fs_mutation(self.fs_state.as_ref(), session_key, file_path);
-                    Ok(json!({
-                        "file_path": file_path,
-                        "replacements": outcome.replacements,
-                        "replace_all": replace_all,
-                        "recovered_via_crlf": outcome.recovered_via_crlf,
-                        "checkpoint_id": Value::Null,
-                    }))
-                },
-            )
-            .await;
+                        if let Some(payload) = sandbox_fs
+                            .write_file(file_path, outcome.content.as_bytes())
+                            .await?
+                        {
+                            return Ok(payload);
+                        }
+                        note_fs_mutation(self.fs_state.as_ref(), session_key, file_path);
+                        Ok(json!({
+                            "file_path": file_path,
+                            "replacements": outcome.replacements,
+                            "replace_all": replace_all,
+                            "recovered_via_crlf": outcome.recovered_via_crlf,
+                            "checkpoint_id": Value::Null,
+                        }))
+                    },
+                )
+                .await;
+            },
+            ExecEnv::Host => {},
         }
 
         reject_if_symlink(file_path).await?;

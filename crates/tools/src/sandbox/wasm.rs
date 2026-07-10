@@ -4,6 +4,11 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 #[cfg(feature = "wasm")]
+use super::paths::{
+    MountAccess, resolve_sandbox_mount_path, resolved_sandbox_mount_plan,
+    sandbox_mount_target_overlaps,
+};
+#[cfg(feature = "wasm")]
 use super::platform::parse_memory_limit;
 #[cfg(feature = "wasm")]
 use super::types::{
@@ -18,6 +23,8 @@ use crate::error::{Context, Error, Result};
 use crate::wasm_engine::WasmComponentEngine;
 #[cfg(feature = "wasm")]
 use async_trait::async_trait;
+#[cfg(feature = "wasm")]
+use chelix_config::container_mounts::{MountMode, SandboxMount};
 
 // ---------------------------------------------------------------------------
 // WASM sandbox (real Wasmtime + WASI isolation)
@@ -67,30 +74,20 @@ impl WasmSandbox {
 
     /// Root directory for this sandbox instance's isolated filesystem.
     pub(crate) fn sandbox_root(&self, id: &SandboxId) -> PathBuf {
-        match self.config.home_persistence {
-            HomePersistence::Shared => {
-                let base = self.config.shared_home_dir.clone().unwrap_or_else(|| {
-                    chelix_config::data_dir()
-                        .join("sandbox")
-                        .join("home")
-                        .join("shared")
-                });
-                base.join("wasm")
-            },
-            HomePersistence::Session => chelix_config::data_dir()
-                .join("sandbox")
-                .join("wasm")
-                .join(sanitize_path_component(&id.key)),
-            HomePersistence::Off => chelix_config::data_dir()
-                .join("sandbox")
-                .join("wasm")
-                .join(sanitize_path_component(&id.key)),
-        }
+        chelix_config::data_dir()
+            .join("sandbox")
+            .join("wasm")
+            .join(sanitize_path_component(&id.key))
     }
 
     /// Guest home directory inside the sandboxed filesystem.
-    pub(crate) fn home_dir(&self, id: &SandboxId) -> PathBuf {
-        self.sandbox_root(id).join("home")
+    #[cfg(test)]
+    pub(crate) fn home_dir(&self, id: &SandboxId) -> Result<PathBuf> {
+        self.runtime_mounts(id)?
+            .into_iter()
+            .find(|mount| mount.guest == std::path::Path::new("/home/sandbox"))
+            .map(|mount| mount.host)
+            .ok_or_else(|| Error::message("WASM mount plan is missing /home/sandbox"))
     }
 
     /// Guest tmp directory inside the sandboxed filesystem.
@@ -98,19 +95,37 @@ impl WasmSandbox {
         self.sandbox_root(id).join("tmp")
     }
 
+    pub(crate) fn runtime_mounts(&self, id: &SandboxId) -> Result<Vec<SandboxMount>> {
+        let mut mounts = resolved_sandbox_mount_plan(&self.config, None, id)?;
+        if !sandbox_mount_target_overlaps(&mounts, std::path::Path::new("/home/sandbox")) {
+            mounts.push(SandboxMount {
+                host: self.sandbox_root(id).join("home"),
+                guest: PathBuf::from("/home/sandbox"),
+                mode: MountMode::Rw,
+            });
+        }
+        if !sandbox_mount_target_overlaps(&mounts, std::path::Path::new("/tmp")) {
+            mounts.push(SandboxMount {
+                host: self.tmp_dir(id),
+                guest: PathBuf::from("/tmp"),
+                mode: MountMode::Rw,
+            });
+        }
+        Ok(mounts)
+    }
+
     /// Run a `.wasm` module via Wasmtime + WASI with full isolation.
     async fn run_wasm_module(
         &self,
         wasm_path: &std::path::Path,
         args: &[String],
-        id: &SandboxId,
+        mounts: &[SandboxMount],
         opts: &CommandOptions,
     ) -> Result<CommandOutput> {
         let wasm_engine = Arc::clone(&self.wasm_engine);
         let fuel_limit = self.fuel_limit();
         let epoch_interval_ms = self.epoch_interval_ms();
-        let home_dir = self.home_dir(id);
-        let tmp_dir = self.tmp_dir(id);
+        let mounts = mounts.to_vec();
         let wasm_bytes = tokio::fs::read(wasm_path).await?;
         let args = args.to_vec();
         let timeout = opts.timeout;
@@ -137,23 +152,36 @@ impl WasmSandbox {
                 wasi_builder.env(k, v);
             }
 
-            // Preopened directories for filesystem isolation.
-            wasi_builder
-                .preopened_dir(
-                    &home_dir,
-                    "/home/sandbox",
-                    wasmtime_wasi::DirPerms::all(),
-                    wasmtime_wasi::FilePerms::all(),
-                )
-                .map_err(|e| Error::message(format!("failed to preopen /home/sandbox: {e}")))?;
-            wasi_builder
-                .preopened_dir(
-                    &tmp_dir,
-                    "/tmp",
-                    wasmtime_wasi::DirPerms::all(),
-                    wasmtime_wasi::FilePerms::all(),
-                )
-                .map_err(|e| Error::message(format!("failed to preopen /tmp: {e}")))?;
+            // Preopen every directory from the same declarative mount plan
+            // consumed by the OCI backends. Single-file mounts (chelix-ctl)
+            // are not executable in WASI and remain available to built-ins.
+            for mount in mounts.iter().filter(|mount| mount.host.is_dir()) {
+                let guest = mount.guest.to_str().ok_or_else(|| {
+                    Error::message(format!(
+                        "WASM guest mount path is not valid UTF-8: {}",
+                        mount.guest.display()
+                    ))
+                })?;
+                let (dir_perms, file_perms) = match mount.mode {
+                    MountMode::Ro => (
+                        wasmtime_wasi::DirPerms::READ,
+                        wasmtime_wasi::FilePerms::READ,
+                    ),
+                    MountMode::Rw => (
+                        wasmtime_wasi::DirPerms::all(),
+                        wasmtime_wasi::FilePerms::all(),
+                    ),
+                };
+                wasi_builder
+                    .preopened_dir(&mount.host, guest, dir_perms, file_perms)
+                    .map_err(|error| {
+                        Error::message(format!(
+                            "failed to preopen WASM mount {} -> {}: {error}",
+                            mount.host.display(),
+                            mount.guest.display()
+                        ))
+                    })?;
+            }
 
             // Build preview1-compatible context for core WASM modules.
             let wasi_p1 = wasi_builder.build_p1();
@@ -260,10 +288,13 @@ impl Sandbox for WasmSandbox {
     }
 
     async fn ensure_ready(&self, id: &SandboxId, _image_override: Option<&str>) -> Result<()> {
-        let home = self.home_dir(id);
-        let tmp = self.tmp_dir(id);
-        tokio::fs::create_dir_all(&home).await?;
-        tokio::fs::create_dir_all(&tmp).await?;
+        let mounts = self.runtime_mounts(id)?;
+        for mount in mounts.iter().filter(|mount| {
+            mount.guest == std::path::Path::new("/home/sandbox")
+                || mount.guest == std::path::Path::new("/tmp")
+        }) {
+            tokio::fs::create_dir_all(&mount.host).await?;
+        }
         Ok(())
     }
 
@@ -273,7 +304,7 @@ impl Sandbox for WasmSandbox {
         command: &str,
         opts: &CommandOptions,
     ) -> Result<CommandOutput> {
-        let sandbox_root = self.sandbox_root(id);
+        let mounts = self.runtime_mounts(id)?;
         let env_map: HashMap<String, String> = opts.env.iter().cloned().collect();
 
         // Parse the command string.
@@ -309,11 +340,15 @@ impl Sandbox for WasmSandbox {
 
             // Check if this is a .wasm file reference.
             if cmd_name.ends_with(".wasm") {
-                let wasm_path =
-                    WasmBuiltins::resolve_guest_path(&sandbox_root, cmd_name, "/home/sandbox");
+                let wasm_path = WasmBuiltins::resolve_guest_path(
+                    &mounts,
+                    cmd_name,
+                    "/home/sandbox",
+                    MountAccess::Read,
+                );
                 if let Some(wasm_path) = wasm_path {
                     last_result = self
-                        .run_wasm_module(&wasm_path, &cmd_args, id, opts)
+                        .run_wasm_module(&wasm_path, &cmd_args, &mounts, opts)
                         .await?;
                 } else {
                     last_result = CommandOutput {
@@ -324,13 +359,17 @@ impl Sandbox for WasmSandbox {
                 }
             } else {
                 // Try built-in commands.
-                last_result = WasmBuiltins::execute(cmd_name, &cmd_args, &sandbox_root, &env_map);
+                last_result = WasmBuiltins::execute(cmd_name, &cmd_args, &mounts, &env_map);
             }
 
             // Handle redirects.
             if let Some(ref redir) = redirect {
-                let resolved =
-                    WasmBuiltins::resolve_guest_path(&sandbox_root, &redir.target, "/home/sandbox");
+                let resolved = WasmBuiltins::resolve_guest_path(
+                    &mounts,
+                    &redir.target,
+                    "/home/sandbox",
+                    MountAccess::Write,
+                );
                 if let Some(host_path) = resolved {
                     if let Some(parent) = host_path.parent() {
                         let _ = std::fs::create_dir_all(parent);
@@ -521,80 +560,45 @@ impl WasmBuiltins {
     /// Resolve a guest path to a host path within the sandbox root.
     /// Returns `None` if the path escapes the sandbox.
     fn resolve_guest_path(
-        sandbox_root: &std::path::Path,
+        mounts: &[SandboxMount],
         guest_path: &str,
         guest_cwd: &str,
+        access: MountAccess,
     ) -> Option<PathBuf> {
         let logical = if guest_path.starts_with('/') {
             PathBuf::from(guest_path)
         } else {
             PathBuf::from(guest_cwd).join(guest_path)
         };
-
-        // Map guest paths to host sandbox paths.
-        let host_path = if let Ok(rest) = logical.strip_prefix("/home/sandbox") {
-            sandbox_root.join("home").join(rest)
-        } else if let Ok(rest) = logical.strip_prefix("/tmp") {
-            sandbox_root.join("tmp").join(rest)
-        } else {
-            // Path outside known sandbox mounts.
-            return None;
-        };
-
-        // Canonicalize the parent to check for symlink escapes.
-        // The file itself may not exist yet (e.g. for write targets).
-        let check_path = if host_path.exists() {
-            host_path.canonicalize().ok()?
-        } else if let Some(parent) = host_path.parent() {
-            if parent.exists() {
-                let canonical_parent = parent.canonicalize().ok()?;
-                canonical_parent.join(host_path.file_name()?)
-            } else {
-                host_path.clone()
-            }
-        } else {
-            host_path.clone()
-        };
-
-        let canonical_root = if sandbox_root.exists() {
-            sandbox_root.canonicalize().ok()?
-        } else {
-            sandbox_root.to_path_buf()
-        };
-
-        if check_path.starts_with(&canonical_root) {
-            Some(host_path)
-        } else {
-            None
-        }
+        resolve_sandbox_mount_path(mounts, &logical, access)
     }
 
     /// Execute a built-in command. Returns exit code 127 for unknown commands.
     fn execute(
         name: &str,
         args: &[String],
-        sandbox_root: &std::path::Path,
+        mounts: &[SandboxMount],
         env: &HashMap<String, String>,
     ) -> CommandOutput {
         match name {
             "echo" => Self::cmd_echo(args),
-            "cat" => Self::cmd_cat(args, sandbox_root),
-            "ls" => Self::cmd_ls(args, sandbox_root),
-            "mkdir" => Self::cmd_mkdir(args, sandbox_root),
-            "rm" => Self::cmd_rm(args, sandbox_root),
-            "cp" => Self::cmd_cp(args, sandbox_root),
-            "mv" => Self::cmd_mv(args, sandbox_root),
+            "cat" => Self::cmd_cat(args, mounts),
+            "ls" => Self::cmd_ls(args, mounts),
+            "mkdir" => Self::cmd_mkdir(args, mounts),
+            "rm" => Self::cmd_rm(args, mounts),
+            "cp" => Self::cmd_cp(args, mounts),
+            "mv" => Self::cmd_mv(args, mounts),
             "pwd" => CommandOutput {
                 stdout: "/home/sandbox\n".into(),
                 stderr: String::new(),
                 exit_code: 0,
             },
             "env" => Self::cmd_env(env),
-            "head" => Self::cmd_head(args, sandbox_root),
-            "tail" => Self::cmd_tail(args, sandbox_root),
-            "wc" => Self::cmd_wc(args, sandbox_root),
-            "sort" => Self::cmd_sort(args, sandbox_root),
-            "touch" => Self::cmd_touch(args, sandbox_root),
+            "head" => Self::cmd_head(args, mounts),
+            "tail" => Self::cmd_tail(args, mounts),
+            "wc" => Self::cmd_wc(args, mounts),
+            "sort" => Self::cmd_sort(args, mounts),
+            "touch" => Self::cmd_touch(args, mounts),
             "which" => Self::cmd_which(args),
             "true" => CommandOutput {
                 stdout: String::new(),
@@ -606,7 +610,7 @@ impl WasmBuiltins {
                 stderr: String::new(),
                 exit_code: 1,
             },
-            "test" | "[" => Self::cmd_test(args, sandbox_root),
+            "test" | "[" => Self::cmd_test(args, mounts),
             "basename" => Self::cmd_basename(args),
             "dirname" => Self::cmd_dirname(args),
             _ => CommandOutput {
@@ -639,13 +643,13 @@ impl WasmBuiltins {
         }
     }
 
-    fn cmd_cat(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
+    fn cmd_cat(args: &[String], mounts: &[SandboxMount]) -> CommandOutput {
         let mut stdout = String::new();
         let mut stderr = String::new();
         let mut exit_code = 0;
 
         for arg in args {
-            match Self::resolve_guest_path(sandbox_root, arg, "/home/sandbox") {
+            match Self::resolve_guest_path(mounts, arg, "/home/sandbox", MountAccess::Read) {
                 Some(path) => match std::fs::read_to_string(&path) {
                     Ok(content) => stdout.push_str(&content),
                     Err(e) => {
@@ -667,7 +671,7 @@ impl WasmBuiltins {
         }
     }
 
-    fn cmd_ls(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
+    fn cmd_ls(args: &[String], mounts: &[SandboxMount]) -> CommandOutput {
         let mut show_long = false;
         let mut show_all = false;
         let mut paths = Vec::new();
@@ -694,7 +698,7 @@ impl WasmBuiltins {
         let mut exit_code = 0;
 
         for path in &paths {
-            match Self::resolve_guest_path(sandbox_root, path, "/home/sandbox") {
+            match Self::resolve_guest_path(mounts, path, "/home/sandbox", MountAccess::Read) {
                 Some(host_path) => {
                     if !host_path.exists() {
                         stderr.push_str(&format!("ls: {path}: No such file or directory\n"));
@@ -759,13 +763,13 @@ impl WasmBuiltins {
         }
     }
 
-    fn cmd_mkdir(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
+    fn cmd_mkdir(args: &[String], mounts: &[SandboxMount]) -> CommandOutput {
         let mut stderr = String::new();
         let mut exit_code = 0;
         let create_parents = args.iter().any(|a| a == "-p");
 
         for arg in args.iter().filter(|a| !a.starts_with('-')) {
-            match Self::resolve_guest_path(sandbox_root, arg, "/home/sandbox") {
+            match Self::resolve_guest_path(mounts, arg, "/home/sandbox", MountAccess::Write) {
                 Some(path) => {
                     let result = if create_parents {
                         std::fs::create_dir_all(&path)
@@ -791,14 +795,14 @@ impl WasmBuiltins {
         }
     }
 
-    fn cmd_rm(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
+    fn cmd_rm(args: &[String], mounts: &[SandboxMount]) -> CommandOutput {
         let mut stderr = String::new();
         let mut exit_code = 0;
         let recursive = args.iter().any(|a| a == "-r" || a == "-rf" || a == "-fr");
         let force = args.iter().any(|a| a.contains('f'));
 
         for arg in args.iter().filter(|a| !a.starts_with('-')) {
-            match Self::resolve_guest_path(sandbox_root, arg, "/home/sandbox") {
+            match Self::resolve_guest_path(mounts, arg, "/home/sandbox", MountAccess::Write) {
                 Some(path) => {
                     if !path.exists() {
                         if !force {
@@ -835,7 +839,7 @@ impl WasmBuiltins {
         }
     }
 
-    fn cmd_cp(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
+    fn cmd_cp(args: &[String], mounts: &[SandboxMount]) -> CommandOutput {
         let non_flag_args: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
         if non_flag_args.len() < 2 {
             return CommandOutput {
@@ -848,35 +852,35 @@ impl WasmBuiltins {
         let src_path = non_flag_args[0];
         let dst_path = non_flag_args[1];
 
-        let src = match Self::resolve_guest_path(sandbox_root, src_path, "/home/sandbox") {
-            Some(p) => p,
-            None => {
-                return CommandOutput {
-                    stdout: String::new(),
-                    stderr: format!("cp: {src_path}: path outside sandbox\n"),
-                    exit_code: 1,
-                };
-            },
-        };
-        let dst = match Self::resolve_guest_path(sandbox_root, dst_path, "/home/sandbox") {
-            Some(p) => p,
-            None => {
-                return CommandOutput {
-                    stdout: String::new(),
-                    stderr: format!("cp: {dst_path}: path outside sandbox\n"),
-                    exit_code: 1,
-                };
-            },
-        };
+        let src =
+            match Self::resolve_guest_path(mounts, src_path, "/home/sandbox", MountAccess::Read) {
+                Some(p) => p,
+                None => {
+                    return CommandOutput {
+                        stdout: String::new(),
+                        stderr: format!("cp: {src_path}: path outside sandbox\n"),
+                        exit_code: 1,
+                    };
+                },
+            };
+        let dst =
+            match Self::resolve_guest_path(mounts, dst_path, "/home/sandbox", MountAccess::Write) {
+                Some(p) => p,
+                None => {
+                    return CommandOutput {
+                        stdout: String::new(),
+                        stderr: format!("cp: {dst_path}: path outside sandbox\n"),
+                        exit_code: 1,
+                    };
+                },
+            };
 
-        let actual_dst = if dst.is_dir() {
-            if let Some(name) = src.file_name() {
-                dst.join(name)
-            } else {
-                dst
-            }
-        } else {
-            dst
+        let Some(actual_dst) = Self::resolve_destination(mounts, &src, dst_path, dst) else {
+            return CommandOutput {
+                stdout: String::new(),
+                stderr: format!("cp: {dst_path}: path outside sandbox\n"),
+                exit_code: 1,
+            };
         };
 
         match std::fs::copy(&src, &actual_dst) {
@@ -893,7 +897,7 @@ impl WasmBuiltins {
         }
     }
 
-    fn cmd_mv(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
+    fn cmd_mv(args: &[String], mounts: &[SandboxMount]) -> CommandOutput {
         let non_flag_args: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
         if non_flag_args.len() < 2 {
             return CommandOutput {
@@ -906,35 +910,35 @@ impl WasmBuiltins {
         let src_path = non_flag_args[0];
         let dst_path = non_flag_args[1];
 
-        let src = match Self::resolve_guest_path(sandbox_root, src_path, "/home/sandbox") {
-            Some(p) => p,
-            None => {
-                return CommandOutput {
-                    stdout: String::new(),
-                    stderr: format!("mv: {src_path}: path outside sandbox\n"),
-                    exit_code: 1,
-                };
-            },
-        };
-        let dst = match Self::resolve_guest_path(sandbox_root, dst_path, "/home/sandbox") {
-            Some(p) => p,
-            None => {
-                return CommandOutput {
-                    stdout: String::new(),
-                    stderr: format!("mv: {dst_path}: path outside sandbox\n"),
-                    exit_code: 1,
-                };
-            },
-        };
+        let src =
+            match Self::resolve_guest_path(mounts, src_path, "/home/sandbox", MountAccess::Write) {
+                Some(p) => p,
+                None => {
+                    return CommandOutput {
+                        stdout: String::new(),
+                        stderr: format!("mv: {src_path}: path outside sandbox\n"),
+                        exit_code: 1,
+                    };
+                },
+            };
+        let dst =
+            match Self::resolve_guest_path(mounts, dst_path, "/home/sandbox", MountAccess::Write) {
+                Some(p) => p,
+                None => {
+                    return CommandOutput {
+                        stdout: String::new(),
+                        stderr: format!("mv: {dst_path}: path outside sandbox\n"),
+                        exit_code: 1,
+                    };
+                },
+            };
 
-        let actual_dst = if dst.is_dir() {
-            if let Some(name) = src.file_name() {
-                dst.join(name)
-            } else {
-                dst
-            }
-        } else {
-            dst
+        let Some(actual_dst) = Self::resolve_destination(mounts, &src, dst_path, dst) else {
+            return CommandOutput {
+                stdout: String::new(),
+                stderr: format!("mv: {dst_path}: path outside sandbox\n"),
+                exit_code: 1,
+            };
         };
 
         match std::fs::rename(&src, &actual_dst) {
@@ -970,7 +974,26 @@ impl WasmBuiltins {
         }
     }
 
-    fn cmd_head(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
+    fn resolve_destination(
+        mounts: &[SandboxMount],
+        source: &std::path::Path,
+        guest_destination: &str,
+        host_destination: PathBuf,
+    ) -> Option<PathBuf> {
+        if !host_destination.is_dir() {
+            return Some(host_destination);
+        }
+        let file_name = source.file_name()?;
+        let guest_path = PathBuf::from(guest_destination).join(file_name);
+        Self::resolve_guest_path(
+            mounts,
+            &guest_path.to_string_lossy(),
+            "/home/sandbox",
+            MountAccess::Write,
+        )
+    }
+
+    fn cmd_head(args: &[String], mounts: &[SandboxMount]) -> CommandOutput {
         let mut lines = 10usize;
         let mut files = Vec::new();
 
@@ -993,7 +1016,7 @@ impl WasmBuiltins {
         let mut exit_code = 0;
 
         for file in &files {
-            match Self::resolve_guest_path(sandbox_root, file, "/home/sandbox") {
+            match Self::resolve_guest_path(mounts, file, "/home/sandbox", MountAccess::Read) {
                 Some(path) => match std::fs::read_to_string(&path) {
                     Ok(content) => {
                         for line in content.lines().take(lines) {
@@ -1020,7 +1043,7 @@ impl WasmBuiltins {
         }
     }
 
-    fn cmd_tail(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
+    fn cmd_tail(args: &[String], mounts: &[SandboxMount]) -> CommandOutput {
         let mut lines = 10usize;
         let mut files = Vec::new();
 
@@ -1043,7 +1066,7 @@ impl WasmBuiltins {
         let mut exit_code = 0;
 
         for file in &files {
-            match Self::resolve_guest_path(sandbox_root, file, "/home/sandbox") {
+            match Self::resolve_guest_path(mounts, file, "/home/sandbox", MountAccess::Read) {
                 Some(path) => match std::fs::read_to_string(&path) {
                     Ok(content) => {
                         let all_lines: Vec<&str> = content.lines().collect();
@@ -1072,14 +1095,14 @@ impl WasmBuiltins {
         }
     }
 
-    fn cmd_wc(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
+    fn cmd_wc(args: &[String], mounts: &[SandboxMount]) -> CommandOutput {
         let files: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
         let mut stdout = String::new();
         let mut stderr = String::new();
         let mut exit_code = 0;
 
         for file in &files {
-            match Self::resolve_guest_path(sandbox_root, file, "/home/sandbox") {
+            match Self::resolve_guest_path(mounts, file, "/home/sandbox", MountAccess::Read) {
                 Some(path) => match std::fs::read_to_string(&path) {
                     Ok(content) => {
                         let line_count = content.lines().count();
@@ -1108,7 +1131,7 @@ impl WasmBuiltins {
         }
     }
 
-    fn cmd_sort(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
+    fn cmd_sort(args: &[String], mounts: &[SandboxMount]) -> CommandOutput {
         let files: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
         let reverse = args.iter().any(|a| a == "-r");
         let mut all_lines = Vec::new();
@@ -1116,7 +1139,7 @@ impl WasmBuiltins {
         let mut exit_code = 0;
 
         for file in &files {
-            match Self::resolve_guest_path(sandbox_root, file, "/home/sandbox") {
+            match Self::resolve_guest_path(mounts, file, "/home/sandbox", MountAccess::Read) {
                 Some(path) => match std::fs::read_to_string(&path) {
                     Ok(content) => {
                         all_lines.extend(content.lines().map(ToOwned::to_owned));
@@ -1151,12 +1174,12 @@ impl WasmBuiltins {
         }
     }
 
-    fn cmd_touch(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
+    fn cmd_touch(args: &[String], mounts: &[SandboxMount]) -> CommandOutput {
         let mut stderr = String::new();
         let mut exit_code = 0;
 
         for arg in args.iter().filter(|a| !a.starts_with('-')) {
-            match Self::resolve_guest_path(sandbox_root, arg, "/home/sandbox") {
+            match Self::resolve_guest_path(mounts, arg, "/home/sandbox", MountAccess::Write) {
                 Some(path) => {
                     if !path.exists() {
                         if let Some(parent) = path.parent() {
@@ -1208,7 +1231,7 @@ impl WasmBuiltins {
         }
     }
 
-    fn cmd_test(args: &[String], sandbox_root: &std::path::Path) -> CommandOutput {
+    fn cmd_test(args: &[String], mounts: &[SandboxMount]) -> CommandOutput {
         // Strip trailing ] if present (for [ ... ] syntax).
         let args: Vec<&String> = if args.last().is_some_and(|a| a == "]") {
             args[..args.len() - 1].iter().collect()
@@ -1223,12 +1246,27 @@ impl WasmBuiltins {
                 let op = args[0].as_str();
                 let operand = args[1].as_str();
                 match op {
-                    "-f" => Self::resolve_guest_path(sandbox_root, operand, "/home/sandbox")
-                        .is_some_and(|p| p.is_file()),
-                    "-d" => Self::resolve_guest_path(sandbox_root, operand, "/home/sandbox")
-                        .is_some_and(|p| p.is_dir()),
-                    "-e" => Self::resolve_guest_path(sandbox_root, operand, "/home/sandbox")
-                        .is_some_and(|p| p.exists()),
+                    "-f" => Self::resolve_guest_path(
+                        mounts,
+                        operand,
+                        "/home/sandbox",
+                        MountAccess::Read,
+                    )
+                    .is_some_and(|p| p.is_file()),
+                    "-d" => Self::resolve_guest_path(
+                        mounts,
+                        operand,
+                        "/home/sandbox",
+                        MountAccess::Read,
+                    )
+                    .is_some_and(|p| p.is_dir()),
+                    "-e" => Self::resolve_guest_path(
+                        mounts,
+                        operand,
+                        "/home/sandbox",
+                        MountAccess::Read,
+                    )
+                    .is_some_and(|p| p.exists()),
                     "-z" => operand.is_empty(),
                     "-n" => !operand.is_empty(),
                     _ => false,

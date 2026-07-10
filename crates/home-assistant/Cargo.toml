@@ -1,18 +1,18 @@
 [package]
+description          = "Home Assistant integration for Chelix"
 edition.workspace    = true
 name                 = "chelix-home-assistant"
 repository.workspace = true
 version.workspace    = true
-description          = "Home Assistant integration for Chelix"
 
 [dependencies]
 anyhow            = { workspace = true }
 async-trait       = { workspace = true }
 bytes             = { workspace = true }
-futures-util      = { workspace = true }
 chelix-agents     = { workspace = true }
 chelix-config     = { workspace = true }
 chelix-metrics    = { optional = true, workspace = true }
+futures-util      = { workspace = true }
 reqwest           = { workspace = true }
 secrecy           = { workspace = true }
 serde             = { workspace = true }
@@ -21,15 +21,15 @@ thiserror         = { workspace = true }
 tokio             = { workspace = true }
 tokio-tungstenite = { workspace = true }
 tracing           = { workspace = true }
-urlencoding        = { workspace = true }
+urlencoding       = { workspace = true }
 
 [dev-dependencies]
-dotenvy          = { workspace = true }
-secrecy          = { workspace = true }
-time             = { workspace = true }
-tokio            = { workspace = true, features = ["rt-multi-thread", "macros", "test-util", "time"] }
-wiremock         = { workspace = true }
-serde_json       = { workspace = true }
+dotenvy    = { workspace = true }
+secrecy    = { workspace = true }
+serde_json = { workspace = true }
+time       = { workspace = true }
+tokio      = { features = ["macros", "rt-multi-thread", "test-util", "time"], workspace = true }
+wiremock   = { workspace = true }
 
 [features]
 default = ["tracing"]

@@ -25,7 +25,7 @@ use crate::{
             require_absolute, session_key_from,
         },
     },
-    sandbox::{SandboxRouter, file_system::sandbox_file_system_for_session},
+    sandbox::{ExecEnv, SandboxRouter, file_system::sandbox_file_system_for_session},
 };
 
 use super::{image, image::is_image_extension, pdf::read_pdf};
@@ -209,39 +209,47 @@ impl ReadTool {
     ) -> Result<Value> {
         require_absolute(file_path, "file_path")?;
 
-        // Sandbox dispatch: if the session is sandboxed, round-trip through
-        // the bridge and render the resulting bytes with the same logic as
-        // the host path. Path-policy and binary detection still run on
-        // host-side types, so both paths look identical to the LLM.
-        if let Some(ref router) = self.sandbox_router
-            && router.is_sandboxed(session_key).await
-        {
-            if let Some(ref policy) = self.path_policy
-                && let Some(payload) = enforce_path_policy(policy, Path::new(file_path))
-            {
-                return Ok(payload);
-            }
-            let max = self.effective_max_read_bytes();
-            let sandbox_fs = sandbox_file_system_for_session(router, session_key).await?;
-            let result = sandbox_fs.read_file(file_path, max).await?;
-            match result {
-                SandboxReadResult::Ok(bytes) => {
-                    return Ok(self.render_bytes_to_payload(
-                        file_path,
-                        offset,
-                        limit,
-                        &bytes,
-                        session_key,
-                        true,
-                        None, // sandbox mtime unavailable
-                    ));
-                },
-                other => {
-                    return Ok(other
-                        .into_typed_payload(file_path, max)
-                        .unwrap_or(json!({})));
-                },
-            }
+        let router = self.sandbox_router.as_deref();
+        let env = match router {
+            Some(router) => router.resolve_env(session_key).await?,
+            None => ExecEnv::Host,
+        };
+
+        // Sandbox reads always go through the bridge. The host filesystem path,
+        // including canonical path policy and mtime handling, is unreachable here.
+        match env {
+            ExecEnv::Sandbox { .. } => {
+                let router = router.ok_or_else(|| {
+                    Error::message("sandbox environment resolved without a sandbox router")
+                })?;
+                if let Some(ref policy) = self.path_policy
+                    && let Some(payload) = enforce_path_policy(policy, Path::new(file_path))
+                {
+                    return Ok(payload);
+                }
+                let max = self.effective_max_read_bytes();
+                let sandbox_fs = sandbox_file_system_for_session(router, session_key).await?;
+                let result = sandbox_fs.read_file(file_path, max).await?;
+                match result {
+                    SandboxReadResult::Ok(bytes) => {
+                        return Ok(self.render_bytes_to_payload(
+                            file_path,
+                            offset,
+                            limit,
+                            &bytes,
+                            session_key,
+                            true,
+                            None, // sandbox mtime unavailable
+                        ));
+                    },
+                    other => {
+                        return Ok(other
+                            .into_typed_payload(file_path, max)
+                            .unwrap_or(json!({})));
+                    },
+                }
+            },
+            ExecEnv::Host => {},
         }
 
         // Stat first so we can surface not_found / permission_denied as
@@ -593,44 +601,55 @@ impl AgentTool for ReadTool {
         //     now — return a typed payload if sandboxed)
         //  3. FsState read recording (so must-read-before-write works)
         if is_special {
-            if let Some(ref policy) = self.path_policy {
-                let p = Path::new(file_path);
-                let canonical = fs::canonicalize(p)
-                    .await
-                    .unwrap_or_else(|_| p.to_path_buf());
-                if let Some(payload) = enforce_path_policy(policy, &canonical) {
-                    return Ok(payload);
-                }
-            }
-            if let Some(ref router) = self.sandbox_router
-                && router.is_sandboxed(&session_key).await
-            {
-                // PDF extraction and image resize run host-side; we
-                // can't invoke them inside a container. Return a clear
-                // typed payload so the LLM knows to fall back to the
-                // raw binary Read path.
-                return Ok(json!({
-                    "kind": "unsupported_in_sandbox",
-                    "file_path": file_path,
-                    "error": "PDF and image processing is not available for sandboxed sessions. \
-                              Use Read without a .pdf/.png/.jpg extension or access the file \
-                              from a non-sandboxed session.",
-                }));
-            }
-            // Record in FsState so must-read-before-write passes for
-            // subsequent writes to this path.
-            if let Some(ref state) = self.fs_state {
-                let canonical = fs::canonicalize(file_path)
-                    .await
-                    .unwrap_or_else(|_| std::path::PathBuf::from(file_path));
-                let mtime = fs::metadata(file_path)
-                    .await
-                    .ok()
-                    .and_then(|m| m.modified().ok());
-                let mut guard = state
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                guard.record_read(&session_key, canonical, offset, limit, mtime);
+            let env = match self.sandbox_router.as_deref() {
+                Some(router) => router.resolve_env(&session_key).await?,
+                None => ExecEnv::Host,
+            };
+            match env {
+                ExecEnv::Sandbox { .. } => {
+                    if let Some(ref policy) = self.path_policy
+                        && let Some(payload) = enforce_path_policy(policy, Path::new(file_path))
+                    {
+                        return Ok(payload);
+                    }
+                    // PDF extraction and image resize run host-side; we
+                    // can't invoke them inside a container. Return a clear
+                    // typed payload so the LLM knows to fall back to the
+                    // raw binary Read path.
+                    return Ok(json!({
+                        "kind": "unsupported_in_sandbox",
+                        "file_path": file_path,
+                        "error": "PDF and image processing is not available for sandboxed sessions. \
+                                  Use Read without a .pdf/.png/.jpg extension or access the file \
+                                  from a non-sandboxed session.",
+                    }));
+                },
+                ExecEnv::Host => {
+                    if let Some(ref policy) = self.path_policy {
+                        let p = Path::new(file_path);
+                        let canonical = fs::canonicalize(p)
+                            .await
+                            .unwrap_or_else(|_| p.to_path_buf());
+                        if let Some(payload) = enforce_path_policy(policy, &canonical) {
+                            return Ok(payload);
+                        }
+                    }
+                    // Record in FsState so must-read-before-write passes for
+                    // subsequent writes to this path.
+                    if let Some(ref state) = self.fs_state {
+                        let canonical = fs::canonicalize(file_path)
+                            .await
+                            .unwrap_or_else(|_| std::path::PathBuf::from(file_path));
+                        let mtime = fs::metadata(file_path)
+                            .await
+                            .ok()
+                            .and_then(|m| m.modified().ok());
+                        let mut guard = state
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        guard.record_read(&session_key, canonical, offset, limit, mtime);
+                    }
+                },
             }
         }
 

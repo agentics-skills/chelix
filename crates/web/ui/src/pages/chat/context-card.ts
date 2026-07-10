@@ -32,7 +32,6 @@ export interface SandboxData {
 	backend?: string;
 	mode?: string;
 	scope?: string;
-	workspaceMount?: string;
 	image?: string;
 	containerName?: string;
 }
@@ -264,7 +263,6 @@ export function renderContextSandboxSection(card: HTMLElement, data: ContextData
 		["Backend", sb.backend, false],
 		["Mode", sb.mode, false],
 		["Scope", sb.scope, false],
-		["Workspace Mount", sb.workspaceMount, false],
 		["Image", sb.image, true],
 		["Container", sb.containerName, false],
 	] as [string, string, boolean][]) {

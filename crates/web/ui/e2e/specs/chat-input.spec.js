@@ -75,6 +75,13 @@ async function mockFullContextRpc(page) {
 				return resolvePending(parsed.id, {
 					session: { key: "main", messageCount: 2, model: "demo-model" },
 					supportsTools: true,
+					sandbox: {
+						enabled: true,
+						backend: "docker",
+						mode: "all",
+						scope: "session",
+						image: "chelix-sandbox:test",
+					},
 					promptMemory: mockPromptMemory(),
 				});
 			}
@@ -497,6 +504,17 @@ test.describe("Chat input and slash commands", () => {
 
 		await expect.poll(async () => await getMockPromptMemoryRefreshCount(page), { timeout: 10_000 }).toBe(1);
 		await expect(panel).toContainText("/tmp/MEMORY-v2.md", { timeout: 10_000 });
+	});
+
+	test("debug context shows sandbox details without the removed workspace mount setting", async ({ page }) => {
+		await mockFullContextRpc(page);
+
+		await page.locator("#debugPanelBtn").click();
+		await expect(page.locator("#debugModal")).toBeVisible({ timeout: 10_000 });
+
+		const panel = page.locator("#debugPanel");
+		await expect(panel).toContainText("docker", { timeout: 10_000 });
+		await expect(panel).not.toContainText("Workspace Mount");
 	});
 
 	test('typing "/" shows slash command menu', async ({ page }) => {

@@ -859,7 +859,7 @@ impl SkillsService for NoopSkillsService {
         }
 
         let config = chelix_config::discover_and_load();
-        if config.tools.execute_command.sandbox.mode == "off" && !allow_host_install {
+        if config.sandbox.mode == "off" && !allow_host_install {
             return Err("dependency install blocked because sandbox mode is off. Enable sandbox or re-run with allow_host_install=true and confirm=true".into());
         }
 

@@ -100,7 +100,7 @@ auto_generate = true
 [tools.execute_command]
 default_timeout_secs = 30
 
-[tools.execute_command.sandbox]
+[sandbox]
 mode = "all"
 backend = "auto"
 

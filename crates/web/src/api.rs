@@ -67,23 +67,22 @@ pub struct SandboxDefaultBackendUpdateRequest {
 }
 
 fn shared_home_config_payload(config: &chelix_config::ChelixConfig) -> serde_json::Value {
-    let runtime_cfg =
-        chelix_tools::sandbox::SandboxConfig::from(&config.tools.execute_command.sandbox);
-    let mode = match config.tools.execute_command.sandbox.home_persistence {
+    let runtime_cfg = chelix_tools::sandbox::SandboxConfig::from(&config.sandbox);
+    let mode = match config.sandbox.home_persistence {
         chelix_config::schema::HomePersistenceConfig::Off => "off",
         chelix_config::schema::HomePersistenceConfig::Session => "session",
         chelix_config::schema::HomePersistenceConfig::Shared => "shared",
     };
     serde_json::json!({
         "enabled": matches!(
-            config.tools.execute_command.sandbox.home_persistence,
+            config.sandbox.home_persistence,
             chelix_config::schema::HomePersistenceConfig::Shared
         ),
         "mode": mode,
         "path": chelix_tools::sandbox::shared_home_dir_path(&runtime_cfg)
             .display()
             .to_string(),
-        "configured_path": config.tools.execute_command.sandbox.shared_home_dir.clone(),
+        "configured_path": config.sandbox.shared_home_dir.clone(),
     })
 }
 
@@ -173,7 +172,7 @@ pub async fn api_sessions_handler(
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Default)]
 pub struct SessionHistoryQuery {
     #[serde(default)]
     cached_message_count: Option<u64>,
@@ -700,9 +699,8 @@ pub async fn api_skills_search_handler(
 
 pub async fn api_cached_images_handler() -> impl IntoResponse {
     let config = chelix_config::discover_and_load();
-    let builder = chelix_tools::image_cache::DockerImageBuilder::for_backend(
-        &config.tools.execute_command.sandbox.backend,
-    );
+    let builder =
+        chelix_tools::image_cache::DockerImageBuilder::for_backend(&config.sandbox.backend);
     let (cached, sandbox) = tokio::join!(
         builder.list_cached(),
         chelix_tools::sandbox::list_sandbox_images(),
@@ -750,9 +748,8 @@ pub async fn api_delete_cached_image_handler(Path(tag): Path<String>) -> impl In
         chelix_tools::sandbox::remove_sandbox_image(&tag).await
     } else {
         let cfg = chelix_config::discover_and_load();
-        let builder = chelix_tools::image_cache::DockerImageBuilder::for_backend(
-            &cfg.tools.execute_command.sandbox.backend,
-        );
+        let builder =
+            chelix_tools::image_cache::DockerImageBuilder::for_backend(&cfg.sandbox.backend);
         let full_tag = if tag.starts_with("chelix-cache/") {
             tag
         } else {
@@ -772,19 +769,18 @@ pub async fn api_delete_cached_image_handler(Path(tag): Path<String>) -> impl In
 
 pub async fn api_prune_cached_images_handler() -> impl IntoResponse {
     let config = chelix_config::discover_and_load();
-    let builder = chelix_tools::image_cache::DockerImageBuilder::for_backend(
-        &config.tools.execute_command.sandbox.backend,
-    );
+    let builder =
+        chelix_tools::image_cache::DockerImageBuilder::for_backend(&config.sandbox.backend);
     let (tool_result, sandbox_result) = tokio::join!(
         builder.prune_all(),
         chelix_tools::sandbox::clean_sandbox_images(),
     );
     let mut count = 0;
-    if let Ok(n) = tool_result {
-        count += n;
+    if let Ok(n) = &tool_result {
+        count += *n;
     }
-    if let Ok(n) = sandbox_result {
-        count += n;
+    if let Ok(n) = &sandbox_result {
+        count += *n;
     }
     if let (Err(e1), Err(e2)) = (&tool_result, &sandbox_result) {
         let msg = format!("tool images: {e1}; sandbox images: {e2}");
@@ -831,10 +827,8 @@ pub async fn api_check_packages_handler(Json(body): Json<serde_json::Value>) -> 
     let script = checks.join("\n");
 
     let config = chelix_config::discover_and_load();
-    let cli = chelix_tools::image_cache::DockerImageBuilder::for_backend(
-        &config.tools.execute_command.sandbox.backend,
-    )
-    .cli_name();
+    let cli = chelix_tools::image_cache::DockerImageBuilder::for_backend(&config.sandbox.backend)
+        .cli_name();
     let output = tokio::process::Command::new(cli)
         .args(["run", "--rm", "--entrypoint", "sh", &base, "-c", &script])
         .stdout(std::process::Stdio::piped())
@@ -905,16 +899,14 @@ pub async fn api_set_shared_home_handler(
         .map(ToOwned::to_owned);
 
     let update_result = chelix_config::update_config(|cfg| {
-        cfg.tools.execute_command.sandbox.shared_home_dir = path.clone();
+        cfg.sandbox.shared_home_dir = path.clone();
         if body.enabled {
-            cfg.tools.execute_command.sandbox.home_persistence =
-                chelix_config::schema::HomePersistenceConfig::Shared;
+            cfg.sandbox.home_persistence = chelix_config::schema::HomePersistenceConfig::Shared;
         } else if matches!(
-            cfg.tools.execute_command.sandbox.home_persistence,
+            cfg.sandbox.home_persistence,
             chelix_config::schema::HomePersistenceConfig::Shared
         ) {
-            cfg.tools.execute_command.sandbox.home_persistence =
-                chelix_config::schema::HomePersistenceConfig::Off;
+            cfg.sandbox.home_persistence = chelix_config::schema::HomePersistenceConfig::Off;
         }
     });
 
@@ -1004,9 +996,7 @@ fn available_backends_payload(default_backend: &str) -> serde_json::Value {
 /// Used by the UI to populate backend selectors.
 pub async fn api_available_backends_handler() -> impl IntoResponse {
     let config = chelix_config::discover_and_load();
-    Json(available_backends_payload(
-        &config.tools.execute_command.sandbox.backend,
-    ))
+    Json(available_backends_payload(&config.sandbox.backend))
 }
 
 pub async fn api_set_default_backend_handler(
@@ -1027,7 +1017,7 @@ pub async fn api_set_default_backend_handler(
     }
 
     let update_result = chelix_config::update_config(|cfg| {
-        cfg.tools.execute_command.sandbox.backend = backend.to_string();
+        cfg.sandbox.backend = backend.to_string();
     });
 
     match update_result {
@@ -1123,9 +1113,8 @@ WORKDIR /home/sandbox\n"
     }
 
     let config = chelix_config::discover_and_load();
-    let builder = chelix_tools::image_cache::DockerImageBuilder::for_backend(
-        &config.tools.execute_command.sandbox.backend,
-    );
+    let builder =
+        chelix_tools::image_cache::DockerImageBuilder::for_backend(&config.sandbox.backend);
     tracing::debug!(
         name,
         cli = builder.cli_name(),

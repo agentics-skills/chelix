@@ -11,7 +11,7 @@ different problems, and confusing them leads to very weird debugging sessions.
 | Managed user profile (`USER.md`) | User name, timezone, and optional location hints | Persistent | Whole workspace | `USER.md` in `data_dir()` plus `[user]` in `chelix.toml` |
 | Prompt memory (`MEMORY.md`) | High-signal facts injected into the system prompt | Persistent | Agent workspace | `MEMORY.md` in `data_dir()` or `agents/<id>/MEMORY.md` |
 | Searchable memory (`memory_search`) | Long-term recall without spending prompt tokens | Persistent | Agent workspace | `MEMORY.md`, `memory/*.md`, optional exported session files |
-| Sandbox workspace mount | Lets sandboxed commands see Chelix files | Only while mounted | Depends on sandbox session/container | Mounted `data_dir()` path |
+| Sandbox data directory mount | Lets sandboxed commands read and write Chelix files | Sandbox lifetime | Agent workspace | Mandatory `data_dir()` path |
 | Sandbox home (`/home/sandbox`) | Command-side scratch files and tool caches | Depends on `home_persistence` | Shared, per-session, or none | Sandbox home volume/dir |
 
 ## Short-Term Memory
@@ -126,23 +126,22 @@ restarting the session.
 
 Sandboxes have two separate persistence surfaces:
 
-- Workspace mount, this is how commands can read or write Chelix memory files
-  when `workspace_mount` is not `none`
+- Data directory mount, which always exposes the agent's `data_dir()` at the
+  identical absolute path in read-write mode
 - Sandbox home, this is `/home/sandbox` and is controlled by
-  `tools.execute_command.sandbox.home_persistence`
+  `sandbox.home_persistence`
 
 Those are not the same thing.
 
 If a file exists only in `/home/sandbox`, `memory_search` will not index it.
-If a file exists in the mounted Chelix workspace, it is part of Chelix's
+If a file exists in the mounted Chelix data directory, it is part of Chelix's
 normal memory surface, regardless of whether the command that wrote it ran in a
 sandbox or not.
 
-With the default `workspace_mount = "ro"`, sandboxed commands may still read
-mounted files such as `MEMORY.md`, but they cannot modify them directly.
+Sandboxed commands can modify mounted files such as `MEMORY.md` directly.
 Durable long-term memory mutations should still happen through Chelix memory
-tools such as `memory_save`, `memory_forget`, and `memory_delete`, not via
-shell redirection inside the sandbox.
+tools such as `memory_save`, `memory_forget`, and `memory_delete`, which preserve
+the memory system's intended semantics and safeguards.
 
 ## Between Sandboxes
 
@@ -154,4 +153,5 @@ Sandbox-to-sandbox sharing depends on `home_persistence`:
   configured home
 
 This affects `/home/sandbox`, not `MEMORY.md` semantics. Long-term memory is
-still governed by the mounted Chelix workspace and agent-scoped memory files.
+still governed by the mounted Chelix data directory and agent-scoped memory
+files.

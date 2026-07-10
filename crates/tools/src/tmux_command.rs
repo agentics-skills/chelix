@@ -25,7 +25,7 @@ use crate::{
     },
     error::Error,
     params::without_null_params,
-    sandbox::SandboxRouter,
+    sandbox::{ExecEnv, SandboxRouter},
 };
 
 const DEFAULT_TIMEOUT_MILLIS: u64 = 300_000;
@@ -34,7 +34,6 @@ const DEFAULT_CAPTURE_LINES: usize = 1_000;
 const MAX_CAPTURE_LINES: usize = 20_000;
 const DEFAULT_TMUX_COLS: u16 = 200;
 const DEFAULT_TMUX_ROWS: u16 = 50;
-const SANDBOX_WORKDIR: &str = "/home/sandbox";
 const FIELD_SEP: &str = "|chelix-tmux-field|";
 const START_PREFIX: &str = "__CHELIX_COMMAND_START__";
 const DONE_PREFIX: &str = "__CHELIX_COMMAND_DONE__";
@@ -525,7 +524,8 @@ impl TmuxTerminalManager {
         session_name: &str,
         cwd: Option<&str>,
     ) -> Result<()> {
-        let cwd = cwd.unwrap_or(SANDBOX_WORKDIR);
+        let workspace_dir = self.sandbox_workspace_dir(session_key).await?;
+        let cwd = cwd.unwrap_or(&workspace_dir);
         let args = vec![
             "new-session".to_string(),
             "-d".to_string(),
@@ -557,7 +557,8 @@ impl TmuxTerminalManager {
         session_id: &str,
         cwd: Option<&str>,
     ) -> Result<TmuxPaneInfo> {
-        let cwd = cwd.unwrap_or(SANDBOX_WORKDIR);
+        let workspace_dir = self.sandbox_workspace_dir(session_key).await?;
+        let cwd = cwd.unwrap_or(&workspace_dir);
         let window_name = format!("term-{}", self.next_id.load(Ordering::Relaxed));
         let format = tmux_format(&[
             "session_id",
@@ -715,13 +716,12 @@ impl TmuxTerminalManager {
         tmux_args: &[String],
         timeout: Duration,
     ) -> Result<CommandOutput> {
-        let backend = self.sandbox_router.resolve_backend(session_key).await;
-        if !backend.provides_fs_isolation() || !self.sandbox_router.is_sandboxed(session_key).await
-        {
+        let ExecEnv::Sandbox { backend, .. } = self.sandbox_router.resolve_env(session_key).await?
+        else {
             return Err(Error::message(
                 "tmux-backed execute_command requires an isolated sandbox session",
             ));
-        }
+        };
 
         let mut words = Vec::with_capacity(tmux_args.len() + 1);
         words.push("tmux".to_string());
@@ -730,11 +730,21 @@ impl TmuxTerminalManager {
         let opts = CommandOptions {
             timeout,
             max_output_bytes: self.max_output_bytes,
-            working_dir: Some(SANDBOX_WORKDIR.into()),
+            working_dir: Some(backend.workspace_dir().into()),
             env: Vec::new(),
         };
         debug!(session = session_key, command, "sandbox tmux command");
         run_sandbox_command_with_recovery(&self.sandbox_router, session_key, &command, &opts).await
+    }
+
+    async fn sandbox_workspace_dir(&self, session_key: &str) -> Result<String> {
+        let ExecEnv::Sandbox { backend, .. } = self.sandbox_router.resolve_env(session_key).await?
+        else {
+            return Err(Error::message(
+                "tmux-backed execute_command requires an isolated sandbox session",
+            ));
+        };
+        Ok(backend.workspace_dir().to_string())
     }
 
     async fn store_terminal(&self, terminal: ManagedTerminal) {
@@ -1045,14 +1055,8 @@ impl ExecuteCommandTool {
             env: env.clone(),
         };
 
-        let router = &self.manager.sandbox_router;
-        let mut result = if router.is_sandboxed(session_key).await {
-            debug!(session = session_key, command, "sandbox running command");
-            run_sandbox_command_with_recovery(router, session_key, command, &opts).await?
-        } else {
-            debug!(session = session_key, command, "running command on host");
-            run_shell_command(command, &opts).await?
-        };
+        debug!(session = session_key, command, "running command on host");
+        let mut result = run_shell_command(command, &opts).await?;
         redact_command_output(&mut result, &env);
         self.fire_completion(command, &result);
         Ok(result)
@@ -1078,30 +1082,30 @@ impl ExecuteCommandTool {
             return Ok(serde_json::to_value(result)?);
         }
 
-        let router = &self.manager.sandbox_router;
-        let backend = router.resolve_backend(session_key).await;
-        let use_tmux = router.is_sandboxed(session_key).await && backend.provides_fs_isolation();
-        if !use_tmux {
-            let result = self
-                .execute_direct(session_key, &params, &command, timeout_millis)
-                .await?;
-            return Ok(serde_json::to_value(result)?);
+        match self.manager.sandbox_router.resolve_env(session_key).await? {
+            ExecEnv::Sandbox { .. } => {
+                let env = self.command_env().await;
+                let response = self
+                    .manager
+                    .execute_command(session_key, params, env)
+                    .await?;
+                if response.completed {
+                    let result = CommandOutput {
+                        stdout: response.output.clone(),
+                        stderr: String::new(),
+                        exit_code: response.exit_code.unwrap_or(0),
+                    };
+                    self.fire_completion(&command, &result);
+                }
+                Ok(serde_json::to_value(response)?)
+            },
+            ExecEnv::Host => {
+                let result = self
+                    .execute_direct(session_key, &params, &command, timeout_millis)
+                    .await?;
+                Ok(serde_json::to_value(result)?)
+            },
         }
-
-        let env = self.command_env().await;
-        let response = self
-            .manager
-            .execute_command(session_key, params, env)
-            .await?;
-        if response.completed {
-            let result = CommandOutput {
-                stdout: response.output.clone(),
-                stderr: String::new(),
-                exit_code: response.exit_code.unwrap_or(0),
-            };
-            self.fire_completion(&command, &result);
-        }
-        Ok(serde_json::to_value(response)?)
     }
 }
 

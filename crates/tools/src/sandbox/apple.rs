@@ -20,13 +20,10 @@ use super::containers::{
 #[cfg(target_os = "macos")]
 use super::host::provision_packages;
 #[cfg(target_os = "macos")]
-use super::paths::{
-    ensure_sandbox_home_persistence_host_dir, resolve_home_persistence_guest_path_on_host,
-    resolve_workspace_guest_path_on_host,
-};
+use super::paths::resolved_sandbox_mount_plan;
 #[cfg(target_os = "macos")]
 use super::types::{
-    BuildImageResult, DEFAULT_SANDBOX_IMAGE, SANDBOX_HOME_DIR, Sandbox, SandboxConfig, SandboxId,
+    BuildImageResult, DEFAULT_SANDBOX_IMAGE, Sandbox, SandboxConfig, SandboxId,
     canonical_sandbox_packages, tail_lines, truncate_output_for_display,
 };
 #[cfg(target_os = "macos")]
@@ -36,8 +33,7 @@ use crate::error::{Error, Result};
 #[cfg(target_os = "macos")]
 use crate::sandbox::file_system::{
     SandboxListFilesResult, SandboxReadResult, command_list_files, command_read_file,
-    command_write_file, native_host_list_files, native_host_read_file, native_host_write_file,
-    remap_host_list_result_to_guest,
+    command_write_file,
 };
 
 /// Apple Container sandbox using the `container` CLI (macOS 26+, Apple Silicon).
@@ -112,26 +108,35 @@ impl AppleContainerSandbox {
         self.container_prefix()
     }
 
-    fn home_persistence_volume(&self, id: &SandboxId) -> Result<Option<String>> {
-        let Some(host_dir) =
-            ensure_sandbox_home_persistence_host_dir(&self.config, Some("container"), id)?
-        else {
-            return Ok(None);
-        };
-        Ok(Some(format!("{}:{SANDBOX_HOME_DIR}", host_dir.display())))
-    }
-
-    fn mounted_host_path(&self, id: &SandboxId, guest_path: &str) -> Option<std::path::PathBuf> {
-        let guest_path = std::path::Path::new(guest_path);
-        resolve_workspace_guest_path_on_host(&self.config, Some("container"), guest_path).or_else(
-            || {
-                resolve_home_persistence_guest_path_on_host(
-                    &self.config,
-                    Some("container"),
-                    id,
-                    guest_path,
-                )
-            },
+    pub(crate) fn mount_specs(&self, id: &SandboxId) -> Result<Vec<String>> {
+        Ok(
+            resolved_sandbox_mount_plan(&self.config, Some("container"), id)?
+                .into_iter()
+                .filter_map(|mount| {
+                    // Apple Container documents host-directory sharing, and its 0.12 release
+                    // notes call out a fix for unreliable single-file mounts. Chelix does not
+                    // enforce that minimum version, so keep launch arguments compatible with
+                    // older installations by omitting non-directory sources.
+                    if !mount.host.is_dir() {
+                        debug!(
+                            host = %mount.host.display(),
+                            guest = %mount.guest.display(),
+                            "skipping non-directory Apple Container bind mount"
+                        );
+                        return None;
+                    }
+                    let readonly = match mount.mode {
+                        chelix_config::container_mounts::MountMode::Ro => ",readonly",
+                        chelix_config::container_mounts::MountMode::Rw => "",
+                    };
+                    Some(format!(
+                        "source={},target={}{}",
+                        mount.host.display(),
+                        mount.guest.display(),
+                        readonly
+                    ))
+                })
+                .collect(),
         )
     }
 
@@ -390,9 +395,9 @@ impl AppleContainerSandbox {
         name: &str,
         image: &str,
         tz: Option<&str>,
-        home_volume: Option<&str>,
+        mounts: &[String],
     ) -> std::result::Result<(), CreateError> {
-        let args = apple_container_run_args(name, image, tz, home_volume);
+        let args = apple_container_run_args(name, image, tz, mounts);
 
         let output = tokio::process::Command::new("container")
             .args(&args)
@@ -672,7 +677,7 @@ impl Sandbox for AppleContainerSandbox {
         let requested_image = image_override.unwrap_or_else(|| self.image());
         let image = self.resolve_local_image(requested_image).await?;
         let tz = self.config.timezone.as_deref();
-        let home_volume = self.home_persistence_volume(id)?;
+        let mounts = self.mount_specs(id)?;
 
         const MAX_ATTEMPTS: usize = 3;
         let mut daemon_restarted = false;
@@ -735,7 +740,7 @@ impl Sandbox for AppleContainerSandbox {
 
             // Phase 2: Create a new container.
             info!(name, image = %image, attempt, "creating apple container");
-            match Self::run_container(&name, &image, tz, home_volume.as_deref()).await {
+            match Self::run_container(&name, &image, tz, &mounts).await {
                 Ok(()) => {},
                 Err(CreateError::AlreadyExists) => {
                     warn!(
@@ -1015,16 +1020,6 @@ impl Sandbox for AppleContainerSandbox {
         file_path: &str,
         max_bytes: u64,
     ) -> Result<SandboxReadResult> {
-        if let Some(host_path) = self.mounted_host_path(id, file_path) {
-            return native_host_read_file(
-                host_path
-                    .to_str()
-                    .ok_or_else(|| Error::message("mounted host path contains invalid UTF-8"))?,
-                max_bytes,
-            )
-            .await;
-        }
-
         command_read_file(self, id, file_path, max_bytes).await
     }
 
@@ -1034,37 +1029,10 @@ impl Sandbox for AppleContainerSandbox {
         file_path: &str,
         content: &[u8],
     ) -> Result<Option<serde_json::Value>> {
-        if let Some(host_path) = self.mounted_host_path(id, file_path) {
-            return native_host_write_file(
-                host_path
-                    .to_str()
-                    .ok_or_else(|| Error::message("mounted host path contains invalid UTF-8"))?,
-                content,
-            )
-            .await;
-        }
-
         command_write_file(self, id, file_path, content).await
     }
 
     async fn list_files(&self, id: &SandboxId, root: &str) -> Result<SandboxListFilesResult> {
-        // The translated host path is a valid fast-path only when it is actually
-        // reachable from this process. If the mount lives solely inside the
-        // container, a host walk would silently return nothing while the
-        // container still sees the files; in that case list inside the
-        // container, the authoritative view of the guest filesystem.
-        if let Some(host_path) = self.mounted_host_path(id, root)
-            && tokio::fs::try_exists(&host_path).await.unwrap_or(false)
-        {
-            let host_files = native_host_list_files(
-                host_path
-                    .to_str()
-                    .ok_or_else(|| Error::message("mounted host path contains invalid UTF-8"))?,
-            )
-            .await?;
-            return remap_host_list_result_to_guest(root, &host_path, host_files);
-        }
-
         command_list_files(self, id, root).await
     }
 

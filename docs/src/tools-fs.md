@@ -242,5 +242,7 @@ the second big win (alongside model-quality improvements) that motivated
   structured payloads for each fs tool call, so policy hooks can inspect
   typed parameters instead of parsing shell strings.
 - [Sandbox](sandbox.md) — fs tools route through the sandbox when the
-  session is sandboxed. If no real sandbox backend is available, Chelix
-  warns at startup and the tools operate on the gateway host.
+  session is sandboxed. Sandboxed sessions fail closed: if no backend
+  with filesystem isolation is available, fs tools return an error
+  instead of falling back to the gateway host. Host access requires the
+  sandbox to be explicitly disabled for the session.

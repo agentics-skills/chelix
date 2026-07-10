@@ -34,8 +34,6 @@ impl RealBrowserService {
             &config.tools.browser,
             container_prefix,
             config
-                .tools
-                .execute_command
                 .sandbox
                 .host_data_dir
                 .as_ref()

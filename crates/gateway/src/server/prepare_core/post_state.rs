@@ -45,9 +45,6 @@ use crate::server::{
 #[cfg(feature = "wasm")]
 use crate::server::helpers::env_value_with_overrides;
 
-#[cfg(feature = "fs-tools")]
-use crate::server::helpers::fs_tools_host_warning_message;
-
 #[cfg(feature = "file-watcher")]
 use crate::server::helpers::start_skill_hot_reload_watcher;
 
@@ -710,9 +707,6 @@ pub(super) async fn complete_startup(
                 context_window_tokens: fs_cfg.context_window_tokens,
             };
             chelix_tools::fs::register_fs_tools(&mut tool_registry, ctx);
-            if let Some(message) = fs_tools_host_warning_message(&sandbox_router) {
-                warn!("{message}");
-            }
         }
         #[cfg(feature = "wasm")]
         {
@@ -841,7 +835,10 @@ pub(super) async fn complete_startup(
         {
             tool_registry.register(Box::new(t));
         }
-        if let Some(t) = chelix_tools::browser::BrowserTool::from_tools_config(&config.tools) {
+        if let Some(t) = chelix_tools::browser::BrowserTool::from_config_with_sandbox(
+            &config.tools.browser,
+            &config.sandbox,
+        ) {
             let t = if sandbox_router.backend_name() != "none" {
                 t.with_sandbox_router(Arc::clone(&sandbox_router))
             } else {
