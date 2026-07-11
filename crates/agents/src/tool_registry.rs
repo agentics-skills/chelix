@@ -24,6 +24,19 @@ pub enum Truncation {
     Off,
 }
 
+/// On-disk representation for a tool's complete result.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ToolResultPersistence {
+    /// Preserve the structured result as `content.json` (or a bare string as
+    /// `content.txt`) and generate `schema.json` for JSON values.
+    #[default]
+    Structured,
+    /// Persist the listed top-level string fields, in declaration order, as
+    /// line-oriented `content.txt`. This is deterministic per tool and does
+    /// not depend on result size.
+    TextFields(&'static [&'static str]),
+}
+
 /// Agent-callable tool.
 #[async_trait]
 pub trait AgentTool: Send + Sync {
@@ -39,6 +52,12 @@ pub trait AgentTool: Send + Sync {
     /// internal knob — it is never exposed through the tool's JSON schema.
     fn truncation(&self, _params: &serde_json::Value) -> Truncation {
         Truncation::Standard
+    }
+    /// On-disk representation for this call's complete result. Tools whose
+    /// structured response wraps line-oriented output in string fields should
+    /// declare those fields here so Read/Grep can consume `content.txt`.
+    fn result_persistence(&self, _params: &serde_json::Value) -> ToolResultPersistence {
+        ToolResultPersistence::Structured
     }
     async fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value>;
 }

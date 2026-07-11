@@ -825,23 +825,6 @@ pub(crate) fn shell_reply_text_from_command_result(result: &Value) -> String {
     }
 }
 
-pub(crate) fn capped_tool_result_payload(result: &Value, max_len: usize) -> Value {
-    let mut capped = result.clone();
-    for field in &["stdout", "stderr"] {
-        if let Some(text) = capped.get(*field).and_then(Value::as_str)
-            && text.len() > max_len
-        {
-            let truncated = format!(
-                "{}\n\n... [truncated — {} bytes total]",
-                truncate_at_char_boundary(text, max_len),
-                text.len()
-            );
-            capped[*field] = Value::String(truncated);
-        }
-    }
-    capped
-}
-
 pub fn normalize_model_key(value: &str) -> String {
     let mut normalized = String::with_capacity(value.len());
     let mut last_was_separator = true;

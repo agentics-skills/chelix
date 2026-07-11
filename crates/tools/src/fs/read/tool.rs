@@ -2,7 +2,7 @@
 
 use {
     async_trait::async_trait,
-    chelix_agents::tool_registry::{AgentTool, Truncation},
+    chelix_agents::tool_registry::{AgentTool, ToolResultPersistence, Truncation},
     serde_json::{Map, Value, json},
     std::{path::Path, sync::Arc},
     tokio::fs,
@@ -575,6 +575,10 @@ impl AgentTool for ReadTool {
         Truncation::Off
     }
 
+    fn result_persistence(&self, _params: &Value) -> ToolResultPersistence {
+        ToolResultPersistence::TextFields(&["content"])
+    }
+
     async fn execute(&self, params: Value) -> anyhow::Result<Value> {
         let file_path = params
             .get("file_path")
@@ -726,6 +730,10 @@ mod tests {
     fn read_tool_opts_out_of_byte_budget_truncation() {
         let tool = ReadTool::new();
         assert_eq!(tool.truncation(&json!({})), Truncation::Off);
+        assert_eq!(
+            tool.result_persistence(&json!({})),
+            ToolResultPersistence::TextFields(&["content"])
+        );
     }
 
     #[tokio::test]

@@ -4,7 +4,7 @@ use std::{path::Path, sync::Arc};
 
 use {
     async_trait::async_trait,
-    chelix_agents::tool_registry::AgentTool,
+    chelix_agents::tool_registry::{AgentTool, ToolResultPersistence},
     chelix_skills::{discover::SkillDiscoverer, types::SkillSource, usage::SkillUsageStore},
     serde_json::{Value, json},
 };
@@ -102,6 +102,10 @@ impl AgentTool for ReadSkillTool {
          shows the first level. Binary files return a structured response \
          with { is_binary: true, bytes }. Use the skill names listed in the \
          <available_skills> system-prompt block."
+    }
+
+    fn result_persistence(&self, _params: &Value) -> ToolResultPersistence {
+        ToolResultPersistence::TextFields(&["content"])
     }
 
     fn parameters_schema(&self) -> Value {

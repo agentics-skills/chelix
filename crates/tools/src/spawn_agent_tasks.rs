@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     async_trait::async_trait,
-    chelix_agents::tool_registry::AgentTool,
+    chelix_agents::tool_registry::{AgentTool, ToolResultPersistence},
     serde_json::Value,
     time::{Duration, OffsetDateTime},
     tokio::sync::RwLock,
@@ -403,6 +403,10 @@ impl AgentTool for SpawnResultTool {
 
     fn description(&self) -> &str {
         "Fetch the result of a non-blocking spawn_agent task. Returns the current state; check status before using text because running tasks have no final text yet."
+    }
+
+    fn result_persistence(&self, _params: &Value) -> ToolResultPersistence {
+        ToolResultPersistence::TextFields(&["text"])
     }
 
     fn parameters_schema(&self) -> Value {

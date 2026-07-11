@@ -19,6 +19,7 @@ import {
 	createToolCallCard,
 	getToolCardDetailsContainer,
 	isCommandToolName,
+	normalizeToolResult,
 	renderToolCardError,
 	renderToolCardResult,
 	resolveToolBatchEnd,
@@ -87,8 +88,9 @@ export function createToolCallCardForPayload(p: ChatPayload): HTMLElement | null
 
 // ── Tool result rendering ─────────────────────────────────────
 
-export function appendToolResult(toolCard: HTMLElement, result: ToolResult, eventSession: string): void {
-	const out = (result.stdout || "").replace(/\n+$/, "");
+export function appendToolResult(toolCard: HTMLElement, resultValue: ToolResult | string, eventSession: string): void {
+	const result = normalizeToolResult(resultValue);
+	const out = (result.stdout || result.output || "").replace(/\n+$/, "");
 	// Update per-session signal
 	const toolSession = sessionStore.getByKey(eventSession);
 	if (toolSession) toolSession.lastToolOutput.value = out;

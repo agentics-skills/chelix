@@ -9,7 +9,7 @@ use std::{
 
 use {
     async_trait::async_trait,
-    chelix_agents::tool_registry::AgentTool,
+    chelix_agents::tool_registry::{AgentTool, ToolResultPersistence},
     secrecy::ExposeSecret,
     serde::{Deserialize, Serialize},
     tokio::sync::{RwLock, Semaphore},
@@ -1119,6 +1119,10 @@ impl AgentTool for ExecuteCommandTool {
         "Execute a shell command through the active command route. Isolated sandbox runs use a real tmux terminal and return terminalId for follow-up read_terminal_output calls."
     }
 
+    fn result_persistence(&self, _params: &serde_json::Value) -> ToolResultPersistence {
+        ToolResultPersistence::TextFields(&["stderr", "stdout", "output"])
+    }
+
     fn parameters_schema(&self) -> serde_json::Value {
         let timeout_default = self.default_timeout.as_millis();
         let mut schema = serde_json::json!({
@@ -1198,6 +1202,10 @@ impl AgentTool for ReadTerminalOutputTool {
 
     fn description(&self) -> &str {
         "Read current output from a managed sandbox tmux terminal created by execute_command."
+    }
+
+    fn result_persistence(&self, _params: &serde_json::Value) -> ToolResultPersistence {
+        ToolResultPersistence::TextFields(&["output"])
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -1527,6 +1535,23 @@ mod tests {
             first
                 .chars()
                 .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+        );
+    }
+
+    #[test]
+    fn terminal_tools_persist_line_oriented_output_as_text() {
+        let router = Arc::new(SandboxRouter::new(SandboxConfig::default()));
+        let manager = Arc::new(TmuxTerminalManager::new(router, 4096));
+        let execute = ExecuteCommandTool::new(Arc::clone(&manager));
+        let read = ReadTerminalOutputTool::new(manager);
+
+        assert_eq!(
+            execute.result_persistence(&serde_json::json!({})),
+            ToolResultPersistence::TextFields(&["stderr", "stdout", "output"])
+        );
+        assert_eq!(
+            read.result_persistence(&serde_json::json!({})),
+            ToolResultPersistence::TextFields(&["output"])
         );
     }
 

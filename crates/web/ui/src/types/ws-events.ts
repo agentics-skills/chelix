@@ -87,7 +87,7 @@ export interface ToolCallPayload {
 	messageIndex?: number;
 	sessionKey?: string;
 	success?: boolean;
-	result?: ToolResult;
+	result?: ToolResult | string;
 	error?: ToolError;
 	assistantMessage?: AssistantHistoryMessage;
 }

@@ -919,9 +919,9 @@ impl LlmProvider for CommandSimulatingProvider {
                 })
                 .unwrap_or("");
             let parsed: serde_json::Value = serde_json::from_str(tool_content).unwrap();
-            let stdout = parsed["result"]["stdout"].as_str().unwrap_or("");
+            let stdout = parsed["stdout"].as_str().unwrap_or("");
             assert!(stdout.contains("hello"));
-            assert_eq!(parsed["result"]["exit_code"].as_i64().unwrap(), 0);
+            assert_eq!(parsed["exit_code"].as_i64().unwrap(), 0);
             Ok(CompletionResponse {
                 text: Some(format!("The output was: {}", stdout.trim())),
                 tool_calls: vec![],
@@ -1558,7 +1558,7 @@ async fn test_vision_provider_tool_result_sanitized() {
 }
 
 #[tokio::test]
-async fn test_tool_call_end_event_contains_raw_result() {
+async fn test_tool_call_end_event_separates_context_from_raw_result() {
     let provider = Arc::new(VisionEnabledProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
@@ -1588,21 +1588,24 @@ async fn test_tool_call_end_event_contains_raw_result() {
         .find(|e| matches!(e, RunnerEvent::ToolCallEnd { success: true, .. }));
     if let Some(RunnerEvent::ToolCallEnd {
         success,
-        result: Some(result_json),
+        result: Some(context_result),
+        raw_result: Some(raw_result),
         ..
     }) = tool_end
     {
         assert!(success);
-        let result_str = result_json.to_string();
+        assert!(!context_result.contains("data:image/png;base64,"));
+        assert!(context_result.contains("[screenshot captured and displayed in UI]"));
+        let result_str = raw_result.to_string();
         assert!(
             result_str.contains("screenshot"),
-            "result should contain screenshot field"
+            "raw result should contain screenshot field"
         );
         assert!(
             result_str.contains("data:image/png;base64,"),
-            "result should contain image data URI"
+            "raw result should contain image data URI"
         );
     } else {
-        panic!("expected ToolCallEnd event with success and result");
+        panic!("expected ToolCallEnd event with canonical and raw results");
     }
 }

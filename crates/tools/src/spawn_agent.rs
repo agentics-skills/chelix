@@ -22,7 +22,7 @@ use {
         AgentRunError,
         model::LlmProvider,
         runner::{AgentLoopLimits, RunnerEvent, run_agent_loop_with_context_and_limits},
-        tool_registry::{AgentTool, ToolRegistry},
+        tool_registry::{AgentTool, ToolRegistry, ToolResultPersistence},
     },
     chelix_config::{
         AgentRuntimeLimits,
@@ -368,6 +368,10 @@ impl AgentTool for SpawnAgentTool {
          The sub-agent runs its own agent loop with access to tools and returns \
          the result when done. Use this to delegate tasks that require multiple \
          tool calls or independent reasoning. Supports optional tool policy controls."
+    }
+
+    fn result_persistence(&self, _params: &serde_json::Value) -> ToolResultPersistence {
+        ToolResultPersistence::TextFields(&["text"])
     }
 
     fn parameters_schema(&self) -> serde_json::Value {

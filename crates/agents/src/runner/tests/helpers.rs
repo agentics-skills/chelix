@@ -26,7 +26,7 @@ pub(super) use {
     },
     crate::{
         model::UserContent,
-        tool_registry::{ToolRegistry, Truncation},
+        tool_registry::{ToolRegistry, ToolResultPersistence, Truncation},
     },
 };
 

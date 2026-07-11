@@ -11,7 +11,8 @@ use {async_trait::async_trait, tracing::debug, url::Url};
 use crate::error::Error;
 
 use {
-    crate::ssrf::ssrf_check, chelix_agents::tool_registry::AgentTool,
+    crate::ssrf::ssrf_check,
+    chelix_agents::tool_registry::{AgentTool, ToolResultPersistence},
     chelix_config::schema::WebFetchConfig,
 };
 
@@ -380,6 +381,10 @@ impl AgentTool for WebFetchTool {
          Use this when you need to read the contents of a specific web page. \
          The request is sent with the user's Accept-Language header, so pages \
          are returned in the user's preferred language when available."
+    }
+
+    fn result_persistence(&self, _params: &serde_json::Value) -> ToolResultPersistence {
+        ToolResultPersistence::TextFields(&["content"])
     }
 
     fn parameters_schema(&self) -> serde_json::Value {

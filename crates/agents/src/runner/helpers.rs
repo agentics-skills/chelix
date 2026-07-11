@@ -157,7 +157,11 @@ pub enum RunnerEvent {
         name: String,
         success: bool,
         error: Option<String>,
-        result: Option<serde_json::Value>,
+        /// Exact result content passed to the LLM, UI, and session history.
+        result: Option<String>,
+        /// Raw structured result, available only for media/location/channel
+        /// side effects and never persisted as conversational context.
+        raw_result: Option<serde_json::Value>,
     },
     /// LLM returned reasoning/status text alongside tool calls.
     ThinkingText(String),

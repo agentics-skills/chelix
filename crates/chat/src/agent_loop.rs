@@ -10,8 +10,11 @@ use {
 };
 
 use {
-    chelix_agents::{runner::RunnerEvent, tool_registry::ToolRegistry},
-    chelix_sessions::{PersistedMessage, store::SessionStore},
+    chelix_agents::{
+        runner::{RunnerEvent, persist_and_truncate},
+        tool_registry::ToolRegistry,
+    },
+    chelix_sessions::{PersistedMessage, ToolResultStore, store::SessionStore},
 };
 
 use crate::{
@@ -379,7 +382,29 @@ pub(crate) async fn run_explicit_shell_command(
     };
 
     let command_result = match command_tool {
-        Some(tool) => tool.execute(command_params).await,
+        Some(tool) => {
+            let truncation = tool.truncation(&command_params);
+            let persistence = tool.result_persistence(&command_params);
+            match tool.execute(command_params).await {
+                Ok(result) => {
+                    let config = chelix_config::discover_and_load();
+                    let tool_result_store =
+                        ToolResultStore::new(chelix_config::data_dir().join("sessions"));
+                    persist_and_truncate(
+                        &tool_result_store,
+                        session_key,
+                        &tool_call_id,
+                        &result,
+                        config.tools.max_tool_result_bytes,
+                        truncation,
+                        persistence,
+                    )
+                    .await
+                    .map(|context_result| (result, context_result))
+                },
+                Err(error) => Err(error),
+            }
+        },
         None => Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "execute_command tool is not registered",
@@ -391,8 +416,7 @@ pub(crate) async fn run_explicit_shell_command(
     let mut final_text = String::new();
 
     match command_result {
-        Ok(result) => {
-            let capped = capped_tool_result_payload(&result, 10_000);
+        Ok((result, context_result)) => {
             let assistant_tool_call_msg = build_tool_call_assistant_message(
                 tool_call_id.clone(),
                 EXECUTE_COMMAND_TOOL_NAME,
@@ -406,7 +430,7 @@ pub(crate) async fn run_explicit_shell_command(
                 EXECUTE_COMMAND_TOOL_NAME,
                 Some(serde_json::json!({ "command": command })),
                 true,
-                Some(capped.clone()),
+                Some(Value::String(context_result.clone())),
                 None,
             );
             persist_tool_history_pair(
@@ -429,7 +453,7 @@ pub(crate) async fn run_explicit_shell_command(
                     "toolCallId": tool_call_id,
                     "toolName": EXECUTE_COMMAND_TOOL_NAME,
                     "success": true,
-                    "result": capped,
+                    "result": context_result,
                     "seq": client_seq,
                 }),
                 BroadcastOpts::default(),

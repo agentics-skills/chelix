@@ -490,6 +490,7 @@ pub(crate) async fn run_with_tools(
                     success,
                     error,
                     result,
+                    raw_result,
                 } => {
                     if terminal_runs_for_events.read().await.contains(&run_id) {
                         continue;
@@ -518,14 +519,14 @@ pub(crate) async fn run_with_tools(
                         payload["error"] = serde_json::json!(parse_chat_error(err, None));
                     }
                     // Check for screenshot/image to send to channel (Telegram, etc.)
-                    let screenshot_to_send = result
+                    let screenshot_to_send = raw_result
                         .as_ref()
                         .and_then(|r| r.get("screenshot"))
                         .and_then(|s| s.as_str())
                         .filter(|s| s.starts_with("data:image/"))
                         .map(String::from);
 
-                    let image_caption = result
+                    let image_caption = raw_result
                         .as_ref()
                         .and_then(|r| r.get("caption"))
                         .and_then(|c| c.as_str())
@@ -534,14 +535,14 @@ pub(crate) async fn run_with_tools(
                     // Check for document file to send to channel.
                     // New path: `document_ref` (lightweight media-dir reference).
                     // Legacy path: `document` with `data:` URI.
-                    let document_ref_to_send = result
+                    let document_ref_to_send = raw_result
                         .as_ref()
                         .and_then(|r| r.get("document_ref"))
                         .and_then(|d| d.as_str())
                         .map(String::from);
 
                     let document_ref_mime = if document_ref_to_send.is_some() {
-                        result
+                        raw_result
                             .as_ref()
                             .and_then(|r| r.get("mime_type"))
                             .and_then(|m| m.as_str())
@@ -551,7 +552,7 @@ pub(crate) async fn run_with_tools(
                     };
 
                     let document_to_send = if document_ref_to_send.is_none() {
-                        result
+                        raw_result
                             .as_ref()
                             .and_then(|r| r.get("document"))
                             .and_then(|d| d.as_str())
@@ -564,7 +565,7 @@ pub(crate) async fn run_with_tools(
                     let has_document = document_ref_to_send.is_some() || document_to_send.is_some();
 
                     let document_filename = if has_document {
-                        result
+                        raw_result
                             .as_ref()
                             .and_then(|r| r.get("filename"))
                             .and_then(|f| f.as_str())
@@ -574,7 +575,7 @@ pub(crate) async fn run_with_tools(
                     };
 
                     let document_caption = if has_document {
-                        result
+                        raw_result
                             .as_ref()
                             .and_then(|r| r.get("caption"))
                             .and_then(|c| c.as_str())
@@ -585,7 +586,7 @@ pub(crate) async fn run_with_tools(
 
                     // Extract location from show_map results for native pin
                     let location_to_send = if name == "show_map" {
-                        result.as_ref().and_then(|r| {
+                        raw_result.as_ref().and_then(|r| {
                             let lat = r.get("latitude")?.as_f64()?;
                             let lon = r.get("longitude")?.as_f64()?;
                             let label = r.get("label").and_then(|l| l.as_str()).map(String::from);
@@ -595,31 +596,8 @@ pub(crate) async fn run_with_tools(
                         None
                     };
 
-                    if let Some(ref res) = result {
-                        // Cap output sent to the UI to avoid huge WS frames.
-                        let mut capped = res.clone();
-                        for field in &["stdout", "output", "stderr"] {
-                            if let Some(s) = capped.get(*field).and_then(|v| v.as_str())
-                                && s.len() > 10_000
-                            {
-                                let truncated = format!(
-                                    "{}\n\n... [truncated — {} bytes total]",
-                                    truncate_at_char_boundary(s, 10_000),
-                                    s.len()
-                                );
-                                capped[*field] = Value::String(truncated);
-                            }
-                        }
-                        // Cap legacy document data URIs — the LLM never sees
-                        // these and the UI doesn't render them.
-                        if let Some(doc) = capped.get("document").and_then(|v| v.as_str())
-                            && doc.starts_with("data:")
-                            && doc.len() > 200
-                        {
-                            capped["document"] =
-                                Value::String("[document data omitted]".to_string());
-                        }
-                        payload["result"] = capped;
+                    if let Some(ref result) = result {
+                        payload["result"] = Value::String(result.clone());
                     }
 
                     // Send native location pin to channels before the screenshot.
@@ -692,8 +670,15 @@ pub(crate) async fn run_with_tools(
 
                     // Buffer tool error result for the channel logbook.
                     if !success {
-                        send_tool_result_to_channels(&state, &sk, &name, success, &error, &result)
-                            .await;
+                        send_tool_result_to_channels(
+                            &state,
+                            &sk,
+                            &name,
+                            success,
+                            &error,
+                            &raw_result,
+                        )
+                        .await;
                     }
 
                     // Persist only the terminal result when its canonical
@@ -702,20 +687,15 @@ pub(crate) async fn run_with_tools(
                         && persisted_tool_batches.contains_key(&id)
                     {
                         let tracked_args = tool_args_map.remove(&id);
-                        // Save screenshot to media dir (if present) and replace
-                        // with a lightweight path reference. Strip screenshot_scale
-                        // (only needed for live rendering). Cap stdout/stderr at
-                        // 10 KB, matching the WS broadcast cap.
+                        // Save screenshot bytes separately; conversational
+                        // history receives only the canonical runner result.
                         let store_media = Arc::clone(store);
                         let sk_media = sk.clone();
                         let tool_call_id = id.clone();
-                        let persisted_result = result.as_ref().map(|res| {
-                            let mut r = res.clone();
-                            // Try to decode and persist the screenshot to the media
-                            // directory. Extract base64 into an owned Vec first to
-                            // release the borrow on `r`.
-                            let decoded_screenshot = r
-                                .get("screenshot")
+                        let persisted_result = result.as_ref().map(|result| {
+                            let decoded_screenshot = raw_result
+                                .as_ref()
+                                .and_then(|result| result.get("screenshot"))
                                 .and_then(|v| v.as_str())
                                 .filter(|s| s.starts_with("data:image/"))
                                 .and_then(|uri| uri.split(',').nth(1))
@@ -734,44 +714,8 @@ pub(crate) async fn run_with_tools(
                                         warn!("failed to save screenshot media: {e}");
                                     }
                                 });
-                                let sanitized = SessionStore::key_to_filename(&sk_media);
-                                r["screenshot"] =
-                                    Value::String(format!("media/{sanitized}/{tool_call_id}.png"));
                             }
-                            // If screenshot is still a data URI (decode failed), strip it.
-                            let strip_screenshot = r
-                                .get("screenshot")
-                                .and_then(|v| v.as_str())
-                                .is_some_and(|s| s.starts_with("data:"));
-                            // Strip legacy document data URIs — they are only
-                            // needed by the channel dispatch (already extracted
-                            // above) and should not be persisted.
-                            let strip_document = r
-                                .get("document")
-                                .and_then(|v| v.as_str())
-                                .is_some_and(|s| s.starts_with("data:"));
-                            if let Some(obj) = r.as_object_mut() {
-                                if strip_screenshot {
-                                    obj.remove("screenshot");
-                                }
-                                if strip_document {
-                                    obj.remove("document");
-                                }
-                                obj.remove("screenshot_scale");
-                            }
-                            for field in &["stdout", "output", "stderr"] {
-                                if let Some(s) = r.get(*field).and_then(|v| v.as_str())
-                                    && s.len() > 10_000
-                                {
-                                    let truncated = format!(
-                                        "{}\n\n... [truncated — {} bytes total]",
-                                        truncate_at_char_boundary(s, 10_000),
-                                        s.len()
-                                    );
-                                    r[*field] = Value::String(truncated);
-                                }
-                            }
-                            r
+                            Value::String(result.clone())
                         });
                         let tracked_reasoning = tool_reasoning_map.remove(&id);
                         let tool_result_msg = PersistedMessage::ToolResult {

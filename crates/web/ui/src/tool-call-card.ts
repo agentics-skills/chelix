@@ -29,6 +29,9 @@ const STATUS_LABELS: Record<ToolCardStatus, string> = {
 	retry: "needs retry",
 };
 
+const TRUNCATED_RESULT_MARKER = "\n\n[Truncated —";
+const TEXT_RESULT_FIELDS = ["stdout", "output", "stderr"] as const;
+
 function stringifyValue(value: unknown): string {
 	if (value === undefined) return "{}";
 	if (typeof value === "string") {
@@ -130,6 +133,68 @@ function resolveScreenshotSrc(screenshot: string, options: ToolResultRenderOptio
 function resultExitCode(result: ToolResult): number | undefined {
 	const raw = result.exit_code ?? result.exitCode;
 	return typeof raw === "number" && Number.isFinite(raw) ? raw : undefined;
+}
+
+function decodeJsonStringPrefix(value: string): string {
+	let decoded = "";
+	for (let index = 0; index < value.length; index += 1) {
+		const char = value[index];
+		if (char === '"') break;
+		if (char !== "\\") {
+			decoded += char;
+			continue;
+		}
+		index += 1;
+		if (index >= value.length) break;
+		const escaped = value[index];
+		if (escaped === "n") decoded += "\n";
+		else if (escaped === "r") decoded += "\r";
+		else if (escaped === "t") decoded += "\t";
+		else if (escaped === "b") decoded += "\b";
+		else if (escaped === "f") decoded += "\f";
+		else if (escaped === '"' || escaped === "\\" || escaped === "/") decoded += escaped;
+		else if (escaped === "u") {
+			const hex = value.slice(index + 1, index + 5);
+			if (!/^[0-9a-fA-F]{4}$/.test(hex)) break;
+			decoded += String.fromCharCode(Number.parseInt(hex, 16));
+			index += 4;
+		}
+	}
+	return decoded;
+}
+
+function extractTruncatedTextField(jsonPrefix: string, field: (typeof TEXT_RESULT_FIELDS)[number]): string | undefined {
+	const fieldStart = jsonPrefix.indexOf(`"${field}":"`);
+	if (fieldStart < 0) return undefined;
+	const valueStart = fieldStart + field.length + 4;
+	return decodeJsonStringPrefix(jsonPrefix.slice(valueStart));
+}
+
+export function normalizeToolResult(result: ToolResult | string): ToolResult {
+	if (typeof result !== "string") return result;
+	try {
+		const parsed: unknown = JSON.parse(result);
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as ToolResult;
+	} catch (_err) {
+		// Truncated canonical JSON is decoded below.
+	}
+
+	const markerIndex = result.indexOf(TRUNCATED_RESULT_MARKER);
+	if (markerIndex < 0) return { output: result };
+	const jsonPrefix = result.slice(0, markerIndex);
+	const pointer = result.slice(markerIndex + 2);
+	const normalized: ToolResult = {};
+	for (const field of TEXT_RESULT_FIELDS) {
+		const text = extractTruncatedTextField(jsonPrefix, field);
+		if (text !== undefined) normalized[field] = text;
+	}
+	const pointerField =
+		normalized.output !== undefined ? "output" : normalized.stdout !== undefined ? "stdout" : undefined;
+	if (pointerField) {
+		normalized[pointerField] = `${normalized[pointerField]}\n\n${pointer}`;
+		return normalized;
+	}
+	return { output: `${jsonPrefix}\n\n${pointer}` };
 }
 
 export function createToolCallCard(options: ToolCardOptions): HTMLElement {
@@ -328,9 +393,10 @@ export function appendToolOutputChunk(card: HTMLElement, stream: "stdout" | "std
 
 export function renderToolCardResult(
 	card: HTMLElement,
-	result: ToolResult,
+	resultValue: ToolResult | string,
 	options: ToolResultRenderOptions = {},
 ): void {
+	const result = normalizeToolResult(resultValue);
 	const content = getResultContent(card);
 	content.textContent = "";
 

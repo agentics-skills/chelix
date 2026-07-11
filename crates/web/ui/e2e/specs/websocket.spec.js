@@ -551,6 +551,10 @@ test.describe("WebSocket connection lifecycle", () => {
 		await expectRpcOk(page, "chat.clear", {});
 
 		const toolCallId = "reorder-command-1";
+		const fullOutputPath = "/root/.chelix/sessions/tool-results/session_test/call_test/content.txt";
+		const truncatedResult =
+			'{"background":false,"completed":true,"exitCode":0,"message":"Command finished","output":"Line 1: XXXXX [counter=1]\\nLine 2: XXXXX [counter=2]\\nLine 3: XXXXX [counter=3]' +
+			`\n\n[Truncated — full tool result (101KB) written to file. Use the Read tool to access the content at: ${fullOutputPath}]`;
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
 			payload: {
@@ -559,7 +563,7 @@ test.describe("WebSocket connection lifecycle", () => {
 				toolCallId,
 				toolName: "execute_command",
 				success: true,
-				result: { stdout: "ok", stderr: "", exit_code: 0 },
+				result: truncatedResult,
 			},
 		});
 
@@ -578,7 +582,12 @@ test.describe("WebSocket connection lifecycle", () => {
 		await expect(card).toBeVisible();
 		await expect(card).toHaveClass(/command-ok/);
 		await expect(page.locator(`#tool-${toolCallId} .command-status`)).toHaveCount(0);
-		await expect(page.locator(`#tool-${toolCallId} .command-output`)).toContainText("ok");
+		const output = page.locator(`#tool-${toolCallId} .command-output`);
+		await expect(output).toContainText("Line 1: XXXXX [counter=1]");
+		await expect(output).toContainText("Line 3: XXXXX [counter=3]");
+		await expect(output).toContainText("[Truncated — full tool result (101KB) written to file.");
+		await expect(output).toContainText(fullOutputPath);
+		await expect(output).not.toContainText('{"background":false');
 		expect(pageErrors).toEqual([]);
 	});
 

@@ -156,16 +156,13 @@ pub async fn run_agent_loop_with_context_and_limits(
         .as_ref()
         .and_then(|ctx| ctx.get("_session_key"))
         .and_then(|v| v.as_str())
-        .unwrap_or("")
+        .unwrap_or("main")
         .to_string();
     let channel_for_hooks =
         channel_binding_from_tool_context(&session_key_for_hooks, tool_context.as_ref());
 
-    // Persist full tool outputs on disk for sessions (Read/Grep can re-read
-    // them after in-context truncation). Runs without a session key (e.g.
-    // direct runner invocations in tests) skip persistence.
-    let tool_result_store = (!session_key_for_hooks.is_empty())
-        .then(|| ToolResultStore::new(chelix_config::data_dir().join("sessions")));
+    // Every tool output is persisted before it can enter the LLM context.
+    let tool_result_store = ToolResultStore::new(chelix_config::data_dir().join("sessions"));
 
     dispatch_before_agent_start_hook(
         hook_registry.as_ref(),
@@ -833,27 +830,13 @@ pub async fn run_agent_loop_with_context_and_limits(
                 let _ = loop_detector.record(fp);
             }
 
-            if let Some(cb) = on_event {
-                if rejected {
-                    cb(RunnerEvent::ToolCallRejected {
-                        id: tc.id.clone(),
-                        name: tc.name.clone(),
-                        arguments: tc.arguments.clone(),
-                        error: error.clone().unwrap_or_default(),
-                    });
-                } else {
-                    cb(RunnerEvent::ToolCallEnd {
-                        id: tc.id.clone(),
-                        name: tc.name.clone(),
-                        success,
-                        error,
-                        result: if success {
-                            result.get("result").cloned()
-                        } else {
-                            None
-                        },
-                    });
-                }
+            if rejected && let Some(cb) = on_event {
+                cb(RunnerEvent::ToolCallRejected {
+                    id: tc.id.clone(),
+                    name: tc.name.clone(),
+                    arguments: tc.arguments.clone(),
+                    error: error.clone().unwrap_or_default(),
+                });
             }
 
             // Dispatch ToolResultPersist hook — the last opportunity for a handler
@@ -887,24 +870,45 @@ pub async fn run_agent_loop_with_context_and_limits(
                 }
             }
 
+            let result_payload = result
+                .get("result")
+                .cloned()
+                .unwrap_or_else(|| result.clone());
+
             // Persist the full output to disk, then sanitize the in-context
             // copy as a string - most LLM APIs don't support multimodal
             // content in tool results. Images are stripped but the UI still
             // receives them via ToolCallEnd event. Oversized results are
             // truncated with a pointer to the persisted full output.
-            let truncation = resolve_tool_lookup(tools, sanitize_tool_name(&tc.name).as_ref())
-                .0
+            let tool = resolve_tool_lookup(tools, sanitize_tool_name(&tc.name).as_ref()).0;
+            let truncation = tool
+                .as_ref()
                 .map(|tool| tool.truncation(&tc.arguments))
                 .unwrap_or_default();
+            let persistence = tool
+                .as_ref()
+                .map(|tool| tool.result_persistence(&tc.arguments))
+                .unwrap_or_default();
             let tool_result_str = persist_and_truncate(
-                tool_result_store.as_ref(),
+                &tool_result_store,
                 &session_key_for_hooks,
                 &tc.id,
-                &result.to_string(),
+                &result_payload,
                 max_tool_result_bytes,
                 truncation,
+                persistence,
             )
-            .await;
+            .await?;
+            if !rejected && let Some(cb) = on_event {
+                cb(RunnerEvent::ToolCallEnd {
+                    id: tc.id.clone(),
+                    name: tc.name.clone(),
+                    success,
+                    error,
+                    result: success.then(|| tool_result_str.clone()),
+                    raw_result: success.then(|| result_payload.clone()),
+                });
+            }
             debug!(
                 tool = %tc.name,
                 id = %tc.id,

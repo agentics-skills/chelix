@@ -12,7 +12,7 @@ use {
 #[cfg(feature = "metrics")]
 use chelix_metrics::{counter, histogram, labels, tools as tools_metrics};
 
-use chelix_agents::tool_registry::AgentTool;
+use chelix_agents::tool_registry::{AgentTool, ToolResultPersistence};
 
 use crate::{
     command::{CommandOptions, CommandOutput, run_shell_command},
@@ -357,6 +357,10 @@ impl AgentTool for ProcessTool {
     fn description(&self) -> &str {
         "Manage interactive terminal processes (TUI apps, REPLs, long-running commands) \
          via tmux sessions in the sandbox. Actions: start, poll, send_keys, paste, kill, list."
+    }
+
+    fn result_persistence(&self, _params: &serde_json::Value) -> ToolResultPersistence {
+        ToolResultPersistence::TextFields(&["output"])
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -718,6 +722,15 @@ mod tests {
         assert!(schema["properties"]["session_name"].is_object());
         assert!(schema["properties"]["keys"].is_object());
         assert!(schema["properties"]["text"].is_object());
+    }
+
+    #[test]
+    fn process_tool_persists_line_oriented_output_as_text() {
+        let tool = ProcessTool::new();
+        assert_eq!(
+            tool.result_persistence(&serde_json::json!({ "action": "poll" })),
+            ToolResultPersistence::TextFields(&["output"])
+        );
     }
 
     #[tokio::test]

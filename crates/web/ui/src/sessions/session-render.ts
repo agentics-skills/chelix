@@ -52,7 +52,7 @@ interface ToolResultMsg extends HistoryMessage {
 	tool_name?: string;
 	arguments?: unknown;
 	success?: boolean;
-	result?: ToolResult;
+	result?: ToolResult | string;
 	error?: string;
 	reasoning?: string;
 }

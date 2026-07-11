@@ -1,9 +1,9 @@
 //! Disk persistence for full tool outputs.
 //!
 //! Every tool call's complete output is written to
-//! `<sessions_dir>/tool-results/<session>/<call>/content.txt` (plain text)
-//! or `content.json` + `schema.json` (JSON payloads), so agents can re-read
-//! full results with Read/Grep after the in-context copy is truncated.
+//! `<sessions_dir>/tool-results/<session>/<call>/content.txt` (line-oriented
+//! text) or `content.json` + `schema.json` (structured JSON), so agents can
+//! re-read full results with Read/Grep after the in-context copy is truncated.
 //!
 //! Modeled on VS Code Copilot Chat's `ChatDiskSessionResources` and its
 //! large-tool-results-to-disk mechanism (`toJsonSchema.ts`,
@@ -77,8 +77,8 @@ impl ToolResultStore {
 
     /// Persist the full output of one tool call.
     ///
-    /// JSON payloads are pretty-printed to `content.json` with an inferred
-    /// `schema.json` alongside; everything else goes to `content.txt`.
+    /// Structured JSON payloads are pretty-printed to `content.json` with an
+    /// inferred `schema.json` alongside; everything else goes to `content.txt`.
     /// Writes are idempotent: existing files are left untouched.
     #[tracing::instrument(skip(self, raw), fields(raw_len = raw.len()))]
     pub async fn persist(
@@ -121,6 +121,31 @@ impl ToolResultStore {
             content_path,
             schema_path,
             content_bytes,
+        })
+    }
+
+    /// Persist explicitly line-oriented content as `content.txt`, even when
+    /// the text itself is valid JSON.
+    #[tracing::instrument(skip(self, content), fields(content_len = content.len()))]
+    pub async fn persist_text(
+        &self,
+        session_key: &str,
+        call_id: &str,
+        content: &str,
+    ) -> Result<PersistedToolResult> {
+        let dir = self.call_dir(session_key, call_id);
+        tokio::fs::create_dir_all(&dir).await?;
+        let content_path = dir.join("content.txt");
+        write_if_missing(&content_path, content.to_string()).await?;
+        tracing::debug!(
+            path = %content_path.display(),
+            bytes = content.len(),
+            "persisted text tool result"
+        );
+        Ok(PersistedToolResult {
+            content_path,
+            schema_path: None,
+            content_bytes: content.len(),
         })
     }
 }
@@ -456,6 +481,24 @@ mod tests {
         assert!(persisted.schema_path.is_none());
         let on_disk = std::fs::read_to_string(&persisted.content_path).unwrap();
         assert_eq!(on_disk, "just a text payload");
+    }
+
+    #[tokio::test]
+    async fn persist_text_keeps_json_looking_text_in_content_txt() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ToolResultStore::new(dir.path().to_path_buf());
+
+        let persisted = store
+            .persist_text("s", "c", "{\n  \"line\": 1\n}")
+            .await
+            .unwrap();
+
+        assert!(persisted.content_path.ends_with("content.txt"));
+        assert!(persisted.schema_path.is_none());
+        assert_eq!(
+            std::fs::read_to_string(&persisted.content_path).unwrap(),
+            "{\n  \"line\": 1\n}"
+        );
     }
 
     #[tokio::test]
