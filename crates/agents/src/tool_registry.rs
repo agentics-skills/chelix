@@ -9,6 +9,21 @@ use {
     tracing::warn,
 };
 
+/// In-context truncation behavior for a tool's results.
+///
+/// Full outputs are always persisted to disk regardless of this setting;
+/// it only controls whether the in-context copy may be truncated. `Off`
+/// prevents recursion for tools that intentionally return oversized
+/// content (e.g. a Read mode that reads persisted tool results back).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Truncation {
+    /// Truncate results above the configured byte budget (default).
+    #[default]
+    Standard,
+    /// Never truncate the in-context copy of this result.
+    Off,
+}
+
 /// Agent-callable tool.
 #[async_trait]
 pub trait AgentTool: Send + Sync {
@@ -18,6 +33,12 @@ pub trait AgentTool: Send + Sync {
     /// Opportunistic post-start initialization hook.
     async fn warmup(&self) -> Result<()> {
         Ok(())
+    }
+    /// Truncation behavior for this call's result. Tools can override this
+    /// per tool (ignore `params`) or per call (inspect `params`). This is an
+    /// internal knob — it is never exposed through the tool's JSON schema.
+    fn truncation(&self, _params: &serde_json::Value) -> Truncation {
+        Truncation::Standard
     }
     async fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value>;
 }

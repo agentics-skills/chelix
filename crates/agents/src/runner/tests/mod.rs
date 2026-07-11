@@ -2,9 +2,8 @@
 
 mod basic;
 mod basic_tool_names;
-mod basic_tool_results;
 mod compaction;
 mod helpers;
-mod image_edge_cases;
 mod parallel;
 mod tool_controls;
+mod tool_result_persistence;

@@ -106,6 +106,9 @@ impl From<&ToolCall> for RunnerToolCall {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AgentLoopLimits {
     pub max_iterations: Option<usize>,
+    /// Per-agent override for the in-context tool result byte budget.
+    /// Falls back to `tools.max_tool_result_bytes` when `None`.
+    pub max_tool_result_bytes: Option<usize>,
 }
 
 #[derive(Debug, Clone, Default)]

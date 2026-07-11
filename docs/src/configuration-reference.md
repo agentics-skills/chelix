@@ -279,6 +279,7 @@ User profile collected during onboarding.
 | `system_prompt_suffix` | optional string | `null` | Extra instructions appended to the sub-agent system prompt. |
 | `max_iterations` | optional integer | `null` | Maximum iterations for matching direct agent sessions and spawned sub-agents. Falls back to `tools.agent_max_iterations`. |
 | `timeout_secs` | optional integer | `null` | Timeout in seconds for matching direct agent sessions and spawned sub-agents (`0` = no timeout). Direct sessions fall back to `tools.agent_timeout_secs`; spawned sub-agents preserve no-timeout behavior unless the preset sets `timeout_secs`. |
+| `max_tool_result_bytes` | optional integer | `null` | Maximum in-context bytes per tool result before truncation for this agent. Falls back to `tools.max_tool_result_bytes`. |
 | `reasoning_effort` | optional enum: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | `null` | Reasoning/thinking effort level for models that support extended thinking (e.g. Claude Opus, OpenAI o-series). |
 | `sessions` | optional `SessionAccessPolicyConfig` | `null` | Session access policy for inter-agent communication. |
 | `memory` | optional `PresetMemoryConfig` | `null` | Persistent per-agent memory configuration. |
@@ -554,7 +555,7 @@ Default `tool_overrides` entries:
 | agent_max_iterations | integer | `25` | Maximum number of agent loop iterations before aborting. |
 | agent_max_auto_continues | integer | `2` | Maximum auto-continue nudges when the model stops mid-task (0 = disabled). |
 | agent_auto_continue_min_tool_calls | integer | `3` | Minimum tool calls in the current run before auto-continue can trigger. |
-| max_tool_result_bytes | integer | `50000` (50 KB) | Maximum bytes for a single tool result before truncation. |
+| max_tool_result_bytes | integer | `50000` (50 KB) | Maximum in-context bytes for a single tool result before truncation. Full outputs are always persisted under `<data_dir>/sessions/tool-results/<session>/<call>/content.txt` (or `content.json` + `schema.json` for JSON payloads), and truncated results end with a pointer to the persisted file so the agent can re-read it with Read/Grep. Overridable per agent via `agents.presets.<name>.max_tool_result_bytes`. |
 | registry_mode | string (enum) | `"full"` | How tool schemas are presented to the model. One of: `full` (all schemas sent every turn), `lazy` (the full tool catalog is always advertised, but parameter schemas are deferred — only `get_tool` plus schemas fetched on demand by exact name are sent). |
 | agent_loop_detector_window | integer | `2` | Window size for the tool-call reflex-loop detector. When this many consecutive tool calls share the same tool + (args or error), the runner injects a directive intervention message. Set to 0 to disable. |
 | agent_loop_detector_strip_tools_on_second_fire | bool | `true` | When the loop detector fires a second time (stage 2), strip the tool schema list for a single LLM turn so the model is forced to respond in text. |

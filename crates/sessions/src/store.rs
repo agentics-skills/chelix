@@ -226,10 +226,12 @@ impl SessionStore {
         .await?
     }
 
-    /// Delete the session file and its media directory.
+    /// Delete the session file, its media directory, and its persisted tool results.
     pub async fn clear(&self, key: &str) -> Result<()> {
         let path = self.path_for(key);
         let media_dir = self.media_dir_for(key);
+        let tool_results_dir =
+            crate::tool_results::ToolResultStore::new(self.base_dir.clone()).session_dir(key);
 
         tokio::task::spawn_blocking(move || -> Result<()> {
             if path.exists() {
@@ -239,6 +241,9 @@ impl SessionStore {
                 // Deleting this parent-session media directory also breaks any fork that still
                 // references the same paths; forks need containerized media snapshots.
                 let _ = fs::remove_dir_all(&media_dir);
+            }
+            if tool_results_dir.exists() {
+                let _ = fs::remove_dir_all(&tool_results_dir);
             }
             Ok(())
         })

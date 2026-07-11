@@ -2,7 +2,7 @@
 
 use {
     async_trait::async_trait,
-    chelix_agents::tool_registry::AgentTool,
+    chelix_agents::tool_registry::{AgentTool, Truncation},
     serde_json::{Map, Value, json},
     std::{path::Path, sync::Arc},
     tokio::fs,
@@ -566,6 +566,15 @@ impl AgentTool for ReadTool {
         })
     }
 
+    /// Read already bounds its output in lines (`limit`, default
+    /// `DEFAULT_READ_LINE_LIMIT`) and bytes (`MAX_READ_OUTPUT_BYTES`),
+    /// so the byte-budget truncation layer is disabled here. This also
+    /// prevents recursion when Read is used to fetch persisted tool
+    /// results back into context.
+    fn truncation(&self, _params: &Value) -> Truncation {
+        Truncation::Off
+    }
+
     async fn execute(&self, params: Value) -> anyhow::Result<Value> {
         let file_path = params
             .get("file_path")
@@ -712,6 +721,12 @@ impl AgentTool for ReadTool {
 #[cfg(test)]
 mod tests {
     use {super::*, crate::fs::read::pdf, std::io::Write};
+
+    #[test]
+    fn read_tool_opts_out_of_byte_budget_truncation() {
+        let tool = ReadTool::new();
+        assert_eq!(tool.truncation(&json!({})), Truncation::Off);
+    }
 
     #[tokio::test]
     async fn read_small_text_file() {

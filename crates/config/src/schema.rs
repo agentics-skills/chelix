@@ -409,6 +409,8 @@ pub struct AgentRuntimeLimits {
     pub timeout_source: AgentRuntimeLimitSource,
     pub max_iterations: usize,
     pub max_iterations_source: AgentRuntimeLimitSource,
+    pub max_tool_result_bytes: usize,
+    pub max_tool_result_bytes_source: AgentRuntimeLimitSource,
 }
 
 impl AgentRuntimeLimits {
@@ -433,12 +435,21 @@ impl AgentRuntimeLimits {
                 tools.agent_max_iterations,
                 AgentRuntimeLimitSource::GlobalTools,
             ));
+        let (max_tool_result_bytes, max_tool_result_bytes_source) = preset
+            .and_then(|preset| preset.max_tool_result_bytes)
+            .map(|bytes| (bytes, AgentRuntimeLimitSource::AgentPreset))
+            .unwrap_or((
+                tools.max_tool_result_bytes,
+                AgentRuntimeLimitSource::GlobalTools,
+            ));
 
         Self {
             timeout_secs,
             timeout_source,
             max_iterations,
             max_iterations_source,
+            max_tool_result_bytes,
+            max_tool_result_bytes_source,
         }
     }
 

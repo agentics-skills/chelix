@@ -25,7 +25,7 @@ pub use {
         run_agent_loop_with_context_and_limits,
     },
     streaming::{run_agent_loop_streaming, run_agent_loop_streaming_with_limits},
-    tool_result::{ExtractedImage, sanitize_tool_result, tool_result_to_content},
+    tool_result::sanitize_tool_result,
 };
 
 /// Shared inbox for mid-flight steering text (populated by `/steer` command).

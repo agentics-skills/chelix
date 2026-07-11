@@ -586,6 +586,9 @@ pub struct AgentPreset {
     pub max_iterations: Option<u64>,
     /// Timeout in seconds for the sub-agent.
     pub timeout_secs: Option<u64>,
+    /// Maximum in-context bytes per tool result before truncation.
+    /// Falls back to `tools.max_tool_result_bytes`.
+    pub max_tool_result_bytes: Option<usize>,
     /// Session access policy for inter-agent communication.
     pub sessions: Option<SessionAccessPolicyConfig>,
     /// Persistent per-agent memory configuration.

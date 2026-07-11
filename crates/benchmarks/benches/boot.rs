@@ -100,19 +100,7 @@ fn build_sanitize_input(payload_bytes: usize) -> String {
 #[divan::bench(args = [10_000, 100_000, 1_000_000])]
 fn sanitize_tool_result(bencher: divan::Bencher, payload_bytes: usize) {
     let input = build_sanitize_input(payload_bytes);
-    bencher.bench_local(|| {
-        divan::black_box(chelix_agents::runner::sanitize_tool_result(&input, 50_000))
-    });
-}
-
-#[divan::bench(args = [10_000, 100_000, 1_000_000])]
-fn tool_result_to_content_vision(bencher: divan::Bencher, payload_bytes: usize) {
-    let input = build_sanitize_input(payload_bytes);
-    bencher.bench_local(|| {
-        divan::black_box(chelix_agents::runner::tool_result_to_content(
-            &input, 50_000, true,
-        ))
-    });
+    bencher.bench_local(|| divan::black_box(chelix_agents::runner::sanitize_tool_result(&input)));
 }
 
 fn build_persisted_messages(n: usize) -> Vec<serde_json::Value> {

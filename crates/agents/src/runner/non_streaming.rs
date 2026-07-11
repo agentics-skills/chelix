@@ -34,8 +34,10 @@ use super::{
         resolve_agent_max_iterations,
     },
     sanitize_tool_name,
-    tool_result::sanitize_tool_result,
+    tool_result::persist_and_truncate,
 };
+
+use chelix_sessions::ToolResultStore;
 
 use crate::tool_loop_detector::ToolLoopDetector;
 
@@ -107,7 +109,9 @@ pub async fn run_agent_loop_with_context_and_limits(
 ) -> Result<AgentRunResult, AgentRunError> {
     let native_tools = provider.supports_tools();
     let config = chelix_config::discover_and_load();
-    let max_tool_result_bytes = config.tools.max_tool_result_bytes;
+    let max_tool_result_bytes = limits
+        .max_tool_result_bytes
+        .unwrap_or(config.tools.max_tool_result_bytes);
     let max_auto_continues = config.tools.agent_max_auto_continues;
     let auto_continue_min_tool_calls = config.tools.agent_auto_continue_min_tool_calls;
     let compaction_ratio = config.tools.tool_result_compaction_ratio as usize;
@@ -156,6 +160,12 @@ pub async fn run_agent_loop_with_context_and_limits(
         .to_string();
     let channel_for_hooks =
         channel_binding_from_tool_context(&session_key_for_hooks, tool_context.as_ref());
+
+    // Persist full tool outputs on disk for sessions (Read/Grep can re-read
+    // them after in-context truncation). Runs without a session key (e.g.
+    // direct runner invocations in tests) skip persistence.
+    let tool_result_store = (!session_key_for_hooks.is_empty())
+        .then(|| ToolResultStore::new(chelix_config::data_dir().join("sessions")));
 
     dispatch_before_agent_start_hook(
         hook_registry.as_ref(),
@@ -877,10 +887,24 @@ pub async fn run_agent_loop_with_context_and_limits(
                 }
             }
 
-            // Always sanitize tool results as strings - most LLM APIs don't support
-            // multimodal content in tool results. Images are stripped but the UI
-            // still receives them via ToolCallEnd event.
-            let tool_result_str = sanitize_tool_result(&result.to_string(), max_tool_result_bytes);
+            // Persist the full output to disk, then sanitize the in-context
+            // copy as a string - most LLM APIs don't support multimodal
+            // content in tool results. Images are stripped but the UI still
+            // receives them via ToolCallEnd event. Oversized results are
+            // truncated with a pointer to the persisted full output.
+            let truncation = resolve_tool_lookup(tools, sanitize_tool_name(&tc.name).as_ref())
+                .0
+                .map(|tool| tool.truncation(&tc.arguments))
+                .unwrap_or_default();
+            let tool_result_str = persist_and_truncate(
+                tool_result_store.as_ref(),
+                &session_key_for_hooks,
+                &tc.id,
+                &result.to_string(),
+                max_tool_result_bytes,
+                truncation,
+            )
+            .await;
             debug!(
                 tool = %tc.name,
                 id = %tc.id,

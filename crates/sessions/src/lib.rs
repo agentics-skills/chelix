@@ -12,6 +12,7 @@ pub mod metadata;
 pub mod session_events;
 pub mod state_store;
 pub mod store;
+pub mod tool_results;
 pub mod ui_history;
 
 pub use {
@@ -19,6 +20,7 @@ pub use {
     key::SessionKey,
     message::{ContentBlock, MessageContent, PersistedMessage, UserDocument},
     store::SearchResult,
+    tool_results::{PersistedToolResult, ToolResultStore},
     ui_history::filter_ui_history,
 };
 

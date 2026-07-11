@@ -109,6 +109,66 @@ max_iterations = 80
 }
 
 #[test]
+fn agent_runtime_limits_max_tool_result_bytes_falls_back_to_global() {
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[tools]
+max_tool_result_bytes = 12345
+
+[agents.presets.quick]
+model = "openai/gpt-5.2"
+"#,
+    )
+    .unwrap();
+
+    let limits = config.agent_runtime_limits("quick");
+    assert_eq!(limits.max_tool_result_bytes, 12345);
+    assert_eq!(
+        limits.max_tool_result_bytes_source,
+        AgentRuntimeLimitSource::GlobalTools
+    );
+}
+
+#[test]
+fn agent_runtime_limits_max_tool_result_bytes_uses_preset_override() {
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[tools]
+max_tool_result_bytes = 12345
+
+[agents.presets.quick]
+max_tool_result_bytes = 999
+"#,
+    )
+    .unwrap();
+
+    let limits = config.agent_runtime_limits("quick");
+    assert_eq!(limits.max_tool_result_bytes, 999);
+    assert_eq!(
+        limits.max_tool_result_bytes_source,
+        AgentRuntimeLimitSource::AgentPreset
+    );
+}
+
+#[test]
+fn preset_max_tool_result_bytes_is_valid_config_key() {
+    let result = validate_toml_str(
+        r#"
+[agents.presets.quick]
+max_tool_result_bytes = 100000
+"#,
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.severity != Severity::Error),
+        "unexpected diagnostics: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn preset_max_iterations_must_be_positive() {
     let result = validate_toml_str(
         r#"

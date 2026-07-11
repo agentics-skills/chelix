@@ -34,6 +34,7 @@ async fn active_tools_hides_unselected_tool() {
         None,
         AgentLoopLimits {
             max_iterations: Some(3),
+            ..Default::default()
         },
     )
     .await

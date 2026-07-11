@@ -328,6 +328,7 @@ port = {port}                           # Port number (auto-generated for this i
 # identity.theme = "thorough, skeptical, and evidence-oriented"
 # system_prompt_suffix = "..."
 # max_iterations = 16
+# max_tool_result_bytes = 100000   # Per-agent override of tools.max_tool_result_bytes
 # # Optional drift-resistant per-turn controls for spawned/preset agents:
 # # [agents.presets.research.tool_controls]
 # # active_tools = ["classify_destination"]
@@ -423,7 +424,11 @@ port = {port}                           # Port number (auto-generated for this i
 # agent_max_iterations = 25         # Max LLM/tool loop iterations before stopping
 # agent_max_auto_continues = 2      # Auto-continue nudges when model stops mid-task (0 = off)
 # agent_auto_continue_min_tool_calls = 3  # Min tool calls before auto-continue can trigger
-# max_tool_result_bytes = 50000     # Max bytes per tool result before truncation (50KB)
+# max_tool_result_bytes = 50000     # Max in-context bytes per tool result before truncation (50KB).
+#                                   # Full outputs are always persisted under
+#                                   # <data_dir>/sessions/tool-results/<session>/<call>/ and truncated
+#                                   # results point at the persisted file. Override per agent with
+#                                   # `max_tool_result_bytes` on the agent preset.
 # registry_mode = "full"            # "full" = all schemas every turn, "lazy" = catalog + on-demand get_tool schema fetch
 # agent_loop_detector_window = 2    # Fire intervention after N identical failing tool calls in a row
 # tool_result_compaction_ratio = 75 # % of context_window before oldest tool results are compacted

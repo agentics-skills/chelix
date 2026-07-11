@@ -1051,6 +1051,7 @@ pub(crate) async fn run_with_tools(
         Some(steer_inbox.clone()),
         AgentLoopLimits {
             max_iterations: Some(runtime_limits.max_iterations),
+            max_tool_result_bytes: Some(runtime_limits.max_tool_result_bytes),
         },
     );
     let first_result =
@@ -1155,6 +1156,7 @@ pub(crate) async fn run_with_tools(
                         Some(steer_inbox.clone()),
                         AgentLoopLimits {
                             max_iterations: Some(runtime_limits.max_iterations),
+                            max_tool_result_bytes: Some(runtime_limits.max_tool_result_bytes),
                         },
                     );
                     await_with_agent_timeout(

@@ -343,6 +343,7 @@ async fn test_non_streaming_runner_uses_max_iteration_override() {
         None,
         AgentLoopLimits {
             max_iterations: Some(1),
+            ..Default::default()
         },
     )
     .await;
@@ -1498,33 +1499,14 @@ async fn test_native_text_function_tool_calling_non_streaming() {
 #[test]
 fn test_sanitize_short_input_unchanged() {
     let input = "hello world";
-    assert_eq!(sanitize_tool_result(input, 50_000), "hello world");
-}
-
-#[test]
-fn test_sanitize_truncates_long_input() {
-    let input = "x".repeat(1000);
-    let result = sanitize_tool_result(&input, 100);
-    assert!(result.starts_with("xxxx"));
-    assert!(result.contains("[truncated"));
-    assert!(result.contains("1000 bytes total"));
-}
-
-#[test]
-fn test_sanitize_truncate_respects_char_boundary() {
-    let input = "é".repeat(100);
-    let result = sanitize_tool_result(&input, 51);
-    assert!(result.contains("[truncated"));
-    let prefix_end = result.find("\n\n[truncated").unwrap();
-    assert!(prefix_end <= 51);
-    assert_eq!(prefix_end % 2, 0);
+    assert_eq!(sanitize_tool_result(input), "hello world");
 }
 
 #[test]
 fn test_sanitize_strips_base64_data_uri() {
     let payload = "A".repeat(300);
     let input = format!("before data:image/png;base64,{payload} after");
-    let result = sanitize_tool_result(&input, 50_000);
+    let result = sanitize_tool_result(&input);
     assert!(!result.contains(&payload));
     assert!(result.contains("[screenshot captured and displayed in UI]"));
     assert!(result.contains("before"));
@@ -1535,7 +1517,7 @@ fn test_sanitize_strips_base64_data_uri() {
 fn test_sanitize_preserves_short_base64() {
     let payload = "QUFB";
     let input = format!("data:text/plain;base64,{payload}");
-    let result = sanitize_tool_result(&input, 50_000);
+    let result = sanitize_tool_result(&input);
     assert!(result.contains(payload));
 }
 
@@ -1543,7 +1525,7 @@ fn test_sanitize_preserves_short_base64() {
 fn test_sanitize_strips_long_hex() {
     let hex = "a1b2c3d4".repeat(50);
     let input = format!("prefix {hex} suffix");
-    let result = sanitize_tool_result(&input, 50_000);
+    let result = sanitize_tool_result(&input);
     assert!(!result.contains(&hex));
     assert!(result.contains("[hex data removed"));
     assert!(result.contains("prefix"));
@@ -1554,117 +1536,8 @@ fn test_sanitize_strips_long_hex() {
 fn test_sanitize_preserves_short_hex() {
     let hex = "deadbeef";
     let input = format!("code: {hex}");
-    let result = sanitize_tool_result(&input, 50_000);
+    let result = sanitize_tool_result(&input);
     assert!(result.contains(hex));
-}
-
-// ── extract_images_from_text tests ───────────────────────────────
-
-#[test]
-fn test_extract_images_basic() {
-    let payload = "A".repeat(300);
-    let input = format!("before data:image/png;base64,{payload} after");
-    let (images, remaining) = extract_images_from_text(&input);
-    assert_eq!(images.len(), 1);
-    assert_eq!(images[0].media_type, "image/png");
-    assert_eq!(images[0].data, payload);
-    assert!(remaining.contains("before"));
-    assert!(remaining.contains("after"));
-    assert!(!remaining.contains(&payload));
-}
-
-#[test]
-fn test_extract_images_jpeg() {
-    let payload = "B".repeat(300);
-    let input = format!("data:image/jpeg;base64,{payload}");
-    let (images, remaining) = extract_images_from_text(&input);
-    assert_eq!(images.len(), 1);
-    assert_eq!(images[0].media_type, "image/jpeg");
-    assert_eq!(images[0].data, payload);
-    assert!(remaining.trim().is_empty());
-}
-
-#[test]
-fn test_extract_images_multiple() {
-    let payload1 = "A".repeat(300);
-    let payload2 = "B".repeat(300);
-    let input = format!(
-        "first data:image/png;base64,{payload1} middle data:image/jpeg;base64,{payload2} end"
-    );
-    let (images, remaining) = extract_images_from_text(&input);
-    assert_eq!(images.len(), 2);
-    assert_eq!(images[0].media_type, "image/png");
-    assert_eq!(images[1].media_type, "image/jpeg");
-    assert!(remaining.contains("first"));
-    assert!(remaining.contains("middle"));
-    assert!(remaining.contains("end"));
-}
-
-#[test]
-fn test_extract_images_ignores_non_image() {
-    let payload = "A".repeat(300);
-    let input = format!("data:text/plain;base64,{payload}");
-    let (images, remaining) = extract_images_from_text(&input);
-    assert!(images.is_empty());
-    assert!(remaining.contains("data:text/plain"));
-}
-
-#[test]
-fn test_extract_images_ignores_short_payload() {
-    let payload = "QUFB";
-    let input = format!("data:image/png;base64,{payload}");
-    let (images, remaining) = extract_images_from_text(&input);
-    assert!(images.is_empty());
-    assert!(remaining.contains(payload));
-}
-
-// ── tool_result_to_content tests ─────────────────────────────────
-
-#[test]
-fn test_tool_result_to_content_no_vision() {
-    let payload = "A".repeat(300);
-    let input = format!(r#"{{"screenshot": "data:image/png;base64,{payload}"}}"#);
-    let result = tool_result_to_content(&input, 50_000, false);
-    assert!(result.is_string());
-    let s = result.as_str().unwrap();
-    assert!(s.contains("[screenshot captured and displayed in UI]"));
-    assert!(!s.contains(&payload));
-}
-
-#[test]
-fn test_tool_result_to_content_with_vision() {
-    let payload = "A".repeat(300);
-    let input = format!(r#"Result: data:image/png;base64,{payload} done"#);
-    let result = tool_result_to_content(&input, 50_000, true);
-    assert!(result.is_array());
-    let arr = result.as_array().unwrap();
-    assert_eq!(arr.len(), 2);
-    assert_eq!(arr[0]["type"], "text");
-    assert!(arr[0]["text"].as_str().unwrap().contains("Result:"));
-    assert!(arr[0]["text"].as_str().unwrap().contains("done"));
-    assert_eq!(arr[1]["type"], "image_url");
-    let url = arr[1]["image_url"]["url"].as_str().unwrap();
-    assert!(url.starts_with("data:image/png;base64,"));
-    assert!(url.contains(&payload));
-}
-
-#[test]
-fn test_tool_result_to_content_vision_no_images() {
-    let input = r#"{"result": "success", "message": "done"}"#;
-    let result = tool_result_to_content(input, 50_000, true);
-    assert!(result.is_string());
-    assert!(result.as_str().unwrap().contains("success"));
-}
-
-#[test]
-fn test_tool_result_to_content_vision_only_image() {
-    let payload = "A".repeat(300);
-    let input = format!("data:image/png;base64,{payload}");
-    let result = tool_result_to_content(&input, 50_000, true);
-    assert!(result.is_array());
-    let arr = result.as_array().unwrap();
-    assert_eq!(arr.len(), 1);
-    assert_eq!(arr[0]["type"], "image_url");
 }
 
 // ── Vision and image edge cases ─────────────────────────────────
@@ -1732,15 +1605,4 @@ async fn test_tool_call_end_event_contains_raw_result() {
     } else {
         panic!("expected ToolCallEnd event with success and result");
     }
-}
-
-#[test]
-fn test_extract_images_in_json_context() {
-    let payload = "A".repeat(300);
-    let input = format!(r#"{{"screenshot": "data:image/png;base64,{payload}", "success": true}}"#);
-    let (images, remaining) = extract_images_from_text(&input);
-    assert_eq!(images.len(), 1);
-    assert!(remaining.contains("screenshot"));
-    assert!(remaining.contains("success"));
-    assert!(!remaining.contains(&payload));
 }

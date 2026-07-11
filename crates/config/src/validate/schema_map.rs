@@ -330,6 +330,7 @@ pub(super) fn build_schema_map() -> KnownKeys {
             ("system_prompt_suffix", Leaf),
             ("max_iterations", Leaf),
             ("timeout_secs", Leaf),
+            ("max_tool_result_bytes", Leaf),
             (
                 "sessions",
                 Struct(HashMap::from([

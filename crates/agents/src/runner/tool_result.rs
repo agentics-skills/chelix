@@ -1,6 +1,21 @@
-//! Tool result sanitization: base64/hex blob stripping, truncation, multimodal content.
+//! Tool result handling: blob stripping, disk persistence, and truncation
+//! with a pointer to the persisted full output.
+//!
+//! Every tool call's full output is persisted via
+//! [`chelix_sessions::ToolResultStore`]. When the in-context copy exceeds the
+//! configured byte budget it is truncated and a marker pointing at the
+//! persisted `content.txt`/`content.json` file is appended, so the agent can
+//! re-read the full result with Read/Grep. Modeled on VS Code Copilot Chat's
+//! large-tool-results-to-disk mechanism.
 
 use std::fmt::Write;
+
+use tracing::warn;
+
+use {
+    crate::tool_registry::Truncation,
+    chelix_sessions::{PersistedToolResult, ToolResultStore},
+};
 
 /// Tag that starts a base64 data URI.
 const BASE64_TAG: &str = "data:";
@@ -83,145 +98,76 @@ fn strip_hex_blobs(input: &str) -> String {
 ///
 /// 1. Strips base64 data URIs (>= 200 char payloads).
 /// 2. Strips long hex sequences (>= 200 hex chars).
-/// 3. Truncates the result to `max_bytes` (at a char boundary), appending a
-///    truncation marker.
-pub fn sanitize_tool_result(input: &str, max_bytes: usize) -> String {
-    let mut result = strip_base64_blobs(input);
-    result = strip_hex_blobs(&result);
+#[must_use]
+pub fn sanitize_tool_result(input: &str) -> String {
+    strip_hex_blobs(&strip_base64_blobs(input))
+}
 
-    if result.len() <= max_bytes {
-        return result;
-    }
-
-    let original_len = result.len();
+/// Truncate `result` to `max_bytes` at a char boundary.
+fn truncate_at_char_boundary(result: &mut String, max_bytes: usize) {
     let mut end = max_bytes;
     while end > 0 && !result.is_char_boundary(end) {
         end -= 1;
     }
     result.truncate(end);
-    let _ = write!(result, "\n\n[truncated — {original_len} bytes total]");
+}
+
+/// Persist the full tool output and build the in-context copy.
+///
+/// The raw output is always written to the session's tool-results directory
+/// (when a store is available). The in-context copy is blob-stripped and,
+/// when it exceeds `max_bytes` and `truncation` is [`Truncation::Standard`],
+/// truncated with an appended marker pointing at the persisted full output.
+pub(crate) async fn persist_and_truncate(
+    store: Option<&ToolResultStore>,
+    session_key: &str,
+    call_id: &str,
+    raw: &str,
+    max_bytes: usize,
+    truncation: Truncation,
+) -> String {
+    // Persist every full output, independent of size and truncation mode.
+    let persisted = match store {
+        Some(store) => match store.persist(session_key, call_id, raw).await {
+            Ok(persisted) => Some(persisted),
+            Err(error) => {
+                warn!(%session_key, %call_id, %error, "failed to persist tool result to disk");
+                None
+            },
+        },
+        None => None,
+    };
+
+    let mut result = sanitize_tool_result(raw);
+    if truncation == Truncation::Off || result.len() <= max_bytes {
+        return result;
+    }
+
+    let original_len = result.len();
+    truncate_at_char_boundary(&mut result, max_bytes);
+    match persisted {
+        Some(persisted) => append_full_output_pointer(&mut result, &persisted),
+        None => {
+            let _ = write!(result, "\n\n[truncated — {original_len} bytes total]");
+        },
+    }
     result
 }
 
-// ── Multimodal tool result helpers ─────────────────────────────────────────
-
-/// Image extracted from a tool result for multimodal handling.
-#[derive(Debug)]
-pub struct ExtractedImage {
-    /// MIME type (e.g., "image/png", "image/jpeg")
-    pub media_type: String,
-    /// Base64-encoded image data
-    pub data: String,
-}
-
-/// Extract image data URIs from text, returning the images and remaining text.
-///
-/// Searches for patterns like `data:image/png;base64,AAAA...` and extracts them.
-/// Returns the list of images found and the text with images removed.
-pub(crate) fn extract_images_from_text_impl(input: &str) -> (Vec<ExtractedImage>, String) {
-    let mut images = Vec::new();
-    let mut remaining = String::with_capacity(input.len());
-    let mut rest = input;
-
-    while let Some(start) = rest.find(BASE64_TAG) {
-        remaining.push_str(&rest[..start]);
-        let after_tag = &rest[start + BASE64_TAG.len()..];
-
-        // Check for image MIME type
-        if let Some(marker_pos) = after_tag.find(BASE64_MARKER) {
-            let mime_part = &after_tag[..marker_pos];
-
-            // Only extract image/* MIME types
-            if let Some(image_subtype) = mime_part.strip_prefix("image/") {
-                let payload_start = marker_pos + BASE64_MARKER.len();
-                let payload = &after_tag[payload_start..];
-                let payload_len = payload.bytes().take_while(|b| is_base64_byte(*b)).count();
-
-                if payload_len >= BLOB_MIN_LEN {
-                    // Extract the image
-                    let media_type = format!("image/{image_subtype}");
-                    let data = payload[..payload_len].to_string();
-                    images.push(ExtractedImage { media_type, data });
-
-                    // Skip past the full data URI
-                    let total_uri_len = BASE64_TAG.len() + payload_start + payload_len;
-                    rest = &rest[start + total_uri_len..];
-                    continue;
-                }
-            }
-        }
-
-        // Not an extractable image, keep the tag and continue
-        remaining.push_str(BASE64_TAG);
-        rest = after_tag;
+/// Append the marker pointing the agent at the persisted full output.
+fn append_full_output_pointer(result: &mut String, persisted: &PersistedToolResult) {
+    let kb = persisted.content_bytes.div_ceil(1024);
+    let _ = write!(
+        result,
+        "\n\n[Truncated — full tool result ({kb}KB) written to file. Use the Read tool to access \
+         the content at: {}]",
+        persisted.content_path.display()
+    );
+    if let Some(schema_path) = &persisted.schema_path {
+        let _ = write!(
+            result,
+            "\n[Data schema found at: {}]",
+            schema_path.display()
+        );
     }
-    remaining.push_str(rest);
-
-    (images, remaining)
-}
-
-/// Test alias for extract_images_from_text_impl
-#[allow(dead_code, clippy::unwrap_used, clippy::expect_used)]
-#[cfg(test)]
-pub(crate) fn extract_images_from_text(input: &str) -> (Vec<ExtractedImage>, String) {
-    extract_images_from_text_impl(input)
-}
-
-/// Convert a tool result to multimodal content for vision-capable providers.
-///
-/// For providers with `supports_vision() == true`, this extracts images from
-/// the tool result and returns them as OpenAI-style content blocks:
-/// ```json
-/// [
-///   { "type": "text", "text": "..." },
-///   { "type": "image_url", "image_url": { "url": "data:image/png;base64,..." } }
-/// ]
-/// ```
-///
-/// For non-vision providers, returns a simple string with images stripped.
-///
-/// Note: Browser screenshots are pre-stripped by the browser tool to avoid
-/// the LLM outputting the raw base64 in its response (the UI already displays
-/// screenshots via WebSocket events).
-pub fn tool_result_to_content(
-    result: &str,
-    max_bytes: usize,
-    supports_vision: bool,
-) -> serde_json::Value {
-    if !supports_vision {
-        // Non-vision provider: strip images and return string
-        return serde_json::Value::String(sanitize_tool_result(result, max_bytes));
-    }
-
-    // Vision provider: extract images and create multimodal content
-    let (images, text) = extract_images_from_text_impl(result);
-
-    if images.is_empty() {
-        // No images found, just sanitize and return string
-        return serde_json::Value::String(sanitize_tool_result(result, max_bytes));
-    }
-
-    // Build multimodal content array
-    let mut content_blocks = Vec::new();
-
-    // Sanitize remaining text (strips any remaining hex blobs, truncates if needed)
-    let sanitized_text = sanitize_tool_result(&text, max_bytes);
-    if !sanitized_text.trim().is_empty() {
-        content_blocks.push(serde_json::json!({
-            "type": "text",
-            "text": sanitized_text
-        }));
-    }
-
-    // Add image blocks
-    for image in images {
-        // Reconstruct data URI for OpenAI format
-        let data_uri = format!("data:{};base64,{}", image.media_type, image.data);
-        content_blocks.push(serde_json::json!({
-            "type": "image_url",
-            "image_url": { "url": data_uri }
-        }));
-    }
-
-    serde_json::json!(content_blocks)
 }
