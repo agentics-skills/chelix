@@ -36,6 +36,11 @@ pub struct ToolsConfig {
     #[serde(default = "default_max_tool_result_bytes")]
     pub max_tool_result_bytes: usize,
     /// How tool schemas are presented to the model. Default "full".
+    ///
+    /// `full` sends every allowed public tool's parameter schema on each turn.
+    /// `lazy` still advertises the complete tool catalog (names + descriptions),
+    /// but defers the parameter schemas: only `get_tool` plus schemas the model
+    /// has fetched by exact name via `get_tool(name = "...")` are sent.
     #[serde(default)]
     pub registry_mode: ToolRegistryMode,
     /// Window size for the tool-call reflex-loop detector. When this many

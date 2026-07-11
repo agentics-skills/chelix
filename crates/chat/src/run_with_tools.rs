@@ -43,11 +43,11 @@ use crate::{
         send_screenshot_to_channels, send_tool_result_to_channels, send_tool_status_to_channels,
     },
     chat_error::parse_chat_error,
-    memory_tools::{effective_tool_mode, install_agent_scoped_memory_tools},
+    memory_tools::effective_tool_mode,
     message::apply_voice_reply_suffix,
     models::DisabledModelsStore,
     prompt::{
-        apply_runtime_tool_filters, build_policy_context, build_tool_context,
+        build_policy_context, build_tool_context, prepare_run_registry,
         prompt_build_limits_from_config,
     },
     runtime::ChatRuntime,
@@ -169,42 +169,45 @@ pub(crate) async fn run_with_tools(
     let tools_enabled = !matches!(tool_mode, ToolMode::Off);
 
     let policy_ctx = build_policy_context(agent_id, runtime_context, None);
-    let mut filtered_registry = {
+    // Shared registry preparation: filter → agent-scoped memory tools → lazy
+    // wrap, identical to the debug/UI prompt surfaces so they never diverge.
+    let filtered_registry = {
         let registry_guard = tool_registry.read().await;
-        if tools_enabled {
-            apply_runtime_tool_filters(
-                &registry_guard,
-                &persona.config,
-                skills,
-                mcp_disabled,
-                &policy_ctx,
-            )
-        } else {
-            registry_guard.clone_without(&[])
-        }
-    };
-    if tools_enabled && let Some(manager) = state.memory_manager() {
-        install_agent_scoped_memory_tools(
-            &mut filtered_registry,
-            manager,
-            Arc::clone(&provider),
+        let memory_setup = state
+            .memory_manager()
+            .map(|manager| (manager, Arc::clone(&provider)));
+        prepare_run_registry(
+            &registry_guard,
+            &persona.config,
+            skills,
+            mcp_disabled,
+            &policy_ctx,
+            tools_enabled,
             agent_id,
-            persona.config.memory.style,
-            persona.config.memory.agent_write_mode,
-        );
-    }
-    if tools_enabled
-        && matches!(
-            persona.config.tools.registry_mode,
-            chelix_config::ToolRegistryMode::Lazy
+            memory_setup,
+            history_raw,
         )
-    {
-        let visible_tools = chelix_agents::lazy_tools::visible_tool_names_from_history(history_raw);
-        filtered_registry = chelix_agents::lazy_tools::wrap_registry_lazy_with_visible(
-            filtered_registry,
-            visible_tools,
-        );
-    }
+    };
+    let filtered_registry = match filtered_registry {
+        Ok(registry) => registry,
+        Err(error) => {
+            warn!(run_id, error = %error, "failed to prepare tool registry for run");
+            let error_obj = parse_chat_error(&error.to_string(), Some(provider_name));
+            deliver_channel_error(state, session_key, &error_obj).await;
+            let error_payload = ChatErrorBroadcast {
+                run_id: run_id.to_string(),
+                session_key: session_key.to_string(),
+                state: "error",
+                error: error_obj,
+                seq: client_seq,
+            };
+            #[allow(clippy::unwrap_used)] // serializing known-valid struct
+            let payload_val = serde_json::to_value(&error_payload).unwrap();
+            terminal_runs.write().await.insert(run_id.to_string());
+            broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
+            return None;
+        },
+    };
 
     // ── Memory prefetch ────────────────────────────────────────────────
     // Before building the system prompt, query long-term memory with the

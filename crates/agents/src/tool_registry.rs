@@ -39,6 +39,18 @@ pub(crate) struct ToolEntry {
     pub(crate) source: ToolSource,
 }
 
+/// A public tool's name and short description for the prompt catalog.
+///
+/// Unlike [`ToolRegistry::list_schemas`], the catalog ignores lazy schema
+/// visibility, so every allowed public tool is always advertised by name.
+/// It never carries parameter schemas — those are fetched on demand via
+/// `get_tool` in lazy mode, or sent through the API in full mode.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolCatalogEntry {
+    pub name: String,
+    pub description: String,
+}
+
 /// Shared set of tool names whose schemas are visible in lazy registry mode.
 ///
 /// Uses `std::sync::Mutex` (not tokio) because the lock is held for
@@ -206,6 +218,27 @@ impl ToolRegistry {
                     .is_some_and(&mut predicate)
             })
             .collect()
+    }
+
+    /// Public tools available in the current filtered registry.
+    ///
+    /// Ignores lazy schema visibility: every public (non-`_wasm`) tool is
+    /// returned, including `get_tool` when the registry is lazy-wrapped.
+    /// Sorted by name. Returns only `name` + `description`, never parameter
+    /// schemas — it is the discovery catalog, not the API schema list.
+    #[must_use]
+    pub fn list_catalog(&self) -> Vec<ToolCatalogEntry> {
+        let mut catalog: Vec<ToolCatalogEntry> = self
+            .tools
+            .iter()
+            .filter(|(name, _)| is_public_tool_name(name))
+            .map(|(name, entry)| ToolCatalogEntry {
+                name: name.clone(),
+                description: entry.tool.description().to_string(),
+            })
+            .collect();
+        catalog.sort_by(|left, right| left.name.cmp(&right.name));
+        catalog
     }
 
     /// List tool names currently visible through schema discovery.
@@ -619,6 +652,78 @@ mod tests {
             schema.get("source").and_then(serde_json::Value::as_str),
             Some("mcp")
         );
+    }
+
+    #[test]
+    fn test_list_catalog_sorted_name_and_description_only() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(DummyTool {
+            name: "zeta".to_string(),
+        }));
+        registry.register(Box::new(DummyTool {
+            name: "alpha".to_string(),
+        }));
+
+        let catalog = registry.list_catalog();
+        assert_eq!(catalog, vec![
+            ToolCatalogEntry {
+                name: "alpha".to_string(),
+                description: "test".to_string(),
+            },
+            ToolCatalogEntry {
+                name: "zeta".to_string(),
+                description: "test".to_string(),
+            },
+        ]);
+    }
+
+    #[test]
+    fn test_list_catalog_ignores_lazy_visibility() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(DummyTool {
+            name: "execute_command".to_string(),
+        }));
+        registry.register(Box::new(DummyTool {
+            name: "web_fetch".to_string(),
+        }));
+        // Restrict lazy schema visibility to a single tool.
+        let visible: LazyVisibleTools =
+            Arc::new(Mutex::new(HashSet::from(["execute_command".to_string()])));
+        registry.set_lazy_visible(visible);
+
+        // Schemas honor the lazy gate…
+        assert_eq!(registry.list_schemas().len(), 1);
+        // …but the catalog advertises every public tool regardless.
+        let names: Vec<String> = registry
+            .list_catalog()
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect();
+        assert_eq!(names, vec![
+            "execute_command".to_string(),
+            "web_fetch".to_string()
+        ]);
+    }
+
+    #[test]
+    fn test_list_catalog_excludes_wasm_tools() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(DummyTool {
+            name: "execute_command".to_string(),
+        }));
+        registry.register_wasm(
+            Box::new(DummyTool {
+                name: "web_search_wasm".to_string(),
+            }),
+            [0xAB; 32],
+        );
+
+        let names: Vec<String> = registry
+            .list_catalog()
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect();
+        assert_eq!(names, vec!["execute_command".to_string()]);
     }
 
     #[test]

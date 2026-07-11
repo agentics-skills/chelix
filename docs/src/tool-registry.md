@@ -81,12 +81,41 @@ When a sandbox has no tmux server yet, `execute_command` creates a tmux session
 and returns the generated `terminalId`, tmux session/window/pane IDs, output,
 completion state, and exit code when available.
 
+## Catalog vs API schemas
+
+The registry exposes two independent surfaces:
+
+- **`list_catalog()`** — every allowed **public** tool as a `{ name, description }`
+  pair, sorted by name. It ignores lazy schema visibility, so the discovery
+  catalog is always complete. Tools whose names end in `_wasm` are
+  execution-only and never appear here.
+- **`list_schemas()`** — the full JSON parameter schemas, filtered by lazy
+  visibility. This is what is sent to the provider as the API tool list (native
+  mode) or embedded in the prompt (text mode).
+
+The system prompt's **`## Available Tools`** section is built from
+`list_catalog()` and lists every allowed tool by a JSON-name label so the
+identifier is unambiguous:
+
+```text
+## Available Tools
+
+- `{"name":"Edit"}`: Exact-match string replacement in a file...
+- `{"name":"Glob"}`: Find files matching a glob pattern...
+- `{"name":"get_tool"}`: Fetch the full parameter schema...
+```
+
+This format is identical in native and text mode, and in the live, debug, and
+UI prompt surfaces. In text mode the parameter schemas follow in a separate
+**`## Tool Schemas`** block (headings use the same `{"name":"<tool>"}` label),
+because text mode can't send schemas through the provider API.
+
 ## Lazy Registry Mode
 
 By default every LLM turn includes full JSON schemas for all registered tools.
-With many MCP servers this can burn 15,000+ tokens per turn. **Lazy mode**
-replaces all tool schemas with a single `tool_search` meta-tool that the model
-uses to discover tool names and inspect schemas on demand.
+With many MCP servers this can burn 15,000+ tokens per turn. **Lazy mode** keeps
+the full catalog advertised but defers the parameter schemas: only the
+`get_tool` meta-tool and schemas the model has fetched by exact name are sent.
 
 ### Configuration
 
@@ -97,18 +126,33 @@ registry_mode = "lazy"   # default: "full"
 
 ### How it works
 
-1. The model receives only `tool_search` in its tool list.
-2. `tool_search(query="memory")` returns name + description pairs (max 15), no schemas.
-3. `tool_search(name="memory_search")` returns the full schema and makes that schema visible.
-4. Once the model knows the exact tool name and parameters, it should call `memory_search` directly — standard pipeline, hooks fire normally. `tool_search` is not an execution permission step and should not be repeated for the same known tool.
+1. `Available Tools` still lists every allowed tool by name (the full catalog),
+   plus `get_tool`. Only `get_tool`'s parameter schema is sent initially.
+2. `get_tool(name="memory_search")` returns that tool's full schema and makes it
+   visible. `get_tool` takes exactly one argument, `name` — an exact tool name
+   from `Available Tools`. There is no keyword search, and any other field is
+   rejected. An unknown name returns a structured `schema_visible: false`
+   response rather than an execution error.
+3. `get_tool(name="get_tool")` is a valid lookup that returns the meta-tool's own
+   schema.
+4. Allowed tools remain executable before their schema is revealed. Once the
+   model knows the exact tool name and parameters, it should call the tool
+   directly — standard pipeline, hooks fire normally. `get_tool` is not an
+   execution permission step and should not be repeated for the same tool.
 
 The runner re-computes schemas each iteration, so revealed schemas appear
 immediately. On later turns, lazy visibility is restored from structured session
-history: prior successful `tool_search(name=...)` schema reveals and prior
-assistant tool calls keep those schemas visible without re-running
-`tool_search`. The restoration is not inferred from user or assistant prose. The
+history: prior successful `get_tool` schema reveals
+(`tool_result` with `tool_name == "get_tool"`, `success == true`, and
+`result.schema_visible == true`) and prior assistant tool calls keep those
+schemas visible. The restoration is not inferred from user or assistant prose,
+and older sessions that predate `get_tool` simply start from `{get_tool}`. The
 iteration limit is tripled in lazy mode to account for the extra discovery
 round-trips.
+
+`get_tool` is a reserved control-plane name: enabling lazy mode fails cleanly if
+a user or MCP tool is already named `get_tool`, and the existing tool is left
+untouched.
 
 ### When to use
 

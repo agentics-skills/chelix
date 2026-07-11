@@ -32,12 +32,16 @@ pub(crate) fn tool_call_guidance(model_id: Option<&str>) -> String {
 }
 
 /// Format a tool schema in compact human-readable form for text-mode prompts.
+///
+/// The heading uses the JSON-name label (`### {"name":"<tool>"}`) to match the
+/// `Available Tools` catalog format, so the tool identifier is unambiguous.
 pub(crate) fn format_compact_tool_schema(schema: &serde_json::Value) -> String {
     let name = schema["name"].as_str().unwrap_or("unknown");
     let desc = schema["description"].as_str().unwrap_or("");
     let params = &schema["parameters"];
 
-    let mut out = format!("### {name}\n{desc}\n");
+    let label = serde_json::json!({ "name": name }).to_string();
+    let mut out = format!("### {label}\n{desc}\n");
 
     if let Some(properties) = params.get("properties").and_then(|v| v.as_object()) {
         let required: Vec<&str> = params

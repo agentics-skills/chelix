@@ -424,7 +424,7 @@ port = {port}                           # Port number (auto-generated for this i
 # agent_max_auto_continues = 2      # Auto-continue nudges when model stops mid-task (0 = off)
 # agent_auto_continue_min_tool_calls = 3  # Min tool calls before auto-continue can trigger
 # max_tool_result_bytes = 50000     # Max bytes per tool result before truncation (50KB)
-# registry_mode = "full"            # "full" = all schemas every turn, "lazy" = tool_search discovery
+# registry_mode = "full"            # "full" = all schemas every turn, "lazy" = catalog + on-demand get_tool schema fetch
 # agent_loop_detector_window = 2    # Fire intervention after N identical failing tool calls in a row
 # tool_result_compaction_ratio = 75 # % of context_window before oldest tool results are compacted
 # preemptive_overflow_ratio = 90    # % of context_window before hard ContextWindowExceeded error

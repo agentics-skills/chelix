@@ -77,6 +77,9 @@ export interface ContextData {
 	session?: SessionData;
 	project?: ProjectData | null;
 	tools?: Array<{ name: string; description?: string }>;
+	/** Count of tool parameter schemas currently visible to the model. In lazy
+	 * mode this is smaller than `tools.length` (only `get_tool` + revealed). */
+	toolSchemaCount?: number;
 	skills?: Array<{ name: string; description?: string; source?: string }>;
 	mcpServers?: Array<{ name: string; state?: string; tool_count?: number }>;
 	mcpDisabled?: boolean;
@@ -193,6 +196,12 @@ export function renderContextToolsSection(card: HTMLElement, data: ContextData):
 			wrap.appendChild(tag);
 		});
 		sec.appendChild(wrap);
+		// In lazy registry mode the catalog lists every tool, but only a subset
+		// of parameter schemas are loaded (get_tool + revealed). Surface that.
+		const schemaCount = data.toolSchemaCount;
+		if (typeof schemaCount === "number" && schemaCount < tools.length) {
+			sec.appendChild(ctxEl("div", "ctx-empty", `${schemaCount} of ${tools.length} tool schemas loaded (lazy mode)`));
+		}
 	} else {
 		sec.appendChild(ctxEl("div", "ctx-empty", "No tools registered"));
 	}

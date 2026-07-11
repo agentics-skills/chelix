@@ -42,9 +42,9 @@ use crate::{
         user_documents_from_params,
     },
     prompt::{
-        apply_request_runtime_context, apply_runtime_tool_filters, build_policy_context,
-        build_prompt_runtime_context, clear_prompt_memory_snapshot, discover_skills_if_enabled,
-        filter_skills_for_agent, load_prompt_persona_for_agent, load_prompt_persona_for_session,
+        apply_request_runtime_context, build_policy_context, build_prompt_runtime_context,
+        clear_prompt_memory_snapshot, discover_skills_if_enabled, filter_skills_for_agent,
+        load_prompt_persona_for_agent, load_prompt_persona_for_session, prepare_run_registry,
         prompt_build_limits_from_config, resolve_prompt_agent_id, resolve_prompt_mode_context,
     },
     run_with_tools::run_with_tools,
@@ -873,22 +873,21 @@ impl ChatService for LiveChatService {
             self.session_state_store.as_deref(),
         )
         .await;
-        let (provider_name, supports_tools) = {
+        let (provider_arc, provider_name, supports_tools) = {
             let reg = self.providers.read().await;
             let session_model = session_entry.as_ref().and_then(|e| e.model.as_deref());
-            if let Some(id) = session_model {
-                let p = reg.get(id);
-                (
-                    p.as_ref().map(|p| p.name().to_string()),
-                    p.as_ref().map(|p| p.supports_tools()).unwrap_or(true),
-                )
-            } else {
-                let p = reg.first();
-                (
-                    p.as_ref().map(|p| p.name().to_string()),
-                    p.as_ref().map(|p| p.supports_tools()).unwrap_or(true),
-                )
-            }
+            let provider = match session_model {
+                Some(id) => reg.get(id),
+                None => reg.first(),
+            };
+            (
+                provider.clone(),
+                provider.as_ref().map(|p| p.name().to_string()),
+                provider
+                    .as_ref()
+                    .map(|p| p.supports_tools())
+                    .unwrap_or(true),
+            )
         };
         let session_info = serde_json::json!({
             "key": session_key,
@@ -957,35 +956,62 @@ impl ChatService for LiveChatService {
             .and_then(|e| e.mcp_disabled)
             .unwrap_or(false);
         let config = chelix_config::discover_and_load();
-        let tools: Vec<Value> = if supports_tools {
-            let registry_guard = self.tool_registry.read().await;
-            let list_agent_id = resolve_prompt_agent_id(session_entry.as_ref());
-            let list_ctx = PolicyContext {
-                agent_id: list_agent_id,
-                ..Default::default()
-            };
-            let effective_registry =
-                apply_runtime_tool_filters(&registry_guard, &config, &[], mcp_disabled, &list_ctx);
-            effective_registry
-                .list_schemas()
-                .iter()
-                .map(|s| {
-                    serde_json::json!({
-                        "name": s.get("name").and_then(|v| v.as_str()).unwrap_or("unknown"),
-                        "description": s.get("description").and_then(|v| v.as_str()).unwrap_or(""),
-                    })
-                })
-                .collect()
-        } else {
-            vec![]
-        };
-
-        // Token usage from API-reported counts stored in messages.
+        // Read history once: the token usage below reuses it, and the tool
+        // catalog needs it to restore lazy schema visibility.
         let messages = self
             .session_store
             .read(&session_key)
             .await
             .unwrap_or_default();
+        // `tools` is the UI discovery catalog (name + description of every
+        // allowed public tool, plus `get_tool` in lazy mode). `toolSchemaCount`
+        // separately reports how many parameter schemas are currently visible.
+        let (tools, tool_schema_count): (Vec<Value>, usize) = if supports_tools {
+            let registry_guard = self.tool_registry.read().await;
+            let list_agent_id = resolve_prompt_agent_id(session_entry.as_ref());
+            let list_ctx = PolicyContext {
+                agent_id: list_agent_id.clone(),
+                ..Default::default()
+            };
+            let memory_setup = provider_arc.as_ref().and_then(|provider| {
+                self.state
+                    .memory_manager()
+                    .map(|manager| (manager, Arc::clone(provider)))
+            });
+            match prepare_run_registry(
+                &registry_guard,
+                &config,
+                &[],
+                mcp_disabled,
+                &list_ctx,
+                true,
+                &list_agent_id,
+                memory_setup,
+                &messages,
+            ) {
+                Ok(effective_registry) => {
+                    let catalog = effective_registry
+                        .list_catalog()
+                        .into_iter()
+                        .map(|entry| {
+                            serde_json::json!({
+                                "name": entry.name,
+                                "description": entry.description,
+                            })
+                        })
+                        .collect();
+                    (catalog, effective_registry.list_schemas().len())
+                },
+                Err(error) => {
+                    warn!(session = %session_key, error = %error, "context: failed to prepare tool registry");
+                    (vec![], 0)
+                },
+            }
+        } else {
+            (vec![], 0)
+        };
+
+        // Token usage from API-reported counts stored in messages.
         let usage = session_token_usage_from_messages(&messages);
         let total_tokens = usage.session_input_tokens
             + usage.session_output_tokens
@@ -1099,6 +1125,7 @@ impl ChatService for LiveChatService {
             "session": session_info,
             "project": project_info,
             "tools": tools,
+            "toolSchemaCount": tool_schema_count,
             "skills": skills_list,
             "mcpServers": mcp_servers,
             "mcpDisabled": mcp_disabled,
@@ -1188,24 +1215,31 @@ impl ChatService for LiveChatService {
                 discovered_skills
             };
 
-        // Build filtered tool registry.
+        // Build filtered tool registry with the same preparation as the live
+        // run (filter → memory tools → lazy wrap) so the debug prompt matches.
         let policy_ctx =
             build_policy_context(&raw_prompt_agent_id, Some(&runtime_context), Some(&params));
         let filtered_registry = {
             let registry_guard = self.tool_registry.read().await;
-            if tools_enabled {
-                apply_runtime_tool_filters(
-                    &registry_guard,
-                    &persona.config,
-                    &discovered_skills,
-                    mcp_disabled,
-                    &policy_ctx,
-                )
-            } else {
-                registry_guard.clone_without(&[])
-            }
-        };
+            let memory_setup = self
+                .state
+                .memory_manager()
+                .map(|manager| (manager, Arc::clone(&provider)));
+            prepare_run_registry(
+                &registry_guard,
+                &persona.config,
+                &discovered_skills,
+                mcp_disabled,
+                &policy_ctx,
+                tools_enabled,
+                &raw_prompt_agent_id,
+                memory_setup,
+                &history,
+            )
+        }
+        .map_err(|e| ServiceError::message(e.to_string()))?;
 
+        // API-visible schema count (lazy mode: get_tool + revealed).
         let tool_count = filtered_registry.list_schemas().len();
 
         // Build the system prompt.
@@ -1330,20 +1364,27 @@ impl ChatService for LiveChatService {
             };
         let policy_ctx =
             build_policy_context(&full_ctx_agent_id, Some(&runtime_context), Some(&params));
+        // Same preparation as the live run so the full-context prompt reflects
+        // the lazy state of the current history.
         let filtered_registry = {
             let registry_guard = self.tool_registry.read().await;
-            if tools_enabled {
-                apply_runtime_tool_filters(
-                    &registry_guard,
-                    &persona.config,
-                    &discovered_skills,
-                    mcp_disabled,
-                    &policy_ctx,
-                )
-            } else {
-                registry_guard.clone_without(&[])
-            }
-        };
+            let memory_setup = self
+                .state
+                .memory_manager()
+                .map(|manager| (manager, Arc::clone(&provider)));
+            prepare_run_registry(
+                &registry_guard,
+                &persona.config,
+                &discovered_skills,
+                mcp_disabled,
+                &policy_ctx,
+                tools_enabled,
+                &full_ctx_agent_id,
+                memory_setup,
+                &history,
+            )
+        }
+        .map_err(|e| ServiceError::message(e.to_string()))?;
 
         // Build the system prompt.
         let prompt_limits = prompt_build_limits_from_config(&persona.config);

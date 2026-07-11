@@ -1,6 +1,7 @@
 use {
     crate::{
         docs::CHELIX_DOCS_URL,
+        lazy_tools::GET_TOOL_NAME,
         model::{ContentPart, UserContent},
         prompt::{
             formatting::{
@@ -13,7 +14,7 @@ use {
                 PromptBuildOutput, PromptRuntimeContext,
             },
         },
-        tool_registry::ToolRegistry,
+        tool_registry::{ToolCatalogEntry, ToolRegistry},
     },
     chelix_config::{AgentIdentity, DEFAULT_SOUL, UserProfile},
     chelix_skills::types::SkillMetadata,
@@ -280,6 +281,14 @@ fn build_system_prompt_full(
     limits: PromptBuildLimits,
     guidelines_text: Option<&str>,
 ) -> PromptBuildOutput {
+    // Two independent surfaces:
+    // - `catalog` advertises every allowed public tool name (ignores lazy gate);
+    // - `schemas` carries full parameter schemas gated by lazy visibility.
+    let tool_catalog = if include_tools {
+        tools.list_catalog()
+    } else {
+        Vec::new()
+    };
     let tool_schemas = if include_tools {
         tools.list_schemas()
     } else {
@@ -305,9 +314,10 @@ fn build_system_prompt_full(
     );
     let workspace_files =
         append_workspace_files_section(&mut prompt, agents_text, tools_text, limits);
-    append_memory_section(&mut prompt, memory_text, &tool_schemas);
+    append_memory_section(&mut prompt, memory_text, &tool_catalog);
     let model_id = runtime_context.and_then(|ctx| ctx.host.model.as_deref());
-    append_available_tools_section(&mut prompt, native_tools, &tool_schemas);
+    append_available_tools_section(&mut prompt, &tool_catalog);
+    append_tool_schemas_section(&mut prompt, native_tools, &tool_schemas);
     append_tool_call_guidance(&mut prompt, native_tools, &tool_schemas, model_id);
     append_guidelines_section(&mut prompt, include_tools, guidelines_text);
 
@@ -536,20 +546,21 @@ fn append_workspace_files_section(
 fn append_memory_section(
     prompt: &mut String,
     memory_text: Option<&str>,
-    tool_schemas: &[serde_json::Value],
+    tool_catalog: &[ToolCatalogEntry],
 ) {
-    let has_tool_search = has_tool_schema(tool_schemas, "tool_search");
-    let has_memory_search = has_tool_schema(tool_schemas, "memory_search");
-    let has_memory_save = has_tool_schema(tool_schemas, "memory_save");
-    let has_memory_forget = has_tool_schema(tool_schemas, "memory_forget");
-    let has_memory_delete = has_tool_schema(tool_schemas, "memory_delete");
+    // Detect memory tools from the catalog, not visible schemas: in lazy mode
+    // the schemas are hidden but the tools are still advertised and executable.
+    let has_get_tool = catalog_contains(tool_catalog, GET_TOOL_NAME);
+    let has_memory_search = catalog_contains(tool_catalog, "memory_search");
+    let has_memory_save = catalog_contains(tool_catalog, "memory_save");
+    let has_memory_forget = catalog_contains(tool_catalog, "memory_forget");
+    let has_memory_delete = catalog_contains(tool_catalog, "memory_delete");
     let memory_content = memory_text.filter(|text| !text.is_empty());
     if memory_content.is_none()
         && !has_memory_search
         && !has_memory_save
         && !has_memory_forget
         && !has_memory_delete
-        && !has_tool_search
     {
         return;
     }
@@ -607,53 +618,62 @@ fn append_memory_section(
             "to remove, or when you need to delete a whole `memory/<name>.md` file directly.\n",
         ));
     }
-    if has_tool_search
-        && !has_memory_search
-        && !has_memory_save
-        && !has_memory_forget
-        && !has_memory_delete
+    if has_get_tool
+        && (has_memory_search || has_memory_save || has_memory_forget || has_memory_delete)
     {
         prompt.push_str(concat!(
-            "\nMemory tools (`memory_search`, `memory_save`, `memory_forget`, `memory_delete`) are available. ",
-            "Use `tool_search(query=\"memory\")` only if you need to discover their exact names, ",
-            "and `tool_search(name=\"memory_search\")` only if you need that schema. ",
-            "Once you know the exact tool name and arguments, call the memory tool directly; do not repeat `tool_search` for the same tool.\n",
+            "\nUse `get_tool` with the exact memory tool name from Available Tools ",
+            "when its parameter schema is needed. Then call the memory tool directly.\n",
         ));
     }
     prompt.push('\n');
 }
 
-fn has_tool_schema(tool_schemas: &[serde_json::Value], tool_name: &str) -> bool {
-    tool_schemas
-        .iter()
-        .any(|schema| schema["name"].as_str() == Some(tool_name))
+fn catalog_contains(tool_catalog: &[ToolCatalogEntry], tool_name: &str) -> bool {
+    tool_catalog.iter().any(|entry| entry.name == tool_name)
 }
 
-fn append_available_tools_section(
-    prompt: &mut String,
-    native_tools: bool,
-    tool_schemas: &[serde_json::Value],
-) {
-    if tool_schemas.is_empty() {
+/// Format one `Available Tools` line using the JSON-name label so the discovery
+/// catalog looks identical in native, text, live, and debug/UI prompts.
+fn format_available_tool_line(name: &str, compact_desc: &str) -> String {
+    let label = serde_json::json!({ "name": name }).to_string();
+    if compact_desc.is_empty() {
+        format!("- `{label}`\n")
+    } else {
+        format!("- `{label}`: {compact_desc}\n")
+    }
+}
+
+/// Advertise every allowed public tool name (and short description) from the
+/// catalog. Identical in native and text mode, and independent of the lazy
+/// schema gate — discovery always sees the full catalog.
+fn append_available_tools_section(prompt: &mut String, tool_catalog: &[ToolCatalogEntry]) {
+    if tool_catalog.is_empty() {
         return;
     }
 
     prompt.push_str("## Available Tools\n\n");
-    if native_tools {
-        for schema in tool_schemas {
-            let name = schema["name"].as_str().unwrap_or("unknown");
-            let desc = schema["description"].as_str().unwrap_or("");
-            let compact_desc = truncate_prompt_text(desc, 160);
-            if compact_desc.is_empty() {
-                prompt.push_str(&format!("- `{name}`\n"));
-            } else {
-                prompt.push_str(&format!("- `{name}`: {compact_desc}\n"));
-            }
-        }
-        prompt.push('\n');
+    for entry in tool_catalog {
+        let compact_desc = truncate_prompt_text(&entry.description, 160);
+        prompt.push_str(&format_available_tool_line(&entry.name, &compact_desc));
+    }
+    prompt.push('\n');
+}
+
+/// Text mode only: embed the full parameter schemas (gated by lazy visibility)
+/// after the catalog, since text mode can't send schemas through the API. In
+/// full mode this is every public schema; in lazy mode it is `get_tool` plus
+/// revealed schemas.
+fn append_tool_schemas_section(
+    prompt: &mut String,
+    native_tools: bool,
+    tool_schemas: &[serde_json::Value],
+) {
+    if native_tools || tool_schemas.is_empty() {
         return;
     }
 
+    prompt.push_str("## Tool Schemas\n\n");
     for schema in tool_schemas {
         prompt.push_str(&format_compact_tool_schema(schema));
     }

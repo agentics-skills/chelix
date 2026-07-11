@@ -300,7 +300,9 @@ pub enum ToolRegistryMode {
     /// All tool schemas are sent to the model on every turn (default).
     #[default]
     Full,
-    /// Only `tool_search` is sent; the model discovers and inspects tool schemas on demand.
+    /// The full tool catalog (names + descriptions) is always advertised, but
+    /// parameter schemas are deferred: only `get_tool` and schemas the model has
+    /// fetched by exact name are sent. Saves input tokens with many tools.
     Lazy,
 }
 

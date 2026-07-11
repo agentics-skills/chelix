@@ -121,8 +121,8 @@ fn build_loading_instruction() -> String {
          file inside a skill directory ({subdir_list}), pass the `file_path` \
          argument as well \
          (e.g. `{READ_SKILL_TOOL_NAME}(name=\"<skill-name>\", file_path=\"references/api.md\")`). \
-         If `{READ_SKILL_TOOL_NAME}` is not currently listed in Available Tools and you need its schema, inspect it once with \
-         `tool_search(name=\"{READ_SKILL_TOOL_NAME}\")`. Do not repeat tool_search when you already know the call.\n\n",
+         `{READ_SKILL_TOOL_NAME}` is listed in Available Tools by its exact name; if you need its \
+         parameter schema, fetch it once with `get_tool(name=\"{READ_SKILL_TOOL_NAME}\")`, then call it directly.\n\n",
     )
 }
 
@@ -188,7 +188,7 @@ mod tests {
             "instruction must include a concrete call example: {prompt}"
         );
         assert!(
-            prompt.contains(&format!("tool_search(name=\"{READ_SKILL_TOOL_NAME}\")")),
+            prompt.contains(&format!("get_tool(name=\"{READ_SKILL_TOOL_NAME}\")")),
             "lazy-mode instruction must explain how to inspect read_skill schema: {prompt}"
         );
     }

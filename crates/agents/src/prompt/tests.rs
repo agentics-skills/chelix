@@ -52,7 +52,7 @@ fn test_fallback_prompt_includes_tool_call_format() {
 
     let prompt = build_system_prompt(&tools, false, None);
     assert!(prompt.contains("```tool_call"));
-    assert!(prompt.contains("### test"));
+    assert!(prompt.contains("### {\"name\":\"test\"}"));
 }
 
 #[test]
@@ -81,7 +81,7 @@ fn test_native_prompt_uses_compact_tool_list() {
 
     let prompt = build_system_prompt(&tools, true, None);
     assert!(prompt.contains("## Available Tools"));
-    assert!(prompt.contains("- `test`: A test tool"));
+    assert!(prompt.contains("- `{\"name\":\"test\"}`: A test tool"));
     assert!(!prompt.contains("Parameters:"));
 }
 
@@ -1144,7 +1144,7 @@ fn compact_schema_formats_required_and_optional_params() {
         }
     });
     let out = format_compact_tool_schema(&schema);
-    assert!(out.contains("### execute_command"));
+    assert!(out.contains("### {\"name\":\"execute_command\"}"));
     assert!(out.contains("Run a shell command"));
     assert!(out.contains("command (string, required)"));
     assert!(out.contains("timeout (integer)"));
@@ -1158,7 +1158,7 @@ fn compact_schema_no_params_section_when_empty() {
         "parameters": {"type": "object", "properties": {}}
     });
     let out = format_compact_tool_schema(&schema);
-    assert!(out.contains("### noop"));
+    assert!(out.contains("### {\"name\":\"noop\"}"));
     assert!(!out.contains("Params:"));
 }
 
@@ -1209,7 +1209,10 @@ fn text_mode_prompt_uses_compact_schema() {
     tools.register(Box::new(ParamTool));
 
     let prompt = build_system_prompt(&tools, false, None);
-    assert!(prompt.contains("### execute_command"));
+    assert!(prompt.contains("## Available Tools"));
+    assert!(prompt.contains("- `{\"name\":\"execute_command\"}`: Run a shell command"));
+    assert!(prompt.contains("## Tool Schemas"));
+    assert!(prompt.contains("### {\"name\":\"execute_command\"}"));
     assert!(prompt.contains("Params: command (string, required)"));
     assert!(prompt.contains("## How to call tools"));
     assert!(prompt.contains("```tool_call"));
@@ -1349,6 +1352,101 @@ fn test_skill_self_improvement_omitted_when_disabled() {
     );
     // Skills block itself should still be present.
     assert!(output.prompt.contains("<available_skills>"));
+}
+
+// ── Available Tools catalog / lazy schema separation ────────────────
+
+#[test]
+fn test_native_available_tools_uses_json_name_labels() {
+    let tools = registry_with_tools(&["Edit", "Glob"]);
+    let prompt = build_system_prompt(&tools, true, None);
+    assert!(prompt.contains("## Available Tools"));
+    assert!(prompt.contains("- `{\"name\":\"Edit\"}`: stub"));
+    assert!(prompt.contains("- `{\"name\":\"Glob\"}`: stub"));
+    // Native mode sends schemas via API — no embedded Tool Schemas block.
+    assert!(!prompt.contains("## Tool Schemas"));
+}
+
+#[test]
+fn test_text_available_tools_and_schemas_use_json_name_labels() {
+    let tools = registry_with_tools(&["Edit"]);
+    let prompt = build_system_prompt(&tools, false, None);
+    assert!(prompt.contains("## Available Tools"));
+    assert!(prompt.contains("- `{\"name\":\"Edit\"}`: stub"));
+    assert!(prompt.contains("## Tool Schemas"));
+    assert!(prompt.contains("### {\"name\":\"Edit\"}"));
+}
+
+#[test]
+fn test_full_mode_catalog_and_schemas_share_public_tool_set() {
+    let tools = registry_with_tools(&["Read", "Glob", "memory_search"]);
+    let catalog: Vec<String> = tools.list_catalog().into_iter().map(|e| e.name).collect();
+    let schema_names: Vec<String> = tools
+        .list_schemas()
+        .into_iter()
+        .filter_map(|s| s.get("name").and_then(|v| v.as_str()).map(String::from))
+        .collect();
+    assert_eq!(catalog, schema_names);
+}
+
+#[test]
+fn test_lazy_native_catalog_lists_all_tools_plus_get_tool() {
+    let tools = registry_with_tools(&["Read", "memory_search"]);
+    let lazy = crate::lazy_tools::wrap_registry_lazy(tools).unwrap();
+    let prompt = build_system_prompt(&lazy, true, None);
+    // The full catalog is advertised even though schemas are lazy-hidden.
+    assert!(prompt.contains("- `{\"name\":\"Read\"}`"));
+    assert!(prompt.contains("- `{\"name\":\"memory_search\"}`"));
+    assert!(prompt.contains("- `{\"name\":\"get_tool\"}`"));
+    // Only get_tool's schema is visible through the API surface.
+    assert_eq!(lazy.list_names(), vec!["get_tool".to_string()]);
+    // None of the removed lazy-discovery artifacts leak into the prompt.
+    assert!(!prompt.contains("suggestions"));
+    assert!(!prompt.contains("activated"));
+    assert!(!prompt.contains("query="));
+}
+
+#[test]
+fn test_lazy_text_mode_tool_schemas_only_carry_visible() {
+    let tools = registry_with_tools(&["Read", "memory_search"]);
+    let lazy = crate::lazy_tools::wrap_registry_lazy(tools).unwrap();
+    let prompt = build_system_prompt(&lazy, false, None);
+    // Catalog lists everything…
+    assert!(prompt.contains("- `{\"name\":\"Read\"}`"));
+    assert!(prompt.contains("- `{\"name\":\"memory_search\"}`"));
+    assert!(prompt.contains("- `{\"name\":\"get_tool\"}`"));
+    // …but the embedded schemas only carry get_tool until others are revealed.
+    assert!(prompt.contains("## Tool Schemas"));
+    assert!(prompt.contains("### {\"name\":\"get_tool\"}"));
+    assert!(!prompt.contains("### {\"name\":\"Read\"}"));
+    assert!(!prompt.contains("### {\"name\":\"memory_search\"}"));
+}
+
+#[test]
+fn test_memory_guidance_present_when_memory_schemas_lazy_hidden() {
+    let tools = registry_with_tools(&["memory_search", "memory_save"]);
+    let lazy = crate::lazy_tools::wrap_registry_lazy(tools).unwrap();
+    let memory = "## User Facts\n- Likes coffee";
+    let prompt = build_system_prompt_with_session_runtime(
+        &lazy,
+        true,
+        None,
+        &[],
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(memory),
+        None,
+    );
+    assert!(prompt.contains("## Long-Term Memory"));
+    assert!(prompt.contains("memory_search"));
+    assert!(prompt.contains("MUST call `memory_save`"));
+    assert!(prompt.contains("Use `get_tool` with the exact memory tool name"));
+    assert!(!prompt.contains("query="));
 }
 
 // ── prepend_datetime_to_user_content tests ──────────────────────────

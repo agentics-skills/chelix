@@ -28,7 +28,7 @@ pub async fn run_agent_loop_streaming(
     let max_auto_continues = config.tools.agent_max_auto_continues;
     let auto_continue_min_tool_calls = config.tools.agent_auto_continue_min_tool_calls;
     let base_max_iterations = resolve_agent_max_iterations(config.tools.agent_max_iterations);
-    // Lazy mode needs extra iterations for tool_search discovery round-trips.
+    // Lazy mode needs extra iterations for get_tool discovery round-trips.
     let max_iterations = if config.tools.registry_mode == chelix_config::ToolRegistryMode::Lazy {
         base_max_iterations * 3
     } else {
@@ -102,7 +102,7 @@ pub async fn run_agent_loop_streaming(
             )));
         }
 
-        // Re-compute schemas each iteration so schemas revealed via tool_search appear immediately.
+        // Re-compute schemas each iteration so schemas revealed via get_tool appear immediately.
         // When the loop detector has escalated to stage 2, pass an empty tool
         // list for this single turn so the model is forced to respond in text
         // (issue #658).

@@ -597,6 +597,62 @@ pub(crate) fn apply_runtime_tool_filters(
     })
 }
 
+/// Prepare the per-run tool registry shared by the live agent loop and the
+/// debug/UI prompt surfaces (`chat.context`, `chat.raw_prompt`,
+/// `chat.full_context`).
+///
+/// The steps mirror the live loop exactly so every surface sees the same tools:
+/// 1. apply allow/deny/runtime filters (or a bare clone when tools are off);
+/// 2. swap in agent-scoped memory tools when a memory manager is available;
+/// 3. in lazy mode, wrap the registry so only `get_tool` and schemas revealed by
+///    session history are visible, while the full catalog stays advertised.
+///
+/// Fails only when lazy wrapping hits the reserved-`get_tool` name collision.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prepare_run_registry(
+    base: &chelix_agents::tool_registry::ToolRegistry,
+    config: &chelix_config::ChelixConfig,
+    skills: &[chelix_skills::types::SkillMetadata],
+    mcp_disabled: bool,
+    policy_context: &PolicyContext,
+    tools_enabled: bool,
+    agent_id: &str,
+    memory: Option<(
+        &chelix_memory::runtime::DynMemoryRuntime,
+        Arc<dyn chelix_agents::model::LlmProvider>,
+    )>,
+    history_raw: &[Value],
+) -> anyhow::Result<chelix_agents::tool_registry::ToolRegistry> {
+    let mut registry = if tools_enabled {
+        apply_runtime_tool_filters(base, config, skills, mcp_disabled, policy_context)
+    } else {
+        base.clone_without(&[])
+    };
+
+    if tools_enabled && let Some((manager, provider)) = memory {
+        crate::memory_tools::install_agent_scoped_memory_tools(
+            &mut registry,
+            manager,
+            provider,
+            agent_id,
+            config.memory.style,
+            config.memory.agent_write_mode,
+        );
+    }
+
+    if tools_enabled
+        && matches!(
+            config.tools.registry_mode,
+            chelix_config::ToolRegistryMode::Lazy
+        )
+    {
+        let visible = chelix_agents::lazy_tools::visible_tool_names_from_history(history_raw);
+        registry = chelix_agents::lazy_tools::wrap_registry_lazy_with_visible(registry, visible)?;
+    }
+
+    Ok(registry)
+}
+
 /// Build a `PolicyContext` from runtime context and request parameters.
 pub(crate) fn build_policy_context(
     agent_id: &str,
