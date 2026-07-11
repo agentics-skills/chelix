@@ -41,7 +41,6 @@ These events run hooks sequentially. Hooks can modify the payload or block the a
 | `BeforeLLMCall` | Before prompt is sent to the LLM provider | yes | yes |
 | `AfterLLMCall` | After LLM response, before tool execution | yes | yes |
 | `BeforeToolCall` | Before a tool executes | yes | yes |
-| `BeforeCompaction` | Before context compaction | yes | yes |
 | `MessageReceived` | When an inbound channel/UI message arrives | yes | yes |
 | `MessageSending` | Before sending a response | yes | yes |
 | `ToolResultPersist` | When a tool result is persisted | yes | yes |
@@ -60,7 +59,6 @@ These events run hooks in parallel for performance. They cannot modify or block.
 | Event | Description |
 |-------|-------------|
 | `AfterToolCall` | After a tool completes |
-| `AfterCompaction` | After context is compacted |
 | `AgentEnd` | When agent loop completes |
 | `MessageSent` | After response is delivered |
 | `SessionStart` | When a new session begins |

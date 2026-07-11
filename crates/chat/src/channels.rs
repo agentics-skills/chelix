@@ -10,9 +10,7 @@ use {
 
 use chelix_sessions::store::SessionStore;
 
-use crate::{
-    agent_loop::ChannelReplyTargetKey, compaction_run, error, runtime::ChatRuntime, types::*,
-};
+use crate::{agent_loop::ChannelReplyTargetKey, compaction, error, runtime::ChatRuntime, types::*};
 
 /// Build the SPA URL for a push notification click-through.
 ///
@@ -245,55 +243,23 @@ fn format_channel_error_message(error_obj: &Value) -> String {
     format!("⚠️ {title}: {detail}")
 }
 
-/// Format a user-facing notice announcing that a session was compacted.
+/// Format a user-facing notice announcing that a session was summarized
+/// into a checkpoint.
 ///
 /// Shown verbatim to channel users (Telegram, Discord, WhatsApp, etc.) and
 /// kept short so small mobile clients don't wrap the whole thing.
-///
-/// When `include_settings_hint` is false, the "Change chat.compaction.mode…"
-/// footer is omitted so users who have set
-/// `chat.compaction.show_settings_hint = false` don't see the repetitive
-/// hint on every compaction. Mode + token lines are always included.
-/// The LLM retry path never sees this text regardless.
-fn format_channel_compaction_notice(
-    outcome: &compaction_run::CompactionOutcome,
-    include_settings_hint: bool,
-) -> String {
-    let mode_label = match outcome.effective_mode {
-        chelix_config::CompactionMode::Deterministic => "Deterministic",
-        chelix_config::CompactionMode::RecencyPreserving => "Recency preserving",
-        chelix_config::CompactionMode::Structured => "Structured",
-        chelix_config::CompactionMode::LlmReplace => "LLM replace",
-    };
-    let total = outcome.total_tokens();
-    let token_line = if total == 0 {
-        // Any strategy that made no LLM calls ends up here: Deterministic,
-        // RecencyPreserving, or a Structured run that fell back to
-        // recency_preserving before the LLM call landed. Report the
-        // actual effective mode so users don't see "deterministic
-        // strategy" when they picked recency_preserving.
-        format!(
-            "No LLM tokens used ({} strategy)",
-            mode_label.to_lowercase()
-        )
-    } else {
-        format!(
-            "Used {total} tokens ({input} in + {output} out)",
-            total = total,
-            input = outcome.input_tokens,
-            output = outcome.output_tokens,
-        )
-    };
-    let body = format!(
-        "🧹 Conversation compacted\n\
-         Mode: {mode_label}\n\
-         {token_line}",
-    );
-    if include_settings_hint {
-        format!("{body}\n{hint}", hint = compaction_run::SETTINGS_HINT)
-    } else {
-        body
-    }
+fn format_channel_compaction_notice(outcome: &compaction::CheckpointOutcome) -> String {
+    let total = outcome.input_tokens.saturating_add(outcome.output_tokens);
+    format!(
+        "🧹 Conversation summarized\n\
+         Model: {model}\n\
+         Used {total} tokens ({input} in + {output} out)\n\
+         {count} messages checkpointed",
+        model = outcome.model,
+        input = outcome.input_tokens,
+        output = outcome.output_tokens,
+        count = outcome.messages_summarized,
+    )
 }
 
 /// Send a silent "session compacted" notice to pending channel targets
@@ -307,8 +273,7 @@ fn format_channel_compaction_notice(
 pub(crate) async fn notify_channels_of_compaction(
     state: &Arc<dyn ChatRuntime>,
     session_key: &str,
-    outcome: &compaction_run::CompactionOutcome,
-    include_settings_hint: bool,
+    outcome: &compaction::CheckpointOutcome,
 ) {
     let targets = state.peek_channel_replies(session_key).await;
     if targets.is_empty() {
@@ -319,7 +284,7 @@ pub(crate) async fn notify_channels_of_compaction(
         return;
     };
 
-    let message = format_channel_compaction_notice(outcome, include_settings_hint);
+    let message = format_channel_compaction_notice(outcome);
     let mut tasks = Vec::with_capacity(targets.len());
     for target in targets {
         let outbound = Arc::clone(&outbound);

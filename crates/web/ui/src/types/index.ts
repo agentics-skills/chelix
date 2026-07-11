@@ -49,7 +49,7 @@ export type {
 	ChannelInfo as WsChannelInfo,
 	ChatError,
 	ChatPayload,
-	CompactPayload,
+	CheckpointHistoryMessage,
 	LocationRequestPayload,
 	LogEntryPayload,
 	MapLinks,

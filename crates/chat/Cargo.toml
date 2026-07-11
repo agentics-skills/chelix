@@ -36,18 +36,13 @@ tracing               = { workspace = true }
 uuid                  = { workspace = true }
 
 [features]
-# Enable the LLM-backed compaction modes (`structured` and `llm_replace`).
-# Default-on so users get full compaction out of the box. Disabling this
-# removes the streaming-summary path and LLM modes become a runtime config
-# error; the `deterministic` and `recency_preserving` modes remain available.
 bundled-skills     = ["chelix-skills/bundled-skills"]
-llm-compaction     = []
 metrics            = ["chelix-metrics/sqlite", "dep:chelix-metrics"]
 push-notifications = ["dep:chrono"]
 telegram           = ["dep:chelix-telegram"]
 web-ui             = ["dep:chrono"]
 
-default = ["llm-compaction"]
+default = []
 
 [dev-dependencies]
 async-stream    = { workspace = true }

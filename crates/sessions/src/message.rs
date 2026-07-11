@@ -24,6 +24,33 @@ pub enum PersistedMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         created_at: Option<u64>,
     },
+    /// Conversation summarization checkpoint.
+    ///
+    /// Appended when the conversation is summarized (automatically on
+    /// context pressure or manually via `/compact`). The stored history is
+    /// never mutated: messages before the latest checkpoint stay in the
+    /// file (preserving forks from any point) but are excluded from the
+    /// LLM context, which restarts from the checkpoint summary.
+    Checkpoint {
+        /// Full summary text produced by the session model.
+        summary: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        created_at: Option<u64>,
+        /// Model that produced the summary (the session model).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        provider: Option<String>,
+        /// Input tokens spent on the summarization call.
+        #[serde(rename = "inputTokens", skip_serializing_if = "Option::is_none")]
+        input_tokens: Option<u32>,
+        /// Output tokens produced by the summarization call.
+        #[serde(rename = "outputTokens", skip_serializing_if = "Option::is_none")]
+        output_tokens: Option<u32>,
+        /// Number of history messages covered by this checkpoint.
+        #[serde(rename = "messagesSummarized", skip_serializing_if = "Option::is_none")]
+        messages_summarized: Option<u32>,
+    },
     User {
         /// Content can be a string (plain text) or array (multimodal).
         content: MessageContent,
@@ -296,6 +323,26 @@ impl PersistedMessage {
         Self::Notice {
             content: text.into(),
             created_at: Some(now_ms()),
+        }
+    }
+
+    /// Create a summarization checkpoint message.
+    pub fn checkpoint(
+        summary: impl Into<String>,
+        model: impl Into<String>,
+        provider: impl Into<String>,
+        input_tokens: u32,
+        output_tokens: u32,
+        messages_summarized: u32,
+    ) -> Self {
+        Self::Checkpoint {
+            summary: summary.into(),
+            created_at: Some(now_ms()),
+            model: Some(model.into()),
+            provider: Some(provider.into()),
+            input_tokens: Some(input_tokens),
+            output_tokens: Some(output_tokens),
+            messages_summarized: Some(messages_summarized),
         }
     }
 
@@ -642,6 +689,40 @@ mod tests {
                 assert_eq!(content, "snapshot cutoff");
             },
             _ => panic!("expected Notice message"),
+        }
+    }
+
+    #[test]
+    fn roundtrip_checkpoint() {
+        let original =
+            PersistedMessage::checkpoint("summary body", "gpt-4o", "openai", 5_000, 900, 42);
+        let json = original.to_value();
+        assert_eq!(json["role"], "checkpoint");
+        assert_eq!(json["summary"], "summary body");
+        assert_eq!(json["model"], "gpt-4o");
+        assert_eq!(json["provider"], "openai");
+        assert_eq!(json["inputTokens"], 5_000);
+        assert_eq!(json["outputTokens"], 900);
+        assert_eq!(json["messagesSummarized"], 42);
+        let parsed: PersistedMessage = serde_json::from_value(json).unwrap();
+        match parsed {
+            PersistedMessage::Checkpoint {
+                summary,
+                model,
+                provider,
+                input_tokens,
+                output_tokens,
+                messages_summarized,
+                ..
+            } => {
+                assert_eq!(summary, "summary body");
+                assert_eq!(model.as_deref(), Some("gpt-4o"));
+                assert_eq!(provider.as_deref(), Some("openai"));
+                assert_eq!(input_tokens, Some(5_000));
+                assert_eq!(output_tokens, Some(900));
+                assert_eq!(messages_summarized, Some(42));
+            },
+            _ => panic!("expected Checkpoint message"),
         }
     }
 

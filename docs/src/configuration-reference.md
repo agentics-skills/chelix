@@ -249,15 +249,8 @@ User profile collected during onboarding.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `mode` | enum: `deterministic`, `recency-preserving`, `structured`, `llm-replace` | `"deterministic"` | Compaction strategy. `deterministic` extracts a summary from message structure (zero LLM calls). `recency-preserving` keeps head + tail verbatim, collapses middle. `structured` keeps head + tail and LLM-summarises the middle. `llm-replace` replaces entire history with an LLM summary. |
-| `threshold_percent` | float | `0.95` | Fraction of the session model's context window at which automatic compaction fires. Clamped to `0.1`–`0.95`. |
-| `protect_head` | integer | `3` | Number of head messages preserved verbatim by recency-preserving and structured modes. |
-| `protect_tail_min` | integer | `20` | Minimum number of tail messages preserved verbatim (floor under token-budget cut). |
-| `tail_budget_ratio` | float | `0.20` | Tail protection window as a fraction of `threshold_percent × context_window`. |
-| `tool_prune_char_threshold` | integer | `200` | Tool-result content longer than this is replaced with a placeholder in the collapsed middle region. |
-| `summary_model` | optional string | `null` | Provider-qualified model for LLM summary calls (e.g. `"openrouter/google/gemini-2.5-flash"`). ⚠️ **Not yet implemented** — setting this field triggers a warning. |
-| `max_summary_tokens` | integer | `8192` | Maximum output tokens for LLM summary calls. `0` accepts provider default. ⚠️ **Not yet implemented** — has no effect. |
-| `show_settings_hint` | bool | `true` | Whether the "Change `chat.compaction.mode` in chelix.toml…" hint is included in compaction notifications. |
+| `enabled` | bool | `true` | Automatic conversation summarization on context pressure. When the estimated next request exceeds 85 % of the token budget, the session model summarizes the conversation and a persistent checkpoint is appended; the next context window starts from that checkpoint. Manual `/compact` works regardless. |
+| `threshold_tokens` | integer | `0` | Token budget override for the auto-summarization trigger. `0` uses the session model's context window as the budget. |
 
 
 ### `agents` — AgentsConfig

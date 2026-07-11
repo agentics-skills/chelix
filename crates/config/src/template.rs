@@ -270,25 +270,15 @@ port = {port}                           # Port number (auto-generated for this i
 # priority_models = ["claude-opus-4-5", "gpt-5.2", "gemini-3-flash"]  # Optional: models to pin first in selectors
 
 # ── Compaction ─────────────────────────────────────────────────────────────
-# Strategy used to shrink a session when its context window fills up, or when
-# a user invokes `/compact`. Four modes are available — pick the one that
-# matches your cost/fidelity trade-off. See docs/src/compaction.md for a full
-# comparison table and picking guide.
-#
-# Modes:
-#   "deterministic"        (default) Zero LLM calls. Fast, free, offline.
-#   "recency_preserving"   Zero LLM calls. Keeps head + tail, collapses middle.
-#   "structured"           Head + LLM summary + tail. Highest fidelity.
-#   "llm_replace"          Full LLM summary replacement.
+# Automatic conversation summarization. When the estimated next request
+# approaches the model's context window, the session model summarizes the
+# conversation and a checkpoint is appended to the history — the stored
+# history is never mutated. Manual `/compact` works regardless of `enabled`.
+# See docs/src/compaction.md for details.
 #
 # [chat.compaction]
-# mode = "deterministic"              # "deterministic" | "recency_preserving" | "structured" | "llm_replace"
-# threshold_percent = 0.95            # Auto-compaction threshold (fraction of context window)
-# protect_head = 3                    # Leading messages kept verbatim
-# protect_tail_min = 20               # Floor for tail messages kept verbatim
-# tail_budget_ratio = 0.20            # Tail size as fraction of threshold × context window
-# tool_prune_char_threshold = 200     # Prune tool results longer than this in middle region
-# show_settings_hint = true           # Append compaction mode hint to notices
+# enabled = true          # Automatic summarization on context pressure
+# threshold_tokens = 0    # Token budget that triggers summarization (0 = model context window)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # AUXILIARY MODELS
@@ -297,7 +287,6 @@ port = {port}                           # Port number (auto-generated for this i
 # more capable model. Falls back to the session's primary provider when unset.
 #
 # [auxiliary]
-# compaction = "openrouter/google/gemini-2.5-flash"        # Model for context compaction
 # title_generation = "openrouter/google/gemini-2.5-flash"  # Model for session titles
 # vision = "openrouter/google/gemini-2.5-flash"            # Model for vision/image tasks
 

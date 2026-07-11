@@ -150,21 +150,6 @@ pub(crate) fn load_prompt_persona_base_for_agent(agent_id: &str) -> PromptPerson
     }
 }
 
-pub(crate) fn load_prompt_persona_for_agent(agent_id: &str) -> PromptPersona {
-    let mut persona = load_prompt_persona_base_for_agent(agent_id);
-    let style = persona.config.memory.style;
-    let mode = persona.config.chat.prompt_memory_mode;
-    let write_mode = persona.config.memory.agent_write_mode;
-    let memory = if memory_style_allows_prompt(style) {
-        chelix_config::load_memory_md_for_agent_with_source(agent_id)
-    } else {
-        None
-    };
-    persona.memory_text = memory.as_ref().map(|entry| entry.content.clone());
-    persona.memory_status = prompt_memory_status(style, mode, write_mode, false, memory.as_ref());
-    persona
-}
-
 pub(crate) async fn load_prompt_memory_for_session(
     session_key: &str,
     agent_id: &str,

@@ -14,7 +14,7 @@ use {
     async_trait::async_trait,
     serde_json::Value,
     tokio::sync::RwLock,
-    tracing::{debug, info, warn},
+    tracing::{info, warn},
 };
 
 use {
@@ -35,8 +35,7 @@ use {
 use crate::{
     agent_loop::effective_tool_mode,
     channels::notify_channels_of_compaction,
-    compaction_run,
-    memory_tools::AgentScopedMemoryWriter,
+    compaction,
     message::{
         infer_reply_medium, user_audio_path_from_params, user_documents_for_persistence,
         user_documents_from_params,
@@ -44,8 +43,8 @@ use crate::{
     prompt::{
         apply_request_runtime_context, build_policy_context, build_prompt_runtime_context,
         clear_prompt_memory_snapshot, discover_skills_if_enabled, filter_skills_for_agent,
-        load_prompt_persona_for_agent, load_prompt_persona_for_session, prepare_run_registry,
-        prompt_build_limits_from_config, resolve_prompt_agent_id, resolve_prompt_mode_context,
+        load_prompt_persona_for_session, prepare_run_registry, prompt_build_limits_from_config,
+        resolve_prompt_agent_id, resolve_prompt_mode_context,
     },
     run_with_tools::run_with_tools,
     streaming::run_streaming,
@@ -649,8 +648,6 @@ impl ChatService for LiveChatService {
 
     async fn compact(&self, params: Value) -> ServiceResult {
         let session_key = self.resolve_session_key_from_params(&params).await;
-        let session_entry = self.session_metadata.get(&session_key).await;
-        let session_agent_id = resolve_prompt_agent_id(session_entry.as_ref());
 
         let history = self
             .session_store
@@ -662,145 +659,32 @@ impl ChatService for LiveChatService {
             return Err("nothing to compact".into());
         }
 
-        // Dispatch BeforeCompaction hook.
-        if let Some(ref hooks) = self.hook_registry {
-            let payload = chelix_common::hooks::HookPayload::BeforeCompaction {
-                session_key: session_key.clone(),
-                message_count: history.len(),
-            };
-            if let Err(e) = hooks.dispatch(&payload).await {
-                warn!(session = %session_key, error = %e, "BeforeCompaction hook failed");
-            }
-        }
-
-        // Run silent memory turn before summarization — saves important memories to disk.
-        // The manager implements MemoryWriter directly (with path validation, size limits,
-        // and automatic re-indexing), so no manual sync_path is needed after the turn.
-        if let Some(mm) = self.state.memory_manager()
-            && let Ok(provider) = self.resolve_provider(&session_key, &history).await
-        {
-            let write_mode = chelix_config::discover_and_load().memory.agent_write_mode;
-            if !memory_write_mode_allows_save(write_mode) {
-                debug!(
-                    "compact: agent-authored memory writes disabled, skipping silent memory turn"
-                );
-            } else {
-                let chat_history_for_memory = values_to_chat_messages(&history);
-                let writer: Arc<dyn chelix_agents::memory_writer::MemoryWriter> =
-                    Arc::new(AgentScopedMemoryWriter::new(
-                        Arc::clone(mm),
-                        session_agent_id.clone(),
-                        write_mode,
-                    ));
-                match chelix_agents::silent_turn::run_silent_memory_turn(
-                    provider,
-                    &chat_history_for_memory,
-                    writer,
-                )
-                .await
-                {
-                    Ok(paths) => {
-                        if !paths.is_empty() {
-                            info!(
-                                files = paths.len(),
-                                "compact: silent memory turn wrote files"
-                            );
-                        }
-                    },
-                    Err(e) => warn!(error = %e, "compact: silent memory turn failed"),
-                }
-            }
-        }
-
-        // Resolve the session persona so we can pick up the compaction config
-        // and provide a provider to LLM-backed compaction modes. Agent-scoped
-        // config falls back through `load_prompt_persona_for_agent`'s default
-        // path, so this is safe even when the session has no custom preset.
-        let persona = load_prompt_persona_for_agent(&session_agent_id);
-        let compaction_config = &persona.config.chat.compaction;
-
-        // LLM-backed modes need a resolved provider. Deterministic mode
-        // ignores it, so resolution failures are only fatal for the other
-        // modes — and `run_compaction` returns a clear ProviderRequired
-        // error in that case.
-        let provider_arc = self.resolve_provider(&session_key, &history).await.ok();
-
-        let outcome =
-            compaction_run::run_compaction(&history, compaction_config, provider_arc.as_deref())
-                .await
-                .map_err(|e| ServiceError::message(e.to_string()))?;
-
-        let compacted = outcome.history.clone();
-
-        // Keep a plain-text copy of the summary so the memory-file snapshot
-        // below can still record what we compacted to. The helper walks the
-        // compacted history because recency_preserving / structured modes
-        // splice head and tail messages around the summary — it isn't
-        // necessarily compacted[0].
-        let summary_for_memory = compaction_run::extract_summary_body(&compacted);
-
-        info!(
-            session = %session_key,
-            requested_mode = ?compaction_config.mode,
-            effective_mode = ?outcome.effective_mode,
-            input_tokens = outcome.input_tokens,
-            output_tokens = outcome.output_tokens,
-            messages = history.len(),
-            "chat.compact: strategy dispatched"
-        );
-
-        // Enforce summary budget discipline: max 1,200 chars, 24 lines,
-        // 160 chars/line.  Mutate the compacted history in place so the
-        // compressed text is what gets persisted and broadcast.
-        let compacted = compress_summary_in_history(compacted);
-
-        // Replace the session history BEFORE broadcasting or notifying
-        // channels. If we did it the other way around, a concurrent
-        // `send()` RPC that landed between the broadcast and the store
-        // update would see the stale history and the client UI would
-        // already believe compaction had finished — a narrow but real
-        // race window flagged by Greptile on commit 0714de07.
-        self.session_store
-            .replace_history(&session_key, compacted.clone())
+        // Summarize with the session's own model and append a checkpoint.
+        // The stored history is never mutated.
+        let provider = self
+            .resolve_provider(&session_key, &history)
             .await
             .map_err(ServiceError::message)?;
 
-        self.session_metadata.touch(&session_key, 1).await;
+        let outcome = compaction::summarize_session(&self.session_store, &session_key, &*provider)
+            .await
+            .map_err(|e| ServiceError::message(e.to_string()))?;
 
-        // Broadcast a chat.compact-scoped "done" event so UI consumers see
-        // the effective mode and token usage even when compaction is
-        // triggered manually via the RPC (the auto-compact path broadcasts
-        // separately around `send()`). The settings hint is included only
-        // when the user hasn't opted out via chat.compaction.show_settings_hint.
-        //
-        // Include `totalTokens` / `contextWindow` on this payload so the
-        // web UI's compact card can render a full "Before compact"
-        // section even when this event fires first in `send()`'s
-        // pre-emptive auto-compact path. Without these fields the card
-        // was rendering without the "Total tokens" and "Context usage"
-        // rows on that path.
-        let show_hint = compaction_config.show_settings_hint;
-        let pre_compact_total_tokens: u32 = history
-            .iter()
-            .filter_map(|m| m.get("content").and_then(Value::as_str))
-            .map(|text| u32::try_from(estimate_text_tokens(text)).unwrap_or(u32::MAX))
-            .sum();
-        let context_window = provider_arc.as_deref().map(|p| p.context_window());
+        let message_count = self.session_store.count(&session_key).await.unwrap_or(0);
+        self.session_metadata
+            .touch(&session_key, message_count)
+            .await;
+
+        // Broadcast the checkpoint so all connected clients render the
+        // persistent checkpoint card without a reload.
         let mut compact_payload = serde_json::json!({
             "sessionKey": session_key,
             "state": "compact",
             "phase": "done",
-            "messageCount": history.len(),
-            "totalTokens": pre_compact_total_tokens,
         });
-        if let Some(window) = context_window
-            && let Some(obj) = compact_payload.as_object_mut()
-        {
-            obj.insert("contextWindow".to_string(), serde_json::json!(window));
-        }
         if let (Some(obj), Some(meta)) = (
             compact_payload.as_object_mut(),
-            outcome.broadcast_metadata(show_hint).as_object().cloned(),
+            outcome.broadcast_metadata().as_object().cloned(),
         ) {
             obj.extend(meta);
         }
@@ -813,52 +697,11 @@ impl ChatService for LiveChatService {
         .await;
 
         // Notify any channel (Telegram, Discord, Matrix, WhatsApp, etc.)
-        // that has pending reply targets on this session, so channel
-        // users see "Conversation compacted (mode, tokens, hint)"
-        // alongside the web UI's compact card.
-        notify_channels_of_compaction(&self.state, &session_key, &outcome, show_hint).await;
-
-        // Save compaction summary to memory file and trigger sync.
-        if let Some(mm) = self.state.memory_manager() {
-            let memory_dir = chelix_config::agent_workspace_dir(&session_agent_id).join("memory");
-            if let Err(e) = tokio::fs::create_dir_all(&memory_dir).await {
-                warn!(error = %e, "compact: failed to create memory dir");
-            } else {
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
-                let filename = format!("compaction-{}-{ts}.md", session_key);
-                let path = memory_dir.join(&filename);
-                let content = format!(
-                    "# Compaction Summary\n\n- **Session**: {session_key}\n- **Timestamp**: {ts}\n\n{summary_for_memory}"
-                );
-                if let Err(e) = tokio::fs::write(&path, &content).await {
-                    warn!(error = %e, "compact: failed to write memory file");
-                } else {
-                    let mm = Arc::clone(mm);
-                    tokio::spawn(async move {
-                        if let Err(e) = mm.sync().await {
-                            tracing::warn!("compact: memory sync failed: {e}");
-                        }
-                    });
-                }
-            }
-        }
-
-        // Dispatch AfterCompaction hook.
-        if let Some(ref hooks) = self.hook_registry {
-            let payload = chelix_common::hooks::HookPayload::AfterCompaction {
-                session_key: session_key.clone(),
-                summary_len: summary_for_memory.len(),
-            };
-            if let Err(e) = hooks.dispatch(&payload).await {
-                warn!(session = %session_key, error = %e, "AfterCompaction hook failed");
-            }
-        }
+        // that has pending reply targets on this session.
+        notify_channels_of_compaction(&self.state, &session_key, &outcome).await;
 
         info!(session = %session_key, "chat.compact: done");
-        Ok(serde_json::json!(compacted))
+        Ok(outcome.message)
     }
 
     async fn context(&self, params: Value) -> ServiceResult {

@@ -20,7 +20,7 @@ use {
 use crate::{
     channels::{deliver_channel_replies, send_tool_status_to_channels},
     chat_error::parse_chat_error,
-    compaction_run, error,
+    compaction, error,
     models::DisabledModelsStore,
     runtime::ChatRuntime,
     service::{build_tool_call_assistant_message, persist_tool_history_pair},
@@ -596,25 +596,7 @@ pub(crate) fn effective_tool_mode(provider: &dyn chelix_agents::model::LlmProvid
 pub(crate) async fn compact_session(
     store: &Arc<SessionStore>,
     session_key: &str,
-    config: &chelix_config::CompactionConfig,
-    provider: Option<&dyn chelix_agents::model::LlmProvider>,
-) -> error::Result<compaction_run::CompactionOutcome> {
-    let history = store
-        .read(session_key)
-        .await
-        .map_err(|source| error::Error::external("failed to read session history", source))?;
-
-    let mut outcome = compaction_run::run_compaction(&history, config, provider)
-        .await
-        .map_err(|e| error::Error::message(e.to_string()))?;
-
-    // Enforce summary budget discipline on the compacted history.
-    outcome.history = compress_summary_in_history(outcome.history);
-
-    store
-        .replace_history(session_key, outcome.history.clone())
-        .await
-        .map_err(|source| error::Error::external("failed to replace compacted history", source))?;
-
-    Ok(outcome)
+    provider: &dyn chelix_agents::model::LlmProvider,
+) -> error::Result<compaction::CheckpointOutcome> {
+    compaction::summarize_session(store, session_key, provider).await
 }

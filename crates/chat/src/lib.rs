@@ -1,7 +1,6 @@
 mod agent_loop;
 mod channels;
 mod compaction;
-mod compaction_run;
 mod memory_tools;
 mod message;
 mod models;

@@ -98,7 +98,6 @@ full = [
   "lang-rust",
   "lang-toml",
   "lang-typescript",
-  "llm-compaction",
   "local-embeddings",
   "matrix",
   "mdns",
@@ -120,7 +119,6 @@ full = [
   "web-ui",
   "whatsapp",
 ]
-llm-compaction = ["chelix-gateway/llm-compaction"]
 # Minimal build for memory-constrained devices (Raspberry Pi, etc.).
 # Build with: cargo build --release --no-default-features --features lightweight
 code-index-builtin = ["chelix-gateway/code-index-builtin"]

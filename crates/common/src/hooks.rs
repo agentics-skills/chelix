@@ -32,8 +32,6 @@ pub enum HookEvent {
     AgentEnd,
     BeforeLLMCall,
     AfterLLMCall,
-    BeforeCompaction,
-    AfterCompaction,
     MessageReceived,
     MessageSending,
     MessageSent,
@@ -62,8 +60,6 @@ impl FromStr for HookEvent {
             "AgentEnd" => Ok(Self::AgentEnd),
             "BeforeLLMCall" => Ok(Self::BeforeLLMCall),
             "AfterLLMCall" => Ok(Self::AfterLLMCall),
-            "BeforeCompaction" => Ok(Self::BeforeCompaction),
-            "AfterCompaction" => Ok(Self::AfterCompaction),
             "MessageReceived" => Ok(Self::MessageReceived),
             "MessageSending" => Ok(Self::MessageSending),
             "MessageSent" => Ok(Self::MessageSent),
@@ -87,8 +83,6 @@ impl HookEvent {
         Self::AgentEnd,
         Self::BeforeLLMCall,
         Self::AfterLLMCall,
-        Self::BeforeCompaction,
-        Self::AfterCompaction,
         Self::MessageReceived,
         Self::MessageSending,
         Self::MessageSent,
@@ -115,7 +109,6 @@ impl HookEvent {
             Self::AgentEnd
                 | Self::AfterToolCall
                 | Self::MessageSent
-                | Self::AfterCompaction
                 | Self::SessionStart
                 | Self::SessionEnd
                 | Self::GatewayStart
@@ -191,14 +184,6 @@ pub enum HookPayload {
         output_tokens: u32,
         iteration: usize,
     },
-    BeforeCompaction {
-        session_key: String,
-        message_count: usize,
-    },
-    AfterCompaction {
-        session_key: String,
-        summary_len: usize,
-    },
     MessageReceived {
         session_key: String,
         content: String,
@@ -263,8 +248,6 @@ impl HookPayload {
             Self::AgentEnd { .. } => HookEvent::AgentEnd,
             Self::BeforeLLMCall { .. } => HookEvent::BeforeLLMCall,
             Self::AfterLLMCall { .. } => HookEvent::AfterLLMCall,
-            Self::BeforeCompaction { .. } => HookEvent::BeforeCompaction,
-            Self::AfterCompaction { .. } => HookEvent::AfterCompaction,
             Self::MessageReceived { .. } => HookEvent::MessageReceived,
             Self::MessageSending { .. } => HookEvent::MessageSending,
             Self::MessageSent { .. } => HookEvent::MessageSent,

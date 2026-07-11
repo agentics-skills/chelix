@@ -72,6 +72,15 @@ fn values_to_chat_messages_inner(
     values: &[serde_json::Value],
     filter_orphan_tool_results: bool,
 ) -> Vec<ChatMessage> {
+    // A summarization checkpoint starts a fresh context window: everything
+    // before the latest checkpoint is excluded from the LLM context and the
+    // checkpoint summary is injected as a user message instead. The stored
+    // history is untouched — this is a read-time view only.
+    let context_start = values
+        .iter()
+        .rposition(|val| val["role"].as_str() == Some("checkpoint"))
+        .unwrap_or(0);
+    let values = &values[context_start..];
     let mut messages = Vec::with_capacity(values.len());
     // Track tool_call IDs emitted by assistant messages so we only include
     // tool/tool_result messages that have a matching assistant tool_call.
@@ -273,6 +282,14 @@ fn values_to_chat_messages_inner(
             },
             // notice entries are UI-only informational messages.
             "notice" => continue,
+            // checkpoint entries carry a conversation summary that replaces
+            // all history before them (see context_start above).
+            "checkpoint" => {
+                let summary = val["summary"].as_str().unwrap_or("");
+                messages.push(ChatMessage::user(format!(
+                    "<conversation-summary>\n{summary}\n</conversation-summary>"
+                )));
+            },
             other => {
                 tracing::warn!(
                     index = i,

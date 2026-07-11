@@ -961,11 +961,10 @@ impl LiveChatService {
             .get("_accept_language")
             .and_then(|v| v.as_str())
             .map(String::from);
-        // Auto-compact when the next request is likely to exceed
-        // `chat.compaction.threshold_percent` of the model context window.
-        // The value is clamped to the 0.1–0.95 range in case config
-        // validation missed a typo; the default (0.95) is loaded via
-        // the session persona and matches the pre-PR-#653 hardcoded trigger.
+        // Auto-compact when the next request is likely to exceed the
+        // auto-compact threshold (85% of the effective token budget, see
+        // `compaction::auto_compact_threshold`). Summarization appends a
+        // checkpoint; the next context window starts after it.
         let compaction_cfg = &persona.config.chat.compaction;
         let context_window = provider.context_window() as u64;
         let token_usage = session_token_usage_from_messages(&history);
@@ -973,9 +972,9 @@ impl LiveChatService {
             .current_request_input_tokens
             .saturating_add(estimate_text_tokens(&text));
         let compact_threshold =
-            compute_auto_compact_threshold(context_window, compaction_cfg.threshold_percent);
+            compaction::auto_compact_threshold(context_window, compaction_cfg.threshold_tokens);
 
-        if estimated_next_input >= compact_threshold {
+        if compaction_cfg.enabled && estimated_next_input >= compact_threshold {
             let pre_compact_msg_count = history.len();
             let pre_compact_total = token_usage
                 .current_request_input_tokens
@@ -985,9 +984,8 @@ impl LiveChatService {
                 session = %session_key,
                 estimated_next_input,
                 context_window,
-                threshold_percent = compaction_cfg.threshold_percent,
                 compact_threshold,
-                "auto-compact triggered (estimated next request over chat.compaction.threshold_percent)"
+                "auto-compact triggered (estimated next request over auto-compact threshold)"
             );
             broadcast(
                 &self.state,
@@ -1018,18 +1016,10 @@ impl LiveChatService {
                         .read(&session_key)
                         .await
                         .unwrap_or_default();
-                    // This `auto_compact done` event is a lifecycle
-                    // signal for subscribers that pre-emptive
-                    // auto-compact finished. The mode/token metadata
-                    // lives on the `chat.compact done` event that
-                    // `self.compact()` broadcasts from the inside —
-                    // the `compactBroadcastPath: "inner"` marker below
-                    // lets hook / webhook consumers detect that and
-                    // subscribe to that event instead. The parallel
-                    // `run_with_tools` context-overflow path emits a
-                    // self-contained `auto_compact done` (with
-                    // `compactBroadcastPath: "wrapper"`) that carries
-                    // the metadata directly.
+                    // Lifecycle signal that pre-emptive auto-compact
+                    // finished. The checkpoint metadata lives on the
+                    // `chat.compact done` event that `self.compact()`
+                    // broadcasts from the inside.
                     broadcast(
                         &self.state,
                         "chat",
@@ -1040,7 +1030,6 @@ impl LiveChatService {
                             "messageCount": pre_compact_msg_count,
                             "totalTokens": pre_compact_total,
                             "contextWindow": context_window,
-                            "compactBroadcastPath": "inner",
                         }),
                         BroadcastOpts::default(),
                     )

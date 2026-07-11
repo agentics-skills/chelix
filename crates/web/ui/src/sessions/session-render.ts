@@ -34,8 +34,9 @@ import {
 	renderToolCardResult,
 	toolCallIds,
 } from "../tool-call-card";
+import { renderCheckpointCard } from "../pages/chat/context-card";
 import type { HistoryMessage } from "../types";
-import type { ToolResult } from "../types/ws-events";
+import type { CheckpointHistoryMessage, ToolResult } from "../types/ws-events";
 
 import { computeHistoryTailIndex, ensureHistoryScrollBinding, syncHistoryState } from "./session-history";
 import { markSessionTailLocallyTruncated } from "./session-tail";
@@ -609,6 +610,13 @@ export function renderHistory(
 			}
 		} else if (msg.role === "notice") {
 			msgEls.push(chatAddMsg("system", renderMarkdown(typeof msg.content === "string" ? msg.content : ""), true));
+		} else if (msg.role === "checkpoint") {
+			const checkpoint = msg as unknown as CheckpointHistoryMessage;
+			const card = renderCheckpointCard(checkpoint);
+			if (card && typeof msg.historyIndex === "number") {
+				card.dataset.historyIndex = String(msg.historyIndex);
+			}
+			msgEls.push(card);
 		} else if (msg.role === "tool_result") {
 			const toolResult = msg as ToolResultMsg;
 			const toolCard = renderHistoryToolResult(toolResult);

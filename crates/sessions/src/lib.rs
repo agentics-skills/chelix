@@ -4,7 +4,6 @@
 //! `<data_dir>/agents/<agentId>/sessions/<sessionKey>.jsonl`
 //! with file locking for concurrent access.
 
-pub mod compaction;
 pub mod error;
 pub mod key;
 pub mod message;

@@ -17,7 +17,7 @@ import {
 	smartScrollToBottom,
 } from "../chat-ui";
 import { SessionHeader } from "../components/SessionHeader";
-import { formatTokens, sendRpc } from "../helpers";
+import { sendRpc } from "../helpers";
 import { initMediaDrop, teardownMediaDrop } from "../media-drop";
 import { bindModelComboEvents, modelDisplayLabel, modelTitle } from "../models";
 import { bindNodeComboEvents, fetchNodes, unbindNodeEvents } from "../nodes-selector";
@@ -41,8 +41,6 @@ import {
 import {
 	buildPromptMemorySummary,
 	ctxEl,
-	ctxRow,
-	ctxSection,
 	type PromptMemoryData,
 	promptMemoryDetailParts,
 	renderContextMcpSection,
@@ -144,88 +142,6 @@ function refreshPromptMemoryToolbarSnapshot(): Promise<PromptMemoryData | null> 
 			chatAddMsg("error", error?.message || "Failed to refresh prompt memory");
 			return null;
 		});
-}
-
-// ── Compact card ─────────────────────────────────────────────
-
-interface CompactCardData {
-	mode?: string;
-	messageCount?: number;
-	totalTokens?: number;
-	estimatedNextInputTokens?: number;
-	contextWindow?: number;
-	compactionTotalTokens?: number;
-	compactionInputTokens?: number;
-	compactionOutputTokens?: number;
-	settingsHint?: string;
-}
-
-const COMPACTION_MODE_LABELS: Record<string, string> = {
-	deterministic: "Deterministic",
-	recency_preserving: "Recency preserving",
-	structured: "Structured",
-	llm_replace: "LLM replace",
-};
-
-function compactionModeLabel(mode: string | undefined): string {
-	if (!mode) return "Unknown";
-	return COMPACTION_MODE_LABELS[mode] || mode;
-}
-
-export function renderCompactCard(data: CompactCardData): void {
-	if (!S.chatMsgBox) return;
-	slashInjectStyles();
-	const card = ctxEl("div", "ctx-card");
-	const header = ctxEl("div", "ctx-header");
-	const icon = document.createElement("span");
-	icon.className = "icon icon-compress";
-	header.appendChild(icon);
-	header.appendChild(ctxEl("span", "ctx-header-title", "Conversation compacted"));
-	card.appendChild(header);
-	if (data.mode) {
-		const stratSec = ctxSection("Strategy");
-		stratSec.appendChild(ctxRow("Mode", compactionModeLabel(data.mode)));
-		const totalTokens = Number(data.compactionTotalTokens || 0);
-		if (totalTokens > 0) {
-			const inp = Number(data.compactionInputTokens || 0);
-			const outp = Number(data.compactionOutputTokens || 0);
-			stratSec.appendChild(
-				ctxRow("Tokens used", `${formatTokens(totalTokens)} (${formatTokens(inp)} in + ${formatTokens(outp)} out)`),
-			);
-		} else {
-			stratSec.appendChild(ctxRow("Tokens used", "0 (no LLM call)"));
-		}
-		card.appendChild(stratSec);
-	}
-	const statsSec = ctxSection("Before compact");
-	statsSec.appendChild(ctxRow("Messages", String(data.messageCount || 0)));
-	if (data.totalTokens) statsSec.appendChild(ctxRow("Total tokens", formatTokens(data.totalTokens || 0)));
-	if (data.estimatedNextInputTokens)
-		statsSec.appendChild(ctxRow("Estimated next input", formatTokens(data.estimatedNextInputTokens), true));
-	if (data.contextWindow) {
-		const basis = data.estimatedNextInputTokens || data.totalTokens || 0;
-		const pctUsed = Math.round((basis / data.contextWindow) * 100);
-		statsSec.appendChild(ctxRow("Context usage", `${pctUsed}% of ${formatTokens(data.contextWindow)}`));
-	}
-	card.appendChild(statsSec);
-	const afterSec = ctxSection("After compact");
-	const replacesAll = data.mode === "deterministic" || data.mode === "llm_replace" || !data.mode;
-	if (replacesAll) {
-		afterSec.appendChild(ctxRow("Messages", "1 (summary)"));
-		afterSec.appendChild(ctxRow("Status", "Conversation history replaced with a summary"));
-	} else {
-		afterSec.appendChild(ctxRow("Status", "Head + tail preserved verbatim; middle summarised"));
-	}
-	card.appendChild(afterSec);
-	if (data.settingsHint) {
-		const hintSec = ctxSection("Configure");
-		const hintRow = ctxEl("div", "ctx-value");
-		hintRow.textContent = data.settingsHint;
-		hintSec.appendChild(hintRow);
-		card.appendChild(hintSec);
-	}
-	S.chatMsgBox.appendChild(card);
-	smartScrollToBottom();
 }
 
 // ── Debug / full context panels ──────────────────────────────

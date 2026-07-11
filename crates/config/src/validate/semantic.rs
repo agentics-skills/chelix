@@ -448,46 +448,19 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         });
     }
 
-    // Compaction config sanity.
+    // Compaction config sanity. A tiny non-zero threshold would trigger
+    // summarization on nearly every message.
     let compaction = &config.chat.compaction;
-    if !(0.1..=0.95).contains(&compaction.threshold_percent) {
+    if compaction.threshold_tokens > 0 && compaction.threshold_tokens < 1_000 {
         diagnostics.push(Diagnostic {
             severity: Severity::Warning,
             category: "invalid-value",
-            path: "chat.compaction.threshold_percent".into(),
+            path: "chat.compaction.threshold_tokens".into(),
             message: format!(
-                "chat.compaction.threshold_percent = {} is outside the supported 0.1–0.95 range; the default (0.95) will be used",
-                compaction.threshold_percent
+                "chat.compaction.threshold_tokens = {} is very low — summarization will trigger on nearly every message; set 0 to use the model context window",
+                compaction.threshold_tokens
             ),
         });
-    }
-    if !(0.05..=0.80).contains(&compaction.tail_budget_ratio) {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "invalid-value",
-            path: "chat.compaction.tail_budget_ratio".into(),
-            message: format!(
-                "chat.compaction.tail_budget_ratio = {} is outside the supported 0.05–0.80 range; the default (0.20) will be used",
-                compaction.tail_budget_ratio
-            ),
-        });
-    }
-    if compaction.protect_head > 32 {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "invalid-value",
-            path: "chat.compaction.protect_head".into(),
-            message: "chat.compaction.protect_head > 32 will leave little room for the compacted middle region on typical sessions".into(),
-        });
-    }
-    // All four CompactionMode variants are now implemented. Any future
-    // "not-implemented" markers would go here; leave the match explicit so
-    // adding a new variant forces a decision at compile time.
-    match compaction.mode {
-        crate::schema::CompactionMode::Deterministic
-        | crate::schema::CompactionMode::RecencyPreserving
-        | crate::schema::CompactionMode::Structured
-        | crate::schema::CompactionMode::LlmReplace => {},
     }
 
     if config.mcp.request_timeout_secs == 0 {
@@ -871,8 +844,6 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         "AgentEnd",
         "BeforeLLMCall",
         "AfterLLMCall",
-        "BeforeCompaction",
-        "AfterCompaction",
         "MessageReceived",
         "MessageSending",
         "MessageSent",

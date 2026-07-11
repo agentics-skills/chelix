@@ -115,6 +115,20 @@ export interface AssistantHistoryMessage {
 	seq?: number;
 }
 
+/** Persisted conversation-summarization checkpoint message. */
+export interface CheckpointHistoryMessage {
+	role: "checkpoint";
+	summary?: string;
+	model?: string;
+	provider?: string;
+	inputTokens?: number;
+	outputTokens?: number;
+	messagesSummarized?: number;
+	created_at?: number;
+	historyIndex?: number;
+	[key: string]: unknown;
+}
+
 export interface ChatError {
 	title?: string;
 	detail?: string;
@@ -189,15 +203,8 @@ export interface ChatPayload {
 	retryAfterMs?: number;
 	partialMessage?: PartialMessage;
 	assistantMessage?: AssistantHistoryMessage;
+	checkpoint?: CheckpointHistoryMessage;
 	canContinue?: boolean;
-}
-
-export interface CompactPayload {
-	sessionKey?: string;
-	phase?: string;
-	error?: string;
-	mode?: string;
-	[key: string]: unknown;
 }
 
 export interface ApprovalPayload {

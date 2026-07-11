@@ -53,7 +53,6 @@ echo "$(date -Iseconds) tool=$tool" >> /tmp/chelix-hook.log
 - `BeforeLLMCall` — before a prompt is sent to the LLM provider
 - `AfterLLMCall` — after an LLM response arrives, before any tool execution
 - `BeforeToolCall` — before executing a tool (inspect/modify arguments)
-- `BeforeCompaction` — before compacting chat history
 - `MessageReceived` — when an inbound channel/UI message arrives;
   `Block(reason)` rejects it, `ModifyPayload({"content": "..."})` rewrites
   the text before the turn begins
@@ -63,7 +62,6 @@ echo "$(date -Iseconds) tool=$tool" >> /tmp/chelix-hook.log
 **Read-only (parallel dispatch, Block/Modify ignored):**
 - `AgentEnd` — after an agent run completes
 - `AfterToolCall` — after a tool finishes (observe result)
-- `AfterCompaction` — after compaction completes
 - `MessageSent` — after a message is sent
 - `SessionStart` / `SessionEnd` — session lifecycle
 - `GatewayStart` / `GatewayStop` — server lifecycle

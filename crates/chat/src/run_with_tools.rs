@@ -1004,7 +1004,9 @@ pub(crate) async fn run_with_tools(
 
     // On context-window overflow, compact the session and retry once.
     let result = match first_result {
-        Err(AgentRunError::ContextWindowExceeded(ref msg)) if session_store.is_some() => {
+        Err(AgentRunError::ContextWindowExceeded(ref msg))
+            if session_store.is_some() && persona.config.chat.compaction.enabled =>
+        {
             let store = session_store?;
             info!(
                 run_id,
@@ -1027,45 +1029,22 @@ pub(crate) async fn run_with_tools(
             )
             .await;
 
-            // Inline compaction: run the configured strategy, replace in store.
-            // Forward the session provider so LLM-backed modes (llm_replace
-            // / structured) have a client to summarise with.
-            match compact_session(
-                store,
-                session_key,
-                &persona.config.chat.compaction,
-                Some(&*provider_ref),
-            )
-            .await
-            {
+            // Summarize with the session's own model and append a checkpoint;
+            // the retry context window starts after that checkpoint.
+            match compact_session(store, session_key, &*provider_ref).await {
                 Ok(outcome) => {
-                    // Merge the compaction metadata (mode, tokens, settings
-                    // hint) into the broadcast so the UI can show a toast
-                    // like "Compacted via Structured mode (1,234 tokens)".
-                    // Respect chat.compaction.show_settings_hint so the
-                    // hint is omitted when the user has opted out.
-                    //
-                    // `compactBroadcastPath: "wrapper"` marks this as
-                    // the self-contained auto_compact event with the
-                    // metadata inline. The parallel pre-emptive path
-                    // in `send()` emits `compactBroadcastPath: "inner"`
-                    // instead, where the metadata lives on the separate
-                    // `chat.compact done` event fired from within
-                    // `self.compact()`. Hook consumers that only care
-                    // about metadata can subscribe to whichever path
-                    // matches their use case.
-                    let show_hint = persona.config.chat.compaction.show_settings_hint;
+                    // Merge the checkpoint metadata into the broadcast so
+                    // connected clients render the checkpoint card.
                     let mut payload = serde_json::json!({
                         "runId": run_id,
                         "sessionKey": session_key,
                         "state": "auto_compact",
                         "phase": "done",
                         "reason": "context_window_exceeded",
-                        "compactBroadcastPath": "wrapper",
                     });
                     if let (Some(obj), Some(meta)) = (
                         payload.as_object_mut(),
-                        outcome.broadcast_metadata(show_hint).as_object().cloned(),
+                        outcome.broadcast_metadata().as_object().cloned(),
                     ) {
                         obj.extend(meta);
                     }
@@ -1073,9 +1052,9 @@ pub(crate) async fn run_with_tools(
 
                     // Notify any channel (Telegram, Discord, Matrix,
                     // WhatsApp, etc.) that has pending reply targets on
-                    // this session so channel users see the same mode +
-                    // token info as the web UI.
-                    notify_channels_of_compaction(state, session_key, &outcome, show_hint).await;
+                    // this session so channel users see the same token
+                    // info as the web UI.
+                    notify_channels_of_compaction(state, session_key, &outcome).await;
 
                     // Reload compacted history and retry.
                     let compacted_history_raw = store.read(session_key).await.unwrap_or_default();

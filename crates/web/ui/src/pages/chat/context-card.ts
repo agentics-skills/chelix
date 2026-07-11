@@ -73,6 +73,17 @@ export interface PromptMemoryData {
 	snapshotActive?: boolean;
 }
 
+/** Persisted checkpoint message fields used by the checkpoint card. */
+export interface CheckpointCardData {
+	summary?: string;
+	model?: string;
+	provider?: string;
+	inputTokens?: number;
+	outputTokens?: number;
+	messagesSummarized?: number;
+	created_at?: number;
+}
+
 export interface ContextData {
 	session?: SessionData;
 	project?: ProjectData | null;
@@ -110,6 +121,56 @@ export function ctxSection(title: string): HTMLElement {
 	const sec = ctxEl("div", "ctx-section");
 	sec.appendChild(ctxEl("div", "ctx-section-title", title));
 	return sec;
+}
+
+// ── Checkpoint card ──────────────────────────────────────────
+
+/**
+ * Render the persistent conversation-summarization checkpoint card.
+ *
+ * Used both by history rendering (`role === "checkpoint"` messages) and by
+ * live `compact` / `auto_compact` broadcasts, so the card looks identical
+ * in both paths. Appends to the chat message box and returns the element.
+ */
+export function renderCheckpointCard(data: CheckpointCardData): HTMLElement | null {
+	if (!S.chatMsgBox) return null;
+	slashInjectStyles();
+	const card = ctxEl("div", "ctx-card checkpoint-card");
+	const header = ctxEl("div", "ctx-header");
+	const icon = document.createElement("span");
+	icon.className = "icon icon-compress";
+	header.appendChild(icon);
+	header.appendChild(ctxEl("span", "ctx-header-title", "Conversation summarized"));
+	card.appendChild(header);
+	const sec = ctxSection("Checkpoint");
+	if (data.model) sec.appendChild(ctxRow("Model", data.model));
+	const inputTokens = Number(data.inputTokens || 0);
+	const outputTokens = Number(data.outputTokens || 0);
+	const totalTokens = inputTokens + outputTokens;
+	if (totalTokens > 0) {
+		sec.appendChild(
+			ctxRow(
+				"Tokens used",
+				`${formatTokens(totalTokens)} (${formatTokens(inputTokens)} in + ${formatTokens(outputTokens)} out)`,
+			),
+		);
+	}
+	if (data.messagesSummarized) sec.appendChild(ctxRow("Messages", `${data.messagesSummarized} summarized`));
+	sec.appendChild(ctxRow("Status", "Context restarts from this checkpoint"));
+	card.appendChild(sec);
+	if (data.summary) {
+		const details = document.createElement("details");
+		details.className = "ctx-section checkpoint-summary";
+		const summaryToggle = document.createElement("summary");
+		summaryToggle.className = "ctx-section-title";
+		summaryToggle.textContent = "View summary";
+		details.appendChild(summaryToggle);
+		const body = ctxEl("div", "ctx-value checkpoint-summary-text", data.summary);
+		details.appendChild(body);
+		card.appendChild(details);
+	}
+	S.chatMsgBox.appendChild(card);
+	return card;
 }
 
 // ── Prompt memory helpers ────────────────────────────────────

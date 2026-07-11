@@ -403,15 +403,8 @@ pub(super) fn build_schema_map() -> KnownKeys {
                 (
                     "compaction",
                     Struct(HashMap::from([
-                        ("mode", Leaf),
-                        ("threshold_percent", Leaf),
-                        ("protect_head", Leaf),
-                        ("protect_tail_min", Leaf),
-                        ("tail_budget_ratio", Leaf),
-                        ("tool_prune_char_threshold", Leaf),
-                        ("summary_model", Leaf),
-                        ("max_summary_tokens", Leaf),
-                        ("show_settings_hint", Leaf),
+                        ("enabled", Leaf),
+                        ("threshold_tokens", Leaf),
                     ])),
                 ),
             ])),
@@ -645,7 +638,6 @@ pub(super) fn build_schema_map() -> KnownKeys {
         (
             "auxiliary",
             Struct(HashMap::from([
-                ("compaction", Leaf),
                 ("title_generation", Leaf),
                 ("vision", Leaf),
             ])),

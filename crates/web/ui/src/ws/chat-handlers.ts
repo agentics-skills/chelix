@@ -13,7 +13,8 @@ import {
 import { highlightCodeBlocks } from "../code-highlight";
 import { localizeStructuredError, renderAudioPlayer, renderMarkdown } from "../helpers";
 import { t } from "../i18n";
-import { maybeRefreshFullContext, renderCompactCard } from "../pages/ChatPage";
+import { maybeRefreshFullContext } from "../pages/ChatPage";
+import { renderCheckpointCard } from "../pages/chat/context-card";
 import { currentPrefix } from "../router";
 import {
 	bumpSessionCount,
@@ -31,7 +32,7 @@ import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metada
 import { terminalContextTokens } from "../terminal-usage";
 import { resolveAssistantTurnEnd, toolCallIds } from "../tool-call-card";
 import type { HistoryMessage } from "../types";
-import type { AbortedPartialState, ChatPayload, CompactPayload, ToolCallPayload } from "../types/ws-events";
+import type { AbortedPartialState, ChatPayload, ToolCallPayload } from "../types/ws-events";
 import {
 	clearChatEmptyState,
 	hasNonWhitespaceContent,
@@ -447,39 +448,14 @@ function handleChatFinal(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 
 // ── Compact handling ──────────────────────────────────────────
 
-// Shared debounce so the auto-compact path (which broadcasts both
-// `chat.compact done` from within ChatService::compact AND a wrapping
-// `auto_compact done` from the send() caller) renders the card exactly
-// once. Whichever event arrives first claims the render; the other is
-// a no-op within the debounce window.
-const COMPACT_CARD_DEBOUNCE_MS = 500;
-const lastCompactCardAt: Map<string, number> = new Map();
-
-// Per-session reference to the "Compacting conversation..." status message
-// appended on `auto_compact start`. Tracked explicitly (not via
-// `lastChild`) because `send()`'s pre-emptive auto-compact path
-// interleaves `chat.compact done` between `auto_compact start` and
-// `auto_compact done`, which means the old "remove lastChild" pattern
-// would remove the compact card instead of the status message.
-// Greptile P1 on commit 0531913b.
+// Per-session reference to the "Summarizing conversation..." status
+// message appended on `auto_compact start`. Tracked explicitly (not via
+// `lastChild`) so removing it never touches the checkpoint card.
 const compactingStatusElements: Map<string, HTMLElement> = new Map();
 
-function shouldRenderCompactCard(p: CompactPayload): boolean {
-	const key = p.sessionKey || "__active__";
-	const now = Date.now();
-	const previous = lastCompactCardAt.get(key) || 0;
-	if (now - previous < COMPACT_CARD_DEBOUNCE_MS) {
-		return false;
-	}
-	lastCompactCardAt.set(key, now);
-	return true;
-}
-
-// Drop the "Compacting conversation..." status message the auto-compact
-// start phase appended for this session, if one exists. Called by both
-// compact-done handlers before rendering the card so the status message
-// never outlives its purpose, regardless of which event arrives first.
-function removeCompactingStatus(p: CompactPayload): void {
+// Drop the "Summarizing conversation..." status message the auto-compact
+// start phase appended for this session, if one exists.
+function removeCompactingStatus(p: ChatPayload): void {
 	const key = p.sessionKey || "__active__";
 	const el = compactingStatusElements.get(key);
 	compactingStatusElements.delete(key);
@@ -495,45 +471,59 @@ function resetTokensAfterCompaction(): void {
 	updateTokenBar();
 }
 
-function handleChatAutoCompact(p: ChatPayload, isActive: boolean, isChatPage: boolean): void {
+// Cache the persisted checkpoint message and render the checkpoint card.
+// The card is rendered from the same persisted message that history
+// rendering uses, so the live-stream and history paths look identical.
+// A `data-history-index` guard makes duplicate broadcasts (`chat.compact
+// done` + `auto_compact done` for the same checkpoint) idempotent.
+function renderCheckpointFromPayload(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
+	const checkpoint = p.checkpoint;
+	if (!checkpoint) return;
+	const messageIndex = p.messageIndex;
+	if (typeof messageIndex === "number" && Number.isInteger(messageIndex)) {
+		const session = sessionStore.getByKey(eventSession);
+		const knownIndex = session ? session.lastHistoryIndex.value : S.lastHistoryIndex;
+		if (messageIndex > knownIndex) bumpSessionCount(eventSession, 1);
+		cacheSessionHistoryMessage(eventSession, checkpoint as HistoryMessage, messageIndex);
+		updateSessionHistoryIndex(eventSession, messageIndex);
+	}
 	if (!(isActive && isChatPage)) return;
+	const cardIndex = typeof messageIndex === "number" ? String(messageIndex) : null;
+	if (cardIndex && S.chatMsgBox?.querySelector(`.checkpoint-card[data-history-index="${cardIndex}"]`)) {
+		return;
+	}
+	const card = renderCheckpointCard(checkpoint);
+	if (card && cardIndex) card.dataset.historyIndex = cardIndex;
+	smartScrollToBottom();
+	resetTokensAfterCompaction();
+}
+
+function handleChatAutoCompact(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
 	if (p.phase === "start") {
-		const statusEl = chatAddMsg("system", "Compacting conversation (context limit reached)\u2026");
+		if (!(isActive && isChatPage)) return;
+		const statusEl = chatAddMsg("system", "Summarizing conversation (context limit reached)\u2026");
 		const key = p.sessionKey || "__active__";
 		if (statusEl) {
 			compactingStatusElements.set(key, statusEl);
 		}
 	} else if (p.phase === "done") {
-		// Always drop the status message -- even when the card was
-		// already rendered by an earlier `chat.compact done` event.
-		removeCompactingStatus(p as CompactPayload);
-		if (shouldRenderCompactCard(p as CompactPayload)) {
-			renderCompactCard(p);
-		}
-		resetTokensAfterCompaction();
+		if (isActive && isChatPage) removeCompactingStatus(p);
+		renderCheckpointFromPayload(p, isActive, isChatPage, eventSession);
 	} else if (p.phase === "error") {
-		removeCompactingStatus(p as CompactPayload);
+		if (!(isActive && isChatPage)) return;
+		removeCompactingStatus(p);
 		chatAddMsg("error", `Auto-compact failed: ${p.error?.message || p.error?.detail || "unknown error"}`);
 	}
 }
 
 // `chat.compact done` is emitted by ChatService::compact on every
-// compaction run (manual `/compact` RPCs AND the pre-emptive auto-
-// compact path). It carries the mode/tokens/settings metadata from
-// CompactionOutcome::broadcast_metadata() so the same card renders.
-function handleChatCompact(p: ChatPayload, isActive: boolean, isChatPage: boolean): void {
-	if (!(isActive && isChatPage)) return;
+// summarization (manual `/compact` RPCs AND the pre-emptive auto-compact
+// path). It carries the persisted checkpoint message from
+// CheckpointOutcome::broadcast_metadata().
+function handleChatCompact(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
 	if (p.phase !== "done") return;
-	// Drop the auto-compact status message if one exists. For the
-	// manual `/compact` RPC path there is no status message, so this
-	// is a no-op. For `send()`'s pre-emptive auto-compact path,
-	// `chat.compact done` arrives BEFORE `auto_compact done`, so we
-	// clear the status message here; the subsequent `auto_compact done`
-	// handler will find the slot already empty.
-	removeCompactingStatus(p as CompactPayload);
-	if (!shouldRenderCompactCard(p as CompactPayload)) return;
-	renderCompactCard(p);
-	resetTokensAfterCompaction();
+	if (isActive && isChatPage) removeCompactingStatus(p);
+	renderCheckpointFromPayload(p, isActive, isChatPage, eventSession);
 }
 
 // ── Retry handling ────────────────────────────────────────────

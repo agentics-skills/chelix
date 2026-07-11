@@ -309,8 +309,8 @@ fn save_user_config_does_not_materialize_defaults() {
         "defaults should not be materialized into user config"
     );
     assert!(
-        !saved.contains("mode = \"deterministic\""),
-        "compaction mode default should not be materialized"
+        !saved.contains("threshold_tokens"),
+        "compaction defaults should not be materialized"
     );
 }
 
