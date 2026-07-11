@@ -15,16 +15,7 @@ import {
 } from "../chat-ui";
 import { highlightCodeBlocks } from "../code-highlight";
 import * as gon from "../gon";
-import {
-	formatAssistantTokenUsage,
-	formatTokenSpeed,
-	parseAgentsListPayload,
-	renderAudioPlayer,
-	renderDocument,
-	renderMarkdown,
-	sendRpc,
-	tokenSpeedTone,
-} from "../helpers";
+import { parseAgentsListPayload, renderAudioPlayer, renderDocument, renderMarkdown, sendRpc } from "../helpers";
 import { appendMessageActions, appendUserMessageActions } from "../message-actions";
 import { upsertTtsProviderFooter } from "../message-voice";
 import { navigate } from "../router";
@@ -32,6 +23,8 @@ import { settingsPath } from "../routes";
 import * as S from "../state";
 import { modelStore } from "../stores/model-store";
 import { sessionStore } from "../stores/session-store";
+import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metadata";
+import { terminalContextTokens } from "../terminal-usage";
 import {
 	appendToolCardError,
 	createToolCallCard,
@@ -39,6 +32,7 @@ import {
 	isCommandToolName,
 	renderToolCardError,
 	renderToolCardResult,
+	toolCallIds,
 } from "../tool-call-card";
 import type { HistoryMessage } from "../types";
 import type { ToolResult } from "../types/ws-events";
@@ -54,6 +48,7 @@ export interface SearchContext {
 }
 
 interface ToolResultMsg extends HistoryMessage {
+	tool_call_id?: string;
 	tool_name?: string;
 	arguments?: unknown;
 	success?: boolean;
@@ -81,6 +76,14 @@ interface AssistantMsg extends HistoryMessage {
 	requestOutputTokens?: number;
 	requestCacheReadTokens?: number;
 	requestCacheWriteTokens?: number;
+	tool_calls?: unknown[];
+	created_at?: number;
+}
+
+interface PendingTerminalToolMetadata {
+	message: AssistantMsg;
+	remaining: Set<string>;
+	lastToolCard: HTMLElement | null;
 }
 
 interface UserMsg extends Omit<HistoryMessage, "content"> {
@@ -243,33 +246,34 @@ function removeMessageTailFromDom(messageEl: HTMLElement | null): void {
 	}
 }
 
-function createModelFooter(msg: AssistantMsg): HTMLDivElement {
-	const ft = document.createElement("div");
-	ft.className = "msg-model-footer";
-	let ftText = msg.provider ? `${msg.provider} / ${msg.model}` : msg.model || "";
-	if (msg.reasoningEffort !== undefined) {
-		ftText += ` \u00b7 reasoning_effort: ${msg.reasoningEffort || "off"}`;
-	}
-	if (msg.inputTokens || msg.outputTokens) {
-		ftText += ` \u00b7 ${formatAssistantTokenUsage(msg.inputTokens || 0, msg.outputTokens || 0, msg.cacheReadTokens || 0)}`;
-	}
-	const textSpan = document.createElement("span");
-	textSpan.textContent = ftText;
-	ft.appendChild(textSpan);
+function isTerminalAssistantMessage(msg: AssistantMsg): boolean {
+	return msg.durationMs !== undefined || !Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0;
+}
 
-	const speedLabel = formatTokenSpeed(msg.outputTokens || 0, msg.durationMs || 0);
-	if (speedLabel) {
-		const speed = document.createElement("span");
-		speed.className = "msg-token-speed";
-		const tone = tokenSpeedTone(msg.outputTokens || 0, msg.durationMs || 0);
-		if (tone) speed.classList.add(`msg-token-speed-${tone}`);
-		speed.textContent = ` \u00b7 ${speedLabel}`;
-		ft.appendChild(speed);
+function hasVisibleAssistantContent(msg: AssistantMsg): boolean {
+	return Boolean(msg.content?.trim() || msg.reasoning?.trim() || msg.audio);
+}
+
+function applyTerminalAssistantUsage(msg: AssistantMsg, isTerminal: boolean): void {
+	if (!isTerminal) return;
+	if (msg.inputTokens || msg.outputTokens) {
+		S.sessionTokens.input += msg.inputTokens || 0;
+		S.sessionTokens.output += msg.outputTokens || 0;
 	}
-	return ft;
+	if (msg.requestInputTokens !== undefined && msg.requestInputTokens !== null) {
+		S.setSessionCurrentInputTokens(msg.requestInputTokens || 0);
+	} else if (msg.inputTokens || msg.outputTokens) {
+		S.setSessionCurrentInputTokens(msg.inputTokens || 0);
+	}
+	S.setSessionCurrentContextTokens(terminalContextTokens(msg));
 }
 
 function renderHistoryAssistantMessage(msg: AssistantMsg): HTMLElement | null {
+	const isTerminal = isTerminalAssistantMessage(msg);
+	if (!hasVisibleAssistantContent(msg)) {
+		applyTerminalAssistantUsage(msg, isTerminal);
+		return null;
+	}
 	let el: HTMLElement | null;
 	if (msg.audio) {
 		el = chatAddMsg("assistant", "", true);
@@ -293,9 +297,7 @@ function renderHistoryAssistantMessage(msg: AssistantMsg): HTMLElement | null {
 			appendReasoningDisclosure(el, msg.reasoning);
 		}
 	}
-	if (el && msg.model) {
-		const footer = createModelFooter(msg);
-		el.appendChild(footer);
+	if (el && msg.model && isTerminal) {
 		upsertTtsProviderFooter(el, msg.tts_provider);
 		appendMessageActions({
 			messageEl: el,
@@ -306,27 +308,17 @@ function renderHistoryAssistantMessage(msg: AssistantMsg): HTMLElement | null {
 			hasAudio: !!msg.audio,
 		});
 	}
-	if (msg.inputTokens || msg.outputTokens) {
-		S.sessionTokens.input += msg.inputTokens || 0;
-		S.sessionTokens.output += msg.outputTokens || 0;
+	if (el && Number.isInteger(msg.historyIndex)) {
+		el.dataset.historyIndex = String(msg.historyIndex);
 	}
-	if (msg.requestInputTokens !== undefined && msg.requestInputTokens !== null) {
-		S.setSessionCurrentInputTokens(msg.requestInputTokens || 0);
-	} else if (msg.inputTokens || msg.outputTokens) {
-		S.setSessionCurrentInputTokens(msg.inputTokens || 0);
-	}
-	S.setSessionCurrentContextTokens(
-		(msg.requestInputTokens ?? msg.inputTokens ?? 0) +
-			(msg.requestOutputTokens ?? msg.outputTokens ?? 0) +
-			(msg.requestCacheReadTokens ?? msg.cacheReadTokens ?? 0) +
-			(msg.requestCacheWriteTokens ?? msg.cacheWriteTokens ?? 0),
-	);
+	applyTerminalAssistantUsage(msg, isTerminal);
 	return el;
 }
 
 function renderHistoryToolResult(msg: ToolResultMsg): HTMLElement {
 	const success = msg.success !== false;
 	const card = createToolCallCard({
+		toolCallId: msg.tool_call_id,
 		toolName: msg.tool_name,
 		arguments: msg.arguments,
 		status: success ? "success" : "error",
@@ -354,29 +346,6 @@ function renderHistoryToolResult(msg: ToolResultMsg): HTMLElement {
 
 	if (S.chatMsgBox) S.chatMsgBox.appendChild(card);
 	return card;
-}
-
-export function appendLastMessageTimestamp(epochMs: number): void {
-	if (!S.chatMsgBox) return;
-	const old = S.chatMsgBox.querySelector(".msg-footer-time");
-	if (old) old.remove();
-	const lastMsg = S.chatMsgBox.lastElementChild;
-	if (!lastMsg || lastMsg.classList.contains("user")) return;
-	let footer = lastMsg.querySelector(".msg-model-footer") as HTMLElement | null;
-	if (!footer) {
-		footer = document.createElement("div");
-		footer.className = "msg-model-footer";
-		lastMsg.appendChild(footer);
-	}
-	const timeEl = document.createElement("time");
-	timeEl.className = "msg-footer-time";
-	timeEl.setAttribute("data-epoch-ms", String(epochMs));
-	timeEl.textContent = new Date(epochMs).toISOString();
-	const wrap = document.createElement("span");
-	wrap.className = "msg-footer-time";
-	wrap.appendChild(document.createTextNode(" \u00b7 "));
-	wrap.appendChild(timeEl);
-	footer.appendChild(wrap);
 }
 
 function makeThinkingDots(): HTMLElement {
@@ -612,19 +581,65 @@ export function renderHistory(
 	S.setSessionCurrentInputTokens(0);
 	S.setSessionCurrentContextTokens(0);
 	S.setChatBatchLoading(true);
+	const pendingTerminalToolMetadata = new Map<string, PendingTerminalToolMetadata>();
 	history.forEach((msg) => {
 		if (msg.role === "user") {
 			msgEls.push(renderHistoryUserMessage(msg as UserMsg));
 		} else if (msg.role === "assistant") {
-			msgEls.push(renderHistoryAssistantMessage(msg as AssistantMsg));
+			const assistantMessage = msg as AssistantMsg;
+			const assistantEl = renderHistoryAssistantMessage(assistantMessage);
+			msgEls.push(assistantEl);
+			if (!isTerminalAssistantMessage(assistantMessage)) {
+				return;
+			}
+			const toolIds = toolCallIds(assistantMessage.tool_calls);
+			if (toolIds.length === 0) {
+				appendTerminalMetadata(
+					S.chatMsgBox,
+					assistantEl,
+					terminalMetadataData(assistantMessage, { historyIndex: assistantMessage.historyIndex }),
+				);
+			} else {
+				const pending: PendingTerminalToolMetadata = {
+					message: assistantMessage,
+					remaining: new Set(toolIds),
+					lastToolCard: null,
+				};
+				for (const toolCallId of toolIds) pendingTerminalToolMetadata.set(toolCallId, pending);
+			}
 		} else if (msg.role === "notice") {
 			msgEls.push(chatAddMsg("system", renderMarkdown(typeof msg.content === "string" ? msg.content : ""), true));
 		} else if (msg.role === "tool_result") {
-			msgEls.push(renderHistoryToolResult(msg as ToolResultMsg));
+			const toolResult = msg as ToolResultMsg;
+			const toolCard = renderHistoryToolResult(toolResult);
+			msgEls.push(toolCard);
+			const pending = toolResult.tool_call_id ? pendingTerminalToolMetadata.get(toolResult.tool_call_id) : undefined;
+			if (pending && toolResult.tool_call_id) {
+				pending.remaining.delete(toolResult.tool_call_id);
+				pending.lastToolCard = toolCard;
+				if (pending.remaining.size === 0) {
+					for (const toolCallId of toolCallIds(pending.message.tool_calls)) {
+						pendingTerminalToolMetadata.delete(toolCallId);
+					}
+					appendTerminalMetadata(
+						S.chatMsgBox,
+						toolCard,
+						terminalMetadataData(pending.message, { historyIndex: pending.message.historyIndex }),
+					);
+				}
+			}
 		} else {
 			msgEls.push(null);
 		}
 	});
+	for (const pending of new Set(pendingTerminalToolMetadata.values())) {
+		if (!pending.lastToolCard) continue;
+		appendTerminalMetadata(
+			S.chatMsgBox,
+			pending.lastToolCard,
+			terminalMetadataData(pending.message, { historyIndex: pending.message.historyIndex }),
+		);
+	}
 	S.setChatBatchLoading(false);
 	if (S.chatMsgBox) highlightCodeBlocks(S.chatMsgBox);
 	const historyTailIndex = computeHistoryTailIndex(history);
@@ -639,10 +654,6 @@ export function renderHistory(
 	S.setChatSeq(maxSeq);
 	if (history.length === 0) {
 		showWelcomeCard();
-	} else {
-		const lastMsg = history[history.length - 1];
-		const ts = (lastMsg as SeqHistoryMessage).created_at;
-		if (ts) appendLastMessageTimestamp(ts);
 	}
 	postHistoryLoadActions(key, searchContext, msgEls, thinkingText, skipAutoScroll === true);
 }

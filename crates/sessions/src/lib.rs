@@ -12,12 +12,14 @@ pub mod metadata;
 pub mod session_events;
 pub mod state_store;
 pub mod store;
+pub mod ui_history;
 
 pub use {
     error::{Error, Result},
     key::SessionKey,
     message::{ContentBlock, MessageContent, PersistedMessage, UserDocument},
     store::SearchResult,
+    ui_history::filter_ui_history,
 };
 
 /// Run database migrations for the sessions crate.

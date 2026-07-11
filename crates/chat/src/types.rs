@@ -130,7 +130,8 @@ pub(crate) struct ChatFinalBroadcast {
     pub request_cache_read_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_cache_write_tokens: Option<u32>,
-    pub message_index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_index: Option<usize>,
     pub reply_medium: ReplyMedium,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub iterations: Option<usize>,
@@ -161,6 +162,9 @@ pub(crate) struct ChatErrorBroadcast {
 #[derive(Clone)]
 pub(crate) struct AssistantTurnOutput {
     pub text: String,
+    /// Canonical history entry already persisted by the agent run. The caller
+    /// must not append another assistant message when this is present.
+    pub persisted_message_index: Option<usize>,
     pub input_tokens: u32,
     pub output_tokens: u32,
     pub cache_read_tokens: u32,
@@ -185,7 +189,7 @@ pub(crate) fn build_chat_final_broadcast(
     reasoning_effort: Option<String>,
     usage: UsageSnapshot,
     duration_ms: u64,
-    message_index: usize,
+    message_index: Option<usize>,
     reply_medium: ReplyMedium,
     iterations: Option<usize>,
     tool_calls_made: Option<usize>,
@@ -226,6 +230,7 @@ pub(crate) fn build_chat_final_broadcast(
 
 pub(crate) fn build_assistant_turn_output(
     text: String,
+    persisted_message_index: Option<usize>,
     usage: UsageSnapshot,
     duration_ms: u64,
     audio_path: Option<String>,
@@ -236,6 +241,7 @@ pub(crate) fn build_assistant_turn_output(
     let request = usage.request_or_total_fields();
     AssistantTurnOutput {
         text,
+        persisted_message_index,
         input_tokens: total.input_tokens,
         output_tokens: total.output_tokens,
         cache_read_tokens: total.cache_read_tokens,
@@ -419,7 +425,7 @@ mod tests {
             Some("high".to_string()),
             UsageSnapshot::new(usage, Some(request_usage)),
             250,
-            7,
+            Some(7),
             ReplyMedium::Text,
             Some(2),
             Some(1),
@@ -433,7 +439,7 @@ mod tests {
         assert_eq!(payload.cache_write_tokens, 4);
         assert_eq!(payload.request_cache_read_tokens, Some(850));
         assert_eq!(payload.request_cache_write_tokens, Some(2));
-        assert_eq!(payload.message_index, 7);
+        assert_eq!(payload.message_index, Some(7));
         assert_eq!(payload.seq, Some(42));
     }
 
@@ -441,6 +447,7 @@ mod tests {
     fn build_assistant_turn_output_copies_cache_usage() {
         let output = build_assistant_turn_output(
             "hello".to_string(),
+            None,
             UsageSnapshot::new(
                 Usage {
                     input_tokens: 1200,

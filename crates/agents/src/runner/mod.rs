@@ -16,7 +16,10 @@ mod tests_legacy;
 // ── Re-exports (preserve public API) ────────────────────────────────────
 
 pub use {
-    helpers::{AgentLoopLimits, AgentRunError, AgentRunResult, OnEvent, RunnerEvent},
+    helpers::{
+        AgentLoopLimits, AgentRunError, AgentRunResult, FinalTextSource, OnEvent, RunnerEvent,
+        RunnerToolCall,
+    },
     non_streaming::{
         run_agent, run_agent_loop, run_agent_loop_with_context,
         run_agent_loop_with_context_and_limits,
@@ -39,9 +42,10 @@ pub(crate) use helpers::{
     channel_binding_from_tool_context, dispatch_after_llm_call_hook,
     dispatch_before_agent_start_hook, empty_tool_name_retry_prompt,
     enforce_tool_result_context_budget, explicit_shell_command_from_user_content,
-    find_empty_tool_name_call, finish_agent_run, has_named_tool_call, is_substantive_answer_text,
-    log_tool_argument_diagnostic, public_tool_arguments, record_answer_text, resolve_tool_lookup,
-    sanitize_tool_name, streaming_tool_call_message_content,
+    fallback_final_text_source, find_empty_tool_name_call, finish_agent_run, has_named_tool_call,
+    is_substantive_answer_text, log_tool_argument_diagnostic, public_tool_arguments,
+    record_answer_text, resolve_tool_lookup, sanitize_tool_name,
+    streaming_tool_call_message_content,
 };
 
 // Items only consumed by test submodules (`tests`, `tests_legacy`).

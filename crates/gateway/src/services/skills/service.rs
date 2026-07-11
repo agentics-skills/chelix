@@ -1071,28 +1071,23 @@ mod tests {
 
         let service = NoopSkillsService;
         let result = service
-            .skill_disable(serde_json::json!({ "source": "bundled", "skill": "apple-notes" }))
+            .skill_disable(serde_json::json!({ "source": "bundled", "skill": "mcp-servers" }))
             .await?;
 
         assert_eq!(
             result.get("skill").and_then(Value::as_str),
-            Some("apple-notes")
+            Some("mcp-servers")
         );
 
         let config = chelix_config::discover_and_load();
         assert!(config.skills.disabled_bundled_categories.is_empty());
         assert_eq!(config.skills.disabled_bundled_skills, vec![
-            "apple-notes".to_string()
+            "mcp-servers".to_string()
         ]);
         assert!(
             !config
                 .skills
-                .is_bundled_skill_enabled("apple-notes", Some("apple"))
-        );
-        assert!(
-            config
-                .skills
-                .is_bundled_skill_enabled("apple-reminders", Some("apple"))
+                .is_bundled_skill_enabled("mcp-servers", Some("devops"))
         );
         Ok(())
     }
@@ -1107,33 +1102,28 @@ mod tests {
 
         let service = NoopSkillsService;
         service
-            .skill_disable(serde_json::json!({ "source": "bundled", "skill": "apple-notes" }))
+            .skill_disable(serde_json::json!({ "source": "bundled", "skill": "mcp-servers" }))
             .await?;
         service
-            .bundled_toggle_category(serde_json::json!({ "category": "apple", "enabled": false }))
+            .bundled_toggle_category(serde_json::json!({ "category": "devops", "enabled": false }))
             .await?;
-        let still_disabled = service
-            .skill_enable(serde_json::json!({ "source": "bundled", "skill": "apple-reminders" }))
+        let category_enabled = service
+            .bundled_toggle_category(serde_json::json!({ "category": "devops", "enabled": true }))
             .await?;
         assert_eq!(
-            still_disabled.get("enabled").and_then(Value::as_bool),
+            category_enabled.get("enabled").and_then(Value::as_bool),
             Some(true)
         );
 
         let config = chelix_config::discover_and_load();
         assert!(config.skills.disabled_bundled_categories.is_empty());
         assert_eq!(config.skills.disabled_bundled_skills, vec![
-            "apple-notes".to_string()
+            "mcp-servers".to_string()
         ]);
         assert!(
             !config
                 .skills
-                .is_bundled_skill_enabled("apple-notes", Some("apple"))
-        );
-        assert!(
-            config
-                .skills
-                .is_bundled_skill_enabled("apple-reminders", Some("apple"))
+                .is_bundled_skill_enabled("mcp-servers", Some("devops"))
         );
         Ok(())
     }

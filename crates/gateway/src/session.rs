@@ -18,8 +18,8 @@ use {
     chelix_memory::runtime::DynMemoryRuntime,
     chelix_projects::ProjectStore,
     chelix_sessions::{
-        message::PersistedMessage, metadata::SqliteSessionMetadata, state_store::SessionStateStore,
-        store::SessionStore,
+        filter_ui_history, message::PersistedMessage, metadata::SqliteSessionMetadata,
+        state_store::SessionStateStore, store::SessionStore,
     },
     chelix_tools::sandbox::SandboxRouter,
     chelix_voice::{AudioFormat, TtsProviderId},
@@ -153,42 +153,6 @@ struct TtsConvertPayload {
     audio: String,
     #[serde(default)]
     provider: Option<String>,
-}
-
-/// Filter out empty assistant messages from history before sending to the UI.
-///
-/// Empty assistant messages are persisted in the session JSONL for LLM history
-/// coherence (so the model sees a complete user→assistant turn), but they
-/// should not be shown in the web UI or sent to channels.
-fn filter_ui_history(messages: Vec<Value>) -> Vec<Value> {
-    messages
-        .into_iter()
-        .enumerate()
-        .filter_map(|(idx, mut msg)| {
-            if msg.get("role").and_then(|v| v.as_str()) == Some("assistant") {
-                let has_content = msg
-                    .get("content")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|s| !s.trim().is_empty());
-                let has_reasoning = msg
-                    .get("reasoning")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|s| !s.trim().is_empty());
-                let has_audio = msg
-                    .get("audio")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|s| !s.trim().is_empty());
-                let keep = has_content || has_reasoning || has_audio;
-                if !keep {
-                    return None;
-                }
-            }
-            if let Some(obj) = msg.as_object_mut() {
-                obj.insert("historyIndex".to_string(), serde_json::json!(idx));
-            }
-            Some(msg)
-        })
-        .collect()
 }
 
 /// Extract text content from a single message Value.

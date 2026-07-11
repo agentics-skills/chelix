@@ -44,6 +44,7 @@ export type { SessionMeta } from "./session";
 export type {
 	AbortedPartialState,
 	ApprovalPayload,
+	AssistantHistoryMessage,
 	AuthCredentialsPayload,
 	ChannelInfo as WsChannelInfo,
 	ChatError,

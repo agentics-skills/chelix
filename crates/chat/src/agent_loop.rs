@@ -519,7 +519,7 @@ pub(crate) async fn run_explicit_shell_command(
             Some(chelix_agents::model::Usage::default()),
         ),
         started.elapsed().as_millis() as u64,
-        user_message_index + 3, // +1 tool call assistant, +1 tool result, +1 final assistant
+        Some(user_message_index + 3), // +1 tool call assistant, +1 tool result, +1 final assistant
         ReplyMedium::Text,
         Some(1),
         Some(1),
@@ -535,6 +535,7 @@ pub(crate) async fn run_explicit_shell_command(
 
     build_assistant_turn_output(
         final_text,
+        None,
         UsageSnapshot::new(
             chelix_agents::model::Usage::default(),
             Some(chelix_agents::model::Usage::default()),

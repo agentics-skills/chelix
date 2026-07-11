@@ -1580,12 +1580,22 @@
     display: none;
   }
 
-  /* Model footer (shown below assistant messages) */
+  /* Shared typography for terminal assistant metadata */
   .msg-model-footer {
     font-size: 0.68rem;
     color: var(--muted);
     margin-top: 4px;
     text-align: right;
+  }
+
+  .terminal-metadata {
+    display: flex;
+    justify-content: flex-end;
+    margin: 4px 0 6px;
+  }
+
+  .terminal-metadata .msg-model-footer {
+    margin-top: 0;
   }
 
   /* Cron page */

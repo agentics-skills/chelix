@@ -10,6 +10,7 @@ use {
         response::{IntoResponse, Response},
     },
     chelix_httpd::AppState,
+    chelix_sessions::filter_ui_history,
     chelix_tools::image_cache::ImageBuilder,
     tracing::warn,
 };
@@ -180,36 +181,6 @@ pub struct SessionHistoryQuery {
     cursor: Option<u64>,
     #[serde(default)]
     limit: Option<usize>,
-}
-
-fn filter_ui_history(messages: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
-    messages
-        .into_iter()
-        .enumerate()
-        .filter_map(|(idx, mut msg)| {
-            if msg.get("role").and_then(|v| v.as_str()) == Some("assistant") {
-                let has_content = msg
-                    .get("content")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|s| !s.trim().is_empty());
-                let has_reasoning = msg
-                    .get("reasoning")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|s| !s.trim().is_empty());
-                let has_audio = msg
-                    .get("audio")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|s| !s.trim().is_empty());
-                if !(has_content || has_reasoning || has_audio) {
-                    return None;
-                }
-            }
-            if let Some(obj) = msg.as_object_mut() {
-                obj.insert("historyIndex".to_string(), serde_json::json!(idx));
-            }
-            Some(msg)
-        })
-        .collect()
 }
 
 fn history_index(msg: &serde_json::Value) -> Option<usize> {

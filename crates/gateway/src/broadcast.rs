@@ -1,11 +1,14 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use {
     chelix_protocol::{EventFrame, StateVersion, scopes},
+    futures::future::join_all,
     tracing::{trace, warn},
 };
 
-use crate::state::GatewayState;
+use crate::state::{ConnectedClient, GatewayState};
+
+const MANDATORY_EVENT_DELIVERY_TIMEOUT: Duration = Duration::from_secs(5);
 
 // ── Broadcaster ──────────────────────────────────────────────────────────────
 
@@ -79,7 +82,9 @@ pub struct BroadcastOpts {
 // ── Broadcast ───────────────────────────────────────────────────────────────
 
 /// Broadcast events to all connected WebSocket clients, respecting scope
-/// guards and dropping/closing slow consumers.
+/// guards. Droppable events use best-effort delivery; mandatory events wait
+/// for bounded queue capacity and disconnect an unresponsive client instead
+/// of silently losing protocol state.
 pub async fn broadcast(
     state: &Arc<GatewayState>,
     event: &str,
@@ -120,41 +125,71 @@ pub async fn broadcast(
     let guards = event_scope_guards();
     let required_scopes = guards.get(event);
 
-    let registry = state.client_registry.read().await;
-    trace!(
-        event,
-        seq,
-        clients = registry.clients.len(),
-        "broadcasting event"
-    );
-    for client in registry.clients.values() {
-        // Check scope guard: if the event requires a scope, verify the client has it.
-        if let Some(required) = required_scopes {
-            let client_scopes = client.scopes();
-            let has = client_scopes.contains(&scopes::ADMIN)
-                || required.iter().any(|s| client_scopes.contains(s));
-            if !has {
+    let recipients = {
+        let registry = state.client_registry.read().await;
+        trace!(
+            event,
+            seq,
+            clients = registry.clients.len(),
+            "broadcasting event"
+        );
+        let mut recipients = Vec::new();
+        for client in registry.clients.values() {
+            // Check scope guard: if the event requires a scope, verify the client has it.
+            if let Some(required) = required_scopes {
+                let client_scopes = client.scopes();
+                let has = client_scopes.contains(&scopes::ADMIN)
+                    || required.iter().any(|s| client_scopes.contains(s));
+                if !has {
+                    continue;
+                }
+            }
+
+            // Subscription filter (v4): skip clients not subscribed to this event.
+            if !client.is_subscribed_to(event) {
                 continue;
             }
-        }
 
-        // Subscription filter (v4): skip clients not subscribed to this event.
-        if !client.is_subscribed_to(event) {
+            // Channel filter (v4): if event is scoped to a channel, skip clients
+            // that haven't joined it.
+            if let Some(ref ch) = opts.channel
+                && !client.is_in_channel(ch)
+            {
+                continue;
+            }
+
+            recipients.push((client.conn_id.clone(), client.sender.clone()));
+        }
+        recipients
+    };
+
+    if opts.drop_if_slow {
+        for (_, sender) in recipients {
+            let _ = ConnectedClient::try_send_frame(&sender, json.clone());
+        }
+        return;
+    }
+
+    let send_results = join_all(recipients.into_iter().map(|(conn_id, sender)| {
+        let frame = json.clone();
+        async move {
+            let delivered = matches!(
+                tokio::time::timeout(MANDATORY_EVENT_DELIVERY_TIMEOUT, sender.send(frame)).await,
+                Ok(Ok(()))
+            );
+            (conn_id, delivered)
+        }
+    }))
+    .await;
+    for (conn_id, delivered) in send_results {
+        if delivered {
             continue;
         }
-
-        // Channel filter (v4): if event is scoped to a channel, skip clients
-        // that haven't joined it.
-        if let Some(ref ch) = opts.channel
-            && !client.is_in_channel(ch)
-        {
-            continue;
-        }
-
-        if !client.send(&json) && opts.drop_if_slow {
-            // Channel full or closed — skip silently when drop_if_slow.
-            continue;
-        }
+        warn!(
+            event,
+            seq, conn_id, "closing slow client after mandatory event delivery timeout"
+        );
+        state.close_client(&conn_id).await;
     }
 }
 

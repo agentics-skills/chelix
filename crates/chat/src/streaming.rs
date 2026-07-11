@@ -33,7 +33,7 @@ use crate::{
     models::DisabledModelsStore,
     prompt::prompt_build_limits_from_config,
     runtime::ChatRuntime,
-    service::ActiveAssistantDraft,
+    service::{ActiveAssistantDraft, append_final_assistant_segment},
     types::*,
 };
 
@@ -125,7 +125,6 @@ pub(crate) async fn run_streaming(
     session_reasoning_effort: Option<String>,
     desired_reply_medium: ReplyMedium,
     project_context: Option<&str>,
-    user_message_index: usize,
     _skills: &[chelix_skills::types::SkillMetadata],
     runtime_context: Option<&PromptRuntimeContext>,
     sender_name: Option<String>,
@@ -373,8 +372,6 @@ pub(crate) async fn run_streaming(
                         return None;
                     }
 
-                    let assistant_message_index = user_message_index + 1;
-
                     // Generate & persist TTS audio for voice-medium web UI replies.
                     let mut audio_warning: Option<String> = None;
                     let audio_path = if !is_silent && desired_reply_medium == ReplyMedium::Voice {
@@ -412,6 +409,32 @@ pub(crate) async fn run_streaming(
                         None
                     };
 
+                    let duration_ms = run_started.elapsed().as_millis() as u64;
+                    let llm_api_response =
+                        (!raw_llm_responses.is_empty()).then_some(Value::Array(raw_llm_responses));
+                    let mut assistant_output = build_assistant_turn_output(
+                        accumulated.clone(),
+                        None,
+                        UsageSnapshot::new(usage.clone(), Some(usage.clone())),
+                        duration_ms,
+                        audio_path.clone(),
+                        reasoning.clone(),
+                        llm_api_response,
+                    );
+                    if let Some(store) = session_store {
+                        assistant_output.persisted_message_index = append_final_assistant_segment(
+                            store,
+                            session_key,
+                            &assistant_output,
+                            provider.id(),
+                            provider_name,
+                            session_reasoning_effort.clone(),
+                            client_seq,
+                            run_id,
+                        )
+                        .await;
+                    }
+
                     let final_payload = build_chat_final_broadcast(
                         run_id,
                         session_key,
@@ -420,8 +443,8 @@ pub(crate) async fn run_streaming(
                         provider_name.to_string(),
                         session_reasoning_effort.clone(),
                         UsageSnapshot::new(usage.clone(), Some(usage.clone())),
-                        run_started.elapsed().as_millis() as u64,
-                        assistant_message_index,
+                        duration_ms,
+                        assistant_output.persisted_message_index,
                         desired_reply_medium,
                         None,
                         None,
@@ -451,16 +474,7 @@ pub(crate) async fn run_streaming(
                         )
                         .await;
                     }
-                    let llm_api_response =
-                        (!raw_llm_responses.is_empty()).then_some(Value::Array(raw_llm_responses));
-                    return Some(build_assistant_turn_output(
-                        accumulated,
-                        UsageSnapshot::new(usage.clone(), Some(usage)),
-                        run_started.elapsed().as_millis() as u64,
-                        audio_path,
-                        reasoning,
-                        llm_api_response,
-                    ));
+                    return Some(assistant_output);
                 },
                 StreamEvent::Error(msg) => {
                     let error_obj = parse_chat_error(&msg, Some(provider_name));

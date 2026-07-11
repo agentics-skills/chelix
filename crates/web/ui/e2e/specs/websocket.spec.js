@@ -619,6 +619,126 @@ test.describe("WebSocket connection lifecycle", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
+	test("history renders model metadata only on terminal assistant segments", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await page.goto("/chats/main");
+		await waitForWsConnected(page);
+		await waitForChatSessionReady(page);
+		await expectRpcOk(page, "chat.clear", {});
+
+		await mockRpcOkResponse(page, "sessions.switch", {
+			entry: { key: "session:terminal-metadata", messageCount: 4 },
+			historyOmitted: false,
+			history: [
+				{ role: "user", content: "run tools", historyIndex: 0 },
+				{
+					role: "assistant",
+					content: "Before tools.",
+					model: "mock-model",
+					provider: "mock",
+					inputTokens: 20,
+					outputTokens: 3,
+					tool_calls: [{ id: "tool-1", name: "execute_command" }],
+					historyIndex: 1,
+				},
+				{
+					role: "tool_result",
+					tool_call_id: "tool-1",
+					tool_name: "execute_command",
+					success: true,
+					historyIndex: 2,
+				},
+				{
+					role: "assistant",
+					content: "Final answer.",
+					model: "mock-model",
+					provider: "mock",
+					inputTokens: 30,
+					outputTokens: 8,
+					durationMs: 100,
+					historyIndex: 3,
+				},
+			],
+			replying: false,
+		});
+
+		await page.evaluate(async () => {
+			const appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
+			if (!appScript) throw new Error("app module script not found");
+			const appUrl = new URL(appScript.src, window.location.origin);
+			const prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
+			const sessions = await import(`${prefix}js/sessions.js`);
+			sessions.switchSession("session:terminal-metadata");
+		});
+
+		const preTool = page.locator('.msg.assistant[data-history-index="1"]');
+		const terminal = page.locator('.msg.assistant[data-history-index="3"]');
+		await expect(preTool).toContainText("Before tools.");
+		await expect(preTool.locator(".msg-model-footer")).toHaveCount(0);
+		await expect(terminal).toContainText("Final answer.");
+		await expect(terminal.locator(".msg-model-footer")).toHaveCount(0);
+		await expect(page.locator('.terminal-metadata[data-history-index="3"]')).toContainText("mock / mock-model");
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("history renders terminal empty tool metadata as a standalone row", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await page.goto("/chats/main");
+		await waitForWsConnected(page);
+		await waitForChatSessionReady(page);
+		await expectRpcOk(page, "chat.clear", {});
+
+		await mockRpcOkResponse(page, "sessions.switch", {
+			entry: { key: "session:terminal-empty-tool", messageCount: 3 },
+			historyOmitted: false,
+			history: [
+				{ role: "user", content: "run a tool", historyIndex: 0 },
+				{
+					role: "assistant",
+					content: "",
+					model: "mock-model",
+					provider: "mock",
+					inputTokens: 17,
+					outputTokens: 9,
+					cacheReadTokens: 3,
+					durationMs: 200,
+					created_at: 1_700_000_000_000,
+					tool_calls: [{ id: "tool-empty-terminal", name: "execute_command" }],
+					historyIndex: 1,
+				},
+				{
+					role: "tool_result",
+					tool_call_id: "tool-empty-terminal",
+					tool_name: "execute_command",
+					success: false,
+					created_at: 1_700_000_000_000,
+					historyIndex: 2,
+				},
+			],
+			replying: false,
+		});
+
+		await page.evaluate(async () => {
+			const appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
+			if (!appScript) throw new Error("app module script not found");
+			const appUrl = new URL(appScript.src, window.location.origin);
+			const prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
+			const sessions = await import(`${prefix}js/sessions.js`);
+			sessions.switchSession("session:terminal-empty-tool");
+		});
+
+		const toolCard = page.locator('[data-tool-call-id="tool-empty-terminal"]');
+		await expect(toolCard.locator(".msg-model-footer")).toHaveCount(0);
+		const metadata = page.locator('.terminal-metadata[data-history-index="1"]');
+		await expect(metadata).toHaveCount(1);
+		await expect(metadata).toContainText("mock / mock-model");
+		await expect(metadata).toContainText("17 in (3 cached) / 9 out");
+		await expect(metadata.locator(".msg-footer-time")).toHaveCount(1);
+		await expect(page.locator('.msg.assistant[data-history-index="1"]')).toHaveCount(0);
+		expect(pageErrors).toEqual([]);
+	});
+
 	test("user_message during switch is cached and rendered in child sessions", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await page.goto("/chats/main");
@@ -938,7 +1058,8 @@ test.describe("WebSocket connection lifecycle", () => {
 		});
 
 		await expect(page.locator("#messages .msg.assistant")).toHaveCount(0);
-		await expect(toolCard.locator(".msg-model-footer")).toBeVisible();
+		await expect(toolCard.locator(".msg-model-footer")).toHaveCount(0);
+		await expect(page.locator('.terminal-metadata[data-history-index="999997"]')).toHaveCount(1);
 		expect(pageErrors).toEqual([]);
 	});
 

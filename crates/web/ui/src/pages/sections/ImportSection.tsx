@@ -6,9 +6,9 @@ import { TabBar } from "../../components/forms";
 import * as gon from "../../gon";
 import { sendRpc } from "../../helpers";
 import type { RpcResponse } from "./_shared";
+import { ChelixDataSection } from "./ChelixDataSection";
 import { ClaudeImportSection } from "./ClaudeImportSection";
 import { CodexImportSection } from "./CodexImportSection";
-import { ChelixDataSection } from "./ChelixDataSection";
 
 interface ImportTabDef {
 	id: string;

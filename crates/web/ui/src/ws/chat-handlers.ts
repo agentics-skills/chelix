@@ -16,7 +16,6 @@ import { t } from "../i18n";
 import { maybeRefreshFullContext, renderCompactCard } from "../pages/ChatPage";
 import { currentPrefix } from "../router";
 import {
-	appendLastMessageTimestamp,
 	bumpSessionCount,
 	cacheSessionHistoryMessage,
 	clearSessionHistoryCache,
@@ -28,6 +27,10 @@ import {
 } from "../sessions";
 import * as S from "../state";
 import { sessionStore } from "../stores/session-store";
+import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metadata";
+import { terminalContextTokens } from "../terminal-usage";
+import { resolveAssistantTurnEnd, toolCallIds } from "../tool-call-card";
+import type { HistoryMessage } from "../types";
 import type { AbortedPartialState, ChatPayload, CompactPayload, ToolCallPayload } from "../types/ws-events";
 import {
 	clearChatEmptyState,
@@ -40,10 +43,10 @@ import {
 	updateSessionRunId,
 } from "./shared";
 import {
-	appendFinalFooter,
 	clearPendingToolCallEndsForSession,
 	clearStaleRunningToolCards,
 	completeToolCard,
+	createToolCallCardForPayload,
 	handleToolCallStartDom,
 	pendingToolCallEnds,
 	renderAbortedPartialInDom,
@@ -57,16 +60,35 @@ export type ChatHandler = (p: ChatPayload, isActive: boolean, isChatPage: boolea
 
 // ── Individual chat event handlers ────────────────────────────
 
-function resetVoicePending(eventSession: string): void {
-	const session = sessionStore.getByKey(eventSession);
-	if (session) session.voicePending.value = false;
-	S.setVoicePending(false);
-}
-
 function sessionMediaUrl(sessionKey: string, audioPath: string): string | null {
 	const filename = audioPath.split("/").pop() || "";
 	if (!filename) return null;
 	return `/api/sessions/${encodeURIComponent(sessionKey)}/media/${encodeURIComponent(filename)}`;
+}
+
+function assistantHistoryMessage(message: NonNullable<ToolCallPayload["assistantMessage"]>): HistoryMessage {
+	return {
+		role: message.role,
+		content: message.content,
+		model: message.model,
+		provider: message.provider,
+		reasoningEffort: message.reasoningEffort,
+		inputTokens: message.inputTokens,
+		outputTokens: message.outputTokens,
+		cacheReadTokens: message.cacheReadTokens,
+		cacheWriteTokens: message.cacheWriteTokens,
+		durationMs: message.durationMs,
+		requestInputTokens: message.requestInputTokens,
+		requestOutputTokens: message.requestOutputTokens,
+		requestCacheReadTokens: message.requestCacheReadTokens,
+		requestCacheWriteTokens: message.requestCacheWriteTokens,
+		tool_calls: message.tool_calls,
+		reasoning: message.reasoning,
+		audio: message.audio,
+		run_id: message.run_id,
+		created_at: message.created_at,
+		seq: message.seq,
+	};
 }
 
 function handleChatThinking(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
@@ -121,9 +143,16 @@ function handleChatVoicePending(_p: ChatPayload, isActive: boolean, isChatPage: 
 
 function handleChatToolCallStart(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
 	updateSessionRunId(eventSession, p.runId);
+	const toolSession = sessionStore.getByKey(eventSession);
+	const knownIndex = toolSession ? toolSession.lastHistoryIndex.value : S.lastHistoryIndex;
+	const messageIndex = p.messageIndex;
+	if (p.assistantMessage && typeof messageIndex === "number" && Number.isInteger(messageIndex)) {
+		if (messageIndex > knownIndex) bumpSessionCount(eventSession, 1);
+		cacheSessionHistoryMessage(eventSession, assistantHistoryMessage(p.assistantMessage), messageIndex);
+		updateSessionHistoryIndex(eventSession, messageIndex);
+	}
 	// Update per-session signal
-	const session = sessionStore.getByKey(eventSession);
-	if (session) session.streamText.value = "";
+	if (toolSession) toolSession.streamText.value = "";
 	if (!(isActive && isChatPage)) return;
 	setComposerStopButton(true, eventSession);
 	handleToolCallStartDom(p, eventSession);
@@ -131,9 +160,8 @@ function handleChatToolCallStart(p: ChatPayload, isActive: boolean, isChatPage: 
 
 function handleChatToolCallEnd(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
 	updateSessionRunId(eventSession, p.runId);
-	// Always bump badge -- the server persists both the hidden assistant
-	// tool-call frame and the visible tool_result for each completed call.
-	bumpSessionCount(eventSession, 2);
+	// The assistant tool-call frame was persisted at tool start; completion
+	// persists exactly one additional tool-result record.
 	let toolHistoryIndex: number | undefined | null = p.messageIndex;
 	if (toolHistoryIndex === undefined || toolHistoryIndex === null) {
 		const toolSession = sessionStore.getByKey(eventSession);
@@ -141,12 +169,18 @@ function handleChatToolCallEnd(p: ChatPayload, isActive: boolean, isChatPage: bo
 			toolHistoryIndex = toolSession.messageCount - 1;
 		}
 	}
+	const toolSession = sessionStore.getByKey(eventSession);
+	const knownIndex = toolSession ? toolSession.lastHistoryIndex.value : S.lastHistoryIndex;
+	if (toolHistoryIndex === undefined || toolHistoryIndex > knownIndex) {
+		bumpSessionCount(eventSession, 1);
+	}
 	cacheSessionHistoryMessage(
 		eventSession,
 		{
 			role: "tool_result",
 			tool_call_id: p.toolCallId || "",
 			tool_name: p.toolName || "",
+			arguments: p.arguments,
 			success: p.success === true,
 			result: p.result || null,
 			error: p.error?.detail || p.error?.message || (typeof p.error === "string" ? String(p.error) : null),
@@ -156,7 +190,8 @@ function handleChatToolCallEnd(p: ChatPayload, isActive: boolean, isChatPage: bo
 	);
 	updateSessionHistoryIndex(eventSession, toolHistoryIndex as number | undefined);
 	if (!(isActive && isChatPage)) return;
-	const toolCard = document.getElementById(toolCallCardId(p));
+	const toolCard =
+		(document.getElementById(toolCallCardId(p)) as HTMLElement | null) || createToolCallCardForPayload(p);
 	if (!toolCard) {
 		pendingToolCallEnds.set(toolCallEventKey(eventSession, p), p as ToolCallPayload);
 		return;
@@ -261,13 +296,16 @@ function handleChatDelta(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 function handleChatFinal(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
 	clearPendingToolCallEndsForSession(eventSession);
 	updateSessionRunId(eventSession, p.runId);
-	// Always bump badge -- the server persists the final assistant message.
-	bumpSessionCount(eventSession, 1);
+	let terminalMessageEl: HTMLElement | null = null;
 	const finalText = String(p.text || "");
 	const hasVisibleFinal =
 		hasNonWhitespaceContent(finalText) ||
 		hasNonWhitespaceContent(p.reasoning || "") ||
 		hasNonWhitespaceContent(p.audio || "");
+	const evtSession = sessionStore.getByKey(eventSession);
+	const lastIdx = evtSession ? evtSession.lastHistoryIndex.value : S.lastHistoryIndex;
+	const finalIsNewHistoryEntry = p.messageIndex === undefined || p.messageIndex > lastIdx;
+	if (finalIsNewHistoryEntry) bumpSessionCount(eventSession, 1);
 	if (hasVisibleFinal) {
 		cacheSessionHistoryMessage(
 			eventSession,
@@ -293,17 +331,6 @@ function handleChatFinal(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 			},
 			p.messageIndex,
 		);
-	}
-	// Compare against the per-session history index so cross-session
-	// events aren't wrongly skipped by another session's index.
-	const evtSession = sessionStore.getByKey(eventSession);
-	const lastIdx = evtSession ? evtSession.lastHistoryIndex.value : S.lastHistoryIndex;
-	if (p.messageIndex !== undefined && p.messageIndex <= lastIdx) {
-		setSessionReplying(eventSession, false);
-		setSessionActiveRunId(eventSession, null);
-		resetVoicePending(eventSession);
-		if (isActive && isChatPage) setComposerStopButton(false);
-		return;
 	}
 	updateSessionHistoryIndex(eventSession, p.messageIndex);
 	setSessionReplying(eventSession, false);
@@ -347,7 +374,7 @@ function handleChatFinal(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 		if (p.reasoning && !isReasoningAlreadyShown(p.reasoning)) {
 			appendReasoningDisclosure(msgEl, p.reasoning);
 		}
-		appendFinalFooter(msgEl, p, eventSession);
+		terminalMessageEl = msgEl;
 		smartScrollToBottom();
 	} else {
 		let resolvedEl = resolveFinalMessageEl(p);
@@ -379,18 +406,9 @@ function handleChatFinal(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 					setSafeMarkdownHtml(textWrap, finalText);
 					resolvedEl.appendChild(textWrap);
 				}
-				appendFinalFooter(resolvedEl, p, eventSession);
 			}
-		} else {
-			// Silent reply -- attach footer to the last visible assistant element
-			// (e.g. command card). Never attach to a user message.
-			let target = resolvedEl;
-			if (!target) {
-				const last = S.chatMsgBox?.lastElementChild as HTMLElement | null;
-				if (last && !last.classList.contains("user")) target = last;
-			}
-			appendFinalFooter(target, p, eventSession);
 		}
+		terminalMessageEl = resolvedEl;
 	}
 	if (p.inputTokens || p.outputTokens) {
 		S.sessionTokens.input += p.inputTokens || 0;
@@ -401,14 +419,13 @@ function handleChatFinal(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 	} else if (p.inputTokens || p.outputTokens) {
 		S.setSessionCurrentInputTokens(p.inputTokens || 0);
 	}
-	S.setSessionCurrentContextTokens(
-		(p.requestInputTokens ?? p.inputTokens ?? 0) +
-			(p.requestOutputTokens ?? p.outputTokens ?? 0) +
-			(p.requestCacheReadTokens ?? p.cacheReadTokens ?? 0) +
-			(p.requestCacheWriteTokens ?? p.cacheWriteTokens ?? 0),
-	);
+	S.setSessionCurrentContextTokens(terminalContextTokens(p));
 	updateTokenBar();
-	appendLastMessageTimestamp(Date.now());
+	appendTerminalMetadata(
+		S.chatMsgBox,
+		resolveAssistantTurnEnd(p.messageIndex, terminalMessageEl),
+		terminalMetadataData(p, { historyIndex: p.messageIndex, runId: p.runId, timestamp: Date.now() }),
+	);
 	// Reset per-session stream state
 	const finalSession = sessionStore.getByKey(eventSession);
 	if (finalSession) finalSession.resetStreamState();
@@ -618,6 +635,7 @@ function getAbortedPartialState(p: ChatPayload): AbortedPartialState {
 		partialText,
 		partialReasoning,
 		hasVisiblePartial: hasNonWhitespaceContent(partialText) || hasNonWhitespaceContent(partialReasoning),
+		hasTerminalToolBatch: partial?.durationMs !== undefined && toolCallIds(partial.tool_calls).length > 0,
 	};
 }
 
@@ -627,7 +645,7 @@ function cacheAbortedPartial(
 	abortSession: ReturnType<typeof sessionStore.getByKey>,
 	partialState: AbortedPartialState,
 ): void {
-	if (!partialState.hasVisiblePartial) return;
+	if (!(partialState.hasVisiblePartial || partialState.hasTerminalToolBatch)) return;
 	const partial = partialState.partial;
 	const lastIdx = abortSession ? abortSession.lastHistoryIndex.value : S.lastHistoryIndex;
 	if (p.messageIndex === undefined || p.messageIndex === null || p.messageIndex > lastIdx) {
@@ -642,9 +660,14 @@ function cacheAbortedPartial(
 			provider: partial?.provider || "",
 			inputTokens: partial?.inputTokens || 0,
 			outputTokens: partial?.outputTokens || 0,
+			cacheReadTokens: partial?.cacheReadTokens || 0,
+			cacheWriteTokens: partial?.cacheWriteTokens || 0,
 			durationMs: partial?.durationMs || 0,
 			requestInputTokens: partial?.requestInputTokens,
 			requestOutputTokens: partial?.requestOutputTokens,
+			requestCacheReadTokens: partial?.requestCacheReadTokens,
+			requestCacheWriteTokens: partial?.requestCacheWriteTokens,
+			tool_calls: partial?.tool_calls,
 			reasoningEffort: partial?.reasoningEffort,
 			reasoning: partial?.reasoning || undefined,
 			audio: partial?.audio || undefined,
@@ -664,8 +687,21 @@ function handleChatAborted(p: ChatPayload, isActive: boolean, isChatPage: boolea
 	const abortSession = sessionStore.getByKey(eventSession);
 	cacheAbortedPartial(eventSession, p, abortSession, partialState);
 	if (abortSession) abortSession.resetStreamState();
-	if (partialState.hasVisiblePartial && !isActive) {
+	if ((partialState.hasVisiblePartial || partialState.hasTerminalToolBatch) && !isActive) {
 		setSessionUnread(eventSession, true);
+	}
+	if (partialState.partial?.inputTokens || partialState.partial?.outputTokens) {
+		S.sessionTokens.input += partialState.partial.inputTokens || 0;
+		S.sessionTokens.output += partialState.partial.outputTokens || 0;
+	}
+	if (partialState.partial?.requestInputTokens !== undefined) {
+		S.setSessionCurrentInputTokens(partialState.partial.requestInputTokens || 0);
+	} else if (partialState.partial?.inputTokens || partialState.partial?.outputTokens) {
+		S.setSessionCurrentInputTokens(partialState.partial.inputTokens || 0);
+	}
+	if (partialState.hasVisiblePartial || partialState.hasTerminalToolBatch) {
+		S.setSessionCurrentContextTokens(terminalContextTokens(partialState.partial || {}));
+		updateTokenBar();
 	}
 	if (!(isActive && isChatPage)) {
 		S.setVoicePending(false);
@@ -674,7 +710,7 @@ function handleChatAborted(p: ChatPayload, isActive: boolean, isChatPage: boolea
 	setComposerStopButton(false);
 	removeThinking();
 	clearStaleRunningToolCards();
-	renderAbortedPartialInDom(eventSession, p, partialState);
+	renderAbortedPartialInDom(p, partialState);
 	S.setStreamEl(null);
 	S.setStreamText("");
 	S.setVoicePending(false);

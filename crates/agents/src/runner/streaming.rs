@@ -29,14 +29,14 @@ use crate::{
 };
 
 use super::{
-    AUTO_CONTINUE_NUDGE, AgentLoopLimits, AgentRunError, AgentRunResult,
-    MALFORMED_TOOL_RETRY_PROMPT, OnEvent, RunnerEvent, UsageAccumulator,
+    AUTO_CONTINUE_NUDGE, AgentLoopLimits, AgentRunError, AgentRunResult, FinalTextSource,
+    MALFORMED_TOOL_RETRY_PROMPT, OnEvent, RunnerEvent, RunnerToolCall, UsageAccumulator,
     apply_before_llm_call_modify_payload, apply_loop_detector_intervention,
     channel_binding_from_tool_context, dispatch_after_llm_call_hook,
     dispatch_before_agent_start_hook, empty_tool_name_retry_prompt,
-    explicit_shell_command_from_user_content, find_empty_tool_name_call, finish_agent_run,
-    has_named_tool_call, is_substantive_answer_text, log_tool_argument_diagnostic,
-    public_tool_arguments, resolve_tool_lookup,
+    explicit_shell_command_from_user_content, fallback_final_text_source,
+    find_empty_tool_name_call, finish_agent_run, has_named_tool_call, is_substantive_answer_text,
+    log_tool_argument_diagnostic, public_tool_arguments, record_answer_text, resolve_tool_lookup,
     retry::{
         RATE_LIMIT_MAX_RETRIES, is_context_window_error, next_retry_delay_ms,
         resolve_agent_max_iterations,
@@ -165,6 +165,7 @@ pub async fn run_agent_loop_streaming_with_limits(
     // When the final iteration is empty (e.g. model stop after browser close),
     // this is used as the final response text instead of returning silent.
     let mut last_answer_text = String::new();
+    let mut last_answer_tool_call_id: Option<String> = None;
     let mut malformed_retry_count: u8 = 0;
     let mut empty_tool_name_retry_count: u8 = 0;
     let mut auto_continue_count: usize = 0;
@@ -565,6 +566,7 @@ pub async fn run_agent_loop_streaming_with_limits(
                 info!(tool_call_id = %tc.id, "detected structured tool call with empty name in stream, requesting retry");
                 let retry_text = streaming_tool_call_message_content(
                     &mut last_answer_text,
+                    &mut last_answer_tool_call_id,
                     &accumulated_text,
                     &accumulated_reasoning,
                 );
@@ -642,6 +644,9 @@ pub async fn run_agent_loop_streaming_with_limits(
             );
             return Ok(finish_agent_run(
                 final_text,
+                used_fallback_text
+                    .then(|| fallback_final_text_source(last_answer_tool_call_id))
+                    .unwrap_or(FinalTextSource::NewSegment),
                 iterations,
                 total_tool_calls,
                 &usage_accumulator,
@@ -661,7 +666,12 @@ pub async fn run_agent_loop_streaming_with_limits(
         let (text_for_msg, is_actual_reasoning) = if !accumulated_reasoning.is_empty() {
             (Some(accumulated_reasoning), true)
         } else if !accumulated_text.is_empty() {
-            last_answer_text.clone_from(&accumulated_text);
+            record_answer_text(
+                &mut last_answer_text,
+                &mut last_answer_tool_call_id,
+                Some(&accumulated_text),
+                &tool_calls,
+            );
             (Some(accumulated_text), false)
         } else {
             (None, false)
@@ -682,6 +692,9 @@ pub async fn run_agent_loop_streaming_with_limits(
 
         // Execute tool calls concurrently.
         total_tool_calls += tool_calls.len();
+
+        let iteration_tool_calls: Arc<[RunnerToolCall]> =
+            tool_calls.iter().map(Into::into).collect::<Vec<_>>().into();
 
         // Build futures for all tool calls (executed concurrently).
         //
@@ -711,6 +724,8 @@ pub async fn run_agent_loop_streaming_with_limits(
                 let session_key = session_key_for_hooks.clone();
                 let channel_for_hooks = channel_for_hooks.clone();
                 let tc_name = resolved_name.to_string();
+                let iteration_tool_calls = iteration_tool_calls.clone();
+                let iteration_usage = request_usage.clone();
 
                 if let Some(ref ctx) = tool_context
                     && let (Some(args_obj), Some(ctx_obj)) = (args.as_object_mut(), ctx.as_object())
@@ -765,6 +780,8 @@ pub async fn run_agent_loop_streaming_with_limits(
                             name: tc.name.clone(),
                             arguments: public_tool_arguments(&args),
                             metadata: tc.metadata.clone(),
+                            iteration_tool_calls: iteration_tool_calls.clone(),
+                            iteration_usage: iteration_usage.clone(),
                         });
                     }
                     info!(tool = %tc_name, id = %tc.id, args = %args, "executing tool");

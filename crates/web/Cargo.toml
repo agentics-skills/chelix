@@ -15,6 +15,7 @@ chelix-cron     = { workspace = true }
 chelix-gateway  = { workspace = true }
 chelix-httpd    = { workspace = true }
 chelix-media    = { workspace = true }
+chelix-sessions = { workspace = true }
 chelix-skills   = { workspace = true }
 chelix-tools    = { workspace = true }
 chrono          = { features = ["serde"], workspace = true }

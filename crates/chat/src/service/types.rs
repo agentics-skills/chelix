@@ -56,17 +56,31 @@ pub(crate) struct ActiveAssistantDraft {
     reasoning: String,
     model: String,
     provider: String,
+    reasoning_effort: Option<String>,
     seq: Option<u64>,
     run_id: String,
 }
 
+#[derive(Default)]
+pub(crate) struct EventForwarderResult {
+    pub(crate) reasoning: String,
+    pub(crate) tool_segment_indices: HashMap<String, usize>,
+}
+
 impl ActiveAssistantDraft {
-    pub(crate) fn new(run_id: &str, model: &str, provider: &str, seq: Option<u64>) -> Self {
+    pub(crate) fn new(
+        run_id: &str,
+        model: &str,
+        provider: &str,
+        reasoning_effort: Option<String>,
+        seq: Option<u64>,
+    ) -> Self {
         Self {
             content: String::new(),
             reasoning: String::new(),
             model: model.to_string(),
             provider: provider.to_string(),
+            reasoning_effort,
             seq,
             run_id: run_id.to_string(),
         }
@@ -83,28 +97,42 @@ impl ActiveAssistantDraft {
         self.reasoning.push_str(reasoning);
     }
 
+    pub(crate) fn next_segment(&self) -> Self {
+        Self::new(
+            &self.run_id,
+            &self.model,
+            &self.provider,
+            self.reasoning_effort.clone(),
+            self.seq,
+        )
+    }
+
     pub(crate) fn has_visible_content(&self) -> bool {
         !self.content.trim().is_empty() || !self.reasoning.trim().is_empty()
     }
 
-    pub(crate) fn to_persisted_message(&self) -> PersistedMessage {
+    pub(crate) fn to_persisted_message(
+        &self,
+        tool_calls: Option<Vec<PersistedToolCall>>,
+        usage: Option<&chelix_agents::model::Usage>,
+    ) -> PersistedMessage {
         let reasoning = self.reasoning.trim();
         PersistedMessage::Assistant {
             content: self.content.clone(),
             created_at: Some(now_ms()),
             model: Some(self.model.clone()),
             provider: Some(self.provider.clone()),
-            reasoning_effort: None,
-            input_tokens: None,
-            output_tokens: None,
-            cache_read_tokens: None,
-            cache_write_tokens: None,
+            reasoning_effort: self.reasoning_effort.clone(),
+            input_tokens: usage.map(|usage| usage.input_tokens),
+            output_tokens: usage.map(|usage| usage.output_tokens),
+            cache_read_tokens: usage.map(|usage| usage.cache_read_tokens),
+            cache_write_tokens: usage.map(|usage| usage.cache_write_tokens),
             duration_ms: None,
-            request_input_tokens: None,
-            request_output_tokens: None,
-            request_cache_read_tokens: None,
-            request_cache_write_tokens: None,
-            tool_calls: None,
+            request_input_tokens: usage.map(|usage| usage.input_tokens),
+            request_output_tokens: usage.map(|usage| usage.output_tokens),
+            request_cache_read_tokens: usage.map(|usage| usage.cache_read_tokens),
+            request_cache_write_tokens: usage.map(|usage| usage.cache_write_tokens),
+            tool_calls,
             reasoning: (!reasoning.is_empty()).then(|| reasoning.to_string()),
             llm_api_response: None,
             audio: None,
@@ -114,7 +142,7 @@ impl ActiveAssistantDraft {
     }
 }
 
-fn build_persisted_tool_call(
+pub(crate) fn build_persisted_tool_call(
     tool_call_id: impl Into<String>,
     tool_name: impl Into<String>,
     arguments: Option<Value>,
@@ -133,6 +161,8 @@ fn build_persisted_tool_call(
     }
 }
 
+/// Build the assistant protocol frame for direct tool execution paths that do
+/// not stream an assistant text segment (for example `/sh`).
 pub(crate) fn build_tool_call_assistant_message(
     tool_call_id: impl Into<String>,
     tool_name: impl Into<String>,
@@ -202,6 +232,101 @@ pub(crate) fn build_persisted_assistant_message(
     }
 }
 
+pub(crate) async fn append_final_assistant_segment(
+    session_store: &SessionStore,
+    session_key: &str,
+    assistant_output: &AssistantTurnOutput,
+    model: &str,
+    provider: &str,
+    reasoning_effort: Option<String>,
+    seq: Option<u64>,
+    run_id: &str,
+) -> Option<usize> {
+    let message = build_persisted_assistant_message(
+        assistant_output.clone(),
+        Some(model.to_string()),
+        Some(provider.to_string()),
+        reasoning_effort,
+        seq,
+        Some(run_id.to_string()),
+    );
+
+    match session_store
+        .append_with_index(session_key, &message.to_value())
+        .await
+    {
+        Ok(message_index) => Some(message_index),
+        Err(error) => {
+            warn!(session = %session_key, error = %error, "failed to persist final assistant segment");
+            None
+        },
+    }
+}
+
+pub(crate) fn finalize_persisted_assistant_message(
+    assistant_output: AssistantTurnOutput,
+    existing: PersistedMessage,
+) -> PersistedMessage {
+    let PersistedMessage::Assistant {
+        content,
+        created_at,
+        model,
+        provider,
+        reasoning_effort,
+        tool_calls,
+        reasoning,
+        seq,
+        run_id,
+        ..
+    } = existing
+    else {
+        return existing;
+    };
+
+    PersistedMessage::Assistant {
+        content,
+        created_at,
+        model,
+        provider,
+        reasoning_effort,
+        input_tokens: Some(assistant_output.input_tokens),
+        output_tokens: Some(assistant_output.output_tokens),
+        cache_read_tokens: Some(assistant_output.cache_read_tokens),
+        cache_write_tokens: Some(assistant_output.cache_write_tokens),
+        duration_ms: Some(assistant_output.duration_ms),
+        request_input_tokens: Some(assistant_output.request_input_tokens),
+        request_output_tokens: Some(assistant_output.request_output_tokens),
+        request_cache_read_tokens: Some(assistant_output.request_cache_read_tokens),
+        request_cache_write_tokens: Some(assistant_output.request_cache_write_tokens),
+        tool_calls,
+        reasoning: assistant_output.reasoning.or(reasoning),
+        llm_api_response: assistant_output.llm_api_response,
+        audio: assistant_output.audio_path,
+        seq,
+        run_id,
+    }
+}
+
+pub(crate) fn finalize_aborted_tool_segment(
+    mut existing: PersistedMessage,
+    duration_ms: u64,
+) -> PersistedMessage {
+    if let PersistedMessage::Assistant {
+        duration_ms: persisted_duration,
+        ..
+    } = &mut existing
+    {
+        *persisted_duration = Some(duration_ms);
+    }
+    existing
+}
+
+pub(crate) fn latest_tool_segment_index(
+    tool_segment_indices: &HashMap<String, usize>,
+) -> Option<usize> {
+    tool_segment_indices.values().copied().max()
+}
+
 pub(crate) async fn persist_tool_history_pair(
     session_store: &Arc<SessionStore>,
     session_key: &str,
@@ -237,7 +362,7 @@ pub struct LiveChatService {
     pub(in crate::service) active_runs: Arc<RwLock<HashMap<String, AbortHandle>>>,
     pub(in crate::service) active_runs_by_session: Arc<RwLock<HashMap<String, String>>>,
     pub(in crate::service) active_event_forwarders:
-        Arc<RwLock<HashMap<String, tokio::task::JoinHandle<String>>>>,
+        Arc<RwLock<HashMap<String, tokio::task::JoinHandle<EventForwarderResult>>>>,
     pub(in crate::service) terminal_runs: Arc<RwLock<HashSet<String>>>,
     pub(in crate::service) tool_registry: Arc<RwLock<ToolRegistry>>,
     pub(in crate::service) session_store: Arc<SessionStore>,
@@ -377,7 +502,9 @@ impl LiveChatService {
             return (resolved_run_id, false);
         }
 
-        let aborted = if let Some(handle) = active_runs.write().await.remove(&target_run_id) {
+        let abort_handle = active_runs.write().await.remove(&target_run_id);
+        let aborted = if let Some(handle) = abort_handle {
+            terminal_runs.write().await.insert(target_run_id.clone());
             handle.abort();
             true
         } else {
@@ -412,23 +539,25 @@ impl LiveChatService {
     }
 
     pub(crate) async fn wait_for_event_forwarder(
-        active_event_forwarders: &Arc<RwLock<HashMap<String, tokio::task::JoinHandle<String>>>>,
+        active_event_forwarders: &Arc<
+            RwLock<HashMap<String, tokio::task::JoinHandle<EventForwarderResult>>>,
+        >,
         session_key: &str,
-    ) -> String {
+    ) -> EventForwarderResult {
         let handle = active_event_forwarders.write().await.remove(session_key);
         let Some(handle) = handle else {
-            return String::new();
+            return EventForwarderResult::default();
         };
 
         match handle.await {
-            Ok(reasoning) => reasoning,
+            Ok(result) => result,
             Err(e) => {
                 warn!(
                     session = %session_key,
                     error = %e,
                     "runner event forwarder task failed"
                 );
-                String::new()
+                EventForwarderResult::default()
             },
         }
     }
@@ -446,7 +575,7 @@ impl LiveChatService {
             return None;
         }
 
-        let partial_message = partial.to_persisted_message();
+        let partial_message = partial.to_persisted_message(None, None);
         let partial_value = partial_message.to_value();
         let mut message_index = None;
 
@@ -466,6 +595,39 @@ impl LiveChatService {
         }
 
         Some((partial_value, message_index))
+    }
+
+    pub(in crate::service) async fn finalize_active_tool_segment_on_abort(
+        &self,
+        session_key: &str,
+        tool_segment_indices: &HashMap<String, usize>,
+    ) -> Option<(Value, Option<u32>)> {
+        let message_index = latest_tool_segment_index(tool_segment_indices)?;
+        let finalized = match self
+            .session_store
+            .update_typed_at(session_key, message_index, |existing| {
+                let duration_ms = match &existing {
+                    PersistedMessage::Assistant { created_at, .. } => created_at
+                        .map(|started_at| now_ms().saturating_sub(started_at))
+                        .unwrap_or_default(),
+                    _ => 0,
+                };
+                finalize_aborted_tool_segment(existing, duration_ms)
+            })
+            .await
+        {
+            Ok(finalized @ PersistedMessage::Assistant { .. }) => finalized,
+            Ok(_) => {
+                warn!(session = %session_key, message_index, "non-assistant message selected for abort finalization");
+                return None;
+            },
+            Err(error) => {
+                warn!(session = %session_key, error = %error, "failed to finalize assistant tool segment after abort");
+                return None;
+            },
+        };
+
+        Some((finalized.to_value(), u32::try_from(message_index).ok()))
     }
 
     /// Resolve a provider from session metadata, history, or first registered.
@@ -595,11 +757,15 @@ impl LiveChatService {
 mod tests {
     use {
         super::{
-            ActiveAssistantDraft, ActiveToolCall, build_persisted_assistant_message,
-            build_tool_call_assistant_message,
+            ActiveAssistantDraft, ActiveToolCall, append_final_assistant_segment,
+            build_persisted_assistant_message, build_persisted_tool_call,
+            build_tool_call_assistant_message, finalize_aborted_tool_segment,
+            finalize_persisted_assistant_message, latest_tool_segment_index,
         },
         crate::types::AssistantTurnOutput,
-        chelix_sessions::PersistedMessage,
+        chelix_agents::model::Usage,
+        chelix_sessions::{PersistedMessage, store::SessionStore},
+        std::collections::HashMap,
     };
 
     #[test]
@@ -650,12 +816,28 @@ mod tests {
     }
 
     #[test]
+    fn latest_tool_segment_index_outlives_completed_tool_calls() {
+        let segments = HashMap::from([
+            ("completed-tool".to_string(), 11_usize),
+            ("active-tool".to_string(), 7_usize),
+        ]);
+
+        assert_eq!(latest_tool_segment_index(&segments), Some(11));
+    }
+
+    #[test]
     fn active_assistant_draft_omits_cache_usage_fields() {
-        let mut draft = ActiveAssistantDraft::new("run-1", "gpt-4.1", "openai", Some(7));
+        let mut draft = ActiveAssistantDraft::new(
+            "run-1",
+            "gpt-4.1",
+            "openai",
+            Some("high".to_string()),
+            Some(7),
+        );
         draft.append_text("hello");
         draft.set_reasoning("thinking");
 
-        let message = draft.to_persisted_message();
+        let message = draft.to_persisted_message(None, None);
 
         match message {
             PersistedMessage::Assistant {
@@ -713,6 +895,7 @@ mod tests {
         let message = build_persisted_assistant_message(
             AssistantTurnOutput {
                 text: "hello".to_string(),
+                persisted_message_index: None,
                 input_tokens: 1200,
                 output_tokens: 80,
                 cache_read_tokens: 1050,
@@ -745,6 +928,199 @@ mod tests {
                 assert_eq!(cache_write_tokens, Some(4));
                 assert_eq!(request_cache_read_tokens, Some(850));
                 assert_eq!(request_cache_write_tokens, Some(2));
+            },
+            _ => panic!("expected assistant message"),
+        }
+    }
+
+    #[tokio::test]
+    async fn append_final_assistant_segment_returns_its_physical_history_index() {
+        let directory = tempfile::tempdir().expect("temporary session directory");
+        let store = SessionStore::new(directory.path().to_path_buf());
+        store
+            .append(
+                "main",
+                &serde_json::json!({ "role": "user", "content": "hello" }),
+            )
+            .await
+            .expect("user message persists");
+        let assistant_output = AssistantTurnOutput {
+            text: "streamed response".to_string(),
+            persisted_message_index: None,
+            input_tokens: 12,
+            output_tokens: 8,
+            cache_read_tokens: 2,
+            cache_write_tokens: 1,
+            duration_ms: 250,
+            request_input_tokens: 12,
+            request_output_tokens: 8,
+            request_cache_read_tokens: 2,
+            request_cache_write_tokens: 1,
+            audio_path: None,
+            reasoning: Some("streamed reasoning".to_string()),
+            llm_api_response: None,
+        };
+
+        let message_index = append_final_assistant_segment(
+            &store,
+            "main",
+            &assistant_output,
+            "model-1",
+            "provider-1",
+            Some("high".to_string()),
+            Some(7),
+            "run-1",
+        )
+        .await;
+
+        assert_eq!(message_index, Some(1));
+        let history = store.read("main").await.expect("session history reads");
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[1]["role"], "assistant");
+        assert_eq!(history[1]["content"], "streamed response");
+        assert_eq!(history[1]["reasoning"], "streamed reasoning");
+        assert_eq!(history[1]["model"], "model-1");
+        assert_eq!(history[1]["provider"], "provider-1");
+        assert_eq!(history[1]["seq"], 7);
+        assert_eq!(history[1]["run_id"], "run-1");
+    }
+
+    #[test]
+    fn tool_segment_finalization_preserves_canonical_content_and_tool_calls() {
+        let mut draft = ActiveAssistantDraft::new(
+            "run-1",
+            "gpt-4.1",
+            "openai",
+            Some("high".to_string()),
+            Some(7),
+        );
+        draft.append_text("Text before tool.");
+        draft.set_reasoning("Initial reasoning.");
+        let segment = draft.to_persisted_message(
+            Some(vec![build_persisted_tool_call(
+                "tool-1",
+                "execute_command",
+                Some(serde_json::json!({"command": "true"})),
+                None,
+            )]),
+            Some(&Usage {
+                input_tokens: 10,
+                output_tokens: 2,
+                cache_read_tokens: 4,
+                cache_write_tokens: 1,
+            }),
+        );
+
+        let finalized = finalize_persisted_assistant_message(
+            AssistantTurnOutput {
+                text: "Text before tool.".to_string(),
+                persisted_message_index: Some(1),
+                input_tokens: 30,
+                output_tokens: 8,
+                cache_read_tokens: 12,
+                cache_write_tokens: 3,
+                duration_ms: 250,
+                request_input_tokens: 20,
+                request_output_tokens: 6,
+                request_cache_read_tokens: 9,
+                request_cache_write_tokens: 2,
+                audio_path: None,
+                reasoning: Some("Final reasoning.".to_string()),
+                llm_api_response: None,
+            },
+            segment,
+        );
+
+        match finalized {
+            PersistedMessage::Assistant {
+                content,
+                model,
+                provider,
+                reasoning_effort,
+                input_tokens,
+                output_tokens,
+                cache_read_tokens,
+                cache_write_tokens,
+                duration_ms,
+                tool_calls,
+                reasoning,
+                seq,
+                run_id,
+                ..
+            } => {
+                assert_eq!(content, "Text before tool.");
+                assert_eq!(model.as_deref(), Some("gpt-4.1"));
+                assert_eq!(provider.as_deref(), Some("openai"));
+                assert_eq!(reasoning_effort.as_deref(), Some("high"));
+                assert_eq!(input_tokens, Some(30));
+                assert_eq!(output_tokens, Some(8));
+                assert_eq!(cache_read_tokens, Some(12));
+                assert_eq!(cache_write_tokens, Some(3));
+                assert_eq!(duration_ms, Some(250));
+                assert_eq!(
+                    tool_calls.as_ref().map(|calls| calls[0].id.as_str()),
+                    Some("tool-1")
+                );
+                assert_eq!(reasoning.as_deref(), Some("Final reasoning."));
+                assert_eq!(seq, Some(7));
+                assert_eq!(run_id.as_deref(), Some("run-1"));
+            },
+            _ => panic!("expected assistant message"),
+        }
+    }
+
+    #[test]
+    fn aborted_tool_segment_finalization_preserves_usage_and_tool_calls() {
+        let segment = PersistedMessage::Assistant {
+            content: "Text before tool.".to_string(),
+            created_at: Some(10),
+            model: Some("gpt-4.1".to_string()),
+            provider: Some("openai".to_string()),
+            reasoning_effort: Some("high".to_string()),
+            input_tokens: Some(30),
+            output_tokens: Some(8),
+            cache_read_tokens: Some(12),
+            cache_write_tokens: Some(3),
+            duration_ms: None,
+            request_input_tokens: Some(20),
+            request_output_tokens: Some(6),
+            request_cache_read_tokens: Some(9),
+            request_cache_write_tokens: Some(2),
+            tool_calls: Some(vec![build_persisted_tool_call(
+                "tool-1",
+                "execute_command",
+                Some(serde_json::json!({"command": "true"})),
+                None,
+            )]),
+            reasoning: Some("Initial reasoning.".to_string()),
+            llm_api_response: None,
+            audio: None,
+            seq: Some(7),
+            run_id: Some("run-1".to_string()),
+        };
+
+        let finalized = finalize_aborted_tool_segment(segment, 250);
+
+        match finalized {
+            PersistedMessage::Assistant {
+                content,
+                input_tokens,
+                output_tokens,
+                cache_read_tokens,
+                cache_write_tokens,
+                duration_ms,
+                tool_calls,
+                reasoning,
+                ..
+            } => {
+                assert_eq!(content, "Text before tool.");
+                assert_eq!(input_tokens, Some(30));
+                assert_eq!(output_tokens, Some(8));
+                assert_eq!(cache_read_tokens, Some(12));
+                assert_eq!(cache_write_tokens, Some(3));
+                assert_eq!(duration_ms, Some(250));
+                assert_eq!(tool_calls.as_ref().map(Vec::len), Some(1));
+                assert_eq!(reasoning.as_deref(), Some("Initial reasoning."));
             },
             _ => panic!("expected assistant message"),
         }

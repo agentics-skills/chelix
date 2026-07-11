@@ -127,6 +127,39 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Append a message and return its zero-based physical JSONL index.
+    ///
+    /// The existing line count and append share one exclusive file lock, so
+    /// the returned index always identifies the record written by this call.
+    pub async fn append_with_index(&self, key: &str, message: &serde_json::Value) -> Result<usize> {
+        let path = self.path_for(key);
+        let line = serde_json::to_string(message)?;
+
+        tokio::task::spawn_blocking(move || -> Result<usize> {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let file = OpenOptions::new()
+                .create(true)
+                .read(true)
+                .append(true)
+                .open(&path)?;
+            let mut lock = RwLock::new(file);
+            let mut guard = lock
+                .write()
+                .map_err(|e| Error::lock_failed(e.to_string()))?;
+            let message_index = BufReader::new(&*guard)
+                .lines()
+                .collect::<std::io::Result<Vec<_>>>()?
+                .into_iter()
+                .filter(|line| !line.trim().is_empty())
+                .count();
+            writeln!(*guard, "{line}")?;
+            Ok(message_index)
+        })
+        .await?
+    }
+
     /// Read all messages from a session file.
     pub async fn read(&self, key: &str) -> Result<Vec<serde_json::Value>> {
         let path = self.path_for(key);
@@ -485,6 +518,64 @@ impl SessionStore {
         message: &crate::message::PersistedMessage,
     ) -> Result<()> {
         self.append(key, &message.to_value()).await
+    }
+
+    /// Update one typed message by its zero-based history index.
+    ///
+    /// The entire read-modify-write operation is performed while holding the
+    /// session file lock, so callers can safely finalize metadata on an
+    /// already-persisted assistant segment without changing its position.
+    pub async fn update_typed_at<F>(
+        &self,
+        key: &str,
+        message_index: usize,
+        update: F,
+    ) -> Result<crate::message::PersistedMessage>
+    where
+        F: FnOnce(crate::message::PersistedMessage) -> crate::message::PersistedMessage
+            + Send
+            + 'static,
+    {
+        let path = self.path_for(key);
+
+        tokio::task::spawn_blocking(move || -> Result<crate::message::PersistedMessage> {
+            let Some(parent) = path.parent() else {
+                return Err(Error::message(path.display().to_string()));
+            };
+            fs::create_dir_all(parent)?;
+
+            let file = OpenOptions::new()
+                .create(true)
+                .read(true)
+                .write(true)
+                .open(&path)?;
+            let mut lock = RwLock::new(file);
+            let mut guard = lock
+                .write()
+                .map_err(|e| Error::lock_failed(e.to_string()))?;
+            let mut lines: Vec<String> = BufReader::new(&*guard)
+                .lines()
+                .collect::<std::io::Result<Vec<_>>>()?
+                .into_iter()
+                .filter(|line| !line.trim().is_empty())
+                .collect();
+            if message_index >= lines.len() {
+                return Err(Error::message(format!(
+                    "message index {message_index} is outside session history"
+                )));
+            }
+            let existing = serde_json::from_str(&lines[message_index])?;
+            let updated = update(existing);
+            lines[message_index] = serde_json::to_string(&updated.to_value())?;
+
+            guard.set_len(0)?;
+            guard.rewind()?;
+            for line in lines {
+                writeln!(*guard, "{line}")?;
+            }
+            Ok(updated)
+        })
+        .await?
     }
 
     /// Count messages in a session file without parsing them.
@@ -1139,6 +1230,73 @@ mod tests {
             },
             _ => panic!("expected Assistant message"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_append_with_index_returns_its_physical_history_index() {
+        let (store, _dir) = temp_store();
+        store
+            .append("main", &json!({ "role": "user", "content": "before" }))
+            .await
+            .unwrap();
+        store
+            .append("main", &json!({ "role": "assistant", "content": "middle" }))
+            .await
+            .unwrap();
+
+        let index = store
+            .append_with_index("main", &json!({ "role": "assistant", "content": "final" }))
+            .await
+            .unwrap();
+
+        assert_eq!(index, 2);
+        let history = store.read("main").await.unwrap();
+        assert_eq!(history.len(), 3);
+        assert_eq!(history[index]["content"], "final");
+    }
+
+    #[tokio::test]
+    async fn test_update_typed_at_preserves_history_order() {
+        use crate::message::PersistedMessage;
+
+        let (store, _dir) = temp_store();
+        store
+            .append_typed("main", &PersistedMessage::user("before"))
+            .await
+            .unwrap();
+        store
+            .append_typed(
+                "main",
+                &PersistedMessage::assistant("tool segment", "gpt-4.1", "openai", 10, 2, None),
+            )
+            .await
+            .unwrap();
+        store
+            .append_typed("main", &PersistedMessage::system("after"))
+            .await
+            .unwrap();
+
+        store
+            .update_typed_at("main", 1, |_| {
+                PersistedMessage::assistant("finalized segment", "gpt-4.1", "openai", 20, 5, None)
+            })
+            .await
+            .unwrap();
+
+        let messages = store.read_typed("main").await.unwrap();
+        assert_eq!(messages.len(), 3);
+        assert!(matches!(
+            &messages[0],
+            PersistedMessage::User { content: crate::message::MessageContent::Text(content), .. } if content == "before"
+        ));
+        assert!(matches!(
+            &messages[1],
+            PersistedMessage::Assistant { content, input_tokens: Some(20), output_tokens: Some(5), .. } if content == "finalized segment"
+        ));
+        assert!(matches!(
+            &messages[2],
+            PersistedMessage::System { content, .. } if content == "after"
+        ));
     }
 
     #[tokio::test]

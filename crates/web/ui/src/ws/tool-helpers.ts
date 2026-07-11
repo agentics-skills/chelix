@@ -9,17 +9,11 @@ import {
 	smartScrollToBottom,
 	stripChannelPrefix,
 } from "../chat-ui";
-import {
-	formatAssistantTokenUsage,
-	formatTokenSpeed,
-	renderAudioPlayer,
-	renderMarkdown,
-	tokenSpeedTone,
-} from "../helpers";
-import { appendMessageActions } from "../message-actions";
+import { renderAudioPlayer, renderMarkdown } from "../helpers";
 import { navigate } from "../router";
 import * as S from "../state";
 import { sessionStore } from "../stores/session-store";
+import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metadata";
 import {
 	appendToolCardError,
 	createToolCallCard,
@@ -27,10 +21,12 @@ import {
 	isCommandToolName,
 	renderToolCardError,
 	renderToolCardResult,
+	resolveToolBatchEnd,
 	setToolCardExpanded,
 	setToolCardStatus,
+	toolCallIds,
 } from "../tool-call-card";
-import type { ChatPayload, ToolCallPayload, ToolResult } from "../types/ws-events";
+import type { AbortedPartialState, ChatPayload, ToolCallPayload, ToolResult } from "../types/ws-events";
 import { clearChatEmptyState, hasNonWhitespaceContent, isReasoningAlreadyShown, setSafeMarkdownHtml } from "./shared";
 
 // ── Pending tool call end tracking ────────────────────────────
@@ -67,6 +63,26 @@ export function clearPendingToolCallEndsForSession(sessionKey: string): void {
 			pendingToolCallEnds.delete(key);
 		}
 	}
+}
+
+export function createToolCallCardForPayload(p: ChatPayload): HTMLElement | null {
+	const cardId = toolCallCardId(p);
+	const existing = document.getElementById(cardId) as HTMLElement | null;
+	if (existing) return existing;
+	if (!S.chatMsgBox) return null;
+	const card = createToolCallCard({
+		id: cardId,
+		toolCallId: p.toolCallId,
+		toolName: p.toolName,
+		arguments: p.arguments,
+		executionMode: p.executionMode,
+		status: "running",
+		expanded: true,
+	});
+	clearChatEmptyState();
+	S.chatMsgBox.appendChild(card);
+	smartScrollToBottom();
+	return card;
 }
 
 // ── Tool result rendering ─────────────────────────────────────
@@ -165,21 +181,52 @@ function extractThinkingText(): string | null {
 export function handleToolCallStartDom(p: ChatPayload, eventSession: string): void {
 	const thinkingText = extractThinkingText();
 	removeThinking();
-	// Close the current streaming element so new text deltas after this tool
-	// call will create a fresh element positioned after the tool card
+	const canonical = p.assistantMessage;
+	const canonicalText = canonical?.content || "";
+	const canonicalReasoning = canonical?.reasoning || "";
+	// The server persisted the assistant segment before this tool event. Bind
+	// the live element to its canonical history index, then start a fresh
+	// segment for post-tool deltas.
 	if (S.streamEl) {
-		// Remove the element if it's empty (e.g. only whitespace from a
-		// pre-tool-call delta) to avoid leaving an orphaned empty div.
-		if (!S.streamEl.textContent?.trim()) {
+		if (hasNonWhitespaceContent(canonicalText) || hasNonWhitespaceContent(canonicalReasoning)) {
+			if (hasNonWhitespaceContent(canonicalText)) {
+				setSafeMarkdownHtml(S.streamEl, canonicalText);
+			}
+			if (Number.isInteger(p.messageIndex)) {
+				S.streamEl.dataset.historyIndex = String(p.messageIndex);
+			}
+			if (canonicalReasoning && !isReasoningAlreadyShown(canonicalReasoning)) {
+				appendReasoningDisclosure(S.streamEl, canonicalReasoning);
+			}
+		} else {
 			S.streamEl.remove();
 		}
 		S.setStreamEl(null);
 		S.setStreamText("");
+	} else if (hasNonWhitespaceContent(canonicalText) || hasNonWhitespaceContent(canonicalReasoning)) {
+		const existingSegment = Number.isInteger(p.messageIndex)
+			? (S.chatMsgBox?.querySelector(`.msg.assistant[data-history-index="${p.messageIndex}"]`) as HTMLElement | null)
+			: null;
+		const segment = existingSegment || chatAddMsg("assistant", renderMarkdown(canonicalText), true);
+		if (segment && Number.isInteger(p.messageIndex)) {
+			segment.dataset.historyIndex = String(p.messageIndex);
+		}
+		if (segment && canonicalReasoning && !isReasoningAlreadyShown(canonicalReasoning)) {
+			appendReasoningDisclosure(segment, canonicalReasoning);
+		}
 	}
 	const cardId = toolCallCardId(p);
-	if (document.getElementById(cardId)) return;
+	const existingCard = document.getElementById(cardId) as HTMLElement | null;
+	if (existingCard) {
+		if (Number.isInteger(p.messageIndex)) {
+			existingCard.dataset.assistantHistoryIndex = String(p.messageIndex);
+		}
+		return;
+	}
 	const card = createToolCallCard({
 		id: cardId,
+		toolCallId: p.toolCallId,
+		assistantHistoryIndex: Number.isInteger(p.messageIndex) ? p.messageIndex : undefined,
 		toolName: p.toolName,
 		arguments: p.arguments,
 		executionMode: p.executionMode,
@@ -187,7 +234,9 @@ export function handleToolCallStartDom(p: ChatPayload, eventSession: string): vo
 		expanded: true,
 	});
 	// Preserve thinking text as a reasoning disclosure inside the tool card
-	if (thinkingText) appendReasoningDisclosure(getToolCardDetailsContainer(card), thinkingText);
+	if (thinkingText && !canonicalReasoning) {
+		appendReasoningDisclosure(getToolCardDetailsContainer(card), thinkingText);
+	}
 	clearChatEmptyState();
 	S.chatMsgBox?.appendChild(card);
 	const endKey = toolCallEventKey(eventSession, p);
@@ -260,7 +309,15 @@ export function resolveFinalMessageEl(p: ChatPayload): HTMLElement | null {
 			setSafeMarkdownHtml(S.streamEl, finalText);
 			return S.streamEl;
 		}
-		if (hasFinalText) return chatAddMsg("assistant", renderMarkdown(finalText), true);
+		if (hasFinalText) {
+			if (Number.isInteger(p.messageIndex)) {
+				const persisted = S.chatMsgBox?.querySelector(
+					`.msg.assistant[data-history-index="${p.messageIndex}"]`,
+				) as HTMLElement | null;
+				if (persisted) return persisted;
+			}
+			return chatAddMsg("assistant", renderMarkdown(finalText), true);
+		}
 		// No text (silent reply) -- remove any leftover stream element.
 		if (S.streamEl) S.streamEl.remove();
 		return null;
@@ -269,96 +326,57 @@ export function resolveFinalMessageEl(p: ChatPayload): HTMLElement | null {
 	return null;
 }
 
-// ── Final footer ──────────────────────────────────────────────
+// ── Terminal metadata ─────────────────────────────────────────
 
-export function appendFinalFooter(msgEl: HTMLElement | null, p: ChatPayload, eventSession: string): void {
-	if (!(msgEl && p.model)) return;
-	const footer = document.createElement("div");
-	footer.className = "msg-model-footer";
-	let footerText = p.provider ? `${p.provider} / ${p.model}` : p.model;
-	if (p.reasoningEffort !== undefined) {
-		footerText += ` \u00b7 reasoning_effort: ${p.reasoningEffort || "off"}`;
-	}
-	if (p.inputTokens || p.outputTokens) {
-		footerText += ` \u00b7 ${formatAssistantTokenUsage(p.inputTokens, p.outputTokens, p.cacheReadTokens)}`;
-	}
-	const textSpan = document.createElement("span");
-	textSpan.textContent = footerText;
-	footer.appendChild(textSpan);
-
-	const speedLabel = formatTokenSpeed(p.outputTokens || 0, p.durationMs || 0);
-	if (speedLabel) {
-		const speed = document.createElement("span");
-		speed.className = "msg-token-speed";
-		const tone = tokenSpeedTone(p.outputTokens || 0, p.durationMs || 0);
-		if (tone) speed.classList.add(`msg-token-speed-${tone}`);
-		speed.textContent = ` \u00b7 ${speedLabel}`;
-		footer.appendChild(speed);
-	}
-
-	if (p.replyMedium === "voice" || p.replyMedium === "text") {
-		const badge = document.createElement("span");
-		badge.className = "reply-medium-badge";
-		badge.textContent = p.replyMedium;
-		footer.appendChild(badge);
-	}
-	msgEl.appendChild(footer);
-
-	appendMessageActions({
-		messageEl: msgEl,
-		sessionKey: p.sessionKey || eventSession || S.activeSessionKey,
-		messageIndex: p.messageIndex,
-		text: p.text || "",
-		runId: p.runId,
-		hasAudio: !!p.audio,
-		audioWarning: p.audioWarning || undefined,
-	});
+export function appendTerminalMetadataForPartial(
+	p: ChatPayload,
+	partial: ChatPayload["partialMessage"] | null,
+	anchor: HTMLElement | null,
+): HTMLElement | null {
+	return appendTerminalMetadata(
+		S.chatMsgBox,
+		anchor,
+		terminalMetadataData(partial || {}, {
+			replyMedium: p.replyMedium || "text",
+			historyIndex: p.messageIndex,
+			runId: p.runId,
+			timestamp: Date.now(),
+		}),
+	);
 }
 
 // ── Aborted partial rendering ─────────────────────────────────
-
-export function renderAbortedPartialInDom(
-	eventSession: string,
-	p: ChatPayload,
-	partialState: {
-		partial: ChatPayload["partialMessage"] | null;
-		partialText: string;
-		partialReasoning: string;
-		hasVisiblePartial: boolean;
-	},
-): void {
-	if (!partialState.hasVisiblePartial) return;
+export function renderAbortedPartialInDom(p: ChatPayload, partialState: AbortedPartialState): void {
 	const partial = partialState.partial;
-	let partialEl: HTMLElement | null = null;
-	if (hasNonWhitespaceContent(partialState.partialText) && S.streamEl) {
-		setSafeMarkdownHtml(S.streamEl, partialState.partialText);
-		partialEl = S.streamEl;
-	} else if (hasNonWhitespaceContent(partialState.partialText)) {
-		partialEl = chatAddMsg("assistant", renderMarkdown(partialState.partialText), true);
+	if (!partialState.hasVisiblePartial) {
+		const toolBatchEnd = partialState.hasTerminalToolBatch
+			? resolveToolBatchEnd(toolCallIds(partial?.tool_calls))
+			: null;
+		if (toolBatchEnd && appendTerminalMetadataForPartial(p, partial, toolBatchEnd)) {
+			smartScrollToBottom();
+		}
+		return;
+	}
+	let partialEl = Number.isInteger(p.messageIndex)
+		? (S.chatMsgBox?.querySelector(`.msg.assistant[data-history-index="${p.messageIndex}"]`) as HTMLElement | null)
+		: null;
+	if (hasNonWhitespaceContent(partialState.partialText)) {
+		partialEl ||= S.streamEl || chatAddMsg("assistant", renderMarkdown(partialState.partialText), true);
+		if (partialEl && S.streamEl) setSafeMarkdownHtml(partialEl, partialState.partialText);
+		if (partialEl && Number.isInteger(p.messageIndex)) {
+			partialEl.dataset.historyIndex = String(p.messageIndex);
+		}
 	} else if (hasNonWhitespaceContent(partialState.partialReasoning)) {
-		partialEl = chatAddMsg("assistant", "", false);
+		partialEl ||= chatAddMsg("assistant", "", false);
+		if (partialEl && Number.isInteger(p.messageIndex)) {
+			partialEl.dataset.historyIndex = String(p.messageIndex);
+		}
 	}
 	if (partialEl && partialState.partialReasoning && !isReasoningAlreadyShown(partialState.partialReasoning)) {
 		appendReasoningDisclosure(partialEl, partialState.partialReasoning);
 	}
 	if (!partialEl) return;
-	appendFinalFooter(
-		partialEl,
-		{
-			model: partial?.model || "",
-			provider: partial?.provider || "",
-			inputTokens: partial?.inputTokens || 0,
-			outputTokens: partial?.outputTokens || 0,
-			durationMs: partial?.durationMs || 0,
-			replyMedium: p.replyMedium || "text",
-			text: partialState.partialText,
-			audio: partial?.audio || undefined,
-			audioWarning: undefined,
-			runId: p.runId,
-			messageIndex: p.messageIndex,
-			sessionKey: eventSession,
-		},
-		eventSession,
-	);
+	const toolBatchEnd = partialState.hasTerminalToolBatch ? resolveToolBatchEnd(toolCallIds(partial?.tool_calls)) : null;
+	appendTerminalMetadataForPartial(p, partial, toolBatchEnd || partialEl);
 	smartScrollToBottom();
 }

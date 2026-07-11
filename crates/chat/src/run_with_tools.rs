@@ -51,7 +51,10 @@ use crate::{
         prompt_build_limits_from_config,
     },
     runtime::ChatRuntime,
-    service::{ActiveAssistantDraft, build_tool_call_assistant_message, persist_tool_history_pair},
+    service::{
+        ActiveAssistantDraft, EventForwarderResult, append_final_assistant_segment,
+        build_persisted_tool_call, finalize_persisted_assistant_message,
+    },
     types::*,
 };
 
@@ -66,6 +69,54 @@ fn tool_execution_mode(tool_name: &str, session_is_sandboxed: bool) -> Option<St
             "host".to_string()
         }
     })
+}
+
+async fn persist_tool_segment(
+    session_store: Option<&Arc<SessionStore>>,
+    active_partial_assistant: Option<&Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>>,
+    session_key: &str,
+    iteration_tool_calls: &[chelix_agents::runner::RunnerToolCall],
+    iteration_usage: &chelix_agents::model::Usage,
+    batch_key: &str,
+    persisted_tool_batches: &mut HashMap<String, (usize, Value)>,
+) -> Option<(usize, Value)> {
+    if let Some((index, message)) = persisted_tool_batches.get(batch_key) {
+        return Some((*index, message.clone()));
+    }
+
+    let store = session_store?;
+    let drafts = active_partial_assistant?;
+    let current_draft = drafts.read().await.get(session_key).cloned()?;
+    let tool_calls = iteration_tool_calls
+        .iter()
+        .map(|tool_call| {
+            build_persisted_tool_call(
+                tool_call.id.clone(),
+                tool_call.name.clone(),
+                Some(tool_call.arguments.clone()),
+                tool_call.metadata.clone(),
+            )
+        })
+        .collect();
+    let segment_value = current_draft
+        .to_persisted_message(Some(tool_calls), Some(iteration_usage))
+        .to_value();
+    let index = match store.append_with_index(session_key, &segment_value).await {
+        Ok(index) => index,
+        Err(error) => {
+            warn!(session = %session_key, error = %error, "failed to persist assistant tool segment");
+            return None;
+        },
+    };
+
+    drafts
+        .write()
+        .await
+        .insert(session_key.to_string(), current_draft.next_segment());
+    for tool_call in iteration_tool_calls {
+        persisted_tool_batches.insert(tool_call.id.clone(), (index, segment_value.clone()));
+    }
+    Some((index, segment_value))
 }
 
 pub(crate) async fn run_with_tools(
@@ -85,7 +136,6 @@ pub(crate) async fn run_with_tools(
     desired_reply_medium: ReplyMedium,
     project_context: Option<&str>,
     runtime_context: Option<&PromptRuntimeContext>,
-    user_message_index: usize,
     skills: &[chelix_skills::types::SkillMetadata],
     hook_registry: Option<Arc<chelix_common::hooks::HookRegistry>>,
     accept_language: Option<String>,
@@ -96,7 +146,9 @@ pub(crate) async fn run_with_tools(
     active_thinking_text: Option<Arc<RwLock<HashMap<String, String>>>>,
     active_tool_calls: Option<Arc<RwLock<HashMap<String, Vec<ActiveToolCall>>>>>,
     active_partial_assistant: Option<Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>>,
-    active_event_forwarders: &Arc<RwLock<HashMap<String, tokio::task::JoinHandle<String>>>>,
+    active_event_forwarders: &Arc<
+        RwLock<HashMap<String, tokio::task::JoinHandle<EventForwarderResult>>>,
+    >,
     terminal_runs: &Arc<RwLock<HashSet<String>>>,
     sender_name: Option<String>,
     tool_controls: Option<AgentToolControls>,
@@ -291,18 +343,20 @@ pub(crate) async fn run_with_tools(
     let session_store_for_events = session_store.map(Arc::clone);
     let provider_name_for_events = provider_name.to_string();
     let active_partial_for_events = active_partial_assistant.as_ref().map(Arc::clone);
+    let terminal_runs_for_events = Arc::clone(terminal_runs);
     let (on_event, mut event_rx) = ordered_runner_event_callback();
     let channel_stream_dispatcher = ChannelStreamDispatcher::for_session(state, session_key)
         .await
         .map(|dispatcher| Arc::new(Mutex::new(dispatcher)));
     let channel_stream_for_events = channel_stream_dispatcher.as_ref().map(Arc::clone);
-    let event_forwarder = tokio::spawn(async move {
-        // Track tool call arguments from ToolCallStart so they can be persisted in ToolCallEnd.
+    let event_forwarder: tokio::task::JoinHandle<EventForwarderResult> = tokio::spawn(async move {
+        // Tool calls are persisted as one assistant frame per LLM iteration
+        // before their cards are broadcast. ToolCallEnd persists only results.
         let mut tool_args_map: HashMap<String, Value> = HashMap::new();
-        let mut tool_metadata_map: HashMap<String, serde_json::Map<String, Value>> = HashMap::new();
         // Track reasoning text that should be persisted with the first tool call after thinking.
         let mut tool_reasoning_map: HashMap<String, String> = HashMap::new();
         let mut latest_reasoning = String::new();
+        let mut persisted_tool_batches: HashMap<String, (usize, Value)> = HashMap::new();
         while let Some(event) = event_rx.recv().await {
             let state = Arc::clone(&state_for_events);
             let run_id = run_id_for_events.clone();
@@ -326,27 +380,60 @@ pub(crate) async fn run_with_tools(
                     id,
                     name,
                     arguments,
-                    metadata,
+                    metadata: _,
+                    iteration_tool_calls,
+                    iteration_usage,
                 } => {
-                    tool_args_map.insert(id.clone(), arguments.clone());
-                    if let Some(metadata) = metadata {
-                        tool_metadata_map.insert(id.clone(), metadata);
+                    if terminal_runs_for_events.read().await.contains(&run_id) {
+                        continue;
                     }
+                    tool_args_map.insert(id.clone(), arguments.clone());
+                    for tool_call in iteration_tool_calls.iter() {
+                        tool_args_map
+                            .entry(tool_call.id.clone())
+                            .or_insert_with(|| tool_call.arguments.clone());
+                    }
+                    let batch_key = iteration_tool_calls
+                        .first()
+                        .map(|tool_call| tool_call.id.clone())
+                        .unwrap_or_else(|| id.clone());
+                    // The runner invokes each iteration start callback before
+                    // the first tool future awaits. The first call ID is the
+                    // canonical full-frame carrier for this tool batch.
+                    let persisted_segment = persist_tool_segment(
+                        store.as_ref(),
+                        active_partial_for_events.as_ref(),
+                        &sk,
+                        iteration_tool_calls.as_ref(),
+                        &iteration_usage,
+                        &batch_key,
+                        &mut persisted_tool_batches,
+                    )
+                    .await;
 
-                    // Track active tool call for chat.peek.
+                    // The runner launches every iteration batch concurrently
+                    // before it emits the individual start events. Record the
+                    // complete batch atomically so Stop can terminally close
+                    // every already-started tool.
                     if let Some(ref map) = active_tool_calls {
-                        map.write()
-                            .await
-                            .entry(sk.clone())
-                            .or_default()
-                            .push(ActiveToolCall {
+                        let mut active_calls = map.write().await;
+                        let calls = active_calls.entry(sk.clone()).or_default();
+                        for tool_call in iteration_tool_calls.iter() {
+                            if calls.iter().any(|call| call.id == tool_call.id) {
+                                continue;
+                            }
+                            calls.push(ActiveToolCall {
                                 run_id: run_id.clone(),
-                                id: id.clone(),
-                                name: name.clone(),
-                                arguments: arguments.clone(),
-                                execution_mode: tool_execution_mode(&name, session_is_sandboxed),
+                                id: tool_call.id.clone(),
+                                name: tool_call.name.clone(),
+                                arguments: tool_call.arguments.clone(),
+                                execution_mode: tool_execution_mode(
+                                    &tool_call.name,
+                                    session_is_sandboxed,
+                                ),
                                 started_at: now_ms(),
                             });
+                        }
                     }
 
                     // Attach reasoning to the first tool call after thinking.
@@ -380,6 +467,12 @@ pub(crate) async fn run_with_tools(
                         "arguments": arguments,
                         "seq": seq,
                     });
+                    if let Some((segment_index, assistant_message)) = persisted_segment {
+                        payload["messageIndex"] = serde_json::json!(segment_index);
+                        if id == batch_key {
+                            payload["assistantMessage"] = assistant_message;
+                        }
+                    }
                     if is_browser
                         && let Some(execution_mode) =
                             tool_execution_mode(&name, session_is_sandboxed)
@@ -395,6 +488,9 @@ pub(crate) async fn run_with_tools(
                     error,
                     result,
                 } => {
+                    if terminal_runs_for_events.read().await.contains(&run_id) {
+                        continue;
+                    }
                     // Remove from active tool calls tracking.
                     if let Some(ref map) = active_tool_calls {
                         let mut guard = map.write().await;
@@ -597,8 +693,11 @@ pub(crate) async fn run_with_tools(
                             .await;
                     }
 
-                    // Persist tool result to the session JSONL file.
-                    if let Some(ref store) = store {
+                    // Persist only the terminal result when its canonical
+                    // assistant tool-call segment was saved before start.
+                    if let Some(store) = store.as_ref()
+                        && persisted_tool_batches.contains_key(&id)
+                    {
                         let tracked_args = tool_args_map.remove(&id);
                         // Save screenshot to media dir (if present) and replace
                         // with a lightweight path reference. Strip screenshot_scale
@@ -672,15 +771,6 @@ pub(crate) async fn run_with_tools(
                             r
                         });
                         let tracked_reasoning = tool_reasoning_map.remove(&id);
-                        let tracked_metadata = tool_metadata_map.remove(&id);
-                        let assistant_tool_call_msg = build_tool_call_assistant_message(
-                            id.clone(),
-                            name.clone(),
-                            tracked_args.clone(),
-                            tracked_metadata,
-                            seq,
-                            Some(run_id.as_str()),
-                        );
                         let tool_result_msg = PersistedMessage::ToolResult {
                             tool_call_id: id,
                             tool_name: name,
@@ -692,15 +782,18 @@ pub(crate) async fn run_with_tools(
                             created_at: Some(now_ms()),
                             run_id: Some(run_id.clone()),
                         };
-                        persist_tool_history_pair(
-                            store,
-                            &sk,
-                            assistant_tool_call_msg,
-                            tool_result_msg,
-                            "failed to persist assistant tool call",
-                            "failed to persist tool result",
-                        )
-                        .await;
+                        let tool_result_index = match store.count(&sk).await {
+                            Ok(count) => count as usize,
+                            Err(error) => {
+                                warn!(session = %sk, error = %error, "failed to count history before tool result persistence");
+                                continue;
+                            },
+                        };
+                        if let Err(error) = store.append(&sk, &tool_result_msg.to_value()).await {
+                            warn!(session = %sk, error = %error, "failed to persist tool result");
+                        } else {
+                            payload["messageIndex"] = serde_json::json!(tool_result_index);
+                        }
                     }
 
                     payload
@@ -874,7 +967,13 @@ pub(crate) async fn run_with_tools(
             };
             broadcast(&state, "chat", payload, BroadcastOpts::default()).await;
         }
-        latest_reasoning
+        EventForwarderResult {
+            reasoning: latest_reasoning,
+            tool_segment_indices: persisted_tool_batches
+                .into_iter()
+                .map(|(tool_call_id, (index, _))| (tool_call_id, index))
+                .collect(),
+        }
     });
     active_event_forwarders
         .write()
@@ -1089,8 +1188,9 @@ pub(crate) async fn run_with_tools(
     // Ensure all runner events (including deltas) are broadcast in order before
     // emitting terminal final/error frames.
     drop(on_event);
-    let reasoning_text =
+    let event_result =
         LiveChatService::wait_for_event_forwarder(active_event_forwarders, session_key).await;
+    let reasoning_text = event_result.reasoning;
     let reasoning = {
         let trimmed = reasoning_text.trim();
         (!trimmed.is_empty()).then(|| trimmed.to_string())
@@ -1153,9 +1253,19 @@ pub(crate) async fn run_with_tools(
                 return None;
             }
 
-            // Tool-using turns now persist both the assistant tool call frame
-            // and the tool result for each tool call before the final answer.
-            let assistant_message_index = user_message_index + 1 + (tool_calls_made * 2);
+            let canonical_tool_segment_index = match &result.final_text_source {
+                chelix_agents::runner::FinalTextSource::ToolCallSegment { tool_call_id } => {
+                    event_result.tool_segment_indices.get(tool_call_id).copied().or_else(|| {
+                        warn!(
+                            session = %session_key,
+                            tool_call_id,
+                            "canonical tool segment was unavailable; persisting terminal text as a new assistant segment"
+                        );
+                        None
+                    })
+                },
+                chelix_agents::runner::FinalTextSource::NewSegment => None,
+            };
 
             // Generate & persist TTS audio for voice-medium web UI replies.
             let mut audio_warning: Option<String> = None;
@@ -1193,6 +1303,65 @@ pub(crate) async fn run_with_tools(
                 None
             };
 
+            let mut assistant_output = build_assistant_turn_output(
+                display_text.clone(),
+                None,
+                UsageSnapshot::new(usage.clone(), Some(request_usage.clone())),
+                run_started.elapsed().as_millis() as u64,
+                audio_path.clone(),
+                reasoning.clone(),
+                llm_api_response,
+            );
+            if let Some(store) = session_store {
+                let persisted_message_index = if let Some(message_index) =
+                    canonical_tool_segment_index
+                {
+                    let output = assistant_output.clone();
+                    match store
+                        .update_typed_at(session_key, message_index, move |existing| {
+                            finalize_persisted_assistant_message(output, existing)
+                        })
+                        .await
+                    {
+                        Ok(PersistedMessage::Assistant { .. }) => Some(message_index),
+                        result => {
+                            match result {
+                                Ok(_) => {
+                                    warn!(session = %session_key, message_index, "canonical tool segment is not an assistant message")
+                                },
+                                Err(error) => {
+                                    warn!(session = %session_key, error = %error, "failed to finalize canonical assistant tool segment")
+                                },
+                            }
+                            append_final_assistant_segment(
+                                store,
+                                session_key,
+                                &assistant_output,
+                                provider_ref.id(),
+                                provider_name,
+                                session_reasoning_effort.clone(),
+                                client_seq,
+                                run_id,
+                            )
+                            .await
+                        },
+                    }
+                } else {
+                    append_final_assistant_segment(
+                        store,
+                        session_key,
+                        &assistant_output,
+                        provider_ref.id(),
+                        provider_name,
+                        session_reasoning_effort.clone(),
+                        client_seq,
+                        run_id,
+                    )
+                    .await
+                };
+                assistant_output.persisted_message_index = persisted_message_index;
+            }
+
             let final_payload = build_chat_final_broadcast(
                 run_id,
                 session_key,
@@ -1202,7 +1371,7 @@ pub(crate) async fn run_with_tools(
                 session_reasoning_effort.clone(),
                 UsageSnapshot::new(usage.clone(), Some(request_usage.clone())),
                 run_started.elapsed().as_millis() as u64,
-                assistant_message_index,
+                assistant_output.persisted_message_index,
                 desired_reply_medium,
                 Some(iterations),
                 Some(tool_calls_made),
@@ -1232,14 +1401,7 @@ pub(crate) async fn run_with_tools(
                 )
                 .await;
             }
-            Some(build_assistant_turn_output(
-                display_text,
-                UsageSnapshot::new(usage, Some(request_usage)),
-                run_started.elapsed().as_millis() as u64,
-                audio_path,
-                reasoning,
-                llm_api_response,
-            ))
+            Some(assistant_output)
         },
         Err(e) => {
             let error_str = e.to_string();

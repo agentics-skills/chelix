@@ -22,7 +22,6 @@ export {
 } from "./sessions/session-history";
 export type { SearchContext } from "./sessions/session-render";
 export {
-	appendLastMessageTimestamp,
 	refreshWelcomeCardIfNeeded,
 	updateChatSessionHeader,
 } from "./sessions/session-render";

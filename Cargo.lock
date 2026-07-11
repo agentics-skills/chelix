@@ -2889,6 +2889,7 @@ dependencies = [
  "chelix-gateway",
  "chelix-httpd",
  "chelix-media",
+ "chelix-sessions",
  "chelix-skills",
  "chelix-tools",
  "chrono",

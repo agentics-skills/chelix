@@ -165,7 +165,11 @@ impl ConnectedClient {
     /// Uses `try_send` to avoid blocking; drops the frame if the client's
     /// outbound buffer is full (slow consumer protection).
     pub fn send(&self, frame: &str) -> bool {
-        self.sender.try_send(frame.to_string()).is_ok()
+        Self::try_send_frame(&self.sender, frame.to_string())
+    }
+
+    pub(crate) fn try_send_frame(sender: &mpsc::Sender<String>, frame: String) -> bool {
+        sender.try_send(frame).is_ok()
     }
 
     /// Touch the activity timestamp (lock-free).

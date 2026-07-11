@@ -89,6 +89,30 @@ export interface ToolCallPayload {
 	success?: boolean;
 	result?: ToolResult;
 	error?: ToolError;
+	assistantMessage?: AssistantHistoryMessage;
+}
+
+export interface AssistantHistoryMessage {
+	role: "assistant";
+	content?: string;
+	model?: string;
+	provider?: string;
+	reasoningEffort?: string;
+	inputTokens?: number;
+	outputTokens?: number;
+	cacheReadTokens?: number;
+	cacheWriteTokens?: number;
+	durationMs?: number;
+	requestInputTokens?: number;
+	requestOutputTokens?: number;
+	requestCacheReadTokens?: number;
+	requestCacheWriteTokens?: number;
+	tool_calls?: unknown[];
+	reasoning?: string;
+	audio?: string;
+	run_id?: string;
+	created_at?: number;
+	seq?: number;
 }
 
 export interface ChatError {
@@ -113,11 +137,14 @@ export interface PartialMessage {
 	provider?: string;
 	inputTokens?: number;
 	outputTokens?: number;
+	cacheReadTokens?: number;
+	cacheWriteTokens?: number;
 	durationMs?: number;
 	requestInputTokens?: number;
 	requestOutputTokens?: number;
 	requestCacheReadTokens?: number;
 	requestCacheWriteTokens?: number;
+	tool_calls?: unknown[];
 	audio?: string;
 	run_id?: string;
 	created_at?: number;
@@ -161,6 +188,7 @@ export interface ChatPayload {
 	seq?: number;
 	retryAfterMs?: number;
 	partialMessage?: PartialMessage;
+	assistantMessage?: AssistantHistoryMessage;
 	canContinue?: boolean;
 }
 
@@ -244,6 +272,7 @@ export interface AbortedPartialState {
 	partialText: string;
 	partialReasoning: string;
 	hasVisiblePartial: boolean;
+	hasTerminalToolBatch: boolean;
 }
 
 /** Maps event names to their payload types. */

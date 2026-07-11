@@ -1,6 +1,6 @@
 //! Shared types, constants, and utility functions for the agent runner.
 
-use std::borrow::Cow;
+use std::{borrow::Cow, sync::Arc};
 
 use tracing::{info, warn};
 
@@ -61,6 +61,9 @@ pub enum AgentRunError {
 #[derive(Debug)]
 pub struct AgentRunResult {
     pub text: String,
+    /// Whether terminal text is new output or already belongs to the
+    /// assistant message that introduced tool calls.
+    pub final_text_source: FinalTextSource,
     pub iterations: usize,
     pub tool_calls_made: usize,
     /// Sum of usage across all LLM requests in this run.
@@ -68,6 +71,36 @@ pub struct AgentRunResult {
     /// Usage for the final LLM request in this run.
     pub request_usage: Usage,
     pub raw_llm_responses: Vec<serde_json::Value>,
+}
+
+/// Ownership of terminal text in an agent run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FinalTextSource {
+    /// The final LLM iteration generated a new assistant segment.
+    NewSegment,
+    /// The final LLM iteration was empty, so a preceding tool-call segment
+    /// already owns the terminal text.
+    ToolCallSegment { tool_call_id: String },
+}
+
+/// A caller-visible tool call from one assistant iteration.
+#[derive(Debug, Clone)]
+pub struct RunnerToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: serde_json::Value,
+    pub metadata: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+impl From<&ToolCall> for RunnerToolCall {
+    fn from(tool_call: &ToolCall) -> Self {
+        Self {
+            id: tool_call.id.clone(),
+            name: tool_call.name.clone(),
+            arguments: tool_call.arguments.clone(),
+            metadata: tool_call.metadata.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -111,6 +144,10 @@ pub enum RunnerEvent {
         name: String,
         arguments: serde_json::Value,
         metadata: Option<serde_json::Map<String, serde_json::Value>>,
+        /// Full tool-call batch belonging to the same assistant message.
+        iteration_tool_calls: Arc<[RunnerToolCall]>,
+        /// Exact provider usage for the LLM iteration that emitted the batch.
+        iteration_usage: Usage,
     },
     ToolCallEnd {
         id: String,
@@ -328,7 +365,7 @@ pub(crate) fn apply_before_llm_call_modify_payload(
 }
 
 pub(crate) async fn dispatch_after_llm_call_hook(
-    hook_registry: Option<&std::sync::Arc<HookRegistry>>,
+    hook_registry: Option<&Arc<HookRegistry>>,
     session_key: &str,
     provider: &str,
     model: &str,
@@ -371,7 +408,7 @@ pub(crate) async fn dispatch_after_llm_call_hook(
 }
 
 pub(crate) async fn dispatch_before_agent_start_hook(
-    hook_registry: Option<&std::sync::Arc<HookRegistry>>,
+    hook_registry: Option<&Arc<HookRegistry>>,
     session_key: &str,
     model: &str,
 ) -> Result<(), AgentRunError> {
@@ -405,6 +442,7 @@ pub(crate) async fn dispatch_before_agent_start_hook(
 
 pub(crate) fn finish_agent_run(
     final_text: String,
+    final_text_source: FinalTextSource,
     iterations: usize,
     tool_calls_made: usize,
     usage_accumulator: &UsageAccumulator,
@@ -412,6 +450,7 @@ pub(crate) fn finish_agent_run(
 ) -> AgentRunResult {
     AgentRunResult {
         text: clean_response(&final_text),
+        final_text_source,
         iterations,
         tool_calls_made,
         usage: usage_accumulator.total(),
@@ -428,7 +467,7 @@ pub(crate) fn resolve_tool_lookup<'a>(
     tools: &crate::tool_registry::ToolRegistry,
     name: &'a str,
 ) -> (
-    Option<std::sync::Arc<dyn crate::tool_registry::AgentTool>>,
+    Option<Arc<dyn crate::tool_registry::AgentTool>>,
     Cow<'a, str>,
 ) {
     if let Some(alias) = legacy_public_tool_alias(name)
@@ -510,19 +549,36 @@ pub(crate) fn empty_tool_name_retry_prompt(tool_call: &ToolCall) -> String {
     )
 }
 
-pub(crate) fn record_answer_text(last_answer_text: &mut String, text: &Option<String>) {
-    if let Some(text) = text.as_ref()
-        && !text.is_empty()
-    {
-        last_answer_text.clone_from(text);
-    }
+pub(crate) fn record_answer_text(
+    last_answer_text: &mut String,
+    last_answer_tool_call_id: &mut Option<String>,
+    text: Option<&str>,
+    tool_calls: &[ToolCall],
+) {
+    let Some(text) = text.filter(|text| !text.is_empty()) else {
+        return;
+    };
+
+    last_answer_text.clear();
+    last_answer_text.push_str(text);
+    *last_answer_tool_call_id = tool_calls.first().map(|tool_call| tool_call.id.clone());
+}
+
+pub(crate) fn fallback_final_text_source(
+    last_answer_tool_call_id: Option<String>,
+) -> FinalTextSource {
+    last_answer_tool_call_id
+        .map(|tool_call_id| FinalTextSource::ToolCallSegment { tool_call_id })
+        .unwrap_or(FinalTextSource::NewSegment)
 }
 
 pub(crate) fn streaming_tool_call_message_content(
     last_answer_text: &mut String,
+    last_answer_tool_call_id: &mut Option<String>,
     accumulated_text: &str,
     accumulated_reasoning: &str,
 ) -> Option<String> {
+    *last_answer_tool_call_id = None;
     if !accumulated_reasoning.is_empty() {
         Some(accumulated_reasoning.to_string())
     } else if !accumulated_text.is_empty() {
@@ -743,7 +799,13 @@ pub(crate) fn apply_loop_detector_intervention(
 
 #[cfg(test)]
 mod tests {
-    use {super::public_tool_arguments, serde_json::json};
+    use {
+        super::{
+            FinalTextSource, fallback_final_text_source, public_tool_arguments,
+            streaming_tool_call_message_content,
+        },
+        serde_json::json,
+    };
 
     #[test]
     fn public_tool_arguments_strips_internal_context_keys() {
@@ -776,5 +838,26 @@ mod tests {
 
         let array = json!([1, 2, 3]);
         assert_eq!(public_tool_arguments(&array), array);
+    }
+
+    #[test]
+    fn streaming_empty_tool_name_retry_clears_stale_tool_segment_owner() {
+        let mut last_answer_text = "previous tool answer".to_string();
+        let mut last_answer_tool_call_id = Some("previous-tool-call".to_string());
+
+        let retry_message = streaming_tool_call_message_content(
+            &mut last_answer_text,
+            &mut last_answer_tool_call_id,
+            "retry text",
+            "",
+        );
+
+        assert_eq!(retry_message.as_deref(), Some("retry text"));
+        assert_eq!(last_answer_text, "retry text");
+        assert_eq!(last_answer_tool_call_id, None);
+        assert_eq!(
+            fallback_final_text_source(last_answer_tool_call_id),
+            FinalTextSource::NewSegment
+        );
     }
 }

@@ -8,6 +8,8 @@ export type ToolCardStatus = "running" | "success" | "error" | "retry";
 
 export interface ToolCardOptions {
 	id?: string;
+	toolCallId?: string;
+	assistantHistoryIndex?: number;
 	toolName?: string;
 	arguments?: unknown;
 	executionMode?: string;
@@ -138,6 +140,10 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 	const card = document.createElement("div");
 	card.className = "msg command-card tool-call-card";
 	if (options.id) card.id = options.id;
+	if (options.toolCallId) card.dataset.toolCallId = options.toolCallId;
+	if (Number.isInteger(options.assistantHistoryIndex)) {
+		card.dataset.assistantHistoryIndex = String(options.assistantHistoryIndex);
+	}
 	card.setAttribute("data-tool-name", toolName);
 
 	const header = document.createElement("div");
@@ -223,6 +229,53 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 	setToolCardStatus(card, status);
 	setToolCardExpanded(card, expanded);
 	return card;
+}
+
+export function toolCallIds(toolCalls: unknown): string[] {
+	if (!Array.isArray(toolCalls)) return [];
+	const ids: string[] = [];
+	const seen = new Set<string>();
+	for (const toolCall of toolCalls) {
+		if (!(toolCall && typeof toolCall === "object" && "id" in toolCall)) continue;
+		const id = (toolCall as { id?: unknown }).id;
+		if (typeof id !== "string" || !id || seen.has(id)) continue;
+		seen.add(id);
+		ids.push(id);
+	}
+	return ids;
+}
+
+export function resolveToolBatchEnd(toolCallIdsForBatch: readonly string[]): HTMLElement | null {
+	if (toolCallIdsForBatch.length === 0) return null;
+	const cardsByToolCallId = new Map<string, HTMLElement>();
+	for (const card of document.querySelectorAll<HTMLElement>(".tool-call-card[data-tool-call-id]")) {
+		const toolCallId = card.dataset.toolCallId;
+		if (toolCallId) cardsByToolCallId.set(toolCallId, card);
+	}
+	if (!toolCallIdsForBatch.every((toolCallId) => cardsByToolCallId.has(toolCallId))) return null;
+	return toolCallIdsForBatch
+		.map((toolCallId) => cardsByToolCallId.get(toolCallId))
+		.reduce<HTMLElement | null>((last, card) => {
+			if (!card) return last;
+			if (!last || last.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING) return card;
+			return last;
+		}, null);
+}
+
+export function resolveAssistantTurnEnd(
+	historyIndex: number | undefined,
+	assistantEl: HTMLElement | null,
+): HTMLElement | null {
+	if (!Number.isInteger(historyIndex)) return assistantEl;
+	let lastToolCard: HTMLElement | null = null;
+	for (const card of document.querySelectorAll<HTMLElement>(
+		`.tool-call-card[data-assistant-history-index="${historyIndex}"]`,
+	)) {
+		if (!lastToolCard || lastToolCard.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING) {
+			lastToolCard = card;
+		}
+	}
+	return lastToolCard || assistantEl;
 }
 
 export function getToolCardDetailsContainer(card: HTMLElement): HTMLElement {

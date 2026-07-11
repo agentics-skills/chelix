@@ -1138,7 +1138,13 @@ impl LiveChatService {
                 .insert(session_key_clone.clone(), desired_reply_medium);
             active_partial_assistant.write().await.insert(
                 session_key_clone.clone(),
-                ActiveAssistantDraft::new(&run_id_clone, &model_id, &provider_name, client_seq),
+                ActiveAssistantDraft::new(
+                    &run_id_clone,
+                    &model_id,
+                    &provider_name,
+                    resolved_reasoning_effort.clone(),
+                    client_seq,
+                ),
             );
             if desired_reply_medium == ReplyMedium::Voice {
                 broadcast(
@@ -1177,7 +1183,6 @@ impl LiveChatService {
                         resolved_reasoning_effort.clone(),
                         desired_reply_medium,
                         ctx_ref,
-                        user_message_index,
                         &discovered_skills,
                         Some(&runtime_context),
                         sender_name,
@@ -1205,7 +1210,6 @@ impl LiveChatService {
                         desired_reply_medium,
                         ctx_ref,
                         Some(&runtime_context),
-                        user_message_index,
                         &discovered_skills,
                         hook_registry,
                         accept_language.clone(),
@@ -1266,23 +1270,7 @@ impl LiveChatService {
                 agent_fut.await
             };
 
-            // Persist assistant response (even empty ones — needed for LLM history coherence).
-            if let Some(assistant_output) = assistant_text {
-                let assistant_msg = build_persisted_assistant_message(
-                    assistant_output,
-                    Some(model_id.clone()),
-                    Some(provider_name.clone()),
-                    resolved_reasoning_effort.clone(),
-                    client_seq,
-                    Some(run_id_clone.clone()),
-                );
-                if let Err(e) = session_store
-                    .append(&session_key_clone, &assistant_msg.to_value())
-                    .await
-                {
-                    warn!("failed to persist assistant message: {e}");
-                }
-                // Update metadata counts.
+            if assistant_text.is_some() {
                 if let Ok(count) = session_store.count(&session_key_clone).await {
                     session_metadata.touch(&session_key_clone, count).await;
 

@@ -2,6 +2,8 @@
 
 mod send;
 
+const STOPPED_BY_USER: &str = "Stopped by user.";
+
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
@@ -46,7 +48,6 @@ use crate::{
         prompt_build_limits_from_config, resolve_prompt_agent_id, resolve_prompt_mode_context,
     },
     run_with_tools::run_with_tools,
-    service::build_persisted_assistant_message,
     streaming::run_streaming,
     types::*,
 };
@@ -271,7 +272,13 @@ impl ChatService for LiveChatService {
                 .insert(session_key.clone(), desired_reply_medium);
             self.active_partial_assistant.write().await.insert(
                 session_key.clone(),
-                ActiveAssistantDraft::new(&run_id, &model_id, &provider_name, None),
+                ActiveAssistantDraft::new(
+                    &run_id,
+                    &model_id,
+                    &provider_name,
+                    resolved_reasoning_effort.clone(),
+                    None,
+                ),
             );
         }
 
@@ -334,11 +341,10 @@ impl ChatService for LiveChatService {
                 resolved_reasoning_effort.clone(),
                 desired_reply_medium,
                 None,
-                user_message_index,
                 &[],
                 Some(&runtime_context),
                 None, // send_sync: no sender name
-                Some(&self.session_store),
+                (!ephemeral).then_some(&self.session_store),
                 None, // send_sync: no client seq
                 (!ephemeral).then(|| Arc::clone(&self.active_partial_assistant)),
                 &terminal_runs,
@@ -362,12 +368,11 @@ impl ChatService for LiveChatService {
                 desired_reply_medium,
                 None,
                 Some(&runtime_context),
-                user_message_index,
                 &[],
                 hook_registry,
                 None,
                 None, // send_sync: no conn_id
-                Some(&self.session_store),
+                (!ephemeral).then_some(&self.session_store),
                 false, // send_sync: MCP tools always enabled for API calls
                 None,  // send_sync: no client seq
                 (!ephemeral).then(|| Arc::clone(&self.active_thinking_text)),
@@ -397,24 +402,7 @@ impl ChatService for LiveChatService {
             self.active_reply_medium.write().await.remove(&session_key);
         }
 
-        // Persist assistant response (even empty ones — needed for LLM history coherence).
-        if !ephemeral && let Some(ref assistant_output) = result {
-            let assistant_msg = build_persisted_assistant_message(
-                assistant_output.clone(),
-                Some(model_id.clone()),
-                Some(provider_name.clone()),
-                resolved_reasoning_effort.clone(),
-                None,
-                Some(run_id.clone()),
-            );
-            if let Err(e) = self
-                .session_store
-                .append(&session_key, &assistant_msg.to_value())
-                .await
-            {
-                warn!("send_sync: failed to persist assistant message: {e}");
-            }
-            // Update metadata message count.
+        if !ephemeral {
             if let Ok(count) = self.session_store.count(&session_key).await {
                 self.session_metadata.touch(&session_key, count).await;
             }
@@ -484,23 +472,86 @@ impl ChatService for LiveChatService {
         );
 
         if aborted && let Some(key) = resolved_session_key.as_deref() {
-            let _ = Self::wait_for_event_forwarder(&self.active_event_forwarders, key).await;
+            let interrupted_tool_calls = self
+                .active_tool_calls
+                .write()
+                .await
+                .remove(key)
+                .unwrap_or_default();
+            let event_result =
+                Self::wait_for_event_forwarder(&self.active_event_forwarders, key).await;
             let partial = self.persist_partial_assistant_on_abort(key).await;
+            let finalized_tool_segment = if partial.is_none() {
+                self.finalize_active_tool_segment_on_abort(key, &event_result.tool_segment_indices)
+                    .await
+            } else {
+                None
+            };
             self.active_thinking_text.write().await.remove(key);
-            self.active_tool_calls.write().await.remove(key);
             self.active_reply_medium.write().await.remove(key);
+            for tool_call in interrupted_tool_calls {
+                let tool_result_index = match self.session_store.count(key).await {
+                    Ok(count) => count as usize,
+                    Err(error) => {
+                        warn!(session = %key, error = %error, "failed to count history before persisting stopped tool call");
+                        continue;
+                    },
+                };
+                let tool_result = PersistedMessage::ToolResult {
+                    tool_call_id: tool_call.id.clone(),
+                    tool_name: tool_call.name.clone(),
+                    arguments: Some(tool_call.arguments.clone()),
+                    success: false,
+                    result: None,
+                    error: Some(STOPPED_BY_USER.to_string()),
+                    reasoning: None,
+                    created_at: Some(now_ms()),
+                    run_id: Some(tool_call.run_id.clone()),
+                };
+                if let Err(error) = self
+                    .session_store
+                    .append(key, &tool_result.to_value())
+                    .await
+                {
+                    warn!(session = %key, error = %error, "failed to persist stopped tool call");
+                    continue;
+                }
+                broadcast(
+                    &self.state,
+                    "chat",
+                    serde_json::json!({
+                        "state": "tool_call_end",
+                        "runId": tool_call.run_id,
+                        "sessionKey": key,
+                        "toolCallId": tool_call.id,
+                        "toolName": tool_call.name,
+                        "arguments": tool_call.arguments,
+                        "success": false,
+                        "error": { "detail": STOPPED_BY_USER },
+                        "messageIndex": tool_result_index,
+                    }),
+                    BroadcastOpts::default(),
+                )
+                .await;
+            }
+            if let Ok(count) = self.session_store.count(key).await {
+                self.session_metadata.touch(key, count).await;
+            }
             let mut payload = serde_json::json!({
                 "state": "aborted",
                 "runId": resolved_run_id,
                 "sessionKey": key,
             });
-            if let Some((partial_message, message_index)) = partial {
+            if let Some((partial_message, message_index)) = partial.or(finalized_tool_segment) {
                 payload["partialMessage"] = partial_message;
                 if let Some(index) = message_index {
                     payload["messageIndex"] = serde_json::json!(index);
                 }
             }
             broadcast(&self.state, "chat", payload, BroadcastOpts::default()).await;
+            if let Some(run_id) = resolved_run_id.as_deref() {
+                self.terminal_runs.write().await.remove(run_id);
+            }
         }
 
         Ok(serde_json::json!({
