@@ -26,7 +26,27 @@ use {
     },
 };
 
-use crate::{error, models::DisabledModelsStore, runtime::ChatRuntime, types::*};
+use {
+    chelix_agents::prompt::{
+        build_system_prompt_minimal_runtime_details,
+        build_system_prompt_with_session_runtime_details,
+    },
+    chelix_config::ToolMode,
+};
+
+use crate::{
+    agent_loop::effective_tool_mode,
+    error,
+    models::DisabledModelsStore,
+    prompt::{
+        apply_request_runtime_context, build_policy_context, build_prompt_runtime_context,
+        discover_skills_if_enabled, filter_skills_for_agent, load_prompt_persona_for_session,
+        prepare_run_registry, prompt_build_limits_from_config, resolve_prompt_agent_id,
+        resolve_prompt_mode_context,
+    },
+    runtime::ChatRuntime,
+    types::*,
+};
 
 /// A message that arrived while an agent run was already active on the session.
 #[derive(Debug, Clone)]
@@ -750,6 +770,119 @@ impl LiveChatService {
             worktree_dir,
         };
         Some(ctx.to_prompt_section())
+    }
+
+    /// Build the session's system prompt and native tool schemas exactly as a
+    /// regular turn would.
+    ///
+    /// Used by summarization so the request prefix (system prompt + tools +
+    /// history) matches the previous turn byte-for-byte and hits the
+    /// provider's prompt cache.
+    pub(in crate::service) async fn session_prompt_context(
+        &self,
+        session_key: &str,
+        history: &[Value],
+        provider: &Arc<dyn chelix_agents::model::LlmProvider>,
+        params: &Value,
+    ) -> error::Result<(String, Vec<Value>)> {
+        let tool_mode = effective_tool_mode(&**provider);
+        let native_tools = matches!(tool_mode, ToolMode::Native);
+        let tools_enabled = !matches!(tool_mode, ToolMode::Off);
+
+        let session_entry = self.session_metadata.get(session_key).await;
+        let persona = load_prompt_persona_for_session(
+            session_key,
+            session_entry.as_ref(),
+            self.session_state_store.as_deref(),
+        )
+        .await;
+        let mut runtime_context = build_prompt_runtime_context(
+            &self.state,
+            &persona.config,
+            provider,
+            session_key,
+            session_entry.as_ref(),
+        )
+        .await;
+        runtime_context.mode = resolve_prompt_mode_context(&persona.config, session_entry.as_ref());
+        apply_request_runtime_context(&mut runtime_context.host, params);
+
+        let conn_id = params.get("_conn_id").and_then(|v| v.as_str());
+        let project_context = self.resolve_project_context(session_key, conn_id).await;
+
+        let discovered_skills = discover_skills_if_enabled(&persona.config).await;
+        let mcp_disabled = session_entry
+            .as_ref()
+            .and_then(|entry| entry.mcp_disabled)
+            .unwrap_or(false);
+        let agent_id = resolve_prompt_agent_id(session_entry.as_ref());
+        let discovered_skills = if let Some(preset) = persona.config.agents.get_preset(&agent_id) {
+            filter_skills_for_agent(discovered_skills, &preset.skills)
+        } else {
+            discovered_skills
+        };
+
+        let policy_ctx = build_policy_context(&agent_id, Some(&runtime_context), Some(params));
+        let filtered_registry = {
+            let registry_guard = self.tool_registry.read().await;
+            let memory_setup = self
+                .state
+                .memory_manager()
+                .map(|manager| (manager, Arc::clone(provider)));
+            prepare_run_registry(
+                &registry_guard,
+                &persona.config,
+                &discovered_skills,
+                mcp_disabled,
+                &policy_ctx,
+                tools_enabled,
+                &agent_id,
+                memory_setup,
+                history,
+            )
+        }
+        .map_err(|e| error::Error::message(e.to_string()))?;
+
+        let prompt_limits = prompt_build_limits_from_config(&persona.config);
+        let prompt_build = if tools_enabled {
+            build_system_prompt_with_session_runtime_details(
+                &filtered_registry,
+                native_tools,
+                project_context.as_deref(),
+                &discovered_skills,
+                Some(&persona.identity),
+                Some(&persona.user),
+                persona.soul_text.as_deref(),
+                persona.boot_text.as_deref(),
+                persona.agents_text.as_deref(),
+                persona.tools_text.as_deref(),
+                Some(&runtime_context),
+                persona.memory_text.as_deref(),
+                prompt_limits,
+                persona.guidelines_text.as_deref(),
+            )
+        } else {
+            build_system_prompt_minimal_runtime_details(
+                project_context.as_deref(),
+                Some(&persona.identity),
+                Some(&persona.user),
+                persona.soul_text.as_deref(),
+                persona.boot_text.as_deref(),
+                persona.agents_text.as_deref(),
+                persona.tools_text.as_deref(),
+                Some(&runtime_context),
+                persona.memory_text.as_deref(),
+                prompt_limits,
+                persona.guidelines_text.as_deref(),
+            )
+        };
+
+        let tools = if native_tools {
+            filtered_registry.list_schemas()
+        } else {
+            Vec::new()
+        };
+        Ok((prompt_build.prompt, tools))
     }
 }
 

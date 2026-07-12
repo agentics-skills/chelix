@@ -20,7 +20,6 @@ use {
 use crate::{
     channels::{deliver_channel_replies, send_tool_status_to_channels},
     chat_error::parse_chat_error,
-    compaction, error,
     models::DisabledModelsStore,
     runtime::ChatRuntime,
     service::{build_tool_call_assistant_message, persist_tool_history_pair},
@@ -591,12 +590,4 @@ pub(crate) fn effective_tool_mode(provider: &dyn chelix_agents::model::LlmProvid
             }
         },
     }
-}
-
-pub(crate) async fn compact_session(
-    store: &Arc<SessionStore>,
-    session_key: &str,
-    provider: &dyn chelix_agents::model::LlmProvider,
-) -> error::Result<compaction::CheckpointOutcome> {
-    compaction::summarize_session(store, session_key, provider).await
 }

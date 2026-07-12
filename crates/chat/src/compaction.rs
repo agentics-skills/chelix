@@ -9,7 +9,12 @@
 //! `<conversation-summary>` user message.
 //!
 //! The summarization prompt is adapted from the VS Code Copilot Chat
-//! reference (`summarizedConversationHistory.tsx`).
+//! reference (`summarizedConversationHistory.tsx`). Unlike the reference,
+//! the instructions ride in the trailing user message instead of replacing
+//! the system prompt: the request keeps the session's system prompt, tool
+//! schemas, and history byte-identical to the previous turn, so the
+//! provider's prompt cache prefix stays valid and the history is billed as
+//! cached input.
 
 use std::sync::Arc;
 
@@ -29,11 +34,14 @@ use crate::error::{self, Error};
 /// request outright.
 pub(crate) const AUTO_COMPACT_SAFETY_FACTOR: f64 = 0.85;
 
-/// System prompt for the summarization call.
+/// Summarization instructions.
 ///
 /// Adapted from the `SummaryPrompt` element in the VS Code Copilot Chat
-/// reference (`summarizedConversationHistory.tsx`).
-pub(crate) const SUMMARY_SYSTEM_PROMPT: &str = r#"Your task is to create a comprehensive, detailed summary of the entire conversation that captures all essential information needed to seamlessly continue the work without any loss of context. This summary will be used to compact the conversation while preserving critical technical details, decisions, and progress.
+/// reference (`summarizedConversationHistory.tsx`). Sent as part of the
+/// trailing user message (not the system prompt) so the request prefix —
+/// session system prompt, tool schemas, history — matches the previous turn
+/// and hits the provider's prompt cache.
+pub(crate) const SUMMARY_INSTRUCTIONS: &str = r#"Your task is to create a comprehensive, detailed summary of the entire conversation that captures all essential information needed to seamlessly continue the work without any loss of context. This summary will be used to compact the conversation while preserving critical technical details, decisions, and progress.
 
 ## Recent Context Analysis
 
@@ -134,11 +142,14 @@ Your summary must include these sections in order, following the exact format be
 
 This summary should serve as a comprehensive handoff document that enables seamless continuation of all active work streams while preserving the full technical and contextual richness of the original conversation."#;
 
-/// Trailing user message for the summarization call.
+/// Trailing request appended after [`SUMMARY_INSTRUCTIONS`] in the
+/// summarization user message.
 ///
 /// Adapted from the `UserMessage` element in
 /// `ConversationHistorySummarizationPrompt` in the reference.
-pub(crate) const SUMMARY_REQUEST: &str = r#"Summarize the conversation history so far, paying special attention to the most recent agent commands and tool results that triggered this summarization. Structure your summary using the enhanced format provided in the system message.
+pub(crate) const SUMMARY_REQUEST: &str = r#"Summarize the conversation history so far, paying special attention to the most recent agent commands and tool results that triggered this summarization. Structure your summary using the enhanced format provided above.
+
+IMPORTANT: Do NOT call any tools. Your only task is to generate a text summary of the conversation. Do not attempt to execute any actions or make any tool calls.
 
 Focus particularly on:
 - The specific agent commands/tools that were just executed
@@ -193,16 +204,20 @@ pub(crate) fn auto_compact_threshold(context_window_tokens: u64, threshold_token
 
 /// Summarize the session and append a checkpoint message.
 ///
-/// The exact stored history (converted with the same
-/// [`values_to_chat_messages`] used for regular runs, so a previous
-/// checkpoint already scopes the context) is sent to the session provider
-/// together with the summarization system prompt and trailing request. The
-/// resulting summary is appended as a [`PersistedMessage::Checkpoint`] —
-/// nothing in the existing history is modified.
+/// The request is built to share the provider prompt-cache prefix with the
+/// previous regular turn: the caller passes the session's own system prompt
+/// and native tool schemas, the exact stored history is converted with the
+/// same [`values_to_chat_messages`] used for regular runs (so a previous
+/// checkpoint already scopes the context), and the summarization
+/// instructions ride in a single trailing user message. The resulting
+/// summary is appended as a [`PersistedMessage::Checkpoint`] — nothing in
+/// the existing history is modified.
 pub(crate) async fn summarize_session(
     store: &Arc<SessionStore>,
     session_key: &str,
     provider: &dyn LlmProvider,
+    system_prompt: &str,
+    tools: &[serde_json::Value],
 ) -> error::Result<CheckpointOutcome> {
     let history = store
         .read(session_key)
@@ -226,12 +241,14 @@ pub(crate) async fn summarize_session(
     // Exact session history, unmutated. A previous checkpoint (if any) is
     // rendered as its <conversation-summary> user message by the shared
     // conversion, so iterative re-summarization builds on the prior summary.
-    let mut messages = vec![chelix_agents::ChatMessage::system(SUMMARY_SYSTEM_PROMPT)];
+    let mut messages = vec![chelix_agents::ChatMessage::system(system_prompt)];
     messages.extend(values_to_chat_messages(&history));
-    messages.push(chelix_agents::ChatMessage::user(SUMMARY_REQUEST));
+    messages.push(chelix_agents::ChatMessage::user(format!(
+        "{SUMMARY_INSTRUCTIONS}\n\n{SUMMARY_REQUEST}"
+    )));
 
     let response = provider
-        .complete(&messages, &[])
+        .complete(&messages, tools)
         .await
         .map_err(|e| Error::message(format!("summarization request failed: {e}")))?;
 
@@ -290,6 +307,18 @@ mod tests {
 
     struct MockProvider {
         response_text: Option<String>,
+        seen_messages: std::sync::Mutex<Vec<ChatMessage>>,
+        seen_tools: std::sync::Mutex<Vec<serde_json::Value>>,
+    }
+
+    impl MockProvider {
+        fn new(response_text: Option<&str>) -> Self {
+            Self {
+                response_text: response_text.map(str::to_string),
+                seen_messages: std::sync::Mutex::new(Vec::new()),
+                seen_tools: std::sync::Mutex::new(Vec::new()),
+            }
+        }
     }
 
     #[async_trait::async_trait]
@@ -304,9 +333,11 @@ mod tests {
 
         async fn complete(
             &self,
-            _messages: &[ChatMessage],
-            _tools: &[serde_json::Value],
+            messages: &[ChatMessage],
+            tools: &[serde_json::Value],
         ) -> anyhow::Result<CompletionResponse> {
+            *self.seen_messages.lock().unwrap_or_else(|e| e.into_inner()) = messages.to_vec();
+            *self.seen_tools.lock().unwrap_or_else(|e| e.into_inner()) = tools.to_vec();
             Ok(CompletionResponse {
                 text: self.response_text.clone(),
                 tool_calls: Vec::new(),
@@ -372,10 +403,10 @@ mod tests {
         seed_history(&store, "s1").await;
         let before = store.read("s1").await.unwrap();
 
-        let provider = MockProvider {
-            response_text: Some("<summary>the summary</summary>".to_string()),
-        };
-        let outcome = summarize_session(&store, "s1", &provider).await.unwrap();
+        let provider = MockProvider::new(Some("<summary>the summary</summary>"));
+        let outcome = summarize_session(&store, "s1", &provider, "session system prompt", &[])
+            .await
+            .unwrap();
 
         let after = store.read("s1").await.unwrap();
         assert_eq!(after.len(), before.len() + 1);
@@ -396,12 +427,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn summarize_request_shares_session_prompt_prefix() {
+        let (_dir, store) = test_store();
+        seed_history(&store, "s5").await;
+
+        let provider = MockProvider::new(Some("summary"));
+        let tools = vec![serde_json::json!({"name": "read_file"})];
+        summarize_session(&store, "s5", &provider, "session system prompt", &tools)
+            .await
+            .unwrap();
+
+        // Prefix matches a regular turn: session system prompt first, exact
+        // history next, summarization instructions only in the trailing user
+        // message — so the provider prompt cache stays valid.
+        let seen = provider
+            .seen_messages
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        assert!(
+            matches!(&seen[0], ChatMessage::System { content } if content == "session system prompt")
+        );
+        assert_eq!(seen.len(), 4); // system + user + assistant + summary request
+        match seen.last().unwrap() {
+            ChatMessage::User { content, .. } => {
+                let text = format!("{content:?}");
+                assert!(text.contains("Summarize the conversation history"));
+                assert!(text.contains("Do NOT call any tools"));
+            },
+            other => panic!("expected trailing user message, got {other:?}"),
+        }
+        // Session tool schemas are forwarded unchanged.
+        let seen_tools = provider
+            .seen_tools
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        assert_eq!(seen_tools, tools);
+    }
+
+    #[tokio::test]
     async fn summarize_empty_session_errors() {
         let (_dir, store) = test_store();
-        let provider = MockProvider {
-            response_text: Some("summary".to_string()),
-        };
-        let err = summarize_session(&store, "empty", &provider)
+        let provider = MockProvider::new(Some("summary"));
+        let err = summarize_session(&store, "empty", &provider, "sys", &[])
             .await
             .unwrap_err();
         assert!(err.to_string().contains("nothing to compact"));
@@ -411,11 +480,11 @@ mod tests {
     async fn summarize_rejects_double_checkpoint() {
         let (_dir, store) = test_store();
         seed_history(&store, "s2").await;
-        let provider = MockProvider {
-            response_text: Some("summary".to_string()),
-        };
-        summarize_session(&store, "s2", &provider).await.unwrap();
-        let err = summarize_session(&store, "s2", &provider)
+        let provider = MockProvider::new(Some("summary"));
+        summarize_session(&store, "s2", &provider, "sys", &[])
+            .await
+            .unwrap();
+        let err = summarize_session(&store, "s2", &provider, "sys", &[])
             .await
             .unwrap_err();
         assert!(err.to_string().contains("already ends with a checkpoint"));
@@ -425,10 +494,8 @@ mod tests {
     async fn summarize_empty_llm_response_errors() {
         let (_dir, store) = test_store();
         seed_history(&store, "s3").await;
-        let provider = MockProvider {
-            response_text: Some("   ".to_string()),
-        };
-        let err = summarize_session(&store, "s3", &provider)
+        let provider = MockProvider::new(Some("   "));
+        let err = summarize_session(&store, "s3", &provider, "sys", &[])
             .await
             .unwrap_err();
         assert!(err.to_string().contains("empty response"));
@@ -438,10 +505,10 @@ mod tests {
     async fn context_restarts_from_latest_checkpoint() {
         let (_dir, store) = test_store();
         seed_history(&store, "s4").await;
-        let provider = MockProvider {
-            response_text: Some("compacted context".to_string()),
-        };
-        summarize_session(&store, "s4", &provider).await.unwrap();
+        let provider = MockProvider::new(Some("compacted context"));
+        summarize_session(&store, "s4", &provider, "sys", &[])
+            .await
+            .unwrap();
         store
             .append("s4", &PersistedMessage::user("next question").to_value())
             .await

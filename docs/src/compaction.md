@@ -10,7 +10,11 @@ deleted — the next context window simply starts from the checkpoint.
 
 1. The exact stored session history (unmodified) is sent to the session's
    provider together with a comprehensive summarization prompt adapted from
-   the VS Code Copilot Chat reference implementation.
+   the VS Code Copilot Chat reference implementation. The request keeps the
+   session's own system prompt and tool schemas, and the summarization
+   instructions ride in a single trailing user message — so the request
+   prefix matches the previous turn and the history is billed as **cached
+   input** on providers with prompt caching (Anthropic, OpenAI, etc.).
 2. The model produces a detailed structured summary (`<analysis>` +
    `<summary>` with eight sections: conversation overview, technical
    foundation, codebase status, problem resolution, progress tracking,
@@ -71,7 +75,7 @@ model, token usage, and the number of messages checkpointed.
 ## Further reading
 
 - `crates/chat/src/compaction.rs` — summarization prompt, threshold math,
-  and checkpoint append logic.
+  cache-friendly request shape, and checkpoint append logic.
 - `crates/agents/src/model/convert.rs` — context construction: the latest
   checkpoint starts a fresh context window.
 - `references/vscode-copilot-chat` — the reference implementation

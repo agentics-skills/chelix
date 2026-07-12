@@ -666,9 +666,23 @@ impl ChatService for LiveChatService {
             .await
             .map_err(ServiceError::message)?;
 
-        let outcome = compaction::summarize_session(&self.session_store, &session_key, &*provider)
+        // Rebuild the session system prompt and tool schemas exactly as a
+        // regular turn would, so the summarization request shares the
+        // provider prompt-cache prefix with the previous turn.
+        let (system_prompt, tools) = self
+            .session_prompt_context(&session_key, &history, &provider, &params)
             .await
-            .map_err(|e| ServiceError::message(e.to_string()))?;
+            .map_err(ServiceError::message)?;
+
+        let outcome = compaction::summarize_session(
+            &self.session_store,
+            &session_key,
+            &*provider,
+            &system_prompt,
+            &tools,
+        )
+        .await
+        .map_err(|e| ServiceError::message(e.to_string()))?;
 
         let message_count = self.session_store.count(&session_key).await.unwrap_or(0);
         self.session_metadata

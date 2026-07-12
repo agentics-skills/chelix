@@ -33,7 +33,7 @@ use {
 use crate::{
     ActiveToolCall, LiveChatService,
     agent_loop::{
-        ChannelStreamDispatcher, clear_unsupported_model, compact_session, mark_unsupported_model,
+        ChannelStreamDispatcher, clear_unsupported_model, mark_unsupported_model,
         ordered_runner_event_callback,
     },
     channels::{
@@ -43,6 +43,7 @@ use crate::{
         send_screenshot_to_channels, send_tool_result_to_channels, send_tool_status_to_channels,
     },
     chat_error::parse_chat_error,
+    compaction,
     memory_tools::effective_tool_mode,
     message::apply_voice_reply_suffix,
     models::DisabledModelsStore,
@@ -1030,8 +1031,23 @@ pub(crate) async fn run_with_tools(
             .await;
 
             // Summarize with the session's own model and append a checkpoint;
-            // the retry context window starts after that checkpoint.
-            match compact_session(store, session_key, &*provider_ref).await {
+            // the retry context window starts after that checkpoint. The
+            // run's own system prompt and tool schemas keep the request
+            // prefix cache-compatible with the failed attempt.
+            let summary_tools = if native_tools {
+                filtered_registry.list_schemas()
+            } else {
+                Vec::new()
+            };
+            match compaction::summarize_session(
+                store,
+                session_key,
+                &*provider_ref,
+                &system_prompt,
+                &summary_tools,
+            )
+            .await
+            {
                 Ok(outcome) => {
                     // Merge the checkpoint metadata into the broadcast so
                     // connected clients render the checkpoint card.
