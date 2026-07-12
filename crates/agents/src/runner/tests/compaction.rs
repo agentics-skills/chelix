@@ -115,8 +115,16 @@ fn compact_oldest_first_stops_once_budget_freed() {
 #[test]
 fn enforce_budget_ratio_zero_disables_compaction_ok_when_under_overflow() {
     let mut messages = vec![ChatMessage::tool("id1", "a".repeat(300))];
-    let result = enforce_tool_result_context_budget(&mut messages, &[], 100_000, 0, 90);
-    assert!(result.is_ok());
+    let metadata = enforce_tool_result_context_budget(&mut messages, &[], 100_000, 0, 90)
+        .expect("budget check should pass");
+    assert_eq!(metadata.context_window, 100_000);
+    assert_eq!(metadata.compaction_ratio, 0);
+    assert_eq!(metadata.overflow_ratio, 90);
+    assert!(metadata.has_tool_results);
+    assert!(metadata.current_tokens.is_some());
+    assert_eq!(metadata.compaction_budget, None);
+    assert_eq!(metadata.overflow_budget, Some(90_000));
+    assert_eq!(metadata.post_compaction_tokens, None);
 
     match &messages[0] {
         ChatMessage::Tool { content, .. } => {
@@ -145,8 +153,14 @@ fn enforce_budget_compacts_when_over_compaction_threshold() {
         ChatMessage::tool("id1", "a".repeat(300)),
         ChatMessage::tool("id2", "b".repeat(300)),
     ];
-    let result = enforce_tool_result_context_budget(&mut messages, &[], 100, 75, 90);
-    assert!(result.is_ok());
+    let metadata = enforce_tool_result_context_budget(&mut messages, &[], 100, 75, 90)
+        .expect("budget check should pass after compaction");
+    assert_eq!(metadata.compaction_budget, Some(75));
+    assert_eq!(metadata.overflow_budget, Some(90));
+    assert!(metadata.current_tokens.is_some_and(|tokens| tokens > 75));
+    assert!(metadata.tokens_needed.is_some());
+    assert!(metadata.tokens_reduced.is_some_and(|tokens| tokens > 0));
+    assert!(metadata.post_compaction_tokens.is_some());
 
     let compacted = messages
         .iter()
@@ -170,8 +184,12 @@ fn enforce_budget_errors_when_over_overflow_even_after_compaction() {
 #[test]
 fn enforce_budget_noop_when_no_tool_results() {
     let mut messages = vec![ChatMessage::user("hello")];
-    let result = enforce_tool_result_context_budget(&mut messages, &[], 100, 75, 90);
-    assert!(result.is_ok());
+    let metadata = enforce_tool_result_context_budget(&mut messages, &[], 100, 75, 90)
+        .expect("budget check should be a no-op");
+    assert!(!metadata.has_tool_results);
+    assert_eq!(metadata.current_tokens, None);
+    assert_eq!(metadata.compaction_budget, None);
+    assert_eq!(metadata.overflow_budget, None);
 
     match &messages[0] {
         ChatMessage::User { .. } => {},
@@ -182,6 +200,9 @@ fn enforce_budget_noop_when_no_tool_results() {
 #[test]
 fn enforce_budget_noop_when_context_window_zero() {
     let mut messages = vec![ChatMessage::tool("id1", "a".repeat(300))];
-    let result = enforce_tool_result_context_budget(&mut messages, &[], 0, 75, 90);
-    assert!(result.is_ok());
+    let metadata = enforce_tool_result_context_budget(&mut messages, &[], 0, 75, 90)
+        .expect("zero context window should be a no-op");
+    assert_eq!(metadata.context_window, 0);
+    assert!(metadata.has_tool_results);
+    assert_eq!(metadata.current_tokens, None);
 }

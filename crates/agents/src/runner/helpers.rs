@@ -4,7 +4,10 @@ use std::{borrow::Cow, sync::Arc};
 
 use tracing::{info, warn};
 
-use chelix_common::hooks::{ChannelBinding, HookAction, HookPayload, HookRegistry};
+use {
+    chelix_common::hooks::{ChannelBinding, HookAction, HookPayload, HookRegistry},
+    chelix_sessions::message::ContextBudgetMetadata,
+};
 
 use crate::{
     model::{
@@ -162,6 +165,8 @@ pub enum RunnerEvent {
         /// Raw structured result, available only for media/location/channel
         /// side effects and never persisted as conversational context.
         raw_result: Option<serde_json::Value>,
+        /// Exact context-budget calculation used before this LLM iteration.
+        context_budget: ContextBudgetMetadata,
     },
     /// LLM returned reasoning/status text alongside tool calls.
     ThinkingText(String),
@@ -684,31 +689,46 @@ pub(crate) fn enforce_tool_result_context_budget(
     context_window: u32,
     compaction_ratio: usize,
     overflow_ratio: usize,
-) -> Result<(), AgentRunError> {
+) -> Result<ContextBudgetMetadata, AgentRunError> {
     let context_window = context_window as usize;
-    if context_window == 0 || !has_tool_result_messages(messages) {
-        return Ok(());
+    let has_tool_results = has_tool_result_messages(messages);
+    let mut metadata = ContextBudgetMetadata {
+        context_window: context_window as u32,
+        compaction_ratio,
+        overflow_ratio,
+        has_tool_results,
+        ..ContextBudgetMetadata::default()
+    };
+    if context_window == 0 || !has_tool_results {
+        return Ok(metadata);
     }
 
     // Allow disabling per-iteration compaction entirely via config (ratio = 0).
     if compaction_ratio == 0 {
         let overflow_budget = context_window.saturating_mul(overflow_ratio) / 100;
         let current_tokens = estimate_prompt_tokens(messages, tool_schemas);
+        metadata.overflow_budget = Some(overflow_budget);
+        metadata.current_tokens = Some(current_tokens);
         if current_tokens > overflow_budget {
             return Err(AgentRunError::ContextWindowExceeded(format!(
                 "preemptive context overflow: estimated prompt size {current_tokens} tokens \
                  exceeds {overflow_budget} token budget (compaction disabled)"
             )));
         }
-        return Ok(());
+        return Ok(metadata);
     }
     let compaction_budget = context_window.saturating_mul(compaction_ratio) / 100;
     let overflow_budget = context_window.saturating_mul(overflow_ratio) / 100;
     let current_tokens = estimate_prompt_tokens(messages, tool_schemas);
+    metadata.compaction_budget = Some(compaction_budget);
+    metadata.overflow_budget = Some(overflow_budget);
+    metadata.current_tokens = Some(current_tokens);
 
     if current_tokens > compaction_budget {
         let needed = current_tokens.saturating_sub(compaction_budget);
         let reduced = compact_tool_results_oldest_first_in_place(messages, needed);
+        metadata.tokens_needed = Some(needed);
+        metadata.tokens_reduced = Some(reduced);
         tracing::debug!(
             current_tokens,
             compaction_budget,
@@ -720,13 +740,14 @@ pub(crate) fn enforce_tool_result_context_budget(
     }
 
     let post_compaction_tokens = estimate_prompt_tokens(messages, tool_schemas);
+    metadata.post_compaction_tokens = Some(post_compaction_tokens);
     if post_compaction_tokens > overflow_budget {
         return Err(AgentRunError::ContextWindowExceeded(format!(
             "preemptive context overflow: estimated prompt size {post_compaction_tokens} tokens exceeds {overflow_budget} token budget after tool-result compaction"
         )));
     }
 
-    Ok(())
+    Ok(metadata)
 }
 
 pub(crate) fn channel_binding_from_tool_context(

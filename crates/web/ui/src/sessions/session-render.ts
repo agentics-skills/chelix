@@ -18,6 +18,7 @@ import * as gon from "../gon";
 import { parseAgentsListPayload, renderAudioPlayer, renderDocument, renderMarkdown, sendRpc } from "../helpers";
 import { appendMessageActions, appendUserMessageActions } from "../message-actions";
 import { upsertTtsProviderFooter } from "../message-voice";
+import { renderCheckpointCard } from "../pages/chat/context-card";
 import { navigate } from "../router";
 import { settingsPath } from "../routes";
 import * as S from "../state";
@@ -26,6 +27,7 @@ import { sessionStore } from "../stores/session-store";
 import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metadata";
 import { terminalContextTokens } from "../terminal-usage";
 import {
+	appendToolCardContextBudget,
 	appendToolCardError,
 	createToolCallCard,
 	getToolCardDetailsContainer,
@@ -34,9 +36,8 @@ import {
 	renderToolCardResult,
 	toolCallIds,
 } from "../tool-call-card";
-import { renderCheckpointCard } from "../pages/chat/context-card";
 import type { HistoryMessage } from "../types";
-import type { CheckpointHistoryMessage, ToolResult } from "../types/ws-events";
+import type { CheckpointHistoryMessage, ContextBudgetMetadata, ToolResult } from "../types/ws-events";
 
 import { computeHistoryTailIndex, ensureHistoryScrollBinding, syncHistoryState } from "./session-history";
 import { markSessionTailLocallyTruncated } from "./session-tail";
@@ -56,6 +57,7 @@ interface ToolResultMsg extends HistoryMessage {
 	result?: ToolResult | string;
 	error?: string;
 	reasoning?: string;
+	contextBudget?: ContextBudgetMetadata;
 }
 
 interface AssistantMsg extends HistoryMessage {
@@ -340,6 +342,7 @@ function renderHistoryToolResult(msg: ToolResultMsg): HTMLElement {
 			renderToolCardError(card, msg.error);
 		}
 	}
+	appendToolCardContextBudget(card, msg.contextBudget);
 
 	if (msg.reasoning) {
 		appendReasoningDisclosure(getToolCardDetailsContainer(card), msg.reasoning);

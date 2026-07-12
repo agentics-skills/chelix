@@ -185,6 +185,7 @@ function handleChatToolCallEnd(p: ChatPayload, isActive: boolean, isChatPage: bo
 			success: p.success === true,
 			result: p.result || null,
 			error: p.error?.detail || p.error?.message || (typeof p.error === "string" ? String(p.error) : null),
+			contextBudget: p.contextBudget,
 			created_at: Date.now(),
 		},
 		toolHistoryIndex as number | undefined,
@@ -476,7 +477,12 @@ function resetTokensAfterCompaction(): void {
 // rendering uses, so the live-stream and history paths look identical.
 // A `data-history-index` guard makes duplicate broadcasts (`chat.compact
 // done` + `auto_compact done` for the same checkpoint) idempotent.
-function renderCheckpointFromPayload(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
+function renderCheckpointFromPayload(
+	p: ChatPayload,
+	isActive: boolean,
+	isChatPage: boolean,
+	eventSession: string,
+): void {
 	const checkpoint = p.checkpoint;
 	if (!checkpoint) return;
 	const messageIndex = p.messageIndex;

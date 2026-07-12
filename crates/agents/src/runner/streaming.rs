@@ -242,7 +242,7 @@ pub async fn run_agent_loop_streaming_with_limits(
         } else {
             0 // skip compaction but still check for overflow
         };
-        super::enforce_tool_result_context_budget(
+        let context_budget = super::enforce_tool_result_context_budget(
             &mut messages,
             &schemas_for_api,
             provider.context_window(),
@@ -1026,6 +1026,7 @@ pub async fn run_agent_loop_streaming_with_limits(
                     error,
                     result: success.then(|| tool_result_str.clone()),
                     raw_result: success.then(|| result_payload.clone()),
+                    context_budget: context_budget.clone(),
                 });
             }
             debug!(

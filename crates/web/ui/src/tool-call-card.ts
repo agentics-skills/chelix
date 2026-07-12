@@ -2,7 +2,7 @@
 
 import { renderCommand } from "./code-highlight";
 import { renderDocument, renderMapLinks, renderMapPointGroups, renderScreenshot, toolCallSummary } from "./helpers";
-import type { ToolError, ToolResult } from "./types/ws-events";
+import type { ContextBudgetMetadata, ToolError, ToolResult } from "./types/ws-events";
 
 export type ToolCardStatus = "running" | "success" | "error" | "retry";
 
@@ -465,6 +465,13 @@ export function renderToolCardResult(
 	}
 
 	appendRawPayload(content, "Raw result payload", result, { open: !renderedVisibleResult });
+}
+
+export function appendToolCardContextBudget(card: HTMLElement, contextBudget: ContextBudgetMetadata | undefined): void {
+	if (!contextBudget) return;
+	appendRawPayload(getResultContent(card), "Context budget", contextBudget, {
+		className: "tool-call-context-budget-details",
+	});
 }
 
 export function appendToolCardError(card: HTMLElement, error: ToolError | string | undefined, retry = false): void {

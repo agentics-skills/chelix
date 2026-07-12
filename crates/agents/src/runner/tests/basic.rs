@@ -991,9 +991,20 @@ async fn test_execute_command_tool_end_to_end() {
     let tool_end = evts
         .iter()
         .find(|e| matches!(e, RunnerEvent::ToolCallEnd { .. }));
-    if let Some(RunnerEvent::ToolCallEnd { success, name, .. }) = tool_end {
+    if let Some(RunnerEvent::ToolCallEnd {
+        success,
+        name,
+        context_budget,
+        ..
+    }) = tool_end
+    {
         assert!(success, "execute_command tool should succeed");
         assert_eq!(name, "execute_command");
+        assert_eq!(context_budget.context_window, 200_000);
+        assert_eq!(context_budget.compaction_ratio, 0);
+        assert_eq!(context_budget.overflow_ratio, 90);
+        assert!(!context_budget.has_tool_results);
+        assert_eq!(context_budget.current_tokens, None);
     }
 }
 

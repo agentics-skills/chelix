@@ -15,6 +15,7 @@ import * as S from "../state";
 import { sessionStore } from "../stores/session-store";
 import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metadata";
 import {
+	appendToolCardContextBudget,
 	appendToolCardError,
 	createToolCallCard,
 	getToolCardDetailsContainer,
@@ -130,6 +131,7 @@ export function completeToolCard(toolCard: HTMLElement, p: ChatPayload, eventSes
 	} else if (p.error) {
 		renderToolCardError(toolCard, p.error, isToolValidationErrorPayload(p));
 	}
+	appendToolCardContextBudget(toolCard, p.contextBudget);
 	setToolCardExpanded(toolCard, isCommandToolName(p.toolName));
 
 	// Show a hint below the card when a skill is created or updated.

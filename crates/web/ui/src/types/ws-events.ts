@@ -63,6 +63,19 @@ export interface ToolError {
 	type?: string;
 }
 
+export interface ContextBudgetMetadata {
+	contextWindow: number;
+	compactionRatio: number;
+	overflowRatio: number;
+	hasToolResults: boolean;
+	currentTokens?: number;
+	compactionBudget?: number;
+	overflowBudget?: number;
+	tokensNeeded?: number;
+	tokensReduced?: number;
+	postCompactionTokens?: number;
+}
+
 export interface MapLinks {
 	url?: string;
 	google_maps?: string;
@@ -90,6 +103,7 @@ export interface ToolCallPayload {
 	result?: ToolResult | string;
 	error?: ToolError;
 	assistantMessage?: AssistantHistoryMessage;
+	contextBudget?: ContextBudgetMetadata;
 }
 
 export interface AssistantHistoryMessage {
@@ -204,6 +218,7 @@ export interface ChatPayload {
 	partialMessage?: PartialMessage;
 	assistantMessage?: AssistantHistoryMessage;
 	checkpoint?: CheckpointHistoryMessage;
+	contextBudget?: ContextBudgetMetadata;
 	canContinue?: boolean;
 }
 

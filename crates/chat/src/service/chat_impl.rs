@@ -504,6 +504,7 @@ impl ChatService for LiveChatService {
                     result: None,
                     error: Some(STOPPED_BY_USER.to_string()),
                     reasoning: None,
+                    context_budget: None,
                     created_at: Some(now_ms()),
                     run_id: Some(tool_call.run_id.clone()),
                 };

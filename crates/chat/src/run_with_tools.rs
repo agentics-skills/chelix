@@ -492,6 +492,7 @@ pub(crate) async fn run_with_tools(
                     error,
                     result,
                     raw_result,
+                    context_budget,
                 } => {
                     if terminal_runs_for_events.read().await.contains(&run_id) {
                         continue;
@@ -514,6 +515,7 @@ pub(crate) async fn run_with_tools(
                         "toolCallId": id,
                         "toolName": name,
                         "success": success,
+                        "contextBudget": context_budget,
                         "seq": seq,
                     });
                     if let Some(ref err) = error {
@@ -727,6 +729,7 @@ pub(crate) async fn run_with_tools(
                             result: persisted_result,
                             error,
                             reasoning: tracked_reasoning,
+                            context_budget: Some(context_budget),
                             created_at: Some(now_ms()),
                             run_id: Some(run_id.clone()),
                         };
