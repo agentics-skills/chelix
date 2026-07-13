@@ -25,7 +25,7 @@ lang-toml          = ["chelix-splitter/lang-toml"]
 lang-typescript    = ["chelix-splitter/lang-typescript"]
 # Existing features.
 file-watcher     = ["dep:notify-debouncer-full"]
-local-embeddings = ["dep:llama-cpp-2"]
+local-embeddings = ["dep:chelix-protocol"]
 metrics          = ["dep:chelix-metrics"]
 
 [dependencies]
@@ -35,12 +35,12 @@ bytemuck              = { workspace = true }
 chelix-agents         = { workspace = true }
 chelix-common         = { workspace = true }
 chelix-metrics        = { optional = true, workspace = true }
+chelix-protocol       = { optional = true, workspace = true }
 chelix-splitter       = { workspace = true }
 chelix-tools          = { workspace = true }
 chrono                = { features = ["serde"], workspace = true }
 directories.workspace = true
 futures               = { workspace = true }
-llama-cpp-2           = { optional = true, workspace = true }
 notify-debouncer-full = { optional = true, workspace = true }
 reqwest               = { workspace = true }
 secrecy               = { workspace = true }
@@ -54,6 +54,7 @@ tracing               = { workspace = true }
 walkdir               = { workspace = true }
 
 [dev-dependencies]
+mockito  = { workspace = true }
 tempfile = { workspace = true }
 
 [lints]

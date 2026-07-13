@@ -580,7 +580,9 @@ port = {port}                           # Port number (auto-generated for this i
 # style = "hybrid"                  # "hybrid" | "prompt-only" | "search-only" | "off"
 # agent_write_mode = "hybrid"       # "hybrid" | "prompt-only" | "search-only" | "off"
 # backend = "builtin"               # "builtin" | "qmd"
-# provider = "auto"                 # "local" | "openai" | "custom"
+# provider = "auto"                 # "local" (managed sidecar) | "openai" | "custom"
+# model = "/path/to/model.gguf"     # Local GGUF path or remote provider model name
+# base_url = "/path/to/model-cache" # Cache directory when provider = "local"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PHONE (Telephony Providers)

@@ -1,125 +1,149 @@
-/// Local GGUF embedding provider using llama-cpp-2.
-///
-/// Provides offline embedding via small GGUF models (e.g. EmbeddingGemma-300M).
-/// Requires the `local-embeddings` feature flag and CMake + C++ compiler at build time.
-///
-/// The provider is intentionally model-agnostic: embedding dimensions and the
-/// usable context size are read from the loaded model itself, so swapping the
-/// GGUF file (or pointing `memory.model` at a different one) needs no code
-/// changes here.
-use std::{num::NonZeroU32, path::PathBuf};
+//! Managed client for the local GGUF embedding sidecar.
+
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+    process::Stdio,
+    sync::Mutex,
+    time::Duration,
+};
 
 use {
     anyhow::{Context, Result, bail},
     async_trait::async_trait,
-    llama_cpp_2::{
-        context::params::LlamaContextParams,
-        llama_backend::LlamaBackend,
-        llama_batch::LlamaBatch,
-        model::{AddBos, LlamaModel, params::LlamaModelParams},
-        token::LlamaToken,
+    chelix_protocol::{
+        EMBEDDING_SERVICE_EMBED_PATH, EMBEDDING_SERVICE_PROTOCOL_VERSION, EmbeddingModelMetadata,
+        EmbeddingRequest, EmbeddingResponse, EmbeddingServiceError, EmbeddingServiceReady,
     },
-    tokio::sync::Mutex,
+    tokio::{
+        io::{AsyncBufReadExt, BufReader},
+        process::{Child, Command},
+    },
     tracing::{info, warn},
 };
 
 use crate::embeddings::EmbeddingProvider;
 
-/// Default model used when no explicit model file is configured:
-/// EmbeddingGemma-300M quantized to Q8_0 (~300MB). This is only a download
-/// default — the actual dimensions and context limit are still derived from
-/// whatever model file ends up being loaded.
 const DEFAULT_MODEL_FILENAME: &str = "embeddinggemma-300M-Q8_0.gguf";
 const DEFAULT_MODEL_URL: &str = "https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/main/embeddinggemma-300M-Q8_0.gguf";
+const SERVICE_BINARY_NAME: &str = "chelix-embedding-service";
 
-/// Wrapper around `LlamaBackend` that opts into `Send + Sync`.
-///
-/// `LlamaBackend` is `!Send` because `llama-cpp-2` doesn't mark its FFI
-/// handle as thread-safe. In practice the backend is an opaque init token
-/// with no mutable state after construction, so sharing across threads is
-/// safe. Wrapping it in a newtype keeps the `unsafe` declaration localised
-/// rather than applying `unsafe impl` to the entire provider struct.
-struct SendSyncBackend(LlamaBackend);
+struct ManagedService {
+    child: Mutex<Child>,
+}
 
-// SAFETY: LlamaBackend is an immutable init handle with no thread-local state.
-unsafe impl Send for SendSyncBackend {}
-unsafe impl Sync for SendSyncBackend {}
+impl ManagedService {
+    fn new(child: Child) -> Self {
+        Self {
+            child: Mutex::new(child),
+        }
+    }
+}
+
+impl Drop for ManagedService {
+    fn drop(&mut self) {
+        let child = self
+            .child
+            .get_mut()
+            .unwrap_or_else(|error| error.into_inner());
+        if let Err(error) = child.start_kill() {
+            warn!(%error, "failed to stop local embedding service");
+        }
+    }
+}
 
 pub struct LocalGgufEmbeddingProvider {
-    backend: SendSyncBackend,
-    model: Mutex<LlamaModel>,
-    /// Embedding dimensionality, read from the model (`n_embd`).
-    dims: usize,
-    /// Maximum number of tokens the model can encode in a single pass,
-    /// read from the model (`n_ctx_train`). Longer inputs are chunked and
-    /// mean-pooled instead of being truncated or crashing the process.
-    max_tokens: usize,
-    /// Number of CPU threads used for the embedding forward pass. Derived from
-    /// the host's available parallelism so larger machines embed faster without
-    /// any per-model tuning.
-    n_threads: i32,
-    /// Human-readable model name, derived from the model file stem.
-    model_name: String,
-    /// Stable cache key, derived from the model file so the embedding cache
-    /// is invalidated automatically when the model changes.
-    provider_key: String,
+    client: reqwest::Client,
+    embed_url: String,
+    model: EmbeddingModelMetadata,
+    _service: Option<ManagedService>,
 }
 
 impl LocalGgufEmbeddingProvider {
-    /// Load a GGUF model from a specific path.
-    pub fn new(model_path: PathBuf) -> Result<Self> {
-        let backend = LlamaBackend::init()?;
-        let model_params = LlamaModelParams::default();
-        let model = LlamaModel::load_from_file(&backend, &model_path, &model_params)
-            .map_err(|e| anyhow::anyhow!("failed to load GGUF model: {e}"))?;
+    /// Start the sidecar and load a GGUF model from a specific path.
+    pub async fn new(model_path: PathBuf) -> Result<Self> {
+        let service_path = embedding_service_binary()?;
+        let mut command = Command::new(&service_path);
+        command
+            .arg("--model")
+            .arg(&model_path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .kill_on_drop(true);
 
-        // Derive dimensions and context limit from the model itself so the
-        // provider works with any embedding GGUF without code changes.
-        let dims = usize::try_from(model.n_embd())
-            .map_err(|_| anyhow::anyhow!("model reported a non-positive embedding size"))?;
-        if dims == 0 {
-            bail!("model reported zero embedding dimensions");
+        let mut child = command.spawn().with_context(|| {
+            format!(
+                "starting local embedding service at {}; build it separately with `cargo build -p chelix-embedding-service`",
+                service_path.display()
+            )
+        })?;
+        let stdout = child
+            .stdout
+            .take()
+            .context("local embedding service stdout was not piped")?;
+        let mut reader = BufReader::new(stdout);
+        let mut line = String::new();
+
+        let bytes_read = match reader.read_line(&mut line).await {
+            Ok(bytes_read) => bytes_read,
+            Err(error) => {
+                stop_child(&mut child).await;
+                return Err(error).context("reading local embedding service startup message");
+            },
+        };
+        if bytes_read == 0 {
+            let status = child
+                .wait()
+                .await
+                .context("waiting for local embedding service")?;
+            bail!("local embedding service exited before startup: {status}");
         }
-        let max_tokens = usize::try_from(model.n_ctx_train())
-            .map_err(|_| anyhow::anyhow!("model context size does not fit into usize"))?;
-        if max_tokens == 0 {
-            bail!("model reported zero training context size");
+
+        let ready: EmbeddingServiceReady = match serde_json::from_str(line.trim()) {
+            Ok(ready) => ready,
+            Err(error) => {
+                stop_child(&mut child).await;
+                return Err(error).context("decoding local embedding service startup message");
+            },
+        };
+        if let Err(error) = validate_ready(&ready) {
+            stop_child(&mut child).await;
+            return Err(error);
         }
 
-        let model_name = model_name_from_path(&model_path);
-        let provider_key = provider_key_from_path(&model_path);
-        let n_threads = available_thread_count();
-
+        let base_url = format!("http://127.0.0.1:{}", ready.port);
+        let provider =
+            Self::from_endpoint(base_url, ready.model, Some(ManagedService::new(child)))?;
         info!(
-            path = %model_path.display(),
-            model = %model_name,
-            dims,
-            max_tokens,
-            n_threads,
-            "loaded local GGUF embedding model"
+            model = %provider.model.model_name,
+            dimensions = provider.model.dimensions,
+            "started managed local GGUF embedding service"
         );
+        Ok(provider)
+    }
 
+    fn from_endpoint(
+        base_url: String,
+        model: EmbeddingModelMetadata,
+        service: Option<ManagedService>,
+    ) -> Result<Self> {
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .connect_timeout(Duration::from_secs(5))
+            .build()
+            .context("building local embedding HTTP client")?;
         Ok(Self {
-            backend: SendSyncBackend(backend),
-            model: Mutex::new(model),
-            dims,
-            max_tokens,
-            n_threads,
-            model_name,
-            provider_key,
+            client,
+            embed_url: format!("{base_url}{EMBEDDING_SERVICE_EMBED_PATH}"),
+            model,
+            _service: service,
         })
     }
 
     /// Resolve which GGUF file to load.
-    ///
-    /// If `model` is set it is honored first: an existing absolute/relative file
-    /// path is used as-is, otherwise it is treated as a filename inside
-    /// `cache_dir`. When `model` is unset (or cannot be found) the bundled
-    /// default model is ensured (downloaded if missing). This is what makes the
-    /// provider model-agnostic — swapping models is a config change, not a code
-    /// change.
     pub async fn resolve_model(cache_dir: PathBuf, model: Option<&str>) -> Result<PathBuf> {
-        if let Some(model) = model.map(str::trim).filter(|m| !m.is_empty()) {
+        if let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) {
             let candidate = PathBuf::from(model);
             if candidate.is_file() {
                 info!(path = %candidate.display(), "using configured local embedding model");
@@ -127,10 +151,7 @@ impl LocalGgufEmbeddingProvider {
             }
             let in_cache = cache_dir.join(model);
             if in_cache.is_file() {
-                info!(
-                    path = %in_cache.display(),
-                    "using configured local embedding model from cache"
-                );
+                info!(path = %in_cache.display(), "using configured local embedding model from cache");
                 return Ok(in_cache);
             }
             warn!(
@@ -152,7 +173,6 @@ impl LocalGgufEmbeddingProvider {
         tokio::fs::create_dir_all(&cache_dir)
             .await
             .context("creating model cache dir")?;
-
         info!(url = DEFAULT_MODEL_URL, "downloading local embedding model");
 
         let response = reqwest::get(DEFAULT_MODEL_URL)
@@ -160,9 +180,7 @@ impl LocalGgufEmbeddingProvider {
             .context("downloading GGUF model")?
             .error_for_status()
             .context("GGUF model download failed")?;
-
         let bytes = response.bytes().await.context("reading model bytes")?;
-
         let tmp_path = model_path.with_extension("tmp");
         tokio::fs::write(&tmp_path, &bytes)
             .await
@@ -176,189 +194,112 @@ impl LocalGgufEmbeddingProvider {
             size_mb = bytes.len() / (1024 * 1024),
             "local embedding model downloaded"
         );
-
         Ok(model_path)
     }
 
     /// Default cache directory: `~/.chelix/models/`.
     pub fn default_cache_dir() -> PathBuf {
         directories::ProjectDirs::from("", "", "chelix")
-            .map(|d: directories::ProjectDirs| d.data_dir().join("models"))
+            .map(|dirs: directories::ProjectDirs| dirs.data_dir().join("models"))
             .unwrap_or_else(|| PathBuf::from(".chelix/models"))
     }
 }
 
-/// Determine how many CPU threads to use for the embedding forward pass.
-///
-/// Uses the host's available parallelism and clamps to a positive `i32`.
-/// Falls back to a single thread if the platform cannot report a value.
-fn available_thread_count() -> i32 {
-    let parallelism = std::thread::available_parallelism()
-        .map(std::num::NonZeroUsize::get)
-        .unwrap_or(1);
-    i32::try_from(parallelism).unwrap_or(i32::MAX).max(1)
+fn validate_ready(ready: &EmbeddingServiceReady) -> Result<()> {
+    if ready.protocol_version != EMBEDDING_SERVICE_PROTOCOL_VERSION {
+        bail!(
+            "unsupported local embedding service protocol version {}; expected {}",
+            ready.protocol_version,
+            EMBEDDING_SERVICE_PROTOCOL_VERSION
+        );
+    }
+    if ready.port == 0 {
+        bail!("local embedding service reported an invalid port");
+    }
+    if ready.model.dimensions == 0 {
+        bail!("local embedding service reported zero embedding dimensions");
+    }
+    if ready.model.model_name.is_empty() || ready.model.provider_key.is_empty() {
+        bail!("local embedding service reported incomplete model metadata");
+    }
+    Ok(())
 }
 
-/// Derive a human-readable model name from the GGUF file path.
-fn model_name_from_path(path: &std::path::Path) -> String {
-    path.file_stem()
-        .and_then(|s| s.to_str())
-        .map_or_else(|| "local-gguf".to_string(), ToString::to_string)
+async fn stop_child(child: &mut Child) {
+    if let Err(error) = child.kill().await {
+        warn!(%error, "failed to stop local embedding service after startup error");
+    }
 }
 
-/// Derive a stable cache key from the GGUF file name. Using the file name
-/// keeps the embedding cache correct across model swaps without hardcoding a
-/// per-model constant.
-fn provider_key_from_path(path: &std::path::Path) -> String {
-    let stem = path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("local-gguf");
-    format!("local-gguf:{stem}")
+fn embedding_service_binary() -> Result<PathBuf> {
+    if let Some(path) = std::env::var_os("CHELIX_EMBEDDING_SERVICE") {
+        return Ok(PathBuf::from(path));
+    }
+
+    let current_exe = std::env::current_exe().context("resolving current executable")?;
+    let sibling = sibling_service_binary(&current_exe);
+    if sibling.is_file() {
+        return Ok(sibling);
+    }
+    Ok(PathBuf::from(service_binary_filename()))
 }
 
-/// Encode a single window of tokens and return the pooled sequence embedding.
-fn encode_window(
-    backend: &LlamaBackend,
-    model: &LlamaModel,
-    window: &[LlamaToken],
-    n_ctx: u32,
-    n_threads: i32,
-) -> Result<Vec<f32>> {
-    let n_tokens = u32::try_from(window.len())
-        .map_err(|_| anyhow::anyhow!("token window does not fit into u32"))?;
-
-    // Use the model's full training context for `n_ctx` so we utilize the model
-    // to capacity (and avoid llama.cpp's "n_ctx_seq < n_ctx_train" warning),
-    // while sizing the (micro)batch to the actual window. Sizing `n_ubatch` to
-    // the window keeps the compute buffer minimal and still satisfies the
-    // encoder requirement `GGML_ASSERT(n_ubatch >= n_tokens)`. Decoder-style
-    // models go through `decode`.
-    let ctx_tokens = n_ctx.max(n_tokens);
-    let ctx_params = LlamaContextParams::default()
-        .with_n_ctx(NonZeroU32::new(ctx_tokens))
-        .with_n_batch(n_tokens)
-        .with_n_ubatch(n_tokens)
-        .with_n_threads(n_threads)
-        .with_n_threads_batch(n_threads)
-        .with_embeddings(true);
-
-    let mut ctx = model
-        .new_context(backend, ctx_params)
-        .map_err(|e| anyhow::anyhow!("failed to create llama context: {e}"))?;
-
-    let mut batch = LlamaBatch::new(window.len(), 1);
-    for (i, &token) in window.iter().enumerate() {
-        let pos = i32::try_from(i).map_err(|_| anyhow::anyhow!("token position overflow"))?;
-        // Mark every token as an output so pooling has all hidden states and
-        // llama.cpp does not need to override the request mid-encode.
-        batch
-            .add(token, pos, &[0], true)
-            .map_err(|e| anyhow::anyhow!("batch add failed: {e}"))?;
-    }
-
-    // Encoder models expose embeddings via `encode`; decoder models via
-    // `decode`. Try `encode` first and fall back so we stay model-agnostic.
-    if let Err(enc_err) = ctx.encode(&mut batch) {
-        ctx.decode(&mut batch).map_err(|dec_err| {
-            anyhow::anyhow!("encode failed: {enc_err}; decode fallback failed: {dec_err}")
-        })?;
-    }
-
-    let embeddings = ctx
-        .embeddings_seq_ith(0)
-        .map_err(|e| anyhow::anyhow!("get embeddings failed: {e}"))?;
-
-    Ok(embeddings.to_vec())
+fn sibling_service_binary(current_exe: &Path) -> PathBuf {
+    current_exe.with_file_name(service_binary_filename())
 }
 
-/// Embed a text using the given model and backend. Must be called from a sync context.
-///
-/// `max_tokens` is the model's own context limit. Inputs longer than the limit
-/// are split into non-overlapping windows and mean-pooled, so no input can ever
-/// exceed the encoder batch and abort the process.
-fn embed_sync(
-    backend: &LlamaBackend,
-    model: &LlamaModel,
-    text: &str,
-    max_tokens: usize,
-    n_threads: i32,
-) -> Result<Vec<f32>> {
-    let tokens = model
-        .str_to_token(text, AddBos::Always)
-        .map_err(|e| anyhow::anyhow!("tokenization failed: {e}"))?;
-
-    if tokens.is_empty() {
-        bail!("empty token sequence");
+fn service_binary_filename() -> OsString {
+    let mut name = OsString::from(SERVICE_BINARY_NAME);
+    if !std::env::consts::EXE_EXTENSION.is_empty() {
+        name.push(".");
+        name.push(std::env::consts::EXE_EXTENSION);
     }
-
-    debug_assert!(max_tokens > 0, "max_tokens must be positive");
-    let window_size = max_tokens.max(1);
-
-    // Full model context for `n_ctx`; saturates to u32 for very large limits.
-    let n_ctx_full = u32::try_from(window_size).unwrap_or(u32::MAX);
-
-    // Fast path: the whole input fits into one context window.
-    if tokens.len() <= window_size {
-        return encode_window(backend, model, &tokens, n_ctx_full, n_threads);
-    }
-
-    // Slow path: average the per-window embeddings. This keeps long documents
-    // representable without truncation and without ever exceeding `n_ubatch`.
-    let window_count = tokens.len().div_ceil(window_size);
-    warn!(
-        token_count = tokens.len(),
-        max_tokens, window_count, "local embedding input exceeds model context; pooling windows"
-    );
-
-    let mut accumulator: Vec<f32> = Vec::new();
-    for window in tokens.chunks(window_size) {
-        let window_embedding = encode_window(backend, model, window, n_ctx_full, n_threads)?;
-        if accumulator.is_empty() {
-            accumulator = vec![0.0; window_embedding.len()];
-        } else if accumulator.len() != window_embedding.len() {
-            bail!("inconsistent embedding dimensions across windows");
-        }
-        for (acc, value) in accumulator.iter_mut().zip(window_embedding) {
-            *acc += value;
-        }
-    }
-
-    let divisor = window_count as f32;
-    for value in &mut accumulator {
-        *value /= divisor;
-    }
-
-    Ok(accumulator)
+    name
 }
 
 #[async_trait]
 impl EmbeddingProvider for LocalGgufEmbeddingProvider {
     async fn embed(&self, text: &str) -> crate::error::Result<Vec<f32>> {
-        let model = self.model.lock().await;
-        let text = text.to_string();
-        let max_tokens = self.max_tokens;
-        let n_threads = self.n_threads;
-        // llama-cpp-2 is CPU-bound; use block_in_place to avoid starving the async runtime
-        let backend = &self.backend.0;
-        let model_ref = &*model;
-        let result = tokio::task::block_in_place(move || {
-            embed_sync(backend, model_ref, &text, max_tokens, n_threads)
-        })
-        .map_err(|e| crate::error::Error::Embedding(e.to_string()))?;
-        Ok(result)
+        let response = self
+            .client
+            .post(&self.embed_url)
+            .json(&EmbeddingRequest {
+                text: text.to_owned(),
+            })
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let error = response
+                .json::<EmbeddingServiceError>()
+                .await
+                .map(|body| body.error)
+                .unwrap_or_else(|decode_error| decode_error.to_string());
+            return Err(crate::error::Error::Embedding(format!(
+                "local embedding service returned {status}: {error}"
+            )));
+        }
+        let response = response.json::<EmbeddingResponse>().await?;
+        if response.embedding.len() != self.model.dimensions {
+            return Err(crate::error::Error::Embedding(format!(
+                "local embedding service returned {} dimensions; expected {}",
+                response.embedding.len(),
+                self.model.dimensions
+            )));
+        }
+        Ok(response.embedding)
     }
 
     fn model_name(&self) -> &str {
-        &self.model_name
+        &self.model.model_name
     }
 
     fn dimensions(&self) -> usize {
-        self.dims
+        self.model.dimensions
     }
 
     fn provider_key(&self) -> &str {
-        &self.provider_key
+        &self.model.provider_key
     }
 }
 
@@ -366,26 +307,86 @@ impl EmbeddingProvider for LocalGgufEmbeddingProvider {
 mod tests {
     use super::*;
 
+    fn metadata() -> EmbeddingModelMetadata {
+        EmbeddingModelMetadata {
+            model_name: "test-model".into(),
+            dimensions: 3,
+            provider_key: "local-gguf:test-model.gguf".into(),
+        }
+    }
+
     #[test]
-    fn test_default_cache_dir() {
+    fn default_cache_dir_contains_models() {
         let dir = LocalGgufEmbeddingProvider::default_cache_dir();
         assert!(dir.to_string_lossy().contains("models"));
     }
 
     #[test]
-    fn model_name_uses_file_stem() {
-        let path = std::path::Path::new("/models/embeddinggemma-300M-Q8_0.gguf");
-        assert_eq!(model_name_from_path(path), "embeddinggemma-300M-Q8_0");
+    fn sibling_binary_stays_next_to_current_executable() {
+        let current = Path::new("/opt/chelix/bin/chelix");
+        assert_eq!(
+            sibling_service_binary(current),
+            Path::new("/opt/chelix/bin").join(service_binary_filename())
+        );
     }
 
     #[test]
-    fn provider_key_changes_with_model_file() {
-        let a = provider_key_from_path(std::path::Path::new("/models/model-a.gguf"));
-        let b = provider_key_from_path(std::path::Path::new("/models/model-b.gguf"));
-        assert_ne!(
-            a, b,
-            "different model files must yield different cache keys"
+    fn readiness_validation_rejects_protocol_mismatch() {
+        let ready = EmbeddingServiceReady {
+            protocol_version: EMBEDDING_SERVICE_PROTOCOL_VERSION + 1,
+            port: 12_345,
+            model: metadata(),
+        };
+        assert!(validate_ready(&ready).is_err());
+    }
+
+    #[tokio::test]
+    async fn embed_uses_unauthenticated_loopback_api() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", EMBEDDING_SERVICE_EMBED_PATH)
+            .match_body(mockito::Matcher::JsonString(
+                serde_json::json!({ "text": "hello" }).to_string(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"embedding":[1.0,2.0,3.0]}"#)
+            .create_async()
+            .await;
+        let provider = LocalGgufEmbeddingProvider::from_endpoint(server.url(), metadata(), None)
+            .unwrap_or_else(|error| panic!("provider creation failed: {error}"));
+
+        let embedding = provider
+            .embed("hello")
+            .await
+            .unwrap_or_else(|error| panic!("embedding failed: {error}"));
+
+        assert_eq!(embedding, vec![1.0, 2.0, 3.0]);
+        assert_eq!(provider.model_name(), "test-model");
+        assert_eq!(provider.provider_key(), "local-gguf:test-model.gguf");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn embed_rejects_wrong_dimensions() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("POST", EMBEDDING_SERVICE_EMBED_PATH)
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"embedding":[1.0]}"#)
+            .create_async()
+            .await;
+        let provider = LocalGgufEmbeddingProvider::from_endpoint(server.url(), metadata(), None)
+            .unwrap_or_else(|error| panic!("provider creation failed: {error}"));
+
+        let result = provider.embed("hello").await;
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .err()
+                .is_some_and(|error| error.to_string().contains("returned 1 dimensions"))
         );
-        assert!(a.starts_with("local-gguf:"));
     }
 }

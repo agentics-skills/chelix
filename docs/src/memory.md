@@ -15,14 +15,14 @@ Chelix supports two memory backends:
 | Feature                 | Built-in                          | QMD                                    |
 | ----------------------- | --------------------------------- | -------------------------------------- |
 | **Search Type**         | Hybrid (vector + FTS5 keyword)    | Hybrid (BM25 + vector + LLM reranking) |
-| **Local Embeddings**    | GGUF models via llama-cpp-2       | GGUF models                            |
+| **Local Embeddings**    | GGUF via a managed llama-cpp sidecar | GGUF models                         |
 | **Remote Embeddings**   | OpenAI and custom endpoints       | Built-in                               |
 | **Embedding Cache**     | SQLite with LRU eviction          | Built-in                               |
 | **Batch API**           | OpenAI batch (50% cost saving)    | No                                     |
 | **Circuit Breaker**     | Fallback chain with auto-recovery | No                                     |
 | **LLM Reranking**       | Optional (configurable)           | Built-in with `query` command          |
 | **File Watching**       | Real-time sync via notify         | Built-in                               |
-| **External Dependency** | None (pure Rust)                  | Requires QMD binary (Node.js/Bun)      |
+| **External Dependency** | Bundled managed sidecar for local GGUF | Requires QMD binary (Node.js/Bun)  |
 | **Offline Support**     | Yes (with local embeddings)       | Yes                                    |
 
 ### Built-in Backend
@@ -30,7 +30,8 @@ Chelix supports two memory backends:
 The default backend uses SQLite for storage with FTS5 for keyword search and
 optional vector embeddings for semantic search. Key advantages:
 
-- **Zero external dependencies**: Everything is embedded in the chelix binary
+- **Managed local inference**: Chelix starts and stops the separately built
+  `chelix-embedding-service` sidecar when the local provider is selected
 - **Fallback chain**: Automatically switches between embedding providers if one
   fails
 - **Batch embedding**: Reduces OpenAI API costs by 50% for large sync operations
@@ -225,7 +226,7 @@ The built-in backend supports multiple embedding providers:
 
 | Provider     | Model                  | Dimensions | Notes                      |
 | ------------ | ---------------------- | ---------- | -------------------------- |
-| Local (GGUF) | EmbeddingGemma-300M    | 768        | Offline, ~300MB download   |
+| Local (GGUF) | EmbeddingGemma-300M    | 768        | Offline, managed sidecar   |
 | OpenAI       | text-embedding-3-small | 1536       | Requires API key           |
 | Custom       | Configurable           | Varies     | OpenAI-compatible endpoint |
 
@@ -234,6 +235,26 @@ The system auto-detects available providers and creates a fallback chain:
 1. Try configured provider first
 2. Fall back to other available providers if it fails
 3. Use keyword-only search if no embedding provider is available
+
+### Local GGUF sidecar
+
+`llama-cpp-2` and `llama-cpp-sys-2` are linked only into
+`chelix-embedding-service`; they are not part of the `chelix` binary dependency
+graph. Chelix launches the sidecar on a random loopback HTTP port, reads model
+metadata during startup, and stops the process with the gateway. The loopback
+API has no authentication and is not exposed on non-loopback interfaces.
+
+Build the two binaries separately:
+
+```bash
+cargo build -p chelix --no-default-features --features full
+cargo build -p chelix-embedding-service
+```
+
+Place `chelix-embedding-service` next to `chelix`. For custom layouts, set
+`CHELIX_EMBEDDING_SERVICE` to the sidecar path. Existing `memory.model`
+selection, model download/cache behavior, chunking, context-window handling,
+and mean-pooling behavior are unchanged.
 
 ## Memory Directories
 
@@ -439,10 +460,10 @@ is removed. It is the low-level exact-delete primitive that powers
 
 1. Check status in Settings > Memory
 2. Ensure at least one embedding provider is available:
-   - Local: Requires `local-embeddings` feature enabled at build
+   - Local: Requires the `local-embeddings` client feature and the separately
+     built `chelix-embedding-service` binary
    - OpenAI: Requires `OPENAI_API_KEY` environment variable
-
-- Custom: Requires a configured OpenAI-compatible embedding endpoint
+   - Custom: Requires a configured OpenAI-compatible embedding endpoint
 
 ### Search returns no results
 

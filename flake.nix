@@ -81,6 +81,7 @@
           preBuild = ''
             mkdir -p target/wasm32-wasip2/release/
             ln -s ${chelix-wasm-tools}/lib/* target/wasm32-wasip2/release/
+            cargo build --release -p chelix-embedding-service
           '';
           cargoLock = {
             lockFile = ./Cargo.lock;
@@ -95,6 +96,9 @@
             pkg-config
           ];
           cargoBuildFlags = ["--bin" "chelix"];
+          postInstall = ''
+            install -Dm755 target/release/chelix-embedding-service $out/bin/chelix-embedding-service
+          '';
           CHELIX_VERSION = toString (self.shortRev or self.dirtyShortRev or self.lastModified or "nix");
 
           meta = with pkgs.lib; {

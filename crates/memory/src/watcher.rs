@@ -68,11 +68,12 @@ pub fn build_watch_specs(paths: &[PathBuf]) -> Vec<WatchSpec> {
 /// Watches directories for markdown file changes with debouncing.
 pub struct MemoryFileWatcher {
     debouncer: Debouncer<notify_debouncer_full::notify::RecommendedWatcher, RecommendedCache>,
+    events: mpsc::UnboundedReceiver<WatchEvent>,
 }
 
 impl MemoryFileWatcher {
-    /// Start watching the given directories. Returns the watcher and a receiver for events.
-    pub fn start(specs: Vec<WatchSpec>) -> Result<(Self, mpsc::UnboundedReceiver<WatchEvent>)> {
+    /// Start watching the given directories.
+    pub fn start(specs: Vec<WatchSpec>) -> Result<Self> {
         let (tx, rx) = mpsc::unbounded_channel();
 
         let debouncer = new_debouncer(
@@ -112,7 +113,10 @@ impl MemoryFileWatcher {
             },
         )?;
 
-        let mut watcher = Self { debouncer };
+        let mut watcher = Self {
+            debouncer,
+            events: rx,
+        };
 
         for spec in &specs {
             if spec.path.exists() {
@@ -125,7 +129,12 @@ impl MemoryFileWatcher {
             }
         }
 
-        Ok((watcher, rx))
+        Ok(watcher)
+    }
+
+    /// Receive the next file event while retaining ownership of the OS watcher.
+    pub async fn recv(&mut self) -> Option<WatchEvent> {
+        self.events.recv().await
     }
 }
 
@@ -178,5 +187,36 @@ mod tests {
         assert!(has_spec(&specs, data_dir, RecursiveMode::NonRecursive));
         assert!(has_spec(&specs, &memory_dir, RecursiveMode::Recursive));
         assert!(has_spec(&specs, &agents_dir, RecursiveMode::Recursive));
+    }
+
+    #[tokio::test]
+    async fn emits_event_for_new_markdown_file_while_watcher_is_alive() {
+        let tmp = tempfile::tempdir().unwrap();
+        let memory_dir = tmp.path().join("memory");
+        std::fs::create_dir_all(&memory_dir).unwrap();
+        let memory_dir = std::fs::canonicalize(memory_dir).unwrap();
+
+        let specs = build_watch_specs(std::slice::from_ref(&memory_dir));
+        let mut watcher = MemoryFileWatcher::start(specs).unwrap();
+        let memory_file = memory_dir.join("session-test.md");
+        std::fs::write(&memory_file, "# Session Log\n").unwrap();
+
+        let received_path = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                match watcher.recv().await {
+                    Some(WatchEvent::Created(path) | WatchEvent::Modified(path))
+                        if path == memory_file =>
+                    {
+                        break path;
+                    },
+                    Some(_) => {},
+                    None => panic!("watch event channel closed"),
+                }
+            }
+        })
+        .await
+        .expect("timed out waiting for markdown watch event");
+
+        assert_eq!(received_path, memory_file);
     }
 }

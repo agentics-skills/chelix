@@ -1888,6 +1888,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "chelix-embedding-service"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "chelix-protocol",
+ "clap",
+ "llama-cpp-2",
+ "metrics 0.24.3",
+ "reqwest 0.13.2",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "chelix-external-agents"
 version = "0.1.0"
 dependencies = [
@@ -2213,12 +2231,13 @@ dependencies = [
  "chelix-agents",
  "chelix-common",
  "chelix-metrics",
+ "chelix-protocol",
  "chelix-splitter",
  "chelix-tools",
  "chrono",
  "directories",
  "futures",
- "llama-cpp-2",
+ "mockito",
  "notify-debouncer-full",
  "reqwest 0.13.2",
  "secrecy 0.8.0",

@@ -2,7 +2,7 @@
 
 # Chelix — A secure persistent personal agent server in Rust
 
-One binary — sandboxed, secure, yours.
+One core binary — sandboxed, secure, yours. Native local embeddings run in an optional managed sidecar.
 
 [![codecov](https://codecov.io/gh/agentics-skills/chelix/graph/badge.svg)](https://codecov.io/gh/agentics-skills/chelix)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -20,7 +20,7 @@ Please [open an issue](https://github.com/agentics-skills/chelix/issues) for any
 
 **Secure by design** — Your keys never leave your machine. Every command runs in a sandboxed container, never on your host.
 
-**Your hardware** — Runs on a Mac Mini, a Raspberry Pi, or any server you own. One Rust binary, no Node.js, no npm, no runtime.
+**Your hardware** — Runs on a Mac Mini, a Raspberry Pi, or any server you own. The Rust gateway has no Node.js or npm runtime; optional native local embeddings are isolated in a separately built managed sidecar.
 
 **Full-featured** — Voice, memory, cross-session recall, automatic edit checkpoints, scheduling, Telegram, Signal, Discord, browser automation, MCP servers, SSH or node-backed remote command execution, managed deploy keys with host pinning in the web UI, a live Settings → Tools inventory, Cursor-compatible project context, and context-file threat scanning — all built-in. No plugin marketplace to get supply-chain attacked through.
 
@@ -52,6 +52,7 @@ Current Rust workspace: ~270K LoC across 59 crates. The table below groups the m
 | `chelix-config` | 10.3K | Configuration, validation |
 | `chelix-httpd` | 9.9K | HTTP server primitives and middleware |
 | `chelix` (CLI) | 4.7K | Entry point, CLI commands |
+| `chelix-embedding-service` | — | Optional managed local-GGUF embedding sidecar |
 | `chelix-sessions` | 3.5K | Session persistence |
 | `chelix-common` | 1.5K | Shared utilities |
 | `chelix-service-traits` | 1.2K | Shared service interfaces |
@@ -152,7 +153,7 @@ Requires [just](https://github.com/casey/just) (command runner) and Node.js (for
 git clone https://github.com/agentics-skills/chelix.git
 cd chelix
 just build-css                  # Build Tailwind CSS for the web UI
-just build-release              # Build in release mode
+just build-release              # Build gateway, then local-embedding sidecar separately
 cargo run --release --bin chelix
 ```
 

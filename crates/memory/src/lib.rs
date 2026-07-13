@@ -8,7 +8,6 @@ pub mod embeddings;
 pub mod embeddings_batch;
 pub mod embeddings_fallback;
 #[cfg(feature = "local-embeddings")]
-#[allow(unsafe_code)] // FFI wrappers for llama-cpp-2 require unsafe Send/Sync impls.
 pub mod embeddings_local;
 pub mod embeddings_openai;
 pub mod error;

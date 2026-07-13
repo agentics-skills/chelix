@@ -137,7 +137,11 @@ pub async fn run_agent_loop_streaming_with_limits(
         });
     }
     let mut compaction_continuation_start = if limits.resume_from_history {
-        if history_len > 1 { 2 } else { messages.len() }
+        if history_len > 1 {
+            2
+        } else {
+            messages.len()
+        }
     } else {
         1 + history_len
     };

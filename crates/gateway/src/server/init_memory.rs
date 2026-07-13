@@ -57,7 +57,7 @@ pub(crate) async fn init_memory_system(
                             Ok(path) => {
                                 match chelix_memory::embeddings_local::LocalGgufEmbeddingProvider::new(
                                     path,
-                                ) {
+                                ).await {
                                     Ok(p) => embedding_providers.push(("local-gguf".into(), Box::new(p))),
                                     Err(e) => warn!("memory: failed to load local GGUF model: {e}"),
                                 }
@@ -67,7 +67,7 @@ pub(crate) async fn init_memory_system(
                     }
                     #[cfg(not(feature = "local-embeddings"))]
                     warn!(
-                        "memory: 'local' embedding provider requires the 'local-embeddings' feature"
+                        "memory: 'local' embedding provider requires the 'local-embeddings' client feature and the chelix-embedding-service binary"
                     );
                 },
                 chelix_config::MemoryProvider::Custom | chelix_config::MemoryProvider::OpenAi => {
@@ -346,10 +346,10 @@ async fn build_memory_runtime(
             let watcher_manager = Arc::clone(&sync_manager);
             let watch_specs = chelix_memory::watcher::build_watch_specs(&memory_dirs_for_watch);
             match chelix_memory::watcher::MemoryFileWatcher::start(watch_specs) {
-                Ok((_watcher, mut rx)) => {
+                Ok(mut watcher) => {
                     info!("memory: file watcher started");
                     tokio::spawn(async move {
-                        while let Some(event) = rx.recv().await {
+                        while let Some(event) = watcher.recv().await {
                             let path = match &event {
                                 chelix_memory::watcher::WatchEvent::Created(p)
                                 | chelix_memory::watcher::WatchEvent::Modified(p) => {

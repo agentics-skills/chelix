@@ -74,7 +74,12 @@ codesign-debug:
 # Build the project
 build: build-web-assets
     cargo build
+    cargo build -p chelix-embedding-service
     just codesign-debug
+
+# Build only the native local-GGUF embedding sidecar.
+build-embedding-service:
+    cargo build -p chelix-embedding-service
 
 # Build in release mode
 build-release:
@@ -96,6 +101,7 @@ build-release-with-wasm: build-wasm-artifacts
 # Run local dev server with workspace-local config/data dirs.
 dev-server:
     cargo build --bin chelix
+    cargo build -p chelix-embedding-service
     just codesign-debug
     CHELIX_CONFIG_DIR=.chelix/config CHELIX_DATA_DIR=.chelix/ cargo run --bin chelix
 
