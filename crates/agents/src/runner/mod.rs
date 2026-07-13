@@ -40,7 +40,8 @@ pub(crate) use helpers::{
     explicit_shell_command_from_user_content, fallback_final_text_source,
     find_empty_tool_name_call, finish_agent_run, has_named_tool_call, is_substantive_answer_text,
     log_tool_argument_diagnostic, public_tool_arguments, record_answer_text, resolve_tool_lookup,
-    sanitize_tool_name, split_context_for_compaction, streaming_tool_call_message_content,
+    sanitize_tool_name, should_trigger_automatic_checkpoint, split_context_for_compaction,
+    streaming_tool_call_message_content,
 };
 
 // Items only consumed by runner tests.

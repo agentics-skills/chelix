@@ -845,6 +845,7 @@ async fn run_spawned_agent(
             max_tool_result_bytes: Some(runtime_limits.max_tool_result_bytes),
             automatic_checkpointing: false,
             resume_from_history: false,
+            resume_after_checkpoint: false,
         },
     );
 

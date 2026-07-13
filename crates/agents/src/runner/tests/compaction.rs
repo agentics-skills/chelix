@@ -158,6 +158,36 @@ fn context_budget_never_mutates_prompt_messages() {
 }
 
 #[test]
+fn checkpoint_resume_bypasses_only_the_first_automatic_checkpoint_gate() {
+    let limits = AgentLoopLimits {
+        automatic_checkpointing: true,
+        resume_after_checkpoint: true,
+        ..Default::default()
+    };
+    let metadata = chelix_sessions::message::ContextBudgetMetadata {
+        context_window: 100,
+        current_tokens: 89,
+        compaction_required: true,
+        ..Default::default()
+    };
+
+    assert!(!super::super::should_trigger_automatic_checkpoint(
+        &limits, 1, &metadata
+    ));
+    assert!(super::super::should_trigger_automatic_checkpoint(
+        &limits, 2, &metadata
+    ));
+
+    let oversized = chelix_sessions::message::ContextBudgetMetadata {
+        current_tokens: 100,
+        ..metadata
+    };
+    assert!(super::super::should_trigger_automatic_checkpoint(
+        &limits, 1, &oversized
+    ));
+}
+
+#[test]
 fn zero_context_window_reports_without_triggering() {
     let messages = vec![ChatMessage::user("hello")];
     let metadata = evaluate_context_budget(&messages, &[], 0);

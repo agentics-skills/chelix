@@ -227,11 +227,12 @@ pub(crate) async fn summarize_session_from_prompt(
     if history.is_empty() {
         return Err(Error::message("nothing to compact"));
     }
-    if history
-        .last()
-        .and_then(|m| m.get("role"))
-        .and_then(serde_json::Value::as_str)
-        == Some("checkpoint")
+    if continuation_messages.is_empty()
+        && history
+            .last()
+            .and_then(|m| m.get("role"))
+            .and_then(serde_json::Value::as_str)
+            == Some("checkpoint")
     {
         return Err(Error::message(
             "nothing to compact: session already ends with a checkpoint",

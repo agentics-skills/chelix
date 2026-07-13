@@ -1024,6 +1024,7 @@ pub(crate) async fn run_with_tools(
                 max_tool_result_bytes: Some(runtime_limits.max_tool_result_bytes),
                 automatic_checkpointing: true,
                 resume_from_history,
+                resume_after_checkpoint: resume_from_history,
             },
         );
         let agent_result =

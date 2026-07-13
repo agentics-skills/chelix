@@ -85,6 +85,17 @@ pub(crate) fn split_context_for_compaction(
     (messages, continuation)
 }
 
+pub(crate) fn should_trigger_automatic_checkpoint(
+    limits: &AgentLoopLimits,
+    iteration: usize,
+    context_budget: &ContextBudgetMetadata,
+) -> bool {
+    let safe_checkpoint_resume = limits.resume_after_checkpoint
+        && iteration == 1
+        && context_budget.current_tokens < context_budget.context_window as usize;
+    limits.automatic_checkpointing && context_budget.compaction_required && !safe_checkpoint_resume
+}
+
 /// Result of running the agent loop.
 #[derive(Debug)]
 pub struct AgentRunResult {
@@ -141,6 +152,9 @@ pub struct AgentLoopLimits {
     pub automatic_checkpointing: bool,
     /// Resume from history that already includes the current user turn.
     pub resume_from_history: bool,
+    /// Allow the first provider call after a checkpoint through once when the
+    /// preserved tail remains above the 85% checkpoint trigger.
+    pub resume_after_checkpoint: bool,
 }
 
 #[derive(Debug, Clone, Default)]

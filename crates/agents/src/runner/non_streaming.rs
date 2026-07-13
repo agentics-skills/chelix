@@ -289,7 +289,7 @@ pub async fn run_agent_loop_with_context_and_limits(
 
         let context_budget =
             super::evaluate_context_budget(&messages, &schemas_for_api, provider.context_window());
-        if limits.automatic_checkpointing && context_budget.compaction_required {
+        if super::should_trigger_automatic_checkpoint(&limits, iterations, &context_budget) {
             let (summary_messages, continuation_messages) =
                 super::split_context_for_compaction(messages, compaction_continuation_start);
             return Err(AgentRunError::ContextCompactionRequired(Box::new(

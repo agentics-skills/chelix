@@ -33,7 +33,13 @@ replaced, pruned, or deleted.
 5. The same agent run resumes immediately from the checkpoint without
   repeating the original user message or adding a synthetic continuation
   prompt. The new context is `<conversation-summary>` followed by the
-  preserved triggering user/tool round and later messages verbatim.
+  preserved triggering user/tool round and later messages verbatim. The first
+  provider call after a checkpoint is allowed through once even if that
+  preserved tail remains above 85%, provided it is still below the provider's
+  actual context-window limit. Subsequent iterations use the normal fixed 85%
+  trigger again. This prevents recursive checkpointing before the model can
+  consume the preserved round and continue naturally; a tail that cannot fit
+  the real window can still produce a consecutive automatic checkpoint.
 
 Because the history is append-only:
 
