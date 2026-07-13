@@ -49,7 +49,7 @@ pub use {
         AgentIdentity, AgentMemoryWriteMode, AgentPreset, AgentRuntimeLimitSource,
         AgentRuntimeLimits, AgentsConfig, AuthConfig, CacheRetention, CalDavAccountConfig,
         CalDavConfig, ChannelToolPolicyOverride, ChannelsConfig, ChatConfig, ChelixConfig,
-        CodeIndexTomlConfig, CompactionConfig, GeoLocation, GroupToolPolicy, HeartbeatConfig,
+        CodeIndexTomlConfig, GeoLocation, GroupToolPolicy, HeartbeatConfig,
         HomeAssistantAccountConfig, HomeAssistantConfig, MemoryBackend, MemoryCitationsMode,
         MemoryProvider, MemoryScope, MemorySearchMergeStrategy, MemoryStyle, MessageQueueMode,
         ModePreset, ModesConfig, PresetMemoryConfig, PresetToolPolicy, PromptMemoryMode,

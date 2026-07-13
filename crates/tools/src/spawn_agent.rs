@@ -843,6 +843,8 @@ async fn run_spawned_agent(
         AgentLoopLimits {
             max_iterations: Some(runtime_limits.max_iterations),
             max_tool_result_bytes: Some(runtime_limits.max_tool_result_bytes),
+            automatic_checkpointing: false,
+            resume_from_history: false,
         },
     );
 

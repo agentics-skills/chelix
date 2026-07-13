@@ -162,7 +162,7 @@ memory writes may land:
 - `prompt-only` allows only `MEMORY.md`
 - `search-only` allows only `memory/*.md`
 - `off` disables agent-authored memory mutations, including `memory_save`,
-  `memory_forget`, `memory_delete`, and the silent pre-compaction memory flush
+  `memory_forget`, and `memory_delete`
 
 `user_profile_write_mode` is about the managed `USER.md` surface, not agent
 memory files:
@@ -385,34 +385,6 @@ the search index immediately, and can clean up stale index entries when a file
 is removed. It is the low-level exact-delete primitive that powers
 `memory_forget`.
 
-## Silent Memory Turn (Pre-Compaction Flush)
-
-Before compacting a session (summarizing old messages to free context window
-space), Chelix runs a **silent agentic turn** that reviews the conversation
-and saves important information to memory files. This ensures durable memories
-survive compaction.
-
-**How it works:**
-
-1. When a session approaches the model's context window limit, the gateway
-   triggers compaction
-2. Before summarizing, a hidden LLM turn runs with a special system prompt
-   asking the agent to save noteworthy information
-3. The agent writes to `MEMORY.md` and/or `memory/YYYY-MM-DD.md` using an
-   internal `write_file` tool backed by the same `MemoryWriter` as
-   `memory_save`
-4. The LLM's response text is discarded (the user sees nothing)
-
-This pre-compaction flush obeys `memory.agent_write_mode`. In `off` mode, the
-flush is skipped entirely.
-5. Written files are automatically re-indexed for future search
-
-**What gets saved:**
-
-- User preferences and working style
-- Key decisions and their reasoning
-- Project context, architecture choices, and conventions
-- Important facts, names, dates, and relationships
 - Technical setup details (tools, languages, frameworks)
 
 ## Architecture

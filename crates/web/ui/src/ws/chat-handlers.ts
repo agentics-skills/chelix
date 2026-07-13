@@ -523,7 +523,7 @@ function handleChatAutoCompact(p: ChatPayload, isActive: boolean, isChatPage: bo
 }
 
 // `chat.compact done` is emitted by ChatService::compact on every
-// summarization (manual `/compact` RPCs AND the pre-emptive auto-compact
+// summarization (manual `/compact` RPCs and agent-loop auto-compact
 // path). It carries the persisted checkpoint message from
 // CheckpointOutcome::broadcast_metadata().
 function handleChatCompact(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {

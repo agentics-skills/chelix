@@ -2,29 +2,6 @@
 
 use tracing::warn;
 
-/// Error patterns that indicate the context window has been exceeded.
-const CONTEXT_WINDOW_PATTERNS: &[&str] = &[
-    "context_length_exceeded",
-    "context_window_exceeded",
-    "context_window_exceeded",
-    "max_tokens",
-    "too many tokens",
-    "request too large",
-    "maximum context length",
-    "context window",
-    "token limit",
-    "input too long",
-    "input_too_long",
-    "content_too_large",
-    "request_too_large",
-];
-
-/// Check if an error message indicates a context window overflow.
-pub(crate) fn is_context_window_error(msg: &str) -> bool {
-    let lower = msg.to_lowercase();
-    CONTEXT_WINDOW_PATTERNS.iter().any(|p| lower.contains(p))
-}
-
 /// Error patterns that indicate a transient server error worth retrying.
 const RETRYABLE_SERVER_PATTERNS: &[&str] = &[
     "http 500",

@@ -496,16 +496,6 @@ pub(crate) fn assistant_message_is_visible(message: &Value) -> bool {
     })
 }
 
-#[must_use]
-pub(crate) fn estimate_text_tokens(text: &str) -> u64 {
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
-        return 0;
-    }
-    let bytes = trimmed.len() as u64;
-    bytes.div_ceil(4).max(1)
-}
-
 pub(crate) fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

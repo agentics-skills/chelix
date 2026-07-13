@@ -15,7 +15,6 @@ The hook also fires on skill and memory mutations:
 
 - `create_skill`, `update_skill`, `delete_skill`, `write_skill_files`
 - `memory_save`, `memory_forget`, `memory_delete`
-- the silent pre-compaction memory flush
 
 Each mutation creates a manifest-backed snapshot in `~/.chelix/checkpoints/`
 before the write or delete happens.

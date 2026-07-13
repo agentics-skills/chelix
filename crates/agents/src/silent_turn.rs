@@ -1,8 +1,4 @@
-/// Silent agentic turn for pre-compaction memory flush.
-///
-/// Before compacting a session, runs a hidden LLM turn that reviews the conversation
-/// and writes important memories to disk. The LLM's response text is discarded and
-/// not shown to the user.
+/// Silent agentic turns for periodic memory extraction and session summaries.
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -25,23 +21,6 @@ use crate::{
     runner::run_agent_loop,
     tool_registry::{AgentTool, ToolRegistry},
 };
-
-const MEMORY_FLUSH_SYSTEM_PROMPT: &str = r#"You are a memory management agent. Your job is to review the conversation below and save any important information to memory files using the write_file tool.
-
-Save information that would be useful in future conversations:
-- User preferences and working style
-- Key decisions and their reasoning
-- Project context, architecture choices, and conventions
-- Important facts, names, dates, and relationships
-- Recurring topics or patterns
-- Technical setup details (tools, languages, frameworks)
-
-Write to these paths:
-- `MEMORY.md` — Long-term facts and preferences (append new content, don't overwrite existing)
-- `memory/YYYY-MM-DD.md` — Daily session log with what was done and decided today
-
-Format files as clean Markdown. Be concise but preserve important context.
-Do NOT respond to the user. Only use the write_file tool to save memories."#;
 
 #[must_use]
 fn truncate_at_char_boundary(content: &str, max_bytes: usize) -> &str {
@@ -202,27 +181,10 @@ fn normalize_daily_log_date(path: &str) -> String {
 /// Prompt variant for [`run_silent_memory_turn_with_prompt`].
 #[derive(Debug)]
 pub enum SilentTurnPrompt {
-    /// Pre-compaction memory flush (default).
-    Compaction,
     /// Periodic background extraction for the last N turns.
     PeriodicExtract,
     /// Session-end summary.
     SessionSummary,
-}
-
-/// Run a silent memory turn before compaction.
-///
-/// Gives the LLM a special system prompt asking it to save important memories
-/// from the conversation using `write_file`. The LLM's response text is discarded.
-///
-/// Returns the list of file paths that were written.
-pub async fn run_silent_memory_turn(
-    provider: Arc<dyn LlmProvider>,
-    conversation: &[ChatMessage],
-    writer: Arc<dyn MemoryWriter>,
-) -> Result<Vec<PathBuf>> {
-    run_silent_memory_turn_with_prompt(provider, conversation, writer, SilentTurnPrompt::Compaction)
-        .await
 }
 
 /// Run a silent memory turn with a specific prompt variant.
@@ -284,7 +246,6 @@ pub async fn run_silent_memory_turn_with_prompt(
     }
 
     let (system_prompt, label) = match prompt_variant {
-        SilentTurnPrompt::Compaction => (MEMORY_FLUSH_SYSTEM_PROMPT, "compaction"),
         SilentTurnPrompt::PeriodicExtract => (PERIODIC_EXTRACT_SYSTEM_PROMPT, "periodic-extract"),
         SilentTurnPrompt::SessionSummary => (SESSION_SUMMARY_SYSTEM_PROMPT, "session-summary"),
     };
@@ -475,49 +436,6 @@ mod tests {
                 checkpoint_id: None,
             })
         }
-    }
-
-    #[tokio::test]
-    async fn test_silent_memory_turn_writes_file() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let provider = Arc::new(MemoryWritingProvider {
-            call_count: std::sync::atomic::AtomicUsize::new(0),
-        });
-        let writer: Arc<dyn MemoryWriter> = Arc::new(MockMemoryWriter {
-            dir: tmp.path().to_path_buf(),
-        });
-
-        let conversation = vec![
-            ChatMessage::user("I prefer Rust over Python."),
-            ChatMessage::assistant("Noted! Rust is a great choice."),
-        ];
-
-        let paths = run_silent_memory_turn(provider, &conversation, writer)
-            .await
-            .unwrap();
-
-        assert_eq!(paths.len(), 1);
-        assert!(paths[0].ends_with("MEMORY.md"));
-
-        let content = std::fs::read_to_string(&paths[0]).unwrap();
-        assert!(content.contains("Rust"));
-        assert!(content.contains("Python"));
-    }
-
-    #[tokio::test]
-    async fn test_silent_memory_turn_no_crash_on_empty_conversation() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let provider = Arc::new(MemoryWritingProvider {
-            call_count: std::sync::atomic::AtomicUsize::new(0),
-        });
-        let writer: Arc<dyn MemoryWriter> = Arc::new(MockMemoryWriter {
-            dir: tmp.path().to_path_buf(),
-        });
-
-        let paths = run_silent_memory_turn(provider, &[], writer).await.unwrap();
-
-        // Should succeed even with empty conversation (provider still writes)
-        assert!(!paths.is_empty());
     }
 
     #[tokio::test]

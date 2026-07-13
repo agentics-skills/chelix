@@ -1,11 +1,18 @@
 //! Agent loop support: model flagging, shell commands, channel streaming, and compaction.
 
-use std::{collections::HashSet, sync::Arc, time::Instant};
+use std::{
+    collections::HashSet,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Instant,
+};
 
 use {
     chelix_config::schema::ToolMode,
     serde_json::Value,
-    tokio::sync::{Mutex, RwLock, mpsc},
+    tokio::sync::{Mutex, Notify, RwLock, mpsc},
     tracing::{debug, info, warn},
 };
 
@@ -115,17 +122,63 @@ pub(crate) async fn clear_unsupported_model(
     }
 }
 
+#[derive(Clone, Default)]
+pub(crate) struct RunnerEventBarrier {
+    sent: Arc<AtomicU64>,
+    processed: Arc<AtomicU64>,
+    notify: Arc<Notify>,
+}
+
+impl RunnerEventBarrier {
+    #[must_use]
+    pub(crate) fn snapshot(&self) -> u64 {
+        self.sent.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn mark_processed(&self) {
+        self.processed.fetch_add(1, Ordering::Release);
+        self.notify.notify_waiters();
+    }
+
+    pub(crate) fn processed_guard(&self) -> RunnerEventProcessedGuard {
+        RunnerEventProcessedGuard(self.clone())
+    }
+
+    pub(crate) async fn wait_for(&self, target: u64) {
+        loop {
+            let notified = self.notify.notified();
+            if self.processed.load(Ordering::Acquire) >= target {
+                return;
+            }
+            notified.await;
+        }
+    }
+}
+
+pub(crate) struct RunnerEventProcessedGuard(RunnerEventBarrier);
+
+impl Drop for RunnerEventProcessedGuard {
+    fn drop(&mut self) {
+        self.0.mark_processed();
+    }
+}
+
 pub(crate) fn ordered_runner_event_callback() -> (
     Box<dyn Fn(RunnerEvent) + Send + Sync>,
     mpsc::UnboundedReceiver<RunnerEvent>,
+    RunnerEventBarrier,
 ) {
     let (tx, rx) = mpsc::unbounded_channel::<RunnerEvent>();
+    let barrier = RunnerEventBarrier::default();
+    let callback_barrier = barrier.clone();
     let callback: Box<dyn Fn(RunnerEvent) + Send + Sync> = Box::new(move |event| {
-        if tx.send(event).is_err() {
+        if tx.send(event).is_ok() {
+            callback_barrier.sent.fetch_add(1, Ordering::Release);
+        } else {
             debug!("runner event dropped because event processor is closed");
         }
     });
-    (callback, rx)
+    (callback, rx, barrier)
 }
 
 const CHANNEL_STREAM_BUFFER_SIZE: usize = 64;

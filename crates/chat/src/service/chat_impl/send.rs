@@ -600,7 +600,7 @@ impl LiveChatService {
 
         // Load conversation history (the current user message is NOT yet
         // persisted — run_streaming / run_agent_loop add it themselves).
-        let mut history = self
+        let history = self
             .session_store
             .read(&session_key)
             .await
@@ -961,101 +961,8 @@ impl LiveChatService {
             .get("_accept_language")
             .and_then(|v| v.as_str())
             .map(String::from);
-        // Auto-compact when the next request is likely to exceed the
-        // auto-compact threshold (85% of the effective token budget, see
-        // `compaction::auto_compact_threshold`). Summarization appends a
-        // checkpoint; the next context window starts after it.
-        let compaction_cfg = &persona.config.chat.compaction;
-        let context_window = provider.context_window() as u64;
-        let token_usage = session_token_usage_from_messages(&history);
-        let estimated_next_input = token_usage
-            .current_request_input_tokens
-            .saturating_add(estimate_text_tokens(&text));
-        let compact_threshold =
-            compaction::auto_compact_threshold(context_window, compaction_cfg.threshold_tokens);
-
-        if compaction_cfg.enabled && estimated_next_input >= compact_threshold {
-            let pre_compact_msg_count = history.len();
-            let pre_compact_total = token_usage
-                .current_request_input_tokens
-                .saturating_add(token_usage.current_request_output_tokens);
-
-            info!(
-                session = %session_key,
-                estimated_next_input,
-                context_window,
-                compact_threshold,
-                "auto-compact triggered (estimated next request over auto-compact threshold)"
-            );
-            broadcast(
-                &self.state,
-                "chat",
-                serde_json::json!({
-                    "sessionKey": session_key,
-                    "state": "auto_compact",
-                    "phase": "start",
-                    "messageCount": pre_compact_msg_count,
-                    "totalTokens": pre_compact_total,
-                    "inputTokens": token_usage.current_request_input_tokens,
-                    "outputTokens": token_usage.current_request_output_tokens,
-                    "estimatedNextInputTokens": estimated_next_input,
-                    "sessionInputTokens": token_usage.session_input_tokens,
-                    "sessionOutputTokens": token_usage.session_output_tokens,
-                    "contextWindow": context_window,
-                }),
-                BroadcastOpts::default(),
-            )
-            .await;
-
-            let compact_params = serde_json::json!({ "_session_key": &session_key });
-            match self.compact(compact_params).await {
-                Ok(_) => {
-                    // Reload history after compaction.
-                    history = self
-                        .session_store
-                        .read(&session_key)
-                        .await
-                        .unwrap_or_default();
-                    // Lifecycle signal that pre-emptive auto-compact
-                    // finished. The checkpoint metadata lives on the
-                    // `chat.compact done` event that `self.compact()`
-                    // broadcasts from the inside.
-                    broadcast(
-                        &self.state,
-                        "chat",
-                        serde_json::json!({
-                            "sessionKey": session_key,
-                            "state": "auto_compact",
-                            "phase": "done",
-                            "messageCount": pre_compact_msg_count,
-                            "totalTokens": pre_compact_total,
-                            "contextWindow": context_window,
-                        }),
-                        BroadcastOpts::default(),
-                    )
-                    .await;
-                },
-                Err(e) => {
-                    warn!(session = %session_key, error = %e, "auto-compact failed, proceeding with full history");
-                    broadcast(
-                        &self.state,
-                        "chat",
-                        serde_json::json!({
-                            "sessionKey": session_key,
-                            "state": "auto_compact",
-                            "phase": "error",
-                            "error": e.to_string(),
-                        }),
-                        BroadcastOpts::default(),
-                    )
-                    .await;
-                },
-            }
-        }
-
-        // Capture the user message index after any auto-compaction reloads
-        // history. The user message is persisted immediately after this point,
-        // so the index matches the JSONL slot used by subsequent broadcasts.
+        // Automatic compaction is evaluated exclusively inside the agent
+        // loop against the exact prompt about to be sent to the provider.
         let user_message_index = history.len();
 
         // Persist the user message now that we know it won't be queued.

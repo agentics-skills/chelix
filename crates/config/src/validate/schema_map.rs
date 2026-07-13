@@ -241,9 +241,6 @@ pub(super) fn build_schema_map() -> KnownKeys {
             ("registry_mode", Leaf),
             ("agent_loop_detector_window", Leaf),
             ("agent_loop_detector_strip_tools_on_second_fire", Leaf),
-            ("tool_result_compaction_ratio", Leaf),
-            ("preemptive_overflow_ratio", Leaf),
-            ("compaction_min_iterations", Leaf),
         ]))
     };
 
@@ -400,13 +397,6 @@ pub(super) fn build_schema_map() -> KnownKeys {
                 ("workspace_file_max_chars", Leaf),
                 ("priority_models", Leaf),
                 ("allowed_models", Leaf),
-                (
-                    "compaction",
-                    Struct(HashMap::from([
-                        ("enabled", Leaf),
-                        ("threshold_tokens", Leaf),
-                    ])),
-                ),
             ])),
         ),
         (

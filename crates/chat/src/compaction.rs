@@ -1,12 +1,13 @@
 //! Conversation summarization checkpoints.
 //!
-//! When a session approaches its context window (or the user runs
+//! When the agent loop reaches 85% of its context window (or the user runs
 //! `/compact`), the session model itself summarizes the conversation and a
 //! [`PersistedMessage::Checkpoint`] is appended to the session history. The
 //! stored history is never mutated, so forks from any point keep working.
 //! Context building (`values_to_chat_messages`) starts a fresh context
 //! window from the latest checkpoint, injecting the summary as a
-//! `<conversation-summary>` user message.
+//! `<conversation-summary>` user message followed by the unsummarized
+//! triggering user/tool round.
 //!
 //! The summarization prompt is adapted from the VS Code Copilot Chat
 //! reference (`summarizedConversationHistory.tsx`). Unlike the reference,
@@ -25,14 +26,6 @@ use {
 };
 
 use crate::error::{self, Error};
-
-/// Fraction of the token budget at which automatic summarization fires.
-///
-/// Matches the reference implementation's summarization budget factor
-/// (`agentIntent.ts`): the estimated next request is compared against
-/// `budget × 0.85` so summarization runs before the provider rejects the
-/// request outright.
-pub(crate) const AUTO_COMPACT_SAFETY_FACTOR: f64 = 0.85;
 
 /// Summarization instructions.
 ///
@@ -187,21 +180,6 @@ impl CheckpointOutcome {
     }
 }
 
-/// Compute the token count at which automatic summarization fires.
-///
-/// `threshold_tokens = 0` (the default) uses the model's context window as
-/// the budget. The budget is scaled by [`AUTO_COMPACT_SAFETY_FACTOR`] and
-/// floored at 1 so a zero-context window still yields a valid threshold.
-#[must_use]
-pub(crate) fn auto_compact_threshold(context_window_tokens: u64, threshold_tokens: u32) -> u64 {
-    let budget = if threshold_tokens > 0 {
-        u64::from(threshold_tokens)
-    } else {
-        context_window_tokens
-    };
-    (((budget as f64) * AUTO_COMPACT_SAFETY_FACTOR).floor() as u64).max(1)
-}
-
 /// Summarize the session and append a checkpoint message.
 ///
 /// The request is built to share the provider prompt-cache prefix with the
@@ -223,6 +201,28 @@ pub(crate) async fn summarize_session(
         .read(session_key)
         .await
         .map_err(|source| Error::external("failed to read session history", source))?;
+    let mut messages = vec![chelix_agents::ChatMessage::system(system_prompt)];
+    messages.extend(values_to_chat_messages(&history));
+    summarize_session_from_prompt(store, session_key, provider, messages, &[], tools).await
+}
+
+/// Append a checkpoint using the exact paused agent-loop provider prefix.
+///
+/// `messages` is the byte-identical prefix selected at the reference-style
+/// continuation boundary; `continuation_messages` remains verbatim after the
+/// checkpoint. Only the trailing summarization instruction is added.
+pub(crate) async fn summarize_session_from_prompt(
+    store: &Arc<SessionStore>,
+    session_key: &str,
+    provider: &dyn LlmProvider,
+    mut messages: Vec<chelix_agents::ChatMessage>,
+    continuation_messages: &[chelix_agents::ChatMessage],
+    tools: &[serde_json::Value],
+) -> error::Result<CheckpointOutcome> {
+    let history = store
+        .read(session_key)
+        .await
+        .map_err(|source| Error::external("failed to read session history", source))?;
 
     if history.is_empty() {
         return Err(Error::message("nothing to compact"));
@@ -238,11 +238,6 @@ pub(crate) async fn summarize_session(
         ));
     }
 
-    // Exact session history, unmutated. A previous checkpoint (if any) is
-    // rendered as its <conversation-summary> user message by the shared
-    // conversion, so iterative re-summarization builds on the prior summary.
-    let mut messages = vec![chelix_agents::ChatMessage::system(system_prompt)];
-    messages.extend(values_to_chat_messages(&history));
     messages.push(chelix_agents::ChatMessage::user(format!(
         "{SUMMARY_INSTRUCTIONS}\n\n{SUMMARY_REQUEST}"
     )));
@@ -259,13 +254,14 @@ pub(crate) async fn summarize_session(
         .filter(|text| !text.is_empty())
         .ok_or_else(|| Error::message("summarization returned an empty response"))?;
 
+    let messages_summarized = find_preserved_tail_start(&history, continuation_messages)?;
     let checkpoint = PersistedMessage::checkpoint(
         summary,
         provider.id(),
         provider.name(),
         response.usage.input_tokens,
         response.usage.output_tokens,
-        u32::try_from(history.len()).unwrap_or(u32::MAX),
+        u32::try_from(messages_summarized).unwrap_or(u32::MAX),
     );
     let message = checkpoint.to_value();
 
@@ -279,7 +275,7 @@ pub(crate) async fn summarize_session(
         model = provider.id(),
         input_tokens = response.usage.input_tokens,
         output_tokens = response.usage.output_tokens,
-        messages_summarized = history.len(),
+        messages_summarized,
         "compaction checkpoint appended"
     );
 
@@ -289,7 +285,81 @@ pub(crate) async fn summarize_session(
         model: provider.id().to_string(),
         input_tokens: response.usage.input_tokens,
         output_tokens: response.usage.output_tokens,
-        messages_summarized: u32::try_from(history.len()).unwrap_or(u32::MAX),
+        messages_summarized: u32::try_from(messages_summarized).unwrap_or(u32::MAX),
+    })
+}
+
+fn find_preserved_tail_start(
+    history: &[serde_json::Value],
+    continuation: &[chelix_agents::ChatMessage],
+) -> error::Result<usize> {
+    if continuation.is_empty() {
+        return Ok(history.len());
+    }
+
+    let expected_tool_call_ids = continuation.iter().find_map(|message| match message {
+        chelix_agents::ChatMessage::Assistant { tool_calls, .. } if !tool_calls.is_empty() => Some(
+            tool_calls
+                .iter()
+                .map(|call| call.id.as_str())
+                .collect::<Vec<_>>(),
+        ),
+        _ => None,
+    });
+    let assistant_index = expected_tool_call_ids.as_ref().and_then(|expected| {
+        history
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(index, message)| {
+                let persisted = persisted_tool_call_ids(message);
+                (persisted == *expected).then_some(index)
+            })
+    });
+
+    let boundary = match continuation.first() {
+        Some(chelix_agents::ChatMessage::User { content, .. }) => assistant_index
+            .and_then(|assistant_index| {
+                history[..assistant_index]
+                    .iter()
+                    .rposition(|message| message["role"].as_str() == Some("user"))
+            })
+            .or_else(|| find_matching_user(history, content)),
+        Some(chelix_agents::ChatMessage::Assistant { .. }) => assistant_index,
+        _ => None,
+    };
+
+    boundary.ok_or_else(|| {
+        Error::message("failed to locate the unsummarized continuation tail in session history")
+    })
+}
+
+fn persisted_tool_call_ids(message: &serde_json::Value) -> Vec<&str> {
+    if message["role"].as_str() != Some("assistant") {
+        return Vec::new();
+    }
+    message["tool_calls"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|call| call["id"].as_str())
+        .collect()
+}
+
+fn find_matching_user(
+    history: &[serde_json::Value],
+    expected: &chelix_agents::UserContent,
+) -> Option<usize> {
+    let chelix_agents::UserContent::Text(expected) = expected else {
+        return history
+            .iter()
+            .rposition(|message| message["role"].as_str() == Some("user"));
+    };
+    history.iter().rposition(|message| {
+        message["role"].as_str() == Some("user")
+            && message["content"]
+                .as_str()
+                .is_some_and(|persisted| expected.contains(persisted))
     })
 }
 
@@ -378,23 +448,6 @@ mod tests {
             .unwrap();
     }
 
-    // ── auto_compact_threshold ───────────────────────────────────────
-
-    #[test]
-    fn threshold_uses_context_window_when_zero() {
-        assert_eq!(auto_compact_threshold(200_000, 0), 170_000);
-    }
-
-    #[test]
-    fn threshold_uses_configured_tokens_when_set() {
-        assert_eq!(auto_compact_threshold(200_000, 100_000), 85_000);
-    }
-
-    #[test]
-    fn threshold_floors_at_one() {
-        assert_eq!(auto_compact_threshold(0, 0), 1);
-    }
-
     // ── summarize_session ────────────────────────────────────────────
 
     #[tokio::test]
@@ -467,6 +520,236 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn automatic_summary_preserves_paused_prompt_prefix_byte_for_byte() {
+        let (_dir, store) = test_store();
+        seed_history(&store, "cache-prefix").await;
+        let provider = MockProvider::new(Some("summary"));
+        let paused_messages = vec![
+            ChatMessage::system("exact system prompt"),
+            ChatMessage::user("exact user prompt"),
+            ChatMessage::assistant("exact assistant response"),
+            ChatMessage::tool("call-1", "exact raw tool result"),
+        ];
+        let paused_tools = vec![serde_json::json!({
+            "name": "exact_tool",
+            "parameters": {"type": "object", "properties": {"value": {"type": "string"}}}
+        })];
+        let expected_prefix: Vec<serde_json::Value> = paused_messages
+            .iter()
+            .map(ChatMessage::to_openai_value)
+            .collect();
+
+        summarize_session_from_prompt(
+            &store,
+            "cache-prefix",
+            &provider,
+            paused_messages,
+            &[],
+            &paused_tools,
+        )
+        .await
+        .unwrap();
+
+        let seen_messages = provider
+            .seen_messages
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        let seen_prefix: Vec<serde_json::Value> = seen_messages[..expected_prefix.len()]
+            .iter()
+            .map(ChatMessage::to_openai_value)
+            .collect();
+        assert_eq!(seen_prefix, expected_prefix);
+        assert_eq!(seen_messages.len(), expected_prefix.len() + 1);
+        assert_eq!(
+            *provider
+                .seen_tools
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()),
+            paused_tools
+        );
+    }
+
+    #[tokio::test]
+    async fn automatic_checkpoint_preserves_triggering_tool_round() {
+        let (_dir, store) = test_store();
+        let history = vec![
+            serde_json::json!({"role": "user", "content": "old request"}),
+            serde_json::json!({"role": "assistant", "content": "old answer"}),
+            serde_json::json!({
+                "role": "assistant",
+                "content": "working",
+                "tool_calls": [{
+                    "id": "call-1",
+                    "type": "function",
+                    "function": {"name": "read_file", "arguments": "{}"}
+                }]
+            }),
+            serde_json::json!({
+                "role": "tool_result",
+                "tool_call_id": "call-1",
+                "tool_name": "read_file",
+                "success": true,
+                "result": {"content": "triggering result"}
+            }),
+        ];
+        for message in &history {
+            store.append("preserved-tail", message).await.unwrap();
+        }
+        let continuation = values_to_chat_messages(&history[2..]);
+        let provider = MockProvider::new(Some("compacted prefix"));
+
+        let outcome = summarize_session_from_prompt(
+            &store,
+            "preserved-tail",
+            &provider,
+            vec![
+                ChatMessage::system("system"),
+                ChatMessage::user("old request"),
+                ChatMessage::assistant("old answer"),
+            ],
+            &continuation,
+            &[],
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome.messages_summarized, 2);
+        assert_eq!(outcome.message["messagesSummarized"], 2);
+        let stored = store.read("preserved-tail").await.unwrap();
+        assert_eq!(&stored[..history.len()], history.as_slice());
+
+        let resumed = values_to_chat_messages(&stored);
+        assert_eq!(resumed.len(), 3);
+        assert!(matches!(
+            &resumed[0],
+            ChatMessage::User { content: chelix_agents::UserContent::Text(text), .. }
+                if text.contains("compacted prefix")
+        ));
+        assert!(matches!(
+            &resumed[1],
+            ChatMessage::Assistant { tool_calls, .. } if tool_calls[0].id == "call-1"
+        ));
+        assert!(
+            matches!(&resumed[2], ChatMessage::Tool { tool_call_id, .. } if tool_call_id == "call-1")
+        );
+
+        let resumed_json = resumed
+            .iter()
+            .map(ChatMessage::to_openai_value)
+            .collect::<Vec<_>>();
+        assert_eq!(resumed_json, vec![
+            ChatMessage::user("<conversation-summary>\ncompacted prefix\n</conversation-summary>")
+                .to_openai_value(),
+            continuation[0].to_openai_value(),
+            continuation[1].to_openai_value(),
+        ]);
+    }
+
+    #[tokio::test]
+    async fn automatic_checkpoint_matches_tool_round_by_ids_not_result_encoding() {
+        let (_dir, store) = test_store();
+        let history = vec![
+            serde_json::json!({"role": "user", "content": "old request"}),
+            serde_json::json!({
+                "role": "assistant",
+                "content": "working",
+                "tool_calls": [{
+                    "id": "call-failed",
+                    "type": "function",
+                    "function": {"name": "read_file", "arguments": "{}"}
+                }]
+            }),
+            serde_json::json!({
+                "role": "tool_result",
+                "tool_call_id": "call-failed",
+                "tool_name": "read_file",
+                "success": false,
+                "error": "persisted failure"
+            }),
+        ];
+        for message in &history {
+            store.append("result-encoding", message).await.unwrap();
+        }
+        let continuation = vec![
+            values_to_chat_messages(&history[1..2])
+                .into_iter()
+                .next()
+                .unwrap(),
+            ChatMessage::tool("call-failed", "runtime transformed failure"),
+        ];
+        let provider = MockProvider::new(Some("compacted prefix"));
+
+        let outcome = summarize_session_from_prompt(
+            &store,
+            "result-encoding",
+            &provider,
+            vec![
+                ChatMessage::system("system"),
+                ChatMessage::user("old request"),
+            ],
+            &continuation,
+            &[],
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome.messages_summarized, 1);
+        assert_eq!(outcome.message["messagesSummarized"], 1);
+    }
+
+    #[tokio::test]
+    async fn automatic_checkpoint_matches_runtime_enriched_user_tail() {
+        let (_dir, store) = test_store();
+        let history = vec![
+            serde_json::json!({"role": "user", "content": "old request"}),
+            serde_json::json!({"role": "assistant", "content": "old answer"}),
+            serde_json::json!({"role": "user", "content": "current request"}),
+            serde_json::json!({
+                "role": "assistant",
+                "content": "working",
+                "tool_calls": [{
+                    "id": "call-current",
+                    "type": "function",
+                    "function": {"name": "read_file", "arguments": "{}"}
+                }]
+            }),
+            serde_json::json!({
+                "role": "tool_result",
+                "tool_call_id": "call-current",
+                "tool_name": "read_file",
+                "success": true,
+                "result": "current result"
+            }),
+        ];
+        for message in &history {
+            store.append("enriched-user-tail", message).await.unwrap();
+        }
+        let mut continuation = values_to_chat_messages(&history[2..]);
+        continuation[0] =
+            ChatMessage::user("[Current date and time: 2026-05-01 12:00 UTC]\ncurrent request");
+        let provider = MockProvider::new(Some("compacted prefix"));
+
+        let outcome = summarize_session_from_prompt(
+            &store,
+            "enriched-user-tail",
+            &provider,
+            vec![
+                ChatMessage::system("system"),
+                ChatMessage::user("old request"),
+                ChatMessage::assistant("old answer"),
+            ],
+            &continuation,
+            &[],
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome.messages_summarized, 2);
+        assert_eq!(outcome.message["messagesSummarized"], 2);
+    }
+
+    #[tokio::test]
     async fn summarize_empty_session_errors() {
         let (_dir, store) = test_store();
         let provider = MockProvider::new(Some("summary"));
@@ -525,6 +808,51 @@ mod tests {
                 assert!(text.contains("compacted context"));
             },
             other => panic!("expected user summary message, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn next_summary_starts_from_previous_checkpoint() {
+        let (_dir, store) = test_store();
+        seed_history(&store, "iterative").await;
+        let first_provider = MockProvider::new(Some("first compacted context"));
+        summarize_session(&store, "iterative", &first_provider, "sys", &[])
+            .await
+            .unwrap();
+        store
+            .append(
+                "iterative",
+                &PersistedMessage::user("tail after first checkpoint").to_value(),
+            )
+            .await
+            .unwrap();
+
+        let second_provider = MockProvider::new(Some("second compacted context"));
+        summarize_session(&store, "iterative", &second_provider, "sys", &[])
+            .await
+            .unwrap();
+
+        let seen = second_provider
+            .seen_messages
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        assert_eq!(seen.len(), 4);
+        match &seen[1] {
+            ChatMessage::User { content, .. } => {
+                let text = format!("{content:?}");
+                assert!(text.contains("<conversation-summary>"));
+                assert!(text.contains("first compacted context"));
+                assert!(!text.contains("hello"));
+                assert!(!text.contains("hi there"));
+            },
+            other => panic!("expected previous checkpoint summary, got {other:?}"),
+        }
+        match &seen[2] {
+            ChatMessage::User { content, .. } => {
+                assert!(format!("{content:?}").contains("tail after first checkpoint"));
+            },
+            other => panic!("expected post-checkpoint tail, got {other:?}"),
         }
     }
 }

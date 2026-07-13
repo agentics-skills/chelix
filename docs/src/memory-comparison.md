@@ -68,7 +68,7 @@ This is where the two systems differ most significantly in approach.
 | **memory_forget** | LLM-guided forget flow on top of exact deletes | No dedicated tool |
 | **memory_delete** | Dedicated tool for safe forget/delete flows | No dedicated tool |
 | **General file writing** | `execute_command` tool (shell commands) | Generic `write_file` tool |
-| **Silent memory turn** | Pre-compaction flush via `MemoryWriter` | Pre-compaction flush via `write_file` |
+| **Silent memory turn** | Periodic extraction and session-end summary via `MemoryWriter` | Pre-compaction flush via `write_file` |
 
 #### How "Remember X" Works
 
@@ -116,28 +116,15 @@ watcher to re-index.
 |---------|--------|----------|
 | **Session storage** | SQLite database | JSONL files (append-only, tree structure) |
 | **Auto-compaction** | Yes, near context window limit | Yes, near context window limit |
-| **Manual compaction** | `/compact` (uses [configured compaction strategy](compaction.md#the-four-modes)) | `/compact` command with optional instructions |
-| **Pre-compaction memory flush** | Silent turn via `MemoryWriter` trait | Silent turn via `write_file` tool |
-| **Flush visibility** | Completely hidden from user | Hidden via `NO_REPLY` convention |
+| **Manual compaction** | `/compact` (uses the same full [checkpoint flow](compaction.md)) | `/compact` command with optional instructions |
+| **Pre-compaction memory flush** | No | Silent turn via `write_file` tool |
 | **Session export to memory** | Markdown files under `memory/` and `memory/sessions/` | Optional (`sessionMemory` experimental flag) |
 | **Session pruning** | Not yet | Cache-TTL based, trims old tool results |
 | **Session transcript indexing** | Via session export | Experimental, async delta-based |
 
-### Pre-Compaction Memory Flush: Detailed Comparison
+### Pre-Compaction Memory Flush
 
-Both systems run a hidden LLM turn before compaction to persist important
-context. The implementation differs:
-
-**Chelix:**
-- The gateway detects that compaction is needed
-- A `run_silent_memory_turn()` call creates a temporary agent loop with a
-  `write_file` tool backed by `MemoryWriter`
-- The `MemoryWriter` trait is implemented by `MemoryManager`, which validates
-  paths and re-indexes after writing
-- The LLM's response text is discarded
-- Written file paths are returned to the caller for logging
-
-**OpenClaw:**
+Chelix does not run a separate memory-flush turn before compaction. OpenClaw:
 - A soft threshold (default 4000 tokens below compaction trigger) activates
   the flush
 - The flush executes as a regular turn with `NO_REPLY` prefix to suppress
@@ -218,13 +205,11 @@ context. The implementation differs:
 - **Automatic re-indexing on embedding provider/model change** (fingerprint
   detection)
 - **Memory plugin slot** allowing third-party memory implementations
-- **Flush-once-per-compaction tracking** to avoid redundant silent turns
-- **Configurable flush threshold** (soft threshold tokens before compaction)
+- **Pre-compaction memory flush tracking**
 
 ## Summary
 
-The two systems are architecturally equivalent -- both use Markdown files,
-hybrid search, and pre-compaction memory flushes. The main differences are:
+The two systems both use Markdown files and hybrid search. The main differences are:
 
 1. **Tool approach**: Chelix provides purpose-built `memory_save`,
    `memory_forget`, and `memory_delete` tools with security validation;

@@ -448,21 +448,6 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         });
     }
 
-    // Compaction config sanity. A tiny non-zero threshold would trigger
-    // summarization on nearly every message.
-    let compaction = &config.chat.compaction;
-    if compaction.threshold_tokens > 0 && compaction.threshold_tokens < 1_000 {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "invalid-value",
-            path: "chat.compaction.threshold_tokens".into(),
-            message: format!(
-                "chat.compaction.threshold_tokens = {} is very low — summarization will trigger on nearly every message; set 0 to use the model context window",
-                compaction.threshold_tokens
-            ),
-        });
-    }
-
     if config.mcp.request_timeout_secs == 0 {
         diagnostics.push(Diagnostic {
             severity: Severity::Error,
@@ -918,60 +903,9 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         }
     }
 
-    // tools: overflow_ratio must not be zero (budget becomes 0, every iteration fails)
-    if config.tools.preemptive_overflow_ratio == 0 {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "invalid-value",
-            path: "tools.preemptive_overflow_ratio".into(),
-            message: "preemptive_overflow_ratio = 0 means the overflow budget is always \
-                      0 tokens; the agent loop will fail immediately on every iteration"
-                .into(),
-        });
-    }
-
-    // tools: ratio fields should not exceed 100 (percentages)
-    if config.tools.tool_result_compaction_ratio > 100 {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "invalid-value",
-            path: "tools.tool_result_compaction_ratio".into(),
-            message: format!(
-                "tool_result_compaction_ratio ({}) exceeds 100 — compaction will trigger on every iteration regardless of context usage",
-                config.tools.tool_result_compaction_ratio
-            ),
-        });
-    }
-    if config.tools.preemptive_overflow_ratio > 100 {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "invalid-value",
-            path: "tools.preemptive_overflow_ratio".into(),
-            message: format!(
-                "preemptive_overflow_ratio ({}) exceeds 100 — overflow protection will always trigger",
-                config.tools.preemptive_overflow_ratio
-            ),
-        });
-    }
-
     // Warn about literal API keys in config (should use env var substitution
     // or the credential store instead).
     check_plaintext_api_keys(config, diagnostics);
-
-    // tools: overflow_ratio must be greater than compaction_ratio
-    if config.tools.tool_result_compaction_ratio > 0
-        && config.tools.preemptive_overflow_ratio <= config.tools.tool_result_compaction_ratio
-    {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "invalid-value",
-            path: "tools.preemptive_overflow_ratio".into(),
-            message: format!(
-                "preemptive_overflow_ratio ({}) should be greater than tool_result_compaction_ratio ({}) to avoid context overflow on every iteration",
-                config.tools.preemptive_overflow_ratio, config.tools.tool_result_compaction_ratio
-            ),
-        });
-    }
 }
 
 /// Validate a `context_window` override value (optional field).

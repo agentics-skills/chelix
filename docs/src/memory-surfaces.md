@@ -89,7 +89,7 @@ Defaults today:
 - `prompt-only` restricts agent-authored writes to `MEMORY.md`
 - `search-only` restricts agent-authored writes to `memory/*.md`
 - `off` disables agent-authored memory mutations, including `memory_save`,
-  `memory_forget`, `memory_delete`, and the silent pre-compaction memory flush
+  `memory_forget`, and `memory_delete`
 
 `memory.session_export` is separate again:
 

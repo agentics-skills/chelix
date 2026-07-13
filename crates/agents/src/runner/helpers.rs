@@ -23,9 +23,7 @@ use crate::{
 
 // ── Constants ───────────────────────────────────────────────────────────
 
-pub(crate) const TOOL_RESULT_COMPACTION_PLACEHOLDER: &str =
-    "[tool result compacted to preserve context budget]";
-pub(crate) const TOOL_RESULT_COMPACTION_MIN_BYTES: usize = 200;
+pub(crate) const AUTO_COMPACTION_RATIO: usize = 85;
 
 pub(crate) const MALFORMED_TOOL_RETRY_PROMPT: &str = "Your tool call was malformed. Retry with exact format:\n\
      ```tool_call\n{\"tool\": \"name\", \"arguments\": {...}}\n```";
@@ -52,12 +50,39 @@ pub(crate) const AUTO_CONTINUE_SUBSTANTIVE_TEXT_THRESHOLD: usize = 40;
 /// Typed errors from the agent loop.
 #[derive(Debug, thiserror::Error)]
 pub enum AgentRunError {
-    /// The provider reported that the context window / token limit was exceeded.
-    #[error("context window exceeded: {0}")]
-    ContextWindowExceeded(String),
+    /// The prompt reached the automatic checkpoint threshold.
+    #[error("automatic context compaction required")]
+    ContextCompactionRequired(Box<ContextCompactionRequest>),
     /// Any other error.
     #[error(transparent)]
     Other(#[from] anyhow::Error),
+}
+
+/// Exact paused provider request used to create an automatic checkpoint.
+#[derive(Debug)]
+pub struct ContextCompactionRequest {
+    pub metadata: ContextBudgetMetadata,
+    /// Byte-identical paused-request prefix covered by the summary.
+    pub summary_messages: Vec<ChatMessage>,
+    /// Unsummarized current user message or latest tool round to replay after
+    /// the checkpoint, matching the reference continuation boundary.
+    pub continuation_messages: Vec<ChatMessage>,
+    pub tool_schemas: Vec<serde_json::Value>,
+    pub completed_iterations: usize,
+    pub tool_calls_made: usize,
+    pub usage: Usage,
+    pub raw_llm_responses: Vec<serde_json::Value>,
+}
+
+pub(crate) fn split_context_for_compaction(
+    mut messages: Vec<ChatMessage>,
+    continuation_start: usize,
+) -> (Vec<ChatMessage>, Vec<ChatMessage>) {
+    if continuation_start <= 1 || continuation_start >= messages.len() {
+        return (messages, Vec::new());
+    }
+    let continuation = messages.split_off(continuation_start);
+    (messages, continuation)
 }
 
 /// Result of running the agent loop.
@@ -112,6 +137,10 @@ pub struct AgentLoopLimits {
     /// Per-agent override for the in-context tool result byte budget.
     /// Falls back to `tools.max_tool_result_bytes` when `None`.
     pub max_tool_result_bytes: Option<usize>,
+    /// Allow the runner to pause at 85% for a session-backed checkpoint.
+    pub automatic_checkpointing: bool,
+    /// Resume from history that already includes the current user turn.
+    pub resume_from_history: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -629,125 +658,26 @@ pub(crate) fn estimate_prompt_tokens(
     message_tokens.saturating_add(tool_tokens)
 }
 
-#[must_use]
-pub(crate) fn has_tool_result_messages(messages: &[ChatMessage]) -> bool {
-    messages
-        .iter()
-        .any(|message| matches!(message, ChatMessage::Tool { .. }))
-}
-
-pub(crate) fn compact_tool_results_oldest_first_in_place(
-    messages: &mut [ChatMessage],
-    tokens_needed: usize,
-) -> usize {
-    if tokens_needed == 0 {
-        return 0;
-    }
-
-    let mut reduced = 0;
-    for message in messages.iter_mut() {
-        if reduced >= tokens_needed {
-            break;
-        }
-
-        let ChatMessage::Tool {
-            tool_call_id,
-            content,
-        } = message
-        else {
-            continue;
-        };
-        if content == TOOL_RESULT_COMPACTION_PLACEHOLDER
-            || content.len() < TOOL_RESULT_COMPACTION_MIN_BYTES
-        {
-            continue;
-        }
-
-        let tool_call_id = tool_call_id.clone();
-        let original = content.clone();
-        let before = estimate_message_tokens(&ChatMessage::tool(&tool_call_id, &original));
-        *content = TOOL_RESULT_COMPACTION_PLACEHOLDER.to_string();
-        let after = estimate_message_tokens(&ChatMessage::tool(
-            &tool_call_id,
-            TOOL_RESULT_COMPACTION_PLACEHOLDER,
-        ));
-        let saved = before.saturating_sub(after);
-        if saved == 0 {
-            *content = original;
-            continue;
-        }
-
-        reduced = reduced.saturating_add(saved);
-    }
-
-    reduced
-}
-
-pub(crate) fn enforce_tool_result_context_budget(
-    messages: &mut [ChatMessage],
+pub(crate) fn evaluate_context_budget(
+    messages: &[ChatMessage],
     tool_schemas: &[serde_json::Value],
     context_window: u32,
-    compaction_ratio: usize,
-    overflow_ratio: usize,
-) -> Result<ContextBudgetMetadata, AgentRunError> {
+) -> ContextBudgetMetadata {
     let context_window = context_window as usize;
-    let has_tool_results = has_tool_result_messages(messages);
-    let mut metadata = ContextBudgetMetadata {
-        context_window: context_window as u32,
-        compaction_ratio,
-        overflow_ratio,
-        has_tool_results,
-        ..ContextBudgetMetadata::default()
-    };
-    if context_window == 0 || !has_tool_results {
-        return Ok(metadata);
-    }
-
-    // Allow disabling per-iteration compaction entirely via config (ratio = 0).
-    if compaction_ratio == 0 {
-        let overflow_budget = context_window.saturating_mul(overflow_ratio) / 100;
-        let current_tokens = estimate_prompt_tokens(messages, tool_schemas);
-        metadata.overflow_budget = Some(overflow_budget);
-        metadata.current_tokens = Some(current_tokens);
-        if current_tokens > overflow_budget {
-            return Err(AgentRunError::ContextWindowExceeded(format!(
-                "preemptive context overflow: estimated prompt size {current_tokens} tokens \
-                 exceeds {overflow_budget} token budget (compaction disabled)"
-            )));
-        }
-        return Ok(metadata);
-    }
-    let compaction_budget = context_window.saturating_mul(compaction_ratio) / 100;
-    let overflow_budget = context_window.saturating_mul(overflow_ratio) / 100;
     let current_tokens = estimate_prompt_tokens(messages, tool_schemas);
-    metadata.compaction_budget = Some(compaction_budget);
-    metadata.overflow_budget = Some(overflow_budget);
-    metadata.current_tokens = Some(current_tokens);
-
-    if current_tokens > compaction_budget {
-        let needed = current_tokens.saturating_sub(compaction_budget);
-        let reduced = compact_tool_results_oldest_first_in_place(messages, needed);
-        metadata.tokens_needed = Some(needed);
-        metadata.tokens_reduced = Some(reduced);
-        tracing::debug!(
-            current_tokens,
-            compaction_budget,
-            overflow_budget,
-            needed,
-            reduced,
-            "compacted oldest tool results to preserve prompt budget"
-        );
+    let compaction_budget = context_window.saturating_mul(AUTO_COMPACTION_RATIO) / 100;
+    ContextBudgetMetadata {
+        context_window: context_window as u32,
+        compaction_ratio: AUTO_COMPACTION_RATIO,
+        current_tokens,
+        compaction_budget,
+        usage_percent: if context_window == 0 {
+            0
+        } else {
+            current_tokens.saturating_mul(100) / context_window
+        },
+        compaction_required: context_window > 0 && current_tokens >= compaction_budget,
     }
-
-    let post_compaction_tokens = estimate_prompt_tokens(messages, tool_schemas);
-    metadata.post_compaction_tokens = Some(post_compaction_tokens);
-    if post_compaction_tokens > overflow_budget {
-        return Err(AgentRunError::ContextWindowExceeded(format!(
-            "preemptive context overflow: estimated prompt size {post_compaction_tokens} tokens exceeds {overflow_budget} token budget after tool-result compaction"
-        )));
-    }
-
-    Ok(metadata)
 }
 
 pub(crate) fn channel_binding_from_tool_context(

@@ -66,14 +66,10 @@ export interface ToolError {
 export interface ContextBudgetMetadata {
 	contextWindow: number;
 	compactionRatio: number;
-	overflowRatio: number;
-	hasToolResults: boolean;
-	currentTokens?: number;
-	compactionBudget?: number;
-	overflowBudget?: number;
-	tokensNeeded?: number;
-	tokensReduced?: number;
-	postCompactionTokens?: number;
+	currentTokens: number;
+	compactionBudget: number;
+	usagePercent: number;
+	compactionRequired: boolean;
 }
 
 export interface MapLinks {

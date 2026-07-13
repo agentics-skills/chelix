@@ -72,23 +72,39 @@ fn values_to_chat_messages_inner(
     values: &[serde_json::Value],
     filter_orphan_tool_results: bool,
 ) -> Vec<ChatMessage> {
-    // A summarization checkpoint starts a fresh context window: everything
-    // before the latest checkpoint is excluded from the LLM context and the
-    // checkpoint summary is injected as a user message instead. The stored
-    // history is untouched — this is a read-time view only.
-    let context_start = values
+    // A summarization checkpoint replaces its summarized prefix while keeping
+    // the unsummarized triggering tail in its original order. The tail remains
+    // physically before the append-only checkpoint and starts at the absolute
+    // `messagesSummarized` boundary.
+    let latest_checkpoint = values
         .iter()
-        .rposition(|val| val["role"].as_str() == Some("checkpoint"))
-        .unwrap_or(0);
-    let values = &values[context_start..];
-    let mut messages = Vec::with_capacity(values.len());
+        .rposition(|val| val["role"].as_str() == Some("checkpoint"));
+    let ordered_values: Vec<&serde_json::Value> = if let Some(checkpoint_index) = latest_checkpoint
+    {
+        let tail_start = values[checkpoint_index]["messagesSummarized"]
+            .as_u64()
+            .and_then(|value| usize::try_from(value).ok())
+            .filter(|start| *start <= checkpoint_index)
+            .unwrap_or(checkpoint_index);
+        std::iter::once(&values[checkpoint_index])
+            .chain(
+                values[tail_start..checkpoint_index]
+                    .iter()
+                    .filter(|value| value["role"].as_str() != Some("checkpoint")),
+            )
+            .chain(values[checkpoint_index + 1..].iter())
+            .collect()
+    } else {
+        values.iter().collect()
+    };
+    let mut messages = Vec::with_capacity(ordered_values.len());
     // Track tool_call IDs emitted by assistant messages so we only include
     // tool/tool_result messages that have a matching assistant tool_call.
     // Orphan tool results (e.g. from explicit /sh commands) would cause
     // provider API errors.
     let mut pending_tool_call_ids: std::collections::HashSet<String> =
         std::collections::HashSet::new();
-    for (i, val) in values.iter().enumerate() {
+    for (i, val) in ordered_values.into_iter().enumerate() {
         let Some(role) = val["role"].as_str() else {
             tracing::warn!(index = i, "skipping message with missing/invalid role");
             continue;
@@ -331,4 +347,63 @@ fn attach_reasoning_to_assistant_tool_call(
         tool_call_id,
         "no assistant message found for reasoning attachment"
     );
+}
+
+#[cfg(test)]
+mod checkpoint_tests {
+    use super::*;
+
+    #[test]
+    fn latest_checkpoint_restores_its_pre_checkpoint_tail_only() {
+        let values = vec![
+            serde_json::json!({"role": "user", "content": "old"}),
+            serde_json::json!({
+                "role": "checkpoint",
+                "summary": "first summary",
+                "messagesSummarized": 1
+            }),
+            serde_json::json!({"role": "user", "content": "between"}),
+            serde_json::json!({
+                "role": "assistant",
+                "content": "working",
+                "tool_calls": [{
+                    "id": "call-2",
+                    "function": {"name": "read_file", "arguments": "{}"}
+                }]
+            }),
+            serde_json::json!({
+                "role": "tool_result",
+                "tool_call_id": "call-2",
+                "tool_name": "read_file",
+                "success": true,
+                "result": "latest result"
+            }),
+            serde_json::json!({
+                "role": "checkpoint",
+                "summary": "second summary",
+                "messagesSummarized": 3
+            }),
+            serde_json::json!({"role": "user", "content": "after"}),
+        ];
+
+        let messages = values_to_chat_messages(&values);
+
+        assert_eq!(messages.len(), 4);
+        assert!(matches!(
+            &messages[0],
+            ChatMessage::User { content: UserContent::Text(text), .. }
+                if text.contains("second summary") && !text.contains("first summary")
+        ));
+        assert!(matches!(
+            &messages[1],
+            ChatMessage::Assistant { tool_calls, .. } if tool_calls[0].id == "call-2"
+        ));
+        assert!(
+            matches!(&messages[2], ChatMessage::Tool { tool_call_id, .. } if tool_call_id == "call-2")
+        );
+        assert!(matches!(
+            &messages[3],
+            ChatMessage::User { content: UserContent::Text(text), .. } if text == "after"
+        ));
+    }
 }

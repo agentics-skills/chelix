@@ -308,10 +308,6 @@ fn save_user_config_does_not_materialize_defaults() {
         !saved.contains("agent_max_iterations"),
         "defaults should not be materialized into user config"
     );
-    assert!(
-        !saved.contains("threshold_tokens"),
-        "compaction defaults should not be materialized"
-    );
 }
 
 #[test]

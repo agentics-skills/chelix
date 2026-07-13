@@ -23,9 +23,6 @@ pub struct ChatConfig {
     /// live discovery), so this field is currently ignored.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub allowed_models: Vec<String>,
-    /// Automatic conversation summarization settings. See [`CompactionConfig`].
-    #[serde(default)]
-    pub compaction: CompactionConfig,
 }
 
 fn default_auto_title() -> bool {
@@ -53,44 +50,6 @@ impl Default for ChatConfig {
             workspace_file_max_chars: default_workspace_file_max_chars(),
             priority_models: Vec::new(),
             allowed_models: Vec::new(),
-            compaction: CompactionConfig::default(),
-        }
-    }
-}
-
-// ── Compaction ────────────────────────────────────────────────────────────
-
-/// Conversation summarization settings. Lives under `chat.compaction`.
-///
-/// When the estimated next request approaches the model's context window,
-/// the session is summarized by the session model itself and a checkpoint
-/// message is appended to the history. The context sent to the model then
-/// starts from that checkpoint. The stored history is never mutated.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct CompactionConfig {
-    /// Whether automatic summarization is enabled. When disabled, requests
-    /// that exceed the context window fail instead of being summarized.
-    /// Manual `/compact` keeps working regardless. Default: `true`.
-    #[serde(default = "default_compaction_enabled")]
-    pub enabled: bool,
-
-    /// Token budget that triggers automatic summarization. Set to `0`
-    /// (default) to use the session model's context window. Summarization
-    /// fires when the estimated next request reaches 85 % of this budget.
-    #[serde(default)]
-    pub threshold_tokens: u32,
-}
-
-fn default_compaction_enabled() -> bool {
-    true
-}
-
-impl Default for CompactionConfig {
-    fn default() -> Self {
-        Self {
-            enabled: default_compaction_enabled(),
-            threshold_tokens: 0,
         }
     }
 }

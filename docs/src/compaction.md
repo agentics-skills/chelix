@@ -1,30 +1,39 @@
 # Compaction
 
-When a chat session approaches the model's context window (or you run
-`/compact`), Chelix summarizes the conversation with the **same model that
-is running the session** and appends a persistent **checkpoint** message to
-the session history. Nothing in the existing history is modified or
-deleted — the next context window simply starts from the checkpoint.
+Chelix has exactly two context-compaction entry points:
+
+1. the agent loop reaches 85% of the session model's context window;
+2. the user runs `/compact` (or calls the `chat.compact` RPC).
+
+Both entry points use the **same model that is running the session** and append
+a persistent **checkpoint** message. Automatic compaction summarizes the
+prefix before a preserved triggering user/tool round; manual compaction
+summarizes the full current context. No message or tool result is shortened,
+replaced, pruned, or deleted.
 
 ## How it works
 
-1. The exact stored session history (unmodified) is sent to the session's
-   provider together with a comprehensive summarization prompt adapted from
-   the VS Code Copilot Chat reference implementation. The request keeps the
-   session's own system prompt and tool schemas, and the summarization
-   instructions ride in a single trailing user message — so the request
-   prefix matches the previous turn and the history is billed as **cached
-   input** on providers with prompt caching (Anthropic, OpenAI, etc.).
-2. The model produces a detailed structured summary (`<analysis>` +
+1. Immediately before every LLM request in the agent loop, Chelix estimates
+  the exact request's messages and active tool schemas. At 85%, the loop
+  pauses before sending that request.
+2. Chelix chooses a continuation boundary like VS Code Copilot Chat: the
+  current user message and first tool round are kept together, or only the
+  latest tool round is kept after multiple rounds. The exact paused-request
+  prefix before that boundary and the active tool schemas are sent to the
+  same provider, with only the summarization instructions appended as one
+  trailing user message. That prefix remains byte-identical and eligible for
+  **prompt-cache reuse**.
+3. The model produces a detailed structured summary (`<analysis>` +
    `<summary>` with eight sections: conversation overview, technical
    foundation, codebase status, problem resolution, progress tracking,
    active work state, recent operations, continuation plan).
-3. The summary is appended to the session as a `checkpoint` message with
-   metadata: model, provider, input/output tokens, and the number of
-   messages it covers.
-4. From the next turn on, the LLM context starts at the latest checkpoint:
-   the summary is injected as a `<conversation-summary>` user message and
-   only messages after the checkpoint are included verbatim.
+4. The summary is appended to the session as a `checkpoint` message with
+  metadata: model, provider, input/output tokens, and `messagesSummarized`,
+  the absolute boundary between the summarized prefix and preserved tail.
+5. The same agent run resumes immediately from the checkpoint without
+  repeating the original user message or adding a synthetic continuation
+  prompt. The new context is `<conversation-summary>` followed by the
+  preserved triggering user/tool round and later messages verbatim.
 
 Because the history is append-only:
 
@@ -32,6 +41,8 @@ Because the history is append-only:
   still in the session file, byte-identical.
 - **The web UI shows the full conversation**, with a checkpoint card marking
   where each new context window begins.
+- **Synchronous inter-session sends keep their natural final gate.** Automatic
+  compaction does not inject an extra user instruction into the target run.
 - **Iterative re-summarization builds on the previous checkpoint** — the
   summarization call itself sees the prior `<conversation-summary>` plus
   the tail, exactly like a regular turn would.
@@ -40,31 +51,29 @@ Because the history is append-only:
 
 | Trigger | When |
 |---|---|
-| Pre-emptive auto-compact | The estimated next request exceeds 85 % of the token budget (see below). |
-| Context-overflow retry | The provider rejects a request with a context-window error; Chelix summarizes and retries once. |
+| Agent-loop auto-compact | The exact next LLM request reaches 85% of the provider context window. |
 | Manual | `/compact` in the web UI or the `chat.compact` RPC. |
 
-## Configuration
+The 85% threshold is fixed and has no configuration switch or override.
+Manual `/compact` summarizes the current context regardless of its size
+(unless the session already ends with a checkpoint).
 
-All compaction settings live under `[chat.compaction]` in `chelix.toml`:
+## Context-budget metadata
 
-```toml
-[chat.compaction]
-enabled = true          # Automatic summarization on context pressure.
-threshold_tokens = 0    # Token budget override. 0 = use the model's context window.
-```
+Every tool result records the exact budget calculation used before the LLM
+iteration that produced its tool call. The tool card exposes it under
+**Context budget**:
 
-- `enabled` — when `false`, automatic summarization never fires
-  (pre-emptive and overflow-retry paths are skipped). Manual `/compact`
-  keeps working.
-- `threshold_tokens` — overrides the token budget used for the
-  pre-emptive trigger. With the default `0`, the budget is the session
-  model's context window. The trigger fires at `budget × 0.85`, matching
-  the reference implementation's summarization safety factor: on a 200 K
-  model, summarization starts at 170 K estimated tokens.
+- `contextWindow`
+- `compactionRatio` (`85`)
+- `currentTokens`
+- `compactionBudget`
+- `usagePercent`
+- `compactionRequired`
 
-Manual `/compact` ignores the trigger math and summarizes whatever is in
-the session (unless it already ends with a checkpoint).
+The same metadata is included in the `auto_compact` lifecycle event when the
+85% trigger fires. These values come from the authoritative agent-loop check;
+the UI does not recalculate them.
 
 ## Channel notifications
 
@@ -74,8 +83,9 @@ model, token usage, and the number of messages checkpointed.
 
 ## Further reading
 
-- `crates/chat/src/compaction.rs` — summarization prompt, threshold math,
-  cache-friendly request shape, and checkpoint append logic.
+- `crates/agents/src/runner/helpers.rs` — exact prompt-budget calculation.
+- `crates/chat/src/compaction.rs` — summarization prompt, cache-friendly
+  request shape, and checkpoint append logic.
 - `crates/agents/src/model/convert.rs` — context construction: the latest
   checkpoint starts a fresh context window.
 - `references/vscode-copilot-chat` — the reference implementation

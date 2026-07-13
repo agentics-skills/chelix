@@ -348,7 +348,8 @@ pub(crate) async fn run_with_tools(
     let provider_name_for_events = provider_name.to_string();
     let active_partial_for_events = active_partial_assistant.as_ref().map(Arc::clone);
     let terminal_runs_for_events = Arc::clone(terminal_runs);
-    let (on_event, mut event_rx) = ordered_runner_event_callback();
+    let (on_event, mut event_rx, event_barrier) = ordered_runner_event_callback();
+    let event_barrier_for_forwarder = event_barrier.clone();
     let channel_stream_dispatcher = ChannelStreamDispatcher::for_session(state, session_key)
         .await
         .map(|dispatcher| Arc::new(Mutex::new(dispatcher)));
@@ -362,6 +363,7 @@ pub(crate) async fn run_with_tools(
         let mut latest_reasoning = String::new();
         let mut persisted_tool_batches: HashMap<String, (usize, Value)> = HashMap::new();
         while let Some(event) = event_rx.recv().await {
+            let _processed = event_barrier_for_forwarder.processed_guard();
             let state = Arc::clone(&state_for_events);
             let run_id = run_id_for_events.clone();
             let sk = session_key_for_events.clone();
@@ -986,149 +988,152 @@ pub(crate) async fn run_with_tools(
     });
 
     let provider_ref = provider.clone();
-    let first_agent_future = run_agent_loop_streaming_with_limits(
-        provider,
-        &filtered_registry,
-        &system_prompt,
-        &effective_user_content,
-        Some(&on_event),
-        hist,
-        Some(tool_context.clone()),
-        hook_registry.clone(),
-        sender_name.clone(),
-        Some(steer_inbox.clone()),
-        AgentLoopLimits {
-            max_iterations: Some(runtime_limits.max_iterations),
-            max_tool_result_bytes: Some(runtime_limits.max_tool_result_bytes),
-        },
-    );
-    let first_result =
-        await_with_agent_timeout(runtime_limits.timeout_secs, run_started, first_agent_future)
-            .await;
+    let mut next_history = hist;
+    let mut resume_from_history = false;
+    let mut completed_iterations = 0usize;
+    let mut completed_tool_calls = 0usize;
+    let mut completed_usage = chelix_agents::model::Usage::default();
+    let mut completed_raw_responses = Vec::new();
 
-    // On context-window overflow, compact the session and retry once.
-    let result = match first_result {
-        Err(AgentRunError::ContextWindowExceeded(ref msg))
-            if session_store.is_some() && persona.config.chat.compaction.enabled =>
-        {
-            let store = session_store?;
-            info!(
-                run_id,
-                session = session_key,
-                error = %msg,
-                "context window exceeded — compacting and retrying"
-            );
+    // The runner is the only automatic compaction trigger. It evaluates the
+    // exact next provider request before every LLM call and pauses at 85%.
+    let result = loop {
+        let remaining_iterations = runtime_limits
+            .max_iterations
+            .saturating_sub(completed_iterations);
+        if remaining_iterations == 0 {
+            break Err(AgentRunError::Other(anyhow::anyhow!(
+                "agent loop exceeded max iterations ({})",
+                runtime_limits.max_iterations
+            )));
+        }
 
-            broadcast(
-                state,
-                "chat",
-                serde_json::json!({
-                    "runId": run_id,
-                    "sessionKey": session_key,
-                    "state": "auto_compact",
-                    "phase": "start",
-                    "reason": "context_window_exceeded",
-                }),
-                BroadcastOpts::default(),
-            )
-            .await;
+        let agent_future = run_agent_loop_streaming_with_limits(
+            provider_ref.clone(),
+            &filtered_registry,
+            &system_prompt,
+            &effective_user_content,
+            Some(&on_event),
+            next_history.take(),
+            Some(tool_context.clone()),
+            hook_registry.clone(),
+            sender_name.clone(),
+            Some(steer_inbox.clone()),
+            AgentLoopLimits {
+                max_iterations: Some(remaining_iterations),
+                max_tool_result_bytes: Some(runtime_limits.max_tool_result_bytes),
+                automatic_checkpointing: true,
+                resume_from_history,
+            },
+        );
+        let agent_result =
+            await_with_agent_timeout(runtime_limits.timeout_secs, run_started, agent_future).await;
 
-            // Summarize with the session's own model and append a checkpoint;
-            // the retry context window starts after that checkpoint. The
-            // run's own system prompt and tool schemas keep the request
-            // prefix cache-compatible with the failed attempt.
-            let summary_tools = if native_tools {
-                filtered_registry.list_schemas()
-            } else {
-                Vec::new()
-            };
-            match compaction::summarize_session(
-                store,
-                session_key,
-                &*provider_ref,
-                &system_prompt,
-                &summary_tools,
-            )
-            .await
-            {
-                Ok(outcome) => {
-                    // Merge the checkpoint metadata into the broadcast so
-                    // connected clients render the checkpoint card.
-                    let mut payload = serde_json::json!({
+        match agent_result {
+            Ok(mut finished) => {
+                finished.iterations = finished.iterations.saturating_add(completed_iterations);
+                finished.tool_calls_made = finished
+                    .tool_calls_made
+                    .saturating_add(completed_tool_calls);
+                completed_usage.saturating_add_assign(&finished.usage);
+                finished.usage = completed_usage;
+                completed_raw_responses.append(&mut finished.raw_llm_responses);
+                finished.raw_llm_responses = completed_raw_responses;
+                break Ok(finished);
+            },
+            Err(AgentRunError::ContextCompactionRequired(request)) => {
+                let Some(store) = session_store else {
+                    break Err(AgentRunError::ContextCompactionRequired(request));
+                };
+                completed_iterations =
+                    completed_iterations.saturating_add(request.completed_iterations);
+                completed_tool_calls = completed_tool_calls.saturating_add(request.tool_calls_made);
+                completed_usage.saturating_add_assign(&request.usage);
+                completed_raw_responses.extend(request.raw_llm_responses.iter().cloned());
+
+                let context_budget = &request.metadata;
+                info!(
+                    run_id,
+                    session = session_key,
+                    current_tokens = context_budget.current_tokens,
+                    compaction_budget = context_budget.compaction_budget,
+                    usage_percent = context_budget.usage_percent,
+                    "agent loop reached automatic compaction threshold"
+                );
+
+                broadcast(
+                    state,
+                    "chat",
+                    serde_json::json!({
                         "runId": run_id,
                         "sessionKey": session_key,
                         "state": "auto_compact",
-                        "phase": "done",
-                        "reason": "context_window_exceeded",
-                    });
-                    if let (Some(obj), Some(meta)) = (
-                        payload.as_object_mut(),
-                        outcome.broadcast_metadata().as_object().cloned(),
-                    ) {
-                        obj.extend(meta);
-                    }
-                    broadcast(state, "chat", payload, BroadcastOpts::default()).await;
+                        "phase": "start",
+                        "reason": "agent_loop_threshold",
+                        "contextBudget": context_budget,
+                    }),
+                    BroadcastOpts::default(),
+                )
+                .await;
 
-                    // Notify any channel (Telegram, Discord, Matrix,
-                    // WhatsApp, etc.) that has pending reply targets on
-                    // this session so channel users see the same token
-                    // info as the web UI.
-                    notify_channels_of_compaction(state, session_key, &outcome).await;
+                // All tool-call events precede this trigger in the ordered
+                // queue. Wait until they are persisted before checkpointing.
+                event_barrier.wait_for(event_barrier.snapshot()).await;
 
-                    // Reload compacted history and retry.
-                    let compacted_history_raw = store.read(session_key).await.unwrap_or_default();
-                    let compacted_chat = values_to_chat_messages(&compacted_history_raw);
-                    let retry_hist = if compacted_chat.is_empty() {
-                        None
-                    } else {
-                        Some(compacted_chat)
-                    };
+                let outcome = match compaction::summarize_session_from_prompt(
+                    store,
+                    session_key,
+                    &*provider_ref,
+                    request.summary_messages,
+                    &request.continuation_messages,
+                    &request.tool_schemas,
+                )
+                .await
+                {
+                    Ok(outcome) => outcome,
+                    Err(error) => {
+                        warn!(run_id, error = %error, "automatic compaction failed");
+                        broadcast(
+                            state,
+                            "chat",
+                            serde_json::json!({
+                                "runId": run_id,
+                                "sessionKey": session_key,
+                                "state": "auto_compact",
+                                "phase": "error",
+                                "error": error.to_string(),
+                            }),
+                            BroadcastOpts::default(),
+                        )
+                        .await;
+                        break Err(AgentRunError::Other(anyhow::anyhow!(error.to_string())));
+                    },
+                };
 
-                    // effective_user_content already carries datetime context.
-                    let retry_agent_future = run_agent_loop_streaming_with_limits(
-                        provider_ref.clone(),
-                        &filtered_registry,
-                        &system_prompt,
-                        &effective_user_content,
-                        Some(&on_event),
-                        retry_hist,
-                        Some(tool_context),
-                        hook_registry,
-                        sender_name,
-                        Some(steer_inbox.clone()),
-                        AgentLoopLimits {
-                            max_iterations: Some(runtime_limits.max_iterations),
-                            max_tool_result_bytes: Some(runtime_limits.max_tool_result_bytes),
-                        },
-                    );
-                    await_with_agent_timeout(
-                        runtime_limits.timeout_secs,
-                        run_started,
-                        retry_agent_future,
-                    )
-                    .await
-                },
-                Err(e) => {
-                    warn!(run_id, error = %e, "retry compaction failed");
-                    broadcast(
-                        state,
-                        "chat",
-                        serde_json::json!({
-                            "runId": run_id,
-                            "sessionKey": session_key,
-                            "state": "auto_compact",
-                            "phase": "error",
-                            "error": e.to_string(),
-                        }),
-                        BroadcastOpts::default(),
-                    )
-                    .await;
-                    // Return the original error.
-                    first_result
-                },
-            }
-        },
-        other => other,
+                let mut payload = serde_json::json!({
+                    "runId": run_id,
+                    "sessionKey": session_key,
+                    "state": "auto_compact",
+                    "phase": "done",
+                    "reason": "agent_loop_threshold",
+                    "contextBudget": context_budget,
+                });
+                if let (Some(obj), Some(meta)) = (
+                    payload.as_object_mut(),
+                    outcome.broadcast_metadata().as_object().cloned(),
+                ) {
+                    obj.extend(meta);
+                }
+                broadcast(state, "chat", payload, BroadcastOpts::default()).await;
+                notify_channels_of_compaction(state, session_key, &outcome).await;
+
+                let compacted_history_raw = store.read(session_key).await.unwrap_or_default();
+                let compacted_chat = values_to_chat_messages(&compacted_history_raw);
+                next_history = (!compacted_chat.is_empty()).then_some(compacted_chat);
+                resume_from_history = true;
+            },
+            Err(error) => break Err(error),
+        }
     };
     steer_task.abort();
 

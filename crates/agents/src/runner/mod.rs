@@ -9,16 +9,12 @@ pub mod tool_result;
 #[cfg(test)]
 mod tests;
 
-#[cfg(test)]
-#[allow(dead_code, clippy::all)]
-mod tests_legacy;
-
 // ── Re-exports (preserve public API) ────────────────────────────────────
 
 pub use {
     helpers::{
-        AgentLoopLimits, AgentRunError, AgentRunResult, FinalTextSource, OnEvent, RunnerEvent,
-        RunnerToolCall,
+        AgentLoopLimits, AgentRunError, AgentRunResult, ContextCompactionRequest, FinalTextSource,
+        OnEvent, RunnerEvent, RunnerToolCall,
     },
     non_streaming::{
         run_agent, run_agent_loop, run_agent_loop_with_context,
@@ -40,17 +36,13 @@ pub(crate) use helpers::{
     AUTO_CONTINUE_NUDGE, MALFORMED_TOOL_RETRY_PROMPT, UsageAccumulator,
     apply_before_llm_call_modify_payload, apply_loop_detector_intervention,
     channel_binding_from_tool_context, dispatch_after_llm_call_hook,
-    dispatch_before_agent_start_hook, empty_tool_name_retry_prompt,
-    enforce_tool_result_context_budget, explicit_shell_command_from_user_content,
-    fallback_final_text_source, find_empty_tool_name_call, finish_agent_run, has_named_tool_call,
-    is_substantive_answer_text, log_tool_argument_diagnostic, public_tool_arguments,
-    record_answer_text, resolve_tool_lookup, sanitize_tool_name,
-    streaming_tool_call_message_content,
+    dispatch_before_agent_start_hook, empty_tool_name_retry_prompt, evaluate_context_budget,
+    explicit_shell_command_from_user_content, fallback_final_text_source,
+    find_empty_tool_name_call, finish_agent_run, has_named_tool_call, is_substantive_answer_text,
+    log_tool_argument_diagnostic, public_tool_arguments, record_answer_text, resolve_tool_lookup,
+    sanitize_tool_name, split_context_for_compaction, streaming_tool_call_message_content,
 };
 
-// Items only consumed by test submodules (`tests`, `tests_legacy`).
+// Items only consumed by runner tests.
 #[cfg(test)]
-pub(crate) use helpers::{
-    TOOL_RESULT_COMPACTION_PLACEHOLDER, compact_tool_results_oldest_first_in_place,
-    legacy_public_tool_alias,
-};
+pub(crate) use helpers::{AUTO_COMPACTION_RATIO, estimate_prompt_tokens, legacy_public_tool_alias};

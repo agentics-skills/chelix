@@ -42,7 +42,6 @@
   - [`user`](#user)
 - **Chat & Agents**
   - [`chat`](#chat)
-  - [`chat.compaction`](#chatcompaction)
   - [`agents`](#agents)
   - [`agents.presets.<name>`](#agentspresetsname)
   - [`modes`](#modes)
@@ -243,14 +242,6 @@ User profile collected during onboarding.
 | `workspace_file_max_chars` | integer | `32000` | Maximum characters from each workspace prompt file (`AGENTS.md`, `TOOLS.md`). |
 | `priority_models` | array | `[]` | Preferred model IDs to show first in selectors (full or raw model IDs). |
 | `allowed_models` | array | `[]` | ⚠️ **Deprecated.** Legacy model allowlist kept for backward compatibility; currently ignored (model visibility is provider-driven). Will be removed in a future release. |
-
-
-### `chat.compaction` — CompactionConfig
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `enabled` | bool | `true` | Automatic conversation summarization on context pressure. When the estimated next request exceeds 85 % of the token budget, the session model summarizes the conversation and a persistent checkpoint is appended; the next context window starts from that checkpoint. Manual `/compact` works regardless. |
-| `threshold_tokens` | integer | `0` | Token budget override for the auto-summarization trigger. `0` uses the session model's context window as the budget. |
 
 
 ### `agents` — AgentsConfig

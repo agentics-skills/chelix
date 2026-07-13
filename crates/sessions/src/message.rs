@@ -6,26 +6,16 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Exact values used by the agent loop's tool-result context-budget check.
+/// Exact values used by the agent loop's automatic checkpoint check.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContextBudgetMetadata {
     pub context_window: u32,
     pub compaction_ratio: usize,
-    pub overflow_ratio: usize,
-    pub has_tool_results: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_tokens: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub compaction_budget: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub overflow_budget: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tokens_needed: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tokens_reduced: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub post_compaction_tokens: Option<usize>,
+    pub current_tokens: usize,
+    pub compaction_budget: usize,
+    pub usage_percent: usize,
+    pub compaction_required: bool,
 }
 
 /// A message stored in a session JSONL file.
@@ -50,9 +40,9 @@ pub enum PersistedMessage {
     ///
     /// Appended when the conversation is summarized (automatically on
     /// context pressure or manually via `/compact`). The stored history is
-    /// never mutated: messages before the latest checkpoint stay in the
-    /// file (preserving forks from any point) but are excluded from the
-    /// LLM context, which restarts from the checkpoint summary.
+    /// never mutated: the summarized prefix stays in the file (preserving
+    /// forks from any point), while any unsummarized triggering tail remains
+    /// verbatim after the checkpoint summary in the logical LLM context.
     Checkpoint {
         /// Full summary text produced by the session model.
         summary: String,
@@ -69,7 +59,8 @@ pub enum PersistedMessage {
         /// Output tokens produced by the summarization call.
         #[serde(rename = "outputTokens", skip_serializing_if = "Option::is_none")]
         output_tokens: Option<u32>,
-        /// Number of history messages covered by this checkpoint.
+        /// Absolute physical index where the unsummarized tail starts; this is
+        /// also the number of history messages covered by the checkpoint.
         #[serde(rename = "messagesSummarized", skip_serializing_if = "Option::is_none")]
         messages_summarized: Option<u32>,
     },
@@ -181,8 +172,8 @@ pub enum PersistedMessage {
         /// Provider reasoning/thinking text that preceded this tool call.
         #[serde(skip_serializing_if = "Option::is_none")]
         reasoning: Option<String>,
-        /// Exact context-budget calculation used before the LLM iteration
-        /// that produced this tool call.
+        /// Exact automatic-checkpoint calculation used before the LLM
+        /// iteration that produced this tool call.
         #[serde(rename = "contextBudget", skip_serializing_if = "Option::is_none")]
         context_budget: Option<ContextBudgetMetadata>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -915,15 +906,11 @@ mod tests {
             reasoning: None,
             context_budget: Some(ContextBudgetMetadata {
                 context_window: 200_000,
-                compaction_ratio: 75,
-                overflow_ratio: 90,
-                has_tool_results: true,
-                current_tokens: Some(42_000),
-                compaction_budget: Some(150_000),
-                overflow_budget: Some(180_000),
-                tokens_needed: None,
-                tokens_reduced: None,
-                post_compaction_tokens: Some(42_000),
+                compaction_ratio: 85,
+                current_tokens: 42_000,
+                compaction_budget: 170_000,
+                usage_percent: 21,
+                compaction_required: false,
             }),
             created_at: Some(12345),
             run_id: None,
@@ -936,8 +923,13 @@ mod tests {
         assert!(json["success"].as_bool().unwrap());
         assert_eq!(json["result"]["stdout"], "file.txt");
         assert_eq!(json["contextBudget"]["contextWindow"], 200_000);
-        assert_eq!(json["contextBudget"]["compactionRatio"], 75);
-        assert_eq!(json["contextBudget"]["postCompactionTokens"], 42_000);
+        assert_eq!(json["contextBudget"]["compactionRatio"], 85);
+        assert_eq!(json["contextBudget"]["usagePercent"], 21);
+        assert!(
+            !json["contextBudget"]["compactionRequired"]
+                .as_bool()
+                .unwrap()
+        );
         assert!(json["contextBudget"].get("tokensNeeded").is_none());
         assert!(json.get("error").is_none());
     }

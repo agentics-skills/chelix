@@ -1001,10 +1001,10 @@ async fn test_execute_command_tool_end_to_end() {
         assert!(success, "execute_command tool should succeed");
         assert_eq!(name, "execute_command");
         assert_eq!(context_budget.context_window, 200_000);
-        assert_eq!(context_budget.compaction_ratio, 0);
-        assert_eq!(context_budget.overflow_ratio, 90);
-        assert!(!context_budget.has_tool_results);
-        assert_eq!(context_budget.current_tokens, None);
+        assert_eq!(context_budget.compaction_ratio, 85);
+        assert_eq!(context_budget.compaction_budget, 170_000);
+        assert!(context_budget.current_tokens > 0);
+        assert!(!context_budget.compaction_required);
     }
 }
 

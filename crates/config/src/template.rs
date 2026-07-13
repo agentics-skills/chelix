@@ -269,17 +269,6 @@ port = {port}                           # Port number (auto-generated for this i
 # workspace_file_max_chars = 32000  # Optional: per-file prompt cap for AGENTS.md / TOOLS.md before truncation.
 # priority_models = ["claude-opus-4-5", "gpt-5.2", "gemini-3-flash"]  # Optional: models to pin first in selectors
 
-# ── Compaction ─────────────────────────────────────────────────────────────
-# Automatic conversation summarization. When the estimated next request
-# approaches the model's context window, the session model summarizes the
-# conversation and a checkpoint is appended to the history — the stored
-# history is never mutated. Manual `/compact` works regardless of `enabled`.
-# See docs/src/compaction.md for details.
-#
-# [chat.compaction]
-# enabled = true          # Automatic summarization on context pressure
-# threshold_tokens = 0    # Token budget that triggers summarization (0 = model context window)
-
 # ══════════════════════════════════════════════════════════════════════════════
 # AUXILIARY MODELS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -420,8 +409,6 @@ port = {port}                           # Port number (auto-generated for this i
 #                                   # `max_tool_result_bytes` on the agent preset.
 # registry_mode = "full"            # "full" = all schemas every turn, "lazy" = catalog + on-demand get_tool schema fetch
 # agent_loop_detector_window = 2    # Fire intervention after N identical failing tool calls in a row
-# tool_result_compaction_ratio = 75 # % of context_window before oldest tool results are compacted
-# preemptive_overflow_ratio = 90    # % of context_window before hard ContextWindowExceeded error
 
 # ── Maps ─────────────────────────────────────────────────────────────────────
 

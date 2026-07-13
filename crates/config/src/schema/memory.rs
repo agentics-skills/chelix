@@ -62,8 +62,8 @@ pub struct MemoryEmbeddingConfig {
     /// Maximum number of memories to prefetch per turn. Default: 3.
     #[serde(default = "default_prefetch_limit")]
     pub prefetch_limit: usize,
-    /// Run a background memory extraction every N turns (0 = disabled,
-    /// only pre-compaction). Default: 5.
+    /// Run a background memory extraction every N turns (0 = disabled).
+    /// Default: 5.
     #[serde(default = "default_auto_extract_interval")]
     pub auto_extract_interval: u32,
     /// Write a session summary to memory when a session ends

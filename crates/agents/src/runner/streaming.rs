@@ -37,10 +37,7 @@ use super::{
     explicit_shell_command_from_user_content, fallback_final_text_source,
     find_empty_tool_name_call, finish_agent_run, has_named_tool_call, is_substantive_answer_text,
     log_tool_argument_diagnostic, public_tool_arguments, record_answer_text, resolve_tool_lookup,
-    retry::{
-        RATE_LIMIT_MAX_RETRIES, is_context_window_error, next_retry_delay_ms,
-        resolve_agent_max_iterations,
-    },
+    retry::{RATE_LIMIT_MAX_RETRIES, next_retry_delay_ms, resolve_agent_max_iterations},
     sanitize_tool_name, streaming_tool_call_message_content,
     tool_result::persist_and_truncate,
 };
@@ -104,9 +101,6 @@ pub async fn run_agent_loop_streaming_with_limits(
         .unwrap_or(config.tools.max_tool_result_bytes);
     let max_auto_continues = config.tools.agent_max_auto_continues;
     let auto_continue_min_tool_calls = config.tools.agent_auto_continue_min_tool_calls;
-    let compaction_ratio = config.tools.tool_result_compaction_ratio as usize;
-    let overflow_ratio = config.tools.preemptive_overflow_ratio as usize;
-    let compaction_min_iterations = config.tools.compaction_min_iterations;
     let configured_max_iterations = limits
         .max_iterations
         .unwrap_or(config.tools.agent_max_iterations);
@@ -129,16 +123,30 @@ pub async fn run_agent_loop_streaming_with_limits(
     );
 
     let mut messages: Vec<ChatMessage> = vec![ChatMessage::system(system_prompt)];
+    let history_len = history.as_ref().map_or(0, Vec::len);
 
     // Insert conversation history before the current user message.
     if let Some(hist) = history {
         messages.extend(hist);
     }
 
-    messages.push(ChatMessage::User {
-        content: user_content.clone(),
-        name: sender_name,
-    });
+    if !limits.resume_from_history {
+        messages.push(ChatMessage::User {
+            content: user_content.clone(),
+            name: sender_name,
+        });
+    }
+    let mut compaction_continuation_start = if limits.resume_from_history {
+        (history_len > 1).then_some(2).unwrap_or(messages.len())
+    } else {
+        1 + history_len
+    };
+    let mut continuation_tool_rounds = messages[compaction_continuation_start..]
+        .iter()
+        .filter(|message| {
+            matches!(message, ChatMessage::Assistant { tool_calls, .. } if !tool_calls.is_empty())
+        })
+        .count();
     let explicit_shell_command = explicit_shell_command_from_user_content(user_content);
 
     // Extract session key once for hook payloads.
@@ -237,19 +245,6 @@ pub async fn run_agent_loop_streaming_with_limits(
             loop_detector.clear_strip_tools();
         }
 
-        let effective_ratio = if iterations > compaction_min_iterations {
-            compaction_ratio
-        } else {
-            0 // skip compaction but still check for overflow
-        };
-        let context_budget = super::enforce_tool_result_context_budget(
-            &mut messages,
-            &schemas_for_api,
-            provider.context_window(),
-            effective_ratio,
-            overflow_ratio,
-        )?;
-
         if let Some(cb) = on_event {
             cb(RunnerEvent::Iteration(iterations));
         }
@@ -288,6 +283,25 @@ pub async fn run_agent_loop_streaming_with_limits(
                     warn!(error = %e, "BeforeLLMCall hook dispatch failed");
                 },
             }
+        }
+
+        let context_budget =
+            super::evaluate_context_budget(&messages, &schemas_for_api, provider.context_window());
+        if limits.automatic_checkpointing && context_budget.compaction_required {
+            let (summary_messages, continuation_messages) =
+                super::split_context_for_compaction(messages, compaction_continuation_start);
+            return Err(AgentRunError::ContextCompactionRequired(Box::new(
+                super::ContextCompactionRequest {
+                    metadata: context_budget,
+                    summary_messages,
+                    continuation_messages,
+                    tool_schemas: schemas_for_api,
+                    completed_iterations: iterations.saturating_sub(1),
+                    tool_calls_made: total_tool_calls,
+                    usage: usage_accumulator.total(),
+                    raw_llm_responses,
+                },
+            )));
         }
 
         if let Some(cb) = on_event {
@@ -435,9 +449,6 @@ pub async fn run_agent_loop_streaming_with_limits(
 
         // Handle stream errors — retry on transient failures/rate limits.
         if let Some(err) = stream_error {
-            if is_context_window_error(&err) {
-                return Err(AgentRunError::ContextWindowExceeded(err));
-            }
             if let Some(delay_ms) = next_retry_delay_ms(
                 &err,
                 &mut server_retries_remaining,
@@ -692,6 +703,10 @@ pub async fn run_agent_loop_streaming_with_limits(
                 cb(RunnerEvent::ProgressText(text.clone()));
             }
         }
+        if continuation_tool_rounds > 0 {
+            compaction_continuation_start = messages.len();
+        }
+        continuation_tool_rounds += 1;
         messages.push(ChatMessage::assistant_with_tools(
             text_for_msg,
             tool_calls.clone(),
