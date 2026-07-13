@@ -1044,9 +1044,23 @@ mod tests {
 
     #[test]
     fn all_events_array_includes_llm_hooks() {
-        assert!(HookEvent::ALL.contains(&HookEvent::BeforeLLMCall));
-        assert!(HookEvent::ALL.contains(&HookEvent::AfterLLMCall));
-        assert_eq!(HookEvent::ALL.len(), 17);
+        assert_eq!(HookEvent::ALL, &[
+            HookEvent::BeforeAgentStart,
+            HookEvent::AgentEnd,
+            HookEvent::BeforeLLMCall,
+            HookEvent::AfterLLMCall,
+            HookEvent::MessageReceived,
+            HookEvent::MessageSending,
+            HookEvent::MessageSent,
+            HookEvent::BeforeToolCall,
+            HookEvent::AfterToolCall,
+            HookEvent::ToolResultPersist,
+            HookEvent::SessionStart,
+            HookEvent::SessionEnd,
+            HookEvent::GatewayStart,
+            HookEvent::GatewayStop,
+            HookEvent::Command,
+        ]);
     }
 
     #[test]

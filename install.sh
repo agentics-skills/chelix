@@ -35,19 +35,19 @@ else
 fi
 
 info() {
-    printf "${BLUE}==>${NC} ${BOLD}%s${NC}\n" "$1"
+    printf '%b%b %b%s%b\n' "$BLUE==>" "$NC" "$BOLD" "$1" "$NC"
 }
 
 success() {
-    printf "${GREEN}==>${NC} ${BOLD}%s${NC}\n" "$1"
+    printf '%b%b %b%s%b\n' "$GREEN==>" "$NC" "$BOLD" "$1" "$NC"
 }
 
 warn() {
-    printf "${YELLOW}Warning:${NC} %s\n" "$1" >&2
+    printf '%b %s\n' "${YELLOW}Warning:${NC}" "$1" >&2
 }
 
 error() {
-    printf "${RED}Error:${NC} %s\n" "$1" >&2
+    printf '%b %s\n' "${RED}Error:${NC}" "$1" >&2
     exit 1
 }
 

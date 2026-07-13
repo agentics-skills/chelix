@@ -29,9 +29,6 @@ use chelix_gateway::{
     update_check::{UPDATE_CHECK_INTERVAL, fetch_update_availability, resolve_releases_url},
 };
 
-#[cfg(test)]
-use chelix_gateway::methods::MethodRegistry;
-
 use crate::ws::handle_connection;
 
 #[cfg(feature = "tls")]

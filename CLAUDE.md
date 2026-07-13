@@ -187,10 +187,15 @@ CLI: `chelix auth reset-password`, `chelix auth reset-identity`.
 ## Testing
 
 ```bash
-cargo test                           # All tests
-cargo test <test_name>               # Specific test
+cargo test --workspace --exclude chelix-embedding-service  # All macOS unit tests
+cargo test                           # All tests on other platforms
 cargo test -- --nocapture            # With stdout
 ```
+
+On macOS, always run the complete unit suite with
+`cargo test --workspace --exclude chelix-embedding-service`. Do not run package-specific or
+name-filtered Rust unit-test commands: keep the Cargo feature graph and build cache stable across
+iterations. The native embedding sidecar is built and validated separately.
 
 ### E2E Tests (Web UI)
 
@@ -214,11 +219,11 @@ or retry-count workarounds to hide flakiness.
 
 ## Code Quality
 
-- Never run `cargo fmt` on stable in this repo. Always use the pinned nightly rustfmt (`just format`, `just format-check`, or `cargo fmt` — `rust-toolchain.toml` selects the right nightly automatically).
+- Never run `cargo fmt` on stable in this repo. Always select the pinned nightly explicitly with `cargo +nightly-2025-12-27 fmt --all` (add `-- --check` for check-only validation).
 
 ```bash
-just format              # Format Rust (pinned nightly)
-just format-check        # CI format check
+cargo +nightly-2025-12-27 fmt --all              # Format Rust
+cargo +nightly-2025-12-27 fmt --all -- --check   # Check Rust formatting
 just release-preflight   # fmt + clippy gates
 cargo check              # Fast compile check
 taplo fmt                # Format TOML files
@@ -333,11 +338,11 @@ Conventional commits: `feat|fix|docs|style|refactor|test|chore(scope): descripti
 
 For incremental local edits before full validation:
 - TS/TSX changed: run `biome check --write` and `cd crates/web/ui && npm run build`.
-- Rust changed: run `cargo fmt --all -- --check`.
+- Rust changed: run `cargo +nightly-2025-12-27 fmt --all -- --check`.
 - Both changed: run all three.
 
 Exact commands (must match `local-validate.sh`):
-- Fmt: `cargo fmt --all -- --check`
+- Fmt: `cargo +nightly-2025-12-27 fmt --all -- --check`
 - Clippy: `just lint` (OS-aware: on macOS excludes CUDA features, on Linux uses `--all-features`)
 - Tests: `just test` (OS-aware: on macOS uses nextest without CUDA features, on Linux uses `--all-features`)
 

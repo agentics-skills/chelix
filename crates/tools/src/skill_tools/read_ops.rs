@@ -608,6 +608,23 @@ fn read_bundled(
     // Materialize sidecar files to disk so scripts can be executed.
     let skill_dir = store.materialize_sidecars(name);
 
+    Ok(build_bundled_primary_response(
+        name,
+        meta,
+        body,
+        linked,
+        skill_dir.as_deref(),
+    ))
+}
+
+#[cfg(feature = "bundled-skills")]
+pub(super) fn build_bundled_primary_response(
+    name: &str,
+    meta: &chelix_skills::types::SkillMetadata,
+    body: String,
+    linked: Vec<Value>,
+    skill_dir: Option<&Path>,
+) -> Value {
     let mut response = serde_json::Map::new();
     response.insert("name".into(), json!(name));
     response.insert("description".into(), json!(meta.description));
@@ -617,7 +634,7 @@ fn read_bundled(
     }
     response.insert("body".into(), json!(body));
     response.insert("bytes".into(), json!(body.len()));
-    if let Some(ref dir) = skill_dir {
+    if let Some(dir) = skill_dir {
         response.insert("skill_dir".into(), json!(dir.display().to_string()));
     }
 
@@ -656,7 +673,7 @@ fn read_bundled(
     }
     response.insert("linked_files".into(), json!(linked));
 
-    Ok(Value::Object(response))
+    Value::Object(response)
 }
 
 // ── Install requirements ───────────────────────────────────────────────────

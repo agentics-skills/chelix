@@ -1150,24 +1150,26 @@ async fn test_read_skill_sidecar_rejects_symlinked_skill_directory() {
 
 #[cfg(feature = "bundled-skills")]
 #[tokio::test]
-async fn test_read_bundled_skill_with_scripts_includes_skill_dir() {
-    use chelix_skills::bundled::BundledSkillStore;
-
+async fn test_bundled_skill_response_with_scripts_includes_skill_dir() {
     let tmp = tempfile::tempdir().unwrap();
-    let store = Arc::new(BundledSkillStore::with_materialize_dir(
-        tmp.path().to_path_buf(),
-    ));
-    let skills = store.discover();
-    let maps = skills
-        .iter()
-        .find(|s| s.name == "maps")
-        .expect("maps should be a bundled skill")
-        .clone();
-
-    let discoverer: Arc<dyn SkillDiscoverer> = Arc::new(StaticDiscoverer::new(vec![maps]));
-    let tool = ReadSkillTool::with_bundled(discoverer, store);
-
-    let result = tool.execute(json!({ "name": "maps" })).await.unwrap();
+    let skill_dir = tmp.path().join("sidecar-fixture");
+    let script = skill_dir.join("scripts/fixture.sh");
+    std::fs::create_dir_all(script.parent().unwrap()).unwrap();
+    std::fs::write(&script, "#!/bin/sh\necho fixture\n").unwrap();
+    let body = "# Fixture\n".to_string();
+    let meta = chelix_skills::types::SkillMetadata {
+        name: "sidecar-fixture".into(),
+        description: "Test skill with a sidecar.".into(),
+        source: Some(SkillSource::Bundled),
+        ..Default::default()
+    };
+    let result = read_ops::build_bundled_primary_response(
+        "sidecar-fixture",
+        &meta,
+        body,
+        vec![json!({"path": "scripts/fixture.sh", "bytes": 23})],
+        Some(&skill_dir),
+    );
 
     // A bundled skill with script sidecars must include `skill_dir`
     // so the agent can resolve script paths referenced in the body.
@@ -1175,8 +1177,8 @@ async fn test_read_bundled_skill_with_scripts_includes_skill_dir() {
         .as_str()
         .expect("bundled skill with scripts must include skill_dir in response");
     assert!(
-        Path::new(skill_dir).join("scripts/maps_client.py").exists(),
-        "scripts/maps_client.py must be materialized at {skill_dir}"
+        Path::new(skill_dir).join("scripts/fixture.sh").exists(),
+        "scripts/fixture.sh must be materialized at {skill_dir}"
     );
 }
 

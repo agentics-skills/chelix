@@ -1038,9 +1038,19 @@ impl SkillsService for NoopSkillsService {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, serial_test::serial};
+    use super::*;
 
-    struct ConfigDirGuard;
+    struct ConfigDirGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl ConfigDirGuard {
+        fn new(config_dir: PathBuf) -> Self {
+            let lock = crate::config_override_test_lock();
+            chelix_config::set_config_dir(config_dir);
+            Self { _lock: lock }
+        }
+    }
 
     impl Drop for ConfigDirGuard {
         fn drop(&mut self) {
@@ -1063,11 +1073,9 @@ mod tests {
 
     #[cfg(feature = "bundled-skills")]
     #[tokio::test]
-    #[serial]
     async fn disabling_one_bundled_skill_does_not_disable_category() -> anyhow::Result<()> {
         let dir = tempfile::tempdir()?;
-        chelix_config::set_config_dir(dir.path().to_path_buf());
-        let _guard = ConfigDirGuard;
+        let _guard = ConfigDirGuard::new(dir.path().to_path_buf());
 
         let service = NoopSkillsService;
         let result = service
@@ -1094,11 +1102,9 @@ mod tests {
 
     #[cfg(feature = "bundled-skills")]
     #[tokio::test]
-    #[serial]
     async fn bundled_category_toggle_preserves_individual_disables() -> anyhow::Result<()> {
         let dir = tempfile::tempdir()?;
-        chelix_config::set_config_dir(dir.path().to_path_buf());
-        let _guard = ConfigDirGuard;
+        let _guard = ConfigDirGuard::new(dir.path().to_path_buf());
 
         let service = NoopSkillsService;
         service

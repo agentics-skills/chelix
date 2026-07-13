@@ -439,55 +439,72 @@ fn find_skill_dir_embedded_recursive(
 mod tests {
     use super::*;
 
+    const EXPECTED_BUNDLED_SKILLS: &[(&str, &str)] = &[
+        ("birdclaw", "social-media"),
+        ("data-sync", "research"),
+        ("mcp-servers", "devops"),
+        ("wacrawl", "messaging"),
+    ];
+
     fn store() -> BundledSkillStore {
         BundledSkillStore::new()
     }
 
-    // ── Embedded assets ─────────────────────────────────────────────────
+    fn assert_expected_skills(skills: &[SkillMetadata]) {
+        let mut actual = skills
+            .iter()
+            .map(|skill| {
+                (
+                    skill.name.as_str(),
+                    skill.category.as_deref().unwrap_or_default(),
+                )
+            })
+            .collect::<Vec<_>>();
+        actual.sort_unstable();
+        assert_eq!(actual, EXPECTED_BUNDLED_SKILLS);
+    }
+
+    fn sidecar_fixture_store(root: &Path) -> BundledSkillStore {
+        let assets = root.join("assets");
+        let skill_dir = assets.join("test/sidecar-fixture");
+        let scripts_dir = skill_dir.join("scripts");
+        std::fs::create_dir_all(&scripts_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: sidecar-fixture\ndescription: Test skill with a sidecar.\n---\n\n# Fixture\n",
+        )
+        .unwrap();
+        std::fs::write(scripts_dir.join("fixture.sh"), "#!/bin/sh\necho fixture\n").unwrap();
+
+        BundledSkillStore {
+            source: AssetSource::Filesystem(assets),
+            materialize_dir: root.join("materialized"),
+        }
+    }
 
     #[test]
-    fn embedded_assets_have_skills() {
-        // Verify the include_dir! embedded data has skills, independent of
-        // the filesystem fallback. This catches build issues where the
-        // embedded assets are silently empty at runtime.
+    fn embedded_assets_match_expected_skills() {
         let skills = discover_from_embedded();
-        assert!(
-            skills.len() >= 90,
-            "expected ≥90 embedded skills, got {}",
-            skills.len()
-        );
-        for skill in &skills {
+        assert_expected_skills(&skills);
+    }
+
+    #[test]
+    fn every_embedded_skill_body_is_readable() {
+        let skills = discover_from_embedded();
+        for skill in skills {
+            let body = read_skill_body_embedded(&skill.name);
             assert!(
-                skill.category.is_some(),
-                "embedded skill '{}' has no category",
+                body.as_ref().is_some_and(|body| !body.is_empty()),
+                "embedded skill '{}' body not readable",
                 skill.name
             );
         }
     }
 
     #[test]
-    fn embedded_skill_body_is_readable() {
-        let skills = discover_from_embedded();
-        assert!(!skills.is_empty(), "no embedded skills to test");
-        let first = &skills[0];
-        let body = read_skill_body_embedded(&first.name);
-        assert!(
-            body.is_some(),
-            "embedded skill '{}' body not readable via embedded path",
-            first.name
-        );
-    }
-
-    // ── Discovery ───────────────────────────────────────────────────────
-
-    #[test]
-    fn bundled_skills_are_discovered() {
+    fn filesystem_assets_match_expected_skills() {
         let skills = store().discover();
-        assert!(
-            skills.len() >= 90,
-            "expected ≥90 bundled skills, got {}",
-            skills.len()
-        );
+        assert_expected_skills(&skills);
         for skill in &skills {
             assert_eq!(skill.source, Some(SkillSource::Bundled));
             assert!(!skill.name.is_empty(), "skill has empty name");
@@ -533,8 +550,6 @@ mod tests {
         }
     }
 
-    // ── Category ────────────────────────────────────────────────────────
-
     #[test]
     fn every_bundled_skill_has_category() {
         let skills = store().discover();
@@ -553,43 +568,28 @@ mod tests {
     }
 
     #[test]
-    fn known_categories_present() {
+    fn bundled_categories_match_remaining_assets() {
         let skills = store().discover();
         let cats: std::collections::HashSet<String> =
             skills.iter().filter_map(|s| s.category.clone()).collect();
-        // These categories must exist (from both hermes and openclaw copies).
-        for expected in [
-            "research",
-            "creative",
-            "mlops",
-            "software-development",
-            "productivity",
-        ] {
-            assert!(
-                cats.contains(expected),
-                "expected category '{}' not found in {:?}",
-                expected,
-                cats
-            );
-        }
+        let expected = ["devops", "messaging", "research", "social-media"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        assert_eq!(cats, expected);
     }
 
     #[test]
     fn category_derived_from_top_level_directory() {
         let skills = store().discover();
-        // axolotl lives at mlops/training/axolotl — category should be "mlops"
-        let axolotl = skills.iter().find(|s| s.name == "axolotl");
-        if let Some(skill) = axolotl {
-            assert_eq!(skill.category.as_deref(), Some("mlops"));
-        }
-        // arxiv lives at research/arxiv — category should be "research"
-        let arxiv = skills.iter().find(|s| s.name == "arxiv");
-        if let Some(skill) = arxiv {
-            assert_eq!(skill.category.as_deref(), Some("research"));
+        for (name, category) in EXPECTED_BUNDLED_SKILLS {
+            let skill = skills
+                .iter()
+                .find(|skill| skill.name == *name)
+                .unwrap_or_else(|| panic!("{name} should be bundled"));
+            assert_eq!(skill.category.as_deref(), Some(*category));
         }
     }
-
-    // ── Origin ──────────────────────────────────────────────────────────
 
     #[test]
     fn all_bundled_skills_have_origin() {
@@ -610,17 +610,8 @@ mod tests {
             .iter()
             .filter_map(|s| s.origin.as_ref()?.source.clone())
             .collect();
-        // All skills should come from one of our vetted sources.
-        for source in &sources {
-            assert!(
-                source == "hermes-agent" || source == "openclaw" || source == "chelix",
-                "unexpected origin source: '{}'",
-                source
-            );
-        }
+        assert_eq!(sources, std::collections::HashSet::from(["chelix".into()]));
     }
-
-    // ── Content reading ─────────────────────────────────────────────────
 
     #[test]
     fn every_bundled_skill_body_is_readable() {
@@ -644,33 +635,31 @@ mod tests {
 
     #[test]
     fn missing_sidecar_returns_none() {
-        assert!(store().read_sidecar("arxiv", "nonexistent.md").is_none());
+        assert!(
+            store()
+                .read_sidecar("mcp-servers", "nonexistent.md")
+                .is_none()
+        );
     }
-
-    // ── Materialization ────────────────────────────────────────────
 
     #[test]
     fn materialize_sidecars_writes_scripts_to_disk() {
-        let s = store();
         let tmp = tempfile::tempdir().unwrap();
+        let s = sidecar_fixture_store(tmp.path());
 
-        // The "maps" skill has scripts/maps_client.py as a sidecar.
         let skill_dir = s
-            .materialize_sidecars_to("maps", tmp.path())
-            .expect("maps skill should have sidecars to materialize");
+            .materialize_sidecars("sidecar-fixture")
+            .expect("fixture should have sidecars to materialize");
 
-        let script = skill_dir.join("scripts/maps_client.py");
+        let script = skill_dir.join("scripts/fixture.sh");
         assert!(
             script.exists(),
-            "maps_client.py must be materialized at {}",
+            "fixture.sh must be materialized at {}",
             script.display()
         );
-
-        // Script content must be non-empty.
         let content = std::fs::read_to_string(&script).unwrap();
-        assert!(!content.is_empty(), "materialized script must not be empty");
+        assert_eq!(content, "#!/bin/sh\necho fixture\n");
 
-        // On unix, scripts/ files must be executable.
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -687,140 +676,91 @@ mod tests {
         let s = store();
         let tmp = tempfile::tempdir().unwrap();
 
-        // Find a skill that has no sidecars (e.g. ascii-art).
-        let sidecars = s.list_sidecars("ascii-art");
-        if sidecars.is_empty() {
-            let result = s.materialize_sidecars_to("ascii-art", tmp.path());
-            assert!(
-                result.is_none(),
-                "skill without sidecars should return None"
-            );
-        }
+        assert!(s.list_sidecars("mcp-servers").is_empty());
+        assert!(
+            s.materialize_sidecars_to("mcp-servers", tmp.path())
+                .is_none()
+        );
     }
 
     #[test]
     fn materialize_sidecars_is_idempotent() {
-        let s = store();
         let tmp = tempfile::tempdir().unwrap();
+        let s = sidecar_fixture_store(tmp.path());
 
-        let dir1 = s.materialize_sidecars_to("maps", tmp.path());
-        let dir2 = s.materialize_sidecars_to("maps", tmp.path());
+        let dir1 = s.materialize_sidecars("sidecar-fixture");
+        let dir2 = s.materialize_sidecars("sidecar-fixture");
         assert_eq!(
             dir1, dir2,
             "repeated materialization must return the same path"
         );
 
-        // File must still be valid after second write.
-        let script = dir2.unwrap().join("scripts/maps_client.py");
+        let script = dir2.unwrap().join("scripts/fixture.sh");
         assert!(script.exists());
     }
 
-    // ── Specific skills smoke tests ─────────────────────────────────────
-
     #[test]
-    fn arxiv_skill_metadata() {
+    fn mcp_servers_is_chelix_native() {
+        let s = store();
         let skills = store().discover();
-        let arxiv = skills
+        let mcp_servers = skills
             .iter()
-            .find(|s| s.name == "arxiv")
-            .expect("arxiv should be bundled");
-        assert_eq!(arxiv.category.as_deref(), Some("research"));
-        assert!(arxiv.description.contains("arXiv"));
+            .find(|skill| skill.name == "mcp-servers")
+            .expect("mcp-servers should be bundled");
+        assert_eq!(mcp_servers.category.as_deref(), Some("devops"));
         assert_eq!(
-            arxiv.origin.as_ref().and_then(|o| o.source.as_deref()),
-            Some("hermes-agent")
+            mcp_servers
+                .origin
+                .as_ref()
+                .and_then(|origin| origin.source.as_deref()),
+            Some("chelix")
         );
+        let body = s.read_skill("mcp-servers").expect("body should exist");
+        assert!(body.contains("`mcp_add`"));
+        assert!(!body.contains("mcporter"));
     }
 
     #[test]
-    fn weather_skill_metadata() {
+    fn wacrawl_install_metadata_matches_remaining_asset() {
         let skills = store().discover();
-        let weather = skills
+        let wacrawl = skills
             .iter()
-            .find(|s| s.name == "weather")
-            .expect("weather should be bundled");
-        assert_eq!(weather.category.as_deref(), Some("smart-home"));
-        assert_eq!(
-            weather.origin.as_ref().and_then(|o| o.source.as_deref()),
-            Some("openclaw")
-        );
-    }
-
-    #[test]
-    fn himalaya_has_requires() {
-        let skills = store().discover();
-        let himalaya = skills
-            .iter()
-            .find(|s| s.name == "himalaya")
-            .expect("himalaya should be bundled");
+            .find(|skill| skill.name == "wacrawl")
+            .expect("wacrawl should be bundled");
+        assert_eq!(wacrawl.category.as_deref(), Some("messaging"));
+        assert!(wacrawl.requires.bins.contains(&"wacrawl".to_string()));
         assert!(
-            himalaya.requires.bins.contains(&"himalaya".to_string()),
-            "himalaya should require the himalaya binary"
-        );
-        assert!(
-            !himalaya.requires.install.is_empty(),
-            "himalaya should have install instructions"
-        );
-    }
-
-    #[test]
-    fn slacrawl_install_metadata_uses_openclaw_sources() {
-        let skills = store().discover();
-        let slacrawl = skills
-            .iter()
-            .find(|s| s.name == "slacrawl")
-            .expect("slacrawl should be bundled");
-
-        let modules: Vec<&str> = slacrawl
-            .requires
-            .install
-            .iter()
-            .filter_map(|install| install.module.as_deref())
-            .collect();
-
-        assert_eq!(
-            slacrawl.homepage.as_deref(),
-            Some("https://github.com/openclaw/slacrawl")
-        );
-        assert!(
-            slacrawl
+            wacrawl
                 .requires
                 .install
                 .iter()
-                .any(|install| install.formula.as_deref() == Some("openclaw/tap/slacrawl"))
-        );
-        assert!(modules.contains(&"github.com/openclaw/slacrawl/cmd/slacrawl@latest"));
-        assert!(
-            !slacrawl
-                .homepage
-                .as_deref()
-                .is_some_and(|homepage| { homepage.contains("github.com/vincentkoc/slacrawl") })
-        );
-        assert!(!slacrawl.requires.install.iter().any(|install| {
-            install
-                .formula
-                .as_deref()
-                .is_some_and(|formula| formula.contains("vincentkoc/tap/slacrawl"))
-        }));
-        assert!(
-            !modules
-                .iter()
-                .any(|module| module.contains("github.com/vincentkoc/slacrawl"))
+                .any(|install| install.formula.as_deref() == Some("steipete/tap/wacrawl"))
         );
     }
 
     #[test]
-    fn webhook_subscriptions_is_chelix_native() {
+    fn birdclaw_install_metadata_matches_remaining_asset() {
+        let skills = store().discover();
+        let birdclaw = skills
+            .iter()
+            .find(|skill| skill.name == "birdclaw")
+            .expect("birdclaw should be bundled");
+        assert_eq!(birdclaw.category.as_deref(), Some("social-media"));
+        assert!(birdclaw.requires.any_bins.contains(&"birdclaw".to_string()));
+        assert!(
+            birdclaw
+                .requires
+                .install
+                .iter()
+                .any(|install| install.formula.as_deref() == Some("steipete/tap/birdclaw"))
+        );
+    }
+
+    #[test]
+    fn data_sync_uses_memory_digest_workflow() {
         let s = store();
-        let body = s.read_skill("webhook-subscriptions").expect("should exist");
-        // The rewritten skill should reference Chelix RPC, not Hermes CLI.
-        assert!(
-            body.contains("webhooks.create"),
-            "webhook skill should reference Chelix RPC API"
-        );
-        assert!(
-            !body.contains("hermes webhook"),
-            "webhook skill should not reference Hermes CLI"
-        );
+        let body = s.read_skill("data-sync").expect("body should exist");
+        assert!(body.contains("memory/<source>/YYYY-MM-DD.md"));
+        assert!(body.contains("No secrets in memory"));
     }
 }
