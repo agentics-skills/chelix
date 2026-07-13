@@ -7,15 +7,15 @@ provider through to the web UI.
 
 Chelix supports real-time token streaming for LLM responses, providing a much
 better user experience than waiting for the complete response. Streaming works
-even when tools are enabled, allowing users to see text as it arrives while
-tool calls are accumulated and executed.
+even when tools are enabled, allowing users to see text as it arrives while tool
+calls are accumulated and executed.
 
 ## Components
 
 ### 1. StreamEvent Enum (`crates/agents/src/model.rs`)
 
-The `StreamEvent` enum defines all events that can occur during a streaming
-LLM response:
+The `StreamEvent` enum defines all events that can occur during a streaming LLM
+response:
 
 ```rust
 pub enum StreamEvent {
@@ -52,9 +52,9 @@ The `LlmProvider` trait defines two streaming methods:
 - `stream()` — Basic streaming without tool support
 - `stream_with_tools()` — Streaming with tool schemas passed to the API
 
-Both accept `Vec<ChatMessage>` (not raw JSON). Providers that support
-streaming with tools override `stream_with_tools()`. Others fall back to
-`stream()` via the default implementation, which ignores the tools parameter.
+Both accept `Vec<ChatMessage>` (not raw JSON). Providers that support streaming
+with tools override `stream_with_tools()`. Others fall back to `stream()` via
+the default implementation, which ignores the tools parameter.
 
 The trait also exposes `supports_tools()`, `reasoning_effort()`, and
 `with_reasoning_effort()` for provider capability discovery.
@@ -67,21 +67,20 @@ The Anthropic provider implements streaming by:
 2. Reading Server-Sent Events (SSE) from the response
 3. Parsing events and yielding appropriate `StreamEvent` variants:
 
-| SSE Event Type | StreamEvent |
-|----------------|-------------|
-| `content_block_start` (text) | (none, just tracking) |
-| `content_block_start` (tool_use) | `ToolCallStart` |
-| `content_block_delta` (text_delta) | `Delta` |
-| `content_block_delta` (input_json_delta) | `ToolCallArgumentsDelta` |
-| `content_block_stop` | `ToolCallComplete` (for tool blocks) |
-| `message_delta` | (usage tracking) |
-| `message_stop` | `Done` |
-| `error` | `Error` |
+| SSE Event Type                           | StreamEvent                          |
+| ---------------------------------------- | ------------------------------------ |
+| `content_block_start` (text)             | (none, just tracking)                |
+| `content_block_start` (tool_use)         | `ToolCallStart`                      |
+| `content_block_delta` (text_delta)       | `Delta`                              |
+| `content_block_delta` (input_json_delta) | `ToolCallArgumentsDelta`             |
+| `content_block_stop`                     | `ToolCallComplete` (for tool blocks) |
+| `message_delta`                          | (usage tracking)                     |
+| `message_stop`                           | `Done`                               |
+| `error`                                  | `Error`                              |
 
 ### 4. Agent Runner (`crates/agents/src/runner/streaming.rs`)
 
-The `run_agent_loop_streaming()` function orchestrates the streaming agent
-loop:
+The `run_agent_loop_streaming()` function orchestrates the streaming agent loop:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -115,33 +114,34 @@ loop:
 The chat service's `run_with_tools()` function:
 
 1. Sets up an event callback that broadcasts `RunnerEvent`s via WebSocket
-2. Calls `run_agent_loop_streaming()` from `crates/agents/src/runner/streaming.rs`
+2. Calls `run_agent_loop_streaming()` from
+   `crates/agents/src/runner/streaming.rs`
 3. Broadcasts events to connected clients as JSON frames
 
 Event types broadcast to the UI:
 
-| RunnerEvent | WebSocket State |
-|-------------|-----------------|
-| `Thinking` | `thinking` |
-| `ThinkingDone` | `thinking_done` |
-| `ThinkingText(text)` | `thinking_text` |
-| `TextDelta(text)` | `delta` with `text` field |
-| `ToolCallStart` | `tool_call_start` |
-| `ToolCallEnd` | `tool_call_end` |
-| `ToolCallRejected` | `tool_call_end` with `rejected: true` |
-| `Iteration(n)` | `iteration` |
-| `SubAgentStart` | `sub_agent_start` |
-| `SubAgentEnd` | `sub_agent_end` |
-| `AutoContinue` | `notice` ("Auto-continue") |
-| `RetryingAfterError` | `retrying` |
-| `LoopInterventionFired` | `notice` ("Loop detected") |
+| RunnerEvent             | WebSocket State                       |
+| ----------------------- | ------------------------------------- |
+| `Thinking`              | `thinking`                            |
+| `ThinkingDone`          | `thinking_done`                       |
+| `ThinkingText(text)`    | `thinking_text`                       |
+| `TextDelta(text)`       | `delta` with `text` field             |
+| `ToolCallStart`         | `tool_call_start`                     |
+| `ToolCallEnd`           | `tool_call_end`                       |
+| `ToolCallRejected`      | `tool_call_end` with `rejected: true` |
+| `Iteration(n)`          | `iteration`                           |
+| `SubAgentStart`         | `sub_agent_start`                     |
+| `SubAgentEnd`           | `sub_agent_end`                       |
+| `AutoContinue`          | `notice` ("Auto-continue")            |
+| `RetryingAfterError`    | `retrying`                            |
+| `LoopInterventionFired` | `notice` ("Loop detected")            |
 
 ### 6. Web Crate (`crates/web/`)
 
 The `chelix-web` crate owns the browser-facing layer: HTML templates, static
 assets (JS, CSS, icons), and the axum routes that serve them. It injects its
-routes into the gateway via the `RouteEnhancer` composition pattern, keeping
-web UI concerns separate from API and agent logic in the gateway.
+routes into the gateway via the `RouteEnhancer` composition pattern, keeping web
+UI concerns separate from API and agent logic in the gateway.
 
 ### 7. Frontend (`crates/web/ui/src/`)
 
@@ -234,11 +234,11 @@ fn stream_with_tools(
 
 ## Performance Considerations
 
-- **Unbounded channels**: WebSocket send channels are unbounded, so slow
-  clients can accumulate messages in memory
+- **Unbounded channels**: WebSocket send channels are unbounded, so slow clients
+  can accumulate messages in memory
 - **Markdown re-rendering**: The frontend re-renders full markdown on each
-  delta, which is O(n) work per delta. For very long responses, this can
-  cause UI lag
+  delta, which is O(n) work per delta. For very long responses, this can cause
+  UI lag
 - **Concurrent tool execution**: Multiple tool calls are executed in parallel
   using `futures::join_all()`, improving throughput when the LLM requests
   several tools at once

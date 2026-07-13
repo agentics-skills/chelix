@@ -14,11 +14,11 @@ upstream_proxy = "http://proxy.corp.example.com:8080"
 
 ### Supported schemes
 
-| Scheme | Example | Notes |
-|--------|---------|-------|
-| `http://` | `http://proxy:8080` | HTTP CONNECT proxy (most common) |
-| `https://` | `https://proxy:8443` | TLS-encrypted proxy connection |
-| `socks5://` | `socks5://proxy:1080` | SOCKS5 proxy (DNS resolved locally) |
+| Scheme       | Example                | Notes                                |
+| ------------ | ---------------------- | ------------------------------------ |
+| `http://`    | `http://proxy:8080`    | HTTP CONNECT proxy (most common)     |
+| `https://`   | `https://proxy:8443`   | TLS-encrypted proxy connection       |
+| `socks5://`  | `socks5://proxy:1080`  | SOCKS5 proxy (DNS resolved locally)  |
 | `socks5h://` | `socks5h://proxy:1080` | SOCKS5 proxy (DNS resolved by proxy) |
 
 ### Proxy authentication
@@ -44,18 +44,17 @@ automatically excluded from the proxy (`no_proxy`).
 
 ### Slack caveat
 
-Slack streaming messages (progressive edits) are proxied via reqwest.
-However, regular `chat.postMessage` calls go through the `slack-morphism`
-library's built-in hyper connector, which does **not** use the upstream
-proxy. If you need full Slack proxy coverage, also set the `HTTPS_PROXY`
-environment variable.
+Slack streaming messages (progressive edits) are proxied via reqwest. However,
+regular `chat.postMessage` calls go through the `slack-morphism` library's
+built-in hyper connector, which does **not** use the upstream proxy. If you need
+full Slack proxy coverage, also set the `HTTPS_PROXY` environment variable.
 
 ### Telegram caveat
 
-Telegram uses [teloxide](https://github.com/teloxide/teloxide) which bundles
-its own HTTP client (reqwest 0.11). The `upstream_proxy` config does not apply
-to Telegram traffic directly. To proxy Telegram, set the standard
-`HTTPS_PROXY` environment variable, which teloxide's reqwest honours:
+Telegram uses [teloxide](https://github.com/teloxide/teloxide) which bundles its
+own HTTP client (reqwest 0.11). The `upstream_proxy` config does not apply to
+Telegram traffic directly. To proxy Telegram, set the standard `HTTPS_PROXY`
+environment variable, which teloxide's reqwest honours:
 
 ```bash
 export HTTPS_PROXY=http://proxy.corp.example.com:8080
@@ -79,8 +78,8 @@ honours the standard proxy environment variables:
 - `ALL_PROXY` / `all_proxy`
 - `NO_PROXY` / `no_proxy`
 
-Setting `upstream_proxy` in the config takes precedence over these variables
-for all traffic except Telegram (see caveat above).
+Setting `upstream_proxy` in the config takes precedence over these variables for
+all traffic except Telegram (see caveat above).
 
 ## Interaction with Sandbox Networking
 

@@ -1,9 +1,9 @@
 # WhatsApp Channel
 
-Chelix supports WhatsApp as a messaging channel using the WhatsApp Linked Devices
-protocol. Your WhatsApp account connects as a linked device (like WhatsApp Web),
-so no separate phone number or WhatsApp Business API is needed — you pair your
-existing personal or business WhatsApp by scanning a QR code.
+Chelix supports WhatsApp as a messaging channel using the WhatsApp Linked
+Devices protocol. Your WhatsApp account connects as a linked device (like
+WhatsApp Web), so no separate phone number or WhatsApp Business API is needed —
+you pair your existing personal or business WhatsApp by scanning a QR code.
 
 ## How It Works
 
@@ -48,8 +48,8 @@ default = ["whatsapp", ...]
 whatsapp = ["chelix-gateway/whatsapp"]
 ```
 
-When disabled, all WhatsApp code is compiled out — no QR code library, no
-Signal Protocol store, no WhatsApp event handlers.
+When disabled, all WhatsApp code is compiled out — no QR code library, no Signal
+Protocol store, no WhatsApp event handlers.
 
 ```admonish important title="Enable in Channel List"
 WhatsApp is not shown in the web UI by default. Add it to the offered
@@ -122,22 +122,22 @@ Each WhatsApp account is a named entry under `[channels.whatsapp]`:
 [channels.whatsapp."<account-id>"]
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `paired` | bool | `false` | Whether QR code pairing is complete (auto-set) |
-| `display_name` | string | — | Phone name after pairing (auto-populated) |
-| `phone_number` | string | — | Phone number after pairing (auto-populated) |
-| `store_path` | string | — | Custom path to sled store; defaults to `~/.chelix/whatsapp/<account_id>/` |
-| `model` | string | — | Default LLM model ID for this account |
-| `model_provider` | string | — | Provider name for the model |
-| `agent_id` | string | — | Default agent ID for this account |
-| `dm_policy` | string | `"open"` | DM access policy: `"open"`, `"allowlist"`, or `"disabled"` |
-| `group_policy` | string | `"open"` | Group access policy: `"open"`, `"allowlist"`, or `"disabled"` |
-| `mention_mode` | string | `"always"` | Group reply mode: `"always"`, `"mention"`, or `"none"` |
-| `allowlist` | array | `[]` | Users allowed to DM (usernames or phone numbers) |
-| `group_allowlist` | array | `[]` | Group JIDs allowed for bot responses |
-| `otp_self_approval` | bool | `true` | Allow non-allowlisted users to self-approve via OTP |
-| `otp_cooldown_secs` | int | `300` | Cooldown seconds after 3 failed OTP attempts |
+| Field               | Type   | Default    | Description                                                               |
+| ------------------- | ------ | ---------- | ------------------------------------------------------------------------- |
+| `paired`            | bool   | `false`    | Whether QR code pairing is complete (auto-set)                            |
+| `display_name`      | string | —          | Phone name after pairing (auto-populated)                                 |
+| `phone_number`      | string | —          | Phone number after pairing (auto-populated)                               |
+| `store_path`        | string | —          | Custom path to sled store; defaults to `~/.chelix/whatsapp/<account_id>/` |
+| `model`             | string | —          | Default LLM model ID for this account                                     |
+| `model_provider`    | string | —          | Provider name for the model                                               |
+| `agent_id`          | string | —          | Default agent ID for this account                                         |
+| `dm_policy`         | string | `"open"`   | DM access policy: `"open"`, `"allowlist"`, or `"disabled"`                |
+| `group_policy`      | string | `"open"`   | Group access policy: `"open"`, `"allowlist"`, or `"disabled"`             |
+| `mention_mode`      | string | `"always"` | Group reply mode: `"always"`, `"mention"`, or `"none"`                    |
+| `allowlist`         | array  | `[]`       | Users allowed to DM (usernames or phone numbers)                          |
+| `group_allowlist`   | array  | `[]`       | Group JIDs allowed for bot responses                                      |
+| `otp_self_approval` | bool   | `true`     | Allow non-allowlisted users to self-approve via OTP                       |
+| `otp_cooldown_secs` | int    | `300`      | Cooldown seconds after 3 failed OTP attempts                              |
 
 ### Full Example
 
@@ -190,27 +190,27 @@ WhatsApp uses the same access control model as Telegram channels.
 
 ### DM Policies
 
-| Policy | Behavior |
-|--------|----------|
-| `open` | Anyone who messages your WhatsApp can chat with the bot |
+| Policy      | Behavior                                                               |
+| ----------- | ---------------------------------------------------------------------- |
+| `open`      | Anyone who messages your WhatsApp can chat with the bot                |
 | `allowlist` | Only users on the allowlist get responses; others get an OTP challenge |
-| `disabled` | All DMs are silently ignored |
+| `disabled`  | All DMs are silently ignored                                           |
 
 ### Group Policies
 
-| Policy | Behavior |
-|--------|----------|
-| `open` | Bot responds in all groups it's part of, subject to `mention_mode` |
+| Policy      | Behavior                                                                        |
+| ----------- | ------------------------------------------------------------------------------- |
+| `open`      | Bot responds in all groups it's part of, subject to `mention_mode`              |
 | `allowlist` | Bot only responds in groups on the `group_allowlist`, subject to `mention_mode` |
-| `disabled` | Bot ignores all group messages |
+| `disabled`  | Bot ignores all group messages                                                  |
 
 ### Mention Mode
 
-| Mode | Behavior |
-|------|----------|
-| `always` | Bot may respond to allowed group messages without an @mention |
+| Mode      | Behavior                                                           |
+| --------- | ------------------------------------------------------------------ |
+| `always`  | Bot may respond to allowed group messages without an @mention      |
 | `mention` | Bot only responds in allowed groups when the account is @mentioned |
-| `none` | Bot never responds in groups |
+| `none`    | Bot never responds in groups                                       |
 
 ### OTP Self-Approval
 
@@ -218,14 +218,14 @@ When `dm_policy = "allowlist"` and `otp_self_approval = true` (the default),
 users not on the allowlist can request access:
 
 1. User sends any message to the bot
-2. Bot replies: *"Please reply with the 6-digit code to verify access"*
+2. Bot replies: _"Please reply with the 6-digit code to verify access"_
 3. The OTP code appears in the **Senders** tab of the web UI
 4. User replies with the code
 5. If correct, user is permanently added to the allowlist
 
-After 3 wrong attempts, a cooldown period kicks in (default 5 minutes).
-You can also approve or deny users directly from the Senders tab without
-waiting for OTP verification.
+After 3 wrong attempts, a cooldown period kicks in (default 5 minutes). You can
+also approve or deny users directly from the Senders tab without waiting for OTP
+verification.
 
 ```admonish tip
 Set `otp_self_approval = false` if you want to manually approve every new
@@ -235,12 +235,12 @@ user from the web UI instead of letting them self-approve.
 ### Using Your Personal Number Safely
 
 When Chelix is linked to your personal WhatsApp, it sees **every** incoming
-message — from friends, family, groups, everyone. The key question is: who
-does the bot *respond* to?
+message — from friends, family, groups, everyone. The key question is: who does
+the bot _respond_ to?
 
 **Self-chat always works.** Messages you send to yourself (via "Message
-Yourself") bypass access control entirely. You are the account owner, so
-you're always authorized regardless of `dm_policy` settings.
+Yourself") bypass access control entirely. You are the account owner, so you're
+always authorized regardless of `dm_policy` settings.
 
 **Other people's messages follow `dm_policy`.** If you want Chelix to only
 respond to your self-chat and ignore everyone else:
@@ -251,8 +251,8 @@ dm_policy = "disabled"    # Ignore all DMs from other people
 group_policy = "disabled" # Ignore all group messages
 ```
 
-This is the safest configuration for personal use — the bot only responds
-when you message yourself.
+This is the safest configuration for personal use — the bot only responds when
+you message yourself.
 
 If you want to selectively allow certain contacts:
 
@@ -271,8 +271,8 @@ change this to `"disabled"` or `"allowlist"` before pairing.
 
 ## Session Persistence
 
-WhatsApp uses the Signal Protocol for end-to-end encryption. The encryption
-keys and session state are stored in a **sled database** at:
+WhatsApp uses the Signal Protocol for end-to-end encryption. The encryption keys
+and session state are stored in a **sled database** at:
 
 ```
 ~/.chelix/whatsapp/<account_id>/
@@ -299,19 +299,20 @@ send a message to yourself, the bot processes it as a regular inbound message
 and replies in the same chat.
 
 This is useful for:
+
 - **Personal assistant** — chat with your AI without a dedicated phone number
 - **Testing** — verify the bot works before sharing with others
 - **Quick notes** — send yourself reminders that the AI processes
 
 ### Loop Prevention
 
-When the bot replies to your self-chat, WhatsApp delivers that reply back as
-an incoming message (since it's your own chat). Chelix uses two mechanisms to
+When the bot replies to your self-chat, WhatsApp delivers that reply back as an
+incoming message (since it's your own chat). Chelix uses two mechanisms to
 prevent infinite reply loops:
 
-1. **Message ID tracking**: Every message the bot sends is recorded in a
-   bounded ring buffer (256 entries). Incoming `is_from_me` messages whose
-   ID matches a tracked send are recognized as bot echoes and skipped.
+1. **Message ID tracking**: Every message the bot sends is recorded in a bounded
+   ring buffer (256 entries). Incoming `is_from_me` messages whose ID matches a
+   tracked send are recognized as bot echoes and skipped.
 
 2. **Invisible watermark**: An invisible Unicode sequence (zero-width joiners)
    is appended to every bot-sent text message. If an incoming message contains
@@ -324,15 +325,15 @@ Both checks are automatic — no configuration needed.
 
 WhatsApp supports rich media messages. Chelix handles each type:
 
-| Message Type | Handling |
-|--------------|----------|
-| **Text** | Dispatched directly to the LLM |
-| **Image** | Downloaded, optimized for LLM consumption (resized if needed), sent as attachment |
-| **Voice** | Downloaded and transcribed via STT (if configured); falls back to text guidance |
-| **Audio** | Same as voice, but classified separately (non-PTT audio files) |
-| **Video** | Thumbnail extracted and sent as image attachment with caption |
-| **Document** | Caption and filename/MIME metadata dispatched as text |
-| **Location** | Resolves pending location tool requests, or dispatches coordinates to LLM |
+| Message Type | Handling                                                                          |
+| ------------ | --------------------------------------------------------------------------------- |
+| **Text**     | Dispatched directly to the LLM                                                    |
+| **Image**    | Downloaded, optimized for LLM consumption (resized if needed), sent as attachment |
+| **Voice**    | Downloaded and transcribed via STT (if configured); falls back to text guidance   |
+| **Audio**    | Same as voice, but classified separately (non-PTT audio files)                    |
+| **Video**    | Thumbnail extracted and sent as image attachment with caption                     |
+| **Document** | Caption and filename/MIME metadata dispatched as text                             |
+| **Location** | Resolves pending location tool requests, or dispatches coordinates to LLM         |
 
 ```admonish info title="Voice Transcription"
 Voice message transcription requires an STT provider to be configured.
@@ -363,6 +364,7 @@ The Channels page shows all connected accounts across all channel types
 ### Editing a Channel
 
 Click **Edit** on a channel card to modify:
+
 - DM and group policies
 - Allowlist entries
 - Default model
@@ -382,18 +384,24 @@ Switch to the **Senders** tab to see everyone who has messaged the bot:
 
 ### WhatsApp Not in Add Channel Menu
 
-- WhatsApp is not offered by default. Add `"whatsapp"` to the `offered` list in `chelix.toml`:
+- WhatsApp is not offered by default. Add `"whatsapp"` to the `offered` list in
+  `chelix.toml`:
+
   ```toml
   [channels]
   offered = ["telegram", "discord", "slack", "whatsapp"]
   ```
+
 - Restart Chelix after changing this setting
 
 ### "Can't Understand That Message Type"
 
-- This means the bot received a message type it doesn't handle (e.g. stickers, reactions, polls)
-- Check the server logs for an `info` entry that lists which message fields were present
-- Supported types: text, images, audio, voice notes, video, documents, and locations
+- This means the bot received a message type it doesn't handle (e.g. stickers,
+  reactions, polls)
+- Check the server logs for an `info` entry that lists which message fields were
+  present
+- Supported types: text, images, audio, voice notes, video, documents, and
+  locations
 
 ### QR Code Not Appearing
 
@@ -405,7 +413,8 @@ Switch to the **Senders** tab to see everyone who has messaged the bot:
 
 - This usually means the sled store was corrupted or deleted
 - Check that `~/.chelix/whatsapp/<account_id>/` exists and has data files
-- Re-pair by removing the directory and restarting: the pairing flow starts again
+- Re-pair by removing the directory and restarting: the pairing flow starts
+  again
 
 ### Bot Not Responding to Messages
 
@@ -416,7 +425,8 @@ Switch to the **Senders** tab to see everyone who has messaged the bot:
 
 ### Self-Chat Not Working
 
-- WhatsApp's "Message Yourself" chat must be used (not a group with only yourself)
+- WhatsApp's "Message Yourself" chat must be used (not a group with only
+  yourself)
 - The bot needs to be connected and the account paired
 - If you just restarted, the watermark-based detection handles messages that
   arrive before the message ID buffer is rebuilt

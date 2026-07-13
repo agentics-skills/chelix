@@ -1,6 +1,7 @@
 # Mobile PWA and Push Notifications
 
-Chelix can be installed as a Progressive Web App (PWA) on mobile devices, providing a native app-like experience with push notifications.
+Chelix can be installed as a Progressive Web App (PWA) on mobile devices,
+providing a native app-like experience with push notifications.
 
 ## Installing on Mobile
 
@@ -34,7 +35,8 @@ When installed as a PWA, chelix provides:
 
 ## Push Notifications
 
-Push notifications allow you to receive alerts when the LLM responds, even when you're not actively viewing the app.
+Push notifications allow you to receive alerts when the LLM responds, even when
+you're not actively viewing the app.
 
 ### Enabling Push Notifications
 
@@ -43,7 +45,9 @@ Push notifications allow you to receive alerts when the LLM responds, even when 
 3. Click **Enable** to subscribe to push notifications
 4. When prompted, allow notification permissions
 
-**Safari/iOS Note**: Push notifications only work when the app is installed as a PWA. If you see "Installation required", add chelix to your Dock first:
+**Safari/iOS Note**: Push notifications only work when the app is installed as a
+PWA. If you see "Installation required", add chelix to your Dock first:
+
 - **macOS**: File → Add to Dock
 - **iOS**: Share → Add to Home Screen
 
@@ -52,32 +56,38 @@ Push notifications allow you to receive alerts when the LLM responds, even when 
 The Settings > Notifications page shows all subscribed devices:
 
 - **Device name**: Parsed from user agent (e.g., "Safari on macOS", "iPhone")
-- **IP address**: Client IP at subscription time (supports proxies via X-Forwarded-For)
+- **IP address**: Client IP at subscription time (supports proxies via
+  X-Forwarded-For)
 - **Subscription date**: When the device subscribed
 
-You can remove any subscription by clicking the **Remove** button. This works from any device - useful for revoking access to old devices.
+You can remove any subscription by clicking the **Remove** button. This works
+from any device - useful for revoking access to old devices.
 
-Subscription changes are broadcast in real-time via WebSocket, so all connected clients see updates immediately.
+Subscription changes are broadcast in real-time via WebSocket, so all connected
+clients see updates immediately.
 
 ### How It Works
 
-Chelix uses the Web Push API with VAPID (Voluntary Application Server Identification) keys:
+Chelix uses the Web Push API with VAPID (Voluntary Application Server
+Identification) keys:
 
 1. **VAPID Keys**: On first run, the server generates a P-256 ECDSA key pair
-2. **Subscription**: The browser creates a push subscription using the server's public key
+2. **Subscription**: The browser creates a push subscription using the server's
+   public key
 3. **Registration**: The subscription details are sent to the server and stored
-4. **Notification**: When you need to be notified, the server encrypts and sends a push message
+4. **Notification**: When you need to be notified, the server encrypts and sends
+   a push message
 
 ### Push API Routes
 
 The gateway exposes these API endpoints for push notifications:
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/push/vapid-key` | GET | Get the VAPID public key for subscription |
-| `/api/push/subscribe` | POST | Register a push subscription |
-| `/api/push/unsubscribe` | POST | Remove a push subscription |
-| `/api/push/status` | GET | Get push service status and subscription list |
+| Endpoint                | Method | Description                                   |
+| ----------------------- | ------ | --------------------------------------------- |
+| `/api/push/vapid-key`   | GET    | Get the VAPID public key for subscription     |
+| `/api/push/subscribe`   | POST   | Register a push subscription                  |
+| `/api/push/unsubscribe` | POST   | Remove a push subscription                    |
+| `/api/push/status`      | GET    | Get push service status and subscription list |
 
 ### Subscribe Request
 
@@ -121,13 +131,15 @@ Push notifications include:
 }
 ```
 
-Clicking a notification will open or focus the app and navigate to the relevant chat.
+Clicking a notification will open or focus the app and navigate to the relevant
+chat.
 
 ## Configuration
 
 ### Feature Flag
 
-Push notifications are controlled by the `push-notifications` feature flag, which is enabled by default. To disable:
+Push notifications are controlled by the `push-notifications` feature flag,
+which is enabled by default. To disable:
 
 ```toml
 # In your Cargo.toml or when building
@@ -166,27 +178,32 @@ The mobile interface adapts for smaller screens:
 
 ## Browser Support
 
-| Feature | Chrome | Safari | Firefox | Edge |
-|---------|--------|--------|---------|------|
-| PWA Install | ✅ | ✅ (iOS) | ❌ | ✅ |
-| Push Notifications | ✅ | ✅ (iOS 16.4+) | ✅ | ✅ |
-| Service Worker | ✅ | ✅ | ✅ | ✅ |
-| Offline Support | ✅ | ✅ | ✅ | ✅ |
+| Feature            | Chrome | Safari         | Firefox | Edge |
+| ------------------ | ------ | -------------- | ------- | ---- |
+| PWA Install        | ✅     | ✅ (iOS)       | ❌      | ✅   |
+| Push Notifications | ✅     | ✅ (iOS 16.4+) | ✅      | ✅   |
+| Service Worker     | ✅     | ✅             | ✅      | ✅   |
+| Offline Support    | ✅     | ✅             | ✅      | ✅   |
 
-Note: iOS push notifications require iOS 16.4 or later and the app must be installed as a PWA.
+Note: iOS push notifications require iOS 16.4 or later and the app must be
+installed as a PWA.
 
 ## Troubleshooting
 
 ### Notifications Not Working
 
-1. **Check permissions**: Ensure notifications are allowed in browser/OS settings
-2. **Check subscription**: Go to Settings > Notifications to see if your device is listed
-3. **Check server logs**: Look for `push:` prefixed log messages for delivery status
+1. **Check permissions**: Ensure notifications are allowed in browser/OS
+   settings
+2. **Check subscription**: Go to Settings > Notifications to see if your device
+   is listed
+3. **Check server logs**: Look for `push:` prefixed log messages for delivery
+   status
 4. **Safari/iOS specific**:
    - Must be installed as PWA (Add to Dock/Home Screen)
    - iOS requires version 16.4 or later
    - The Enable button is disabled until installed as PWA
-5. **Behind a proxy**: Ensure your proxy forwards `X-Forwarded-For` or `X-Real-IP` headers
+5. **Behind a proxy**: Ensure your proxy forwards `X-Forwarded-For` or
+   `X-Real-IP` headers
 
 ### PWA Not Installing
 

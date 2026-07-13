@@ -7,26 +7,25 @@ tools, enabling the system to extend its own capabilities during a conversation.
 
 Four agent tools manage personal skills by default:
 
-| Tool | Description |
-|------|-------------|
-| `create_skill` | Write a new `SKILL.md` to `<data_dir>/skills/<name>/` |
-| `update_skill` | Overwrite an existing skill's `SKILL.md` |
-| `patch_skill` | Apply surgical find/replace patches to an existing `SKILL.md` |
-| `delete_skill` | Remove a skill directory |
+| Tool           | Description                                                   |
+| -------------- | ------------------------------------------------------------- |
+| `create_skill` | Write a new `SKILL.md` to `<data_dir>/skills/<name>/`         |
+| `update_skill` | Overwrite an existing skill's `SKILL.md`                      |
+| `patch_skill`  | Apply surgical find/replace patches to an existing `SKILL.md` |
+| `delete_skill` | Remove a skill directory                                      |
 
-When `skills.enable_agent_sidecar_files = true`, a fifth tool becomes
-available:
+When `skills.enable_agent_sidecar_files = true`, a fifth tool becomes available:
 
-| Tool | Description |
-|------|-------------|
+| Tool                | Description                                                                      |
+| ------------------- | -------------------------------------------------------------------------------- |
 | `write_skill_files` | Write supplementary UTF-8 text files inside an existing personal skill directory |
 
 Skills created this way are personal and stored in the configured data
 directory's `skills/` folder. They become available on the next message
 automatically thanks to the skill watcher.
 
-Before any built-in skill mutation runs, Chelix creates an automatic
-checkpoint. Tool results include a `checkpointId` you can later restore with
+Before any built-in skill mutation runs, Chelix creates an automatic checkpoint.
+Tool results include a `checkpointId` you can later restore with
 `checkpoint_restore`.
 
 ## Skill Watcher
@@ -60,8 +59,8 @@ The skill discoverer picks it up on the next message.
 
 ## Writing Supplementary Files
 
-When `skills.enable_agent_sidecar_files = true`, the agent can add sidecar
-files such as shell scripts, templates, `_meta.json`, or `Dockerfile`:
+When `skills.enable_agent_sidecar_files = true`, the agent can add sidecar files
+such as shell scripts, templates, `_meta.json`, or `Dockerfile`:
 
 ```json
 {

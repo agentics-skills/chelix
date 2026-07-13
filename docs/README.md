@@ -18,4 +18,5 @@ npm run build
 npm run preview
 ```
 
-The GitHub Actions docs workflow builds `docs/dist/` and publishes it to GitHub Pages on pushes to `main`.
+The GitHub Actions docs workflow builds `docs/dist/` and publishes it to GitHub
+Pages on pushes to `main`.

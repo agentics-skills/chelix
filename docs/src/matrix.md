@@ -1,9 +1,9 @@
 # Matrix
 
-Chelix can connect to Matrix as a bot account using a homeserver URL plus one
-of three authentication methods: OIDC, password, or access token. The
-integration runs as an outbound sync loop, so it does not require a public
-webhook URL, port forwarding, or TLS termination on your side.
+Chelix can connect to Matrix as a bot account using a homeserver URL plus one of
+three authentication methods: OIDC, password, or access token. The integration
+runs as an outbound sync loop, so it does not require a public webhook URL, port
+forwarding, or TLS termination on your side.
 
 ```admonish warning
 Matrix encrypted chats require password auth.
@@ -34,28 +34,31 @@ Matrix is no longer a minimal transport. The current integration supports the
 full day-to-day bot flow, including encrypted chats when you connect with
 password auth.
 
-| Area | Status | Notes |
-|------|--------|-------|
-| Web UI setup and editing | Supported | Add, edit, remove, and retry Matrix channels from **Settings -> Channels** |
-| Direct messages and rooms | Supported | DM policy, room policy, allowlists, mention gating, and auto-join |
-| End-to-end encrypted chats | Supported with password auth | Chelix creates and persists its own Matrix device and crypto state |
-| Device verification | Supported | Chelix accepts Element verification and you confirm with `verify yes`, `verify no`, `verify show`, or `verify cancel` |
-| Cross-signing / recovery ownership | Supported | Password auth defaults to `chelix_owned`; older accounts may require one browser approval before takeover |
-| Streaming replies | Supported | Edit-in-place streaming for text responses |
-| Thread-aware replies and context | Supported | Replies stay in threads and context fetch follows the thread root |
-| Voice and audio messages | Supported | Matrix audio is downloaded and sent through the normal transcription pipeline |
-| Interactive actions | Supported | Short action lists are sent as native Matrix polls |
-| Reactions | Supported | Ack reactions and normal reaction flows work |
-| Location | Supported | Inbound location shares update user location and outbound location sends are supported |
-| OTP sender approval | Supported | Unknown DM senders can self-approve through the shared OTP flow |
-| Model routing overrides | Supported | Per-room and per-user model/provider overrides |
+| Area                               | Status                       | Notes                                                                                                                 |
+| ---------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Web UI setup and editing           | Supported                    | Add, edit, remove, and retry Matrix channels from **Settings -> Channels**                                            |
+| Direct messages and rooms          | Supported                    | DM policy, room policy, allowlists, mention gating, and auto-join                                                     |
+| End-to-end encrypted chats         | Supported with password auth | Chelix creates and persists its own Matrix device and crypto state                                                    |
+| Device verification                | Supported                    | Chelix accepts Element verification and you confirm with `verify yes`, `verify no`, `verify show`, or `verify cancel` |
+| Cross-signing / recovery ownership | Supported                    | Password auth defaults to `chelix_owned`; older accounts may require one browser approval before takeover             |
+| Streaming replies                  | Supported                    | Edit-in-place streaming for text responses                                                                            |
+| Thread-aware replies and context   | Supported                    | Replies stay in threads and context fetch follows the thread root                                                     |
+| Voice and audio messages           | Supported                    | Matrix audio is downloaded and sent through the normal transcription pipeline                                         |
+| Interactive actions                | Supported                    | Short action lists are sent as native Matrix polls                                                                    |
+| Reactions                          | Supported                    | Ack reactions and normal reaction flows work                                                                          |
+| Location                           | Supported                    | Inbound location shares update user location and outbound location sends are supported                                |
+| OTP sender approval                | Supported                    | Unknown DM senders can self-approve through the shared OTP flow                                                       |
+| Model routing overrides            | Supported                    | Per-room and per-user model/provider overrides                                                                        |
 
 The main remaining Matrix-specific limitations are:
 
-- access-token auth is still plain-traffic-only, encrypted chats need password auth
-- existing Matrix accounts with old crypto state may require one browser approval before Chelix can take over ownership
+- access-token auth is still plain-traffic-only, encrypted chats need password
+  auth
+- existing Matrix accounts with old crypto state may require one browser
+  approval before Chelix can take over ownership
 - Matrix interactive actions are poll-based, not arbitrary button/select UIs
-- older encrypted history may remain unreadable until the missing room keys are shared with the Chelix device
+- older encrypted history may remain unreadable until the missing room keys are
+  shared with the Chelix device
 - arbitrary remote-media fetch and reupload for outbound URLs is still limited
 
 ## How It Works
@@ -86,11 +89,11 @@ The main remaining Matrix-specific limitations are:
 
 Chelix supports three ways to authenticate with a Matrix homeserver:
 
-| Mode | When to use | Encrypted chats? |
-|------|------------|------------------|
-| **OIDC** (recommended) | Modern homeservers using Matrix Authentication Service (e.g. matrix.org since April 2025) | Yes |
-| **Password** | Older homeservers without OIDC support | Yes |
-| **Access token** | Quick testing or plain-traffic-only bots | No |
+| Mode                   | When to use                                                                               | Encrypted chats? |
+| ---------------------- | ----------------------------------------------------------------------------------------- | ---------------- |
+| **OIDC** (recommended) | Modern homeservers using Matrix Authentication Service (e.g. matrix.org since April 2025) | Yes              |
+| **Password**           | Older homeservers without OIDC support                                                    | Yes              |
+| **Access token**       | Quick testing or plain-traffic-only bots                                                  | No               |
 
 ### OIDC Authentication
 
@@ -99,12 +102,13 @@ Chelix uses the matrix-sdk built-in OAuth 2.0 flow (MSC3861):
 
 1. In the web UI, select **OIDC (recommended)** as the authentication mode
 2. Enter the homeserver URL and click **Authenticate with OIDC**
-3. A browser window opens for you to log in at the homeserver's identity provider
+3. A browser window opens for you to log in at the homeserver's identity
+   provider
 4. After successful authentication, the browser redirects back to Chelix
 5. Chelix automatically registers a device, exchanges tokens, and starts syncing
 
-OIDC sessions are refreshed automatically. Chelix persists the session tokens
-to disk so the bot reconnects after restarts without re-authentication.
+OIDC sessions are refreshed automatically. Chelix persists the session tokens to
+disk so the bot reconnects after restarts without re-authentication.
 
 To configure OIDC via `chelix.toml`:
 
@@ -168,10 +172,10 @@ device, generates its own E2EE identity and one-time keys, stores that device
 state locally, and can then complete normal Element verification.
 
 Access-token auth is different. It authenticates an already-existing Matrix
-session, often one created by Element, but Chelix does not receive that
-existing device's private encryption keys just by knowing the token. That is
-why access-token auth works for plain Matrix traffic but is not a reliable way
-to support encrypted rooms.
+session, often one created by Element, but Chelix does not receive that existing
+device's private encryption keys just by knowing the token. That is why
+access-token auth works for plain Matrix traffic but is not a reliable way to
+support encrypted rooms.
 
 Two related Matrix recovery tools often cause confusion:
 
@@ -195,8 +199,8 @@ When you add a password-based Matrix account, Chelix offers two ownership modes:
 
 ### `chelix_owned`
 
-This is the default for dedicated bot accounts. Chelix tries to become the
-owner of the account's Matrix crypto state so the bot can verify its own device
+This is the default for dedicated bot accounts. Chelix tries to become the owner
+of the account's Matrix crypto state so the bot can verify its own device
 properly.
 
 In this mode Chelix will:
@@ -232,7 +236,10 @@ Matrix can be configured either:
 - manually in `chelix.toml`
 - through the web UI in **Settings -> Channels**
 
-Web UI channel accounts are stored in the internal `channels` table in `data_dir()/chelix.db`. They are not written back into `chelix.toml`. If you need a Matrix setting that does not have a dedicated field yet, use the advanced JSON config editor in the channel form.
+Web UI channel accounts are stored in the internal `channels` table in
+`data_dir()/chelix.db`. They are not written back into `chelix.toml`. If you
+need a Matrix setting that does not have a dedicated field yet, use the advanced
+JSON config editor in the channel form.
 
 ```admonish warning
 Web-managed Matrix credentials are not currently wrapped by the Chelix vault.
@@ -243,8 +250,8 @@ redacted from logs, and redacted from API responses, but they are not yet
 encrypted-at-rest by the vault layer.
 ```
 
-Manual file configuration uses a `[channels.matrix.<account-id>]` section in `chelix.toml`.
-If you want encrypted Matrix chats, use password auth:
+Manual file configuration uses a `[channels.matrix.<account-id>]` section in
+`chelix.toml`. If you want encrypted Matrix chats, use password auth:
 
 ```toml
 [channels.matrix.my-bot]
@@ -277,32 +284,32 @@ picker list from `chelix.toml`.
 
 ### Configuration Fields
 
-| Field | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `homeserver` | **yes** | — | Base URL of the Matrix homeserver |
-| `access_token` | no | — | Access token for the bot account, for plain and unencrypted Matrix traffic only |
-| `password` | no | — | Password for the bot account, required for encrypted Matrix chats |
-| `user_id` | no | — | Bot user ID, for example `@bot:example.com`, auto-detected via `whoami` when omitted |
-| `device_id` | no | — | Optional device ID used for session restore |
-| `device_display_name` | no | — | Optional device display name used for password-based logins |
-| `ownership_mode` | no | `"user_managed"` | Who manages cross-signing and recovery: `"chelix_owned"` or `"user_managed"` |
-| `dm_policy` | no | `"allowlist"` | Who can DM the bot: `"open"`, `"allowlist"`, or `"disabled"` |
-| `room_policy` | no | `"allowlist"` | Which rooms can talk to the bot: `"open"`, `"allowlist"`, or `"disabled"` |
-| `mention_mode` | no | `"mention"` | When the bot responds in rooms: `"always"`, `"mention"`, or `"none"` |
-| `room_allowlist` | no | `[]` | Matrix room IDs or aliases allowed to interact with the bot |
-| `user_allowlist` | no | `[]` | Matrix user IDs allowed to DM the bot |
-| `auto_join` | no | `"always"` | Invite handling: `"always"`, `"allowlist"`, or `"off"` |
-| `model` | no | — | Override the default model for this account |
-| `model_provider` | no | — | Provider for the overridden model |
-| `stream_mode` | no | `"edit_in_place"` | How streaming replies are sent: `"edit_in_place"` or `"off"` |
-| `edit_throttle_ms` | no | `500` | Minimum milliseconds between edit-in-place streaming updates |
-| `stream_min_initial_chars` | no | `30` | Minimum buffered characters before the first streamed send |
-| `channel_overrides` | no | `{}` | Per-room model/provider overrides |
-| `user_overrides` | no | `{}` | Per-user model/provider overrides |
-| `reply_to_message` | no | `true` | Send threaded/rich replies when possible |
-| `ack_reaction` | no | `"👀"` | Emoji reaction added while processing, omit to disable |
-| `otp_self_approval` | no | `true` | Enable OTP self-approval for non-allowlisted DM users |
-| `otp_cooldown_secs` | no | `300` | Cooldown in seconds after 3 failed OTP attempts |
+| Field                      | Required | Default           | Description                                                                          |
+| -------------------------- | -------- | ----------------- | ------------------------------------------------------------------------------------ |
+| `homeserver`               | **yes**  | —                 | Base URL of the Matrix homeserver                                                    |
+| `access_token`             | no       | —                 | Access token for the bot account, for plain and unencrypted Matrix traffic only      |
+| `password`                 | no       | —                 | Password for the bot account, required for encrypted Matrix chats                    |
+| `user_id`                  | no       | —                 | Bot user ID, for example `@bot:example.com`, auto-detected via `whoami` when omitted |
+| `device_id`                | no       | —                 | Optional device ID used for session restore                                          |
+| `device_display_name`      | no       | —                 | Optional device display name used for password-based logins                          |
+| `ownership_mode`           | no       | `"user_managed"`  | Who manages cross-signing and recovery: `"chelix_owned"` or `"user_managed"`         |
+| `dm_policy`                | no       | `"allowlist"`     | Who can DM the bot: `"open"`, `"allowlist"`, or `"disabled"`                         |
+| `room_policy`              | no       | `"allowlist"`     | Which rooms can talk to the bot: `"open"`, `"allowlist"`, or `"disabled"`            |
+| `mention_mode`             | no       | `"mention"`       | When the bot responds in rooms: `"always"`, `"mention"`, or `"none"`                 |
+| `room_allowlist`           | no       | `[]`              | Matrix room IDs or aliases allowed to interact with the bot                          |
+| `user_allowlist`           | no       | `[]`              | Matrix user IDs allowed to DM the bot                                                |
+| `auto_join`                | no       | `"always"`        | Invite handling: `"always"`, `"allowlist"`, or `"off"`                               |
+| `model`                    | no       | —                 | Override the default model for this account                                          |
+| `model_provider`           | no       | —                 | Provider for the overridden model                                                    |
+| `stream_mode`              | no       | `"edit_in_place"` | How streaming replies are sent: `"edit_in_place"` or `"off"`                         |
+| `edit_throttle_ms`         | no       | `500`             | Minimum milliseconds between edit-in-place streaming updates                         |
+| `stream_min_initial_chars` | no       | `30`              | Minimum buffered characters before the first streamed send                           |
+| `channel_overrides`        | no       | `{}`              | Per-room model/provider overrides                                                    |
+| `user_overrides`           | no       | `{}`              | Per-user model/provider overrides                                                    |
+| `reply_to_message`         | no       | `true`            | Send threaded/rich replies when possible                                             |
+| `ack_reaction`             | no       | `"👀"`            | Emoji reaction added while processing, omit to disable                               |
+| `otp_self_approval`        | no       | `true`            | Enable OTP self-approval for non-allowlisted DM users                                |
+| `otp_cooldown_secs`        | no       | `300`             | Cooldown in seconds after 3 failed OTP attempts                                      |
 
 ### Web UI Notes
 
@@ -313,13 +320,22 @@ When you add Matrix through the web UI:
 - the saved account lives in `data_dir()/chelix.db`, not in `chelix.toml`
 - the web UI defaults to password auth because encrypted Matrix chats require it
 - password-based channels default to **Let Chelix own this Matrix account**
-- Matrix channels can be added, edited, removed, and retried entirely from **Settings -> Channels**
-- access-token auth is for plain Matrix traffic only, because Chelix cannot import the existing device's private E2EE keys from an access token
-- if you switch a channel to user-managed mode, the Channels page shows the homeserver, user ID, device ID, and device name you need to open that bot account in Element
-- if an older Matrix account needs one external approval before takeover, the channel card shows an approval link plus a retry action so you do not need to rebuild the channel config manually
-- if Element starts device verification, Chelix accepts it and posts emoji confirmation instructions in the room
-- send `verify yes`, `verify no`, `verify show`, or `verify cancel` as normal messages in that same Matrix chat to finish or inspect the verification flow
-- older encrypted history may still be unreadable if this Chelix device joined after those keys were created
+- Matrix channels can be added, edited, removed, and retried entirely from
+  **Settings -> Channels**
+- access-token auth is for plain Matrix traffic only, because Chelix cannot
+  import the existing device's private E2EE keys from an access token
+- if you switch a channel to user-managed mode, the Channels page shows the
+  homeserver, user ID, device ID, and device name you need to open that bot
+  account in Element
+- if an older Matrix account needs one external approval before takeover, the
+  channel card shows an approval link plus a retry action so you do not need to
+  rebuild the channel config manually
+- if Element starts device verification, Chelix accepts it and posts emoji
+  confirmation instructions in the room
+- send `verify yes`, `verify no`, `verify show`, or `verify cancel` as normal
+  messages in that same Matrix chat to finish or inspect the verification flow
+- older encrypted history may still be unreadable if this Chelix device joined
+  after those keys were created
 
 If you want to inspect web-added channels directly, query the SQLite database:
 
@@ -327,7 +343,8 @@ If you want to inspect web-added channels directly, query the SQLite database:
 sqlite3 ~/.chelix/chelix.db 'select channel_type, account_id, config from channels;'
 ```
 
-If you use `CHELIX_DATA_DIR` or `--data-dir`, check that directory instead of `~/.chelix`.
+If you use `CHELIX_DATA_DIR` or `--data-dir`, check that directory instead of
+`~/.chelix`.
 
 ### Full Example
 
@@ -373,38 +390,38 @@ Matrix uses the same gating model as the other channel integrations.
 
 ### DM Policy
 
-| Value | Behavior |
-|-------|----------|
+| Value         | Behavior                                                |
+| ------------- | ------------------------------------------------------- |
 | `"allowlist"` | Only users in `user_allowlist` can DM the bot (default) |
-| `"open"` | Anyone can DM the bot |
-| `"disabled"` | DMs are silently ignored |
+| `"open"`      | Anyone can DM the bot                                   |
+| `"disabled"`  | DMs are silently ignored                                |
 
 ### Room Policy
 
-| Value | Behavior |
-|-------|----------|
+| Value         | Behavior                                             |
+| ------------- | ---------------------------------------------------- |
 | `"allowlist"` | Only rooms in `room_allowlist` are allowed (default) |
-| `"open"` | Any joined room can interact with the bot |
-| `"disabled"` | Room messages are silently ignored |
+| `"open"`      | Any joined room can interact with the bot            |
+| `"disabled"`  | Room messages are silently ignored                   |
 
 ### Mention Mode
 
-| Value | Behavior |
-|-------|----------|
+| Value       | Behavior                                                        |
+| ----------- | --------------------------------------------------------------- |
 | `"mention"` | Bot only responds when explicitly mentioned in a room (default) |
-| `"always"` | Bot responds to every message in allowed rooms |
-| `"none"` | Bot never responds in rooms |
+| `"always"`  | Bot responds to every message in allowed rooms                  |
+| `"none"`    | Bot never responds in rooms                                     |
 
 When `mention_mode = "mention"`, Chelix checks Matrix intentional mentions
 (`m.mentions`) and also falls back to a literal MXID mention in the plain body.
 
 ## Invite Handling
 
-| Value | Behavior |
-|-------|----------|
-| `"always"` | Auto-join every invite (default) |
+| Value         | Behavior                                                                                          |
+| ------------- | ------------------------------------------------------------------------------------------------- |
+| `"always"`    | Auto-join every invite (default)                                                                  |
 | `"allowlist"` | Auto-join only when the inviter is in `user_allowlist` or the room is already in `room_allowlist` |
-| `"off"` | Never auto-join invites |
+| `"off"`       | Never auto-join invites                                                                           |
 
 ## Threads and Replies
 
@@ -466,11 +483,14 @@ seconds.
 ### Element shows the room as encrypted
 
 - That is fine, encrypted rooms are supported
-- Make sure the Matrix account was added with password auth, not access-token auth
+- Make sure the Matrix account was added with password auth, not access-token
+  auth
 - If the Chelix device is new, start a fresh Element verification with the bot
 - Chelix will accept the request and post emoji instructions in the chat
-- Send `verify yes` as a normal chat message if the emojis match, `verify no` if they do not
-- If older encrypted history still does not decrypt, resend the message after verification
+- Send `verify yes` as a normal chat message if the emojis match, `verify no` if
+  they do not
+- If older encrypted history still does not decrypt, resend the message after
+  verification
 
 ### Access-token auth connects but encrypted messages do not decrypt
 
@@ -485,24 +505,35 @@ seconds.
 
 - Chelix should accept Matrix verification requests automatically
 - Watch the chat for the emoji confirmation prompt
-- If the prompt scrolled away, send `verify show` as a normal message in that same Matrix chat
-- If an older stale verification request was replayed from sync history, start a fresh verification in Element and then use the `verify ...` commands
-- If nothing happens, check the Matrix logs for verification events and try starting verification again
+- If the prompt scrolled away, send `verify show` as a normal message in that
+  same Matrix chat
+- If an older stale verification request was replayed from sync history, start a
+  fresh verification in Element and then use the `verify ...` commands
+- If nothing happens, check the Matrix logs for verification events and try
+  starting verification again
 
 ### Channels page says `Ownership approval required`
 
-- This means Chelix connected, but Matrix wants one explicit browser approval before cross-signing can be reset for this older account
-- Use the **Open approval page for @user:server** button in the Matrix channel card
-- Make sure the browser page is signed into that exact Matrix account, not your personal one
-- After approving the reset, use the retry button in the same channel card so Chelix can finish ownership bootstrap
-- Until that finishes, the bot may still chat, but the device can remain `unverified`
+- This means Chelix connected, but Matrix wants one explicit browser approval
+  before cross-signing can be reset for this older account
+- Use the **Open approval page for @user:server** button in the Matrix channel
+  card
+- Make sure the browser page is signed into that exact Matrix account, not your
+  personal one
+- After approving the reset, use the retry button in the same channel card so
+  Chelix can finish ownership bootstrap
+- Until that finishes, the bot may still chat, but the device can remain
+  `unverified`
 
 ### Bot can chat, but the Channels page still says `Device not yet verified by owner`
 
 - Matrix encryption and Matrix cross-signing are related, but not identical
-- A Matrix device can already send and receive messages before it is verified by the account owner
-- If you are using `chelix_owned`, let Chelix finish ownership bootstrap or complete the approval flow above
-- If you are using `user_managed`, verify the Chelix device from your own Matrix client instead
+- A Matrix device can already send and receive messages before it is verified by
+  the account owner
+- If you are using `chelix_owned`, let Chelix finish ownership bootstrap or
+  complete the approval flow above
+- If you are using `user_managed`, verify the Chelix device from your own Matrix
+  client instead
 
 ### Bot does not respond in rooms
 

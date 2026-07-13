@@ -1,6 +1,8 @@
 # Hooks
 
-Hooks let you observe, modify, or block actions at key points in the agent lifecycle. Use them for auditing, policy enforcement, prompt injection filtering, notifications, and custom integrations.
+Hooks let you observe, modify, or block actions at key points in the agent
+lifecycle. Use them for auditing, policy enforcement, prompt injection
+filtering, notifications, and custom integrations.
 
 ## How Hooks Work
 
@@ -33,47 +35,50 @@ Hooks let you observe, modify, or block actions at key points in the agent lifec
 
 ### Modifying Events (Sequential)
 
-These events run hooks sequentially. Hooks can modify the payload or block the action.
+These events run hooks sequentially. Hooks can modify the payload or block the
+action.
 
-| Event | Description | Can Modify | Can Block |
-|-------|-------------|------------|-----------|
-| `BeforeAgentStart` | Before agent loop starts | yes | yes |
-| `BeforeLLMCall` | Before prompt is sent to the LLM provider | yes | yes |
-| `AfterLLMCall` | After LLM response, before tool execution | yes | yes |
-| `BeforeToolCall` | Before a tool executes | yes | yes |
-| `MessageReceived` | When an inbound channel/UI message arrives | yes | yes |
-| `MessageSending` | Before sending a response | yes | yes |
-| `ToolResultPersist` | When a tool result is persisted | yes | yes |
+| Event               | Description                                | Can Modify | Can Block |
+| ------------------- | ------------------------------------------ | ---------- | --------- |
+| `BeforeAgentStart`  | Before agent loop starts                   | yes        | yes       |
+| `BeforeLLMCall`     | Before prompt is sent to the LLM provider  | yes        | yes       |
+| `AfterLLMCall`      | After LLM response, before tool execution  | yes        | yes       |
+| `BeforeToolCall`    | Before a tool executes                     | yes        | yes       |
+| `MessageReceived`   | When an inbound channel/UI message arrives | yes        | yes       |
+| `MessageSending`    | Before sending a response                  | yes        | yes       |
+| `ToolResultPersist` | When a tool result is persisted            | yes        | yes       |
 
-For `MessageReceived`, `Block(reason)` aborts the turn — the user message is
-not persisted, no run starts, and the reason is delivered back to the sender
-via the originating channel (or broadcast as a `chat` rejection event for web
-clients). `ModifyPayload` must return an object of shape `{"content": "..."}`;
-the `content` string replaces the inbound text before it reaches the model or
-the session store.
+For `MessageReceived`, `Block(reason)` aborts the turn — the user message is not
+persisted, no run starts, and the reason is delivered back to the sender via the
+originating channel (or broadcast as a `chat` rejection event for web clients).
+`ModifyPayload` must return an object of shape `{"content": "..."}`; the
+`content` string replaces the inbound text before it reaches the model or the
+session store.
 
 ### Read-Only Events (Parallel)
 
 These events run hooks in parallel for performance. They cannot modify or block.
 
-| Event | Description |
-|-------|-------------|
-| `AfterToolCall` | After a tool completes |
-| `AgentEnd` | When agent loop completes |
-| `MessageSent` | After response is delivered |
-| `SessionStart` | When a new session begins |
-| `SessionEnd` | When a session ends |
-| `GatewayStart` | When Chelix starts |
-| `GatewayStop` | When Chelix shuts down |
-| `Command` | When a slash command is used |
+| Event           | Description                  |
+| --------------- | ---------------------------- |
+| `AfterToolCall` | After a tool completes       |
+| `AgentEnd`      | When agent loop completes    |
+| `MessageSent`   | After response is delivered  |
+| `SessionStart`  | When a new session begins    |
+| `SessionEnd`    | When a session ends          |
+| `GatewayStart`  | When Chelix starts           |
+| `GatewayStop`   | When Chelix shuts down       |
+| `Command`       | When a slash command is used |
 
 ## Prompt Injection Filtering
 
-The `BeforeLLMCall` and `AfterLLMCall` hooks provide filtering points for prompt injection defense.
+The `BeforeLLMCall` and `AfterLLMCall` hooks provide filtering points for prompt
+injection defense.
 
 ### BeforeLLMCall
 
-Fires before each LLM API call. The payload includes the full message array, provider name, model ID, and iteration count. Use it to:
+Fires before each LLM API call. The payload includes the full message array,
+provider name, model ID, and iteration count. Use it to:
 
 - Scan prompts for injection patterns before they reach the LLM
 - Redact PII or sensitive data from the conversation
@@ -82,47 +87,55 @@ Fires before each LLM API call. The payload includes the full message array, pro
 
 **Payload fields:**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `session_key` | string | Session identifier |
-| `provider` | string | Provider name (e.g. "openai", "anthropic") |
-| `model` | string | Model ID (e.g. "gpt-5.2-codex", "qwen2.5-coder-7b-q4_k_m") |
-| `messages` | array | Serialized message array (OpenAI format) |
-| `tool_count` | number | Number of tool schemas sent to the LLM |
-| `iteration` | number | 1-based loop iteration |
+| Field         | Type   | Description                                                |
+| ------------- | ------ | ---------------------------------------------------------- |
+| `session_key` | string | Session identifier                                         |
+| `provider`    | string | Provider name (e.g. "openai", "anthropic")                 |
+| `model`       | string | Model ID (e.g. "gpt-5.2-codex", "qwen2.5-coder-7b-q4_k_m") |
+| `messages`    | array  | Serialized message array (OpenAI format)                   |
+| `tool_count`  | number | Number of tool schemas sent to the LLM                     |
+| `iteration`   | number | 1-based loop iteration                                     |
 
 ### AfterLLMCall
 
-Fires after the LLM response is received but before tool calls execute. For streaming responses, this fires after the full response is accumulated (text has already been streamed to the UI) but blocking still prevents tool execution.
+Fires after the LLM response is received but before tool calls execute. For
+streaming responses, this fires after the full response is accumulated (text has
+already been streamed to the UI) but blocking still prevents tool execution.
 
 **Payload fields:**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `session_key` | string | Session identifier |
-| `provider` | string | Provider name |
-| `model` | string | Model ID |
-| `text` | string/null | LLM response text |
-| `tool_calls` | array | Tool calls requested by the LLM |
-| `input_tokens` | number | Tokens consumed by the prompt |
-| `output_tokens` | number | Tokens in the response |
-| `iteration` | number | 1-based loop iteration |
+| Field           | Type        | Description                     |
+| --------------- | ----------- | ------------------------------- |
+| `session_key`   | string      | Session identifier              |
+| `provider`      | string      | Provider name                   |
+| `model`         | string      | Model ID                        |
+| `text`          | string/null | LLM response text               |
+| `tool_calls`    | array       | Tool calls requested by the LLM |
+| `input_tokens`  | number      | Tokens consumed by the prompt   |
+| `output_tokens` | number      | Tokens in the response          |
+| `iteration`     | number      | 1-based loop iteration          |
 
 ## Channel Provenance
 
-`BeforeToolCall`, `AfterToolCall`, `SessionStart`, and `MessageReceived` currently include channel provenance. The fields are optional so hooks keep working for sessions that do not originate from a channel integration.
+`BeforeToolCall`, `AfterToolCall`, `SessionStart`, and `MessageReceived`
+currently include channel provenance. The fields are optional so hooks keep
+working for sessions that do not originate from a channel integration.
 
-`MessageReceived` keeps its legacy `channel` string field and adds the richer object as `channel_binding`. `BeforeToolCall`, `AfterToolCall`, and `SessionStart` expose the same richer object as `channel`. `ToolResultPersist` has a schema field reserved for the same shape, but that event is not currently dispatched.
+`MessageReceived` keeps its legacy `channel` string field and adds the richer
+object as `channel_binding`. `BeforeToolCall`, `AfterToolCall`, and
+`SessionStart` expose the same richer object as `channel`. `ToolResultPersist`
+has a schema field reserved for the same shape, but that event is not currently
+dispatched.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `surface` | string/null | Runtime surface, for example `telegram`, `discord`, `web`, `cron`, `heartbeat` |
-| `session_kind` | string/null | High-level source kind, usually `channel`, `web`, or `cron` |
-| `channel_type` | string/null | Channel plugin type when channel-bound |
-| `account_id` | string/null | Channel account identifier |
-| `chat_id` | string/null | Channel chat, room, or peer identifier |
-| `chat_type` | string/null | Best-effort chat classification, currently most useful for Telegram |
-| `sender_id` | string/null | Reserved for future sender provenance, currently omitted |
+| Field          | Type        | Description                                                                    |
+| -------------- | ----------- | ------------------------------------------------------------------------------ |
+| `surface`      | string/null | Runtime surface, for example `telegram`, `discord`, `web`, `cron`, `heartbeat` |
+| `session_kind` | string/null | High-level source kind, usually `channel`, `web`, or `cron`                    |
+| `channel_type` | string/null | Channel plugin type when channel-bound                                         |
+| `account_id`   | string/null | Channel account identifier                                                     |
+| `chat_id`      | string/null | Channel chat, room, or peer identifier                                         |
+| `chat_type`    | string/null | Best-effort chat classification, currently most useful for Telegram            |
+| `sender_id`    | string/null | Reserved for future sender provenance, currently omitted                       |
 
 Example `BeforeToolCall` payload excerpt:
 
@@ -278,18 +291,18 @@ The event payload is passed as JSON on stdin:
 }
 ```
 
-For modifying events, stdin is the full tagged `HookPayload`. If your hook returns
-`{"action":"modify","data":...}`, the `data` value replaces the event-specific
-mutable portion of the payload. For `BeforeToolCall`, that means the replacement
-value becomes the new `arguments` object.
+For modifying events, stdin is the full tagged `HookPayload`. If your hook
+returns `{"action":"modify","data":...}`, the `data` value replaces the
+event-specific mutable portion of the payload. For `BeforeToolCall`, that means
+the replacement value becomes the new `arguments` object.
 
 ### Output
 
-| Exit Code | Stdout | Result |
-|-----------|--------|--------|
-| `0` | (empty) | Continue normally |
-| `0` | `{"action":"modify","data":{...}}` | Replace payload data |
-| `1` | — | Block (stderr = reason) |
+| Exit Code | Stdout                             | Result                  |
+| --------- | ---------------------------------- | ----------------------- |
+| `0`       | (empty)                            | Continue normally       |
+| `0`       | `{"action":"modify","data":{...}}` | Replace payload data    |
+| `1`       | —                                  | Block (stderr = reason) |
 
 ### Example: Modify Tool Arguments
 
@@ -330,10 +343,11 @@ Hooks are discovered from `HOOK.md` files and `chelix.toml` config entries:
 1. **Project-local**: `<workspace>/.chelix/hooks/<name>/HOOK.md`
 2. **User-global**: `~/.chelix/hooks/<name>/HOOK.md`
 
-Project-local hooks take precedence over global hooks with the same name. If a hook declared in
-`chelix.toml` has the same name as a filesystem hook, the filesystem hook takes precedence and the
-config hook is skipped to avoid running the same hook twice. Config hooks appear with source
-`config` in the hooks UI/status output.
+Project-local hooks take precedence over global hooks with the same name. If a
+hook declared in `chelix.toml` has the same name as a filesystem hook, the
+filesystem hook takes precedence and the config hook is skipped to avoid running
+the same hook twice. Config hooks appear with source `config` in the hooks
+UI/status output.
 
 ## Configuration in chelix.toml
 
@@ -409,12 +423,15 @@ Chelix supports several workspace markdown files in `data_dir`.
 
 ### BOOT.md
 
-`BOOT.md` is loaded per session and injected into the system prompt as startup context.
+`BOOT.md` is loaded per session and injected into the system prompt as startup
+context.
 
-Best use is for short, explicit startup tasks (health checks, reminders,
-"send one startup message", etc.). If the file is missing or empty, nothing is injected.
+Best use is for short, explicit startup tasks (health checks, reminders, "send
+one startup message", etc.). If the file is missing or empty, nothing is
+injected.
 
-Agent-specific overrides are supported: place `BOOT.md` in `agents/<id>/BOOT.md`.
+Agent-specific overrides are supported: place `BOOT.md` in
+`agents/<id>/BOOT.md`.
 
 ### TOOLS.md
 
@@ -422,8 +439,10 @@ Agent-specific overrides are supported: place `BOOT.md` in `agents/<id>/BOOT.md`
 
 Best use is to combine:
 
-- **Local notes**: environment-specific facts (hosts, device names, channel aliases)
-- **Policy constraints**: "prefer read-only tools first", "never run X on startup", etc.
+- **Local notes**: environment-specific facts (hosts, device names, channel
+  aliases)
+- **Policy constraints**: "prefer read-only tools first", "never run X on
+  startup", etc.
 
 If `TOOLS.md` is empty or missing, it is not injected.
 
@@ -432,11 +451,13 @@ If `TOOLS.md` is empty or missing, it is not injected.
 Chelix also supports a workspace-level `AGENTS.md` in `data_dir`.
 
 This is separate from project `AGENTS.md`/`CLAUDE.md` discovery. Use workspace
-`AGENTS.md` for global instructions that should apply across projects in this workspace.
+`AGENTS.md` for global instructions that should apply across projects in this
+workspace.
 
 ### session-memory
 
-Saves session context when you use the `/new` command, preserving important information for future sessions.
+Saves session context when you use the `/new` command, preserving important
+information for future sessions.
 
 ### command-logger
 
@@ -483,9 +504,9 @@ cp -r examples/hooks/dcg-guard ~/.chelix/hooks/dcg-guard
 chmod +x ~/.chelix/hooks/dcg-guard/handler.sh
 ```
 
-The hook subscribes to `BeforeToolCall`, extracts `execute_command` commands, pipes them
-through dcg, and blocks any command that dcg flags as destructive. See
-`examples/hooks/dcg-guard/HOOK.md` for details.
+The hook subscribes to `BeforeToolCall`, extracts `execute_command` commands,
+pipes them through dcg, and blocks any command that dcg flags as destructive.
+See `examples/hooks/dcg-guard/HOOK.md` for details.
 
 > **Note:** dcg complements but does not replace the built-in dangerous command
 > blocklist, sandbox isolation, or the approval system. Use it as an additional
@@ -554,4 +575,5 @@ exit 0
 3. **Log for debugging** — Write to a log file, not stdout
 4. **Test locally first** — Pipe sample JSON through your script
 5. **Use jq for JSON** — It's reliable and fast for parsing
-6. **Layer defenses** — Use `BeforeLLMCall` for input filtering and `AfterLLMCall` for output filtering
+6. **Layer defenses** — Use `BeforeLLMCall` for input filtering and
+   `AfterLLMCall` for output filtering

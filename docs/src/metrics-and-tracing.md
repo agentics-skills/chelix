@@ -1,8 +1,8 @@
 # Metrics and Tracing
 
-Chelix includes comprehensive observability support through Prometheus metrics and
-tracing integration. This document explains how to enable, configure, and use
-these features.
+Chelix includes comprehensive observability support through Prometheus metrics
+and tracing integration. This document explains how to enable, configure, and
+use these features.
 
 ## Overview
 
@@ -17,9 +17,9 @@ All metrics are **feature-gated** — they add zero overhead when disabled.
 
 Metrics are controlled by two feature flags:
 
-| Feature | Description | Default |
-|---------|-------------|---------|
-| `metrics` | Enables metrics collection and the `/api/metrics` JSON API | Enabled |
+| Feature      | Description                                                     | Default |
+| ------------ | --------------------------------------------------------------- | ------- |
+| `metrics`    | Enables metrics collection and the `/api/metrics` JSON API      | Enabled |
 | `prometheus` | Enables the `/metrics` Prometheus endpoint (requires `metrics`) | Enabled |
 
 ### Compile-Time Configuration
@@ -44,7 +44,8 @@ cargo build --release --no-default-features --features "file-watcher,tls,web-ui"
 
 ## Prometheus Endpoint
 
-When the `prometheus` feature is enabled, the gateway exposes a `/metrics` endpoint:
+When the `prometheus` feature is enabled, the gateway exposes a `/metrics`
+endpoint:
 
 ```
 GET http://localhost:18789/metrics
@@ -71,30 +72,30 @@ To scrape metrics with Prometheus and visualize in Grafana:
 
 ```yaml
 scrape_configs:
-  - job_name: 'chelix'
+  - job_name: "chelix"
     static_configs:
-      - targets: ['localhost:18789']
+      - targets: ["localhost:18789"]
     metrics_path: /metrics
     scrape_interval: 15s
 ```
 
-2. Import or create Grafana dashboards using the `chelix_*` metrics.
+1. Import or create Grafana dashboards using the `chelix_*` metrics.
 
 ## JSON API Endpoints
 
 For the web UI dashboard and programmatic access, authenticated JSON endpoints
 are available:
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/metrics` | Full metrics snapshot with aggregates and per-provider breakdown |
-| `GET /api/metrics/summary` | Lightweight counts for navigation badges |
-| `GET /api/metrics/history` | Time-series data points for charts (last hour, 10s intervals) |
+| Endpoint                   | Description                                                      |
+| -------------------------- | ---------------------------------------------------------------- |
+| `GET /api/metrics`         | Full metrics snapshot with aggregates and per-provider breakdown |
+| `GET /api/metrics/summary` | Lightweight counts for navigation badges                         |
+| `GET /api/metrics/history` | Time-series data points for charts (last hour, 10s intervals)    |
 
 ### History Endpoint
 
-The `/api/metrics/history` endpoint returns historical metrics data for rendering
-time-series charts:
+The `/api/metrics/history` endpoint returns historical metrics data for
+rendering time-series charts:
 
 ```json
 {
@@ -152,10 +153,11 @@ with an index on the timestamp column for efficient range queries.
 
 ## Web UI Dashboard
 
-The gateway includes a built-in metrics dashboard at `/monitoring` in the web UI.
-This page displays:
+The gateway includes a built-in metrics dashboard at `/monitoring` in the web
+UI. This page displays:
 
 **Overview Tab:**
+
 - System metrics (uptime, connected clients, active sessions)
 - LLM usage (completions, tokens, cache statistics)
 - Tool execution statistics
@@ -164,6 +166,7 @@ This page displays:
 - Prometheus endpoint (with copy button)
 
 **Charts Tab:**
+
 - Token usage over time (input/output)
 - HTTP requests and LLM completions
 - WebSocket connections and active sessions
@@ -177,27 +180,27 @@ metrics and every 30 seconds for history.
 
 ### HTTP Metrics
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `chelix_http_requests_total` | Counter | method, status, endpoint | Total HTTP requests |
-| `chelix_http_request_duration_seconds` | Histogram | method, status, endpoint | Request latency |
-| `chelix_http_requests_in_flight` | Gauge | — | Currently processing requests |
+| Metric                                 | Type      | Labels                   | Description                   |
+| -------------------------------------- | --------- | ------------------------ | ----------------------------- |
+| `chelix_http_requests_total`           | Counter   | method, status, endpoint | Total HTTP requests           |
+| `chelix_http_request_duration_seconds` | Histogram | method, status, endpoint | Request latency               |
+| `chelix_http_requests_in_flight`       | Gauge     | —                        | Currently processing requests |
 
 ### LLM/Agent Metrics
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `chelix_llm_completions_total` | Counter | provider, model | Total completions requested |
-| `chelix_llm_completion_duration_seconds` | Histogram | provider, model | Completion latency |
-| `chelix_llm_input_tokens_total` | Counter | provider, model | Input tokens processed |
-| `chelix_llm_output_tokens_total` | Counter | provider, model | Output tokens generated |
-| `chelix_llm_completion_errors_total` | Counter | provider, model, error_type | Completion failures |
-| `chelix_llm_time_to_first_token_seconds` | Histogram | provider, model | Streaming TTFT |
+| Metric                                   | Type      | Labels                      | Description                 |
+| ---------------------------------------- | --------- | --------------------------- | --------------------------- |
+| `chelix_llm_completions_total`           | Counter   | provider, model             | Total completions requested |
+| `chelix_llm_completion_duration_seconds` | Histogram | provider, model             | Completion latency          |
+| `chelix_llm_input_tokens_total`          | Counter   | provider, model             | Input tokens processed      |
+| `chelix_llm_output_tokens_total`         | Counter   | provider, model             | Output tokens generated     |
+| `chelix_llm_completion_errors_total`     | Counter   | provider, model, error_type | Completion failures         |
+| `chelix_llm_time_to_first_token_seconds` | Histogram | provider, model             | Streaming TTFT              |
 
 #### Provider Aliases
 
-When you have multiple instances of the same provider type (e.g., separate API keys
-for work and personal use), you can use the `alias` configuration option to
+When you have multiple instances of the same provider type (e.g., separate API
+keys for work and personal use), you can use the `alias` configuration option to
 differentiate them in metrics:
 
 ```toml
@@ -217,88 +220,89 @@ chelix_llm_input_tokens_total{provider="anthropic-personal", model="claude-3-opu
 ```
 
 This allows you to:
+
 - Track token usage separately for billing purposes
 - Create separate Grafana dashboards per provider instance
 - Monitor rate limits and quotas independently
 
 ### MCP (Model Context Protocol) Metrics
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `chelix_mcp_tool_calls_total` | Counter | server, tool | Tool invocations |
-| `chelix_mcp_tool_call_duration_seconds` | Histogram | server, tool | Tool call latency |
-| `chelix_mcp_tool_call_errors_total` | Counter | server, tool, error_type | Tool call failures |
-| `chelix_mcp_servers_connected` | Gauge | — | Active MCP server connections |
+| Metric                                  | Type      | Labels                   | Description                   |
+| --------------------------------------- | --------- | ------------------------ | ----------------------------- |
+| `chelix_mcp_tool_calls_total`           | Counter   | server, tool             | Tool invocations              |
+| `chelix_mcp_tool_call_duration_seconds` | Histogram | server, tool             | Tool call latency             |
+| `chelix_mcp_tool_call_errors_total`     | Counter   | server, tool, error_type | Tool call failures            |
+| `chelix_mcp_servers_connected`          | Gauge     | —                        | Active MCP server connections |
 
 ### Tool Execution Metrics
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `chelix_tool_executions_total` | Counter | tool | Tool executions |
-| `chelix_tool_execution_duration_seconds` | Histogram | tool | Execution time |
-| `chelix_sandbox_command_executions_total` | Counter | — | Sandbox commands run |
+| Metric                                    | Type      | Labels | Description          |
+| ----------------------------------------- | --------- | ------ | -------------------- |
+| `chelix_tool_executions_total`            | Counter   | tool   | Tool executions      |
+| `chelix_tool_execution_duration_seconds`  | Histogram | tool   | Execution time       |
+| `chelix_sandbox_command_executions_total` | Counter   | —      | Sandbox commands run |
 
 ### Session Metrics
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `chelix_sessions_created_total` | Counter | — | Sessions created |
-| `chelix_sessions_active` | Gauge | — | Currently active sessions |
-| `chelix_session_messages_total` | Counter | role | Messages by role |
+| Metric                          | Type    | Labels | Description               |
+| ------------------------------- | ------- | ------ | ------------------------- |
+| `chelix_sessions_created_total` | Counter | —      | Sessions created          |
+| `chelix_sessions_active`        | Gauge   | —      | Currently active sessions |
+| `chelix_session_messages_total` | Counter | role   | Messages by role          |
 
 ### Cron Job Metrics
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `chelix_cron_jobs_scheduled` | Gauge | — | Number of scheduled jobs |
-| `chelix_cron_executions_total` | Counter | — | Job executions |
-| `chelix_cron_execution_duration_seconds` | Histogram | — | Job duration |
-| `chelix_cron_errors_total` | Counter | — | Failed jobs |
-| `chelix_cron_stuck_jobs_cleared_total` | Counter | — | Jobs exceeding 2h timeout |
-| `chelix_cron_input_tokens_total` | Counter | — | Input tokens from cron runs |
-| `chelix_cron_output_tokens_total` | Counter | — | Output tokens from cron runs |
+| Metric                                   | Type      | Labels | Description                  |
+| ---------------------------------------- | --------- | ------ | ---------------------------- |
+| `chelix_cron_jobs_scheduled`             | Gauge     | —      | Number of scheduled jobs     |
+| `chelix_cron_executions_total`           | Counter   | —      | Job executions               |
+| `chelix_cron_execution_duration_seconds` | Histogram | —      | Job duration                 |
+| `chelix_cron_errors_total`               | Counter   | —      | Failed jobs                  |
+| `chelix_cron_stuck_jobs_cleared_total`   | Counter   | —      | Jobs exceeding 2h timeout    |
+| `chelix_cron_input_tokens_total`         | Counter   | —      | Input tokens from cron runs  |
+| `chelix_cron_output_tokens_total`        | Counter   | —      | Output tokens from cron runs |
 
 ### Memory/Search Metrics
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `chelix_memory_searches_total` | Counter | search_type | Searches performed |
-| `chelix_memory_search_duration_seconds` | Histogram | search_type | Search latency |
-| `chelix_memory_embeddings_generated_total` | Counter | provider | Embeddings created |
+| Metric                                     | Type      | Labels      | Description        |
+| ------------------------------------------ | --------- | ----------- | ------------------ |
+| `chelix_memory_searches_total`             | Counter   | search_type | Searches performed |
+| `chelix_memory_search_duration_seconds`    | Histogram | search_type | Search latency     |
+| `chelix_memory_embeddings_generated_total` | Counter   | provider    | Embeddings created |
 
 ### Channel Metrics
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `chelix_channels_active` | Gauge | — | Loaded channel plugins |
-| `chelix_channel_messages_received_total` | Counter | channel | Inbound messages |
-| `chelix_channel_messages_sent_total` | Counter | channel | Outbound messages |
+| Metric                                   | Type    | Labels  | Description            |
+| ---------------------------------------- | ------- | ------- | ---------------------- |
+| `chelix_channels_active`                 | Gauge   | —       | Loaded channel plugins |
+| `chelix_channel_messages_received_total` | Counter | channel | Inbound messages       |
+| `chelix_channel_messages_sent_total`     | Counter | channel | Outbound messages      |
 
 ### Telegram-Specific Metrics
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `chelix_telegram_messages_received_total` | Counter | — | Messages from Telegram |
-| `chelix_telegram_access_control_denials_total` | Counter | — | Access denied events |
-| `chelix_telegram_polling_duration_seconds` | Histogram | — | Message handling time |
+| Metric                                         | Type      | Labels | Description            |
+| ---------------------------------------------- | --------- | ------ | ---------------------- |
+| `chelix_telegram_messages_received_total`      | Counter   | —      | Messages from Telegram |
+| `chelix_telegram_access_control_denials_total` | Counter   | —      | Access denied events   |
+| `chelix_telegram_polling_duration_seconds`     | Histogram | —      | Message handling time  |
 
 ### OAuth Metrics
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `chelix_oauth_flow_starts_total` | Counter | — | OAuth flows initiated |
-| `chelix_oauth_flow_completions_total` | Counter | — | Successful completions |
-| `chelix_oauth_token_refresh_total` | Counter | — | Token refreshes |
-| `chelix_oauth_token_refresh_failures_total` | Counter | — | Refresh failures |
+| Metric                                      | Type    | Labels | Description            |
+| ------------------------------------------- | ------- | ------ | ---------------------- |
+| `chelix_oauth_flow_starts_total`            | Counter | —      | OAuth flows initiated  |
+| `chelix_oauth_flow_completions_total`       | Counter | —      | Successful completions |
+| `chelix_oauth_token_refresh_total`          | Counter | —      | Token refreshes        |
+| `chelix_oauth_token_refresh_failures_total` | Counter | —      | Refresh failures       |
 
 ### Skills Metrics
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `chelix_skills_installation_attempts_total` | Counter | — | Installation attempts |
-| `chelix_skills_installation_duration_seconds` | Histogram | — | Installation time |
-| `chelix_skills_git_clone_total` | Counter | — | Successful git clones |
-| `chelix_skills_git_clone_fallback_total` | Counter | — | Fallbacks to HTTP tarball |
+| Metric                                        | Type      | Labels | Description               |
+| --------------------------------------------- | --------- | ------ | ------------------------- |
+| `chelix_skills_installation_attempts_total`   | Counter   | —      | Installation attempts     |
+| `chelix_skills_installation_duration_seconds` | Histogram | —      | Installation time         |
+| `chelix_skills_git_clone_total`               | Counter   | —      | Successful git clones     |
+| `chelix_skills_git_clone_fallback_total`      | Counter   | —      | Fallbacks to HTTP tarball |
 
 ## Tracing Integration
 
@@ -344,11 +348,11 @@ async fn fetch_user(id: u64) -> User {
 
 The following span fields are propagated to metrics:
 
-| Field | Description |
-|-------|-------------|
+| Field       | Description                   |
+| ----------- | ----------------------------- |
 | `operation` | The operation being performed |
-| `component` | The component/module name |
-| `span.name` | The span's target/name |
+| `component` | The component/module name     |
+| `span.name` | The span's target/name        |
 
 ## Adding Custom Metrics
 
@@ -401,7 +405,8 @@ pub async fn my_function() {
 
 ### Adding New Metric Definitions
 
-For consistency, add metric name constants to `crates/metrics/src/definitions.rs`:
+For consistency, add metric name constants to
+`crates/metrics/src/definitions.rs`:
 
 ```rust
 /// My feature metrics
@@ -434,22 +439,29 @@ labels = { env = "prod" }   # Add custom labels to all metrics
 
 Environment variables:
 
-- `RUST_LOG=chelix_metrics=debug` — Enable debug logging for metrics initialization
+- `RUST_LOG=chelix_metrics=debug` — Enable debug logging for metrics
+  initialization
 
 ## Best Practices
 
-1. **Use consistent naming**: Follow the pattern `chelix_<subsystem>_<metric>_<unit>`
-2. **Add units to names**: `_total` for counters, `_seconds` for durations, `_bytes` for sizes
-3. **Keep cardinality low**: Avoid high-cardinality labels (like user IDs or request IDs)
-4. **Feature-gate everything**: Use `#[cfg(feature = "metrics")]` to ensure zero overhead when disabled
-5. **Use predefined buckets**: The `buckets` module has standard histogram buckets for common metric types
+1. **Use consistent naming**: Follow the pattern
+   `chelix_<subsystem>_<metric>_<unit>`
+2. **Add units to names**: `_total` for counters, `_seconds` for durations,
+   `_bytes` for sizes
+3. **Keep cardinality low**: Avoid high-cardinality labels (like user IDs or
+   request IDs)
+4. **Feature-gate everything**: Use `#[cfg(feature = "metrics")]` to ensure zero
+   overhead when disabled
+5. **Use predefined buckets**: The `buckets` module has standard histogram
+   buckets for common metric types
 
 ## Troubleshooting
 
 ### Metrics not appearing
 
 1. Verify the `metrics` feature is enabled at compile time
-2. Check that the metrics recorder is initialized (happens automatically in gateway)
+2. Check that the metrics recorder is initialized (happens automatically in
+   gateway)
 3. Ensure you're hitting the correct `/metrics` endpoint
 4. Check `chelix.toml` has `[metrics] enabled = true`
 

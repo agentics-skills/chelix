@@ -1,9 +1,9 @@
 # Multi-Node
 
 Chelix can distribute work across multiple machines. A **node** is a remote
-device that connects to your gateway and executes commands on your behalf.
-This lets the AI agent run shell commands on a Linux server, query a Raspberry
-Pi, or leverage a GPU machine — all from a single chat session.
+device that connects to your gateway and executes commands on your behalf. This
+lets the AI agent run shell commands on a Linux server, query a Raspberry Pi, or
+leverage a GPU machine — all from a single chat session.
 
 ## How It Works
 
@@ -28,33 +28,37 @@ Pi, or leverage a GPU machine — all from a single chat session.
    telemetry, and discover its LLM providers.
 
 Nodes are **stateless from the gateway's perspective** — they connect and
-disconnect freely. There is no start/stop lifecycle managed by the gateway;
-a node is available when its process is running and connected.
+disconnect freely. There is no start/stop lifecycle managed by the gateway; a
+node is available when its process is running and connected.
 
 ## Pairing a Node
 
-The node generates an Ed25519 keypair on first run and
-presents its public key to the gateway. The operator approves the key
-fingerprint (TOFU model, same as SSH).
+The node generates an Ed25519 keypair on first run and presents its public key
+to the gateway. The operator approves the key fingerprint (TOFU model, same as
+SSH).
 
 New pairing requests are disabled by default to prevent unauthenticated
 connection spam. Open the pairing window only while adding a node.
 
 1. On the gateway, enable pairing:
+
    ```bash
    chelix node pairing enable
    ```
 
 2. On the remote machine:
+
    ```bash
    chelix node add --host ws://your-gateway:9090/ws --name "Build Server"
    ```
+
    The node prints its fingerprint and waits for approval.
 
 3. Approve the pairing:
    - **Web UI**: Open Settings → Nodes → Pending tab, verify the fingerprint,
      click **Approve**.
    - **CLI** (headless gateways):
+
      ```bash
      chelix node pending                 # list pending requests
      chelix node approve <request-id>    # approve by ID
@@ -64,6 +68,7 @@ connection spam. Open the pairing window only while adding a node.
    completes. The public key is pinned to this device (TOFU).
 
 5. Disable new pairing requests:
+
    ```bash
    chelix node pairing disable
    ```
@@ -76,32 +81,32 @@ On the remote machine, register it as a node:
 chelix node add --host ws://your-gateway:9090/ws --name "Build Server"
 ```
 
-This saves the connection parameters to `~/.chelix/node.json` and installs an
-OS service that starts on boot and reconnects on failure:
+This saves the connection parameters to `~/.chelix/node.json` and installs an OS
+service that starts on boot and reconnects on failure:
 
-| Platform | Service file |
-|----------|-------------|
-| macOS | `~/Library/LaunchAgents/org.chelix.node.plist` |
-| Linux | `~/.config/systemd/user/chelix-node.service` |
+| Platform | Service file                                   |
+| -------- | ---------------------------------------------- |
+| macOS    | `~/Library/LaunchAgents/org.chelix.node.plist` |
+| Linux    | `~/.config/systemd/user/chelix-node.service`   |
 
 Options:
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--host` | Gateway WebSocket URL | (required) |
-| `--name` | Display name shown in the UI | none |
-| `--node-id` | Custom node identifier | random UUID |
-| `--working-dir` | Working directory for commands | `$HOME` |
-| `--timeout` | Max command timeout in seconds | `300` |
-| `--foreground` | Run in the terminal instead of installing a service | off |
+| Flag            | Description                                         | Default     |
+| --------------- | --------------------------------------------------- | ----------- |
+| `--host`        | Gateway WebSocket URL                               | (required)  |
+| `--name`        | Display name shown in the UI                        | none        |
+| `--node-id`     | Custom node identifier                              | random UUID |
+| `--working-dir` | Working directory for commands                      | `$HOME`     |
+| `--timeout`     | Max command timeout in seconds                      | `300`       |
+| `--foreground`  | Run in the terminal instead of installing a service | off         |
 
 You can also set `CHELIX_GATEWAY_URL` as an environment variable instead of
 passing `--host`.
 
 ### Foreground mode
 
-For debugging or one-off use, pass `--foreground` to run the node in the
-current terminal session instead of installing a service:
+For debugging or one-off use, pass `--foreground` to run the node in the current
+terminal session instead of installing a service:
 
 ```bash
 chelix node add --host ws://your-gateway:9090/ws --name "Build Server" --foreground
@@ -135,8 +140,8 @@ running.
 chelix node fingerprint
 ```
 
-Prints the Ed25519 public key fingerprint (`SHA256:<base64>`) for this node.
-Use this to verify the key shown in the gateway UI during pairing.
+Prints the Ed25519 public key fingerprint (`SHA256:<base64>`) for this node. Use
+this to verify the key shown in the gateway UI during pairing.
 
 ## Logs
 
@@ -151,11 +156,11 @@ tail -f $(chelix node logs)
 Once a node is connected, you can target it from a chat session:
 
 - **UI dropdown**: The chat toolbar shows a node selector next to the model
-  picker. Select a node to route all `execute_command` commands to it. Select "Local" to
-  revert to local execution. When `tools.execute_command.host = "ssh"`, Chelix also shows
-  either the configured SSH target from `tools.execute_command.ssh_target` or any
-  managed SSH targets you created in **Settings → SSH** as first-class
-  execution options.
+  picker. Select a node to route all `execute_command` commands to it. Select
+  "Local" to revert to local execution. When
+  `tools.execute_command.host = "ssh"`, Chelix also shows either the configured
+  SSH target from `tools.execute_command.ssh_target` or any managed SSH targets
+  you created in **Settings → SSH** as first-class execution options.
 - **Agent tools**: The agent can call `nodes_list`, `nodes_describe`, and
   `nodes_select` to programmatically pick a node based on capabilities or
   telemetry.
@@ -176,11 +181,11 @@ Connected nodes report system telemetry every 30 seconds:
 This data is visible on the Nodes page and available to the agent via the
 `nodes_describe` tool.
 
-If you configure `tools.execute_command.host = "ssh"`, the Nodes page also shows SSH
-targets even though they are not WebSocket-paired nodes. This makes the active
-remote execution route visible instead of hiding it in config. The UI renders
-these separately from paired nodes so it is clear that SSH targets do not
-report telemetry or presence.
+If you configure `tools.execute_command.host = "ssh"`, the Nodes page also shows
+SSH targets even though they are not WebSocket-paired nodes. This makes the
+active remote execution route visible instead of hiding it in config. The UI
+renders these separately from paired nodes so it is clear that SSH targets do
+not report telemetry or presence.
 
 Managed SSH targets now support:
 
@@ -197,9 +202,9 @@ lightweight doctor:
 
 - shows whether Chelix is currently configured for `local`, `node`, or `ssh`
 - reports paired-node inventory and managed SSH inventory
-- flags obvious misconfigurations, such as `tools.execute_command.host = "ssh"` with no
-  active target or a managed key that cannot be decrypted because the vault is
-  locked
+- flags obvious misconfigurations, such as `tools.execute_command.host = "ssh"`
+  with no active target or a managed key that cannot be decrypted because the
+  vault is locked
 - warns when the active managed SSH route is not host-pinned
 - lets you pin, refresh, or clear the active managed route directly from the
   doctor panel
@@ -210,25 +215,26 @@ The CLI now mirrors the basic setup view with `chelix doctor`, including:
 - active remote command backend (`local`, `node`, or `ssh`)
 - SSH client discovery and version
 - managed SSH key / target / host-pin inventory
-- warnings for configured `tools.execute_command.ssh_target` routes and unpinned active routes
+- warnings for configured `tools.execute_command.ssh_target` routes and unpinned
+  active routes
 
 ## CLI Reference
 
-| Command | Description |
-|---------|-------------|
-| `chelix node add --host <url>` | Join this machine to a gateway as a node |
+| Command                            | Description                                         |
+| ---------------------------------- | --------------------------------------------------- |
+| `chelix node add --host <url>`     | Join this machine to a gateway as a node            |
 | `chelix node add ... --foreground` | Run in the terminal instead of installing a service |
-| `chelix node fingerprint` | Print this node's Ed25519 fingerprint |
-| `chelix node list` | List all connected nodes |
-| `chelix node pairing status` | Show whether new node pairing requests are accepted |
-| `chelix node pairing enable` | Enable new node pairing requests |
-| `chelix node pairing disable` | Disable new node pairing requests |
-| `chelix node pending` | List pending pairing requests |
-| `chelix node approve <id>` | Approve a pending pairing request |
-| `chelix node reject <id>` | Reject a pending pairing request |
-| `chelix node remove` | Disconnect this machine and remove the service |
-| `chelix node status` | Show connection info and service status |
-| `chelix node logs` | Print log file path |
+| `chelix node fingerprint`          | Print this node's Ed25519 fingerprint               |
+| `chelix node list`                 | List all connected nodes                            |
+| `chelix node pairing status`       | Show whether new node pairing requests are accepted |
+| `chelix node pairing enable`       | Enable new node pairing requests                    |
+| `chelix node pairing disable`      | Disable new node pairing requests                   |
+| `chelix node pending`              | List pending pairing requests                       |
+| `chelix node approve <id>`         | Approve a pending pairing request                   |
+| `chelix node reject <id>`          | Reject a pending pairing request                    |
+| `chelix node remove`               | Disconnect this machine and remove the service      |
+| `chelix node status`               | Show connection info and service status             |
+| `chelix node logs`                 | Print log file path                                 |
 
 ## Security
 
@@ -256,5 +262,5 @@ only stores the public key. No shared secret crosses the wire.
 - **Environment filtering**: When the gateway forwards commands to a node, only
   safe environment variables are forwarded (`TERM`, `LANG`, `LC_*`). Secrets
   like API keys, `DYLD_*`, and `LD_PRELOAD` are always blocked.
-- **Key revocation**: Revoke from the Nodes page at any time. The node
-  will be disconnected on its next reconnect attempt.
+- **Key revocation**: Revoke from the Nodes page at any time. The node will be
+  disconnected on its next reconnect attempt.

@@ -2,10 +2,10 @@
 
 Chelix uses a **layered config model** with two files:
 
-| File | Owner | Purpose |
-|------|-------|---------|
+| File            | Owner      | Purpose                                        |
+| --------------- | ---------- | ---------------------------------------------- |
 | `defaults.toml` | **Chelix** | Shipped defaults, regenerated on every startup |
-| `chelix.toml` | **You** | Your overrides only |
+| `chelix.toml`   | **You**    | Your overrides only                            |
 
 On first run, both files are created in `~/.config/chelix/`. Your `chelix.toml`
 starts nearly empty — only the installation-specific port is set. All other
@@ -34,10 +34,10 @@ and which are inherited.
 
 ## Configuration File Location
 
-| Platform | Default Path |
-|----------|--------------|
-| macOS/Linux | `~/.config/chelix/chelix.toml` |
-| Custom | Set via `--config-dir` or `CHELIX_CONFIG_DIR` |
+| Platform    | Default Path                                  |
+| ----------- | --------------------------------------------- |
+| macOS/Linux | `~/.config/chelix/chelix.toml`                |
+| Custom      | Set via `--config-dir` or `CHELIX_CONFIG_DIR` |
 
 The `defaults.toml` file lives in the same directory. Do not edit it — your
 changes will be overwritten on the next startup.
@@ -55,10 +55,10 @@ override.
 
 ## Agent-Readable Docs
 
-Chelix packages the documentation as local markdown files with release
-artifacts that support external share files. Agents are pointed at those local
-files through the system prompt so they can read setup, configuration, channel,
-and troubleshooting docs without needing web access.
+Chelix packages the documentation as local markdown files with release artifacts
+that support external share files. Agents are pointed at those local files
+through the system prompt so they can read setup, configuration, channel, and
+troubleshooting docs without needing web access.
 
 Resolution order is `CHELIX_DOCS_DIR`, the packaged share docs directory
 (`<share>/docs`), the source checkout docs in development, then an embedded
@@ -83,9 +83,9 @@ agent_max_iterations = 25       # Max tool call iterations per run
 
 ## LLM Providers
 
-Configure providers through the web UI or directly in `chelix.toml`. API keys can be set
-via environment variables (e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) or
-in the config file.
+Configure providers through the web UI or directly in `chelix.toml`. API keys
+can be set via environment variables (e.g. `ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY`, `GEMINI_API_KEY`) or in the config file.
 
 ```toml
 [providers]
@@ -107,7 +107,8 @@ models = ["gemini-2.5-flash", "gemini-2.5-pro"]
 priority_models = ["gpt-5.2"]
 ```
 
-See [Providers](providers.md) for the full list of supported providers and configuration options.
+See [Providers](providers.md) for the full list of supported providers and
+configuration options.
 
 ## Remote Command Execution
 
@@ -124,8 +125,8 @@ When `host = "ssh"`, Chelix can work in two modes:
 
 - **System OpenSSH**: reuse your existing host aliases, agent forwarding policy,
   and `~/.ssh/config`.
-- **Managed targets**: create or import a deploy key in **Settings → SSH**,
-  then bind that key to a named target. Chelix stores the private key in its
+- **Managed targets**: create or import a deploy key in **Settings → SSH**, then
+  bind that key to a named target. Chelix stores the private key in its
   credential store and encrypts it with the vault whenever the vault is
   unsealed. Imported keys may be passphrase-protected, Chelix strips the
   passphrase during import so runtime execution can stay non-interactive.
@@ -137,15 +138,16 @@ When present, Chelix uses that pin instead of your global OpenSSH known-host
 policy for that target.
 
 Managed targets appear in the Nodes page and chat node picker, so users can see
-where `execute_command` will run without digging through config. If multiple managed
-targets exist, the default one is used when `tools.execute_command.host = "ssh"` and no
-session-specific route is selected. `chelix doctor` also reports remote command
-inventory, active backend mode, and obvious SSH setup problems from the CLI.
+where `execute_command` will run without digging through config. If multiple
+managed targets exist, the default one is used when
+`tools.execute_command.host = "ssh"` and no session-specific route is selected.
+`chelix doctor` also reports remote command inventory, active backend mode, and
+obvious SSH setup problems from the CLI.
 
 `Settings -> Tools` shows the effective tool inventory for the active session
-and model, including tool-calling support, MCP server state, skills/plugins,
-and available execution routes. It is session-aware by design, switching the
-model or disabling MCP for a session changes what appears there.
+and model, including tool-calling support, MCP server state, skills/plugins, and
+available execution routes. It is session-aware by design, switching the model
+or disabling MCP for a session changes what appears there.
 
 ## Sandbox Configuration
 
@@ -216,8 +218,10 @@ duckduckgo_fallback = false      # Default: do not use DuckDuckGo fallback
 
 If no search API key is configured:
 
-- with `duckduckgo_fallback = false` (default), Chelix returns a clear hint to set `BRAVE_API_KEY` or `PERPLEXITY_API_KEY`
-- with `duckduckgo_fallback = true`, Chelix attempts DuckDuckGo HTML search, which may hit CAPTCHA/rate limits
+- with `duckduckgo_fallback = false` (default), Chelix returns a clear hint to
+  set `BRAVE_API_KEY` or `PERPLEXITY_API_KEY`
+- with `duckduckgo_fallback = true`, Chelix attempts DuckDuckGo HTML search,
+  which may hit CAPTCHA/rate limits
 
 ## Skills
 
@@ -239,15 +243,16 @@ directory, reject path traversal and symlink escapes, and are recorded in
 `~/.chelix/logs/security-audit.jsonl`.
 
 `enable_self_improvement` (default: true) injects system prompt guidance that
-encourages the agent to proactively create and update skills after complex
-tasks (5+ tool calls), tricky error fixes, or non-obvious workflows. The
-`patch_skill` tool allows surgical find/replace updates without rewriting the
-entire skill body.
+encourages the agent to proactively create and update skills after complex tasks
+(5+ tool calls), tricky error fixes, or non-obvious workflows. The `patch_skill`
+tool allows surgical find/replace updates without rewriting the entire skill
+body.
 
 ## Chat Message Queue
 
-When a new message arrives while an agent run is already active, Chelix can either
-replay queued messages one-by-one or merge them into a single follow-up message.
+When a new message arrives while an agent run is already active, Chelix can
+either replay queued messages one-by-one or merge them into a single follow-up
+message.
 
 ```toml
 [chat]
@@ -281,19 +286,23 @@ session_export = "on-new-or-reset" # Or "off"
 
 See [Memory Surfaces](memory-surfaces.md) for the boundary between
 `session_state`, prompt memory, searchable memory, and sandbox persistence.
-`memory.style` chooses the high-level behavior, while
-`chat.prompt_memory_mode` only affects prompt-visible `MEMORY.md`.
-`memory.agent_write_mode` controls where agent-authored writes are allowed to
-land. `memory.user_profile_write_mode` controls whether Chelix writes the
-managed `USER.md` surface, and whether browser/channel timezone or location
-signals may update it silently. `memory.session_export` controls whether
-session rollover exports are written at all.
+`memory.style` chooses the high-level behavior, while `chat.prompt_memory_mode`
+only affects prompt-visible `MEMORY.md`. `memory.agent_write_mode` controls
+where agent-authored writes are allowed to land.
+`memory.user_profile_write_mode` controls whether Chelix writes the managed
+`USER.md` surface, and whether browser/channel timezone or location signals may
+update it silently. `memory.session_export` controls whether session rollover
+exports are written at all.
 
 ## Authentication
 
-Authentication is **only required when accessing Chelix from a non-localhost address**. When running on `localhost` or `127.0.0.1`, no authentication is needed by default.
+Authentication is **only required when accessing Chelix from a non-localhost
+address**. When running on `localhost` or `127.0.0.1`, no authentication is
+needed by default.
 
-When you access Chelix from a network address (e.g., `http://192.168.1.100:13131`), a one-time setup code is printed to the terminal. Use it to set up a password or passkey.
+When you access Chelix from a network address (e.g.,
+`http://192.168.1.100:13131`), a one-time setup code is printed to the terminal.
+Use it to set up a password or passkey.
 
 ```toml
 [auth]
@@ -352,7 +361,9 @@ url = "https://mcp.example.com/mcp"
 headers = { Authorization = "Bearer ${API_KEY}" }
 ```
 
-Remote MCP URLs and headers support `$NAME` or `${NAME}` placeholders. For live remote servers, values resolve from Chelix-managed env overrides, either `[env]` in config or **Settings** → **Environment Variables**.
+Remote MCP URLs and headers support `$NAME` or `${NAME}` placeholders. For live
+remote servers, values resolve from Chelix-managed env overrides, either `[env]`
+in config or **Settings** → **Environment Variables**.
 
 ## Telegram Integration
 
@@ -363,7 +374,8 @@ dm_policy = "allowlist"
 allowlist = ["123456789"]       # Telegram user IDs or usernames (strings)
 ```
 
-See [Telegram](telegram.md) for full configuration reference and setup instructions.
+See [Telegram](telegram.md) for full configuration reference and setup
+instructions.
 
 ## Discord Integration
 
@@ -378,7 +390,8 @@ mention_mode = "mention"
 allowlist = ["your_username"]
 ```
 
-See [Discord](discord.md) for full configuration reference and setup instructions.
+See [Discord](discord.md) for full configuration reference and setup
+instructions.
 
 ## Slack Integration
 
@@ -425,10 +438,10 @@ prometheus_endpoint = true
 
 ## Process Environment Variables (`[env]`)
 
-The `[env]` section injects variables into the Chelix process at startup.
-This is useful in Docker deployments where passing individual `-e` flags is
-inconvenient, or when you want API keys stored in the config file rather
-than the host environment.
+The `[env]` section injects variables into the Chelix process at startup. This
+is useful in Docker deployments where passing individual `-e` flags is
+inconvenient, or when you want API keys stored in the config file rather than
+the host environment.
 
 ```toml
 [env]
@@ -437,9 +450,9 @@ OPENROUTER_API_KEY = "sk-or-..."
 ELEVENLABS_API_KEY = "..."
 ```
 
-**Precedence**: existing process environment variables are never overwritten.
-If `BRAVE_API_KEY` is already set via `docker -e` or the host shell, the
-`[env]` value is skipped. This means `docker -e` always wins.
+**Precedence**: existing process environment variables are never overwritten. If
+`BRAVE_API_KEY` is already set via `docker -e` or the host shell, the `[env]`
+value is skipped. This means `docker -e` always wins.
 
 ```admonish info title="Settings UI vs [env]"
 Environment variables configured through the Settings UI (Settings >
@@ -451,13 +464,13 @@ Precedence: host/`docker -e` > config `[env]` > Settings UI.
 
 All settings can be overridden via environment variables:
 
-| Variable | Description |
-|----------|-------------|
-| `CHELIX_CONFIG_DIR` | Configuration directory |
-| `CHELIX_DATA_DIR` | Data directory |
-| `CHELIX_SERVER__PORT` | Server port override |
-| `CHELIX_SERVER__BIND` | Server bind address override |
-| `CHELIX_TOOLS__AGENT_TIMEOUT_SECS` | Agent run timeout override |
+| Variable                             | Description                       |
+| ------------------------------------ | --------------------------------- |
+| `CHELIX_CONFIG_DIR`                  | Configuration directory           |
+| `CHELIX_DATA_DIR`                    | Data directory                    |
+| `CHELIX_SERVER__PORT`                | Server port override              |
+| `CHELIX_SERVER__BIND`                | Server bind address override      |
+| `CHELIX_TOOLS__AGENT_TIMEOUT_SECS`   | Agent run timeout override        |
 | `CHELIX_TOOLS__AGENT_MAX_ITERATIONS` | Agent loop iteration cap override |
 
 ## CLI Flags

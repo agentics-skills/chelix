@@ -22,42 +22,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [20260603.01] - 2026-06-03
 
 ## [20260602.05] - 2026-06-02
+
 ### Fixed
+
 - [providers] Restore Gemini tool signature replay
 
 ## [20260602.04] - 2026-06-02
+
 ### Fixed
+
 - [providers] Default Alibaba Coding live test endpoint
 
 ## [20260602.03] - 2026-06-02
+
 ### Fixed
+
 - [providers] Harden live gate checks
 
 ## [20260602.02] - 2026-06-02
 
 ## [20260602.01] - 2026-06-02
+
 ### Added
+
 - Add NEAR AI Cloud provider (#1031)
 
-
 ### Changed
+
 - [providers] Split OpenAI Codex catalog
 - [providers] Use explicit OpenAI capabilities (#1090)
 
-
 ### Fixed
+
 - [providers] Propagate registry test errors
 
 ## [20260529.02] - 2026-05-29
+
 ### Fixed
+
 - [providers] Harden OpenAI-compatible request metadata
 
 ## [20260529.01] - 2026-05-29
+
 ### Removed
+
 - [discord] Log silent voice message drops (#1081)
 
-
 ### Fixed
+
 - [cron] Preserve host execution target (#1079)
 - [web] Include clicked response in message forks (#1080)
 - [providers] Strip MiniMax user names (#1078)
@@ -69,32 +81,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [20260526.03] - 2026-05-26
 
 ## [20260526.02] - 2026-05-26
+
 ### Fixed
+
 - [ci] Stabilize release checks
 
 ## [20260526.01] - 2026-05-26
+
 ### Added
+
 - [tools] Support nonblocking spawn agents (#1067)
 - [agents] Support per-turn tool controls (#1069)
 
-
 ### Fixed
+
 - [ci] Use valid release trigger condition
 - Fix Docker build failures (#1073)
 - [web] Stabilize command palette focus
 
 ## [20260525.01] - 2026-05-25
+
 ### Added
+
 - [agents] Support per-agent runtime limits (#1066)
 - Agents as capability boundaries (MCP, sandbox, skills) (#1049)
 
-
 ### Removed
+
 - Remove file size allowlist
 - [web] Remove token bar race assertion
 
-
 ### Fixed
+
 - [web] Restore light mode syntax highlighting (#1047)
 - [vault] Initialize existing password vaults (#1050)
 - [gateway] Register config-declared hooks (#1048)
@@ -107,15 +125,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [sandbox] Quiet image prebuild logs (#1065)
 
 ## [20260523.01] - 2026-05-23
+
 ### Added
+
 - [openai-codex] Add reasoning effort support (#1005)
 
-
 ### Removed
+
 - [gateway] Remove needless return
 
-
 ### Fixed
+
 - [vault] Keep auth password changes in sync (#1026)
 - [sandbox] Auto-detect docker host data mounts (#1035)
 - [e2e] Wait for new chat sessions to settle
@@ -125,13 +145,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [voice] Return wav metadata for piper audio (#1043)
 
 ## [20260519.01] - 2026-05-19
+
 ### Fixed
+
 - [web] Avoid false websocket disconnect timeouts (#1023)
 - [sandbox] Reap docker sandbox zombies (#1025)
 - [ci] Avoid slow session cleanup in e2e
 
 ## [20260518.01] - 2026-05-18
+
 ### Fixed
+
 - [ci] Drain fake claude stdin in coverage test
 - [config] Preserve explicit defaults on startup (#1015)
 - [agents] Honor BeforeLLMCall hook modifications (#1018)
@@ -142,21 +166,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [sandbox] Update slacrawl go module path (#1021)
 
 ## [20260517.03] - 2026-05-17
+
 ### Fixed
+
 - [ci] Stabilize external agent e2e binding
 
 ## [20260517.02] - 2026-05-17
+
 ### Fixed
+
 - [ci] Stabilize release e2e specs
 
 ## [20260517.01] - 2026-05-17
+
 ### Added
+
 - [tls] Support public IP SAN for generated certs (#1000)
 - [mcp] Support OAuth client secrets (#1001)
 - [external-agents] Add persistent agent sessions (#566)
 
-
 ### Fixed
+
 - [providers] Retry mistral rate limits
 - [ci] Stabilize e2e module shims
 - [ci] Wait for autoscroll test position
@@ -174,7 +204,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ci] Correct codex tracing skip parameter
 
 ## [20260510.01] - 2026-05-10
+
 ### Fixed
+
 - [release] Avoid large blob arguments
 - [ci] Stabilize qmd and chat e2e checks
 - [ci] Harden qmd and token bar tests
@@ -182,12 +214,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ci] Wait for chat clear before api dedupe check
 
 ## [20260508.01] - 2026-05-08
+
 ### Added
+
 - [voice] Add whisper-local STT provider, show all voice providers by default (#981)
 - [voice] Surface OpenAI realtime model guidance (#984)
 
-
 ### Fixed
+
 - [sandbox] Map home file tools to mounted path
 - [agents] Preserve tool argument diagnostics (#983)
 - [sandbox] Map apple container workspace paths
@@ -195,16 +229,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ci] Update voice provider e2e expectations
 
 ## [20260507.05] - 2026-05-07
+
 ### Added
+
 - [nodes] Ed25519 challenge-response node identity (TOFU) (#979)
 - [telephony] Add phone call support via Twilio (#920)
 
-
 ### Removed
+
 - [release] Remove gpg signing confirmation prompt
 
-
 ### Fixed
+
 - [website] Hide unpublished releases from changelog
 - [website] Publish 20260507.04 changelog
 - [release] Avoid signing build tools
@@ -216,34 +252,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ci] Stabilize e2e navigation and nodes setup
 
 ## [20260507.04] - 2026-05-07
+
 ### Fixed
+
 - [e2e] Align sandbox settings tests with tabs
 
 ## [20260507.03] - 2026-05-07
+
 ### Fixed
+
 - [sandbox] Clean up linux firecracker checks
 
 ## [20260507.02] - 2026-05-07
+
 ### Fixed
+
 - [sandbox] Compile firecracker backend with all features
 
 ## [20260507.01] - 2026-05-07
+
 ### Added
+
 - [sandbox] Remote & multi-backend sandbox support (Vercel, Daytona, Firecracker) (#942)
 
-
 ### Changed
+
 - [e2e] Consolidate sendRpcFromPage into shared helpers
 
-
 ### Removed
+
 - Remove unused sendRpcFromPage import from sessions.spec.js
 - [ci] Drop e2e runtime state before cache save
 - [e2e] Remove retry-hidden flakes
 - [ci] Remove temporary websocket diagnostics
 
-
 ### Fixed
+
 - [e2e] Revert tee log capture (breaks exec on CI), reduce RPC timeout to 5s
 - [e2e] Reduce sendRpc retries from 40 to 10 — 40×5s=200s per test was hanging CI
 - [gateway] Derive Default for ClientRegistryInner to satisfy clippy
@@ -274,15 +318,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [sandbox] Serialize container startup (#971)
 - [providers] Replay DeepSeek reasoning content (#961)
 - [matrix] Add debug logging for OIDC registration and deduplicate redirect normalization (#957)
+
 ## [20260504.01] - 2026-05-04
 
 ## [20260502.01] - 2026-05-02
+
 ### Added
+
 - [portable] Add data import/export for config, databases, and sessions (#951)
 - [i18n] Add zh-TW Traditional Chinese locale support (#339)
 
-
 ### Fixed
+
 - [discord] Register slash command arguments and add all thinking levels (#950)
 - [web-ui] Prevent horizontal overflow in chat messages container (#952)
 - [portable] Allow unwrap in test modules to satisfy workspace clippy lint
@@ -298,12 +345,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [e2e] Use poll-based scroll assertion in sequential messages autoscroll test
 
 ## [20260501.01] - 2026-05-01
+
 ### Added
+
 - [providers] Add Zen (opencode.ai) multi-protocol provider (#944)
 - [web-ui] Hide voice buttons when stt/tts disabled in config (#943)
 
 ## [20260430.02] - 2026-04-30
+
 ### Added
+
 - [web-ui] Add message action bar to assistant responses (#932)
 - [gateway] Auto-generate session titles from conversation (#933)
 - Add DeepInfra provider, sandbox GPU passthrough, strict model selection (#934)
@@ -312,8 +363,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [sandbox] Add GitHub CLI (gh) to default sandbox packages
 - [web-ui] Show progress indicator during sandbox image build
 
-
 ### Fixed
+
 - Replace completion-based model probe with lightweight catalog check (#931)
 - [deploy] Correct subcommand in systemd service file
 - [web-ui] Clipboard copy button broken on insecure contexts (#936)
@@ -326,44 +377,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [e2e] Fix settings-nav, voice, onboarding, and command palette tests
 
 ## [20260430.01] - 2026-04-30
+
 ### Added
+
 - Add /btw, /fast, /insights, /steer, /queue commands and auxiliary model config (#926)
 
-
 ### Fixed
+
 - [mcp] Preserve auth_state on expired OAuth token so re-auth button shows (#930)
 - [web-ui] Remove scroll-hijacking ResizeObserver in chat (#922) (#925)
 
 ## [20260429.02] - 2026-04-29
+
 ### Added
+
 - [voice] Add voice personas for deterministic TTS identity (#916)
 
-
 ### Fixed
+
 - [sandbox] Prevent sandbox escape via RestrictedHostSandbox and FailoverSandbox (#924)
 
 ## [20260429.01] - 2026-04-29
+
 ### Added
+
 - [update] Add /update command and web UI update button (#911)
 - [browser] Add Obscura as lightweight sidecar browser backend (#869)
 - [web] Add command palette (Cmd+K / Ctrl+K) (#904)
 - [import] Add multi-source import from Claude Code, Claude Desktop, and Hermes (#914)
 - [import] Add Claude Code and Hermes import to web UI (#917)
 
-
 ### Changed
+
 - [config] Unify provider name validation into single source of truth (#912)
 - [agents] Split model.rs into chat, convert, and stream modules
 
-
 ### Removed
+
 - [e2e] Remove dead tests for deleted UI features
 - Remove CLAUDE.local.md from repo and add to .gitignore
 - Remove unused PathBuf imports in hermes-import
 - Remove unused imports in httpd gateway
 
-
 ### Fixed
+
 - [e2e] Stabilize rename test and skip broken Matrix ownership test
 - [docs] Use $http_host in nginx proxy examples to preserve port (#907)
 - [e2e] Fix rename assertion, unskip Matrix ownership test
@@ -389,26 +446,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [e2e] Fix flaky command palette, reasoning toggle, and projects tests
 
 ## [20260428.03] - 2026-04-28
+
 ### Added
+
 - [cron] Add heartbeat wake cooldown to prevent exec re-fire loop (#871)
 - [web-ui] Show chat status badges in visible toolbar row (#886)
 - [local-llm] On-demand model loading/unloading with idle timeout (#884)
 - Make telegram channel optional (#891)
 - Make discord and msteams channels optional (#899)
 
-
 ### Changed
+
 - [config] Extract initialize_config() from discover_and_load()
 - Derive nightly toolchain from rust-toolchain.toml everywhere
 - [gateway] Split skills service helpers into separate module
 - [gateway] Move skills impl out of mod.rs into service.rs
 
-
 ### Removed
+
 - Remove needless return in skills toggle_bundled_skill
 
-
 ### Fixed
+
 - [tests] Stabilize flaky memory_config_get test
 - [ci] Pin NCCL version to match CUDA 12.4 container
 - [ci] Match NCCL dev headers to pre-installed runtime version
@@ -445,33 +504,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [e2e] Use .chat-session-name selector for rename assertion
 - [ci] Copy scripts/ into Docker build and improve download retries
 
-
 ### Security
+
 - [ci] Use correct security list-keychains syntax for macOS codesign
 - [ci] Align macOS certificate import with working arbor pattern
 - [ci] Add --timestamp and strip get-task-allow for macOS notarization
 
 ## [20260428.02] - 2026-04-28
+
 ### Added
+
 - [cron] Add heartbeat wake cooldown to prevent exec re-fire loop (#871)
 - [web-ui] Show chat status badges in visible toolbar row (#886)
 - [local-llm] On-demand model loading/unloading with idle timeout (#884)
 - Make telegram channel optional (#891)
 - Make discord and msteams channels optional (#899)
 
-
 ### Changed
+
 - [config] Extract initialize_config() from discover_and_load()
 - Derive nightly toolchain from rust-toolchain.toml everywhere
 - [gateway] Split skills service helpers into separate module
 - [gateway] Move skills impl out of mod.rs into service.rs
 
-
 ### Removed
+
 - Remove needless return in skills toggle_bundled_skill
 
-
 ### Fixed
+
 - [tests] Stabilize flaky memory_config_get test
 - [ci] Pin NCCL version to match CUDA 12.4 container
 - [ci] Match NCCL dev headers to pre-installed runtime version
@@ -506,33 +567,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [config] Use unique temp file for atomic writes
 - [config] Move tempfile from dev-dependencies to dependencies
 
-
 ### Security
+
 - [ci] Use correct security list-keychains syntax for macOS codesign
 - [ci] Align macOS certificate import with working arbor pattern
 - [ci] Add --timestamp and strip get-task-allow for macOS notarization
 
 ## [20260428.01] - 2026-04-28
+
 ### Added
+
 - [cron] Add heartbeat wake cooldown to prevent exec re-fire loop (#871)
 - [web-ui] Show chat status badges in visible toolbar row (#886)
 - [local-llm] On-demand model loading/unloading with idle timeout (#884)
 - Make telegram channel optional (#891)
 - Make discord and msteams channels optional (#899)
 
-
 ### Changed
+
 - [config] Extract initialize_config() from discover_and_load()
 - Derive nightly toolchain from rust-toolchain.toml everywhere
 - [gateway] Split skills service helpers into separate module
 - [gateway] Move skills impl out of mod.rs into service.rs
 
-
 ### Removed
+
 - Remove needless return in skills toggle_bundled_skill
 
-
 ### Fixed
+
 - [tests] Stabilize flaky memory_config_get test
 - [ci] Pin NCCL version to match CUDA 12.4 container
 - [ci] Match NCCL dev headers to pre-installed runtime version
@@ -567,29 +630,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [config] Use unique temp file for atomic writes
 - [config] Move tempfile from dev-dependencies to dependencies
 
-
 ### Security
+
 - [ci] Use correct security list-keychains syntax for macOS codesign
 - [ci] Align macOS certificate import with working arbor pattern
 - [ci] Add --timestamp and strip get-task-allow for macOS notarization
 
 ## [20260426.05] - 2026-04-26
+
 ### Added
+
 - [cron] Add heartbeat wake cooldown to prevent exec re-fire loop (#871)
 - [web-ui] Show chat status badges in visible toolbar row (#886)
 - [local-llm] On-demand model loading/unloading with idle timeout (#884)
 
-
 ### Changed
+
 - [config] Extract initialize_config() from discover_and_load()
 - Derive nightly toolchain from rust-toolchain.toml everywhere
 
-
 ### Removed
+
 - Remove needless return in skills toggle_bundled_skill
 
-
 ### Fixed
+
 - [tests] Stabilize flaky memory_config_get test
 - [ci] Pin NCCL version to match CUDA 12.4 container
 - [ci] Match NCCL dev headers to pre-installed runtime version
@@ -613,23 +678,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Collapse nested if-let in key_store timestamp check
 - Derive Default for ModelLifecycleManager
 
-
 ### Security
+
 - [ci] Use correct security list-keychains syntax for macOS codesign
 - [ci] Align macOS certificate import with working arbor pattern
 - [ci] Add --timestamp and strip get-task-allow for macOS notarization
 
 ## [20260426.04] - 2026-04-26
+
 ### Added
+
 - [cron] Add heartbeat wake cooldown to prevent exec re-fire loop (#871)
 
-
 ### Changed
+
 - [config] Extract initialize_config() from discover_and_load()
 - Derive nightly toolchain from rust-toolchain.toml everywhere
 
-
 ### Fixed
+
 - [tests] Stabilize flaky memory_config_get test
 - [ci] Pin NCCL version to match CUDA 12.4 container
 - [ci] Match NCCL dev headers to pre-installed runtime version
@@ -640,23 +707,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [mcp] Prefer native MCP tools over mcporter (#874)
 - [ci] Use keychain-profile for notarization and log failures
 
-
 ### Security
+
 - [ci] Use correct security list-keychains syntax for macOS codesign
 - [ci] Align macOS certificate import with working arbor pattern
 - [ci] Add --timestamp and strip get-task-allow for macOS notarization
 
 ## [20260426.03] - 2026-04-26
+
 ### Added
+
 - [cron] Add heartbeat wake cooldown to prevent exec re-fire loop (#871)
 
-
 ### Changed
+
 - [config] Extract initialize_config() from discover_and_load()
 - Derive nightly toolchain from rust-toolchain.toml everywhere
 
-
 ### Fixed
+
 - [tests] Stabilize flaky memory_config_get test
 - [ci] Pin NCCL version to match CUDA 12.4 container
 - [ci] Match NCCL dev headers to pre-installed runtime version
@@ -667,22 +736,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [mcp] Prefer native MCP tools over mcporter (#874)
 - [ci] Use keychain-profile for notarization and log failures
 
-
 ### Security
+
 - [ci] Use correct security list-keychains syntax for macOS codesign
 - [ci] Align macOS certificate import with working arbor pattern
 
 ## [20260426.02] - 2026-04-26
+
 ### Added
+
 - [cron] Add heartbeat wake cooldown to prevent exec re-fire loop (#871)
 
-
 ### Changed
+
 - [config] Extract initialize_config() from discover_and_load()
 - Derive nightly toolchain from rust-toolchain.toml everywhere
 
-
 ### Fixed
+
 - [tests] Stabilize flaky memory_config_get test
 - [ci] Pin NCCL version to match CUDA 12.4 container
 - [ci] Match NCCL dev headers to pre-installed runtime version
@@ -693,22 +764,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [mcp] Prefer native MCP tools over mcporter (#874)
 - [ci] Use keychain-profile for notarization and log failures
 
-
 ### Security
+
 - [ci] Use correct security list-keychains syntax for macOS codesign
 - [ci] Align macOS certificate import with working arbor pattern
 
 ## [20260426.01] - 2026-04-26
+
 ### Added
+
 - [cron] Add heartbeat wake cooldown to prevent exec re-fire loop (#871)
 
-
 ### Changed
+
 - [config] Extract initialize_config() from discover_and_load()
 - Derive nightly toolchain from rust-toolchain.toml everywhere
 
-
 ### Fixed
+
 - [tests] Stabilize flaky memory_config_get test
 - [ci] Pin NCCL version to match CUDA 12.4 container
 - [ci] Match NCCL dev headers to pre-installed runtime version
@@ -716,21 +789,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ci] Remove pre-installed libnccl-dev from CUDA container
 - [providers] Link NCCL when llama-cpp-sys-2 compiles with GGML_USE_NCCL
 
-
 ### Security
+
 - [ci] Use correct security list-keychains syntax for macOS codesign
 - [ci] Align macOS certificate import with working arbor pattern
 
 ## [20260425.09] - 2026-04-25
+
 ### Added
+
 - [cron] Add heartbeat wake cooldown to prevent exec re-fire loop (#871)
 
-
 ### Changed
+
 - [config] Extract initialize_config() from discover_and_load()
 
-
 ### Fixed
+
 - [tests] Stabilize flaky memory_config_get test
 - [ci] Pin NCCL version to match CUDA 12.4 container
 - [ci] Match NCCL dev headers to pre-installed runtime version
@@ -738,21 +813,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ci] Remove pre-installed libnccl-dev from CUDA container
 - [providers] Link NCCL when llama-cpp-sys-2 compiles with GGML_USE_NCCL
 
-
 ### Security
+
 - [ci] Use correct security list-keychains syntax for macOS codesign
 - [ci] Align macOS certificate import with working arbor pattern
 
 ## [20260425.08] - 2026-04-25
+
 ### Added
+
 - [cron] Add heartbeat wake cooldown to prevent exec re-fire loop (#871)
 
-
 ### Changed
+
 - [config] Extract initialize_config() from discover_and_load()
 
-
 ### Fixed
+
 - [tests] Stabilize flaky memory_config_get test
 - [ci] Pin NCCL version to match CUDA 12.4 container
 - [ci] Match NCCL dev headers to pre-installed runtime version
@@ -761,92 +838,116 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [providers] Link NCCL when llama-cpp-sys-2 compiles with GGML_USE_NCCL
 
 ## [20260425.07] - 2026-04-25
+
 ### Added
+
 - [cron] Add heartbeat wake cooldown to prevent exec re-fire loop (#871)
 
-
 ### Changed
+
 - [config] Extract initialize_config() from discover_and_load()
 
-
 ### Fixed
+
 - [tests] Stabilize flaky memory_config_get test
 - [ci] Pin NCCL version to match CUDA 12.4 container
 - [ci] Match NCCL dev headers to pre-installed runtime version
 
 ## [20260425.06] - 2026-04-25
+
 ### Added
+
 - [cron] Add heartbeat wake cooldown to prevent exec re-fire loop (#871)
 
-
 ### Changed
+
 - [config] Extract initialize_config() from discover_and_load()
 
-
 ### Fixed
+
 - [tests] Stabilize flaky memory_config_get test
 - [ci] Pin NCCL version to match CUDA 12.4 container
 
 ## [20260425.05] - 2026-04-25
+
 ### Added
+
 - [cron] Add heartbeat wake cooldown to prevent exec re-fire loop (#871)
 
-
 ### Changed
+
 - [config] Extract initialize_config() from discover_and_load()
 
-
 ### Fixed
+
 - [tests] Stabilize flaky memory_config_get test
 
 ## [20260425.04] - 2026-04-25
+
 ### Changed
+
 - [config] Extract initialize_config() from discover_and_load()
 
-
 ### Fixed
+
 - [tests] Stabilize flaky memory_config_get test
 
 ## [20260425.03] - 2026-04-25
+
 ### Fixed
+
 - [e2e] Stabilize flaky gemini, autoscroll, and settings-nav tests
 
 ## [20260425.02] - 2026-04-25
+
 ### Fixed
+
 - [ci] Allow held NCCL packages to be upgraded
 
 ## [20260425.01] - 2026-04-25
+
 ### Fixed
+
 - [ci] Add NCCL to build deps and fix flaky tests
 
 ## [20260424.09] - 2026-04-24
+
 ### Fixed
+
 - Replace expect() with let-else in splitter tests
 - [benchmarks] Update code_index bench to use free-function chunker API
 
 ## [20260424.08] - 2026-04-24
 
 ## [20260424.07] - 2026-04-24
+
 ### Fixed
+
 - Replace unwrap() with expect() in splitter tests
 
 ## [20260424.06] - 2026-04-24
+
 ### Fixed
+
 - Remove needless Ok wrapper in refresh_qmd_index
 
 ## [20260424.05] - 2026-04-24
 
 ## [20260424.04] - 2026-04-24
+
 ### Changed
+
 - [splitter] Extract chelix-splitter crate for AST-aware chunking (#791)
 
-
 ### Fixed
+
 - [ci] Prevent releases.json from updating before GitHub release exists
 - Revert releases.json to latest published release (20260421.05)
 
 ## [20260424.03] - 2026-04-24
+
 ### Added
+
 - [skills] Add bundled skill category management to onboarding and settings (#829)
 - [signal] Add signal-cli channel (#841)
 - [home-assistant] Native Home Assistant integration crate (#827)
@@ -859,21 +960,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [config] Add config compact command and auto-compact on startup
 - [skills] MCP server management skill and post-install recipes (#840)
 
-
 ### Changed
+
 - [providers] Split openai_compat tests into submodules
 - [config] Split loader tests into submodules (file-size limit)
 - [gateway] Extract NoopSkillsService into services/skills.rs (file-size limit)
 
-
 ### Removed
+
 - Remove set -e from codesign-debug recipe that breaks just test
 - [web] Remove stale accountId assertion from signal channel E2E test
 - [ui] Wire up project combo dropdown in chat header (#847)
 - [config] Remove unused imports from test submodule
 
-
 ### Fixed
+
 - [tools] Block exec approval bypass via env-var prefix injection (#822)
 - [browser] Add diagnostic logging for container readiness failures (#820)
 - [gateway] Downgrade broadcast log from debug to trace (#830)
@@ -916,25 +1017,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [gateway] Collapse nested if for clippy
 
 ## [20260424.02] - 2026-04-24
+
 ### Added
+
 - [skills] Add bundled skill category management to onboarding and settings (#829)
 - [signal] Add signal-cli channel (#841)
 - [home-assistant] Native Home Assistant integration crate (#827)
 - [web-ui] Smart auto-scroll for chat messages (#846)
 - [projects] Add code_index_enabled toggle to project settings (#837)
 
-
 ### Changed
+
 - [providers] Split openai_compat tests into submodules
 
-
 ### Removed
+
 - Remove set -e from codesign-debug recipe that breaks just test
 - [web] Remove stale accountId assertion from signal channel E2E test
 - [ui] Wire up project combo dropdown in chat header (#847)
 
-
 ### Fixed
+
 - [tools] Block exec approval bypass via env-var prefix injection (#822)
 - [browser] Add diagnostic logging for container readiness failures (#820)
 - [gateway] Downgrade broadcast log from debug to trace (#830)
@@ -971,21 +1074,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [benchmarks] Wire qmd feature to chelix-qmd dep for --all-features CI
 
 ## [20260424.01] - 2026-04-24
+
 ### Added
+
 - [skills] Add bundled skill category management to onboarding and settings (#829)
 - [signal] Add signal-cli channel (#841)
 
-
 ### Changed
+
 - [providers] Split openai_compat tests into submodules
 
-
 ### Removed
+
 - Remove set -e from codesign-debug recipe that breaks just test
 - [web] Remove stale accountId assertion from signal channel E2E test
 
-
 ### Fixed
+
 - [tools] Block exec approval bypass via env-var prefix injection (#822)
 - [browser] Add diagnostic logging for container readiness failures (#820)
 - [gateway] Downgrade broadcast log from debug to trace (#830)
@@ -1005,11 +1110,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [channels] Update ALL variant count for Signal channel type
 
 ## [20260423.01] - 2026-04-23
+
 ### Added
+
 - [skills] Add bundled skill category management to onboarding and settings (#829)
 
-
 ### Fixed
+
 - [tools] Block exec approval bypass via env-var prefix injection (#822)
 - [browser] Add diagnostic logging for container readiness failures (#820)
 - [gateway] Downgrade broadcast log from debug to trace (#830)
@@ -1024,11 +1131,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [skills] Repair embedded bundled skill discovery in release builds
 
 ## [20260422.01] - 2026-04-22
+
 ### Added
+
 - [skills] Add bundled skill category management to onboarding and settings (#829)
 
-
 ### Fixed
+
 - [tools] Block exec approval bypass via env-var prefix injection (#822)
 - [browser] Add diagnostic logging for container readiness failures (#820)
 - [gateway] Downgrade broadcast log from debug to trace (#830)
@@ -1041,7 +1150,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [web] Repair gemini tool-signature and reasoning-toggle E2E tests
 
 ## [20260421.05] - 2026-04-21
+
 ### Fixed
+
 - [code-index] Use discover_opts with permissive trust for gix
 - [web] Render inline markdown in table cells
 - [code-index] Set required_trust to Reduced for gix discovery
@@ -1052,20 +1163,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ci] Install git before checkout in CUDA containers
 
 ## [20260421.04] - 2026-04-21
+
 ### Fixed
+
 - [ci] Make safe.directory step non-fatal when git is absent
 
 ## [20260421.03] - 2026-04-21
+
 ### Fixed
+
 - [ci] Restore original step order, fix gix open, revert npm flag
 
 ## [20260421.02] - 2026-04-21
+
 ### Fixed
+
 - [ci] Gix safe.directory, read_ops file_path regression, npm --ignore-scripts
 - [tools] Empty file_path falls through to read_primary, whitespace rejected
 
 ## [20260421.01] - 2026-04-21
+
 ### Added
+
 - [channels] Centralized command registry for all channels (#794)
 - Gemini thought_signature round-tripping and schema validation fixes (#795)
 - Self-improving agent loop — skills, memory lifecycle, deployment (#803)
@@ -1074,12 +1193,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [web] Render markdown as HTML in chat messages (#808)
 - [skills] Bundle 101 default skills with category UI and format fallback (#797)
 
-
 ### Changed
+
 - [tools] Split skill_tools.rs into submodules
 
-
 ### Fixed
+
 - [ci] Add safe.directory for container jobs (gix ownership check)
 - [slack] Strip leading slash from commands before gateway dispatch (#804)
 - [mcp] Implement legacy SSE transport for endpoint discovery (#805)
@@ -1090,38 +1209,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ci] Pass safe.directory to gix via env vars in rust-ci container
 
 ## [20260420.02] - 2026-04-20
+
 ### Fixed
+
 - [ci] Address main rust failures
 
 ## [20260420.01] - 2026-04-20
+
 ### Fixed
+
 - [ci] Handle .ts locale files in i18n-check on Node <22
 
 ## [20260419.01] - 2026-04-19
+
 ### Added
+
 - [code-index] Add code indexing crate with builtin SQLite+FTS5 backend (#771)
 - [config] Add server.external_url for reverse proxy WebAuthn (#785)
 
-
 ### Changed
+
 - Add thiserror Error types to 8 library crates (#792)
 
-
 ### Fixed
+
 - [task_list] List all tasks by default and add list_lists action (#779)
 - [sandbox] Add observability and prevent repeated package provisioning (#784)
 
 ## [20260417.02] - 2026-04-17
+
 ### Added
+
 - [nostr] Add NIP-59 Gift Wrap support for private DMs (#763)
 - [matrix] Add OIDC authentication via Matrix Authentication Service (#730)
 
-
 ### Removed
+
 - [tests] Remove hardcoded secret fixtures (#768)
 
-
 ### Fixed
+
 - [providers] Strip $schema recursively and downgrade fallback log level (#762)
 - [matrix] Retry sync loop on transient connection failures (#761)
 - [e2e] Stabilize archived-sessions and nostr channel tests
@@ -1130,11 +1257,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [matrix] Restore main CI after OIDC changes
 
 ## [20260417.01] - 2026-04-17
+
 ### Added
+
 - [web] Add reasoning effort toggle to chat toolbar (#750)
 
-
 ### Fixed
+
 - [providers] Sanitize MCP tool schemas regardless of JSON Schema draft (#746)
 - [node-host] Install rustls CryptoProvider before wss:// connections (#749)
 - [providers] Prune orphaned required entries from tool schemas (#751)
@@ -1144,15 +1273,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ci] Harden linux dependency installer
 
 ## [20260416.02] - 2026-04-16
+
 ### Added
+
 - [providers] Configurable context windows + oldest-first compaction (#737)
 
-
 ### Changed
+
 - [tests] Split oversized Rust test modules
 
-
 ### Fixed
+
 - [ci] Repair MCP e2e and iOS chat event handling
 - [providers] Detect Grok 3/4 as reasoning-capable models (#741)
 - [nostr] Replace tokio RwLock with std RwLock to prevent panic (#742)
@@ -1161,7 +1292,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ci] Install openssh client in Linux build container
 
 ## [20260415.01] - 2026-04-15
+
 ### Added
+
 - Allow GUIDELINES.md file override for hardcoded tool guidelines
 - [channels] Add WhatsApp to default offered channels
 - [whatsapp] Auto-approve owner, set device name, wrap buttons
@@ -1169,17 +1302,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [whatsapp] Make Account ID optional, default to "main"
 - [web] Add Slack channel to onboarding wizard
 
-
 ### Changed
+
 - Clean up provider tests and onboarding UI
 - Move implementation code out of mod.rs and lib.rs (#731)
 
-
 ### Removed
+
 - [web] Remove duplicate assets warn import
 
-
 ### Fixed
+
 - [graphql] Make sessionKey required for all chat operations
 - [graphql] Address PR review — harden subscription filter and tests
 - [onboarding] Show version in server footer
@@ -1220,12 +1353,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [chat] Broadcast user_message event so API-sent messages appear in web UI (#734)
 
 ## [20260414.02] - 2026-04-14
+
 ### Changed
+
 - [node-exec] Merge node exec types into owners
 - [web] Remove prompt memory toolbar from chat header
 
-
 ### Fixed
+
 - [web] Harden flaky e2e tests for cron delete and identity autosave
 - [sandbox] Mask /proc and /sys host metadata in Docker/Podman containers
 - [sandbox] Address PR review — strengthen test assertions
@@ -1238,12 +1373,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [web] Restore clear button for main session modal (#671)
 
 ## [20260414.01] - 2026-04-14
+
 ### Changed
+
 - [node-exec] Merge node exec types into owners
 - [web] Remove prompt memory toolbar from chat header
 
-
 ### Fixed
+
 - [web] Harden flaky e2e tests for cron delete and identity autosave
 - [sandbox] Mask /proc and /sys host metadata in Docker/Podman containers
 - [sandbox] Address PR review — strengthen test assertions
@@ -1253,27 +1390,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [auth] Update password minimum length strings from 8 to 12 characters
 
 ## [20260413.06] - 2026-04-13
+
 ### Fixed
+
 - [web] Gate openai live e2e server on api key
 
 ## [20260413.05] - 2026-04-13
+
 ### Added
+
 - [voice] Add local whisper web setup
 - [chat] Show cached input tokens
 
-
 ### Changed
+
 - [providers] Normalize openai schemas with schema crates
 - [providers] Move schema normalization out of mod.rs
 - [chat] Unify usage propagation paths
 
-
 ### Removed
+
 - [httpd] Remove unused route import
 - [httpd] Drop unused get import
 
-
 ### Fixed
+
 - [providers] Sanitize openai tool schemas
 - [providers] Address PR review feedback
 - [providers] Keep openai compat module under file limit
@@ -1290,17 +1431,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [sessions] Allow unarchiving active channel chats
 
 ## [20260413.04] - 2026-04-13
+
 ### Changed
+
 - Split oversized rust modules
 - Split remaining oversized rust modules
 - Remove replaced module entrypoints
 
-
 ### Removed
+
 - [agents] Remove duplicate tool arg match arm
 
-
 ### Fixed
+
 - [providers] Preserve native tool arg types
 - [gateway] Repair split module blockers
 - Restore post-merge validation
@@ -1321,15 +1464,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ci] Restore main build stability
 
 ## [20260413.03] - 2026-04-13
+
 ### Fixed
+
 - [gateway] Resolve release CI regressions
 
 ## [20260413.02] - 2026-04-13
+
 ### Added
+
 - [voice] Add base_url config for OpenAI TTS and Whisper STT providers
 
-
 ### Changed
+
 - [browser] Type browserless API version as enum
 - [nodes] Extract core types and constants to dedicated crate
 - [nodes] Move pure ssh and env helper functions to node-exec-types
@@ -1338,8 +1485,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Group lock-free broadcast state into Broadcaster struct
 - [tools] Unify cron schema field helper
 
-
 ### Fixed
+
 - [telegram] Persist inbound documents
 - [review] Make inbound document replay robust
 - [browser] Add Browserless v2 websocket fallback support
@@ -1352,14 +1499,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [tools] Simplify cron schema unions
 - [agents] Preserve legacy tool-call compatibility
 
-
 ### Security
+
 - [nodes] Define NodeInfoProvider trait for decoupling
 
 ## [20260413.01] - 2026-04-13
 
 ## [20260412.01] - 2026-04-12
+
 ### Added
+
 - [discord] Handle inbound voice and image attachments
 - [hooks] Include channel provenance in payloads
 - [web] Add Projects section to Settings sidebar navigation
@@ -1402,8 +1551,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [web] Add option to disable terminal in Web UI
 - [auth] Add brute-force protection with IP ban and account lockout
 
-
 ### Changed
+
 - [chat] Align multimodal rewrite updates
 - [telegram] Extract STT setup hint constant
 - [discord] Reuse inbound downloader per handler
@@ -1418,8 +1567,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [tools] Stream OCI file transfers
 - [tools] Stream OCI reads from cp
 
-
 ### Fixed
+
 - [agents] Dispatch ToolResultPersist hooks
 - [agents] Sanitize ToolResultPersist tool names
 - [agents] Handle Z.AI text tool calls and dedupe providers
@@ -1515,29 +1664,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [config] Preserve TOML section order on web UI save
 - Apply local fixes
 
-
 ### Security
+
 - [config] Warn when preset tool policies are set but tools.policy is empty
 - [nostr] Address PR review comments
 - [auth] Harden remote access with 9 security improvements
 
 ## [20260410.01] - 2026-04-10
+
 ### Added
+
 - [oauth] Log loopback redirect URI rewrites at debug level
 - [skills] Ship native read_skill tool
 - [skills] Harden read_skill with assets/, binary files, and metadata surfacing
 
-
 ### Changed
+
 - [oauth] Share loopback redirect normalizer and apply to provider setup
 - [oauth] Eliminate dead branches in normalize_loopback_redirect
 
-
 ### Removed
+
 - [web] Stabilize node selector and fork delete e2e
 
-
 ### Fixed
+
 - [gateway] Dcg-guard PATH augmentation and loud missing-dcg warning
 - [gateway] Refresh stale dcg-guard files and use async subprocess
 - [gateway] Dcg-guard HOME fallback and unconditional startup log
@@ -1551,24 +1702,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [skills] Per-subdir sidecar cap + data_dir-scoped discoverer
 - [voice] Honor whisper.model and whisper.language in STT factory
 
-
 ### Security
+
 - [hooks] Pin dcg install to tag and verify checksum
 
 ## [20260409.04] - 2026-04-09
+
 ### Added
+
 - [providers] Add Alibaba Cloud Coding Plan provider
 
-
 ### Fixed
+
 - [ci] Avoid dynamic provider secrets
 
 ## [20260409.03] - 2026-04-09
+
 ### Removed
+
 - Remove redundant http client fallback check
 
-
 ### Fixed
+
 - [common] Ensure User-Agent survives all HTTP client fallback paths
 - [test] Address PR review — clarify comment and assert no Error events
 - [crons] Persist schedule field values across modal re-renders
@@ -1580,14 +1735,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [providers] Handle multimodal content in MiniMax system prompt rewrite
 
 ## [20260409.02] - 2026-04-09
+
 ### Added
+
 - [msteams] Comprehensive Teams channel implementation
 - [providers] Add Gemini 3.x models to catalog and update capability detection
 - [providers] Add ModelCapabilities struct to ModelInfo and DiscoveredModel
 - [chat] Use ModelCapabilities in API responses instead of provider lookups
 
-
 ### Fixed
+
 - [web] Remove 'Requires public URL' badge from Teams card
 - [msteams] Address PR review feedback
 - [msteams] Use Graph token for reactions and thread context
@@ -1623,12 +1780,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Align auth middleware tests with gateway state
 
 ## [20260409.01] - 2026-04-09
+
 ### Added
+
 - [matrix] Add slash command support
 - [models] Make model detection opt-in and add stop button
 
-
 ### Fixed
+
 - [matrix] Match help command by exact name, not prefix
 - [models] Abort probe tasks on cancel, show feedback, await RPC
 - [tls] Include lan bind SANs in auto-generated certs
@@ -1642,12 +1801,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Harden worktree setup envrc handling
 
 ## [20260408.01] - 2026-04-08
+
 ### Added
+
 - [agents] Auto-continue when model stops mid-task + max iterations UX
 - [config] Make auto-continue tool-call threshold configurable
 
-
 ### Fixed
+
 - Address PR review — translatable continue message, document tool-call threshold
 - Guard auto-continue against min_tool_calls=0 usize tautology
 - [minimax] Restore system prompts and null tool args
@@ -1655,18 +1816,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [providers] Mark anthropic recommendations globally
 
 ## [20260407.01] - 2026-04-07
+
 ### Added
+
 - [webhooks] Add generic webhook ingress for triggering AI agents
 - [web] Link to Hoppscotch for webhook testing
 - [web] Add CORS to webhook ingress and copy-curl button
 - [website] Add Webhooks to landing page features
 
-
 ### Changed
+
 - [web] Extract webhooks nav icon to external SVG file
 
-
 ### Fixed
+
 - [cli] Report release version in --version output
 - [providers] Propagate cache tokens in Responses API and custom providers
 - [providers] Read cached_tokens from input_tokens_details in non-streaming Responses SSE
@@ -1704,33 +1867,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wrap cascade deletes in transactions to prevent partial data loss
 - Resolve settings nav CI regression
 
-
 ### Security
+
 - Add webhooks feature documentation
 
 ## [20260406.05] - 2026-04-06
+
 ### Added
+
 - [openclaw-import] Convert non-default agents to spawn_agent presets
 
-
 ### Fixed
+
 - [web] Allow session sidebar links to open in new tabs
 - [web] Tighten session sidebar link accessibility
 - [docker] Add missing default features to Dockerfile build
 - [docker] Use default features instead of explicit list
 
 ## [20260406.04] - 2026-04-06
+
 ### Added
+
 - [website] Add provider/channel pills section and update branding
 - [website] Add positioning, how-it-works, use cases, and community quote
 
-
 ### Changed
+
 - [providers] Avoid quadratic SSE buffer copies
 - [providers] Align copilot stream error handling
 
-
 ### Fixed
+
 - [providers] Route Copilot enterprise tokens via proxy endpoint (#352)
 - [providers] Address PR review comments on Copilot enterprise
 - [providers] Harden Copilot enterprise proxy security
@@ -1750,24 +1917,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [website] Sync i18n builder with locale pages
 - [website] Correct i18n generator keys
 
-
 ### Security
+
 - [providers] Redact CopilotTokenResponse token in Debug output
 
 ## [20260406.03] - 2026-04-06
+
 ### Fixed
+
 - [web] Restore all-features build
 
 ## [20260406.02] - 2026-04-06
+
 ### Fixed
+
 - [web] Map config reload errors explicitly
 
 ## [20260406.01] - 2026-04-06
+
 ### Added
+
 - [cron] Auto-clean orphaned sessions and prune sandbox containers
 
-
 ### Fixed
+
 - [cron] Use time crate for retention math and fix named-session guard
 - [sandbox] Include remove_image_override in cleanup_session
 - [cron] Skip pruning cycle when session key lookup fails
@@ -1775,7 +1948,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ci] Await channel preload in settings e2e
 
 ## [20260405.06] - 2026-04-05
+
 ### Security
+
 - Add GitHub artifact attestations to release workflow
 
 ## [20260405.05] - 2026-04-05
@@ -1783,11 +1958,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [20260405.04] - 2026-04-05
 
 ## [20260405.03] - 2026-04-05
+
 ### Fixed
+
 - [web] Restore matrix onboarding icon
 
 ## [20260405.02] - 2026-04-05
+
 ### Added
+
 - [providers] Add zai-code provider for Z.AI Coding plan
 - [tools] Add cross-session search recall
 - [tools] Add automatic edit checkpoints
@@ -1819,17 +1998,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [matrix] Harden ownership recovery flow
 - [matrix] Add generic channel location fallback
 
-
 ### Changed
+
 - [ssh] Use secrecy for imported key material
 - Replace vendored sqlx-sqlite with git dependency
 
-
 ### Removed
+
 - [web] Remove unused gon import
 
-
 ### Fixed
+
 - [providers] Address PR review comments for zai-code
 - [vault] Allow unencrypted session history while sealed
 - [vault] Address PR review comments
@@ -1896,22 +2075,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [web] Satisfy biome hook and lint checks
 
 ## [20260328.03] - 2026-03-28
+
 ### Fixed
+
 - [telegram] Route forum-topic replies to correct thread
 - [telegram] Restore raw chat_id in logs, add thread_id to tracing
 - [providers] Increase model probe timeout for local LLM servers
 - [providers] Address PR review feedback
 
 ## [20260328.02] - 2026-03-28
+
 ### Added
+
 - [telegram] Isolate forum-topic sessions by thread_id
 
-
 ### Changed
+
 - [telegram] Consolidate parse_chat_target, fix typing indicator
 
-
 ### Fixed
+
 - [telegram] Propagate thread_id parse errors in parse_chat_target
 - [providers] Skip model discovery for custom providers with explicit models
 - [providers] Replace redundant test with one that pins the new guard
@@ -1924,21 +2107,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [provider-setup] Use Arc<AtomicBool> instead of static in test
 
 ## [20260328.01] - 2026-03-28
+
 ### Added
+
 - [website] Add local dev server with SSR partial injection
 - [web] Add changelog link to header nav
 - [providers] Add prompt caching for Anthropic and OpenRouter
 - [telegram] Extract plaintext and markdown documents from messages
 - [providers] Add Fireworks.ai as primary provider
 
-
 ### Changed
+
 - [website] Shared nav via SSR partial, add Changelog link
 - [telegram] Use std::str::from_utf8 for UTF-8 truncation
 - [telegram] Normalize MIME type once, avoid redundant UTF-8 scans
 
-
 ### Fixed
+
 - [website] Allow nav links without data-page to navigate normally
 - [website] Highlight Changelog tab and show GitHub stars on /changelog
 - [website] Share GitHub stars script via nav partial, fix Changelog click
@@ -1950,23 +2135,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [install] Remove spurious -1 revision from .deb filename in installer
 
 ## [20260327.05] - 2026-03-27
+
 ### Changed
+
 - [release] Build changelog HTML in prepare-release instead of CI
 
 ## [20260327.04] - 2026-03-27
+
 ### Fixed
+
 - [ci] Use file input for changelog blob to avoid argument list too long
 
 ## [20260327.03] - 2026-03-27
+
 ### Added
+
 - [website] Add changelog HTML page and fix RPM version override
 
 ## [20260327.02] - 2026-03-27
+
 ### Fixed
+
 - [install] Support date-based version tags in installer and package builds
 
 ## [20260327.01] - 2026-03-27
+
 ### Added
+
 - [gateway] Embedded web chat UI at root endpoint
 - [gateway] Add services, pairing, expanded methods and auth
 - [agents] Add LLM chat with streaming, multi-provider support and feature flags
@@ -2454,8 +2649,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [docker] Add Node.js/npm to Docker image for MCP servers
 - [ci] Add pre_release option to release workflow
 
-
 ### Changed
+
 - [website] Extract inline CSS to separate styles.css file
 - [gateway] Split monolithic app.js into 24 ES modules
 - [gateway] Extract inline JS styles to CSS and add message dedup
@@ -2569,8 +2764,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [docker] Split runtime installs into separate layers
 - [dev] Deduplicate release-preflight by delegating to lint
 
-
 ### Removed
+
 - Merge branch 'main' into claude/remove-unsafe-code-ehZlQ
 - [ui] Remove decimal digits from memory display
 - [ci] Add latest Docker tag on tag pushes, remove unused branch tag
@@ -2594,8 +2789,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Merge branch 'main' into claude/remove-unsafe-code-ehZlQ
 - [local-llm] Remove unused gguf runtime helper
 
-
 ### Fixed
+
 - [oauth] Use correct OpenAI client_id, add config layer and tests
 - [agents] Prefer tool-capable provider when tools are registered
 - [agents] Register builtin providers before genai to enable tool calling
@@ -3196,8 +3391,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [skills] Improve slug error messages and test isolation
 - [gateway] Suppress update banner for dev builds
 
-
 ### Security
+
 - [ci] Add zizmor workflow security scan to deb-packages workflow (#8)
 - [skills] Add requirements system, spec compliance, and markdown rendering
 - [gateway] Add passkey/password auth, API key support, and protected API routes
@@ -3264,7 +3459,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [tools] Add send_document tool for file sharing to channels
 
 ## [0.10.18] - 2026-03-09
+
 ### Added
+
 - [gateway] Make provider discovery startup non-blocking
 - [monitoring] Track memory history and improve local-llm memory reporting (#325)
 - [ios] Add local llama cpp memory field to GraphQL schema
@@ -3273,19 +3470,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [oauth] Support pasted callback URL fallback (#365)
 - [providers] Add reasoning effort support for models with extended thinking (#363)
 
-
 ### Changed
+
 - Externalize web/wasm assets and reduce memory footprint (#321)
 - [web] Move chat history hydration to paged HTTP
 - [web] Paginate sessions and auto-load older history
 
-
 ### Removed
+
 - [web] Remove nested onboarding scroll and restore settings nav icons
 - [web] Declutter chat controls and fix dropdown positioning
 
-
 ### Fixed
+
 - [gateway] Improve browser warmup integration
 - [scripts] Run local nextest with ci timeout profile
 - [web] Move session history off websocket and cap payload size
@@ -3308,34 +3505,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [web] Allow deleting cron sessions from chat sidebar (#357)
 - [chat] Skip duplicate text fallback when TTS disabled and voice streamed (#373)
 
-
 ### Security
+
 - [nodes] Add multi-node support with device pairing, remote exec, and UI (#291)
 - [security] Add direct nginx websocket proxy example (#364)
 
 ## [0.10.17] - 2026-03-05
+
 ### Fixed
+
 - [config] Include tmux in default sandbox packages
 
 ## [0.10.16] - 2026-03-05
+
 ### Fixed
+
 - [ci,tools] Unblock dependabot and support wasmtime 36
 - [auth] Honor forwarded host for proxy session cookies
 
 ## [0.10.15] - 2026-03-05
+
 ### Fixed
+
 - Install rustls CryptoProvider before channel startup (#336)
 
 ## [0.10.14] - 2026-03-05
+
 ### Fixed
+
 - [packaging] Use cli-relative web assets in cargo-deb
 
 ## [0.10.13] - 2026-03-04
+
 ### Fixed
+
 - [ci] Stage wasm assets for cargo-deb packaging
 
 ## [0.10.12] - 2026-03-04
+
 ### Added
+
 - [ci] Add release dry-run mode
 - [browser] Add container_host for Docker-in-Docker connectivity (#300)
 - [ios] Auto-discover server identity and show emojis (#297)
@@ -3347,20 +3556,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [monitoring] Track memory history and improve local-llm memory reporting (#325)
 - [ios] Add local llama cpp memory field to GraphQL schema
 
-
 ### Changed
+
 - [web] Move settings nav icons from JS to CSS
 - Externalize web/wasm assets and reduce memory footprint (#321)
 - [web] Move chat history hydration to paged HTTP
 - [web] Paginate sessions and auto-load older history
 
-
 ### Removed
+
 - [web] Remove nested onboarding scroll and restore settings nav icons
 - [web] Declutter chat controls and fix dropdown positioning
 
-
 ### Fixed
+
 - [config] Support provider url alias for remote Ollama config (#299)
 - [ci] Make release dry-run job conditions valid
 - [providers] Use Ollama capabilities for tool support detection (#301)
@@ -3377,42 +3586,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [web] Externalize SVG icons and restore empty-chat centering
 - [web] Align e2e with controls modal and daily model refresh
 
-
 ### Security
+
 - [nodes] Add multi-node support with device pairing, remote exec, and UI (#291)
 
 ## [0.10.11] - 2026-03-02
 
 ## [0.10.10] - 2026-03-02
+
 ### Fixed
 
 ## [0.10.9] - 2026-03-02
+
 ### Fixed
+
 - [ci] Harden tailwindcss cli downloads
 
 ## [0.10.8] - 2026-03-02
+
 ### Changed
+
 - [gateway] Fetch updates from releases manifest instead of GitHub API
 
-
 ### Fixed
+
 - [ci] Add Tailwind CSS build step to release workflow, Dockerfile, and snapcraft
 - [e2e] Wait for session history render before DOM injection in chat-abort
 
 ## [0.10.7] - 2026-03-02
+
 ### Added
+
 - [sandbox] Add GitHub runner parity packages and enable corepack (#284)
 - [providers] Add first-class LM Studio provider (#286)
 - [agents] Enrich spawn_agent presets with identity, policies, memory (#271)
 - [web] Show running version at bottom of identity settings
 - [channels] Channel architecture phase 5, contract suites, and observability baseline (#289)
 
-
 ### Changed
+
 - [channels] Registry-driven dispatch for cheap new channels (#277)
 
-
 ### Fixed
+
 - [e2e] Make sandboxes container tests deterministic
 - [e2e] Replace remaining racy waitForResponse with route interceptors
 - [mcp] Make optional MCP tool params nullable to prevent empty string errors (#283)
@@ -3424,44 +3640,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [web] Auto-install node_modules in Tailwind build script
 - [web] Retry openclaw onboarding scan until ws is ready
 
-
 ### Security
+
 - [macos] Wire settings UI to rust config backend (#267)
 - [channels] Shared channel webhook middleware pipeline (#290)
 
 ## [0.10.6] - 2026-03-01
+
 ### Fixed
+
 - [web] Fix Shiki highlighter init failures in E2E tests
 - [web] Make thinking stop button smaller with left spacing
 - [chat] Surface error when LLM returns empty response with zero tokens
 - [providers] Emit StreamEvent::Error on non-success finish_reason
 
 ## [0.10.5] - 2026-03-01
+
 ### Fixed
+
 - [web] Lazy-load Shiki to prevent blocking page mount
 
 ## [0.10.4] - 2026-03-01
+
 ### Added
+
 - [web] Add Shiki syntax highlighting to code blocks
 
 ## [0.10.3] - 2026-03-01
+
 ### Added
+
 - Add channel-aware heartbeat delivery and send_message agent tool (#270)
 - [memory] Add tree-sitter code splitter and RRF search merge
 
-
 ### Changed
+
 - [ffi] Tighten unsafe_code allowances
 
-
 ### Fixed
+
 - [sandbox] Make apple container keepalive portable (#269)
 - [local-llm] Combine compile-time and runtime Metal detection
 - [auth] Auto-detect new WebAuthn hosts and prompt passkey refresh (#268)
 - [web] Replace rg with grep in changelog guard and deduplicate passkey status refresh
 
 ## [0.10.2] - 2026-02-28
-
 
 ### Added
 
@@ -3475,10 +3698,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Release packaging now installs cross-compilation targets on the active nightly toolchain in the Homebrew binary job, fixing `error[E0463]: can't find crate for core` during macOS binary builds.
 - Docker release builds now copy `apps/courier` into the image build context so Cargo workspace metadata resolves correctly during WASM component builds.
+
 ### Security
 
 ## [0.10.1] - 2026-02-28
-
 
 ### Added
 
@@ -3493,7 +3716,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 ## [0.10.0] - 2026-02-28
-
 
 ### Added
 
@@ -3538,6 +3760,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Active tool call tracking per-session in `LiveChatService` with camelCase-serialized `ActiveToolCall` structs
 - Web UI: inline red "Stop" button inside thinking indicator, `aborted` broadcast handler that cleans up streaming state
 - Channel commands: `/peek` (shows thinking text and active tool calls) and `/stop` (aborts active generation)
+
 ### Changed
 
 - **Crate restructure**: gateway crate reduced from ~42K to ~29K lines by extracting `chelix-chat` (chat engine, agent orchestration), `chelix-auth` (password + passkey auth), `chelix-tls` (TLS/HTTPS termination), `chelix-service-traits` (shared service interfaces), and moving share rendering into `chelix-web`
@@ -3589,10 +3812,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Linux `aarch64` builds now skip `jemalloc` to prevent startup aborts on 16 KiB page-size kernels (for example Raspberry Pi 5 Debian images)
 - Gateway startup now blocks the common reverse-proxy TLS mismatch (`CHELIX_BEHIND_PROXY=true` with Chelix TLS enabled) and explains using `--no-tls`; HTTPS-upstream proxy setups can explicitly opt in with `CHELIX_ALLOW_TLS_BEHIND_PROXY=true`
 - WebSocket same-origin checks now accept proxy deployments that rewrite `Host` by using `X-Forwarded-Host` in proxy mode, and treat implicit `:443`/`:80` as equivalent to default ports
+
 ### Security
 
 ## [0.9.10] - 2026-02-21
-
 
 ### Added
 
@@ -3608,7 +3831,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.9] - 2026-02-21
 
-
 ### Added
 
 ### Changed
@@ -3622,7 +3844,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 ## [0.9.8] - 2026-02-21
-
 
 ### Added
 
@@ -3638,7 +3859,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.7] - 2026-02-20
 
-
 ### Added
 
 ### Changed
@@ -3652,7 +3872,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 ## [0.9.6] - 2026-02-20
-
 
 ### Added
 
@@ -3673,7 +3892,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.5] - 2026-02-20
 
-
 ### Added
 
 ### Changed
@@ -3690,7 +3908,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.4] - 2026-02-20
 
-
 ### Added
 
 ### Changed
@@ -3705,7 +3922,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.3] - 2026-02-20
 
-
 ### Added
 
 ### Changed
@@ -3719,7 +3935,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 ## [0.9.2] - 2026-02-20
-
 
 ### Added
 
@@ -3743,7 +3958,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 ## [0.9.1] - 2026-02-19
-
 
 ### Added
 
@@ -3814,7 +4028,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.0] - 2026-02-17
 
-
 ### Added
 
 - Settings > Cron job editor now supports per-job LLM model selection and
@@ -3842,7 +4055,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.38] - 2026-02-17
 
-
 ### Added
 
 - `show_map` now supports multi-point maps via `points[]`, rendering all
@@ -3866,7 +4078,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 ## [0.8.37] - 2026-02-17
-
 
 ### Added
 
@@ -3938,7 +4149,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.36] - 2026-02-16
 
-
 ### Added
 
 - OAuth 2.1 support for remote MCP servers — automatic discovery (RFC 9728/8414), dynamic client registration (RFC 7591), PKCE authorization code flow, and Bearer token injection with 401 retry
@@ -3949,6 +4159,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CIDR ranges from SSRF blocking, enabling Docker inter-container networking.
 - Memory config: add `memory.disable_rag` to force keyword-only memory search while keeping markdown indexing and memory tools enabled
 - Generic OpenAI-compatible provider support: connect any OpenAI-compatible endpoint via the provider setup UI, with domain-derived naming (`custom-` prefix), model auto-discovery, and full model selection
+
 ### Changed
 
 ### Deprecated
@@ -3967,10 +4178,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Streamable HTTP MCP transport now persists and reuses `Mcp-Session-Id`, parses `text/event-stream` responses, and sends best-effort `DELETE` on shutdown to close server sessions.
 - MCP docs/config examples now use the current table-based config shape and `/mcp` endpoint examples for remote servers.
 - Memory embeddings endpoint composition now avoids duplicated path segments like `/v1/v1/embeddings` and accepts base URLs ending in host-only, `/v1`, versioned paths (for example `/v4`), or `/embeddings`
+
 ### Security
 
 ## [0.8.35] - 2026-02-15
-
 
 ### Added
 
@@ -3987,7 +4198,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 ## [0.8.34] - 2026-02-15
-
 
 ### Added
 
@@ -4007,7 +4217,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.33] - 2026-02-15
 
-
 ### Added
 
 ### Changed
@@ -4025,7 +4234,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.32] - 2026-02-15
 
-
 ### Added
 
 ### Changed
@@ -4042,7 +4250,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 ## [0.8.31] - 2026-02-15
-
 
 ### Added
 
@@ -4130,7 +4337,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.30] - 2026-02-15
 
-
 ### Added
 
 ### Changed
@@ -4148,7 +4354,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 ## [0.8.29] - 2026-02-14
-
 
 ### Added
 
@@ -4181,7 +4386,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.28] - 2026-02-14
 
-
 ### Added
 
 ### Changed
@@ -4203,7 +4407,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 ## [0.8.27] - 2026-02-14
-
 
 ### Added
 
@@ -4228,7 +4431,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 ## [0.8.26] - 2026-02-14
-
 
 ### Added
 
@@ -4259,7 +4461,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.25] - 2026-02-14
 
-
 ### Added
 
 ### Changed
@@ -4273,7 +4474,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 ## [0.8.24] - 2026-02-13
-
 
 ### Added
 
@@ -4289,8 +4489,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.23] - 2026-02-13
 
-
 ### Added
+
 - **Multi-select preferred models per provider**: The LLMs page now has a
   "Preferred Models" button per provider that opens a multi-select modal.
   Selected models are pinned at the top of the session model dropdown.
@@ -4341,6 +4541,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   set via Settings > Environment were previously only injected into sandbox
   commands. They are now also injected into the Chelix process at startup,
   making them available to web search, embeddings, and provider API calls.
+
 ## [0.8.14] - 2026-02-11
 
 ### Security
@@ -4735,6 +4936,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `debug!` for unconfigured providers (GitHub Copilot, OpenAI Codex).
 - **models.detect_supported noise**: Downgrade UNAVAILABLE RPC errors from
   `warn!` to `debug!` since they indicate expected "not ready yet" states.
+
 ## [0.3.8] - 2026-02-09
 
 ### Changed
@@ -4957,6 +5159,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Chat UI reply badge visibility**: Assistant footer now reliably shows the selected reply medium badge.
 - **Voice UX polish**: Improved microphone timing behavior and preserved settings scroll state in voice configuration views.
+
 ## [0.2.8] - 2026-02-07
 
 ### Changed
@@ -5255,6 +5458,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   logic.
 - Documentation pages for session state, session branching, skill
   self-extension, and the tool registry architecture.
+
 ### Changed
 
 - Memory settings UI enhanced with backend comparison and feature explanations

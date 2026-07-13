@@ -21,10 +21,10 @@ Changes apply immediately, without restart.
 
 ## Endpoints
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| `GET` | `/graphql` | GraphiQL playground and WebSocket subscriptions |
-| `POST` | `/graphql` | Queries and mutations |
+| Method | Path       | Purpose                                         |
+| ------ | ---------- | ----------------------------------------------- |
+| `GET`  | `/graphql` | GraphiQL playground and WebSocket subscriptions |
+| `POST` | `/graphql` | Queries and mutations                           |
 
 WebSocket subprotocols accepted:
 
@@ -150,7 +150,7 @@ mutation {
 { "type": "connection_init" }
 ```
 
-3. Start a subscription:
+1. Start a subscription:
 
 ```json
 {
@@ -165,5 +165,5 @@ mutation {
 ## GraphiQL in the Web UI
 
 When the binary includes GraphQL, the Settings page includes a **GraphQL** tab.
-At the top of that page you can enable/disable GraphQL immediately; when
-enabled it embeds GraphiQL at `/graphql`.
+At the top of that page you can enable/disable GraphQL immediately; when enabled
+it embeds GraphiQL at `/graphql`.

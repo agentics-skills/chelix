@@ -10,21 +10,21 @@ current chat session, while agent presets configure delegated sub-agents.
 
 Chelix ships with these presets on every install:
 
-| Preset | Role |
-|--------|------|
-| `research` | Evidence gathering and synthesis. This is the default when `spawn_agent.preset` is omitted. |
-| `coder` | Scoped implementation, debugging, cleanup, and focused verification. |
-| `reviewer` | Code review for correctness, regressions, security, and missing tests. |
-| `qa` | End-to-end behavior validation, repro steps, and pass/fail reporting. |
-| `ux` | UX, accessibility, interaction, and visual quality review. |
-| `docs` | User-facing documentation, examples, and config reference updates. |
-| `coordinator` | Delegation-first planning and result integration. |
+| Preset        | Role                                                                                        |
+| ------------- | ------------------------------------------------------------------------------------------- |
+| `research`    | Evidence gathering and synthesis. This is the default when `spawn_agent.preset` is omitted. |
+| `coder`       | Scoped implementation, debugging, cleanup, and focused verification.                        |
+| `reviewer`    | Code review for correctness, regressions, security, and missing tests.                      |
+| `qa`          | End-to-end behavior validation, repro steps, and pass/fail reporting.                       |
+| `ux`          | UX, accessibility, interaction, and visual quality review.                                  |
+| `docs`        | User-facing documentation, examples, and config reference updates.                          |
+| `coordinator` | Delegation-first planning and result integration.                                           |
 
-User TOML presets and markdown agent definitions with the same name override
-the built-in preset. The built-ins do not set a model or tool allow/deny
-policy, so they inherit the session's provider and normal tool access. The
-`coordinator` preset sets `delegate_only = true`, restricting it to delegation,
-session, and task-list tools.
+User TOML presets and markdown agent definitions with the same name override the
+built-in preset. The built-ins do not set a model or tool allow/deny policy, so
+they inherit the session's provider and normal tool access. The `coordinator`
+preset sets `delegate_only = true`, restricting it to delegation, session, and
+task-list tools.
 
 ## Quick Start
 
@@ -70,7 +70,8 @@ Per preset (`[agents.presets.<name>]`):
 - `sandbox.*` — per-agent sandbox overrides
 - `skills.allow`, `skills.deny`
 - `system_prompt_suffix`
-- `max_iterations`, `timeout_secs` (override `[tools]` runtime limits for matching direct sessions and spawned sub-agents)
+- `max_iterations`, `timeout_secs` (override `[tools]` runtime limits for
+  matching direct sessions and spawned sub-agents)
 - `sessions.*` access policy
 - `memory.scope`, `memory.max_lines`
 - `delegate_only`
@@ -80,10 +81,11 @@ Per preset (`[agents.presets.<name>]`):
 - If `tools.allow` is empty, all tools start as allowed.
 - If `tools.allow` is non-empty, only those tools are allowed.
 - `tools.deny` is applied after allow-list filtering.
-- For normal sub-agents, `spawn_agent` is always removed to avoid recursive runaway spawning.
-- For `delegate_only = true`, the registry is restricted to delegation/session tools:
-  `spawn_agent`, `sessions_list`, `sessions_history`, `sessions_search`, `sessions_send`,
-  `task_list`.
+- For normal sub-agents, `spawn_agent` is always removed to avoid recursive
+  runaway spawning.
+- For `delegate_only = true`, the registry is restricted to delegation/session
+  tools: `spawn_agent`, `sessions_list`, `sessions_history`, `sessions_search`,
+  `sessions_send`, `task_list`.
 
 ## Session Access Policy
 
@@ -143,8 +145,8 @@ Override the global sandbox mode per agent.
 mode = "all"                 # Always sandbox this agent
 ```
 
-Available values: `"off"`, `"all"`, `"non-main"`. The override is applied
-as a per-session setting on the sandbox router.
+Available values: `"off"`, `"all"`, `"non-main"`. The override is applied as a
+per-session setting on the sandbox router.
 
 ## Per-Agent Skill Policy
 
@@ -173,19 +175,21 @@ When `spawn_agent` runs, model choice is:
 
 ## Markdown Agent Definitions
 
-Presets can also be defined as markdown files with YAML frontmatter, discovered from:
+Presets can also be defined as markdown files with YAML frontmatter, discovered
+from:
 
 - `~/.chelix/agents/*.md` (user-global)
 - `.chelix/agents/*.md` (project-local)
 
-Project-local files override user-global files with the same `name`.
-TOML presets always take precedence over markdown definitions.
+Project-local files override user-global files with the same `name`. TOML
+presets always take precedence over markdown definitions.
 
 The web UI uses the user-global markdown location for sub-agent preset edits:
 
 - Open **Settings → Agents → Sub-Agents**.
 - Choose **New Sub-Agent** to create `~/.chelix/agents/<id>.md`.
-- Choose **Edit** on a built-in preset to create a user-global markdown override.
+- Choose **Edit** on a built-in preset to create a user-global markdown
+  override.
 - Choose **Delete** on a custom/overridden preset to remove that markdown file.
 
 This keeps `chelix.toml` small while still leaving every web-created sub-agent
@@ -204,11 +208,12 @@ theme: focused and efficient
 max_iterations: 20
 timeout_secs: 60
 ---
+
 You are a code reviewer. Focus on correctness and security.
 ```
 
 Frontmatter fields: `name` (required), `tools`, `deny_tools`, `model`, `emoji`,
 `theme`, `delegate_only`, `max_iterations`, `timeout_secs`, `display_name`,
 `reasoning_effort`, `mcp_allow_servers`, `mcp_deny_servers`, `sandbox_mode`,
-`skills_allow`, and `skills_deny`.
-The markdown body becomes `system_prompt_suffix`.
+`skills_allow`, and `skills_deny`. The markdown body becomes
+`system_prompt_suffix`.

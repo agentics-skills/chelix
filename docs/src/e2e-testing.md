@@ -1,6 +1,7 @@
 # End-to-End Testing
 
-This project uses Playwright to run browser-level tests against a real `chelix` gateway process.
+This project uses Playwright to run browser-level tests against a real `chelix`
+gateway process.
 
 The goal is simple: catch web UI regressions before they ship.
 
@@ -8,7 +9,8 @@ The goal is simple: catch web UI regressions before they ship.
 
 - Tests run in a real browser (Chromium), not a DOM mock.
 - Tests hit real gateway routes and WebSocket behavior.
-- Runtime state is isolated so local machine config does not leak into test outcomes.
+- Runtime state is isolated so local machine config does not leak into test
+  outcomes.
 
 ## Current Setup
 
@@ -31,7 +33,8 @@ The e2e harness lives in `crates/web/ui`:
 cargo run --bin chelix -- --no-tls --bind 127.0.0.1 --port <PORT>
 ```
 
-`--no-tls` is intentional here so Playwright can probe `http://.../health` during readiness checks.
+`--no-tls` is intentional here so Playwright can probe `http://.../health`
+during readiness checks.
 
 ## Running E2E
 
@@ -75,7 +78,8 @@ npx playwright show-trace test-results/<test-dir>/trace.zip
 - Prefer stable IDs/selectors over broad text matching.
 - Assert route + core UI state, avoid over-asserting cosmetic details.
 - Keep smoke tests fast and deterministic.
-- Add focused scenario tests for high-risk features (chat send flow, settings persistence, skills, projects, crons).
+- Add focused scenario tests for high-risk features (chat send flow, settings
+  persistence, skills, projects, crons).
 
 ## CI Integration
 

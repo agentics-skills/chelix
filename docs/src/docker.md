@@ -18,7 +18,8 @@ docker run -d \
   ghcr.io/agentics-skills/chelix:latest
 ```
 
-Open https://localhost:13131 in your browser and configure your LLM provider to start chatting.
+Open <https://localhost:13131> in your browser and configure your LLM provider
+to start chatting.
 
 For unattended bootstraps, add `CHELIX_TOKEN`, `CHELIX_PROVIDER`, and
 `CHELIX_API_KEY` before first start. That pre-configures auth plus one LLM
@@ -26,11 +27,11 @@ provider so you can skip the browser setup wizard entirely.
 
 ### Ports
 
-| Port | Purpose |
-|------|---------|
-| 13131 | Gateway (HTTPS by default, HTTP with `--no-tls`) — web UI, API, WebSocket |
-| 13132 | HTTP — CA certificate download for local TLS trust |
-| 1455 | OAuth callback — required for OpenAI Codex and other providers with pre-registered redirect URIs |
+| Port  | Purpose                                                                                          |
+| ----- | ------------------------------------------------------------------------------------------------ |
+| 13131 | Gateway (HTTPS by default, HTTP with `--no-tls`) — web UI, API, WebSocket                        |
+| 13132 | HTTP — CA certificate download for local TLS trust                                               |
+| 1455  | OAuth callback — required for OpenAI Codex and other providers with pre-registered redirect URIs |
 
 ### Trusting the TLS certificate
 
@@ -89,11 +90,11 @@ docker logs chelix
 
 Chelix uses two directories that should be persisted:
 
-| Path | Contents |
-|------|----------|
+| Path                          | Contents                                                                   |
+| ----------------------------- | -------------------------------------------------------------------------- |
 | `/home/chelix/.config/chelix` | Configuration files: `chelix.toml`, `credentials.json`, `mcp-servers.json` |
-| `/home/chelix/.chelix` | Runtime data: databases, sessions, memory files, logs |
-| `/home/chelix/.npm` | npm cache (used by stdio-based MCP servers) |
+| `/home/chelix/.chelix`        | Runtime data: databases, sessions, memory files, logs                      |
+| `/home/chelix/.npm`           | npm cache (used by stdio-based MCP servers)                                |
 
 You can use named volumes (as shown above) or bind mounts to local directories
 for easier access to configuration files:
@@ -125,15 +126,15 @@ container runtime to create these sandbox containers.
 
 **Without the socket mount**, Chelix automatically falls back to the
 [restricted-host sandbox](sandbox.md#restricted-host-sandbox), which provides
-lightweight isolation by clearing environment variables, restricting `PATH`,
-and applying resource limits via `ulimit`. Commands will execute successfully
-inside the Chelix container but without filesystem or network isolation.
+lightweight isolation by clearing environment variables, restricting `PATH`, and
+applying resource limits via `ulimit`. Commands will execute successfully inside
+the Chelix container but without filesystem or network isolation.
 
 For full container-level isolation (filesystem boundaries, network policies),
 mount the Docker socket.
 
-If Chelix is itself running in Docker and your `data_dir()` mount is backed by
-a different host path than `/home/chelix/.chelix`, Chelix tries to discover that
+If Chelix is itself running in Docker and your `data_dir()` mount is backed by a
+different host path than `/home/chelix/.chelix`, Chelix tries to discover that
 host path automatically from `docker inspect`/`podman inspect`. It first checks
 the current container's hostname/cgroup references, then scans running
 containers for an unambiguous mount of Chelix's data directory. If that lookup
@@ -151,20 +152,20 @@ their persistent Chrome profile directory. If browser startup logs show
 `/data/browser-profile/SingletonLock: Permission denied`, Chelix probably fell
 back to the in-container path (`/home/chelix/.chelix/...`) instead of the real
 host path. Set `host_data_dir` to the host-visible data directory and restart
-Chelix so new sandbox and browser containers pick up the corrected mount
-source.
+Chelix so new sandbox and browser containers pick up the corrected mount source.
 
 ### Security Consideration
 
-Mounting the Docker socket gives the container full access to the Docker
-daemon. This is equivalent to root access on the host for practical purposes.
-Only run Chelix containers from trusted sources (official images from
+Mounting the Docker socket gives the container full access to the Docker daemon.
+This is equivalent to root access on the host for practical purposes. Only run
+Chelix containers from trusted sources (official images from
 `ghcr.io/agentics-skills/chelix`).
 
 ## Docker Compose
 
-See [`examples/docker-compose.yml`](https://github.com/agentics-skills/chelix/blob/master/examples/docker-compose.yml) for a
-complete example:
+See
+[`examples/docker-compose.yml`](https://github.com/agentics-skills/chelix/blob/master/examples/docker-compose.yml)
+for a complete example:
 
 ```yaml
 services:
@@ -175,7 +176,7 @@ services:
     ports:
       - "13131:13131"
       - "13132:13132"
-      - "1455:1455"   # OAuth callback (OpenAI Codex, etc.)
+      - "1455:1455" # OAuth callback (OpenAI Codex, etc.)
     volumes:
       - ./config:/home/chelix/.config/chelix
       - ./data:/home/chelix/.chelix
@@ -200,11 +201,11 @@ secrets:
 ```
 
 This lets encrypted environment variables and channel credentials load during
-startup. Treat the secret file as sensitive as the vault recovery key itself.
-If you create the secret file before the vault is initialized, Docker will
-accept the mount but Chelix cannot auto-unseal from an empty file. After you
-initialize the vault in **Settings > Encryption**, copy the one-time recovery
-key into this file before relying on unattended auto-unseal.
+startup. Treat the secret file as sensitive as the vault recovery key itself. If
+you create the secret file before the vault is initialized, Docker will accept
+the mount but Chelix cannot auto-unseal from an empty file. After you initialize
+the vault in **Settings > Encryption**, copy the one-time recovery key into this
+file before relying on unattended auto-unseal.
 
 ## Browser Sandbox in Docker
 
@@ -288,11 +289,11 @@ sudo systemctl enable --now podman.socket
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `CHELIX_CONFIG_DIR` | Override config directory (default: `~/.config/chelix`) |
-| `CHELIX_DATA_DIR` | Override data directory (default: `~/.chelix`) |
-| `CHELIX_NO_TLS` | Disable TLS (serve plain HTTP) — equivalent to `--no-tls` |
+| Variable            | Description                                               |
+| ------------------- | --------------------------------------------------------- |
+| `CHELIX_CONFIG_DIR` | Override config directory (default: `~/.config/chelix`)   |
+| `CHELIX_DATA_DIR`   | Override data directory (default: `~/.chelix`)            |
+| `CHELIX_NO_TLS`     | Disable TLS (serve plain HTTP) — equivalent to `--no-tls` |
 
 Example:
 
@@ -331,12 +332,13 @@ services:
       CHELIX_API_KEY: "sk-..."
 ```
 
-`CHELIX_PROVIDER` must be a Chelix provider name such as `openai`,
-`anthropic`, `gemini`, `openrouter`, or `moonshot`. The shorter
-aliases `PROVIDER` and `API_KEY` also work, but the `CHELIX_*` names are
-preferred because they are less likely to collide with other containers.
+`CHELIX_PROVIDER` must be a Chelix provider name such as `openai`, `anthropic`,
+`gemini`, `openrouter`, or `moonshot`. The shorter aliases `PROVIDER` and
+`API_KEY` also work, but the `CHELIX_*` names are preferred because they are
+less likely to collide with other containers.
 
-**Option 2: Provider-specific `docker -e` flags** (takes precedence for that provider)
+**Option 2: Provider-specific `docker -e` flags** (takes precedence for that
+provider)
 
 ```bash
 docker run -d \
@@ -395,8 +397,8 @@ isolation with lower resource usage than Docker Desktop.
 
 ### "Cannot connect to Docker daemon"
 
-The Docker socket is not mounted or the Chelix user doesn't have permission
-to access it. Verify:
+The Docker socket is not mounted or the Chelix user doesn't have permission to
+access it. Verify:
 
 ```bash
 docker exec chelix ls -la /var/run/docker.sock
@@ -404,7 +406,10 @@ docker exec chelix ls -la /var/run/docker.sock
 
 ### Setup code not appearing in logs (for network access)
 
-The setup code only appears when accessing from a non-localhost address. If you're accessing from the same machine via `localhost`, no setup code is needed. For network access, wait a few seconds for the gateway to start, then check logs:
+The setup code only appears when accessing from a non-localhost address. If
+you're accessing from the same machine via `localhost`, no setup code is needed.
+For network access, wait a few seconds for the gateway to start, then check
+logs:
 
 ```bash
 docker logs chelix 2>&1 | grep -i setup
@@ -412,8 +417,8 @@ docker logs chelix 2>&1 | grep -i setup
 
 ### OAuth authentication error (OpenAI Codex)
 
-If clicking **Connect** for OpenAI Codex shows "unknown_error" on OpenAI's
-page, port 1455 is not reachable from your browser. Make sure you published it:
+If clicking **Connect** for OpenAI Codex shows "unknown_error" on OpenAI's page,
+port 1455 is not reachable from your browser. Make sure you published it:
 
 ```bash
 -p 1455:1455
@@ -427,10 +432,10 @@ machine — not the server. In that case, authenticate via the CLI instead:
 docker exec -it chelix chelix auth login --provider openai-codex
 ```
 
-The CLI opens a browser on the machine where you run the command and handles
-the OAuth callback locally. If automatic callback capture fails, Chelix prompts
-you to paste the callback URL (or `code#state`) into the terminal. Tokens are
-saved to the config volume and picked up by the running gateway automatically.
+The CLI opens a browser on the machine where you run the command and handles the
+OAuth callback locally. If automatic callback capture fails, Chelix prompts you
+to paste the callback URL (or `code#state`) into the terminal. Tokens are saved
+to the config volume and picked up by the running gateway automatically.
 
 ### Permission denied on bind mounts
 

@@ -62,7 +62,8 @@ Returns `{ "entries": [{ "key": "...", "value": "..." }] }`.
 }
 ```
 
-Returns `{ "deleted": true }` if the key existed, `{ "deleted": false }` otherwise.
+Returns `{ "deleted": true }` if the key existed, `{ "deleted": false }`
+otherwise.
 
 ### Clear all keys in a namespace
 

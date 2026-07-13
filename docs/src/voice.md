@@ -15,11 +15,13 @@ voice = ["dep:chelix-voice"]
 ```
 
 To disable voice features at compile time:
+
 ```bash
 cargo build --no-default-features --features "file-watcher,tls,web-ui"
 ```
 
 When disabled:
+
 - TTS/STT RPC methods are not registered
 - Voice settings section is hidden in the UI
 - Microphone button is hidden in the chat interface
@@ -68,12 +70,12 @@ When disabled:
 
 Chelix supports multiple TTS providers across cloud and local backends.
 
-| Category | Notes |
-|----------|-------|
-| Cloud TTS providers | Hosted neural voices with low-latency streaming |
+| Category            | Notes                                                       |
+| ------------------- | ----------------------------------------------------------- |
+| Cloud TTS providers | Hosted neural voices with low-latency streaming             |
 | Local TTS providers | Offline/on-device synthesis for privacy-sensitive workflows |
 
-*More voice providers are coming soon.*
+_More voice providers are coming soon._
 
 ### Configuration
 
@@ -136,6 +138,7 @@ endpoint = "http://localhost:5002"  # Coqui TTS server
 Piper is a fast, local neural text-to-speech system that runs entirely offline.
 
 1. Install Piper:
+
    ```bash
    # Via pip
    pip install piper-tts
@@ -144,7 +147,9 @@ Piper is a fast, local neural text-to-speech system that runs entirely offline.
    # https://github.com/OHF-Voice/piper1-gpl/releases
    ```
 
-2. Download a voice model from [Piper Voices](https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/VOICES.md):
+2. Download a voice model from
+   [Piper Voices](https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/VOICES.md):
+
    ```bash
    mkdir -p ~/.chelix/models
    curl -L -o ~/.chelix/models/en_US-lessac-medium.onnx \
@@ -154,6 +159,7 @@ Piper is a fast, local neural text-to-speech system that runs entirely offline.
    ```
 
 3. Configure in `chelix.toml`:
+
    ```toml
    [voice.tts]
    provider = "piper"
@@ -170,6 +176,7 @@ maintained [Coqui TTS fork](https://github.com/idiap/coqui-ai-TTS), published as
 the [`coqui-tts` PyPI package](https://pypi.org/project/coqui-tts/).
 
 1. Install and start the server:
+
    ```bash
    # Via uv
    uv pip install torch torchaudio torchcodec --torch-backend=auto
@@ -182,6 +189,7 @@ the [`coqui-tts` PyPI package](https://pypi.org/project/coqui-tts/).
    ```
 
 2. Configure in `chelix.toml`:
+
    ```toml
    [voice.tts]
    provider = "coqui"
@@ -190,7 +198,8 @@ the [`coqui-tts` PyPI package](https://pypi.org/project/coqui-tts/).
    endpoint = "http://localhost:5002"
    ```
 
-Browse available models in the maintained fork's [standard model list](https://github.com/idiap/coqui-ai-TTS/blob/dev/TTS/.models.json).
+Browse available models in the maintained fork's
+[standard model list](https://github.com/idiap/coqui-ai-TTS/blob/dev/TTS/.models.json).
 
 ### RPC Methods
 
@@ -199,6 +208,7 @@ Browse available models in the maintained fork's [standard model list](https://g
 Get current TTS status.
 
 **Response:**
+
 ```json
 {
   "enabled": true,
@@ -214,6 +224,7 @@ Get current TTS status.
 List available TTS providers.
 
 **Response:**
+
 ```json
 [
   { "id": "elevenlabs", "name": "ElevenLabs", "configured": true },
@@ -226,11 +237,13 @@ List available TTS providers.
 Enable TTS with optional provider selection.
 
 **Request:**
+
 ```json
 { "provider": "elevenlabs" }
 ```
 
 **Response:**
+
 ```json
 { "enabled": true, "provider": "elevenlabs" }
 ```
@@ -240,6 +253,7 @@ Enable TTS with optional provider selection.
 Disable TTS.
 
 **Response:**
+
 ```json
 { "enabled": false }
 ```
@@ -249,6 +263,7 @@ Disable TTS.
 Convert text to speech.
 
 **Request:**
+
 ```json
 {
   "text": "Hello, how can I help you today?",
@@ -263,6 +278,7 @@ Convert text to speech.
 ```
 
 **Response:**
+
 ```json
 {
   "audio": "base64-encoded-audio-data",
@@ -274,6 +290,7 @@ Convert text to speech.
 ```
 
 **Audio Formats:**
+
 - `mp3` (default) - Widely compatible
 - `opus` / `ogg` - Good for Telegram voice notes
 - `aac` - Apple devices
@@ -284,6 +301,7 @@ Convert text to speech.
 Change the active TTS provider.
 
 **Request:**
+
 ```json
 { "provider": "openai" }
 ```
@@ -291,34 +309,36 @@ Change the active TTS provider.
 ### Voice Personas
 
 Voice personas are named, reusable voice identities that get injected
-deterministically into every TTS call. Instead of the agent improvising
-voice "flair" per-message, a persona defines a stable spoken character.
+deterministically into every TTS call. Instead of the agent improvising voice
+"flair" per-message, a persona defines a stable spoken character.
 
 **Key concepts:**
 
-| Concept | Description |
-|---------|-------------|
-| Persona prompt | Provider-neutral fields: profile, style, accent, pacing, scene, constraints |
-| Provider bindings | Per-provider overrides: voice_id, model, speed, stability |
-| Fallback policy | What happens when the active provider has no binding: `preserve-persona`, `provider-defaults`, `fail` |
-| Active persona | One persona active at a time, applied to all TTS calls automatically |
+| Concept           | Description                                                                                           |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
+| Persona prompt    | Provider-neutral fields: profile, style, accent, pacing, scene, constraints                           |
+| Provider bindings | Per-provider overrides: voice_id, model, speed, stability                                             |
+| Fallback policy   | What happens when the active provider has no binding: `preserve-persona`, `provider-defaults`, `fail` |
+| Active persona    | One persona active at a time, applied to all TTS calls automatically                                  |
 
-**Manage personas** via the web UI (Settings > Voice > Voice Personas) or the RPC API.
+**Manage personas** via the web UI (Settings > Voice > Voice Personas) or the
+RPC API.
 
 #### RPC Methods
 
-| Method | Description |
-|--------|-------------|
-| `voice.personas.list` | List all personas with active indicator |
-| `voice.personas.get` | Get a single persona by ID |
-| `voice.personas.create` | Create a new persona |
-| `voice.personas.update` | Update persona fields/bindings |
-| `voice.personas.delete` | Delete a persona |
+| Method                      | Description                                        |
+| --------------------------- | -------------------------------------------------- |
+| `voice.personas.list`       | List all personas with active indicator            |
+| `voice.personas.get`        | Get a single persona by ID                         |
+| `voice.personas.create`     | Create a new persona                               |
+| `voice.personas.update`     | Update persona fields/bindings                     |
+| `voice.personas.delete`     | Delete a persona                                   |
 | `voice.personas.set_active` | Set the active persona (or `"none"` to deactivate) |
 
 #### `voice.personas.create`
 
 **Request:**
+
 ```json
 {
   "id": "alfred",
@@ -349,13 +369,13 @@ voice "flair" per-message, a persona defines a stable spoken character.
 
 #### Provider Support
 
-| Provider | Instructions support | Notes |
-|----------|---------------------|-------|
-| OpenAI (`gpt-4o-mini-tts`) | Full | Persona prompt rendered as `instructions` field |
-| Google Gemini TTS (`gemini-*`) | Full | Persona prompt as `system_instruction`; set `model = "gemini-2.5-flash-preview-tts"` |
-| ElevenLabs | Partial | Uses provider binding overrides (voice_id, stability) |
-| Google Cloud TTS v1 | Partial | Uses provider binding overrides (voice, speaking_rate, pitch) |
-| Piper / Coqui | None | Local providers ignore instructions |
+| Provider                       | Instructions support | Notes                                                                                |
+| ------------------------------ | -------------------- | ------------------------------------------------------------------------------------ |
+| OpenAI (`gpt-4o-mini-tts`)     | Full                 | Persona prompt rendered as `instructions` field                                      |
+| Google Gemini TTS (`gemini-*`) | Full                 | Persona prompt as `system_instruction`; set `model = "gemini-2.5-flash-preview-tts"` |
+| ElevenLabs                     | Partial              | Uses provider binding overrides (voice_id, stability)                                |
+| Google Cloud TTS v1            | Partial              | Uses provider binding overrides (voice, speaking_rate, pitch)                        |
+| Piper / Coqui                  | None                 | Local providers ignore instructions                                                  |
 
 #### Agent Tool Integration
 
@@ -383,17 +403,17 @@ Each agent persona can optionally reference a voice persona via the
 }
 ```
 
-This links the agent's identity to its voice — the UI can use this
-to auto-switch the active voice persona when switching agents.
+This links the agent's identity to its voice — the UI can use this to
+auto-switch the active voice persona when switching agents.
 
 ### Auto-Speak Modes
 
-| Mode | Description |
-|------|-------------|
-| `always` | Speak all AI responses |
-| `off` | Never auto-speak (default) |
-| `inbound` | Only when user sent voice input |
-| `tagged` | Only with explicit `[[tts]]` markup |
+| Mode      | Description                         |
+| --------- | ----------------------------------- |
+| `always`  | Speak all AI responses              |
+| `off`     | Never auto-speak (default)          |
+| `inbound` | Only when user sent voice input     |
+| `tagged`  | Only with explicit `[[tts]]` markup |
 
 ## Speech-to-Text (STT)
 
@@ -401,12 +421,12 @@ to auto-switch the active voice persona when switching agents.
 
 Chelix supports multiple STT providers across cloud and local backends.
 
-| Category | Notes |
-|----------|-------|
-| Cloud STT providers | Managed transcription APIs with language/model options |
+| Category            | Notes                                                    |
+| ------------------- | -------------------------------------------------------- |
+| Cloud STT providers | Managed transcription APIs with language/model options   |
 | Local STT providers | Offline transcription through local binaries or services |
 
-*More voice providers are coming soon.*
+_More voice providers are coming soon._
 
 ### Configuration
 
@@ -469,10 +489,11 @@ transcription defaults.
 
 #### Voxtral via vLLM
 
-Voxtral is an open-weights model from Mistral AI that can run locally using vLLM.
-It supports 13 languages with fast transcription.
+Voxtral is an open-weights model from Mistral AI that can run locally using
+vLLM. It supports 13 languages with fast transcription.
 
 **Requirements:**
+
 - Python 3.10+
 - CUDA-capable GPU with ~9.5GB VRAM (or CPU with more memory)
 - vLLM with audio support
@@ -480,11 +501,13 @@ It supports 13 languages with fast transcription.
 **Setup:**
 
 1. Install vLLM with audio support:
+
    ```bash
    pip install "vllm[audio]"
    ```
 
 2. Start the vLLM server:
+
    ```bash
    vllm serve mistralai/Voxtral-Mini-3B-2507 \
      --tokenizer_mode mistral \
@@ -495,6 +518,7 @@ It supports 13 languages with fast transcription.
    The server exposes an OpenAI-compatible endpoint at `http://localhost:8000`.
 
 3. Configure in `chelix.toml`:
+
    ```toml
    [voice.stt]
    provider = "voxtral-local"
@@ -504,9 +528,8 @@ It supports 13 languages with fast transcription.
    # endpoint = "http://localhost:8000"
    ```
 
-**Supported Languages:**
-English, French, German, Spanish, Portuguese, Italian, Dutch, Polish, Swedish,
-Norwegian, Danish, Finnish, Arabic
+**Supported Languages:** English, French, German, Spanish, Portuguese, Italian,
+Dutch, Polish, Swedish, Norwegian, Danish, Finnish, Arabic
 
 **Note:** Unlike the embedded local providers (whisper.cpp, sherpa-onnx), this
 requires running vLLM as a separate server process. The model is downloaded
@@ -515,6 +538,7 @@ automatically on first vLLM startup.
 #### whisper.cpp
 
 1. Install the binary:
+
    ```bash
    # macOS
    brew install whisper-cpp
@@ -522,7 +546,9 @@ automatically on first vLLM startup.
    # From source: https://github.com/ggerganov/whisper.cpp
    ```
 
-2. Download a model from [Hugging Face](https://huggingface.co/ggerganov/whisper.cpp):
+2. Download a model from
+   [Hugging Face](https://huggingface.co/ggerganov/whisper.cpp):
+
    ```bash
    mkdir -p ~/.chelix/models
    curl -L -o ~/.chelix/models/ggml-base.en.bin \
@@ -530,6 +556,7 @@ automatically on first vLLM startup.
    ```
 
 3. Configure in `chelix.toml`:
+
    ```toml
    [voice.stt]
    provider = "whisper-cli"
@@ -540,11 +567,14 @@ automatically on first vLLM startup.
 
 #### sherpa-onnx
 
-1. Install following the [official docs](https://k2-fsa.github.io/sherpa/onnx/install.html)
+1. Install following the
+   [official docs](https://k2-fsa.github.io/sherpa/onnx/install.html)
 
-2. Download a model from the [model list](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/index.html)
+2. Download a model from the
+   [model list](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/index.html)
 
 3. Configure in `chelix.toml`:
+
    ```toml
    [voice.stt]
    provider = "sherpa-onnx"
@@ -560,6 +590,7 @@ automatically on first vLLM startup.
 Get current STT status.
 
 **Response:**
+
 ```json
 {
   "enabled": true,
@@ -573,6 +604,7 @@ Get current STT status.
 List available STT providers.
 
 **Response:**
+
 ```json
 [
   { "id": "whisper", "name": "OpenAI Whisper", "configured": true },
@@ -591,6 +623,7 @@ List available STT providers.
 Transcribe audio to text.
 
 **Request:**
+
 ```json
 {
   "audio": "base64-encoded-audio-data",
@@ -601,6 +634,7 @@ Transcribe audio to text.
 ```
 
 **Response:**
+
 ```json
 {
   "text": "Hello, how are you today?",
@@ -618,6 +652,7 @@ Transcribe audio to text.
 ```
 
 **Parameters:**
+
 - `audio` (required): Base64-encoded audio data
 - `format`: Audio format (`mp3`, `opus`, `ogg`, `aac`, `pcm`)
 - `language`: ISO 639-1 code to improve accuracy
@@ -628,6 +663,7 @@ Transcribe audio to text.
 Change the active STT provider.
 
 **Request:**
+
 ```json
 { "provider": "deepgram" }
 ```
@@ -695,12 +731,15 @@ pub trait SttProvider: Send + Sync {
 ### Voice Personas (`crates/gateway/src/voice_persona.rs`)
 
 - `VoicePersonaStore`: SQLite-backed CRUD for named voice identities
-- `apply_persona_to_request()`: Merges persona bindings and instructions into `SynthesizeRequest`
-- Types: `VoicePersona`, `VoicePersonaPrompt`, `VoicePersonaProviderBinding`, `FallbackPolicy` (in `chelix-voice`)
+- `apply_persona_to_request()`: Merges persona bindings and instructions into
+  `SynthesizeRequest`
+- Types: `VoicePersona`, `VoicePersonaPrompt`, `VoicePersonaProviderBinding`,
+  `FallbackPolicy` (in `chelix-voice`)
 
 ## Security
 
-- API keys are stored using `secrecy::Secret<String>` to prevent accidental logging
+- API keys are stored using `secrecy::Secret<String>` to prevent accidental
+  logging
 - Debug output redacts all secret values
 - Keys can be set via environment variables or config file
 
@@ -726,7 +765,8 @@ The voice feature integrates with the web UI:
 
 - **Microphone button**: Record voice input in the chat interface
 - **Settings page**: Configure and enable/disable voice providers
-- **Auto-detection**: API keys are detected from environment variables and LLM provider configs
+- **Auto-detection**: API keys are detected from environment variables and LLM
+  provider configs
 - **Toggle switches**: Enable/disable providers without removing configuration
 - **Setup instructions**: Step-by-step guides for local provider installation
 
@@ -736,4 +776,5 @@ The voice feature integrates with the web UI:
 - **VoiceWake**: Wake word detection and continuous listening
 - **Audio playback**: Play TTS responses directly in the chat
 - **Channel Integration**: Auto-transcribe Telegram voice messages
-- **Automatic Persona Switching**: Auto-activate the linked voice persona when the active agent changes
+- **Automatic Persona Switching**: Auto-activate the linked voice persona when
+  the active agent changes

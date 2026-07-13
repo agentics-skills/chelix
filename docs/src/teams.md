@@ -1,10 +1,10 @@
 # Microsoft Teams
 
-Chelix can connect to Microsoft Teams as a bot, letting you chat with your
-agent from any Teams workspace, group chat, or direct message. The integration
-uses the [Bot Framework](https://learn.microsoft.com/en-us/azure/bot-service/)
-with an inbound webhook — your Chelix instance must be reachable from the
-internet over HTTPS.
+Chelix can connect to Microsoft Teams as a bot, letting you chat with your agent
+from any Teams workspace, group chat, or direct message. The integration uses
+the [Bot Framework](https://learn.microsoft.com/en-us/azure/bot-service/) with
+an inbound webhook — your Chelix instance must be reachable from the internet
+over HTTPS.
 
 ## How It Works
 
@@ -30,9 +30,9 @@ internet over HTTPS.
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Teams sends each user message as an HTTP POST to your webhook endpoint.
-Chelix verifies the request (JWT signature and/or shared secret), processes
-it, and replies via the Bot Framework REST API.
+Teams sends each user message as an HTTP POST to your webhook endpoint. Chelix
+verifies the request (JWT signature and/or shared secret), processes it, and
+replies via the Bot Framework REST API.
 
 Streaming uses **edit-in-place** — an initial message is posted once enough
 tokens arrive, then updated at a throttled interval until the response is
@@ -45,16 +45,21 @@ approaches; the **Teams Developer Portal** route is quickest for most users.
 
 ### Option A: Teams Developer Portal (recommended)
 
-1. Open the [Teams Developer Portal — Tools — Bot Management](https://dev.teams.microsoft.com/bots)
+1. Open the
+   [Teams Developer Portal — Tools — Bot Management](https://dev.teams.microsoft.com/bots)
 2. Click **+ New Bot**
 3. Give the bot a name and click **Add**
-4. On the bot's page, go to **Configure** and note the **Bot ID** (this is your `app_id`)
-5. Under **Client secrets**, click **Add a client secret for your bot** and copy the generated value (this is your `app_password`)
-6. Set the **Endpoint address** to your Chelix webhook URL (see [Webhook Endpoint](#webhook-endpoint) below)
+4. On the bot's page, go to **Configure** and note the **Bot ID** (this is your
+   `app_id`)
+5. Under **Client secrets**, click **Add a client secret for your bot** and copy
+   the generated value (this is your `app_password`)
+6. Set the **Endpoint address** to your Chelix webhook URL (see
+   [Webhook Endpoint](#webhook-endpoint) below)
 
 ### Option B: Azure Portal
 
-1. Go to the [Azure Portal — Create a resource](https://portal.azure.com/#create/Microsoft.AzureBot)
+1. Go to the
+   [Azure Portal — Create a resource](https://portal.azure.com/#create/Microsoft.AzureBot)
 2. Search for **Azure Bot** and click **Create**
 3. Fill in a bot handle, subscription, and resource group
 4. Under **Microsoft App ID**, select **Create new** (single-tenant is fine)
@@ -63,17 +68,20 @@ approaches; the **Teams Developer Portal** route is quickest for most users.
    - Copy the **Microsoft App ID** (`app_id`)
    - Click **Manage Password** to go to **Certificates & secrets**
    - Click **+ New client secret**, copy the value (`app_password`)
-7. Still in **Configuration**, set the **Messaging endpoint** to your Chelix webhook URL
+7. Still in **Configuration**, set the **Messaging endpoint** to your Chelix
+   webhook URL
 
 ### Install the bot in Teams
 
 After creating the bot, you need to install it in your Teams organization:
 
-1. In the [Teams Developer Portal](https://dev.teams.microsoft.com/), go to **Apps**
+1. In the [Teams Developer Portal](https://dev.teams.microsoft.com/), go to
+   **Apps**
 2. Click **+ New app**, give it a name, and fill in the required fields
 3. Under **App features**, click **Bot** and select your existing bot
 4. Choose the scopes: **Personal** (DMs), **Team** (channels), **Group Chat**
-5. Click **Publish** → **Publish to your org** (or use **Preview in Teams** for testing)
+5. Click **Publish** → **Publish to your org** (or use **Preview in Teams** for
+   testing)
 6. In Teams, go to **Apps → Built for your org** and install the app
 
 ```admonish warning
@@ -92,11 +100,13 @@ https://<your-domain>/api/channels/msteams/<account-id>/webhook?secret=<webhook-
 ```
 
 - **`<your-domain>`** — your public HTTPS domain (e.g. `bot.example.com`)
-- **`<account-id>`** — the account identifier in your `chelix.toml` (e.g. `my-bot`)
+- **`<account-id>`** — the account identifier in your `chelix.toml` (e.g.
+  `my-bot`)
 - **`<webhook-secret>`** — an optional shared secret for additional verification
 
 The Chelix web UI and CLI both generate this URL for you. Paste it into your
-bot's **Messaging endpoint** field in the Azure Portal or Teams Developer Portal.
+bot's **Messaging endpoint** field in the Azure Portal or Teams Developer
+Portal.
 
 ```admonish info title="HTTPS required"
 Teams requires HTTPS. For local development, use any HTTPS-capable tunnel or reverse proxy.
@@ -114,32 +124,32 @@ app_password = "your-client-secret-here"
 
 ### Configuration Fields
 
-| Field | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `app_id` | **yes** | — | Azure App ID (Bot ID) from the bot registration |
-| `app_password` | **yes** | — | Azure client secret for the bot |
-| `tenant_id` | no | `"botframework.com"` | Azure AD tenant for JWT validation. Set to your tenant ID for single-tenant bots |
-| `webhook_secret` | no | — | Shared secret appended as `?secret=...` to the webhook URL |
-| `dm_policy` | no | `"allowlist"` | Who can DM the bot: `"open"`, `"allowlist"`, or `"disabled"` |
-| `group_policy` | no | `"open"` | Who can talk to the bot in group chats / channels: `"open"`, `"allowlist"`, or `"disabled"` |
-| `mention_mode` | no | `"mention"` | When the bot responds in groups: `"always"`, `"mention"`, or `"none"` |
-| `allowlist` | no | `[]` | AAD object IDs or user IDs allowed to DM the bot |
-| `group_allowlist` | no | `[]` | Conversation/team IDs allowed for group messages |
-| `model` | no | — | Override the default model for this channel |
-| `model_provider` | no | — | Provider for the overridden model |
-| `stream_mode` | no | `"edit_in_place"` | `"edit_in_place"` (live updates) or `"off"` (send once complete) |
-| `edit_throttle_ms` | no | `1500` | Minimum milliseconds between streaming edits |
-| `text_chunk_limit` | no | `4000` | Maximum characters per message before splitting |
-| `reply_style` | no | `"top_level"` | `"top_level"` or `"thread"` (reply in thread) |
-| `welcome_card` | no | `true` | Send an Adaptive Card welcome message in DMs |
-| `group_welcome_card` | no | `false` | Send a welcome message when the bot is added to a group |
-| `bot_name` | no | `"Chelix"` | Display name shown on welcome cards |
-| `prompt_starters` | no | `[]` | Prompt starter buttons on the welcome card |
-| `max_retries` | no | `3` | Max retry attempts for failed sends |
-| `retry_base_delay_ms` | no | `250` | Base delay (ms) for exponential backoff |
-| `retry_max_delay_ms` | no | `10000` | Maximum retry delay (ms) |
-| `history_limit` | no | `50` | Max messages fetched for thread context (requires Graph API permissions) |
-| `graph_tenant_id` | no | — | Tenant ID for Graph API operations (thread history, reactions, search) |
+| Field                 | Required | Default              | Description                                                                                 |
+| --------------------- | -------- | -------------------- | ------------------------------------------------------------------------------------------- |
+| `app_id`              | **yes**  | —                    | Azure App ID (Bot ID) from the bot registration                                             |
+| `app_password`        | **yes**  | —                    | Azure client secret for the bot                                                             |
+| `tenant_id`           | no       | `"botframework.com"` | Azure AD tenant for JWT validation. Set to your tenant ID for single-tenant bots            |
+| `webhook_secret`      | no       | —                    | Shared secret appended as `?secret=...` to the webhook URL                                  |
+| `dm_policy`           | no       | `"allowlist"`        | Who can DM the bot: `"open"`, `"allowlist"`, or `"disabled"`                                |
+| `group_policy`        | no       | `"open"`             | Who can talk to the bot in group chats / channels: `"open"`, `"allowlist"`, or `"disabled"` |
+| `mention_mode`        | no       | `"mention"`          | When the bot responds in groups: `"always"`, `"mention"`, or `"none"`                       |
+| `allowlist`           | no       | `[]`                 | AAD object IDs or user IDs allowed to DM the bot                                            |
+| `group_allowlist`     | no       | `[]`                 | Conversation/team IDs allowed for group messages                                            |
+| `model`               | no       | —                    | Override the default model for this channel                                                 |
+| `model_provider`      | no       | —                    | Provider for the overridden model                                                           |
+| `stream_mode`         | no       | `"edit_in_place"`    | `"edit_in_place"` (live updates) or `"off"` (send once complete)                            |
+| `edit_throttle_ms`    | no       | `1500`               | Minimum milliseconds between streaming edits                                                |
+| `text_chunk_limit`    | no       | `4000`               | Maximum characters per message before splitting                                             |
+| `reply_style`         | no       | `"top_level"`        | `"top_level"` or `"thread"` (reply in thread)                                               |
+| `welcome_card`        | no       | `true`               | Send an Adaptive Card welcome message in DMs                                                |
+| `group_welcome_card`  | no       | `false`              | Send a welcome message when the bot is added to a group                                     |
+| `bot_name`            | no       | `"Chelix"`           | Display name shown on welcome cards                                                         |
+| `prompt_starters`     | no       | `[]`                 | Prompt starter buttons on the welcome card                                                  |
+| `max_retries`         | no       | `3`                  | Max retry attempts for failed sends                                                         |
+| `retry_base_delay_ms` | no       | `250`                | Base delay (ms) for exponential backoff                                                     |
+| `retry_max_delay_ms`  | no       | `10000`              | Maximum retry delay (ms)                                                                    |
+| `history_limit`       | no       | `50`                 | Max messages fetched for thread context (requires Graph API permissions)                    |
+| `graph_tenant_id`     | no       | —                    | Tenant ID for Graph API operations (thread history, reactions, search)                      |
 
 ### Full Example
 
@@ -189,31 +199,31 @@ Teams uses the same gating system as other channels:
 
 Controls who can send direct messages to the bot.
 
-| Value | Behavior |
-|-------|----------|
+| Value         | Behavior                                          |
+| ------------- | ------------------------------------------------- |
 | `"allowlist"` | Only users listed in `allowlist` can DM (default) |
-| `"open"` | Anyone who can reach the bot can DM it |
-| `"disabled"` | DMs are silently ignored |
+| `"open"`      | Anyone who can reach the bot can DM it            |
+| `"disabled"`  | DMs are silently ignored                          |
 
 ### Group Policy
 
 Controls who can interact with the bot in group chats and team channels.
 
-| Value | Behavior |
-|-------|----------|
-| `"open"` | Bot responds in any group chat (default) |
+| Value         | Behavior                                                   |
+| ------------- | ---------------------------------------------------------- |
+| `"open"`      | Bot responds in any group chat (default)                   |
 | `"allowlist"` | Only conversations listed in `group_allowlist` are allowed |
-| `"disabled"` | Group messages are silently ignored |
+| `"disabled"`  | Group messages are silently ignored                        |
 
 ### Mention Mode
 
 Controls when the bot responds in group chats (does not apply to DMs).
 
-| Value | Behavior |
-|-------|----------|
-| `"mention"` | Bot only responds when @mentioned (default) |
-| `"always"` | Bot responds to every message in allowed groups |
-| `"none"` | Bot never responds in groups (DM-only) |
+| Value       | Behavior                                        |
+| ----------- | ----------------------------------------------- |
+| `"mention"` | Bot only responds when @mentioned (default)     |
+| `"always"`  | Bot responds to every message in allowed groups |
+| `"none"`    | Bot never responds in groups (DM-only)          |
 
 ### Finding User IDs
 
@@ -221,7 +231,8 @@ To add users to the allowlist, you need their **AAD Object ID**. You can find
 this in:
 
 - **Azure Portal** → Azure Active Directory → Users → select user → Object ID
-- **Microsoft 365 Admin Center** → Users → Active users → select user → Properties
+- **Microsoft 365 Admin Center** → Users → Active users → select user →
+  Properties
 - **Teams Admin Center** → Users → select user
 
 Alternatively, set `dm_policy = "open"` initially and check the Chelix web UI
@@ -236,8 +247,8 @@ By default, Teams uses **edit-in-place** streaming:
    edited with the latest accumulated text
 3. When the response is complete, a final edit removes the "..." suffix
 
-Set `stream_mode = "off"` to disable streaming and send the complete response
-as a single message.
+Set `stream_mode = "off"` to disable streaming and send the complete response as
+a single message.
 
 ```toml
 [channels.msteams.my-bot]
@@ -270,28 +281,29 @@ received one. This is a known limitation.
 ## Interactive Messages
 
 The bot supports Adaptive Cards for interactive button menus. When an agent
-returns an interactive message (buttons), Chelix renders it as an Adaptive
-Card with `Action.Submit` buttons. Clicking a button sends the callback data
-back to the bot as a regular message.
+returns an interactive message (buttons), Chelix renders it as an Adaptive Card
+with `Action.Submit` buttons. Clicking a button sends the callback data back to
+the bot as a regular message.
 
 ## Attachments
 
 ### Inbound
 
-When users send images or files in Teams, Chelix downloads the attachments
-using the bot's access token and passes them to the LLM as multimodal content
-(if the model supports it).
+When users send images or files in Teams, Chelix downloads the attachments using
+the bot's access token and passes them to the LLM as multimodal content (if the
+model supports it).
 
 ### Outbound
 
 - **Images in DMs**: sent inline as base64 data URLs
 - **External URLs**: sent as Bot Framework URL attachments
-- **Large files**: currently not supported (requires SharePoint/OneDrive integration)
+- **Large files**: currently not supported (requires SharePoint/OneDrive
+  integration)
 
 ## Thread Context (Graph API)
 
-With Graph API permissions, the bot can read conversation history for
-multi-turn context in group chats. This requires:
+With Graph API permissions, the bot can read conversation history for multi-turn
+context in group chats. This requires:
 
 1. An **app registration** with `Chat.Read.All` or `ChannelMessage.Read.All`
    permissions (application-level, not delegated)
@@ -320,7 +332,8 @@ You can configure Teams through the web interface:
 4. Optionally enter a **Webhook Secret** (one is generated if left blank)
 5. Set the **Public Base URL** to your Chelix server's HTTPS URL
 6. Click **Bootstrap Teams** to generate the messaging endpoint
-7. Click **Copy Endpoint** and paste it into your bot's Messaging Endpoint in the Azure Portal or Teams Developer Portal
+7. Click **Copy Endpoint** and paste it into your bot's Messaging Endpoint in
+   the Azure Portal or Teams Developer Portal
 8. Adjust DM policy, mention mode, and allowlist as needed
 9. Click **Connect Microsoft Teams**
 
@@ -340,8 +353,8 @@ chelix channels teams bootstrap \
 ```
 
 This generates the webhook endpoint URL and writes the configuration to
-`chelix.toml`. Add `--dry-run` to preview without saving, or `--open` to
-launch the Azure documentation in your browser.
+`chelix.toml`. Add `--dry-run` to preview without saving, or `--open` to launch
+the Azure documentation in your browser.
 
 ## Crate Structure
 
@@ -368,19 +381,20 @@ crates/msteams/
 
 The crate implements the same trait set as other channel crates:
 
-| Trait | Purpose |
-|-------|---------|
-| `ChannelPlugin` | Start/stop accounts, lifecycle management |
-| `ChannelOutbound` | Send text, media, cards, typing indicators, reactions |
-| `ChannelStreamOutbound` | Handle streaming responses (edit-in-place) |
-| `ChannelStatus` | Health probes (connected / waiting for first activity) |
-| `ChannelThreadContext` | Fetch conversation history via Graph API |
+| Trait                   | Purpose                                                |
+| ----------------------- | ------------------------------------------------------ |
+| `ChannelPlugin`         | Start/stop accounts, lifecycle management              |
+| `ChannelOutbound`       | Send text, media, cards, typing indicators, reactions  |
+| `ChannelStreamOutbound` | Handle streaming responses (edit-in-place)             |
+| `ChannelStatus`         | Health probes (connected / waiting for first activity) |
+| `ChannelThreadContext`  | Fetch conversation history via Graph API               |
 
 ## Troubleshooting
 
 ### Bot doesn't respond
 
-- Verify the **Messaging endpoint** in the Azure Portal matches your Chelix webhook URL
+- Verify the **Messaging endpoint** in the Azure Portal matches your Chelix
+  webhook URL
 - Check that `app_id` and `app_password` are correct
 - Ensure your server is reachable from the internet over HTTPS
 - Check `dm_policy` — if set to `"allowlist"`, make sure your user ID is listed
@@ -389,15 +403,19 @@ The crate implements the same trait set as other channel crates:
 
 ### "Teams token acquisition failed"
 
-- The `app_password` may have expired — rotate the client secret in the Azure Portal
-- Check that `oauth_tenant` and `oauth_scope` are correct (defaults should work for most setups)
+- The `app_password` may have expired — rotate the client secret in the Azure
+  Portal
+- Check that `oauth_tenant` and `oauth_scope` are correct (defaults should work
+  for most setups)
 - Network issues: Chelix must be able to reach `login.microsoftonline.com`
 
 ### Webhook returns 401 / 403
 
 - If using JWT validation: check that `tenant_id` matches your Azure AD tenant
-- If using shared secret: check that the `?secret=...` in the webhook URL matches `webhook_secret` in the config
-- The JWKS endpoint (`login.botframework.com`) must be reachable for JWT validation
+- If using shared secret: check that the `?secret=...` in the webhook URL
+  matches `webhook_secret` in the config
+- The JWKS endpoint (`login.botframework.com`) must be reachable for JWT
+  validation
 
 ### Bot responds in DMs but not in groups
 
@@ -407,10 +425,10 @@ The crate implements the same trait set as other channel crates:
 
 ### Messages are duplicated
 
-- Chelix returns `202 Accepted` immediately to prevent Teams retry timeouts.
-  If you see duplicates, check for multiple Chelix instances pointing at the
-  same webhook URL, or verify the deduplication middleware is working
-  (duplicate activity IDs are filtered automatically)
+- Chelix returns `202 Accepted` immediately to prevent Teams retry timeouts. If
+  you see duplicates, check for multiple Chelix instances pointing at the same
+  webhook URL, or verify the deduplication middleware is working (duplicate
+  activity IDs are filtered automatically)
 
 ### Streaming doesn't work
 

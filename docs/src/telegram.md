@@ -57,8 +57,8 @@ Add a `[channels.telegram.<account-id>]` section to your `chelix.toml`:
 token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
 ```
 
-Make sure `"telegram"` is included in `channels.offered` so the Web UI shows
-the Telegram option:
+Make sure `"telegram"` is included in `channels.offered` so the Web UI shows the
+Telegram option:
 
 ```toml
 [channels]
@@ -67,25 +67,25 @@ offered = ["telegram"]
 
 ### Configuration Fields
 
-| Field | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `token` | **yes** | — | Bot token from @BotFather |
-| `dm_policy` | no | `"allowlist"` | Who can DM the bot: `"open"`, `"allowlist"`, or `"disabled"` |
-| `group_policy` | no | `"open"` | Who can talk to the bot in groups: `"open"`, `"allowlist"`, or `"disabled"` |
-| `mention_mode` | no | `"mention"` | When the bot responds in groups: `"always"`, `"mention"` (only when @mentioned), or `"none"` |
-| `allowlist` | no | `[]` | User IDs or usernames allowed to DM the bot (when `dm_policy = "allowlist"`) |
-| `group_allowlist` | no | `[]` | Group/chat IDs allowed to interact with the bot |
-| `model` | no | — | Override the default model for this channel |
-| `model_provider` | no | — | Provider for the overridden model |
-| `agent_id` | no | — | Default agent ID for this bot's sessions |
-| `reply_to_message` | no | `false` | Send bot responses as Telegram replies to the user's message |
-| `otp_self_approval` | no | `true` | Enable OTP self-approval for non-allowlisted DM users |
-| `otp_cooldown_secs` | no | `300` | Cooldown in seconds after 3 failed OTP attempts |
-| `stream_mode` | no | `"edit_in_place"` | Streaming mode: `"edit_in_place"` or `"off"` |
-| `edit_throttle_ms` | no | `2000` | Minimum milliseconds between streaming edit updates |
-| `stream_notify_on_complete` | no | `false` | Send the final answer as a notifying message instead of silently reusing the progress message |
-| `stream_min_initial_chars` | no | `30` | Minimum characters before sending the first temporary progress message |
-| `stream_progress_max_chars` | no | `3500` | Maximum recent progress characters kept visible in the temporary streamed message |
+| Field                       | Required | Default           | Description                                                                                   |
+| --------------------------- | -------- | ----------------- | --------------------------------------------------------------------------------------------- |
+| `token`                     | **yes**  | —                 | Bot token from @BotFather                                                                     |
+| `dm_policy`                 | no       | `"allowlist"`     | Who can DM the bot: `"open"`, `"allowlist"`, or `"disabled"`                                  |
+| `group_policy`              | no       | `"open"`          | Who can talk to the bot in groups: `"open"`, `"allowlist"`, or `"disabled"`                   |
+| `mention_mode`              | no       | `"mention"`       | When the bot responds in groups: `"always"`, `"mention"` (only when @mentioned), or `"none"`  |
+| `allowlist`                 | no       | `[]`              | User IDs or usernames allowed to DM the bot (when `dm_policy = "allowlist"`)                  |
+| `group_allowlist`           | no       | `[]`              | Group/chat IDs allowed to interact with the bot                                               |
+| `model`                     | no       | —                 | Override the default model for this channel                                                   |
+| `model_provider`            | no       | —                 | Provider for the overridden model                                                             |
+| `agent_id`                  | no       | —                 | Default agent ID for this bot's sessions                                                      |
+| `reply_to_message`          | no       | `false`           | Send bot responses as Telegram replies to the user's message                                  |
+| `otp_self_approval`         | no       | `true`            | Enable OTP self-approval for non-allowlisted DM users                                         |
+| `otp_cooldown_secs`         | no       | `300`             | Cooldown in seconds after 3 failed OTP attempts                                               |
+| `stream_mode`               | no       | `"edit_in_place"` | Streaming mode: `"edit_in_place"` or `"off"`                                                  |
+| `edit_throttle_ms`          | no       | `2000`            | Minimum milliseconds between streaming edit updates                                           |
+| `stream_notify_on_complete` | no       | `false`           | Send the final answer as a notifying message instead of silently reusing the progress message |
+| `stream_min_initial_chars`  | no       | `30`              | Minimum characters before sending the first temporary progress message                        |
+| `stream_progress_max_chars` | no       | `3500`            | Maximum recent progress characters kept visible in the temporary streamed message             |
 
 ```admonish important title="Allowlist values are strings"
 All allowlist entries must be **strings**, even for numeric Telegram user IDs.
@@ -148,11 +148,11 @@ Telegram uses the same gating system as Discord and other channels.
 
 Controls who can send direct messages to the bot.
 
-| Value | Behavior |
-|-------|----------|
+| Value         | Behavior                                          |
+| ------------- | ------------------------------------------------- |
 | `"allowlist"` | Only users listed in `allowlist` can DM (default) |
-| `"open"` | Anyone who can find the bot can DM it |
-| `"disabled"` | DMs are silently ignored |
+| `"open"`      | Anyone who can find the bot can DM it             |
+| `"disabled"`  | DMs are silently ignored                          |
 
 ```admonish warning title="Default denies unlisted users"
 The default `dm_policy` is `"allowlist"`. With an empty `allowlist`, **all DMs
@@ -164,21 +164,21 @@ are blocked**. You must either add entries to `allowlist` or set
 
 Controls who can interact with the bot in group chats.
 
-| Value | Behavior |
-|-------|----------|
-| `"open"` | Bot responds in any group (default) |
+| Value         | Behavior                                            |
+| ------------- | --------------------------------------------------- |
+| `"open"`      | Bot responds in any group (default)                 |
 | `"allowlist"` | Only groups listed in `group_allowlist` are allowed |
-| `"disabled"` | Group messages are silently ignored |
+| `"disabled"`  | Group messages are silently ignored                 |
 
 ### Mention Mode
 
 Controls when the bot responds in groups (does not apply to DMs).
 
-| Value | Behavior |
-|-------|----------|
-| `"mention"` | Bot only responds when @mentioned (default) |
-| `"always"` | Bot responds to every message in allowed groups |
-| `"none"` | Bot never responds in groups (useful for DM-only bots) |
+| Value       | Behavior                                               |
+| ----------- | ------------------------------------------------------ |
+| `"mention"` | Bot only responds when @mentioned (default)            |
+| `"always"`  | Bot responds to every message in allowed groups        |
+| `"none"`    | Bot never responds in groups (useful for DM-only bots) |
 
 ### Allowlist Matching
 
@@ -197,7 +197,8 @@ When `dm_policy = "allowlist"` and `otp_self_approval = true` (the default),
 unknown users who DM the bot receive a verification challenge:
 
 1. User sends a DM to the bot
-2. Bot responds with a challenge prompt (the 6-digit code is **not** shown to the user)
+2. Bot responds with a challenge prompt (the 6-digit code is **not** shown to
+   the user)
 3. The code appears in the Chelix web UI under **Channels > Senders**
 4. The bot owner shares the code with the user out-of-band
 5. User replies with the 6-digit code
@@ -214,31 +215,31 @@ the web UI.
 By default (`stream_mode = "edit_in_place"`), Telegram shows temporary progress
 while a turn is running. The bot sends a silent progress message after
 `stream_min_initial_chars` characters (default: 30), edits that progress message
-at most once every `edit_throttle_ms` milliseconds (default: 2000), and keeps only
-the latest `stream_progress_max_chars` progress characters visible.
+at most once every `edit_throttle_ms` milliseconds (default: 2000), and keeps
+only the latest `stream_progress_max_chars` progress characters visible.
 
 When the final answer is ready, the progress message is cleaned up or reused and
 the final answer is delivered separately from intermediate progress. With
 `stream_notify_on_complete = false` (default), Chelix may silently reuse the
-existing progress message for the final answer. With `stream_notify_on_complete =
-true`, Chelix deletes the progress message where possible and sends the final
-answer as a new notifying message.
+existing progress message for the final answer. With
+`stream_notify_on_complete = true`, Chelix deletes the progress message where
+possible and sends the final answer as a new notifying message.
 
 ## Session Commands
 
 Telegram supports the standard channel session commands:
 
-| Command | Description |
-|---------|-------------|
-| `/new` | Start a fresh session for the current chat |
-| `/sessions` | List or switch among sessions already bound to the current chat |
-| `/attach` | List existing non-cron sessions and rebind one to the current chat |
-| `/agent` | List or switch chat agents |
-| `/mode` | List or switch temporary session modes |
-| `/model` | List or switch models |
-| `/approvals` | List pending command approvals for the current session |
-| `/approve N` | Approve the numbered command request from `/approvals` |
-| `/deny N` | Deny the numbered command request from `/approvals` |
+| Command      | Description                                                        |
+| ------------ | ------------------------------------------------------------------ |
+| `/new`       | Start a fresh session for the current chat                         |
+| `/sessions`  | List or switch among sessions already bound to the current chat    |
+| `/attach`    | List existing non-cron sessions and rebind one to the current chat |
+| `/agent`     | List or switch chat agents                                         |
+| `/mode`      | List or switch temporary session modes                             |
+| `/model`     | List or switch models                                              |
+| `/approvals` | List pending command approvals for the current session             |
+| `/approve N` | Approve the numbered command request from `/approvals`             |
+| `/deny N`    | Deny the numbered command request from `/approvals`                |
 
 `/sessions` is intentionally scoped to the current chat. If you want to bring a
 different existing session into the chat, use `/attach` instead. Reattaching a
@@ -260,7 +261,8 @@ To find your numeric Telegram user ID (for the `allowlist`):
 2. It replies with your user ID, first name, and username
 3. Use the numeric ID as a string in your config: `allowlist = ["123456789"]`
 
-Alternatively, use your Telegram username (without the `@`): `allowlist = ["your_username"]`.
+Alternatively, use your Telegram username (without the `@`):
+`allowlist = ["your_username"]`.
 
 ## Web UI Setup
 
@@ -272,7 +274,8 @@ You can also configure Telegram through the web interface:
 4. Adjust DM policy, mention mode, and allowlist as needed
 5. Click **Connect**
 
-The same form is available during onboarding when Telegram is in `channels.offered`.
+The same form is available during onboarding when Telegram is in
+`channels.offered`.
 
 ## Troubleshooting
 

@@ -10,7 +10,8 @@ disabled at build time with `--no-default-features`.
 
 ## Configuration
 
-Add a `[caldav]` section to your `chelix.toml` (usually `~/.chelix/chelix.toml`):
+Add a `[caldav]` section to your `chelix.toml` (usually
+`~/.chelix/chelix.toml`):
 
 ```toml
 [caldav]
@@ -47,11 +48,11 @@ password = "app-specific-password"
 
 ### Supported providers
 
-| Provider | `provider` value | Notes |
-|----------|------------------|-------|
-| **Fastmail** | `"fastmail"` | URL auto-discovered (`caldav.fastmail.com`). Use an [app password](https://www.fastmail.com/help/clients/apppassword.html). |
-| **iCloud** | `"icloud"` | URL auto-discovered (`caldav.icloud.com`). Requires an [app-specific password](https://support.apple.com/en-us/102654). |
-| **Generic** | `"generic"` | Any CalDAV server. You **must** set `url`. |
+| Provider     | `provider` value | Notes                                                                                                                       |
+| ------------ | ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **Fastmail** | `"fastmail"`     | URL auto-discovered (`caldav.fastmail.com`). Use an [app password](https://www.fastmail.com/help/clients/apppassword.html). |
+| **iCloud**   | `"icloud"`       | URL auto-discovered (`caldav.icloud.com`). Requires an [app-specific password](https://support.apple.com/en-us/102654).     |
+| **Generic**  | `"generic"`      | Any CalDAV server. You **must** set `url`.                                                                                  |
 
 For generic servers, provide the CalDAV base URL:
 
@@ -65,13 +66,13 @@ password = "secret"
 
 ### Account fields
 
-| Field | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `provider` | no | `"generic"` | Provider hint (`"fastmail"`, `"icloud"`, `"generic"`) |
-| `url` | depends | &mdash; | CalDAV base URL. Required for `generic`; optional for Fastmail/iCloud (well-known URL used). |
-| `username` | yes | &mdash; | Authentication username |
-| `password` | yes | &mdash; | Password or app-specific password |
-| `timeout_seconds` | no | `30` | HTTP request timeout |
+| Field             | Required | Default     | Description                                                                                  |
+| ----------------- | -------- | ----------- | -------------------------------------------------------------------------------------------- |
+| `provider`        | no       | `"generic"` | Provider hint (`"fastmail"`, `"icloud"`, `"generic"`)                                        |
+| `url`             | depends  | &mdash;     | CalDAV base URL. Required for `generic`; optional for Fastmail/iCloud (well-known URL used). |
+| `username`        | yes      | &mdash;     | Authentication username                                                                      |
+| `password`        | yes      | &mdash;     | Password or app-specific password                                                            |
+| `timeout_seconds` | no       | `30`        | HTTP request timeout                                                                         |
 
 ```admonish warning
 Store passwords as app-specific passwords, never your main account password.
@@ -90,8 +91,8 @@ the process. All communication uses HTTPS with system-native TLS roots.
 
 ## Operations
 
-The agent calls the `caldav` tool with an `operation` parameter. Five
-operations are available:
+The agent calls the `caldav` tool with an `operation` parameter. Five operations
+are available:
 
 ### `list_calendars`
 
@@ -103,28 +104,28 @@ Returns: `href`, `display_name`, `color`, `description` for each calendar.
 
 Lists events in a specific calendar, optionally filtered by date range.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `calendar` | yes | Calendar href (from `list_calendars`) |
-| `start` | no | ISO 8601 start date/time |
-| `end` | no | ISO 8601 end date/time |
+| Parameter  | Required | Description                           |
+| ---------- | -------- | ------------------------------------- |
+| `calendar` | yes      | Calendar href (from `list_calendars`) |
+| `start`    | no       | ISO 8601 start date/time              |
+| `end`      | no       | ISO 8601 end date/time                |
 
-Returns: `href`, `etag`, `uid`, `summary`, `start`, `end`, `all_day`,
-`location` for each event.
+Returns: `href`, `etag`, `uid`, `summary`, `start`, `end`, `all_day`, `location`
+for each event.
 
 ### `create_event`
 
 Creates a new calendar event.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `calendar` | yes | Calendar href |
-| `summary` | yes | Event title |
-| `start` | yes | ISO 8601 start (e.g. `2025-06-15T10:00:00` or `2025-06-15` for all-day) |
-| `end` | no | ISO 8601 end date/time |
-| `all_day` | no | Boolean, default `false` |
-| `location` | no | Event location |
-| `description` | no | Event notes |
+| Parameter     | Required | Description                                                             |
+| ------------- | -------- | ----------------------------------------------------------------------- |
+| `calendar`    | yes      | Calendar href                                                           |
+| `summary`     | yes      | Event title                                                             |
+| `start`       | yes      | ISO 8601 start (e.g. `2025-06-15T10:00:00` or `2025-06-15` for all-day) |
+| `end`         | no       | ISO 8601 end date/time                                                  |
+| `all_day`     | no       | Boolean, default `false`                                                |
+| `location`    | no       | Event location                                                          |
+| `description` | no       | Event notes                                                             |
 
 Returns: `href`, `etag`, `uid` of the created event.
 
@@ -133,16 +134,16 @@ Returns: `href`, `etag`, `uid` of the created event.
 Updates an existing event. Uses ETag-based optimistic concurrency control to
 prevent overwriting concurrent changes.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `event_href` | yes | Event href (from `list_events`) |
-| `etag` | yes | Current ETag (from `list_events`) |
-| `summary` | no | New title |
-| `start` | no | New start |
-| `end` | no | New end |
-| `all_day` | no | New all-day flag |
-| `location` | no | New location |
-| `description` | no | New description |
+| Parameter     | Required | Description                       |
+| ------------- | -------- | --------------------------------- |
+| `event_href`  | yes      | Event href (from `list_events`)   |
+| `etag`        | yes      | Current ETag (from `list_events`) |
+| `summary`     | no       | New title                         |
+| `start`       | no       | New start                         |
+| `end`         | no       | New end                           |
+| `all_day`     | no       | New all-day flag                  |
+| `location`    | no       | New location                      |
+| `description` | no       | New description                   |
 
 Returns: updated `href` and `etag`.
 
@@ -150,17 +151,17 @@ Returns: updated `href` and `etag`.
 
 Deletes an event. Also requires the current ETag.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `event_href` | yes | Event href |
-| `etag` | yes | Current ETag |
+| Parameter    | Required | Description  |
+| ------------ | -------- | ------------ |
+| `event_href` | yes      | Event href   |
+| `etag`       | yes      | Current ETag |
 
 ## Concurrency control
 
 Updates and deletes require an `etag` obtained from `list_events`. If the event
-was modified on the server since the ETag was fetched (e.g. edited from a phone),
-the server rejects the request with a conflict error. This prevents accidental
-overwrites. The agent should re-fetch the event and retry.
+was modified on the server since the ETag was fetched (e.g. edited from a
+phone), the server rejects the request with a conflict error. This prevents
+accidental overwrites. The agent should re-fetch the event and retry.
 
 ## Example conversation
 
@@ -173,8 +174,8 @@ overwrites. The agent should re-fetch the event and retry.
 >
 > **You:** Move the dentist appointment to Friday at 2pm.
 >
-> The agent calls `update_event` with the event's `href` and `etag`, setting
-> the new `start` time.
+> The agent calls `update_event` with the event's `href` and `etag`, setting the
+> new `start` time.
 
 ## Disabling CalDAV
 

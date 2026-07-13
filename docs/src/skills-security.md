@@ -15,7 +15,8 @@ You cannot enable untrusted skills.
 
 Portable bundle imports add one more step:
 
-- `quarantined` - imported from a portable bundle and blocked from enable until explicitly cleared
+- `quarantined` - imported from a portable bundle and blocked from enable until
+  explicitly cleared
 
 Imported bundles keep provenance metadata (original source, commit SHA when
 available, bundle path, export time) so you can review where they came from

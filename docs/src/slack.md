@@ -38,7 +38,8 @@ requiring a publicly reachable endpoint.
 
 Before configuring Chelix, create a Slack app:
 
-1. Go to [api.slack.com/apps](https://api.slack.com/apps) and click **Create New App**
+1. Go to [api.slack.com/apps](https://api.slack.com/apps) and click **Create New
+   App**
 2. Choose **From scratch**, name the app, and select your workspace
 3. Navigate to **OAuth & Permissions** and add these Bot Token Scopes:
    - `app_mentions:read` — read @mentions
@@ -46,10 +47,12 @@ Before configuring Chelix, create a Slack app:
    - `im:history` — read DM history
    - `im:read` — view DM metadata
    - `channels:history` — read channel messages (for `mention_mode = "always"`)
-4. Click **Install to Workspace** and copy the **Bot User OAuth Token** (`xoxb-...`)
+4. Click **Install to Workspace** and copy the **Bot User OAuth Token**
+   (`xoxb-...`)
 5. For Socket Mode (recommended):
    - Go to **Socket Mode** and enable it
-   - Generate an **App-Level Token** (`xapp-...`) with the `connections:write` scope
+   - Generate an **App-Level Token** (`xapp-...`) with the `connections:write`
+     scope
 6. For Events API mode:
    - Go to **Event Subscriptions** and enable it
    - Set the Request URL to your Chelix instance endpoint
@@ -83,24 +86,24 @@ offered = ["slack"]
 
 ### Configuration Fields
 
-| Field | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `bot_token` | **yes** | — | Bot user OAuth token (`xoxb-...`) |
-| `app_token` | **yes**\* | — | App-level token for Socket Mode (`xapp-...`). \*Required for `socket_mode`. |
-| `connection_mode` | no | `"socket_mode"` | Connection method: `"socket_mode"` or `"events_api"` |
-| `signing_secret` | no\* | — | Signing secret for Events API request verification. \*Required for `events_api`. |
-| `dm_policy` | no | `"allowlist"` | Who can DM the bot: `"open"`, `"allowlist"`, or `"disabled"` |
-| `group_policy` | no | `"open"` | Who can talk to the bot in channels: `"open"`, `"allowlist"`, or `"disabled"` |
-| `mention_mode` | no | `"mention"` | When the bot responds in channels: `"always"`, `"mention"`, or `"none"` |
-| `allowlist` | no | `[]` | Slack user IDs allowed to DM the bot (when `dm_policy = "allowlist"`) |
-| `channel_allowlist` | no | `[]` | Slack channel IDs allowed to interact with the bot |
-| `model` | no | — | Override the default model for this channel |
-| `model_provider` | no | — | Provider for the overridden model |
-| `stream_mode` | no | `"edit_in_place"` | Streaming mode: `"edit_in_place"`, `"native"`, or `"off"` |
-| `edit_throttle_ms` | no | `500` | Minimum milliseconds between streaming edit updates |
-| `thread_replies` | no | `true` | Reply in threads |
-| `channel_overrides` | no | `{}` | Per-channel model/provider overrides (see below) |
-| `user_overrides` | no | `{}` | Per-user model/provider overrides (see below) |
+| Field               | Required  | Default           | Description                                                                      |
+| ------------------- | --------- | ----------------- | -------------------------------------------------------------------------------- |
+| `bot_token`         | **yes**   | —                 | Bot user OAuth token (`xoxb-...`)                                                |
+| `app_token`         | **yes**\* | —                 | App-level token for Socket Mode (`xapp-...`). \*Required for `socket_mode`.      |
+| `connection_mode`   | no        | `"socket_mode"`   | Connection method: `"socket_mode"` or `"events_api"`                             |
+| `signing_secret`    | no\*      | —                 | Signing secret for Events API request verification. \*Required for `events_api`. |
+| `dm_policy`         | no        | `"allowlist"`     | Who can DM the bot: `"open"`, `"allowlist"`, or `"disabled"`                     |
+| `group_policy`      | no        | `"open"`          | Who can talk to the bot in channels: `"open"`, `"allowlist"`, or `"disabled"`    |
+| `mention_mode`      | no        | `"mention"`       | When the bot responds in channels: `"always"`, `"mention"`, or `"none"`          |
+| `allowlist`         | no        | `[]`              | Slack user IDs allowed to DM the bot (when `dm_policy = "allowlist"`)            |
+| `channel_allowlist` | no        | `[]`              | Slack channel IDs allowed to interact with the bot                               |
+| `model`             | no        | —                 | Override the default model for this channel                                      |
+| `model_provider`    | no        | —                 | Provider for the overridden model                                                |
+| `stream_mode`       | no        | `"edit_in_place"` | Streaming mode: `"edit_in_place"`, `"native"`, or `"off"`                        |
+| `edit_throttle_ms`  | no        | `500`             | Minimum milliseconds between streaming edit updates                              |
+| `thread_replies`    | no        | `true`            | Reply in threads                                                                 |
+| `channel_overrides` | no        | `{}`              | Per-channel model/provider overrides (see below)                                 |
+| `user_overrides`    | no        | `{}`              | Per-user model/provider overrides (see below)                                    |
 
 ```admonish important title="Allowlist values are strings"
 All allowlist entries must be **strings**. Use Slack user IDs like
@@ -157,27 +160,27 @@ Slack uses the same gating system as Telegram, Discord, and other channels.
 
 ### DM Policy
 
-| Value | Behavior |
-|-------|----------|
+| Value         | Behavior                                          |
+| ------------- | ------------------------------------------------- |
 | `"allowlist"` | Only users listed in `allowlist` can DM (default) |
-| `"open"` | Anyone in the workspace can DM the bot |
-| `"disabled"` | DMs are silently ignored |
+| `"open"`      | Anyone in the workspace can DM the bot            |
+| `"disabled"`  | DMs are silently ignored                          |
 
 ### Group Policy
 
-| Value | Behavior |
-|-------|----------|
-| `"open"` | Bot responds in any channel it's invited to (default) |
+| Value         | Behavior                                                |
+| ------------- | ------------------------------------------------------- |
+| `"open"`      | Bot responds in any channel it's invited to (default)   |
 | `"allowlist"` | Only channels listed in `channel_allowlist` are allowed |
-| `"disabled"` | Channel messages are silently ignored |
+| `"disabled"`  | Channel messages are silently ignored                   |
 
 ### Mention Mode
 
-| Value | Behavior |
-|-------|----------|
-| `"mention"` | Bot only responds when @mentioned (default) |
-| `"always"` | Bot responds to every message in allowed channels |
-| `"none"` | Bot never responds in channels (useful for DM-only bots) |
+| Value       | Behavior                                                 |
+| ----------- | -------------------------------------------------------- |
+| `"mention"` | Bot only responds when @mentioned (default)              |
+| `"always"`  | Bot responds to every message in allowed channels        |
+| `"none"`    | Bot never responds in channels (useful for DM-only bots) |
 
 ### Allowlist Matching
 
@@ -190,11 +193,11 @@ Allowlist entries support:
 
 Slack supports three streaming modes:
 
-| Mode | Behavior |
-|------|----------|
-| `"edit_in_place"` | Sends a placeholder message and edits it as tokens arrive (default) |
-| `"native"` | Uses Slack's streaming API (`chat.startStream`/`chat.appendStream`/`chat.stopStream`) |
-| `"off"` | No streaming — sends the full response as a single message |
+| Mode              | Behavior                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------- |
+| `"edit_in_place"` | Sends a placeholder message and edits it as tokens arrive (default)                   |
+| `"native"`        | Uses Slack's streaming API (`chat.startStream`/`chat.appendStream`/`chat.stopStream`) |
+| `"off"`           | No streaming — sends the full response as a single message                            |
 
 The `edit_in_place` mode throttles updates to `edit_throttle_ms` milliseconds
 (default: 500) to avoid Slack API rate limits.
@@ -211,8 +214,8 @@ in the channel.
 
 - Verify the bot and app tokens are correct
 - Check that Socket Mode is enabled in the Slack app settings
-- Check `dm_policy` — if set to `"allowlist"`, make sure your Slack user ID
-  is in `allowlist`
+- Check `dm_policy` — if set to `"allowlist"`, make sure your Slack user ID is
+  in `allowlist`
 - Ensure the bot has been invited to channels you want it to respond in
 - Look at logs: `RUST_LOG=chelix_slack=debug chelix`
 

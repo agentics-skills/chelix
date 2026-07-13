@@ -13,8 +13,9 @@ The prompt is built in `crates/agents/src/prompt.rs` by
 2. **Agent identity** — name, emoji, creature, vibe from `IDENTITY.md`
 3. **Soul** — personality directives from `SOUL.md` (or built-in default)
 4. **User profile** — user's name from `USER.md`
-5. **Project context** — `CLAUDE.md` / `CLAUDE.local.md` / `AGENTS.md` / `.cursorrules` / `.claude/rules/*.md` / `.cursor/rules/*.{md,mdc}`
-   walked up the directory tree
+5. **Project context** — `CLAUDE.md` / `CLAUDE.local.md` / `AGENTS.md` /
+   `.cursorrules` / `.claude/rules/*.md` / `.cursor/rules/*.{md,mdc}` walked up
+   the directory tree
 6. **Runtime context** — host info, sandbox config, execution routing hints
 7. **Skills listing** — available skills as XML block
 8. **Workspace files** — `AGENTS.md` and `TOOLS.md` from the data directory
@@ -29,27 +30,27 @@ The prompt is built in `crates/agents/src/prompt.rs` by
 
 A single sentence that sets the assistant role:
 
-- With tools: *"You are a helpful assistant. You can use tools when needed."*
-- Without tools: *"You are a helpful assistant. Answer questions clearly and
-  concisely."*
+- With tools: _"You are a helpful assistant. You can use tools when needed."_
+- Without tools: _"You are a helpful assistant. Answer questions clearly and
+  concisely."_
 
 ### Agent Identity (`IDENTITY.md`)
 
 Loaded from `~/.chelix/IDENTITY.md` using YAML frontmatter. Fields:
 
-| Field | Prompt output |
-|-------|---------------|
+| Field            | Prompt output                  |
+| ---------------- | ------------------------------ |
 | `name` + `emoji` | "Your name is {name} {emoji}." |
-| `creature` | "You are a {creature}." |
-| `vibe` | "Your vibe: {vibe}." |
+| `creature`       | "You are a {creature}."        |
+| `vibe`           | "Your vibe: {vibe}."           |
 
 All fields are optional. When identity is present, the soul section is always
 included.
 
 ### Soul (`SOUL.md`)
 
-Loaded from `~/.chelix/SOUL.md`. When the file is absent or empty, the
-built-in `DEFAULT_SOUL` is used. The default starts with:
+Loaded from `~/.chelix/SOUL.md`. When the file is absent or empty, the built-in
+`DEFAULT_SOUL` is used. The default starts with:
 
 > **SOUL.md - Who You Are**
 >
@@ -58,8 +59,8 @@ built-in `DEFAULT_SOUL` is used. The default starts with:
 > **Core Truths**
 >
 > **Be genuinely helpful, not performatively helpful.** Skip the "Great
-> question!" and "I'd be happy to help!" — just help. Actions speak louder
-> than filler words.
+> question!" and "I'd be happy to help!" — just help. Actions speak louder than
+> filler words.
 >
 > **Have opinions.** You're allowed to disagree, prefer things, find stuff
 > amusing or boring. An assistant with no personality is just a search engine
@@ -77,9 +78,9 @@ built-in `DEFAULT_SOUL` is used. The default starts with:
 > messages, files, calendar, maybe even their home. That's intimacy. Treat it
 > with respect.
 >
-> **Boundaries** — Private things stay private. When in doubt, ask before
-> acting externally. Never send half-baked replies to messaging surfaces.
-> You're not the user's voice — be careful in group chats.
+> **Boundaries** — Private things stay private. When in doubt, ask before acting
+> externally. Never send half-baked replies to messaging surfaces. You're not
+> the user's voice — be careful in group chats.
 >
 > **Vibe** — Be the assistant you'd actually want to talk to. Concise when
 > needed, thorough when it matters. Not a corporate drone. Not a sycophant.
@@ -95,7 +96,7 @@ The default soul is ~1,500 characters (~400 tokens).
 
 Loaded from `~/.chelix/USER.md` using YAML frontmatter.
 
-- `name` is injected as: *"The user's name is {name}."*
+- `name` is injected as: _"The user's name is {name}."_
 - `timezone` is used by runtime context to localize `Host: time=...` and
   `Host: today=...` fields.
 
@@ -131,8 +132,8 @@ LLM knows where it is operating, for example:
 Host: ... | session=telegram:bot-main:123456 | surface=telegram | session_kind=channel | channel_type=telegram | channel_account=bot-main | channel_chat_id=123456 | channel_chat_type=private
 ```
 
-When tools are included, an **Execution routing** block explains how `execute_command`
-routes commands between sandbox and host.
+When tools are included, an **Execution routing** block explains how
+`execute_command` routes commands between sandbox and host.
 
 The runtime context is populated at request time in `chat.rs` by detecting:
 
@@ -140,7 +141,8 @@ The runtime context is populated at request time in `chat.rs` by detecting:
 - Active LLM provider and model
 - Session key
 - Runtime surface and session kind (`web`, `channel`, `cron`, `heartbeat`)
-- Channel binding metadata (`channel_type`, `channel_account`, `channel_chat_id`, `channel_chat_type`) when available
+- Channel binding metadata (`channel_type`, `channel_account`,
+  `channel_chat_id`, `channel_chat_type`) when available
 - Sudo availability
 - Timezone and accept-language from the browser
 - Geolocation (from browser or `USER.md`)
@@ -149,12 +151,12 @@ The runtime context is populated at request time in `chat.rs` by detecting:
 ### Skills
 
 When skills are registered, they are listed as an XML block generated by
-`chelix_skills::prompt_gen::generate_skills_prompt()`. The block advertises
-each skill by name, source, and description, and points the model at the
-native `read_skill` tool for loading skill content. It deliberately does **not**
-include filesystem paths — the `read_skill` tool resolves names through the
-same discoverer that built the prompt block, so the model never needs an
-external filesystem MCP server to load skill bodies.
+`chelix_skills::prompt_gen::generate_skills_prompt()`. The block advertises each
+skill by name, source, and description, and points the model at the native
+`read_skill` tool for loading skill content. It deliberately does **not**
+include filesystem paths — the `read_skill` tool resolves names through the same
+discoverer that built the prompt block, so the model never needs an external
+filesystem MCP server to load skill bodies.
 
 ```xml
 ## Available Skills
@@ -192,13 +194,13 @@ injection:
 - obvious prompt/secret exfiltration text is flagged
 - obvious approval/sandbox bypass text is flagged
 
-Warnings are surfaced in the rendered project context so the model sees that
-the file should be treated cautiously instead of as operator intent.
+Warnings are surfaced in the rendered project context so the model sees that the
+file should be treated cautiously instead of as operator intent.
 
 ### Tool Schemas
 
-How tools are described depends on whether the provider supports native
-tool calling:
+How tools are described depends on whether the provider supports native tool
+calling:
 
 - **Native tools** (`native_tools=true`): compact one-liner per tool with
   description truncated to 160 characters. Full JSON schemas are sent via the
@@ -210,29 +212,29 @@ tool calling:
 
 The final section contains:
 
-- Tool usage guidelines (conversation first, when to use execute_command/browser, `/sh`
-  explicit shell prefix)
+- Tool usage guidelines (conversation first, when to use
+  execute_command/browser, `/sh` explicit shell prefix)
 - A reminder not to parrot raw tool output
 - **Silent reply protocol**: when tool output speaks for itself, the LLM should
   return an empty response rather than acknowledging it
 
 ## Entry Points
 
-| Function | Use case |
-|----------|----------|
-| `build_system_prompt()` | Simple: tools + optional project context |
+| Function                                     | Use case                                           |
+| -------------------------------------------- | -------------------------------------------------- |
+| `build_system_prompt()`                      | Simple: tools + optional project context           |
 | `build_system_prompt_with_session_runtime()` | Full: identity, soul, user, skills, runtime, tools |
-| `build_system_prompt_minimal_runtime()` | No tools (e.g. title generation, summaries) |
+| `build_system_prompt_minimal_runtime()`      | No tools (e.g. title generation, summaries)        |
 
 ## Size Estimates
 
-| Configuration | ~Characters | ~Tokens |
-|---------------|-------------|---------|
-| Minimal (no tools, no context) | 200 | 50 |
-| Soul + identity + guidelines | 2,000 | 500 |
-| Typical with tools | 5,000 | 1,250 |
-| Full (tools + project context + skills) | 7,000-10,000 | 1,750-2,500 |
-| Large (many MCP tools + full context) | 12,000-15,000 | 3,000-3,750 |
+| Configuration                           | ~Characters   | ~Tokens     |
+| --------------------------------------- | ------------- | ----------- |
+| Minimal (no tools, no context)          | 200           | 50          |
+| Soul + identity + guidelines            | 2,000         | 500         |
+| Typical with tools                      | 5,000         | 1,250       |
+| Full (tools + project context + skills) | 7,000-10,000  | 1,750-2,500 |
+| Large (many MCP tools + full context)   | 12,000-15,000 | 3,000-3,750 |
 
 A typical session with a few tools and project context lands around **6k
 characters (~1,500 tokens)**, which is well within normal range for production

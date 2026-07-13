@@ -8,12 +8,13 @@ source.
 
 Every registered tool has a `ToolSource` that identifies its origin:
 
-- **`Builtin`** — tools shipped with the binary (`execute_command`, `web_fetch`, etc.)
-- **`Mcp { server }`** — tools provided by an MCP server, tagged with the
-  server name
+- **`Builtin`** — tools shipped with the binary (`execute_command`, `web_fetch`,
+  etc.)
+- **`Mcp { server }`** — tools provided by an MCP server, tagged with the server
+  name
 
-This replaces the previous convention of identifying MCP tools by their
-`mcp__` name prefix, providing type-safe filtering instead of string matching.
+This replaces the previous convention of identifying MCP tools by their `mcp__`
+name prefix, providing type-safe filtering instead of string matching.
 
 ## Registration
 
@@ -61,8 +62,8 @@ let removed_count = registry.unregister_mcp();
 }
 ```
 
-The `source` and `mcpServer` fields are available to the UI for rendering
-tools grouped by origin.
+The `source` and `mcpServer` fields are available to the UI for rendering tools
+grouped by origin.
 
 ## Command execution tools
 
@@ -85,10 +86,10 @@ completion state, and exit code when available.
 
 The registry exposes two independent surfaces:
 
-- **`list_catalog()`** — every allowed **public** tool as a `{ name, description }`
-  pair, sorted by name. It ignores lazy schema visibility, so the discovery
-  catalog is always complete. Tools whose names end in `_wasm` are
-  execution-only and never appear here.
+- **`list_catalog()`** — every allowed **public** tool as a
+  `{ name, description }` pair, sorted by name. It ignores lazy schema
+  visibility, so the discovery catalog is always complete. Tools whose names end
+  in `_wasm` are execution-only and never appear here.
 - **`list_schemas()`** — the full JSON parameter schemas, filtered by lazy
   visibility. This is what is sent to the provider as the API tool list (native
   mode) or embedded in the prompt (text mode).
@@ -105,8 +106,8 @@ identifier is unambiguous:
 - `{"name":"get_tool"}`: Fetch the full parameter schema...
 ```
 
-This format is identical in native and text mode, and in the live, debug, and
-UI prompt surfaces. In text mode the parameter schemas follow in a separate
+This format is identical in native and text mode, and in the live, debug, and UI
+prompt surfaces. In text mode the parameter schemas follow in a separate
 **`## Tool Schemas`** block (headings use the same `{"name":"<tool>"}` label),
 because text mode can't send schemas through the provider API.
 
@@ -133,8 +134,8 @@ registry_mode = "lazy"   # default: "full"
    from `Available Tools`. There is no keyword search, and any other field is
    rejected. An unknown name returns a structured `schema_visible: false`
    response rather than an execution error.
-3. `get_tool(name="get_tool")` is a valid lookup that returns the meta-tool's own
-   schema.
+3. `get_tool(name="get_tool")` is a valid lookup that returns the meta-tool's
+   own schema.
 4. Allowed tools remain executable before their schema is revealed. Once the
    model knows the exact tool name and parameters, it should call the tool
    directly — standard pipeline, hooks fire normally. `get_tool` is not an
@@ -142,8 +143,8 @@ registry_mode = "lazy"   # default: "full"
 
 The runner re-computes schemas each iteration, so revealed schemas appear
 immediately. On later turns, lazy visibility is restored from structured session
-history: prior successful `get_tool` schema reveals
-(`tool_result` with `tool_name == "get_tool"`, `success == true`, and
+history: prior successful `get_tool` schema reveals (`tool_result` with
+`tool_name == "get_tool"`, `success == true`, and
 `result.schema_visible == true`) and prior assistant tool calls keep those
 schemas visible. The restoration is not inferred from user or assistant prose,
 and older sessions that predate `get_tool` simply start from `{get_tool}`. The
@@ -160,4 +161,5 @@ untouched.
 - Long conversations where input token cost matters
 - Sub-agent runs that only need a few specific tools
 
-In **full** mode (default), all schemas are sent every turn — no behavioral change from before this feature.
+In **full** mode (default), all schemas are sent every turn — no behavioral
+change from before this feature.

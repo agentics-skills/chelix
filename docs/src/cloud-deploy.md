@@ -1,23 +1,23 @@
 # Cloud Deploy
 
-Chelix publishes a multi-arch Docker image (`linux/amd64` and `linux/arm64`)
-to `ghcr.io/agentics-skills/chelix`. You can deploy it to any cloud provider that
+Chelix publishes a multi-arch Docker image (`linux/amd64` and `linux/arm64`) to
+`ghcr.io/agentics-skills/chelix`. You can deploy it to any cloud provider that
 supports container images.
 
 ## Common configuration
 
-All cloud providers terminate TLS at the edge, so Chelix must run in plain
-HTTP mode. The key settings are:
+All cloud providers terminate TLS at the edge, so Chelix must run in plain HTTP
+mode. The key settings are:
 
-| Setting | Value | Purpose |
-|---------|-------|---------|
-| `--no-tls` or `CHELIX_NO_TLS=true` | Disable TLS | Provider handles HTTPS |
-| `--bind 0.0.0.0` | Bind all interfaces | Required for container networking |
-| `--port <PORT>` | Listen port | Must match provider's expected internal port |
-| `CHELIX_CONFIG_DIR=/data/config` | Config directory | Persist chelix.toml, credentials |
-| `CHELIX_DATA_DIR=/data` | Data directory | Persist databases, sessions, memory |
-| `CHELIX_DEPLOY_PLATFORM` | Deploy platform | Hides local-only providers (see below) |
-| `CHELIX_PASSWORD` | Initial password | Set auth password via environment variable |
+| Setting                            | Value               | Purpose                                      |
+| ---------------------------------- | ------------------- | -------------------------------------------- |
+| `--no-tls` or `CHELIX_NO_TLS=true` | Disable TLS         | Provider handles HTTPS                       |
+| `--bind 0.0.0.0`                   | Bind all interfaces | Required for container networking            |
+| `--port <PORT>`                    | Listen port         | Must match provider's expected internal port |
+| `CHELIX_CONFIG_DIR=/data/config`   | Config directory    | Persist chelix.toml, credentials             |
+| `CHELIX_DATA_DIR=/data`            | Data directory      | Persist databases, sessions, memory          |
+| `CHELIX_DEPLOY_PLATFORM`           | Deploy platform     | Hides local-only providers (see below)       |
+| `CHELIX_PASSWORD`                  | Initial password    | Set auth password via environment variable   |
 
 ```admonish tip
 If requests to your domain are redirected to `:13131`, Chelix TLS is still
@@ -42,9 +42,9 @@ from the provider setup page since they cannot run on cloud VMs.
 
 ## OAuth Providers (OpenAI Codex, GitHub Copilot)
 
-OAuth providers that redirect to `localhost` (like OpenAI Codex) cannot
-complete the browser flow when Chelix runs on a remote server — `localhost`
-on the user's browser points to their own machine, not the cloud instance.
+OAuth providers that redirect to `localhost` (like OpenAI Codex) cannot complete
+the browser flow when Chelix runs on a remote server — `localhost` on the user's
+browser points to their own machine, not the cloud instance.
 
 **Use the CLI to authenticate instead:**
 
@@ -76,8 +76,8 @@ configuration.
 
 ## Health checks
 
-All provider configs use the `/health` endpoint which returns HTTP 200 when
-the gateway is ready. Configure your provider's health check to use:
+All provider configs use the `/health` endpoint which returns HTTP 200 when the
+gateway is ready. Configure your provider's health check to use:
 
 - **Path**: `/health`
 - **Method**: `GET`

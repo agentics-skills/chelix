@@ -1,34 +1,33 @@
 # Tool Policy
 
-Tool policies control which tools are available during a session. Policies
-use a layered system where each layer can restrict or widen access, and
-**deny always wins** — once a tool is denied at any layer, no later layer
-can re-allow it.
+Tool policies control which tools are available during a session. Policies use a
+layered system where each layer can restrict or widen access, and **deny always
+wins** — once a tool is denied at any layer, no later layer can re-allow it.
 
 ## Layers
 
-Six layers are evaluated in order. Later layers can replace the allow list,
-but deny entries accumulate across all of them.
+Six layers are evaluated in order. Later layers can replace the allow list, but
+deny entries accumulate across all of them.
 
-| # | Layer | Config path | Applies to |
-|---|-------|-------------|------------|
-| 1 | Global | `[tools.policy]` | All sessions |
-| 2 | Per-provider | `[providers.<name>.policy]` | Requests routed through that provider |
-| 3 | Per-agent preset | `[agents.presets.<id>.tools]` | Sub-agents spawned with that preset |
-| 4 | Per-channel group | `[channels.<type>.<account>.tools.groups.<chat_type>]` | Channel sessions matching that chat type |
-| 5 | Per-sender | `...groups.<chat_type>.by_sender.<sender_id>` | Messages from that sender in that group |
-| 6 | Sandbox | `[sandbox.tools_policy]` | Commands running inside a sandbox container |
+| #   | Layer             | Config path                                            | Applies to                                  |
+| --- | ----------------- | ------------------------------------------------------ | ------------------------------------------- |
+| 1   | Global            | `[tools.policy]`                                       | All sessions                                |
+| 2   | Per-provider      | `[providers.<name>.policy]`                            | Requests routed through that provider       |
+| 3   | Per-agent preset  | `[agents.presets.<id>.tools]`                          | Sub-agents spawned with that preset         |
+| 4   | Per-channel group | `[channels.<type>.<account>.tools.groups.<chat_type>]` | Channel sessions matching that chat type    |
+| 5   | Per-sender        | `...groups.<chat_type>.by_sender.<sender_id>`          | Messages from that sender in that group     |
+| 6   | Sandbox           | `[sandbox.tools_policy]`                               | Commands running inside a sandbox container |
 
-**Web UI sessions** see layers 1-3 (no channel context), plus layer 6 if sandboxed.
-**Channel sessions** can see all 6 layers.
+**Web UI sessions** see layers 1-3 (no channel context), plus layer 6 if
+sandboxed. **Channel sessions** can see all 6 layers.
 
 ## Merge Semantics
 
 Each layer produces an `allow` list and a `deny` list. When merging a
 higher-priority layer on top of a lower one:
 
-- **Deny accumulates.** Every deny entry from every layer is collected. If
-  any layer denies a tool, it stays denied.
+- **Deny accumulates.** Every deny entry from every layer is collected. If any
+  layer denies a tool, it stays denied.
 - **Allow replaces.** A non-empty allow list from a later layer replaces the
   previous allow list entirely. An empty allow list is a no-op (keeps the
   previous allow list).
@@ -45,15 +44,14 @@ Both `allow` and `deny` entries support glob-style patterns:
 
 ## Profiles
 
-The global layer and per-sender overrides support a `profile` field that
-expands to a predefined allow list before the explicit allow/deny entries
-are applied.
+The global layer and per-sender overrides support a `profile` field that expands
+to a predefined allow list before the explicit allow/deny entries are applied.
 
-| Profile | Allow list |
-|---------|-----------|
-| `"minimal"` | `execute_command` |
-| `"coding"` | `execute_command`, `browser`, `memory` |
-| `"full"` | `*` (everything) |
+| Profile     | Allow list                             |
+| ----------- | -------------------------------------- |
+| `"minimal"` | `execute_command`                      |
+| `"coding"`  | `execute_command`, `browser`, `memory` |
+| `"full"`    | `*` (everything)                       |
 
 When a profile is set, its allow list is applied first, then the explicit
 `allow`/`deny` from the same layer are merged on top (deny accumulates,
@@ -72,8 +70,8 @@ deny = ["browser"]   # deny browser in every session
 
 ## Layer 2 — Per-Provider
 
-Each provider entry can carry its own policy. When a request is routed
-through that provider, the policy is merged on top of the global layer.
+Each provider entry can carry its own policy. When a request is routed through
+that provider, the policy is merged on top of the global layer.
 
 ```toml
 [providers.openai]
@@ -81,8 +79,8 @@ through that provider, the policy is merged on top of the global layer.
 policy.deny = ["execute_command"]
 ```
 
-This denies `execute_command` whenever OpenAI is the active provider, regardless of
-what the global layer allows. Other providers are unaffected.
+This denies `execute_command` whenever OpenAI is the active provider, regardless
+of what the global layer allows. Other providers are unaffected.
 
 ## Layer 3 — Per-Agent Preset
 
@@ -95,8 +93,8 @@ tools.allow = ["read_file", "glob", "grep", "web_search", "web_fetch"]
 tools.deny  = ["execute_command", "write_file"]
 ```
 
-When the `researcher` preset is active, only the five listed tools are
-allowed, and `execute_command`/`write_file` are explicitly denied. See
+When the `researcher` preset is active, only the five listed tools are allowed,
+and `execute_command`/`write_file` are explicitly denied. See
 [Agent Presets](agent-presets.md) for the full preset reference.
 
 > **Note:** Preset tool policies apply only to sub-agents spawned via
@@ -105,23 +103,23 @@ allowed, and `execute_command`/`write_file` are explicitly denied. See
 
 ## Layer 4 — Per-Channel Group
 
-Channel accounts can restrict tools by chat type (`private`, `group`,
-`channel`, etc.). This is useful for hardening group chats where the bot
-is exposed to untrusted users.
+Channel accounts can restrict tools by chat type (`private`, `group`, `channel`,
+etc.). This is useful for hardening group chats where the bot is exposed to
+untrusted users.
 
 ```toml
 [channels.telegram.my-bot.tools.groups.group]
 deny = ["execute_command", "browser"]
 ```
 
-In this example, `execute_command` and `browser` are denied in Telegram group chats
-handled by the `my-bot` account. Private chats and web UI sessions are
+In this example, `execute_command` and `browser` are denied in Telegram group
+chats handled by the `my-bot` account. Private chats and web UI sessions are
 unaffected.
 
 ## Layer 5 — Per-Sender
 
-Within a channel group, individual senders can receive overrides. This lets
-you trust specific users in an otherwise restricted group.
+Within a channel group, individual senders can receive overrides. This lets you
+trust specific users in an otherwise restricted group.
 
 ```toml
 [channels.telegram.my-bot.tools.groups.group]
@@ -131,15 +129,15 @@ deny = ["execute_command", "browser"]
 allow = ["*"]
 ```
 
-Sender `123456` gets `allow = ["*"]`, which replaces the previous allow
-list. However, because **deny always accumulates**, the `execute_command` and
-`browser` denials from the group layer still apply. The sender override
-is useful for widening the allow list (e.g., granting access to tools that
-were not in the previous allow set) or for applying a different profile.
+Sender `123456` gets `allow = ["*"]`, which replaces the previous allow list.
+However, because **deny always accumulates**, the `execute_command` and
+`browser` denials from the group layer still apply. The sender override is
+useful for widening the allow list (e.g., granting access to tools that were not
+in the previous allow set) or for applying a different profile.
 
 If you need a trusted sender to have `execute_command` access in a group, avoid
-denying `execute_command` at the group layer. Instead, use a restrictive allow list
-at the group level and widen it per-sender:
+denying `execute_command` at the group layer. Instead, use a restrictive allow
+list at the group level and widen it per-sender:
 
 ```toml
 [channels.telegram.my-bot.tools.groups.group]
@@ -150,13 +148,13 @@ allow = ["*"]
 ```
 
 Here, untrusted group members can only use the three listed tools. Sender
-`123456` gets full access because the group layer did not deny anything —
-it only narrowed the allow list.
+`123456` gets full access because the group layer did not deny anything — it
+only narrowed the allow list.
 
 ## Layer 6 — Sandbox
 
-When a session runs inside a sandbox container, this layer applies on top of
-all other layers. It lets you restrict tools for sandboxed execution without
+When a session runs inside a sandbox container, this layer applies on top of all
+other layers. It lets you restrict tools for sandboxed execution without
 affecting non-sandboxed sessions.
 
 ```toml
@@ -176,8 +174,8 @@ This layer is skipped entirely when the session is not sandboxed.
 policy.deny = ["execute_command"]
 ```
 
-When using OpenAI, the agent cannot run shell commands. All other
-providers retain their normal tool access.
+When using OpenAI, the agent cannot run shell commands. All other providers
+retain their normal tool access.
 
 ### Restrict group chats on Telegram
 
@@ -199,8 +197,8 @@ allow = ["web_search", "web_fetch"]
 allow = ["*"]
 ```
 
-Normal group members can only search and fetch. Sender `123456` can use
-every tool (nothing was denied at the group layer, so nothing accumulates).
+Normal group members can only search and fetch. Sender `123456` can use every
+tool (nothing was denied at the group layer, so nothing accumulates).
 
 ### Agent preset with limited tools
 
@@ -210,8 +208,8 @@ tools.allow = ["read_file", "glob", "grep"]
 tools.deny  = ["execute_command"]
 ```
 
-The `researcher` sub-agent can only read files and search. Even if a
-higher layer allows `execute_command`, it is denied here and the denial carries
+The `researcher` sub-agent can only read files and search. Even if a higher
+layer allows `execute_command`, it is denied here and the denial carries
 through.
 
 ### Use a profile for the global policy
@@ -222,10 +220,11 @@ profile = "coding"
 deny = ["web_fetch"]
 ```
 
-The `coding` profile expands to `allow = ["execute_command", "browser", "memory"]`.
-Then `web_fetch` is denied. The effective policy allows `execute_command`, `browser`,
-and `memory`, and denies `web_fetch`. All other tools are not in the allow
-list and are therefore blocked.
+The `coding` profile expands to
+`allow = ["execute_command", "browser", "memory"]`. Then `web_fetch` is denied.
+The effective policy allows `execute_command`, `browser`, and `memory`, and
+denies `web_fetch`. All other tools are not in the allow list and are therefore
+blocked.
 
 ### Widen a sender via profile
 
@@ -237,9 +236,9 @@ allow = ["web_search"]
 profile = "full"
 ```
 
-Sender `123456` gets `allow = ["*"]` from the `full` profile, replacing
-the group's narrow allow list. Since the group layer only set `allow` (no
-`deny`), nothing is denied and the sender has full tool access.
+Sender `123456` gets `allow = ["*"]` from the `full` profile, replacing the
+group's narrow allow list. Since the group layer only set `allow` (no `deny`),
+nothing is denied and the sender has full tool access.
 
 ## Debugging
 
@@ -255,6 +254,6 @@ policy: applied sender layer      channel=telegram group_id=group sender_id=1234
 policy: applied sandbox layer
 ```
 
-Each line indicates a layer was non-empty and merged into the effective
-policy. Missing lines mean that layer had no configuration or the runtime
-context did not match (e.g., no channel context for a web UI session).
+Each line indicates a layer was non-empty and merged into the effective policy.
+Missing lines mean that layer had no configuration or the runtime context did
+not match (e.g., no channel context for a web UI session).

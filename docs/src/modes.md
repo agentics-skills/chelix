@@ -6,17 +6,17 @@ changing sub-agent presets.
 
 Use modes when you want a temporary working style:
 
-| Mode | Use it for |
-|------|------------|
-| `concise` | Short, direct answers |
-| `technical` | Detailed technical analysis |
-| `creative` | Broad ideation and alternatives |
-| `teacher` | Step-by-step explanation |
-| `plan` | Scoping and sequencing before implementation |
-| `build` | Implementation-focused work |
-| `review` | Bug-focused code review |
-| `research` | Evidence-first investigation |
-| `elevated` | Extra caution for risky operations |
+| Mode        | Use it for                                   |
+| ----------- | -------------------------------------------- |
+| `concise`   | Short, direct answers                        |
+| `technical` | Detailed technical analysis                  |
+| `creative`  | Broad ideation and alternatives              |
+| `teacher`   | Step-by-step explanation                     |
+| `plan`      | Scoping and sequencing before implementation |
+| `build`     | Implementation-focused work                  |
+| `review`    | Bug-focused code review                      |
+| `research`  | Evidence-first investigation                 |
+| `elevated`  | Extra caution for risky operations           |
 
 Switch the active session from the web chat input or any channel that supports
 regular slash commands:

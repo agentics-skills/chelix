@@ -1,6 +1,7 @@
 # Session Tools
 
-Session tools enable persistent, asynchronous coordination between agent sessions.
+Session tools enable persistent, asynchronous coordination between agent
+sessions.
 
 ## Available Tools
 
@@ -61,9 +62,9 @@ If `model` is omitted, the selected agent must have both
 `[agents.presets.<agent_id>].reasoning_effort` configured. Otherwise the tool
 returns an explicit error explaining which preset field is missing.
 
-Sessions created by an agent are automatically linked to the calling session
-as children (`parentSessionKey`), so the sessions sidebar renders them nested
-under their creator — the same tree mechanism used for forks. Nesting works
+Sessions created by an agent are automatically linked to the calling session as
+children (`parentSessionKey`), so the sessions sidebar renders them nested under
+their creator — the same tree mechanism used for forks. Nesting works
 recursively: if the created session's agent creates another session, it nests
 one level deeper.
 
@@ -150,7 +151,8 @@ Policy fields:
 - `key_prefix`: restrict visibility by session-key prefix
 - `allowed_keys`: extra explicit session keys
 - `can_send`: controls `sessions_send` (default: `true`)
-- `cross_agent`: allow access to sessions owned by other agents (default: `false`)
+- `cross_agent`: allow access to sessions owned by other agents (default:
+  `false`)
 
 When no policy is configured, all sessions are visible and sendable.
 
@@ -162,10 +164,9 @@ the sub-agent continues in the background. Use `spawn_status` to check progress,
 `spawn_result` to fetch the final output, `spawn_list` to recover task IDs after
 context loss, and `cancel_spawn` to stop work that is no longer needed.
 
-Use `active_tools` and `tool_choice` to prevent model drift on small/cheap
-LLMs. These controls apply **per agent run** (not per iteration within a run)
-and are available on agent presets, `spawn_agent`, and `cron` `agentTurn`
-payloads.
+Use `active_tools` and `tool_choice` to prevent model drift on small/cheap LLMs.
+These controls apply **per agent run** (not per iteration within a run) and are
+available on agent presets, `spawn_agent`, and `cron` `agentTurn` payloads.
 
 - `active_tools` filters the tool schemas visible to the agent.
 - `tool_choice` controls provider-level tool selection:
@@ -177,8 +178,8 @@ payloads.
 Supported on Anthropic, OpenAI (Responses and Chat Completions), and
 OpenAI-compatible providers.
 
-**Classify-then-generate pattern** — use two `spawn_agent` calls, each with
-its own tool controls:
+**Classify-then-generate pattern** — use two `spawn_agent` calls, each with its
+own tool controls:
 
 ```json
 // Turn 1: forced classifier

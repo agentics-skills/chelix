@@ -1,14 +1,15 @@
 # Telephony (Phone Calls)
 
-Chelix can make and receive phone calls, enabling voice-based AI conversations over the public telephone network (PSTN).
+Chelix can make and receive phone calls, enabling voice-based AI conversations
+over the public telephone network (PSTN).
 
 ## Supported Providers
 
-| Provider | Status | Features |
-|----------|--------|----------|
-| **Twilio** | Supported | Outbound calls, inbound calls, TTS, speech recognition, DTMF |
+| Provider   | Status    | Features                                                              |
+| ---------- | --------- | --------------------------------------------------------------------- |
+| **Twilio** | Supported | Outbound calls, inbound calls, TTS, speech recognition, DTMF          |
 | **Telnyx** | Supported | Outbound calls, inbound calls, TTS, transcription events, DTMF events |
-| **Plivo** | Supported | Outbound calls, inbound calls, TTS, speech recognition, DTMF |
+| **Plivo**  | Supported | Outbound calls, inbound calls, TTS, speech recognition, DTMF          |
 
 ## Quick Start
 
@@ -20,11 +21,13 @@ Chelix can make and receive phone calls, enabling voice-based AI conversations o
 
 ### 2. Configure Phone Settings
 
-Open the web UI and go to **Settings > Phone**. Choose a provider, save its credentials, set the
-caller phone number, and configure a public HTTPS webhook URL.
+Open the web UI and go to **Settings > Phone**. Choose a provider, save its
+credentials, set the caller phone number, and configure a public HTTPS webhook
+URL.
 
-For TOML-managed settings, keep phone configuration under `[phone]`. Credentials are best stored
-through **Settings > Phone** so they live in the credential store instead of plain TOML:
+For TOML-managed settings, keep phone configuration under `[phone]`. Credentials
+are best stored through **Settings > Phone** so they live in the credential
+store instead of plain TOML:
 
 ```toml
 [phone]
@@ -44,8 +47,8 @@ webhook_url = "https://your-domain.com"
 chelix gateway
 ```
 
-The phone integration starts automatically with the gateway when `[phone]` is enabled and the active
-provider has complete credentials.
+The phone integration starts automatically with the gateway when `[phone]` is
+enabled and the active provider has complete credentials.
 
 ## Configuration Reference
 
@@ -70,16 +73,21 @@ from_number = "+15551234567"
 webhook_url = "https://your-domain.com"
 ```
 
-The gateway still runs telephony through its internal channel plugin, but phone setup is deliberately
-separate from normal channel accounts in the UI.
+The gateway still runs telephony through its internal channel plugin, but phone
+setup is deliberately separate from normal channel accounts in the UI.
 
 ## Call Modes
 
 ### Conversation Mode (default)
-Full multi-turn interaction. The agent listens for speech, processes it through the LLM, and responds with TTS. The call continues until the user or agent hangs up, or the max duration is reached.
+
+Full multi-turn interaction. The agent listens for speech, processes it through
+the LLM, and responds with TTS. The call continues until the user or agent hangs
+up, or the max duration is reached.
 
 ### Notify Mode
-One-way message delivery. The agent speaks a message and hangs up after a short delay. Useful for alerts, reminders, and notifications.
+
+One-way message delivery. The agent speaks a message and hangs up after a short
+delay. Useful for alerts, reminders, and notifications.
 
 ## Agent Tool
 
@@ -95,6 +103,7 @@ Agents can make calls using the built-in `voice_call` tool:
 ```
 
 Available actions:
+
 - `initiate_call` - Start an outbound call
 - `end_call` - Hang up an active call
 - `get_status` - Check call state and transcript
@@ -111,30 +120,38 @@ chelix voice-call setup
 
 ## RPC Methods
 
-| Method | Scope | Description |
-|--------|-------|-------------|
-| `voicecall.status` | read | List telephony accounts and active calls |
-| `voicecall.initiate` | write | Start an outbound call |
-| `voicecall.end` | write | Hang up a call |
+| Method               | Scope | Description                              |
+| -------------------- | ----- | ---------------------------------------- |
+| `voicecall.status`   | read  | List telephony accounts and active calls |
+| `voicecall.initiate` | write | Start an outbound call                   |
+| `voicecall.end`      | write | Hang up a call                           |
 
 ## Webhook Endpoints
 
 When configured with a public `webhook_url`, the gateway exposes:
 
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /api/channels/telephony/{account}/status` | Call status callbacks |
-| `POST /api/channels/telephony/{account}/answer` | TwiML for answered calls |
+| Endpoint                                        | Purpose                    |
+| ----------------------------------------------- | -------------------------- |
+| `POST /api/channels/telephony/{account}/status` | Call status callbacks      |
+| `POST /api/channels/telephony/{account}/answer` | TwiML for answered calls   |
 | `POST /api/channels/telephony/{account}/gather` | Speech/DTMF result handler |
 
-Configure these in your provider's phone number or call-control settings, or they are set automatically when initiating outbound calls. Twilio and Plivo use XML responses from `/answer` and `/gather`; Telnyx uses Call Control commands from the `/answer` webhook and sends transcription events back to the same webhook URL.
+Configure these in your provider's phone number or call-control settings, or
+they are set automatically when initiating outbound calls. Twilio and Plivo use
+XML responses from `/answer` and `/gather`; Telnyx uses Call Control commands
+from the `/answer` webhook and sends transcription events back to the same
+webhook URL.
 
 ## Security
 
-- **Webhook verification**: Twilio webhooks are verified using HMAC-SHA1 signature validation; Plivo and Telnyx verification are used when their signature credentials are configured
+- **Webhook verification**: Twilio webhooks are verified using HMAC-SHA1
+  signature validation; Plivo and Telnyx verification are used when their
+  signature credentials are configured
 - **Inbound access control**: Phone numbers can be restricted via allowlist
-- **Credential storage**: Provider credentials are stored in the credential store when configured from Settings > Phone
-- **Max duration**: Calls are automatically terminated after the configured max duration
+- **Credential storage**: Provider credentials are stored in the credential
+  store when configured from Settings > Phone
+- **Max duration**: Calls are automatically terminated after the configured max
+  duration
 
 ## Audio Pipeline
 
@@ -142,4 +159,5 @@ Configure these in your provider's phone number or call-control settings, or the
 User Speech -> Provider STT/transcription -> Text -> Agent (LLM) -> Text -> Provider TTS -> Caller
 ```
 
-The telephony audio pipeline converts between PSTN-standard mu-law encoding (8 kHz, ITU-T G.711) and the PCM audio used by TTS providers.
+The telephony audio pipeline converts between PSTN-standard mu-law encoding (8
+kHz, ITU-T G.711) and the PCM audio used by TTS providers.

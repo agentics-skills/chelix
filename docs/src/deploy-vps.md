@@ -1,8 +1,8 @@
 # Deploy Chelix on a VPS
 
 Run your own AI agent on a $5/month VPS. This guide covers provisioning,
-installation, and connecting channels (Telegram, Discord, etc.) so you can
-talk to your agent from anywhere.
+installation, and connecting channels (Telegram, Discord, etc.) so you can talk
+to your agent from anywhere.
 
 ## Prerequisites
 
@@ -14,8 +14,8 @@ talk to your agent from anywhere.
 ## Option A: Docker (recommended)
 
 Docker is the fastest path. It handles sandbox isolation and upgrades via image
-pulls. For browser-trusted TLS on a VPS, put Chelix behind a reverse proxy
-such as Caddy, nginx, or Traefik and let the proxy manage public certificates.
+pulls. For browser-trusted TLS on a VPS, put Chelix behind a reverse proxy such
+as Caddy, nginx, or Traefik and let the proxy manage public certificates.
 
 ### 1. Install Docker
 
@@ -52,14 +52,14 @@ services:
       - CHELIX_EXTERNAL_URL=https://chat.example.com
 ```
 
-Point your proxy at `http://<chelix-host>:13131`, then open your public URL,
-for example `https://chat.example.com`.
+Point your proxy at `http://<chelix-host>:13131`, then open your public URL, for
+example `https://chat.example.com`.
 
 Chelix can also auto-generate a local CA and server certificate, but that mode
 is meant for local development or private networks. Trusting the generated CA
 only makes the issuer trusted; the browser still requires the certificate's
-Subject Alternative Name (SAN) to match the exact hostname or IP you open.
-An IP-address URL such as `https://<your-server-ip>:13131` only works if the
+Subject Alternative Name (SAN) to match the exact hostname or IP you open. An
+IP-address URL such as `https://<your-server-ip>:13131` only works if the
 certificate contains that IP address as an IP SAN, and normal public TLS setups
 are domain-name based. Inside Docker, Chelix usually cannot know your VPS public
 IP or provider domain, so direct IP access may fail with a certificate name
@@ -76,8 +76,7 @@ generated CA from `http://<your-server-ip>:13132/certs/ca.pem`. If you want
 Chelix to serve HTTPS directly on a public domain, configure `tls.cert_path` and
 `tls.key_path` with a certificate issued for that domain.
 
-Log in with the password you set, then configure your LLM provider in
-Settings.
+Log in with the password you set, then configure your LLM provider in Settings.
 
 ## Option B: Binary + systemd
 
@@ -124,19 +123,18 @@ sudo journalctl -u chelix -f
 
 ## Connecting channels
 
-Once Chelix is running, add messaging channels from Settings > Channels in
-the web UI. Each channel has its own setup flow:
+Once Chelix is running, add messaging channels from Settings > Channels in the
+web UI. Each channel has its own setup flow:
 
-| Channel | What you need |
-|---------|--------------|
-| Telegram | Bot token from [@BotFather](https://t.me/BotFather) |
-| Discord | Bot token from the [Developer Portal](https://discord.com/developers) |
-| Slack | Bot + App tokens from [api.slack.com](https://api.slack.com/apps) |
-| Matrix | Homeserver URL + credentials |
-| Nostr | Secret key (nsec) + relay URLs |
+| Channel  | What you need                                                         |
+| -------- | --------------------------------------------------------------------- |
+| Telegram | Bot token from [@BotFather](https://t.me/BotFather)                   |
+| Discord  | Bot token from the [Developer Portal](https://discord.com/developers) |
+| Slack    | Bot + App tokens from [api.slack.com](https://api.slack.com/apps)     |
+| Matrix   | Homeserver URL + credentials                                          |
+| Nostr    | Secret key (nsec) + relay URLs                                        |
 
-See the individual [channel docs](channels.md) for detailed setup
-instructions.
+See the individual [channel docs](channels.md) for detailed setup instructions.
 
 ## Firewall
 
@@ -158,6 +156,7 @@ sudo ufw allow 443/tcp
 **Docker:** `docker compose pull && docker compose up -d`
 
 **Binary:** Download the new release binary and restart the service:
+
 ```bash
 sudo systemctl stop chelix
 # Download new binary (same curl as step 1)
@@ -166,10 +165,10 @@ sudo systemctl start chelix
 
 ## Resource requirements
 
-| Workload | RAM | CPU | Disk |
-|----------|-----|-----|------|
-| Chat only (no sandbox) | 512 MB | 1 vCPU | 5 GB |
-| Chat + sandbox | 1 GB | 1 vCPU | 10 GB |
+| Workload               | RAM    | CPU    | Disk  |
+| ---------------------- | ------ | ------ | ----- |
+| Chat only (no sandbox) | 512 MB | 1 vCPU | 5 GB  |
+| Chat + sandbox         | 1 GB   | 1 vCPU | 10 GB |
 
 LLM inference happens on the provider's API servers, so even a $5 VPS handles
 chat workloads with external providers.

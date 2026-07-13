@@ -57,9 +57,9 @@ npm run build          # Production build → ../src/assets/dist/
 npm run dev            # Watch mode (rebuilds on file changes)
 ```
 
-The `dist/` output is **committed to git** (unminified, no source maps)
-so that `cargo build` works without Node.js installed. This mirrors the
-approach used for the committed Tailwind CSS output.
+The `dist/` output is **committed to git** (unminified, no source maps) so that
+`cargo build` works without Node.js installed. This mirrors the approach used
+for the committed Tailwind CSS output.
 
 ### CSS (Tailwind)
 
@@ -71,8 +71,8 @@ npm run build:css      # input.css → ../src/assets/css/style.css
 npm run watch:css      # Watch mode
 ```
 
-The output `style.css` is committed unminified (one rule per line) so
-diffs merge cleanly.
+The output `style.css` is committed unminified (one rule per line) so diffs
+merge cleanly.
 
 ### Service Worker
 
@@ -92,31 +92,33 @@ npm run build:all      # Vite + Tailwind + service worker
 
 ## Technology Stack
 
-| Layer | Technology |
-|-------|-----------|
-| UI framework | [Preact](https://preactjs.com/) (lightweight React alternative) |
-| Templating | JSX with typed Props interfaces |
-| State management | [Preact Signals](https://preactjs.com/guide/v10/signals/) |
-| Build tool | [Vite](https://vite.dev/) with `@preact/preset-vite` |
-| Type checking | TypeScript strict mode (`tsc --noEmit`) |
-| Linting/formatting | [Biome](https://biomejs.dev/) |
-| CSS | [Tailwind CSS](https://tailwindcss.com/) v4 |
-| i18n | [i18next](https://www.i18next.com/) (en, fr, zh) |
-| Charts | [uPlot](https://github.com/leeoniya/uPlot) |
-| Terminal | [xterm.js](https://xtermjs.org/) |
-| Syntax highlighting | [Shiki](https://shiki.style/) (bundled, lazy-loaded) |
-| E2E testing | [Playwright](https://playwright.dev/) |
+| Layer               | Technology                                                      |
+| ------------------- | --------------------------------------------------------------- |
+| UI framework        | [Preact](https://preactjs.com/) (lightweight React alternative) |
+| Templating          | JSX with typed Props interfaces                                 |
+| State management    | [Preact Signals](https://preactjs.com/guide/v10/signals/)       |
+| Build tool          | [Vite](https://vite.dev/) with `@preact/preset-vite`            |
+| Type checking       | TypeScript strict mode (`tsc --noEmit`)                         |
+| Linting/formatting  | [Biome](https://biomejs.dev/)                                   |
+| CSS                 | [Tailwind CSS](https://tailwindcss.com/) v4                     |
+| i18n                | [i18next](https://www.i18next.com/) (en, fr, zh)                |
+| Charts              | [uPlot](https://github.com/leeoniya/uPlot)                      |
+| Terminal            | [xterm.js](https://xtermjs.org/)                                |
+| Syntax highlighting | [Shiki](https://shiki.style/) (bundled, lazy-loaded)            |
+| E2E testing         | [Playwright](https://playwright.dev/)                           |
 
 ## Type Safety
 
 The codebase enforces strict TypeScript with zero tolerance for `any`:
 
 - **`tsc --noEmit`** runs in CI and local-validate (must pass with 0 errors)
-- **107 typed RPC methods** via `RpcMethodMap` — calling `sendRpc("models.list", {})`
-  infers the response type as `ModelInfo[]`
-- **28 WebSocket events** via `WsEventName` enum with typed payload discriminated unions
+- **107 typed RPC methods** via `RpcMethodMap` — calling
+  `sendRpc("models.list", {})` infers the response type as `ModelInfo[]`
+- **28 WebSocket events** via `WsEventName` enum with typed payload
+  discriminated unions
 - **`ChannelType` enum** for channel type comparisons (no raw strings)
-- **`targetValue(e)` / `targetChecked(e)`** helpers eliminate `(e.target as HTMLInputElement).value` casts
+- **`targetValue(e)` / `targetChecked(e)`** helpers eliminate
+  `(e.target as HTMLInputElement).value` casts
 
 ## Shared Component Library
 
@@ -132,23 +134,23 @@ Reusable components in `components/forms/`:
 
 The Rust `chelix-web` crate serves assets with three-tier resolution:
 
-1. **Dev filesystem** — `CHELIX_ASSETS_DIR` env var or auto-detected
-   from the crate source tree (`cargo run` dev mode)
+1. **Dev filesystem** — `CHELIX_ASSETS_DIR` env var or auto-detected from the
+   crate source tree (`cargo run` dev mode)
 2. **External share dir** — `share_dir()/web/` for packaged deployments
 3. **Embedded fallback** — `include_dir!` compiled into the binary
 
-HTML templates are rendered by [Askama](https://github.com/djc/askama)
-with server-injected data (`window.__CHELIX__`, the "gon" pattern).
+HTML templates are rendered by [Askama](https://github.com/djc/askama) with
+server-injected data (`window.__CHELIX__`, the "gon" pattern).
 
 ## E2E Test Compatibility
 
 E2E tests dynamically import individual JS modules (e.g.,
-`await import("js/state.js")`) to inspect and mock internal app state.
-With Vite bundling, individual modules don't exist as standalone files.
+`await import("js/state.js")`) to inspect and mock internal app state. With Vite
+bundling, individual modules don't exist as standalone files.
 
 **Shim layer**: small proxy files in `src/assets/js/` re-export from
-`window.__chelix_modules` (populated by `app.tsx` at startup). This
-lets tests import modules at their original paths without changes.
+`window.__chelix_modules` (populated by `app.tsx` at startup). This lets tests
+import modules at their original paths without changes.
 
 The shims are only loaded by E2E tests, never by the production app.
 

@@ -8,15 +8,15 @@ Type `/` in the chat input to see the autocomplete popup.
 
 ## Session Management
 
-| Command | Description |
-|---------|-------------|
-| `/new` | Start a new session |
-| `/clear` | Clear session history |
-| `/compact` | Summarize conversation to save tokens |
-| `/context` | Show session context and project info |
-| `/sessions` | List and switch sessions (channels only) |
-| `/attach` | Attach an existing session to this channel (channels only) |
-| `/fork [label]` | Fork the current session into a new branch |
+| Command         | Description                                                |
+| --------------- | ---------------------------------------------------------- |
+| `/new`          | Start a new session                                        |
+| `/clear`        | Clear session history                                      |
+| `/compact`      | Summarize conversation to save tokens                      |
+| `/context`      | Show session context and project info                      |
+| `/sessions`     | List and switch sessions (channels only)                   |
+| `/attach`       | Attach an existing session to this channel (channels only) |
+| `/fork [label]` | Fork the current session into a new branch                 |
 
 ### /fork
 
@@ -33,27 +33,27 @@ Available in web UI, all channels, and via the `sessions.fork` RPC. See
 
 ## Control
 
-| Command | Description |
-|---------|-------------|
-| `/agent [N]` | Switch session agent |
-| `/mode [N\|name\|none]` | Switch session mode |
-| `/model [N]` | Switch provider/model |
-| `/sandbox [on\|off\|image N]` | Toggle sandbox and choose image |
-| `/sh [on\|off]` | Enter command mode (passthrough to shell) |
-| `/stop` | Abort the current running agent |
-| `/peek` | Show current thinking/tool status |
-| `/update [version]` | Update chelix (owner-only) |
+| Command                       | Description                               |
+| ----------------------------- | ----------------------------------------- |
+| `/agent [N]`                  | Switch session agent                      |
+| `/mode [N\|name\|none]`       | Switch session mode                       |
+| `/model [N]`                  | Switch provider/model                     |
+| `/sandbox [on\|off\|image N]` | Toggle sandbox and choose image           |
+| `/sh [on\|off]`               | Enter command mode (passthrough to shell) |
+| `/stop`                       | Abort the current running agent           |
+| `/peek`                       | Show current thinking/tool status         |
+| `/update [version]`           | Update chelix (owner-only)                |
 
 ## Quick Actions
 
-| Command | Description |
-|---------|-------------|
-| `/btw <question>` | Quick side question (no tools, not persisted) |
-| `/fast [on\|off\|status]` | Toggle fast/priority mode |
-| `/insights [days]` | Show usage analytics (tokens, providers) |
-| `/steer <text>` | Inject guidance into the current agent run |
-| `/queue <message>` | Queue a message for the next agent turn |
-| `/rollback [N\|diff N]` | List or restore file checkpoints |
+| Command                   | Description                                   |
+| ------------------------- | --------------------------------------------- |
+| `/btw <question>`         | Quick side question (no tools, not persisted) |
+| `/fast [on\|off\|status]` | Toggle fast/priority mode                     |
+| `/insights [days]`        | Show usage analytics (tokens, providers)      |
+| `/steer <text>`           | Inject guidance into the current agent run    |
+| `/queue <message>`        | Queue a message for the next agent turn       |
+| `/rollback [N\|diff N]`   | List or restore file checkpoints              |
 
 ### /btw
 
@@ -122,9 +122,9 @@ If no run is active, the message is sent immediately.
 
 ### /rollback
 
-List and restore file checkpoints created by the automatic checkpointing
-system. Before every `Write`, `Edit`, or `MultiEdit` tool call, the original
-file is snapshotted.
+List and restore file checkpoints created by the automatic checkpointing system.
+Before every `Write`, `Edit`, or `MultiEdit` tool call, the original file is
+snapshotted.
 
 ```
 /rollback           # list recent turns with file changes
@@ -141,14 +141,14 @@ system.
 
 ## Approval Management
 
-| Command | Description |
-|---------|-------------|
-| `/approvals` | List pending command approvals |
+| Command        | Description                       |
+| -------------- | --------------------------------- |
+| `/approvals`   | List pending command approvals    |
 | `/approve [N]` | Approve a pending command request |
-| `/deny [N]` | Deny a pending command request |
+| `/deny [N]`    | Deny a pending command request    |
 
 ## Help
 
-| Command | Description |
-|---------|-------------|
+| Command | Description                                               |
+| ------- | --------------------------------------------------------- |
 | `/help` | Show available commands (handled locally by each channel) |

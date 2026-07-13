@@ -55,20 +55,20 @@ list. It is included by default.
 
 ## Fields
 
-| Field | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `account` | no | account ID | Signal account loaded in signal-cli, usually an E.164 phone number |
-| `account_uuid` | no | not set | Optional Signal account UUID for allowlist matching |
-| `http_url` | no | `http://127.0.0.1:8080` | signal-cli daemon HTTP URL |
-| `dm_policy` | no | `allowlist` | `open`, `allowlist`, or `disabled` |
-| `allowlist` | no | `[]` | Allowed sender phone numbers, UUIDs, or normalized identifiers |
-| `group_policy` | no | `disabled` | `open`, `allowlist`, or `disabled` |
-| `group_allowlist` | no | `[]` | Allowed Signal group IDs |
-| `mention_mode` | no | `mention` | `mention`, `always`, or `none` |
-| `ignore_stories` | no | `true` | Ignore story events from signal-cli |
-| `otp_self_approval` | no | `true` | Let unknown DM senders self-approve with a PIN challenge |
-| `otp_cooldown_secs` | no | `300` | Cooldown after 3 failed OTP attempts |
-| `text_chunk_limit` | no | `4000` | Maximum UTF-8 bytes per outbound text chunk |
+| Field               | Required | Default                 | Description                                                        |
+| ------------------- | -------- | ----------------------- | ------------------------------------------------------------------ |
+| `account`           | no       | account ID              | Signal account loaded in signal-cli, usually an E.164 phone number |
+| `account_uuid`      | no       | not set                 | Optional Signal account UUID for allowlist matching                |
+| `http_url`          | no       | `http://127.0.0.1:8080` | signal-cli daemon HTTP URL                                         |
+| `dm_policy`         | no       | `allowlist`             | `open`, `allowlist`, or `disabled`                                 |
+| `allowlist`         | no       | `[]`                    | Allowed sender phone numbers, UUIDs, or normalized identifiers     |
+| `group_policy`      | no       | `disabled`              | `open`, `allowlist`, or `disabled`                                 |
+| `group_allowlist`   | no       | `[]`                    | Allowed Signal group IDs                                           |
+| `mention_mode`      | no       | `mention`               | `mention`, `always`, or `none`                                     |
+| `ignore_stories`    | no       | `true`                  | Ignore story events from signal-cli                                |
+| `otp_self_approval` | no       | `true`                  | Let unknown DM senders self-approve with a PIN challenge           |
+| `otp_cooldown_secs` | no       | `300`                   | Cooldown after 3 failed OTP attempts                               |
+| `text_chunk_limit`  | no       | `4000`                  | Maximum UTF-8 bytes per outbound text chunk                        |
 
 ## Current Limits
 

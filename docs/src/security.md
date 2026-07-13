@@ -73,7 +73,8 @@ For broader coverage beyond the built-in blocklist, install the
 (dcg) as a hook. dcg adds 49+ pattern categories including heredoc/inline-script
 scanning, database, cloud, and infrastructure patterns.
 
-See [Hooks: Destructive Command Guard](hooks.md#recommended-destructive-command-guard-dcg)
+See
+[Hooks: Destructive Command Guard](hooks.md#recommended-destructive-command-guard-dcg)
 for setup instructions.
 
 dcg complements (does not replace) sandbox isolation and the approval system.
@@ -89,11 +90,10 @@ default. This protects your host system from:
 
 See [sandbox.md](sandbox.md) for backend configuration.
 
-Agent-facing `execute_command` runs sandbox commands through real tmux panes.
-It returns a managed `terminalId` that can be passed to
-`read_terminal_output` for commands that outlive the initial timeout or run in
-background mode. If no tmux server is running in the sandbox, Chelix creates one
-before pasting the command.
+Agent-facing `execute_command` runs sandbox commands through real tmux panes. It
+returns a managed `terminalId` that can be passed to `read_terminal_output` for
+commands that outlive the initial timeout or run in background mode. If no tmux
+server is running in the sandbox, Chelix creates one before pasting the command.
 
 ### Resource Limits
 
@@ -106,11 +106,10 @@ pids_max = 256
 
 ### Network Isolation
 
-Docker and Podman sandboxes use `sandbox.network` as the
-container runtime network. The default is `bridge`, and Chelix passes the value
-to Docker/Podman as `--network=<name>`. Use runtime networks, firewall rules,
-or a dedicated network such as `none` when a sandbox must not reach external
-services.
+Docker and Podman sandboxes use `sandbox.network` as the container runtime
+network. The default is `bridge`, and Chelix passes the value to Docker/Podman
+as `--network=<name>`. Use runtime networks, firewall rules, or a dedicated
+network such as `none` when a sandbox must not reach external services.
 
 ## Channel Authorization
 
@@ -181,13 +180,14 @@ enabled = true              # run in sandbox (default)
 
 ## Identity Protection
 
-The agent's identity fields (name, emoji, creature, vibe) are stored in `IDENTITY.md`
-YAML frontmatter at the workspace root (`data_dir`).
-User profile fields are stored in `USER.md` YAML frontmatter at the same location.
-The personality text is stored separately in `SOUL.md` at the workspace root (`data_dir`).
-Tool guidance is stored in `TOOLS.md` at the workspace root (`data_dir`) and is injected
-as workspace context in the system prompt.
-Modifying identity requires the `operator.write` scope, not just `operator.read`.
+The agent's identity fields (name, emoji, creature, vibe) are stored in
+`IDENTITY.md` YAML frontmatter at the workspace root (`data_dir`). User profile
+fields are stored in `USER.md` YAML frontmatter at the same location. The
+personality text is stored separately in `SOUL.md` at the workspace root
+(`data_dir`). Tool guidance is stored in `TOOLS.md` at the workspace root
+(`data_dir`) and is injected as workspace context in the system prompt.
+Modifying identity requires the `operator.write` scope, not just
+`operator.read`.
 
 This prevents prompt injection attacks from subtly modifying the agent's
 personality to make it more compliant with malicious requests.
@@ -196,13 +196,13 @@ personality to make it more compliant with malicious requests.
 
 The gateway API uses role-based access control with scopes:
 
-| Scope | Permissions |
-|-------|-------------|
-| `operator.read` | View status, list jobs, read history |
-| `operator.write` | Send messages, create jobs, modify configuration |
-| `operator.admin` | All permissions (includes all other scopes) |
-| `operator.approvals` | Handle command approval requests |
-| `operator.pairing` | Manage device/node pairing |
+| Scope                | Permissions                                      |
+| -------------------- | ------------------------------------------------ |
+| `operator.read`      | View status, list jobs, read history             |
+| `operator.write`     | Send messages, create jobs, modify configuration |
+| `operator.admin`     | All permissions (includes all other scopes)      |
+| `operator.approvals` | Handle command approval requests                 |
+| `operator.pairing`   | Manage device/node pairing                       |
 
 ### API Keys
 
@@ -250,35 +250,35 @@ Authorization: Bearer mk_abc123...
 
 #### Scope Recommendations
 
-| Use Case | Recommended Scopes |
-|----------|-------------------|
-| Read-only monitoring | `operator.read` |
-| Automated workflows | `operator.read`, `operator.write` |
-| Approval handling | `operator.read`, `operator.approvals` |
-| Full automation | `operator.admin` |
+| Use Case             | Recommended Scopes                    |
+| -------------------- | ------------------------------------- |
+| Read-only monitoring | `operator.read`                       |
+| Automated workflows  | `operator.read`, `operator.write`     |
+| Approval handling    | `operator.read`, `operator.approvals` |
+| Full automation      | `operator.admin`                      |
 
-**Best practice**: Use the minimum necessary scopes. If a key only needs to
-read status and logs, don't grant `operator.write`.
+**Best practice**: Use the minimum necessary scopes. If a key only needs to read
+status and logs, don't grant `operator.write`.
 
 #### Backward Compatibility
 
-Existing API keys created without scopes will be **denied access** until
-scopes are added. Re-create keys with explicit scopes to restore access.
+Existing API keys created without scopes will be **denied access** until scopes
+are added. Re-create keys with explicit scopes to restore access.
 
 ## Encryption at Rest
 
-Sensitive data in the SQLite database (environment variables containing
-API keys, tokens, etc.) is encrypted at rest using XChaCha20-Poly1305.
-The encryption key is derived from the user's password via Argon2id.
+Sensitive data in the SQLite database (environment variables containing API
+keys, tokens, etc.) is encrypted at rest using XChaCha20-Poly1305. The
+encryption key is derived from the user's password via Argon2id.
 
-The vault initializes when a first password is set (during setup or later
-in Settings > Authentication), unseals automatically on login, and
-re-seals on server restart. A recovery key is provided at initialization
-for emergency access.
+The vault initializes when a first password is set (during setup or later in
+Settings > Authentication), unseals automatically on login, and re-seals on
+server restart. A recovery key is provided at initialization for emergency
+access.
 
-When the vault is sealed, a middleware layer blocks vault-protected API
-requests with `423 Locked`. Session history and bootstrap endpoints remain
-available because those payloads are not yet encrypted at rest.
+When the vault is sealed, a middleware layer blocks vault-protected API requests
+with `423 Locked`. Session history and bootstrap endpoints remain available
+because those payloads are not yet encrypted at rest.
 
 For full details on the key hierarchy, vault states, API endpoints, and
 cryptographic parameters, see [Encryption at Rest (Vault)](vault.md).
@@ -301,10 +301,10 @@ private-network access; importing the generated CA does not make the certificate
 valid for public IP addresses or domains that are not listed in its SANs. IP
 address URLs require a certificate with that address as an IP SAN; set
 `tls.public_ip` to include a direct-access VPS IP in Chelix's auto-generated
-certificate. Regular public TLS deployments should use a domain name. For VPS and other
-internet-facing deployments, terminate TLS at a reverse proxy or configure
-`tls.cert_path` and `tls.key_path` with a certificate issued for your public
-hostname.
+certificate. Regular public TLS deployments should use a domain name. For VPS
+and other internet-facing deployments, terminate TLS at a reverse proxy or
+configure `tls.cert_path` and `tls.key_path` with a certificate issued for your
+public hostname.
 
 ### Origin Validation
 
@@ -331,20 +331,20 @@ unless you understand the risk.
 
 ## Authentication
 
-Chelix uses a unified auth gate that applies a single `check_auth()`
-function to every request. This prevents split-brain bugs where different
-code paths disagree on auth status.
+Chelix uses a unified auth gate that applies a single `check_auth()` function to
+every request. This prevents split-brain bugs where different code paths
+disagree on auth status.
 
-For full details — including the decision matrix, credential types, API
-key scopes, session management endpoints, and WebSocket auth — see the
-dedicated [Authentication](authentication.md) page.
+For full details — including the decision matrix, credential types, API key
+scopes, session management endpoints, and WebSocket auth — see the dedicated
+[Authentication](authentication.md) page.
 
 ### Three-Tier Model (summary)
 
-| Tier | Condition | Behaviour |
-|------|-----------|-----------|
-| **1** | Password/passkey is configured | Auth **always** required (any IP) |
-| **2** | No credentials + direct local connection | Full access (dev convenience) |
+| Tier  | Condition                                  | Behaviour                             |
+| ----- | ------------------------------------------ | ------------------------------------- |
+| **1** | Password/passkey is configured             | Auth **always** required (any IP)     |
+| **2** | No credentials + direct local connection   | Full access (dev convenience)         |
 | **3** | No credentials + remote/proxied connection | Onboarding only (setup code required) |
 
 ### Node Identity (Ed25519 TOFU)
@@ -355,18 +355,19 @@ Trust On First Use (TOFU) model as SSH:
 1. **First connection**: The operator opens the pairing window from the Nodes UI
    or with `chelix node pairing enable`. The node generates an Ed25519 keypair
    and presents its public key to the gateway. The operator verifies the
-   fingerprint and approves the pairing (via the web UI or `chelix node approve`).
-2. **Subsequent connections**: The gateway sends a random 32-byte nonce. The node
-   signs it with its private key. The gateway verifies the signature against the
-   stored public key. No shared secret crosses the wire.
+   fingerprint and approves the pairing (via the web UI or
+   `chelix node approve`).
+2. **Subsequent connections**: The gateway sends a random 32-byte nonce. The
+   node signs it with its private key. The gateway verifies the signature
+   against the stored public key. No shared secret crosses the wire.
 3. **Key pinning**: Once approved, the public key is pinned to the device ID. If
    the same device reconnects with a different key, the connection is rejected
    and a `node.security.key-mismatch` alert is broadcast to operators.
 4. **Revocation**: Revoked keys are kept in the database so they cannot be
    re-paired without explicit operator action.
 
-The private key (`~/.chelix/node_key`) is stored with mode 0600 and never
-leaves the node. The gateway stores only public keys.
+The private key (`~/.chelix/node_key`) is stored with mode 0600 and never leaves
+the node. The gateway stores only public keys.
 
 Pairing is disabled by default. Keep it disabled except while onboarding a new
 node, then close the window with `chelix node pairing disable`.
@@ -383,13 +384,13 @@ allowed.
 
 ### Default Limits
 
-| Scope | Default |
-|------|---------|
-| `POST /api/auth/login` | 5 requests per 60 seconds |
-| Other `/api/auth/*` | 120 requests per 60 seconds |
-| Other `/api/*` | 180 requests per 60 seconds |
-| `/ws/chat` upgrade | 30 requests per 60 seconds |
-| `/ws` upgrade | 30 requests per 60 seconds |
+| Scope                  | Default                     |
+| ---------------------- | --------------------------- |
+| `POST /api/auth/login` | 5 requests per 60 seconds   |
+| Other `/api/auth/*`    | 120 requests per 60 seconds |
+| Other `/api/*`         | 180 requests per 60 seconds |
+| `/ws/chat` upgrade     | 30 requests per 60 seconds  |
+| `/ws` upgrade          | 30 requests per 60 seconds  |
 
 ### When Limits Are Hit
 
@@ -411,63 +412,60 @@ burst controls, geo rules, bot filtering).
 
 ## Reverse Proxy Deployments
 
-Running Chelix behind a reverse proxy (Caddy, nginx, Traefik, etc.)
-requires understanding how authentication interacts with loopback
-connections.
+Running Chelix behind a reverse proxy (Caddy, nginx, Traefik, etc.) requires
+understanding how authentication interacts with loopback connections.
 
 ### The problem
 
-When Chelix binds to `127.0.0.1` and a proxy on the same machine
-forwards traffic to it, **every** incoming TCP connection appears to
-originate from `127.0.0.1` — including requests from the public
-internet.  A naive "trust all loopback connections" check would bypass
-authentication for all proxied traffic.
+When Chelix binds to `127.0.0.1` and a proxy on the same machine forwards
+traffic to it, **every** incoming TCP connection appears to originate from
+`127.0.0.1` — including requests from the public internet. A naive "trust all
+loopback connections" check would bypass authentication for all proxied traffic.
 
-This is the same class of vulnerability as authentication token exfiltration
-and cross-site WebSocket hijacking attacks that can turn a trusted local
-service into a remote execution target.
+This is the same class of vulnerability as authentication token exfiltration and
+cross-site WebSocket hijacking attacks that can turn a trusted local service
+into a remote execution target.
 
 ### How Chelix handles it
 
-Chelix uses the per-request `is_local_connection()` check described
-above.  Most reverse proxies add forwarding headers or change the
-`Host` header, which automatically triggers the "remote" classification.
+Chelix uses the per-request `is_local_connection()` check described above. Most
+reverse proxies add forwarding headers or change the `Host` header, which
+automatically triggers the "remote" classification.
 
-For proxies that **strip all signals** (e.g. a bare nginx `proxy_pass`
-that rewrites `Host` to the upstream address and adds no `X-Forwarded-For`),
-use the `CHELIX_BEHIND_PROXY` environment variable as a hard override:
+For proxies that **strip all signals** (e.g. a bare nginx `proxy_pass` that
+rewrites `Host` to the upstream address and adds no `X-Forwarded-For`), use the
+`CHELIX_BEHIND_PROXY` environment variable as a hard override:
 
 ```bash
 CHELIX_BEHIND_PROXY=true chelix
 ```
 
-When this variable is set, **all** connections are treated as remote —
-no loopback bypass, no exceptions.
+When this variable is set, **all** connections are treated as remote — no
+loopback bypass, no exceptions.
 
 ### Deploying behind a proxy
 
-1. **Set `CHELIX_BEHIND_PROXY=true`** if your proxy does not add
-   forwarding headers (safest option — eliminates any ambiguity).
+1. **Set `CHELIX_BEHIND_PROXY=true`** if your proxy does not add forwarding
+   headers (safest option — eliminates any ambiguity).
 
-2. **Set a password or register a passkey** during initial setup.
-   Once a password is configured (Tier 1), authentication is required
-   for all traffic regardless of `is_local_connection()`.
+2. **Set a password or register a passkey** during initial setup. Once a
+   password is configured (Tier 1), authentication is required for all traffic
+   regardless of `is_local_connection()`.
 
-3. **WebSocket proxying** must preserve browser origin host info
-   (`Host`, or `X-Forwarded-Host` if `Host` is rewritten). Chelix
-   validates same-origin on WebSocket upgrades to prevent cross-site
-   WebSocket hijacking (CSWSH).
+3. **WebSocket proxying** must preserve browser origin host info (`Host`, or
+   `X-Forwarded-Host` if `Host` is rewritten). Chelix validates same-origin on
+   WebSocket upgrades to prevent cross-site WebSocket hijacking (CSWSH).
 
-4. **TLS termination** should happen at the proxy. Run Chelix with
-   `--no-tls` (or `CHELIX_NO_TLS=true`) in this mode.
+4. **TLS termination** should happen at the proxy. Run Chelix with `--no-tls`
+   (or `CHELIX_NO_TLS=true`) in this mode.
 
-   If your browser is being redirected to `https://<domain>:13131`,
-   Chelix TLS is still enabled while your proxy upstream is plain HTTP.
+   If your browser is being redirected to `https://<domain>:13131`, Chelix TLS
+   is still enabled while your proxy upstream is plain HTTP.
 
-5. **Advanced TLS upstream mode** (optional): if your proxy connects to
-   Chelix using HTTPS upstream (or TCP TLS passthrough), you may keep
-   Chelix TLS enabled. Set `CHELIX_ALLOW_TLS_BEHIND_PROXY=true` to
-   acknowledge this non-default setup.
+5. **Advanced TLS upstream mode** (optional): if your proxy connects to Chelix
+   using HTTPS upstream (or TCP TLS passthrough), you may keep Chelix TLS
+   enabled. Set `CHELIX_ALLOW_TLS_BEHIND_PROXY=true` to acknowledge this
+   non-default setup.
 
 ### Nginx (direct config example)
 
@@ -518,28 +516,28 @@ proxy_set_header Upgrade $http_upgrade;
 proxy_set_header Connection "upgrade";
 ```
 
-**Why `$http_host` instead of `$host`?** Nginx's `$host` strips the port,
-while `$http_host` preserves it. Chelix validates that the WebSocket `Origin`
-header matches the `Host` header (including port). On non-standard ports
-(e.g., `:444` instead of `:443`), using `$host` causes a mismatch and
-WebSocket connections are rejected with "cross-origin WebSocket upgrade".
+**Why `$http_host` instead of `$host`?** Nginx's `$host` strips the port, while
+`$http_host` preserves it. Chelix validates that the WebSocket `Origin` header
+matches the `Host` header (including port). On non-standard ports (e.g., `:444`
+instead of `:443`), using `$host` causes a mismatch and WebSocket connections
+are rejected with "cross-origin WebSocket upgrade".
 
 Upstream scheme guidance:
 
 - **Edge TLS termination (most setups)**: proxy to `http://<chelix-host>:13131`
-   with Chelix started using `--no-tls`
+  with Chelix started using `--no-tls`
 - **HTTPS upstream / TLS passthrough**: proxy to `https://<chelix-host>:13131`
   and set `CHELIX_ALLOW_TLS_BEHIND_PROXY=true`
 
 ### Passkeys Behind Proxies (Host Changes)
 
-WebAuthn passkeys are bound to an RP ID (domain identity), not just the
-server process. In practice:
+WebAuthn passkeys are bound to an RP ID (domain identity), not just the server
+process. In practice:
 
-- If users move from one hostname to another, old passkeys for the old host
-  will not authenticate on the new host.
-- If a proxy rewrites `Host` and does not preserve browser host context,
-  passkey routes can fail with "no passkey config for this hostname".
+- If users move from one hostname to another, old passkeys for the old host will
+  not authenticate on the new host.
+- If a proxy rewrites `Host` and does not preserve browser host context, passkey
+  routes can fail with "no passkey config for this hostname".
 
 For stable proxy deployments, set your public URL in `chelix.toml`:
 
@@ -549,9 +547,8 @@ external_url = "https://chat.example.com"
 ```
 
 Chelix derives the WebAuthn RP ID (domain) and origin from this URL
-automatically. The `CHELIX_EXTERNAL_URL` environment variable takes
-precedence over the config field, which is useful for container
-deployments:
+automatically. The `CHELIX_EXTERNAL_URL` environment variable takes precedence
+over the config field, which is useful for container deployments:
 
 ```bash
 CHELIX_BEHIND_PROXY=true
@@ -559,9 +556,8 @@ CHELIX_NO_TLS=true
 CHELIX_EXTERNAL_URL=https://chat.example.com
 ```
 
-For fine-grained control (e.g. when the RP ID differs from the URL host),
-the existing env vars still work and take precedence after
-`external_url`:
+For fine-grained control (e.g. when the RP ID differs from the URL host), the
+existing env vars still work and take precedence after `external_url`:
 
 ```bash
 CHELIX_WEBAUTHN_RP_ID=chat.example.com
@@ -653,7 +649,7 @@ instructions, artifact file extensions, and maintainer signing workflow.
 
 ## Reporting Security Issues
 
-Report security vulnerabilities privately to the maintainers. Do not open
-public issues for security bugs.
+Report security vulnerabilities privately to the maintainers. Do not open public
+issues for security bugs.
 
 See the repository's SECURITY.md for contact information.

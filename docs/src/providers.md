@@ -7,22 +7,22 @@ Configure providers through the web UI or directly in configuration files.
 
 ### API Key Providers
 
-| Provider | Config Name | Env Variable | Features |
-|----------|-------------|--------------|----------|
-| **Anthropic** | `anthropic` | `ANTHROPIC_API_KEY` | Streaming, tools, vision |
-| **OpenAI** | `openai` | `OPENAI_API_KEY` | Streaming, tools, vision, model discovery |
-| **Google Gemini** | `gemini` | `GEMINI_API_KEY` | Streaming, tools, vision, model discovery |
-| **xAI (Grok)** | `xai` | `XAI_API_KEY` | Streaming |
-| **OpenRouter** | `openrouter` | `OPENROUTER_API_KEY` | Streaming, tools, model discovery |
-| **Moonshot (Kimi)** | `moonshot` | `MOONSHOT_API_KEY` | Streaming, tools, model discovery |
-| **Z.AI (Zhipu)** | `zai` | `Z_API_KEY` | Streaming, tools, model discovery |
-| **Z.AI Coding Plan** | `zai-code` | `Z_CODE_API_KEY` | Streaming, tools, model discovery (Coding plan billing endpoint) |
+| Provider             | Config Name  | Env Variable         | Features                                                         |
+| -------------------- | ------------ | -------------------- | ---------------------------------------------------------------- |
+| **Anthropic**        | `anthropic`  | `ANTHROPIC_API_KEY`  | Streaming, tools, vision                                         |
+| **OpenAI**           | `openai`     | `OPENAI_API_KEY`     | Streaming, tools, vision, model discovery                        |
+| **Google Gemini**    | `gemini`     | `GEMINI_API_KEY`     | Streaming, tools, vision, model discovery                        |
+| **xAI (Grok)**       | `xai`        | `XAI_API_KEY`        | Streaming                                                        |
+| **OpenRouter**       | `openrouter` | `OPENROUTER_API_KEY` | Streaming, tools, model discovery                                |
+| **Moonshot (Kimi)**  | `moonshot`   | `MOONSHOT_API_KEY`   | Streaming, tools, model discovery                                |
+| **Z.AI (Zhipu)**     | `zai`        | `Z_API_KEY`          | Streaming, tools, model discovery                                |
+| **Z.AI Coding Plan** | `zai-code`   | `Z_CODE_API_KEY`     | Streaming, tools, model discovery (Coding plan billing endpoint) |
 
 ### OAuth Providers
 
-| Provider | Config Name | Notes |
-|----------|-------------|-------|
-| **OpenAI Codex** | `openai-codex` | OAuth flow via web UI |
+| Provider           | Config Name      | Notes                                |
+| ------------------ | ---------------- | ------------------------------------ |
+| **OpenAI Codex**   | `openai-codex`   | OAuth flow via web UI                |
 | **GitHub Copilot** | `github-copilot` | Requires active Copilot subscription |
 
 ### Custom OpenAI-Compatible
@@ -38,7 +38,10 @@ fetch_models = true
 models = ["my-model"]
 ```
 
-For `custom-*` providers, `models = [...]` is a whitelist when set: only those model IDs are registered. With `fetch_models = true`, Chelix still calls `/models` and uses returned metadata such as `capabilities` and `context_length` for the whitelisted models.
+For `custom-*` providers, `models = [...]` is a whitelist when set: only those
+model IDs are registered. With `fetch_models = true`, Chelix still calls
+`/models` and uses returned metadata such as `capabilities` and `context_length`
+for the whitelisted models.
 
 ## Configuration
 
@@ -81,22 +84,23 @@ priority_models = ["gpt-5.2"]
 
 Each provider supports these options:
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `enabled` | `true` | Enable or disable the provider |
-| `api_key` | — | API key (overrides env var) |
-| `base_url` | — | Override API endpoint URL |
-| `models` | `[]` | Preferred models shown first in the picker |
-| `fetch_models` | `true` | Discover available models from the API |
-| `stream_transport` | `"sse"` | `"sse"`, `"websocket"`, or `"auto"` |
-| `alias` | — | Custom label for metrics |
-| `tool_mode` | `"auto"` | `"auto"`, `"native"`, `"text"`, or `"off"` |
+| Option             | Default  | Description                                |
+| ------------------ | -------- | ------------------------------------------ |
+| `enabled`          | `true`   | Enable or disable the provider             |
+| `api_key`          | —        | API key (overrides env var)                |
+| `base_url`         | —        | Override API endpoint URL                  |
+| `models`           | `[]`     | Preferred models shown first in the picker |
+| `fetch_models`     | `true`   | Discover available models from the API     |
+| `stream_transport` | `"sse"`  | `"sse"`, `"websocket"`, or `"auto"`        |
+| `alias`            | —        | Custom label for metrics                   |
+| `tool_mode`        | `"auto"` | `"auto"`, `"native"`, `"text"`, or `"off"` |
 
 ## Provider Setup
 
 ### Google Gemini
 
-Google Gemini uses an API key from [Google AI Studio](https://aistudio.google.com/).
+Google Gemini uses an API key from
+[Google AI Studio](https://aistudio.google.com/).
 
 1. Get an API key from Google AI Studio.
 2. Set `GEMINI_API_KEY` in your environment (or use `GOOGLE_API_KEY`).
@@ -108,7 +112,8 @@ enabled = true
 models = ["gemini-2.5-flash", "gemini-2.5-pro"]
 ```
 
-Gemini supports native tool calling, vision/multimodal inputs, streaming, and automatic model discovery.
+Gemini supports native tool calling, vision/multimodal inputs, streaming, and
+automatic model discovery.
 
 ### Anthropic
 
@@ -149,10 +154,10 @@ Tokens are saved to the config volume and picked up by the gateway automatically
 ```
 
 Once OpenAI Codex OAuth is connected, agents can use the built-in
-`generate_image` tool to create `gpt-image-2` images without an `OPENAI_API_KEY`.
-Generated images are delivered through the same channel media path as
-screenshots and `send_image`, so supported chat channels receive the image as a
-native attachment.
+`generate_image` tool to create `gpt-image-2` images without an
+`OPENAI_API_KEY`. Generated images are delivered through the same channel media
+path as screenshots and `send_image`, so supported chat channels receive the
+image as a native attachment.
 
 ### GitHub Copilot
 

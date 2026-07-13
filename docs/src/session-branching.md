@@ -24,15 +24,15 @@ There are three ways to fork a session:
 - **`/fork` command** — type `/fork [label]` in the chat input.
 - **Chat header** — click the **Fork** button in the header bar (next to
   Delete). This is visible for every session except cron sessions.
-- **Sidebar** — hover over a session in the sidebar and click the fork icon
-  that appears in the action buttons.
+- **Sidebar** — hover over a session in the sidebar and click the fork icon that
+  appears in the action buttons.
 
 All three create a new session that copies all messages from the current one and
 immediately switch you to it.
 
 Forked sessions appear **indented** under their parent in the sidebar, with a
-branch icon to distinguish them from top-level sessions. The metadata line
-shows `fork@N` where N is the message index at which the fork occurred.
+branch icon to distinguish them from top-level sessions. The metadata line shows
+`fork@N` where N is the message index at which the fork occurred.
 
 ## Agent Tool
 
@@ -46,10 +46,9 @@ The agent can also fork programmatically using the `branch_session` tool:
 ```
 
 - **`label`** — label for the new session (required).
-- **`fork_point`** — the message index to fork at (0-based). Messages at
-  indices 0 through N-1 are copied; the message at index N becomes the
-  first new message in the forked session. If omitted, all messages are
-  copied.
+- **`fork_point`** — the message index to fork at (0-based). Messages at indices
+  0 through N-1 are copied; the message at index N becomes the first new message
+  in the forked session. If omitted, all messages are copied.
 
 The tool returns `{ "key": "<session-key>", "forkPoint": N }`.
 
@@ -61,21 +60,21 @@ The `sessions.fork` RPC method is the underlying mechanism:
 { "key": "main", "forkPoint": 5, "label": "my-fork" }
 ```
 
-On success the response payload contains `{ "sessionKey": "session:<uuid>",
-"forkPoint": N, "label": "..." }`.
+On success the response payload contains
+`{ "sessionKey": "session:<uuid>", "forkPoint": N, "label": "..." }`.
 
 ## What Gets Inherited
 
 When forking, the new session inherits:
 
-| Inherited | Not inherited |
-|-----------|---------------|
-| Messages (up to fork point) | Worktree branch |
-| Model selection | Sandbox settings |
-| Project assignment | Channel binding |
-| Agent ID | |
-| MCP disabled flag | |
-| Node assignment | |
+| Inherited                   | Not inherited    |
+| --------------------------- | ---------------- |
+| Messages (up to fork point) | Worktree branch  |
+| Model selection             | Sandbox settings |
+| Project assignment          | Channel binding  |
+| Agent ID                    |                  |
+| MCP disabled flag           |                  |
+| Node assignment             |                  |
 
 ## Parent-Child Relationships
 

@@ -3,8 +3,8 @@
 Chelix can receive and send encrypted direct messages over
 [Nostr](https://nostr.com), the decentralized social protocol. The integration
 uses [NIP-04](https://github.com/nostr-protocol/nips/blob/master/04.md)
-encrypted DMs (kind:4) and connects to relays via `nostr-sdk` — no public URL
-or server infrastructure is required.
+encrypted DMs (kind:4) and connects to relays via `nostr-sdk` — no public URL or
+server infrastructure is required.
 
 ## How It Works
 
@@ -39,12 +39,13 @@ between the sender and the bot using NIP-04.
 Before configuring Chelix, you need a Nostr secret key:
 
 1. Generate a new key pair using any Nostr client (e.g.
-   [Damus](https://damus.io), [Amethyst](https://github.com/vitorpamplona/amethyst),
-   or a key generation tool)
+   [Damus](https://damus.io),
+   [Amethyst](https://github.com/vitorpamplona/amethyst), or a key generation
+   tool)
 2. Copy the secret key — either the `nsec1...` bech32 format or the 64-character
    hex format
-3. Note the corresponding public key (`npub1...`) to share with users who want to
-   message the bot
+3. Note the corresponding public key (`npub1...`) to share with users who want
+   to message the bot
 
 ```admonish warning
 The secret key is highly sensitive — it controls the bot's Nostr identity.
@@ -74,22 +75,22 @@ offered = ["telegram", "discord", "slack", "matrix", "nostr"]
 
 ### Configuration Fields
 
-| Field | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `secret_key` | **yes** | — | Nostr secret key (`nsec1...` bech32 or 64-char hex) |
-| `relays` | no | `["wss://relay.damus.io", "wss://relay.nostr.band", "wss://nos.lol"]` | Relay WebSocket URLs to connect to |
-| `dm_policy` | no | `"allowlist"` | Who can DM the bot: `"open"`, `"allowlist"`, or `"disabled"` |
-| `allowed_pubkeys` | no | `[]` | Public keys allowed to DM (`npub1...` or hex, when `dm_policy = "allowlist"`) |
-| `enabled` | no | `true` | Whether this account is active |
-| `model` | no | — | Override the default model for this channel |
-| `model_provider` | no | — | Provider for the overridden model |
-| `otp_self_approval` | no | `true` | Allow non-allowlisted senders to self-approve via OTP code |
-| `otp_cooldown_secs` | no | `300` | Cooldown after 3 failed OTP attempts |
-| `profile.name` | no | — | NIP-01 profile display name |
-| `profile.display_name` | no | — | NIP-01 longer display name |
-| `profile.about` | no | — | NIP-01 bio / about text |
-| `profile.picture` | no | — | NIP-01 avatar URL (HTTPS) |
-| `profile.nip05` | no | — | NIP-05 identifier (e.g. `bot@example.com`) |
+| Field                  | Required | Default                                                               | Description                                                                   |
+| ---------------------- | -------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `secret_key`           | **yes**  | —                                                                     | Nostr secret key (`nsec1...` bech32 or 64-char hex)                           |
+| `relays`               | no       | `["wss://relay.damus.io", "wss://relay.nostr.band", "wss://nos.lol"]` | Relay WebSocket URLs to connect to                                            |
+| `dm_policy`            | no       | `"allowlist"`                                                         | Who can DM the bot: `"open"`, `"allowlist"`, or `"disabled"`                  |
+| `allowed_pubkeys`      | no       | `[]`                                                                  | Public keys allowed to DM (`npub1...` or hex, when `dm_policy = "allowlist"`) |
+| `enabled`              | no       | `true`                                                                | Whether this account is active                                                |
+| `model`                | no       | —                                                                     | Override the default model for this channel                                   |
+| `model_provider`       | no       | —                                                                     | Provider for the overridden model                                             |
+| `otp_self_approval`    | no       | `true`                                                                | Allow non-allowlisted senders to self-approve via OTP code                    |
+| `otp_cooldown_secs`    | no       | `300`                                                                 | Cooldown after 3 failed OTP attempts                                          |
+| `profile.name`         | no       | —                                                                     | NIP-01 profile display name                                                   |
+| `profile.display_name` | no       | —                                                                     | NIP-01 longer display name                                                    |
+| `profile.about`        | no       | —                                                                     | NIP-01 bio / about text                                                       |
+| `profile.picture`      | no       | —                                                                     | NIP-01 avatar URL (HTTPS)                                                     |
+| `profile.nip05`        | no       | —                                                                     | NIP-05 identifier (e.g. `bot@example.com`)                                    |
 
 ### Full Example
 
@@ -143,7 +144,7 @@ NIP-44 and NIP-17 (gift-wrapped DMs) are planned for future releases.
 
 ## Relay Health
 
-The bot maintains persistent WebSocket connections to all configured relays.
-The health probe reports the number of connected relays (e.g. "2/3 relays
+The bot maintains persistent WebSocket connections to all configured relays. The
+health probe reports the number of connected relays (e.g. "2/3 relays
 connected"). If all relays disconnect, the bot will automatically attempt to
 reconnect via `nostr-sdk`'s built-in reconnection logic.

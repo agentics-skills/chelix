@@ -1,8 +1,8 @@
 # Webhooks
 
 Chelix can receive inbound HTTP webhooks from external services and run AI
-agents in response. Each webhook delivery becomes a persistent chat session
-that can be inspected and continued from the web UI.
+agents in response. Each webhook delivery becomes a persistent chat session that
+can be inspected and continued from the web UI.
 
 Use webhooks to trigger agents from GitHub PRs, GitLab merge requests, Stripe
 payments, PagerDuty incidents, or any service that can POST JSON to a URL.
@@ -42,8 +42,8 @@ External Service (GitHub, Stripe, …)
 
 ## Setup
 
-Webhooks can be created from the **web UI**, the **CLI**, or by the **agent** itself
-using the `webhook` tool. They are not part of the onboarding flow.
+Webhooks can be created from the **web UI**, the **CLI**, or by the **agent**
+itself using the `webhook` tool. They are not part of the onboarding flow.
 
 ### Creating a Webhook (Web UI)
 
@@ -83,10 +83,11 @@ chelix webhooks create \
 
 The agent can create webhooks programmatically using the `webhook` tool:
 
-> "Set up a webhook for GitHub issues on my repo and forward them to my Slack channel"
+> "Set up a webhook for GitHub issues on my repo and forward them to my Slack
+> channel"
 
-The agent will use the `webhook` tool with `action: "create"` to set up the endpoint,
-then tell you the URL to register in GitHub's settings.
+The agent will use the `webhook` tool with `action: "create"` to set up the
+endpoint, then tell you the URL to register in GitHub's settings.
 
 ### Endpoint URL
 
@@ -106,12 +107,12 @@ Source profiles define how to authenticate, parse, and normalize events from a
 specific provider. Selecting a profile pre-fills the recommended auth mode and
 provides an event catalog for filtering.
 
-| Profile | Auth Mode | Event Parsing | Entity Grouping |
-|---------|-----------|---------------|-----------------|
-| Generic | Static header | Configurable header | None |
-| GitHub | HMAC-SHA256 (`X-Hub-Signature-256`) | `X-GitHub-Event` + action | PR number, issue number |
-| GitLab | Token (`X-Gitlab-Token`) | `X-Gitlab-Event` + action | MR iid, issue iid |
-| Stripe | Webhook signature (`Stripe-Signature`) | `$.type` in body | Subscription ID |
+| Profile | Auth Mode                              | Event Parsing             | Entity Grouping         |
+| ------- | -------------------------------------- | ------------------------- | ----------------------- |
+| Generic | Static header                          | Configurable header       | None                    |
+| GitHub  | HMAC-SHA256 (`X-Hub-Signature-256`)    | `X-GitHub-Event` + action | PR number, issue number |
+| GitLab  | Token (`X-Gitlab-Token`)               | `X-Gitlab-Event` + action | MR iid, issue iid       |
+| Stripe  | Webhook signature (`Stripe-Signature`) | `$.type` in body          | Subscription ID         |
 
 ### GitHub
 
@@ -124,21 +125,21 @@ webhook with the GitHub profile:
 4. Set content type to `application/json`.
 5. Paste the secret.
 6. Select the events you want to trigger (or choose "Send me everything" and
-  filter in Chelix).
+   filter in Chelix).
 
 **Event types:**
 
-| Event | Description | Use case |
-|-------|-------------|----------|
-| `pull_request.opened` | New PR | Code review, labeling |
-| `pull_request.synchronize` | PR updated | Re-review |
-| `pull_request.closed` | PR closed/merged | Cleanup, changelog |
-| `push` | Commits pushed | CI trigger, deploy check |
-| `issues.opened` | New issue | Triage, auto-respond |
-| `issue_comment.created` | Comment on issue/PR | Answer questions |
-| `pull_request_review.submitted` | PR review posted | Respond to feedback |
-| `release.published` | New release | Announce, post-release tasks |
-| `workflow_run.completed` | Actions workflow done | Post-CI analysis |
+| Event                           | Description           | Use case                     |
+| ------------------------------- | --------------------- | ---------------------------- |
+| `pull_request.opened`           | New PR                | Code review, labeling        |
+| `pull_request.synchronize`      | PR updated            | Re-review                    |
+| `pull_request.closed`           | PR closed/merged      | Cleanup, changelog           |
+| `push`                          | Commits pushed        | CI trigger, deploy check     |
+| `issues.opened`                 | New issue             | Triage, auto-respond         |
+| `issue_comment.created`         | Comment on issue/PR   | Answer questions             |
+| `pull_request_review.submitted` | PR review posted      | Respond to feedback          |
+| `release.published`             | New release           | Announce, post-release tasks |
+| `workflow_run.completed`        | Actions workflow done | Post-CI analysis             |
 
 **Payload normalization** extracts key fields (repo, PR number, author, branch,
 description, changed files) instead of dumping the full payload into the agent
@@ -155,20 +156,20 @@ GitLab webhooks use a static token in the `X-Gitlab-Token` header.
 
 **Event types:**
 
-| Event | Description |
-|-------|-------------|
-| `merge_request.open` | New merge request |
-| `merge_request.update` | MR updated |
-| `merge_request.merge` | MR merged |
-| `push` | Commits pushed |
-| `note` | Comment on MR or issue |
-| `issue.open` | New issue |
-| `pipeline` | Pipeline status change |
+| Event                  | Description            |
+| ---------------------- | ---------------------- |
+| `merge_request.open`   | New merge request      |
+| `merge_request.update` | MR updated             |
+| `merge_request.merge`  | MR merged              |
+| `push`                 | Commits pushed         |
+| `note`                 | Comment on MR or issue |
+| `issue.open`           | New issue              |
+| `pipeline`             | Pipeline status change |
 
 ### Stripe
 
-Stripe webhooks use a composite signature in the `Stripe-Signature` header
-with timestamp validation (5-minute tolerance).
+Stripe webhooks use a composite signature in the `Stripe-Signature` header with
+timestamp validation (5-minute tolerance).
 
 1. In the Stripe Dashboard, go to **Developers → Webhooks → Add endpoint**.
 2. Set the endpoint URL to your Chelix webhook endpoint.
@@ -177,15 +178,15 @@ with timestamp validation (5-minute tolerance).
 
 **Event types:**
 
-| Event | Description |
-|-------|-------------|
-| `checkout.session.completed` | Successful checkout |
-| `payment_intent.succeeded` | Payment captured |
-| `payment_intent.payment_failed` | Payment failed |
-| `invoice.paid` | Invoice paid |
-| `customer.subscription.created` | New subscription |
+| Event                           | Description           |
+| ------------------------------- | --------------------- |
+| `checkout.session.completed`    | Successful checkout   |
+| `payment_intent.succeeded`      | Payment captured      |
+| `payment_intent.payment_failed` | Payment failed        |
+| `invoice.paid`                  | Invoice paid          |
+| `customer.subscription.created` | New subscription      |
 | `customer.subscription.deleted` | Subscription canceled |
-| `charge.dispute.created` | Chargeback opened |
+| `charge.dispute.created`        | Chargeback opened     |
 
 ### Generic
 
@@ -197,17 +198,17 @@ common headers (`X-Event-Type`, `X-Webhook-Event`) if present.
 
 Each webhook is configured with an auth mode that verifies inbound requests.
 
-| Mode | Header | Verification |
-|------|--------|-------------|
-| `none` | — | No verification (testing only) |
-| `static_header` | Configurable | Constant-time comparison of header value |
-| `bearer` | `Authorization` | `Bearer <token>` comparison |
-| `github_hmac_sha256` | `X-Hub-Signature-256` | HMAC-SHA256 of body against shared secret |
-| `gitlab_token` | `X-Gitlab-Token` | Constant-time token comparison |
-| `stripe_webhook_signature` | `Stripe-Signature` | HMAC-SHA256 with timestamp tolerance |
-| `linear_webhook_signature` | `Linear-Signature` | HMAC-SHA256 |
-| `pagerduty_v2_signature` | `X-PagerDuty-Signature` | HMAC-SHA256 |
-| `sentry_webhook_signature` | `Sentry-Hook-Signature` | HMAC-SHA256 |
+| Mode                       | Header                  | Verification                              |
+| -------------------------- | ----------------------- | ----------------------------------------- |
+| `none`                     | —                       | No verification (testing only)            |
+| `static_header`            | Configurable            | Constant-time comparison of header value  |
+| `bearer`                   | `Authorization`         | `Bearer <token>` comparison               |
+| `github_hmac_sha256`       | `X-Hub-Signature-256`   | HMAC-SHA256 of body against shared secret |
+| `gitlab_token`             | `X-Gitlab-Token`        | Constant-time token comparison            |
+| `stripe_webhook_signature` | `Stripe-Signature`      | HMAC-SHA256 with timestamp tolerance      |
+| `linear_webhook_signature` | `Linear-Signature`      | HMAC-SHA256                               |
+| `pagerduty_v2_signature`   | `X-PagerDuty-Signature` | HMAC-SHA256                               |
+| `sentry_webhook_signature` | `Sentry-Hook-Signature` | HMAC-SHA256                               |
 
 ```admonish warning title="Auth Mode: None"
 The `none` auth mode accepts all requests without verification. Use it only for
@@ -224,34 +225,34 @@ Each webhook can filter which event types to process using allow and deny lists.
 - **Allow list non-empty** — only accept events in the list.
 - **Deny list** — always applied last, explicitly skips matching events.
 
-Filtered events are logged with status `filtered` but not processed. They do
-not count against rate limits.
+Filtered events are logged with status `filtered` but not processed. They do not
+count against rate limits.
 
 When using a source profile, the UI shows the event catalog as checkboxes
 instead of requiring free-form text.
 
 ## Session Modes
 
-Each delivery creates a chat session. The session mode controls how sessions
-are organized.
+Each delivery creates a chat session. The session mode controls how sessions are
+organized.
 
-| Mode | Behaviour |
-|------|-----------|
-| `per_delivery` (default) | One new session per delivery. Best for debugging and clean history. |
-| `per_entity` | Group deliveries by entity key (e.g., all events for PR #567 in one session). Useful for maintaining context across an entity's lifecycle. |
-| `named_session` | All deliveries go to one named session. Use sparingly — can become noisy. |
+| Mode                     | Behaviour                                                                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `per_delivery` (default) | One new session per delivery. Best for debugging and clean history.                                                                        |
+| `per_entity`             | Group deliveries by entity key (e.g., all events for PR #567 in one session). Useful for maintaining context across an entity's lifecycle. |
+| `named_session`          | All deliveries go to one named session. Use sparingly — can become noisy.                                                                  |
 
 ### Entity Keys
 
 In `per_entity` mode, the source profile extracts a grouping key from the
 payload:
 
-| Profile | Entity Key Format |
-|---------|-------------------|
-| GitHub | `github:{repo}:pr:{number}` or `github:{repo}:issue:{number}` |
-| GitLab | `gitlab:{project}:mr:{iid}` or `gitlab:{project}:issue:{iid}` |
-| Stripe | `stripe:{subscription_id}` or `stripe:dispute:{charge_id}` |
-| Generic | None (falls back to `per_delivery`) |
+| Profile | Entity Key Format                                             |
+| ------- | ------------------------------------------------------------- |
+| GitHub  | `github:{repo}:pr:{number}` or `github:{repo}:issue:{number}` |
+| GitLab  | `gitlab:{project}:mr:{iid}` or `gitlab:{project}:issue:{iid}` |
+| Stripe  | `stripe:{subscription_id}` or `stripe:dispute:{charge_id}`    |
+| Generic | None (falls back to `per_delivery`)                           |
 
 ### Session Labels
 
@@ -314,24 +315,24 @@ Changed files: 42 (+1,203 / -156)
 Full payload available via webhook_get_full_payload tool.
 ```
 
-The full raw payload is stored on the delivery record and available to the
-agent via the `webhook_get_full_payload` tool, keeping prompt token usage
-manageable for large payloads.
+The full raw payload is stored on the delivery record and available to the agent
+via the `webhook_get_full_payload` tool, keeping prompt token usage manageable
+for large payloads.
 
 ## Delivery Lifecycle
 
 Each delivery goes through a status progression:
 
-| Status | Description |
-|--------|-------------|
-| `received` | Persisted, not yet queued |
-| `filtered` | Event type not in allow list |
-| `deduplicated` | Duplicate delivery key |
-| `rejected` | Auth failure or policy violation |
-| `queued` | Waiting for worker |
-| `processing` | Agent running |
-| `completed` | Agent finished successfully |
-| `failed` | Agent errored |
+| Status         | Description                      |
+| -------------- | -------------------------------- |
+| `received`     | Persisted, not yet queued        |
+| `filtered`     | Event type not in allow list     |
+| `deduplicated` | Duplicate delivery key           |
+| `rejected`     | Auth failure or policy violation |
+| `queued`       | Waiting for worker               |
+| `processing`   | Agent running                    |
+| `completed`    | Agent finished successfully      |
+| `failed`       | Agent errored                    |
 
 ### Deduplication
 
@@ -349,22 +350,22 @@ Duplicate deliveries are logged with status `deduplicated` and return `200 OK`.
 
 Two levels of rate limiting protect against abuse:
 
-| Level | Default | Description |
-|-------|---------|-------------|
-| Per-webhook | 60/minute | Configurable per webhook |
-| Global | 300/minute | Across all webhooks |
+| Level       | Default    | Description              |
+| ----------- | ---------- | ------------------------ |
+| Per-webhook | 60/minute  | Configurable per webhook |
+| Global      | 300/minute | Across all webhooks      |
 
-Rate-limited requests receive `429 Too Many Requests`. Filtered and
-deduplicated events do not count against rate limits.
+Rate-limited requests receive `429 Too Many Requests`. Filtered and deduplicated
+events do not count against rate limits.
 
 ## Security
 
-- **Public IDs are routing identifiers, not secrets.** Authentication is
-  handled by the configured auth mode.
+- **Public IDs are routing identifiers, not secrets.** Authentication is handled
+  by the configured auth mode.
 - **Secrets use constant-time comparison** to prevent timing attacks.
 - **Request body size is limited** (default: 1 MB, configurable per webhook).
-- **Auth headers are never logged.** Only safe headers (event type, delivery
-  ID, content type) are persisted.
+- **Auth headers are never logged.** Only safe headers (event type, delivery ID,
+  content type) are persisted.
 - **Webhook secrets and source API credentials** are encrypted at rest when
   Vault is enabled.
 
@@ -445,12 +446,13 @@ A complete example of setting up a webhook that reviews pull requests:
 
 2. **Register in GitHub**:
    - Repo → Settings → Webhooks → Add webhook
-  - Payload URL: copy from Chelix
-   - Content type: `application/json`
-  - Secret: copy from Chelix
-   - Events: "Pull requests"
 
-3. **Test it**: open a PR — a new session appears in Chelix with the agent's
+- Payload URL: copy from Chelix
+- Content type: `application/json`
+- Secret: copy from Chelix
+- Events: "Pull requests"
+
+1. **Test it**: open a PR — a new session appears in Chelix with the agent's
    review.
 
 ## Example: Stripe Payment Handler
@@ -470,21 +472,22 @@ A complete example of setting up a webhook that reviews pull requests:
 
 2. **Register in Stripe**:
    - Dashboard → Developers → Webhooks → Add endpoint
-  - Endpoint URL: copy from Chelix
-   - Events: select the matching events
-  - Copy signing secret (`whsec_...`) into Chelix
+
+- Endpoint URL: copy from Chelix
+- Events: select the matching events
+- Copy signing secret (`whsec_...`) into Chelix
 
 ## Metrics
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `webhooks_deliveries_total` | Counter | Total deliveries by webhook, status, event type |
-| `webhooks_deliveries_rejected_total` | Counter | Rejected deliveries by reason |
-| `webhooks_deliveries_filtered_total` | Counter | Filtered deliveries |
-| `webhooks_processing_duration_seconds` | Histogram | Agent execution time |
-| `webhooks_response_actions_total` | Counter | Response actions by tool and status |
-| `webhooks_rate_limited_total` | Counter | Rate-limited requests |
-| `webhooks_worker_queue_depth` | Gauge | Pending deliveries in worker queue |
+| Metric                                 | Type      | Description                                     |
+| -------------------------------------- | --------- | ----------------------------------------------- |
+| `webhooks_deliveries_total`            | Counter   | Total deliveries by webhook, status, event type |
+| `webhooks_deliveries_rejected_total`   | Counter   | Rejected deliveries by reason                   |
+| `webhooks_deliveries_filtered_total`   | Counter   | Filtered deliveries                             |
+| `webhooks_processing_duration_seconds` | Histogram | Agent execution time                            |
+| `webhooks_response_actions_total`      | Counter   | Response actions by tool and status             |
+| `webhooks_rate_limited_total`          | Counter   | Rate-limited requests                           |
+| `webhooks_worker_queue_depth`          | Gauge     | Pending deliveries in worker queue              |
 
 ## Deliver-Only Mode (Webhook Proxy)
 
@@ -517,6 +520,7 @@ variables, plus a `deliver_to` channel target.
 and target channel.
 
 **CLI**:
+
 ```bash
 chelix webhooks create \
   --name deploy-status \
@@ -527,7 +531,8 @@ chelix webhooks create \
   --deliver-to slack
 ```
 
-**Agent**: The agent can also create deliver-only webhooks using the `webhook` tool.
+**Agent**: The agent can also create deliver-only webhooks using the `webhook`
+tool.
 
 ### How It Works
 
@@ -551,14 +556,15 @@ External Service POSTs event
 
 ## Template Rendering
 
-Templates use `{dot.notation}` to interpolate values from the webhook JSON payload.
+Templates use `{dot.notation}` to interpolate values from the webhook JSON
+payload.
 
-| Syntax | Resolves to |
-|--------|-------------|
-| `{action}` | Top-level field: `payload["action"]` |
-| `{pull_request.title}` | Nested: `payload["pull_request"]["title"]` |
+| Syntax                      | Resolves to                                             |
+| --------------------------- | ------------------------------------------------------- |
+| `{action}`                  | Top-level field: `payload["action"]`                    |
+| `{pull_request.title}`      | Nested: `payload["pull_request"]["title"]`              |
 | `{pull_request.user.login}` | Deep nested: `payload["pull_request"]["user"]["login"]` |
-| `{__raw__}` | Full payload as indented JSON (truncated at 4000 chars) |
+| `{__raw__}`                 | Full payload as indented JSON (truncated at 4000 chars) |
 
 - **Missing keys** are left as literal `{key}` in the output (no error).
 - **Objects and arrays** are JSON-serialized (truncated at 2000 chars).
@@ -581,6 +587,7 @@ chelix webhooks create \
 ```
 
 When someone opens issue #42 "Fix auth bug", Telegram receives:
+
 ```
 #42 Fix auth bug (opened by alice)
 ```
@@ -600,13 +607,13 @@ chelix webhooks create \
 
 ## Comparison with Channels and Cron
 
-| | Channels | Webhooks | Cron |
-|---|---------|----------|------|
-| **Purpose** | Human messaging | Machine event ingress | Scheduled tasks |
-| **Trigger** | User sends message | External HTTP POST | Time-based schedule |
-| **Reply** | Back to the channel | Via response tools (optional) | Optional channel delivery |
-| **Session** | Per conversation | Per delivery / entity | Per job run |
-| **Auth** | Platform account | Per-webhook (HMAC, token, etc.) | Internal only |
+|             | Channels            | Webhooks                        | Cron                      |
+| ----------- | ------------------- | ------------------------------- | ------------------------- |
+| **Purpose** | Human messaging     | Machine event ingress           | Scheduled tasks           |
+| **Trigger** | User sends message  | External HTTP POST              | Time-based schedule       |
+| **Reply**   | Back to the channel | Via response tools (optional)   | Optional channel delivery |
+| **Session** | Per conversation    | Per delivery / entity           | Per job run               |
+| **Auth**    | Platform account    | Per-webhook (HMAC, token, etc.) | Internal only             |
 
 Webhooks are **not channels**. They do not support reply routing, streaming, or
 platform presence semantics. Use channels for human messaging and webhooks for

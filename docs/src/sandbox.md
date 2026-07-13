@@ -19,16 +19,16 @@ backend = "auto"          # default — picks the best available
 
 With `"auto"` (the default), Chelix picks the strongest available backend:
 
-| Priority | Backend           | Platform | Isolation          |
-|----------|-------------------|----------|--------------------|
-| 1        | Apple Container   | macOS    | VM (Virtualization.framework) |
-| 2        | Podman            | any      | Linux namespaces / cgroups (daemonless) |
-| 3        | Docker            | any      | Linux namespaces / cgroups    |
-| 4        | Restricted Host   | any      | env clearing, rlimits (no filesystem isolation) |
-| 5        | none (host)       | any      | no isolation                  |
+| Priority | Backend         | Platform | Isolation                                       |
+| -------- | --------------- | -------- | ----------------------------------------------- |
+| 1        | Apple Container | macOS    | VM (Virtualization.framework)                   |
+| 2        | Podman          | any      | Linux namespaces / cgroups (daemonless)         |
+| 3        | Docker          | any      | Linux namespaces / cgroups                      |
+| 4        | Restricted Host | any      | env clearing, rlimits (no filesystem isolation) |
+| 5        | none (host)     | any      | no isolation                                    |
 
-The WASM backend (`backend = "wasm"`) is not in the auto-detect chain because
-it cannot execute arbitrary shell commands — use it explicitly when you want
+The WASM backend (`backend = "wasm"`) is not in the auto-detect chain because it
+cannot execute arbitrary shell commands — use it explicitly when you want
 WASI-isolated execution.
 
 ## Apple Container (recommended on macOS)
@@ -53,8 +53,8 @@ sudo installer -pkg /tmp/container-installer-signed.pkg -target /
 container system start
 ```
 
-Alternatively, build from source with `brew install container` (requires
-Xcode 26+).
+Alternatively, build from source with `brew install container` (requires Xcode
+26+).
 
 ### Verify
 
@@ -69,8 +69,8 @@ Once installed, restart `chelix gateway` — the startup banner will show
 
 ## Podman
 
-[Podman](https://podman.io/) is a daemonless, rootless container engine that
-is CLI-compatible with Docker. It is preferred over Docker in auto-detection
+[Podman](https://podman.io/) is a daemonless, rootless container engine that is
+CLI-compatible with Docker. It is preferred over Docker in auto-detection
 because it doesn't require a background daemon process and runs rootless by
 default for better security.
 
@@ -105,29 +105,29 @@ Docker is supported on macOS, Linux, and Windows. On macOS it runs inside a
 Linux VM managed by Docker Desktop, so it is reasonably isolated but adds more
 overhead than Apple Container.
 
-Install from https://docs.docker.com/get-docker/
+Install from <https://docs.docker.com/get-docker/>
 
 ### Docker/Podman Hardening
 
 Docker and Podman containers launched by Chelix include the following security
 hardening flags by default:
 
-| Flag | Effect |
-|------|--------|
-| `--cap-drop ALL` | Drops all Linux capabilities when `workspace_sysmount = "ro"` |
-| `--security-opt no-new-privileges` | Prevents privilege escalation via setuid/setgid binaries when `workspace_sysmount = "ro"` |
-| `--tmpfs /tmp:rw,nosuid,size=256m` | Writable tmpfs for temp files (noexec on real root) |
-| `--tmpfs /run:rw,nosuid,size=64m` | Writable tmpfs for runtime files |
-| `--read-only` | Read-only root filesystem (prebuilt images with `workspace_sysmount = "ro"`) |
-| `--hostname sandbox` | Prevents host hostname leakage |
-| `--tmpfs /sys/firmware:ro,nosuid` | Masks BIOS/UEFI firmware data (Docker only) |
-| `--tmpfs /sys/class/dmi:ro,nosuid` | Masks system serial numbers and identifiers (Docker only) |
-| `--tmpfs /sys/devices/virtual/dmi:ro,nosuid` | Masks DMI attributes (Docker only) |
-| `--tmpfs /sys/class/block:ro,nosuid` | Masks block device info (Docker only) |
+| Flag                                         | Effect                                                                                    |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `--cap-drop ALL`                             | Drops all Linux capabilities when `workspace_sysmount = "ro"`                             |
+| `--security-opt no-new-privileges`           | Prevents privilege escalation via setuid/setgid binaries when `workspace_sysmount = "ro"` |
+| `--tmpfs /tmp:rw,nosuid,size=256m`           | Writable tmpfs for temp files (noexec on real root)                                       |
+| `--tmpfs /run:rw,nosuid,size=64m`            | Writable tmpfs for runtime files                                                          |
+| `--read-only`                                | Read-only root filesystem (prebuilt images with `workspace_sysmount = "ro"`)              |
+| `--hostname sandbox`                         | Prevents host hostname leakage                                                            |
+| `--tmpfs /sys/firmware:ro,nosuid`            | Masks BIOS/UEFI firmware data (Docker only)                                               |
+| `--tmpfs /sys/class/dmi:ro,nosuid`           | Masks system serial numbers and identifiers (Docker only)                                 |
+| `--tmpfs /sys/devices/virtual/dmi:ro,nosuid` | Masks DMI attributes (Docker only)                                                        |
+| `--tmpfs /sys/class/block:ro,nosuid`         | Masks block device info (Docker only)                                                     |
 
-With `workspace_sysmount = "ro"` (the default), Docker/Podman sandbox
-containers keep `--cap-drop ALL` and `--security-opt no-new-privileges`, and
-prebuilt sandbox images also keep `--read-only`.
+With `workspace_sysmount = "ro"` (the default), Docker/Podman sandbox containers
+keep `--cap-drop ALL` and `--security-opt no-new-privileges`, and prebuilt
+sandbox images also keep `--read-only`.
 
 With `workspace_sysmount = "rw"`, Chelix skips `--cap-drop ALL`,
 `--security-opt no-new-privileges`, and `--read-only` so package managers can
@@ -169,8 +169,8 @@ These operate on a sandboxed directory tree, translating guest paths (e.g.
 `/home/sandbox/file.txt`) to host paths under `~/.chelix/sandbox/wasm/<id>/`.
 Paths outside the sandbox root are rejected.
 
-Basic shell features are supported: `&&`, `||`, `;` sequences, `$VAR`
-expansion, quoting via `shell-words`, and `>` / `>>` output redirects.
+Basic shell features are supported: `&&`, `||`, `;` sequences, `$VAR` expansion,
+quoting via `shell-words`, and `>` / `>>` output redirects.
 
 **Tier 2 — Real WASM module execution**: When the command references a `.wasm`
 file, it is loaded and run via Wasmtime + WASI preview1 with full isolation:
@@ -187,6 +187,7 @@ preopened directories, fuel metering, epoch interruption, and captured I/O.
 ```
 
 Home persistence is respected:
+
 - `shared`: uses `data_dir()/sandbox/home/shared/wasm/`
 - `session`: uses `data_dir()/sandbox/wasm/<session-id>/`
 - `off`: per-session, cleaned up on `cleanup()`
@@ -290,16 +291,16 @@ Chelix wraps the primary sandbox backend with automatic failover:
 - **Docker → Restricted Host**: if Docker loses its daemon connection during a
   session, Chelix fails over to the restricted-host sandbox.
 
-Failover is sticky for the lifetime of the gateway process — once triggered,
-all subsequent commands use the fallback backend. Restart the gateway to retry
-the primary backend.
+Failover is sticky for the lifetime of the gateway process — once triggered, all
+subsequent commands use the fallback backend. Restart the gateway to retry the
+primary backend.
 
 Failover triggers:
 
-| Primary | Triggers |
-|---------|----------|
-| Apple Container | `config.json missing`, `VM never booted`, `NSPOSIXErrorDomain Code=22`, service errors |
-| Docker | `cannot connect to the docker daemon`, `connection refused`, `is the docker daemon running` |
+| Primary         | Triggers                                                                                    |
+| --------------- | ------------------------------------------------------------------------------------------- |
+| Apple Container | `config.json missing`, `VM never booted`, `NSPOSIXErrorDomain Code=22`, service errors      |
+| Docker          | `cannot connect to the docker daemon`, `connection refused`, `is the docker daemon running` |
 
 ## Per-session overrides
 
@@ -330,8 +331,7 @@ Chelix stores persisted homes under `data_dir()/sandbox/home/`.
 When Chelix runs inside a container and launches Docker-backed sandboxes via a
 mounted container socket, the sandbox bind mount source must be a host-visible
 path. Chelix auto-detects this by inspecting the parent container's mounts. If
-that lookup fails or you want to pin the value explicitly, set
-`host_data_dir`:
+that lookup fails or you want to pin the value explicitly, set `host_data_dir`:
 
 ```toml
 [sandbox]
@@ -346,17 +346,17 @@ ambiguous.
 
 ## Container network
 
-Docker and Podman sandboxes use the configured container network directly.
-The default is `bridge`, and Chelix passes the value to the container runtime
-as `--network=<name>`.
+Docker and Podman sandboxes use the configured container network directly. The
+default is `bridge`, and Chelix passes the value to the container runtime as
+`--network=<name>`.
 
 ```toml
 [sandbox]
 network = "bridge"
 ```
 
-Use any runtime network name accepted by Docker or Podman, for example a
-custom network created outside Chelix:
+Use any runtime network name accepted by Docker or Podman, for example a custom
+network created outside Chelix:
 
 ```toml
 [sandbox]
@@ -381,22 +381,22 @@ pids_max = 256
 
 How resource limits are applied depends on the backend:
 
-| Limit | Docker | Apple Container | WASM | Restricted Host | cgroup (Linux) |
-|-------|--------|-----------------|------|-----------------|----------------|
-| `memory_limit` | `--memory` | `--memory` | Wasmtime reservation | `ulimit -v` | `MemoryMax=` |
-| `cpu_quota` | `--cpus` | `--cpus` | epoch timeout | `ulimit -t` (seconds) | `CPUQuota=` |
-| `pids_max` | `--pids-limit` | `--pids-limit` | n/a | `ulimit -u` | `TasksMax=` |
+| Limit          | Docker         | Apple Container | WASM                 | Restricted Host       | cgroup (Linux) |
+| -------------- | -------------- | --------------- | -------------------- | --------------------- | -------------- |
+| `memory_limit` | `--memory`     | `--memory`      | Wasmtime reservation | `ulimit -v`           | `MemoryMax=`   |
+| `cpu_quota`    | `--cpus`       | `--cpus`        | epoch timeout        | `ulimit -t` (seconds) | `CPUQuota=`    |
+| `pids_max`     | `--pids-limit` | `--pids-limit`  | n/a                  | `ulimit -u`           | `TasksMax=`    |
 
 ## Comparison
 
-| Feature | Apple Container | Docker | WASM | Restricted Host | none |
-|---------|----------------|--------|------|-----------------|------|
-| Filesystem isolation | ✅ VM boundary | ✅ namespaces | ✅ sandboxed tree | ❌ host FS | ❌ |
-| Network isolation | ✅ | ✅ | ✅ (no network) | ❌ | ❌ |
-| Kernel isolation | ✅ separate kernel | ❌ shared kernel | ✅ WASM VM | ❌ | ❌ |
-| Environment isolation | ✅ | ✅ | ✅ | ✅ cleared + restricted | ❌ |
-| Resource limits | ✅ | ✅ | ✅ fuel + epoch | ✅ ulimit | ❌ |
-| Image building | ✅ (via Docker) | ✅ | ❌ | ❌ | ❌ |
-| Shell commands | ✅ full shell | ✅ full shell | ~20 built-ins | ✅ full shell | ✅ full shell |
-| Platform | macOS 26+ | any | any | any | any |
-| Overhead | low | medium | minimal | minimal | none |
+| Feature               | Apple Container    | Docker           | WASM              | Restricted Host         | none          |
+| --------------------- | ------------------ | ---------------- | ----------------- | ----------------------- | ------------- |
+| Filesystem isolation  | ✅ VM boundary     | ✅ namespaces    | ✅ sandboxed tree | ❌ host FS              | ❌            |
+| Network isolation     | ✅                 | ✅               | ✅ (no network)   | ❌                      | ❌            |
+| Kernel isolation      | ✅ separate kernel | ❌ shared kernel | ✅ WASM VM        | ❌                      | ❌            |
+| Environment isolation | ✅                 | ✅               | ✅                | ✅ cleared + restricted | ❌            |
+| Resource limits       | ✅                 | ✅               | ✅ fuel + epoch   | ✅ ulimit               | ❌            |
+| Image building        | ✅ (via Docker)    | ✅               | ❌                | ❌                      | ❌            |
+| Shell commands        | ✅ full shell      | ✅ full shell    | ~20 built-ins     | ✅ full shell           | ✅ full shell |
+| Platform              | macOS 26+          | any              | any               | any                     | any           |
+| Overhead              | low                | medium           | minimal           | minimal                 | none          |

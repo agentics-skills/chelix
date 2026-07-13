@@ -1,8 +1,8 @@
 # SQLite Database Migrations
 
-Chelix uses [sqlx](https://github.com/launchbadge/sqlx) for database access and its
-built-in migration system for schema management. Each crate owns its migrations,
-keeping schema definitions close to the code that uses them.
+Chelix uses [sqlx](https://github.com/launchbadge/sqlx) for database access and
+its built-in migration system for schema management. Each crate owns its
+migrations, keeping schema definitions close to the code that uses them.
 
 ## Architecture
 
@@ -49,15 +49,15 @@ crates/
 
 Each crate is autonomous and owns its schema:
 
-| Crate | Database | Tables | Migration File |
-|-------|----------|--------|----------------|
-| `chelix-projects` | `chelix.db` | `projects` | `20240205100000_init.sql` |
-| `chelix-sessions` | `chelix.db` | `sessions`, `channel_sessions`, `session_state` | `20240205100001_init.sql` + 9 migrations |
-| `chelix-cron` | `chelix.db` | `cron_jobs`, `cron_runs` | `20240205100002_init.sql` + 1 migration |
-| `chelix-gateway` | `chelix.db` | `auth_*`, `passkeys`, `api_keys`, `env_variables`, `message_log`, `channels`, `agents`, `session_shares`, `device_pairing`, `ssh_keys`, `ssh_targets`, `auth_audit_log` | `20240205100003_init.sql` + 12 migrations |
-| `chelix-webhooks` | `chelix.db` | `webhooks`, `webhook_deliveries`, `webhook_response_actions` | `20260407000000_initial.sql` + 1 migration |
-| `chelix-vault` | `chelix.db` | `vault_metadata` | `20260214000001_vault_metadata.sql` (feature-gated) |
-| `chelix-memory` | `memory.db` | `files`, `chunks`, `embedding_cache`, `chunks_fts` | `20240205100004_init.sql` |
+| Crate             | Database    | Tables                                                                                                                                                                  | Migration File                                      |
+| ----------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `chelix-projects` | `chelix.db` | `projects`                                                                                                                                                              | `20240205100000_init.sql`                           |
+| `chelix-sessions` | `chelix.db` | `sessions`, `channel_sessions`, `session_state`                                                                                                                         | `20240205100001_init.sql` + 9 migrations            |
+| `chelix-cron`     | `chelix.db` | `cron_jobs`, `cron_runs`                                                                                                                                                | `20240205100002_init.sql` + 1 migration             |
+| `chelix-gateway`  | `chelix.db` | `auth_*`, `passkeys`, `api_keys`, `env_variables`, `message_log`, `channels`, `agents`, `session_shares`, `device_pairing`, `ssh_keys`, `ssh_targets`, `auth_audit_log` | `20240205100003_init.sql` + 12 migrations           |
+| `chelix-webhooks` | `chelix.db` | `webhooks`, `webhook_deliveries`, `webhook_response_actions`                                                                                                            | `20260407000000_initial.sql` + 1 migration          |
+| `chelix-vault`    | `chelix.db` | `vault_metadata`                                                                                                                                                        | `20260214000001_vault_metadata.sql` (feature-gated) |
+| `chelix-memory`   | `memory.db` | `files`, `chunks`, `embedding_cache`, `chunks_fts`                                                                                                                      | `20240205100004_init.sql`                           |
 
 ### Startup Sequence
 
@@ -74,9 +74,9 @@ crate::run_migrations(&db_pool).await?;              // 5. gateway tables
 chelix_vault::run_migrations(&db_pool).await?;      // 6. vault (feature-gated)
 ```
 
-Sessions depends on projects due to a foreign key (`sessions.project_id` references
-`projects.id`), so projects must migrate first. Memory runs separately against
-its own `memory.db` pool.
+Sessions depends on projects due to a foreign key (`sessions.project_id`
+references `projects.id`), so projects must migrate first. Memory runs
+separately against its own `memory.db` pool.
 
 ### Version Tracking
 
@@ -86,15 +86,15 @@ sqlx tracks applied migrations in the `_sqlx_migrations` table:
 SELECT version, description, installed_on, success FROM _sqlx_migrations;
 ```
 
-Migrations are identified by their timestamp prefix (e.g., `20240205100000`), which
-must be globally unique across all crates.
+Migrations are identified by their timestamp prefix (e.g., `20240205100000`),
+which must be globally unique across all crates.
 
 ## Database Files
 
-| Database | Location | Crates |
-|----------|----------|--------|
+| Database    | Location              | Crates                                             |
+| ----------- | --------------------- | -------------------------------------------------- |
 | `chelix.db` | `~/.chelix/chelix.db` | projects, sessions, cron, gateway, webhooks, vault |
-| `memory.db` | `~/.chelix/memory.db` | memory (separate, managed internally) |
+| `memory.db` | `~/.chelix/memory.db` | memory (separate, managed internally)              |
 
 ## Adding New Migrations
 
@@ -107,7 +107,7 @@ must be globally unique across all crates.
 touch crates/sessions/migrations/20240301120000_add_tags.sql
 ```
 
-2. Write the migration SQL:
+1. Write the migration SQL:
 
 ```sql
 -- 20240301120000_add_tags.sql
@@ -115,7 +115,7 @@ ALTER TABLE sessions ADD COLUMN tags TEXT;
 CREATE INDEX IF NOT EXISTS idx_sessions_tags ON sessions(tags);
 ```
 
-3. Rebuild to embed the migration:
+1. Rebuild to embed the migration:
 
 ```bash
 cargo build
@@ -129,7 +129,7 @@ cargo build
 touch crates/sessions/migrations/20240302100000_session_bookmarks.sql
 ```
 
-2. Write the CREATE TABLE statement:
+1. Write the CREATE TABLE statement:
 
 ```sql
 -- 20240302100000_session_bookmarks.sql
@@ -150,13 +150,13 @@ CREATE TABLE IF NOT EXISTS session_bookmarks (
 mkdir -p crates/new-feature/migrations
 ```
 
-2. Create the migration file with a globally unique timestamp:
+1. Create the migration file with a globally unique timestamp:
 
 ```bash
 touch crates/new-feature/migrations/20240401100000_init.sql
 ```
 
-3. Add `run_migrations()` to the crate's `lib.rs`:
+1. Add `run_migrations()` to the crate's `lib.rs`:
 
 ```rust
 pub async fn run_migrations(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
@@ -165,7 +165,7 @@ pub async fn run_migrations(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
 }
 ```
 
-4. Call it from `prepare_core.rs` in the appropriate order:
+1. Call it from `prepare_core.rs` in the appropriate order:
 
 ```rust
 chelix_new_feature::run_migrations(&db_pool).await?;
@@ -217,8 +217,8 @@ CREATE INDEX idx_sessions_created_at ON sessions(created_at);
 
 ### Foreign Keys
 
-SQLite foreign keys are checked at insert/update time, not migration time. Ensure
-migrations run in dependency order (parent table first).
+SQLite foreign keys are checked at insert/update time, not migration time.
+Ensure migrations run in dependency order (parent table first).
 
 ## Testing
 
@@ -237,8 +237,8 @@ async fn test_session_operations() {
 }
 ```
 
-The `init()` methods are retained (marked `#[doc(hidden)]`) specifically for tests.
-In production, migrations handle schema creation.
+The `init()` methods are retained (marked `#[doc(hidden)]`) specifically for
+tests. In production, migrations handle schema creation.
 
 ## Troubleshooting
 
@@ -250,8 +250,8 @@ In production, migrations handle schema creation.
 
 ### Migration Order Issues
 
-If you see foreign key errors, verify the migration order in `prepare_core.rs`. Parent
-tables must be created before child tables with FK references.
+If you see foreign key errors, verify the migration order in `prepare_core.rs`.
+Parent tables must be created before child tables with FK references.
 
 ### Checking Migration Status
 

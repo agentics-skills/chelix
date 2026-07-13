@@ -1,8 +1,8 @@
 # Browser Automation
 
 Chelix provides full browser automation via Chrome DevTools Protocol (CDP),
-enabling agents to interact with JavaScript-heavy websites, fill forms,
-click buttons, and capture screenshots.
+enabling agents to interact with JavaScript-heavy websites, fill forms, click
+buttons, and capture screenshots.
 
 ## Overview
 
@@ -42,7 +42,8 @@ faster and more lightweight.
 
 ## Configuration
 
-Browser automation is **enabled by default**. To customize, add to your `chelix.toml`:
+Browser automation is **enabled by default**. To customize, add to your
+`chelix.toml`:
 
 ```toml
 [tools.browser]
@@ -75,7 +76,8 @@ sandbox_image = "docker.io/browserless/chrome"  # Container image for sandboxed 
 
 ### Memory-Based Pool Limits
 
-By default, browser instances are limited by system memory rather than a fixed count:
+By default, browser instances are limited by system memory rather than a fixed
+count:
 
 - `max_instances = 0` (default): Unlimited instances, blocked only when memory
   exceeds `memory_limit_percent`
@@ -87,7 +89,8 @@ artificial limits, while protecting system stability when memory is constrained.
 
 ### Domain Restrictions
 
-For improved security, you can restrict which domains the browser can navigate to:
+For improved security, you can restrict which domains the browser can navigate
+to:
 
 ```toml
 [tools.browser]
@@ -106,22 +109,22 @@ also the base domain itself.
 
 ### Actions
 
-| Action | Description | Required Params |
-|--------|-------------|-----------------|
-| `navigate` | Go to a URL | `url` |
-| `snapshot` | Get DOM with element refs | - |
-| `screenshot` | Capture page image | `full_page` (optional) |
-| `click` | Click element by ref | `ref_` |
-| `type` | Type into element | `ref_`, `text` |
-| `scroll` | Scroll page/element | `x`, `y`, `ref_` (optional) |
-| `evaluate` | Run JavaScript | `code` |
-| `wait` | Wait for element | `selector` or `ref_` |
-| `get_url` | Get current URL | - |
-| `get_title` | Get page title | - |
-| `back` | Go back in history | - |
-| `forward` | Go forward in history | - |
-| `refresh` | Reload the page | - |
-| `close` | Close browser session | - |
+| Action       | Description               | Required Params             |
+| ------------ | ------------------------- | --------------------------- |
+| `navigate`   | Go to a URL               | `url`                       |
+| `snapshot`   | Get DOM with element refs | -                           |
+| `screenshot` | Capture page image        | `full_page` (optional)      |
+| `click`      | Click element by ref      | `ref_`                      |
+| `type`       | Type into element         | `ref_`, `text`              |
+| `scroll`     | Scroll page/element       | `x`, `y`, `ref_` (optional) |
+| `evaluate`   | Run JavaScript            | `code`                      |
+| `wait`       | Wait for element          | `selector` or `ref_`        |
+| `get_url`    | Get current URL           | -                           |
+| `get_title`  | Get page title            | -                           |
+| `back`       | Go back in history        | -                           |
+| `forward`    | Go forward in history     | -                           |
+| `refresh`    | Reload the page           | -                           |
+| `close`      | Close browser session     | -                           |
 
 ### Automatic Session Tracking
 
@@ -160,12 +163,11 @@ Supported values: `auto`, `chrome`, `chromium`, `edge`, `brave`, `opera`,
 `vivaldi`, `arc`, `obscura`, `lightpanda`.
 
 `auto` (default) picks the first detected installed browser. If none are
-installed, Chelix will attempt a best-effort auto-install, then retry
-detection.
+installed, Chelix will attempt a best-effort auto-install, then retry detection.
 
-`obscura` launches the Obscura sidecar binary from `obscura_path`, the
-`OBSCURA` environment variable, or `PATH`. It supports DOM-oriented browsing
-through CDP, but not pixel screenshots.
+`obscura` launches the Obscura sidecar binary from `obscura_path`, the `OBSCURA`
+environment variable, or `PATH`. It supports DOM-oriented browsing through CDP,
+but not pixel screenshots.
 
 `lightpanda` launches the Lightpanda sidecar binary from `lightpanda_path`, the
 `LIGHTPANDA` environment variable, or `PATH`. It supports DOM-oriented browsing
@@ -247,22 +249,24 @@ references. This approach provides:
 
 ## Comparison: Browser vs Web Fetch
 
-| Feature | `web_fetch` | `browser` |
-|---------|-------------|-----------|
-| Speed | Fast | Slower |
-| Resources | Minimal | Chrome instance |
-| JavaScript | No | Yes |
-| Forms/clicks | No | Yes |
-| Screenshots | No | Yes |
-| Sessions | No | Yes |
-| Use case | Static content | Interactive sites |
+| Feature      | `web_fetch`    | `browser`         |
+| ------------ | -------------- | ----------------- |
+| Speed        | Fast           | Slower            |
+| Resources    | Minimal        | Chrome instance   |
+| JavaScript   | No             | Yes               |
+| Forms/clicks | No             | Yes               |
+| Screenshots  | No             | Yes               |
+| Sessions     | No             | Yes               |
+| Use case     | Static content | Interactive sites |
 
 **When to use `web_fetch`:**
+
 - Reading documentation
 - Fetching API responses
 - Scraping static HTML
 
 **When to use `browser`:**
+
 - Logging into websites
 - Filling forms
 - Interacting with SPAs
@@ -273,27 +277,27 @@ references. This approach provides:
 
 When the `metrics` feature is enabled, the browser module records:
 
-| Metric | Description |
-|--------|-------------|
-| `chelix_browser_instances_active` | Currently running browsers |
-| `chelix_browser_instances_created_total` | Total browsers launched |
-| `chelix_browser_instances_destroyed_total` | Total browsers closed |
-| `chelix_browser_screenshots_total` | Screenshots taken |
-| `chelix_browser_navigation_duration_seconds` | Page load time histogram |
-| `chelix_browser_errors_total` | Errors by type |
+| Metric                                       | Description                |
+| -------------------------------------------- | -------------------------- |
+| `chelix_browser_instances_active`            | Currently running browsers |
+| `chelix_browser_instances_created_total`     | Total browsers launched    |
+| `chelix_browser_instances_destroyed_total`   | Total browsers closed      |
+| `chelix_browser_screenshots_total`           | Screenshots taken          |
+| `chelix_browser_navigation_duration_seconds` | Page load time histogram   |
+| `chelix_browser_errors_total`                | Errors by type             |
 
 ## Sandbox Mode
 
 Browser sandbox mode **automatically follows the session's sandbox mode**. When
-a chat session uses sandbox mode (controlled by `[sandbox]`), the
-browser tool will also run in a sandboxed container. When the session is not
-sandboxed, the browser runs directly on the host.
+a chat session uses sandbox mode (controlled by `[sandbox]`), the browser tool
+will also run in a sandboxed container. When the session is not sandboxed, the
+browser runs directly on the host.
 
 ### Host Mode
 
 When the session is not sandboxed (or sandbox mode is "off"), Chrome runs
-directly on the host machine. This is faster but the browser has full access
-to the host network and filesystem.
+directly on the host machine. This is faster but the browser has full access to
+the host network and filesystem.
 
 ### Sandbox Mode
 
@@ -310,6 +314,7 @@ sandbox_image = "docker.io/browserless/chrome"  # Container image for sandboxed 
 ```
 
 Requirements:
+
 - Docker or Apple Container must be installed and running
 - The container image is pulled automatically on first use
 - Session sandbox mode must be enabled (`[sandbox] mode = "all"`)
@@ -331,8 +336,9 @@ container_host = "host.docker.internal"   # macOS / Windows Docker Desktop
 ```
 
 On Linux, `host.docker.internal` is not available by default. Use the Docker
-bridge gateway IP (typically `172.17.0.1`) or add `--add-host=host.docker.internal:host-gateway`
-to the Chelix container's `docker run` command.
+bridge gateway IP (typically `172.17.0.1`) or add
+`--add-host=host.docker.internal:host-gateway` to the Chelix container's
+`docker run` command.
 
 ### Execute Command Scripts
 
@@ -345,7 +351,8 @@ sandbox packages:
 chromium --headless --no-sandbox --dump-dom https://example.com
 ```
 
-Or use Puppeteer/Playwright in a Node.js script executed via the `execute_command` tool.
+Or use Puppeteer/Playwright in a Node.js script executed via the
+`execute_command` tool.
 
 ## Security Considerations
 
@@ -371,8 +378,8 @@ malicious sites could attempt to inject instructions.
 
 1. **Host vs Sandbox mode**: Browser sandbox mode follows the session's sandbox
    mode. For sandboxed sessions, the browser runs in a Docker container with
-   network/filesystem isolation. For non-sandboxed sessions, the browser runs
-   on the host with `--no-sandbox` for container compatibility.
+   network/filesystem isolation. For non-sandboxed sessions, the browser runs on
+   the host with `--no-sandbox` for container compatibility.
 
 2. **Resource limits**: Browser instances are limited by memory usage (default:
    block when > 90% used). Set `max_instances > 0` for a hard limit.
@@ -381,29 +388,34 @@ malicious sites could attempt to inject instructions.
    of inactivity.
 
 4. **Network access**: In host mode, the browser has full network access. In
-   sandbox mode, the browser can reach the internet but not local services.
-   Use firewall rules for additional restrictions.
+   sandbox mode, the browser can reach the internet but not local services. Use
+   firewall rules for additional restrictions.
 
-5. **Sandbox scripts**: Browser scripts running in the command sandbox (Puppeteer,
-   Playwright) inherit `sandbox.network`, which defaults
-   to the Docker/Podman `bridge` network.
+5. **Sandbox scripts**: Browser scripts running in the command sandbox
+   (Puppeteer, Playwright) inherit `sandbox.network`, which defaults to the
+   Docker/Podman `bridge` network.
 
 ## Browser Detection
 
-Chelix automatically detects installed Chromium-based browsers in the following order:
+Chelix automatically detects installed Chromium-based browsers in the following
+order:
 
 1. **Custom path** from `chrome_path` config
 2. **CHROME environment variable**
 3. **Platform-specific app bundles** (macOS/Windows)
-   - macOS: `/Applications/Google Chrome.app`, `/Applications/Chromium.app`, etc.
+   - macOS: `/Applications/Google Chrome.app`, `/Applications/Chromium.app`,
+     etc.
    - Windows: `C:\Program Files\Google\Chrome\Application\chrome.exe`, etc.
-4. **PATH executables** (fallback): `chrome`, `chromium`, `msedge`, `brave`, etc.
+4. **PATH executables** (fallback): `chrome`, `chromium`, `msedge`, `brave`,
+   etc.
 
-If no browser is found, Chelix displays platform-specific installation instructions.
+If no browser is found, Chelix displays platform-specific installation
+instructions.
 
 ### Supported Browsers
 
 Any Chromium-based browser works:
+
 - Google Chrome
 - Chromium
 - Microsoft Edge
@@ -478,7 +490,7 @@ tool calls with missing required fields. Chelix handles this gracefully:
 
 ### Pool exhaustion
 
-- Browser tool now auto-tracks session IDs, preventing pool exhaustion from
-  LLMs that forget to pass session_id
+- Browser tool now auto-tracks session IDs, preventing pool exhaustion from LLMs
+  that forget to pass session_id
 - If you still hit limits, check `memory_limit_percent` threshold
 - Use `close` action when done to free up sessions

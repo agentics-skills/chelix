@@ -5,14 +5,14 @@ different problems, and confusing them leads to very weird debugging sessions.
 
 ## Quick Table
 
-| Surface | Purpose | Lifetime | Scope | Backing store |
-|---------|---------|----------|-------|---------------|
-| `session_state` | Short-term structured state for a session | Until the session is deleted | One session key | SQLite `session_state` table |
-| Managed user profile (`USER.md`) | User name, timezone, and optional location hints | Persistent | Whole workspace | `USER.md` in `data_dir()` plus `[user]` in `chelix.toml` |
-| Prompt memory (`MEMORY.md`) | High-signal facts injected into the system prompt | Persistent | Agent workspace | `MEMORY.md` in `data_dir()` or `agents/<id>/MEMORY.md` |
-| Searchable memory (`memory_search`) | Long-term recall without spending prompt tokens | Persistent | Agent workspace | `MEMORY.md`, `memory/*.md`, optional exported session files |
-| Sandbox data directory mount | Lets sandboxed commands read and write Chelix files | Sandbox lifetime | Agent workspace | Mandatory `data_dir()` path |
-| Sandbox home (`/home/sandbox`) | Command-side scratch files and tool caches | Depends on `home_persistence` | Shared, per-session, or none | Sandbox home volume/dir |
+| Surface                             | Purpose                                             | Lifetime                      | Scope                        | Backing store                                               |
+| ----------------------------------- | --------------------------------------------------- | ----------------------------- | ---------------------------- | ----------------------------------------------------------- |
+| `session_state`                     | Short-term structured state for a session           | Until the session is deleted  | One session key              | SQLite `session_state` table                                |
+| Managed user profile (`USER.md`)    | User name, timezone, and optional location hints    | Persistent                    | Whole workspace              | `USER.md` in `data_dir()` plus `[user]` in `chelix.toml`    |
+| Prompt memory (`MEMORY.md`)         | High-signal facts injected into the system prompt   | Persistent                    | Agent workspace              | `MEMORY.md` in `data_dir()` or `agents/<id>/MEMORY.md`      |
+| Searchable memory (`memory_search`) | Long-term recall without spending prompt tokens     | Persistent                    | Agent workspace              | `MEMORY.md`, `memory/*.md`, optional exported session files |
+| Sandbox data directory mount        | Lets sandboxed commands read and write Chelix files | Sandbox lifetime              | Agent workspace              | Mandatory `data_dir()` path                                 |
+| Sandbox home (`/home/sandbox`)      | Command-side scratch files and tool caches          | Depends on `home_persistence` | Shared, per-session, or none | Sandbox home volume/dir                                     |
 
 ## Short-Term Memory
 
@@ -30,14 +30,10 @@ snapshots that should not become part of long-term memory.
 
 Long-term memory lives in Markdown files inside the Chelix data directory.
 
-- Main agent prompt memory:
-  `~/.chelix/MEMORY.md`
-- Main agent searchable memory:
-  `~/.chelix/memory/*.md`
-- Non-main agent prompt memory:
-  `~/.chelix/agents/<agent_id>/MEMORY.md`
-- Non-main agent searchable memory:
-  `~/.chelix/agents/<agent_id>/memory/*.md`
+- Main agent prompt memory: `~/.chelix/MEMORY.md`
+- Main agent searchable memory: `~/.chelix/memory/*.md`
+- Non-main agent prompt memory: `~/.chelix/agents/<agent_id>/MEMORY.md`
+- Non-main agent searchable memory: `~/.chelix/agents/<agent_id>/memory/*.md`
 
 `USER.md` is not part of agent long-term memory. It is a managed user profile
 surface used for things like name, timezone, and cached location. Chelix also
@@ -45,8 +41,8 @@ stores the canonical user profile in `chelix.toml [user]`, then overlays
 `USER.md` when that file exists.
 
 For `main`, Chelix currently prefers `agents/main/MEMORY.md` if it exists and
-falls back to the root `MEMORY.md`. Non-main agents do not fall back to the
-root file.
+falls back to the root `MEMORY.md`. Non-main agents do not fall back to the root
+file.
 
 ## Prompt Memory Loading
 
@@ -100,12 +96,12 @@ Defaults today:
 surface:
 
 - `explicit-and-auto` allows settings saves and silent timezone/location capture
-- `explicit-only` allows settings saves, but disables silent timezone/location capture
+- `explicit-only` allows settings saves, but disables silent timezone/location
+  capture
 - `off` stops Chelix from writing `USER.md`; user profile data stays in
   `chelix.toml [user]`
 
-`memory.citations` and `memory.search_merge_strategy` are typed retrieval
-knobs:
+`memory.citations` and `memory.search_merge_strategy` are typed retrieval knobs:
 
 - `citations`: `auto`, `on`, or `off`
 - `search_merge_strategy`: `rrf` or `linear`
@@ -113,8 +109,7 @@ knobs:
 Two easy-to-miss interaction rules:
 
 - builtin embedding knobs such as `memory.provider`, `memory.base_url`,
-  `memory.model`, and `memory.api_key` do nothing while
-  `memory.backend = "qmd"`
+  `memory.model`, and `memory.api_key` do nothing while `memory.backend = "qmd"`
 - `memory.session_export` affects searchable transcript files under
   `memory/sessions/*.md`, not prompt memory injection
 
@@ -133,15 +128,15 @@ Sandboxes have two separate persistence surfaces:
 
 Those are not the same thing.
 
-If a file exists only in `/home/sandbox`, `memory_search` will not index it.
-If a file exists in the mounted Chelix data directory, it is part of Chelix's
+If a file exists only in `/home/sandbox`, `memory_search` will not index it. If
+a file exists in the mounted Chelix data directory, it is part of Chelix's
 normal memory surface, regardless of whether the command that wrote it ran in a
 sandbox or not.
 
 Sandboxed commands can modify mounted files such as `MEMORY.md` directly.
 Durable long-term memory mutations should still happen through Chelix memory
-tools such as `memory_save`, `memory_forget`, and `memory_delete`, which preserve
-the memory system's intended semantics and safeguards.
+tools such as `memory_save`, `memory_forget`, and `memory_delete`, which
+preserve the memory system's intended semantics and safeguards.
 
 ## Between Sandboxes
 

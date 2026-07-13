@@ -1,6 +1,7 @@
 # Installation
 
-Chelix is distributed as a single self-contained binary. Choose the installation method that works best for your setup.
+Chelix is distributed as a single self-contained binary. Choose the installation
+method that works best for your setup.
 
 ## Quick Install (Recommended)
 
@@ -10,17 +11,20 @@ The fastest way to get started on macOS or Linux:
 curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/install.sh | sh
 ```
 
-This downloads the latest release for your platform and installs it to `~/.local/bin`.
+This downloads the latest release for your platform and installs it to
+`~/.local/bin`.
 
 ## Docker
 
-Multi-architecture images (amd64/arm64) are published to GitHub Container Registry:
+Multi-architecture images (amd64/arm64) are published to GitHub Container
+Registry:
 
 ```bash
 docker pull ghcr.io/agentics-skills/chelix:latest
 ```
 
-See [Docker Deployment](docker.md) for full instructions on running Chelix in a container.
+See [Docker Deployment](docker.md) for full instructions on running Chelix in a
+container.
 
 ## First Run
 
@@ -32,7 +36,8 @@ chelix
 
 On first launch:
 
-1. Open `http://localhost:<port>` in your browser (the port is shown in the terminal output)
+1. Open `http://localhost:<port>` in your browser (the port is shown in the
+   terminal output)
 2. Configure your LLM provider (API key)
 3. Start chatting!
 

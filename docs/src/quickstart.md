@@ -28,11 +28,13 @@ You need an LLM provider configured to chat. The fastest options:
 ### Option A: API Key (Anthropic, OpenAI, Gemini, etc.)
 
 1. Set an API key as an environment variable and restart Chelix:
+
    ```bash
    export ANTHROPIC_API_KEY="sk-ant-..."   # Anthropic
    export OPENAI_API_KEY="sk-..."          # OpenAI
    export GEMINI_API_KEY="..."             # Google Gemini
    ```
+
 2. Models appear automatically in the model picker.
 
 Or configure via the web UI: **Settings** → **Providers** → enter your API key.
@@ -45,7 +47,7 @@ Or configure via the web UI: **Settings** → **Providers** → enter your API k
 
 See [Providers](providers.md) for the full list of supported providers.
 
-## 4. Chat!
+## 4. Chat
 
 Go to the **Chat** tab and start a conversation:
 
@@ -67,7 +69,8 @@ def is_prime(n):
 
 ### Enable Tool Use
 
-Chelix can execute code, browse the web, and more. Tools are enabled by default with sandbox protection.
+Chelix can execute code, browse the web, and more. Tools are enabled by default
+with sandbox protection.
 
 Try:
 
@@ -86,9 +89,11 @@ Chat with your agent from anywhere:
 
 ### Connect Discord
 
-1. Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications)
+1. Create a bot in the
+   [Discord Developer Portal](https://discord.com/developers/applications)
 2. Enable **Message Content Intent** and copy the bot token
-3. In Chelix: **Settings** → **Channels** → **Connect Discord** → Enter token → **Connect**
+3. In Chelix: **Settings** → **Channels** → **Connect Discord** → Enter token →
+   **Connect**
 4. Invite the bot to your server and @mention it!
 
 → [Full Discord setup guide](discord.md)
@@ -121,25 +126,27 @@ Add knowledge by placing Markdown files in `~/.chelix/memory/`.
 
 ## Useful Commands
 
-| Command | Description |
-|---------|-------------|
-| `/new` | Start a new session |
-| `/model <name>` | Switch models |
-| `/agent` | List or switch chat agents |
-| `/mode` | List or switch temporary session modes |
-| `/clear` | Clear chat history |
-| `/help` | Show available commands |
+| Command         | Description                            |
+| --------------- | -------------------------------------- |
+| `/new`          | Start a new session                    |
+| `/model <name>` | Switch models                          |
+| `/agent`        | List or switch chat agents             |
+| `/mode`         | List or switch temporary session modes |
+| `/clear`        | Clear chat history                     |
+| `/help`         | Show available commands                |
 
 ## File Locations
 
-| Path | Contents |
-|------|----------|
-| `~/.config/chelix/chelix.toml` | Configuration |
-| `~/.config/chelix/provider_keys.json` | API keys |
-| `~/.chelix/` | Data (sessions, memory, logs) |
+| Path                                  | Contents                      |
+| ------------------------------------- | ----------------------------- |
+| `~/.config/chelix/chelix.toml`        | Configuration                 |
+| `~/.config/chelix/provider_keys.json` | API keys                      |
+| `~/.chelix/`                          | Data (sessions, memory, logs) |
 
 ## Getting Help
 
 - **Documentation**: [Chelix docs](index.md)
-- **GitHub Issues**: [github.com/agentics-skills/chelix/issues](https://github.com/agentics-skills/chelix/issues)
-- **Discussions**: [github.com/agentics-skills/chelix/discussions](https://github.com/agentics-skills/chelix/discussions)
+- **GitHub Issues**:
+  [github.com/agentics-skills/chelix/issues](https://github.com/agentics-skills/chelix/issues)
+- **Discussions**:
+  [github.com/agentics-skills/chelix/discussions](https://github.com/agentics-skills/chelix/discussions)
