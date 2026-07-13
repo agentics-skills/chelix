@@ -474,18 +474,22 @@ impl TmuxTerminalManager {
         cwd: Option<&str>,
     ) -> Result<ManagedTerminal> {
         let mut panes = self.list_panes(session_key).await?;
-        let mut created_session = false;
+        let mut use_initial_pane = false;
         if panes.is_empty() {
             let session_name = default_session_name(session_key);
-            self.new_session(session_key, &session_name, cwd).await?;
-            created_session = true;
-            panes = self.list_panes(session_key).await?;
+            let recovered_panes = self.new_session(session_key, &session_name, cwd).await?;
+            use_initial_pane = true;
+            panes = if recovered_panes.is_empty() {
+                self.list_panes(session_key).await?
+            } else {
+                recovered_panes
+            };
         }
         if panes.is_empty() {
             return Err(Error::message("tmux session has no panes"));
         }
 
-        let pane = if force_new && !created_session {
+        let pane = if force_new && !use_initial_pane {
             let session = choose_active_pane(&panes)
                 .ok_or_else(|| Error::message("tmux session has no active pane"))?;
             self.new_window(session_key, &session.session_id, cwd)
@@ -523,7 +527,7 @@ impl TmuxTerminalManager {
         session_key: &str,
         session_name: &str,
         cwd: Option<&str>,
-    ) -> Result<()> {
+    ) -> Result<Vec<TmuxPaneInfo>> {
         let workspace_dir = self.sandbox_workspace_dir(session_key).await?;
         let cwd = cwd.unwrap_or(&workspace_dir);
         let args = vec![
@@ -543,12 +547,25 @@ impl TmuxTerminalManager {
             .run_tmux(session_key, &args, Duration::from_secs(10))
             .await?;
         if output.exit_code != 0 {
+            let error_text = command_error_text(&output);
+            if is_tmux_duplicate_session(&error_text) {
+                let panes = self.list_panes(session_key).await?;
+                if !panes.is_empty() {
+                    debug!(
+                        session = session_key,
+                        session_name,
+                        pane_count = panes.len(),
+                        "tmux session was created concurrently; reusing discovered pane"
+                    );
+                    return Ok(panes);
+                }
+            }
             return Err(Error::message(format!(
                 "failed to create tmux session: {}",
-                command_error_text(&output)
+                error_text
             )));
         }
-        Ok(())
+        Ok(Vec::new())
     }
 
     async fn new_window(
@@ -1504,6 +1521,10 @@ fn is_tmux_no_server(message: &str) -> bool {
             && lower.contains("no such file")
 }
 
+fn is_tmux_duplicate_session(message: &str) -> bool {
+    message.to_ascii_lowercase().contains("duplicate session")
+}
+
 fn is_tmux_missing(message: &str) -> bool {
     let lower = message.to_ascii_lowercase();
     lower.contains("tmux: command not found")
@@ -1686,6 +1707,16 @@ mod tests {
 
         assert!(is_tmux_no_server(message));
         assert!(!is_tmux_missing(message));
+    }
+
+    #[test]
+    fn tmux_duplicate_session_error_is_recognized() {
+        let message = "duplicate session: chelix-session-92cb0926-9c27-40be-915c-4dd243389a8f";
+
+        assert!(is_tmux_duplicate_session(message));
+        assert!(!is_tmux_duplicate_session(
+            "no server running on /tmp/tmux-0/default"
+        ));
     }
 
     #[test]
