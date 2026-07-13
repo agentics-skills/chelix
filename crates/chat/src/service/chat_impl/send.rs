@@ -1166,73 +1166,71 @@ impl LiveChatService {
                 agent_fut.await
             };
 
-            if assistant_text.is_some() {
-                if let Ok(count) = session_store.count(&session_key_clone).await {
-                    session_metadata.touch(&session_key_clone, count).await;
+            if assistant_text.is_some()
+                && let Ok(count) = session_store.count(&session_key_clone).await
+            {
+                session_metadata.touch(&session_key_clone, count).await;
 
-                    // ── Periodic background memory extraction ──────────────
-                    // Every `auto_extract_interval` turns, spawn a background
-                    // silent turn to save important recent context to memory.
-                    // Uses config values captured before persona was moved.
-                    let interval = auto_extract_interval;
-                    let write_mode = extraction_write_mode;
-                    // A "turn" = user + assistant = 2 messages.
-                    let turn_number = count / 2;
-                    if interval > 0
-                        && turn_number > 0
-                        && turn_number % interval == 0
-                        && !stream_only
-                        && memory_write_mode_allows_save(write_mode)
-                        && let Some(mm) = state.memory_manager()
-                    {
-                        let window = (interval as usize) * 2;
-                        let recent: Vec<serde_json::Value> =
-                            if let Ok(h) = session_store.read(&session_key_clone).await {
-                                h.into_iter()
-                                    .rev()
-                                    .take(window)
-                                    .collect::<Vec<_>>()
-                                    .into_iter()
-                                    .rev()
-                                    .collect()
-                            } else {
-                                Vec::new()
-                            };
-                        if !recent.is_empty() {
-                            let chat_msgs = values_to_chat_messages(&recent);
-                            let agent_id = session_agent_id_clone.clone();
-                            let mm = Arc::clone(mm);
-                            let prov = Arc::clone(&provider_for_extraction);
-                            tokio::spawn(async move {
-                                let writer: Arc<dyn chelix_agents::memory_writer::MemoryWriter> =
-                                    Arc::new(AgentScopedMemoryWriter::new(
-                                        mm, agent_id, write_mode,
-                                    ));
-                                match chelix_agents::silent_turn::run_silent_memory_turn_with_prompt(
-                                        prov,
-                                        &chat_msgs,
-                                        writer,
-                                        chelix_agents::silent_turn::SilentTurnPrompt::PeriodicExtract,
-                                    )
-                                    .await
-                                    {
-                                        Ok(paths) if !paths.is_empty() => {
-                                            tracing::info!(
-                                                files = paths.len(),
-                                                turn = turn_number,
-                                                "periodic memory extraction: wrote files"
-                                            );
-                                        },
-                                        Ok(_) => {},
-                                        Err(e) => {
-                                            tracing::warn!(
-                                                error = %e,
-                                                "periodic memory extraction failed"
-                                            );
-                                        },
-                                    }
-                            });
-                        }
+                // ── Periodic background memory extraction ──────────────
+                // Every `auto_extract_interval` turns, spawn a background
+                // silent turn to save important recent context to memory.
+                // Uses config values captured before persona was moved.
+                let interval = auto_extract_interval;
+                let write_mode = extraction_write_mode;
+                // A "turn" = user + assistant = 2 messages.
+                let turn_number = count / 2;
+                if interval > 0
+                    && turn_number > 0
+                    && turn_number % interval == 0
+                    && !stream_only
+                    && memory_write_mode_allows_save(write_mode)
+                    && let Some(mm) = state.memory_manager()
+                {
+                    let window = (interval as usize) * 2;
+                    let recent: Vec<serde_json::Value> =
+                        if let Ok(h) = session_store.read(&session_key_clone).await {
+                            h.into_iter()
+                                .rev()
+                                .take(window)
+                                .collect::<Vec<_>>()
+                                .into_iter()
+                                .rev()
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                    if !recent.is_empty() {
+                        let chat_msgs = values_to_chat_messages(&recent);
+                        let agent_id = session_agent_id_clone.clone();
+                        let mm = Arc::clone(mm);
+                        let prov = Arc::clone(&provider_for_extraction);
+                        tokio::spawn(async move {
+                            let writer: Arc<dyn chelix_agents::memory_writer::MemoryWriter> =
+                                Arc::new(AgentScopedMemoryWriter::new(mm, agent_id, write_mode));
+                            match chelix_agents::silent_turn::run_silent_memory_turn_with_prompt(
+                                prov,
+                                &chat_msgs,
+                                writer,
+                                chelix_agents::silent_turn::SilentTurnPrompt::PeriodicExtract,
+                            )
+                            .await
+                            {
+                                Ok(paths) if !paths.is_empty() => {
+                                    tracing::info!(
+                                        files = paths.len(),
+                                        turn = turn_number,
+                                        "periodic memory extraction: wrote files"
+                                    );
+                                },
+                                Ok(_) => {},
+                                Err(e) => {
+                                    tracing::warn!(
+                                        error = %e,
+                                        "periodic memory extraction failed"
+                                    );
+                                },
+                            }
+                        });
                     }
                 }
             }

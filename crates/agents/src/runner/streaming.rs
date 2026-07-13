@@ -137,7 +137,7 @@ pub async fn run_agent_loop_streaming_with_limits(
         });
     }
     let mut compaction_continuation_start = if limits.resume_from_history {
-        (history_len > 1).then_some(2).unwrap_or(messages.len())
+        if history_len > 1 { 2 } else { messages.len() }
     } else {
         1 + history_len
     };
@@ -662,9 +662,11 @@ pub async fn run_agent_loop_streaming_with_limits(
             );
             return Ok(finish_agent_run(
                 final_text,
-                used_fallback_text
-                    .then(|| fallback_final_text_source(last_answer_tool_call_id))
-                    .unwrap_or(FinalTextSource::NewSegment),
+                if used_fallback_text {
+                    fallback_final_text_source(last_answer_tool_call_id)
+                } else {
+                    FinalTextSource::NewSegment
+                },
                 iterations,
                 total_tool_calls,
                 &usage_accumulator,

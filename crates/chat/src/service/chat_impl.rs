@@ -401,10 +401,10 @@ impl ChatService for LiveChatService {
             self.active_reply_medium.write().await.remove(&session_key);
         }
 
-        if !ephemeral {
-            if let Ok(count) = self.session_store.count(&session_key).await {
-                self.session_metadata.touch(&session_key, count).await;
-            }
+        if !ephemeral
+            && let Ok(count) = self.session_store.count(&session_key).await
+        {
+            self.session_metadata.touch(&session_key, count).await;
         }
 
         match result {

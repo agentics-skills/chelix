@@ -549,11 +549,7 @@ impl SessionStore {
             };
             fs::create_dir_all(parent)?;
 
-            let file = OpenOptions::new()
-                .create(true)
-                .read(true)
-                .write(true)
-                .open(&path)?;
+            let file = OpenOptions::new().read(true).write(true).open(&path)?;
             let mut lock = RwLock::new(file);
             let mut guard = lock
                 .write()
@@ -1302,6 +1298,23 @@ mod tests {
             &messages[2],
             PersistedMessage::System { content, .. } if content == "after"
         ));
+    }
+
+    #[tokio::test]
+    async fn test_update_typed_at_missing_session_does_not_create_file() {
+        use crate::message::PersistedMessage;
+
+        let (store, dir) = temp_store();
+        let session_path = dir.path().join("missing.jsonl");
+
+        let result = store
+            .update_typed_at("missing", 0, |_| {
+                PersistedMessage::assistant("noop", "gpt-4.1", "openai", 1, 1, None)
+            })
+            .await;
+
+        assert!(result.is_err());
+        assert!(!session_path.exists());
     }
 
     #[tokio::test]
