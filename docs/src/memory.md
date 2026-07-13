@@ -14,7 +14,7 @@ Chelix supports two memory backends:
 |---------|----------|-----|
 | **Search Type** | Hybrid (vector + FTS5 keyword) | Hybrid (BM25 + vector + LLM reranking) |
 | **Local Embeddings** | GGUF models via llama-cpp-2 | GGUF models |
-| **Remote Embeddings** | OpenAI, Ollama, custom endpoints | Built-in |
+| **Remote Embeddings** | OpenAI and custom endpoints | Built-in |
 | **Embedding Cache** | SQLite with LRU eviction | Built-in |
 | **Batch API** | OpenAI batch (50% cost saving) | No |
 | **Circuit Breaker** | Fallback chain with auto-recovery | No |
@@ -103,7 +103,7 @@ user_profile_write_mode = "explicit-and-auto"
 # Backend: "builtin" (default) or "qmd"
 backend = "builtin"
 
-# Embedding provider for the built-in backend: "local", "ollama", "openai", "custom", or auto-detect
+# Embedding provider for the built-in backend: "local", "openai", "custom", or auto-detect
 # Ignored while backend = "qmd", but preserved for switching back later
 # Omit this field for the real default, which is auto-detect
 provider = "auto"
@@ -112,7 +112,7 @@ provider = "auto"
 disable_rag = false
 
 # Embedding API base URL (host, /v1, or full /embeddings endpoint)
-base_url = "http://localhost:11434/v1"
+base_url = "https://embeddings.example.com/v1"
 
 # Citation mode: "on", "off", or "auto"
 citations = "auto"
@@ -214,7 +214,6 @@ The built-in backend supports multiple embedding providers:
 | Provider | Model | Dimensions | Notes |
 |----------|-------|------------|-------|
 | Local (GGUF) | EmbeddingGemma-300M | 768 | Offline, ~300MB download |
-| Ollama | nomic-embed-text | 768 | Requires Ollama running |
 | OpenAI | text-embedding-3-small | 1536 | Requires API key |
 | Custom | Configurable | Varies | OpenAI-compatible endpoint |
 
@@ -417,7 +416,7 @@ is removed. It is the low-level exact-delete primitive that powers
 ├──────────────────────────────────────────────────────────────────┤
 │                    Embedding Providers                            │
 │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌───────────────┐      │
-│  │  Local  │  │ Ollama  │  │ OpenAI  │  │ Batch/Fallback│      │
+│  │  Local  │  │ OpenAI  │  │ Custom  │  │ Batch/Fallback│      │
 │  │  (GGUF) │  │         │  │         │  │               │      │
 │  └─────────┘  └─────────┘  └─────────┘  └───────────────┘      │
 └──────────────────────────────────────────────────────────────────┘
@@ -430,8 +429,8 @@ is removed. It is the low-level exact-delete primitive that powers
 1. Check status in Settings > Memory
 2. Ensure at least one embedding provider is available:
    - Local: Requires `local-embeddings` feature enabled at build
-   - Ollama: Must be running at `localhost:11434`
    - OpenAI: Requires `OPENAI_API_KEY` environment variable
+  - Custom: Requires a configured OpenAI-compatible embedding endpoint
 
 ### Search returns no results
 

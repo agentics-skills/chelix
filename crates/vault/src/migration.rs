@@ -416,7 +416,7 @@ mod tests {
         let json_path = tmp_dir.path().join("keys.json");
         let enc_path = tmp_dir.path().join("keys.json.enc");
 
-        std::fs::write(&json_path, r#"{"groq":{"apiKey":"sk-groq"}}"#).unwrap();
+        std::fs::write(&json_path, r#"{"openai":{"apiKey":"sk-openai"}}"#).unwrap();
 
         let created = encrypt_json_file(&vault, &json_path, "keys").await.unwrap();
         assert!(created);
@@ -429,10 +429,10 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert!(content.contains("sk-groq"));
+        assert!(content.contains("sk-openai"));
 
         // Update plaintext and re-encrypt — must pick up the new content.
-        std::fs::write(&json_path, r#"{"groq":{"apiKey":"sk-groq-v2"}}"#).unwrap();
+        std::fs::write(&json_path, r#"{"openai":{"apiKey":"sk-openai-v2"}}"#).unwrap();
         let created2 = encrypt_json_file(&vault, &json_path, "keys").await.unwrap();
         assert!(created2);
 
@@ -440,7 +440,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert!(content2.contains("sk-groq-v2"));
+        assert!(content2.contains("sk-openai-v2"));
     }
 
     #[tokio::test]

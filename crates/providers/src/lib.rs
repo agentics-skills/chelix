@@ -16,15 +16,12 @@ pub mod kimi_code;
 pub mod model_capabilities;
 pub mod model_catalogs;
 pub mod model_id;
-pub mod nearai;
-pub mod ollama;
 pub mod openai;
 #[cfg(feature = "provider-openai-codex")]
 pub mod openai_codex;
 #[cfg(feature = "provider-openai-codex")]
 pub mod openai_codex_image;
 pub mod openai_compat;
-pub mod opencode_zen;
 pub mod registry;
 pub mod ws_pool;
 
@@ -47,8 +44,6 @@ pub(crate) use discovered_model::{
 pub(crate) use http::{retry_after_ms_from_headers, with_retry_after_marker};
 #[allow(unused_imports)]
 pub(crate) use model_id::{MODEL_ID_NAMESPACE_SEP, namespaced_model_id, raw_model_id};
-#[allow(unused_imports)]
-pub(crate) use ollama::normalize_ollama_api_base_url;
 pub use {
     discovered_model::{DiscoveredModel, catalog_to_discovered},
     model_capabilities::{

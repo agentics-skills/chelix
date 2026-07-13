@@ -819,7 +819,7 @@ embedding_api_key = "secret-key"
 #[test]
 fn full_config_with_tool_mode() {
     let toml_str = r#"
-[providers.ollama]
+[providers.openrouter]
 enabled = true
 tool_mode = "text"
 
@@ -829,7 +829,7 @@ tool_mode = "native"
 "#;
     let config: ChelixConfig = toml::from_str(toml_str).unwrap();
     assert_eq!(
-        config.providers.get("ollama").unwrap().tool_mode,
+        config.providers.get("openrouter").unwrap().tool_mode,
         ToolMode::Text
     );
     assert_eq!(

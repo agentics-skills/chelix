@@ -147,10 +147,8 @@ pub(super) enum VoiceProviderId {
     Piper,
     Coqui,
     Whisper,
-    Groq,
     Deepgram,
     Google,
-    Mistral,
     ElevenlabsStt,
     VoxtralLocal,
     WhisperLocal,
@@ -216,13 +214,6 @@ impl VoiceProviderId {
                     "gpt-realtime-2, gpt-realtime-translate, and gpt-realtime-whisper are Realtime API models. Chelix currently records a clip and uses OpenAI's transcription endpoint for this provider.",
                 ),
             },
-            Self::Groq => VoiceProviderMeta {
-                description: "Ultra-fast Whisper inference on Groq hardware",
-                key_placeholder: Some("gsk_..."),
-                key_url: Some("https://console.groq.com/keys"),
-                key_url_label: Some("console.groq.com/keys"),
-                hint: None,
-            },
             Self::Deepgram => VoiceProviderMeta {
                 description: "Fast and accurate with Nova-3 model",
                 key_placeholder: Some("API key"),
@@ -235,13 +226,6 @@ impl VoiceProviderId {
                 key_placeholder: Some("API key"),
                 key_url: Some("https://console.cloud.google.com/apis/credentials"),
                 key_url_label: Some("console.cloud.google.com"),
-                hint: None,
-            },
-            Self::Mistral => VoiceProviderMeta {
-                description: "Fast Voxtral transcription with 13 language support",
-                key_placeholder: Some("API key"),
-                key_url: Some("https://console.mistral.ai/api-keys"),
-                key_url_label: Some("console.mistral.ai"),
                 hint: None,
             },
             Self::ElevenlabsStt => VoiceProviderMeta {
@@ -269,7 +253,7 @@ impl VoiceProviderId {
                 hint: None,
             },
             Self::VoxtralLocal => VoiceProviderMeta {
-                description: "Run Mistral's Voxtral model locally via vLLM server",
+                description: "Run a Voxtral model locally via a vLLM server",
                 key_placeholder: None,
                 key_url: None,
                 key_url_label: None,
@@ -299,10 +283,8 @@ impl VoiceProviderId {
     fn parse_stt_list_id(id: &str) -> Option<Self> {
         match id {
             "whisper" => Some(Self::Whisper),
-            "groq" => Some(Self::Groq),
             "deepgram" => Some(Self::Deepgram),
             "google" => Some(Self::Google),
-            "mistral" => Some(Self::Mistral),
             "elevenlabs" | "elevenlabs-stt" => Some(Self::ElevenlabsStt),
             "voxtral-local" => Some(Self::VoxtralLocal),
             "whisper-local" => Some(Self::WhisperLocal),
@@ -390,9 +372,7 @@ pub(super) async fn detect_voice_providers(
     let env_google_key = std::env::var("GOOGLE_API_KEY")
         .or_else(|_| std::env::var("GOOGLE_CLOUD_API_KEY"))
         .ok();
-    let env_groq_key = std::env::var("GROQ_API_KEY").ok();
     let env_deepgram_key = std::env::var("DEEPGRAM_API_KEY").ok();
-    let env_mistral_key = std::env::var("MISTRAL_API_KEY").ok();
 
     // Check for API keys from LLM providers config
     let llm_openai_key = config
@@ -401,16 +381,6 @@ pub(super) async fn detect_voice_providers(
         .and_then(|p| p.api_key.as_ref())
         .map(|k| k.expose_secret().to_string());
     let llm_openai_base_url = openai_provider_base_url(config);
-    let llm_groq_key = config
-        .providers
-        .get("groq")
-        .and_then(|p| p.api_key.as_ref())
-        .map(|k| k.expose_secret().to_string());
-    let _llm_deepseek_key = config
-        .providers
-        .get("deepseek")
-        .and_then(|p| p.api_key.as_ref())
-        .map(|k| k.expose_secret().to_string());
 
     // Check for local binaries
     let whisper_cli_available = check_binary_available("whisper-cpp")
@@ -559,24 +529,6 @@ pub(super) async fn detect_voice_providers(
             None,
         ),
         build_provider_info(
-            VoiceProviderId::Groq,
-            "Groq",
-            "stt",
-            "cloud",
-            config.voice.stt.groq.api_key.is_some()
-                || env_groq_key.is_some()
-                || llm_groq_key.is_some(),
-            config.voice.stt.groq.enabled && config.voice.stt.enabled,
-            false,
-            key_source(
-                config.voice.stt.groq.api_key.is_some(),
-                env_groq_key.is_some(),
-                llm_groq_key.is_some(),
-            ),
-            None,
-            None,
-        ),
-        build_provider_info(
             VoiceProviderId::Deepgram,
             "Deepgram",
             "stt",
@@ -603,22 +555,6 @@ pub(super) async fn detect_voice_providers(
             key_source(
                 config.voice.stt.google.api_key.is_some(),
                 env_google_key.is_some(),
-                false,
-            ),
-            None,
-            None,
-        ),
-        build_provider_info(
-            VoiceProviderId::Mistral,
-            "Mistral (Voxtral)",
-            "stt",
-            "cloud",
-            config.voice.stt.mistral.api_key.is_some() || env_mistral_key.is_some(),
-            config.voice.stt.mistral.enabled && config.voice.stt.enabled,
-            false,
-            key_source(
-                config.voice.stt.mistral.api_key.is_some(),
-                env_mistral_key.is_some(),
                 false,
             ),
             None,
@@ -1224,10 +1160,8 @@ pub(super) fn toggle_voice_provider(
         "stt" => {
             match provider {
                 "whisper" => cfg.voice.stt.whisper.enabled = enabled,
-                "groq" => cfg.voice.stt.groq.enabled = enabled,
                 "deepgram" => cfg.voice.stt.deepgram.enabled = enabled,
                 "google" => cfg.voice.stt.google.enabled = enabled,
-                "mistral" => cfg.voice.stt.mistral.enabled = enabled,
                 "elevenlabs" | "elevenlabs-stt" => {
                     cfg.voice.stt.elevenlabs.enabled = enabled;
                 },

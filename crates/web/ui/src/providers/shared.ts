@@ -34,19 +34,8 @@ export function els(): ProviderModalElements {
 
 // ── Constants ───────────────────────────────────────────────
 
-export const OPENAI_COMPATIBLE_PROVIDERS: string[] = [
-	"openai",
-	"mistral",
-	"openrouter",
-	"cerebras",
-	"minimax",
-	"moonshot",
-	"venice",
-	"nearai",
-	"ollama",
-];
+export const OPENAI_COMPATIBLE_PROVIDERS: string[] = ["openai", "openrouter", "moonshot"];
 
-export const BYOM_PROVIDERS: string[] = ["venice"];
 const VALIDATION_HINT_TEXT = "";
 const VALIDATION_PROGRESS_EVENT = "providers.validate.progress";
 
@@ -62,13 +51,6 @@ export function clearOAuthStatusTimer(): void {
 
 export function setOAuthStatusTimer(timer: ReturnType<typeof setInterval>): void {
 	oauthStatusTimer = timer;
-}
-
-// ── Modal lifecycle ─────────────────────────────────────────
-
-// Re-export for backwards compat with page-providers.js
-export function getProviderModal(): HTMLElement {
-	return els().modal;
 }
 
 // Lazy import to avoid circular dependency at module level.

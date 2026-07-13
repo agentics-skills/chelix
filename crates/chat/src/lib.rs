@@ -20,7 +20,6 @@ pub use {
     runtime::{ChatRuntime, TtsOverride},
     service::{ActiveToolCall, LiveChatService},
     types::{
-        BroadcastOpts, memory_write_mode_allows_save, model_matches_allowlist,
-        model_matches_allowlist_with_provider, normalize_model_key,
+        BroadcastOpts, memory_write_mode_allows_save, model_matches_allowlist, normalize_model_key,
     },
 };

@@ -8,7 +8,7 @@ use {
     tracing::{info, warn},
 };
 
-use super::helpers::{ensure_ollama_model, env_value_with_overrides};
+use super::helpers::env_value_with_overrides;
 
 /// Initialize the memory system (embedding providers, sync, watchers).
 ///
@@ -70,17 +70,11 @@ pub(crate) async fn init_memory_system(
                         "memory: 'local' embedding provider requires the 'local-embeddings' feature"
                     );
                 },
-                chelix_config::MemoryProvider::Ollama
-                | chelix_config::MemoryProvider::Custom
-                | chelix_config::MemoryProvider::OpenAi => {
-                    let base_url = mem_cfg.base_url.clone().unwrap_or_else(|| match provider {
-                        chelix_config::MemoryProvider::Ollama => "http://localhost:11434".into(),
-                        _ => "https://api.openai.com".into(),
-                    });
-                    if provider == chelix_config::MemoryProvider::Ollama {
-                        let model = mem_cfg.model.as_deref().unwrap_or("nomic-embed-text");
-                        ensure_ollama_model(&base_url, model).await;
-                    }
+                chelix_config::MemoryProvider::Custom | chelix_config::MemoryProvider::OpenAi => {
+                    let base_url = mem_cfg
+                        .base_url
+                        .clone()
+                        .unwrap_or_else(|| "https://api.openai.com".into());
                     let api_key = mem_cfg
                         .api_key
                         .as_ref()
@@ -98,7 +92,6 @@ pub(crate) async fn init_memory_system(
                         e = e.with_model(model.clone(), 1536);
                     }
                     let provider_name = match provider {
-                        chelix_config::MemoryProvider::Ollama => "ollama",
                         chelix_config::MemoryProvider::Custom => "custom",
                         chelix_config::MemoryProvider::OpenAi => "openai",
                         chelix_config::MemoryProvider::Local => "local",
@@ -108,41 +101,16 @@ pub(crate) async fn init_memory_system(
             }
         }
 
-        // 2. Auto-detect: try Ollama health check.
-        if embedding_providers.is_empty() {
-            let ollama_ok = reqwest::Client::new()
-                .get("http://localhost:11434/api/tags")
-                .timeout(std::time::Duration::from_secs(2))
-                .send()
-                .await
-                .is_ok();
-            if ollama_ok {
-                ensure_ollama_model("http://localhost:11434", "nomic-embed-text").await;
-                let e =
-                    chelix_memory::embeddings_openai::OpenAiEmbeddingProvider::new(String::new())
-                        .with_base_url("http://localhost:11434".into())
-                        .with_model("nomic-embed-text".into(), 768);
-                embedding_providers.push(("ollama".into(), Box::new(e)));
-                info!("memory: detected Ollama at localhost:11434");
-            }
-        }
-
-        // 3. Auto-detect: try remote API-key providers.
+        // 2. Auto-detect: try remote API-key providers.
         const EMBEDDING_CANDIDATES: &[(&str, &str, &str)] = &[
             ("openai", "OPENAI_API_KEY", "https://api.openai.com"),
-            ("mistral", "MISTRAL_API_KEY", "https://api.mistral.ai/v1"),
             (
                 "openrouter",
                 "OPENROUTER_API_KEY",
                 "https://openrouter.ai/api/v1",
             ),
-            ("groq", "GROQ_API_KEY", "https://api.groq.com/openai"),
             ("xai", "XAI_API_KEY", "https://api.x.ai"),
-            ("deepseek", "DEEPSEEK_API_KEY", "https://api.deepseek.com"),
-            ("cerebras", "CEREBRAS_API_KEY", "https://api.cerebras.ai/v1"),
-            ("minimax", "MINIMAX_API_KEY", "https://api.minimax.io/v1"),
             ("moonshot", "MOONSHOT_API_KEY", "https://api.moonshot.ai/v1"),
-            ("venice", "VENICE_API_KEY", "https://api.venice.ai/api/v1"),
         ];
 
         for (config_name, env_key, default_base) in EMBEDDING_CANDIDATES {

@@ -12,34 +12,9 @@ pub use {
 use {crate::ModelCapabilities, chelix_agents::model::ModelMetadata};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RateLimitPolicy {
-    None,
-    Mistral,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ReasoningEffortPolicy {
-    OpenAi,
-    DeepSeek,
-    Unsupported,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CacheControlPolicy {
     None,
     OpenRouterAnthropic,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProbeFallbackPolicy {
-    None,
-    OllamaNativeShow,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProbeOutputCapPolicy {
-    MaxTokens,
-    ReasoningModelsUseMaxCompletionTokens,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,46 +25,23 @@ pub(crate) enum ResponsesWebSocketPolicy {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct OpenAiProviderCapabilities {
-    pub(crate) supports_user_name: bool,
     pub(crate) default_strict_tools: bool,
-    pub(crate) omits_strict_tool_field: bool,
-    pub(crate) rejects_null_in_enums: bool,
     pub(crate) requires_gemini_tool_call_extra_content: bool,
     pub(crate) default_reasoning_content_on_tool_messages: bool,
     pub(crate) reasoning_content_model_prefixes: &'static [&'static str],
-    /// Model-id prefixes that should disable strict tool schemas.
-    ///
-    /// Checked by `needs_strict_tools()` before falling back to
-    /// `default_strict_tools`. Used for Fireworks Kimi router models
-    /// that proxy to Moonshot (which rejects strict schemas).
-    pub(crate) non_strict_tools_model_prefixes: &'static [&'static str],
-    pub(crate) system_message_rewrite: SystemMessageRewriteStrategy,
     pub(crate) qwen_models_require_single_leading_system: bool,
-    pub(crate) rate_limit_policy: RateLimitPolicy,
-    pub(crate) reasoning_effort_policy: ReasoningEffortPolicy,
     pub(crate) cache_control_policy: CacheControlPolicy,
-    pub(crate) probe_fallback_policy: ProbeFallbackPolicy,
-    pub(crate) probe_output_cap_policy: ProbeOutputCapPolicy,
     pub(crate) responses_websocket_policy: ResponsesWebSocketPolicy,
 }
 
 impl OpenAiProviderCapabilities {
     pub(crate) const DEFAULT: Self = Self {
-        supports_user_name: true,
         default_strict_tools: true,
-        omits_strict_tool_field: false,
-        rejects_null_in_enums: false,
         requires_gemini_tool_call_extra_content: false,
         default_reasoning_content_on_tool_messages: false,
         reasoning_content_model_prefixes: &[],
-        non_strict_tools_model_prefixes: &[],
-        system_message_rewrite: SystemMessageRewriteStrategy::None,
         qwen_models_require_single_leading_system: false,
-        rate_limit_policy: RateLimitPolicy::None,
-        reasoning_effort_policy: ReasoningEffortPolicy::OpenAi,
         cache_control_policy: CacheControlPolicy::None,
-        probe_fallback_policy: ProbeFallbackPolicy::None,
-        probe_output_cap_policy: ProbeOutputCapPolicy::ReasoningModelsUseMaxCompletionTokens,
         responses_websocket_policy: ResponsesWebSocketPolicy::Unsupported,
     };
 }
@@ -98,7 +50,6 @@ impl OpenAiProviderCapabilities {
 pub(crate) enum SystemMessageRewriteStrategy {
     None,
     MergeLeadingSystem,
-    InlineIntoFirstUser,
 }
 
 pub struct OpenAiProvider {

@@ -15,7 +15,6 @@ use {
         custom_providers::is_custom_provider,
         key_store::parse_models_param,
         known_providers::{AuthType, known_providers},
-        ollama::normalize_ollama_openai_base_url,
         provider_base_url::validate_provider_base_url,
     },
 };
@@ -31,7 +30,7 @@ impl LiveProviderSetupService {
             .and_then(|v| v.as_str())
             .ok_or_else(|| "missing 'provider' parameter".to_string())?;
 
-        // API key is optional for some providers (e.g., Ollama)
+        // API key is optional for some providers (e.g., local backends).
         let api_key = params.get("apiKey").and_then(|v| v.as_str());
         let base_url = params.get("baseUrl").and_then(|v| v.as_str());
         let models = parse_models_param(&params);
@@ -50,7 +49,7 @@ impl LiveProviderSetupService {
                 .ok_or_else(|| format!("unknown provider: {provider_name}"))?;
 
             // API key is required for api-key providers unless the provider
-            // marks the key as optional (Ollama, LM Studio).
+            // marks the key as optional (local backends).
             if provider.auth_type == AuthType::ApiKey && !provider.key_optional && api_key.is_none()
             {
                 return Err("missing 'apiKey' parameter".into());
@@ -61,11 +60,7 @@ impl LiveProviderSetupService {
 
         validate_provider_base_url(base_url).map_err(ServiceError::message)?;
 
-        let normalized_base_url = if provider_name == "ollama" {
-            base_url.map(|url| normalize_ollama_openai_base_url(Some(url)))
-        } else {
-            base_url.map(String::from)
-        };
+        let normalized_base_url = base_url.map(String::from);
 
         let key_store_path = self.key_store.path();
         info!(

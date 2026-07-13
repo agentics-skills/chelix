@@ -10,14 +10,14 @@ pub mod tts;
 pub use {
     config::{
         CoquiTtsConfig, DeepgramConfig, ElevenLabsConfig, ElevenLabsSttConfig, FallbackPolicy,
-        GoogleSttConfig, GoogleTtsConfig, GroqSttConfig, MistralSttConfig, OpenAiTtsConfig,
-        PiperTtsConfig, SherpaOnnxConfig, SttConfig, SttProviderId, TtsAutoMode, TtsConfig,
-        TtsProviderId, VoiceConfig, VoicePersona, VoicePersonaPrompt, VoicePersonaProviderBinding,
-        VoxtralLocalConfig, WhisperCliConfig, WhisperConfig, WhisperLocalConfig,
+        GoogleSttConfig, GoogleTtsConfig, OpenAiTtsConfig, PiperTtsConfig, SherpaOnnxConfig,
+        SttConfig, SttProviderId, TtsAutoMode, TtsConfig, TtsProviderId, VoiceConfig, VoicePersona,
+        VoicePersonaPrompt, VoicePersonaProviderBinding, VoxtralLocalConfig, WhisperCliConfig,
+        WhisperConfig, WhisperLocalConfig,
     },
     stt::{
-        DeepgramStt, ElevenLabsStt, GoogleStt, GroqStt, MistralStt, SherpaOnnxStt, SttProvider,
-        TranscribeRequest, Transcript, VoxtralLocalStt, WhisperCliStt, WhisperLocalStt, WhisperStt,
+        DeepgramStt, ElevenLabsStt, GoogleStt, SherpaOnnxStt, SttProvider, TranscribeRequest,
+        Transcript, VoxtralLocalStt, WhisperCliStt, WhisperLocalStt, WhisperStt,
     },
     tts::{
         AudioFormat, AudioOutput, CoquiTts, ElevenLabsTts, GoogleTts, OpenAiTts, PiperTts,

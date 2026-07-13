@@ -128,18 +128,15 @@ port = {port}                           # Port number (auto-generated for this i
 #   policy    - Per-provider tool policy override (allow/deny lists)
 #   model_overrides.<model_id>.context_window - Override context window for a specific model
 #   probe_timeout_secs - Timeout for completion-based model probes (default: 30s).
-#                        Increase for local LLM servers (Ollama, LM Studio) that load large models on first request.
 
 # [providers]
-# offered = ["lmstudio", "github-copilot", "openai-codex", "openai", "anthropic", "openrouter", "ollama", "moonshot", "minimax", "zai"]
+# offered = ["github-copilot", "openai-codex", "openai", "anthropic", "openrouter", "moonshot", "zai"]
                                     # Enabled providers and those shown in onboarding/picker UI ([] = enable/show all)
 # show_legacy_models = true         # Show models older than 1 year in the chat model selector (they always appear in Settings)
 # All available providers (canonical list in schema/providers.rs):
-#   "anthropic", "openai", "gemini", "groq", "xai", "deepinfra",
-#   "deepseek", "fireworks", "mistral", "openrouter", "cerebras", "minimax",
-#   "moonshot", "zai", "zai-code", "venice", "nearai", "alibaba-coding",
-#   "ollama", "lmstudio", "openai-codex",
-#   "github-copilot", "kimi-code"
+#   "anthropic", "openai", "gemini", "xai", "deepinfra",
+#   "openrouter", "moonshot", "zai", "zai-code", "alibaba-coding",
+#   "openai-codex", "github-copilot", "kimi-code"
 
 # ── Anthropic (Claude) ────────────────────────────────────────
 # [providers.anthropic]
@@ -174,13 +171,6 @@ port = {port}                           # Port number (auto-generated for this i
 # base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
 # alias = "gemini"
 
-# ── Groq ──────────────────────────────────────────────────────
-# [providers.groq]
-# enabled = true
-# api_key = "..."                             # Or set GROQ_API_KEY env var
-# models = ["llama-3.3-70b-versatile"]
-# alias = "groq"
-
 # ── DeepInfra ─────────────────────────────────────────────────
 # [providers.deepinfra]
 # enabled = true
@@ -188,23 +178,6 @@ port = {port}                           # Port number (auto-generated for this i
 # models = ["meta-llama/Llama-4-Maverick-17B-128E-Instruct"]
 # base_url = "https://api.deepinfra.com/v1/openai"
 # alias = "deepinfra"
-
-# ── DeepSeek ──────────────────────────────────────────────────
-# [providers.deepseek]
-# enabled = true
-# api_key = "..."                             # Or set DEEPSEEK_API_KEY env var
-# models = ["deepseek-chat"]
-# base_url = "https://api.deepseek.com"
-# alias = "deepseek"
-
-# ── Fireworks ────────────────────────────────────────────────
-# [providers.fireworks]
-# enabled = true
-# api_key = "..."                             # Or set FIREWORKS_API_KEY env var
-# models = ["accounts/fireworks/models/kimi-k2p5"]
-# fetch_models = true                          # Set false to skip remote discovery
-# base_url = "https://api.fireworks.ai/inference/v1"
-# alias = "fireworks"
 
 # ── xAI (Grok) ────────────────────────────────────────────────
 # [providers.xai]
@@ -227,20 +200,6 @@ port = {port}                           # Port number (auto-generated for this i
 # models = ["kimi-k2.5"]                      # Preferred models shown first
 # base_url = "https://api.moonshot.ai/v1"
 # alias = "moonshot"
-
-# ── NEAR AI Cloud ─────────────────────────────────────────────
-# [providers.nearai]
-# enabled = true
-# api_key = "..."                             # Or set NEARAI_API_KEY env var
-# models = ["zai-org/GLM-5.1-FP8"]           # Optional preferred models
-# fetch_models = true                          # Discover models from NEAR AI Cloud
-# base_url = "https://cloud-api.near.ai/v1"
-# alias = "nearai"
-
-# ── Ollama ────────────────────────────────────────────────────
-# [providers.ollama]
-# base_url = "http://localhost:11434"
-# models = ["llama3.2", "qwen2.5:7b"]         # Optional preferred models; installed models are discovered dynamically
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MODEL OVERRIDES (GLOBAL)
@@ -621,7 +580,7 @@ port = {port}                           # Port number (auto-generated for this i
 # style = "hybrid"                  # "hybrid" | "prompt-only" | "search-only" | "off"
 # agent_write_mode = "hybrid"       # "hybrid" | "prompt-only" | "search-only" | "off"
 # backend = "builtin"               # "builtin" | "qmd"
-# provider = "auto"                 # "local" | "ollama" | "openai" | "custom"
+# provider = "auto"                 # "local" | "openai" | "custom"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PHONE (Telephony Providers)

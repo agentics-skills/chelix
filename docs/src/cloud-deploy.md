@@ -37,9 +37,8 @@ deployment target with a local container runtime available to Chelix.
 ### `CHELIX_DEPLOY_PLATFORM`
 
 Set this to a non-empty label for your deployment target when Chelix runs on a
-remote container platform. When set, Chelix hides local-only LLM providers
-such as Ollama from the provider setup page since they cannot run
-on cloud VMs.
+remote container platform. When set, Chelix hides local-only provider entries
+from the provider setup page since they cannot run on cloud VMs.
 
 ## OAuth Providers (OpenAI Codex, GitHub Copilot)
 

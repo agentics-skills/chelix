@@ -9,18 +9,14 @@ use {
 
 use tracing::debug;
 
-use crate::{
-    ModelCapabilities, context_window_for_model_with_config, http::retry_after_ms_from_headers,
-};
+use crate::{ModelCapabilities, context_window_for_model_with_config};
 
 use chelix_agents::model::{
     AgentToolControls, ChatMessage, CompletionResponse, LlmProvider, ModelMetadata, StreamEvent,
     ToolChoice,
 };
 
-use super::super::{
-    OpenAiProvider, OpenAiProviderCapabilities, RateLimitPolicy, ReasoningEffortPolicy,
-};
+use super::super::{OpenAiProvider, OpenAiProviderCapabilities};
 
 impl OpenAiProvider {
     pub fn new(api_key: secrecy::Secret<String>, model: String, base_url: String) -> Self {
@@ -167,82 +163,18 @@ impl OpenAiProvider {
         self
     }
 
-    async fn wait_for_rate_limit_slot(&self) {
-        match self.capabilities.rate_limit_policy {
-            RateLimitPolicy::None => return,
-            RateLimitPolicy::Mistral => {},
-        }
-
-        static LAST_RATE_LIMITED_REQUEST: std::sync::OnceLock<
-            tokio::sync::Mutex<Option<tokio::time::Instant>>,
-        > = std::sync::OnceLock::new();
-        const MIN_INTERVAL: Duration = Duration::from_millis(1_250);
-
-        let mut last_request = LAST_RATE_LIMITED_REQUEST
-            .get_or_init(|| tokio::sync::Mutex::new(None))
-            .lock()
-            .await;
-
-        if let Some(last) = *last_request {
-            let next_allowed = last + MIN_INTERVAL;
-            if next_allowed > tokio::time::Instant::now() {
-                tokio::time::sleep_until(next_allowed).await;
-            }
-        }
-        *last_request = Some(tokio::time::Instant::now());
-    }
-
-    fn rate_limit_retry_delay(
-        &self,
-        attempt: usize,
-        headers: &reqwest::header::HeaderMap,
-    ) -> Option<Duration> {
-        match self.capabilities.rate_limit_policy {
-            RateLimitPolicy::Mistral if attempt < 2 => {},
-            RateLimitPolicy::None | RateLimitPolicy::Mistral => return None,
-        }
-
-        let retry_after = retry_after_ms_from_headers(headers)
-            .map(Duration::from_millis)
-            .unwrap_or_else(|| Duration::from_secs(2_u64.saturating_pow(attempt as u32)));
-        Some(retry_after.min(Duration::from_secs(30)))
-    }
-
     pub(crate) async fn send_chat_completions_request(
         &self,
         body: &serde_json::Value,
     ) -> reqwest::Result<reqwest::Response> {
         let url = self.chat_completions_url();
-        for attempt in 0..3 {
-            self.wait_for_rate_limit_slot().await;
-
-            let response = self
-                .client
-                .post(&url)
-                .header("Authorization", self.bearer_auth_header())
-                .header("content-type", "application/json")
-                .json(body)
-                .send()
-                .await?;
-
-            if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
-                && let Some(delay) = self.rate_limit_retry_delay(attempt, response.headers())
-            {
-                tracing::debug!(
-                    provider = %self.provider_name,
-                    model = %self.model,
-                    attempt = attempt + 1,
-                    delay_ms = delay.as_millis(),
-                    "retrying request after rate limit"
-                );
-                tokio::time::sleep(delay).await;
-                continue;
-            }
-
-            return Ok(response);
-        }
-
-        unreachable!("bounded retry loop always returns from the final attempt")
+        self.client
+            .post(&url)
+            .header("Authorization", self.bearer_auth_header())
+            .header("content-type", "application/json")
+            .json(body)
+            .send()
+            .await
     }
 
     pub(crate) fn chat_completions_url(&self) -> String {
@@ -258,30 +190,18 @@ impl OpenAiProvider {
 
     /// Return the reasoning effort string if configured.
     ///
-    /// OpenAI-compatible providers accept provider-specific reasoning effort strings.
-    /// Levels outside a provider's supported range are clamped to the nearest supported value.
+    /// Uses the OpenAI reasoning-effort vocabulary.
     pub(crate) fn reasoning_effort_str(&self) -> Option<&'static str> {
         use chelix_agents::model::ReasoningEffort;
-        match self.capabilities.reasoning_effort_policy {
-            ReasoningEffortPolicy::Unsupported => None,
-            ReasoningEffortPolicy::DeepSeek => self.reasoning_effort.map(|e| match e {
-                ReasoningEffort::None => "none",
-                ReasoningEffort::Minimal
-                | ReasoningEffort::Low
-                | ReasoningEffort::Medium
-                | ReasoningEffort::High => "high",
-                ReasoningEffort::ExtraHigh | ReasoningEffort::Max => "max",
-            }),
-            ReasoningEffortPolicy::OpenAi => self.reasoning_effort.map(|e| match e {
-                ReasoningEffort::None => "none",
-                ReasoningEffort::Minimal => "minimal",
-                ReasoningEffort::Low => "low",
-                ReasoningEffort::Medium => "medium",
-                ReasoningEffort::High => "high",
-                ReasoningEffort::ExtraHigh => "xhigh",
-                ReasoningEffort::Max => "max",
-            }),
-        }
+        self.reasoning_effort.map(|e| match e {
+            ReasoningEffort::None => "none",
+            ReasoningEffort::Minimal => "minimal",
+            ReasoningEffort::Low => "low",
+            ReasoningEffort::Medium => "medium",
+            ReasoningEffort::High => "high",
+            ReasoningEffort::ExtraHigh => "xhigh",
+            ReasoningEffort::Max => "max",
+        })
     }
 
     /// Apply `reasoning_effort` for the **Chat Completions** API (used by
@@ -291,12 +211,6 @@ impl OpenAiProvider {
     pub(crate) fn apply_reasoning_effort_chat(&self, body: &mut serde_json::Value) {
         if let Some(effort) = self.reasoning_effort_str() {
             body["reasoning_effort"] = serde_json::json!(effort);
-            if matches!(
-                self.capabilities.reasoning_effort_policy,
-                ReasoningEffortPolicy::DeepSeek
-            ) {
-                body["thinking"] = serde_json::json!({ "type": "enabled" });
-            }
         }
     }
 
@@ -359,12 +273,6 @@ impl LlmProvider for OpenAiProvider {
         self: std::sync::Arc<Self>,
         effort: chelix_agents::model::ReasoningEffort,
     ) -> Option<std::sync::Arc<dyn LlmProvider>> {
-        if matches!(
-            self.capabilities.reasoning_effort_policy,
-            ReasoningEffortPolicy::Unsupported
-        ) {
-            return None;
-        }
         let mut forked = self.fork();
         forked.reasoning_effort = Some(effort);
         Some(std::sync::Arc::new(forked))
@@ -623,42 +531,19 @@ mod tests {
     use {super::*, chelix_agents::model::ReasoningEffort, std::sync::Arc};
 
     #[test]
-    fn nearai_does_not_accept_reasoning_effort_suffixes() {
-        let provider = Arc::new(
-            OpenAiProvider::new_with_name(
-                secrecy::Secret::new("test-key".to_string()),
-                "openai/gpt-oss-120b".to_string(),
-                "https://cloud-api.near.ai/v1".to_string(),
-                "nearai".to_string(),
-            )
-            .with_capabilities(OpenAiProviderCapabilities {
-                reasoning_effort_policy: ReasoningEffortPolicy::Unsupported,
-                ..OpenAiProviderCapabilities::DEFAULT
-            }),
-        );
-
-        assert!(
-            provider
-                .with_reasoning_effort(ReasoningEffort::High)
-                .is_none(),
-            "NEAR AI Cloud does not support the OpenAI reasoning_effort field"
-        );
-    }
-
-    #[test]
-    fn custom_provider_with_nearai_url_keeps_default_reasoning_effort_support() {
+    fn reasoning_effort_can_be_set_on_openai_compatible_provider() {
         let provider = Arc::new(OpenAiProvider::new_with_name(
             secrecy::Secret::new("test-key".to_string()),
-            "openai/gpt-oss-120b".to_string(),
-            "https://cloud-api.near.ai/v1".to_string(),
-            "custom-nearai".to_string(),
+            "gpt-5.2".to_string(),
+            "https://api.openai.com/v1".to_string(),
+            "openai".to_string(),
         ));
 
         assert!(
             provider
                 .with_reasoning_effort(ReasoningEffort::High)
                 .is_some(),
-            "provider URLs must not enable provider-specific reasoning behavior"
+            "OpenAI-compatible providers accept the reasoning_effort field"
         );
     }
 }

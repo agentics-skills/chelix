@@ -3,11 +3,9 @@ use {
     crate::openai_compat::{
         SseLineResult, StreamingToolState, finalize_stream, parse_tool_calls,
         process_openai_sse_line, sanitize_schema_for_openai_compat,
-        schema_normalization::{
-            collapse_schema_unions_for_non_strict_tools, strip_null_from_typed_enums,
-        },
-        strict_mode::patch_schema_for_strict_mode,
-        strip_think_tags, to_openai_tools, to_responses_api_tools,
+        schema_normalization::collapse_schema_unions_for_non_strict_tools,
+        strict_mode::patch_schema_for_strict_mode, strip_think_tags, to_openai_tools,
+        to_responses_api_tools,
     },
     chelix_agents::model::StreamEvent,
 };
@@ -179,8 +177,8 @@ fn sanitize_draft07_schema_uses_canonicalization_not_fallback() {
         schema["properties"]["verbose"]["type"], "boolean",
         "type must be restored after canonicalization"
     );
-    // The redundant `[false, true]` enum is stripped to prevent Fireworks
-    // from receiving `null` in enum arrays during strict-mode nullability.
+    // The redundant `[false, true]` enum is stripped to prevent compatible
+    // endpoints from receiving `null` in enum arrays during strict mode.
     assert!(
         schema["properties"]["verbose"].get("enum").is_none(),
         "redundant boolean enum should be stripped (#848)"
@@ -693,13 +691,12 @@ fn non_strict_allof_collapsed_and_merged() {
     assert_no_orphaned_required(&schema, "root");
 }
 
-/// Issue #848: `json_schema_ast` canonicalization converts `"type": "boolean"`
+/// `json_schema_ast` canonicalization converts `"type": "boolean"`
 /// to `"enum": [false, true]`. `RestoreEnumTypeTransform` restores
 /// `"type": "boolean"` but leaves the redundant `enum`. Then strict mode's
 /// `make_nullable` appends `null` to the enum: `[false, true, null]`.
-/// Fireworks AI rejects this with "could not translate the enum None."
 ///
-/// The fix: `RestoreEnumTypeTransform` strips redundant `[false, true]` enum
+/// `RestoreEnumTypeTransform` strips redundant `[false, true]` enum
 /// arrays when `type: "boolean"` is restored, preventing `null` from being
 /// added to a boolean enum.
 #[test]
@@ -718,7 +715,7 @@ fn strict_mode_boolean_property_no_null_in_enum() {
         }
     })];
 
-    // strict=true (Fireworks path)
+    // strict=true
     let converted = to_openai_tools(&tools, true);
     let params = &converted[0]["function"]["parameters"];
     let serialized = params.to_string();
@@ -747,118 +744,10 @@ fn strict_mode_boolean_property_no_null_in_enum() {
     }
 }
 
-/// Issue #848: `add_null_to_enum` (PR #724) adds `null` to enum arrays
-/// for nullable optional properties in strict mode. Fireworks AI rejects
-/// `null` in ANY enum, not just boolean enums. Optional string enum
-/// properties like `{ "type": "string", "enum": ["fast", "slow"] }` get
-/// `null` appended → `["fast", "slow", null]`, triggering
-/// "could not translate the enum None."
-///
-/// The fix: providers that reject null in enums (Fireworks) apply
-/// `strip_null_from_typed_enums` after strict-mode patching. This removes
-/// `null` from enum arrays when the `type` already communicates
-/// nullability (e.g. `["string", "null"]`).
-#[test]
-fn strict_mode_fireworks_string_enum_no_null_after_strip() {
-    let tools = vec![serde_json::json!({
-        "name": "cron_tool",
-        "description": "Schedule tasks",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": ["add", "remove", "list"],
-                    "description": "The action to perform"
-                },
-                "job": {
-                    "type": "object",
-                    "properties": {
-                        "name": { "type": "string" },
-                        "session_target": {
-                            "type": "string",
-                            "enum": ["main", "isolated"]
-                        },
-                        "enabled": { "type": "boolean" },
-                        "priority": {
-                            "type": "integer",
-                            "enum": [0, 1, 2, 3]
-                        }
-                    },
-                    "required": ["name"]
-                }
-            },
-            "required": ["action"]
-        }
-    })];
-
-    // strict=true then strip nulls (Fireworks provider path)
-    let mut converted = to_openai_tools(&tools, true);
-    for tool in &mut converted {
-        if let Some(params) = tool.pointer_mut("/function/parameters") {
-            strip_null_from_typed_enums(params);
-        }
-    }
-    let params = &converted[0]["function"]["parameters"];
-
-    // After stripping, no enum array should contain null.
-    assert_no_null_in_enums(params, "parameters");
-
-    // But type-level nullability should be preserved for optional props.
-    let job = &params["properties"]["job"];
-    let job_props = &job["properties"];
-    for prop_name in ["session_target", "enabled", "priority"] {
-        let prop = &job_props[prop_name];
-        let ty = prop.get("type").and_then(|v| v.as_array());
-        assert!(
-            ty.is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some("null"))),
-            "{prop_name} type should still include null for nullability: {}",
-            serde_json::to_string_pretty(prop).unwrap_or_default()
-        );
-    }
-}
-
-/// Recursively assert no `null` value appears in any `enum` array.
-/// Fireworks AI rejects schemas where any enum variant is JSON null.
-fn assert_no_null_in_enums(schema: &serde_json::Value, path: &str) {
-    let Some(obj) = schema.as_object() else {
-        return;
-    };
-
-    if let Some(enum_arr) = obj.get("enum").and_then(|v| v.as_array()) {
-        assert!(
-            !enum_arr.iter().any(|v| v.is_null()),
-            "null in enum at {path}: {enum_arr:?}"
-        );
-    }
-
-    if let Some(props) = obj.get("properties").and_then(|v| v.as_object()) {
-        for (key, value) in props {
-            assert_no_null_in_enums(value, &format!("{path}.properties.{key}"));
-        }
-    }
-    if let Some(items) = obj.get("items") {
-        assert_no_null_in_enums(items, &format!("{path}.items"));
-    }
-    for keyword in ["anyOf", "oneOf", "allOf"] {
-        if let Some(variants) = obj.get(keyword).and_then(|v| v.as_array()) {
-            for (i, variant) in variants.iter().enumerate() {
-                assert_no_null_in_enums(variant, &format!("{path}.{keyword}[{i}]"));
-            }
-        }
-    }
-    if let Some(ap) = obj.get("additionalProperties")
-        && ap.is_object()
-    {
-        assert_no_null_in_enums(ap, &format!("{path}.additionalProperties"));
-    }
-}
-
-/// Issue #848: enum-only schemas with only `null` values (from
+/// Enum-only schemas with only `null` values (from
 /// `json_schema_ast`'s `lower_boolean_and_null_types` converting
-/// `"type": "null"` → `"enum": [null]`) should not reach Fireworks.
-/// After `RestoreEnumTypeTransform`, such schemas keep `"enum": [null]`
-/// without a type — verify they don't appear in strict-mode output.
+/// `"type": "null"` → `"enum": [null]`) should retain a valid normalized
+/// representation after `RestoreEnumTypeTransform`.
 #[test]
 fn sanitize_strips_redundant_boolean_enum() {
     let mut schema = serde_json::json!({

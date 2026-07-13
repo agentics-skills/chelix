@@ -621,11 +621,6 @@ pub(crate) fn subscription_provider_rank(provider_name: &str) -> usize {
     }
 }
 
-#[allow(dead_code)]
-pub(crate) fn is_allowlist_exempt_provider(provider_name: &str) -> bool {
-    matches!(normalize_provider_key(provider_name).as_str(), "ollama")
-}
-
 /// Returns `true` if the model matches the allowlist patterns.
 /// An empty pattern list means all models are allowed.
 /// Matching is case-insensitive against the full model ID, raw model ID, and
@@ -653,9 +648,6 @@ pub fn model_matches_allowlist(model: &chelix_providers::ModelInfo, patterns: &[
     if patterns.is_empty() {
         return true;
     }
-    if is_allowlist_exempt_provider(&model.provider) {
-        return true;
-    }
     let full = normalize_model_key(&model.id);
     let raw = normalize_model_key(chelix_providers::model_id::raw_model_id(&model.id));
     let display = normalize_model_key(&model.display_name);
@@ -664,18 +656,6 @@ pub fn model_matches_allowlist(model: &chelix_providers::ModelInfo, patterns: &[
             || allowlist_pattern_matches_key(p, &raw)
             || allowlist_pattern_matches_key(p, &display)
     })
-}
-
-#[allow(dead_code)]
-pub fn model_matches_allowlist_with_provider(
-    model: &chelix_providers::ModelInfo,
-    provider_name: Option<&str>,
-    patterns: &[String],
-) -> bool {
-    if provider_name.is_some_and(is_allowlist_exempt_provider) {
-        return true;
-    }
-    model_matches_allowlist(model, patterns)
 }
 
 pub(crate) fn provider_filter_from_params(params: &Value) -> Option<String> {

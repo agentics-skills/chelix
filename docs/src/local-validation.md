@@ -33,7 +33,6 @@ The script runs these checks:
 - `local/lint`
 - `local/test`
 - `local/e2e` — runs gateway UI Playwright coverage
-- `local/e2e-ollama` — opt-in live Ollama/Qwen Playwright regression check
 
 In PR mode, the PR workflow verifies these contexts and surfaces them as
 checks in the PR.
@@ -57,11 +56,6 @@ checks in the PR.
 - `local/e2e` auto-runs `npm ci` only when `crates/web/ui/node_modules`
   is missing, then runs `npm run e2e:install` and `npm run e2e`. Override with
   `LOCAL_VALIDATE_E2E_CMD`.
-- Enable the live Ollama/Qwen regression check with
-  `LOCAL_VALIDATE_OLLAMA_QWEN_E2E=1`. It starts a local Ollama server on
-  `CHELIX_E2E_OLLAMA_QWEN_API_PORT` (default `11435`), pulls the configured
-  Qwen model if missing, and runs the dedicated Playwright project. Override
-  the command with `LOCAL_VALIDATE_OLLAMA_QWEN_E2E_CMD`.
 
 ## Merge and release safety
 

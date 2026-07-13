@@ -12,16 +12,9 @@ Configure providers through the web UI or directly in configuration files.
 | **Anthropic** | `anthropic` | `ANTHROPIC_API_KEY` | Streaming, tools, vision |
 | **OpenAI** | `openai` | `OPENAI_API_KEY` | Streaming, tools, vision, model discovery |
 | **Google Gemini** | `gemini` | `GEMINI_API_KEY` | Streaming, tools, vision, model discovery |
-| **DeepSeek** | `deepseek` | `DEEPSEEK_API_KEY` | Streaming, tools, model discovery |
-| **Mistral** | `mistral` | `MISTRAL_API_KEY` | Streaming, tools, model discovery |
-| **Groq** | `groq` | `GROQ_API_KEY` | Streaming |
 | **xAI (Grok)** | `xai` | `XAI_API_KEY` | Streaming |
 | **OpenRouter** | `openrouter` | `OPENROUTER_API_KEY` | Streaming, tools, model discovery |
-| **Cerebras** | `cerebras` | `CEREBRAS_API_KEY` | Streaming, tools, model discovery |
-| **MiniMax** | `minimax` | `MINIMAX_API_KEY` | Streaming, tools |
 | **Moonshot (Kimi)** | `moonshot` | `MOONSHOT_API_KEY` | Streaming, tools, model discovery |
-| **Venice** | `venice` | `VENICE_API_KEY` | Streaming, tools, model discovery |
-| **NEAR AI Cloud** | `nearai` | `NEARAI_API_KEY` | Streaming, TEE-aware model discovery |
 | **Z.AI (Zhipu)** | `zai` | `Z_API_KEY` | Streaming, tools, model discovery |
 | **Z.AI Coding Plan** | `zai-code` | `Z_CODE_API_KEY` | Streaming, tools, model discovery (Coding plan billing endpoint) |
 
@@ -31,13 +24,6 @@ Configure providers through the web UI or directly in configuration files.
 |----------|-------------|-------|
 | **OpenAI Codex** | `openai-codex` | OAuth flow via web UI |
 | **GitHub Copilot** | `github-copilot` | Requires active Copilot subscription |
-
-### Local
-
-| Provider | Config Name | Notes |
-|----------|-------------|-------|
-| **Ollama** | `ollama` | Local or remote Ollama instance |
-| **LM Studio** | `lmstudio` | Local LM Studio or any OpenAI-compatible server |
 
 ### Custom OpenAI-Compatible
 
@@ -134,26 +120,6 @@ Gemini supports native tool calling, vision/multimodal inputs, streaming, and au
 1. Get an API key from [platform.openai.com](https://platform.openai.com/).
 2. Set `OPENAI_API_KEY` in your environment.
 
-### NEAR AI Cloud
-
-NEAR AI Cloud exposes an OpenAI-compatible chat completions API with a public
-model catalog that includes TEE and attestation metadata.
-The API accepts OpenAI-compatible tool schemas, but the public model catalog does
-not currently expose per-model tool capability metadata. Chelix therefore does
-not mark auto-discovered NEAR AI Cloud models as tool-capable.
-
-1. Get an API key from [cloud.near.ai](https://cloud.near.ai/).
-2. Set `NEARAI_API_KEY` in your environment.
-3. Models are discovered from `https://cloud-api.near.ai/v1/model/list`.
-
-```toml
-[providers.nearai]
-enabled = true
-models = ["zai-org/GLM-5.1-FP8"]
-# api_key = "..."                    # Or set NEARAI_API_KEY
-# base_url = "https://cloud-api.near.ai/v1"
-```
-
 ### OpenAI Codex
 
 OpenAI Codex uses OAuth-based access.
@@ -208,27 +174,6 @@ docker exec -it chelix chelix auth login --provider github-copilot
 
 ```admonish info
 Requires an active GitHub Copilot subscription.
-```
-
-### Ollama
-
-Ollama auto-detects when running at `http://127.0.0.1:11434`. No API key needed.
-
-```toml
-[providers.ollama]
-enabled = true
-# base_url = "http://127.0.0.1:11434/v1"  # Override for remote Ollama
-```
-
-### LM Studio
-
-LM Studio auto-detects when running at `http://127.0.0.1:1234`. No API key needed.
-Also works with any OpenAI-compatible local server.
-
-```toml
-[providers.lmstudio]
-enabled = true
-# base_url = "http://127.0.0.1:1234/v1"  # Override for different port/host
 ```
 
 ## Switching Models

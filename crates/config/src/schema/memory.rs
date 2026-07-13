@@ -19,19 +19,19 @@ pub struct MemoryEmbeddingConfig {
     pub user_profile_write_mode: UserProfileWriteMode,
     /// Memory backend used for search, retrieval, and indexing.
     pub backend: MemoryBackend,
-    /// Embedding provider: "local", "ollama", "openai", "custom", or None for auto-detect.
+    /// Embedding provider: "local", "openai", "custom", or None for auto-detect.
     #[serde(alias = "embedding_provider")]
     pub provider: Option<MemoryProvider>,
     /// Disable RAG embeddings and force keyword-only memory search.
     #[serde(default)]
     pub disable_rag: bool,
-    /// Base URL for the embedding API (e.g. "http://localhost:11434/v1" for Ollama).
+    /// Base URL for the embedding API (e.g. "https://api.openai.com/v1").
     #[serde(alias = "embedding_base_url")]
     pub base_url: Option<String>,
-    /// Model name (e.g. "nomic-embed-text" for Ollama, "text-embedding-3-small" for OpenAI).
+    /// Model name (e.g. "text-embedding-3-small" for OpenAI).
     #[serde(alias = "embedding_model")]
     pub model: Option<String>,
-    /// API key (optional for local endpoints like Ollama).
+    /// API key (optional for local endpoints).
     #[serde(
         default,
         alias = "embedding_api_key",
@@ -183,8 +183,6 @@ pub enum MemoryCitationsMode {
 pub enum MemoryProvider {
     /// Built-in local GGUF embeddings.
     Local,
-    /// Ollama embedding API.
-    Ollama,
     /// OpenAI embedding API.
     #[serde(rename = "openai")]
     OpenAi,

@@ -715,15 +715,6 @@ pub(super) fn build_schema_map() -> KnownKeys {
                             ])),
                         ),
                         (
-                            "groq",
-                            Struct(HashMap::from([
-                                ("enabled", Leaf),
-                                ("api_key", Leaf),
-                                ("model", Leaf),
-                                ("language", Leaf),
-                            ])),
-                        ),
-                        (
                             "deepgram",
                             Struct(HashMap::from([
                                 ("enabled", Leaf),
@@ -739,15 +730,6 @@ pub(super) fn build_schema_map() -> KnownKeys {
                                 ("enabled", Leaf),
                                 ("api_key", Leaf),
                                 ("language_code", Leaf),
-                            ])),
-                        ),
-                        (
-                            "mistral",
-                            Struct(HashMap::from([
-                                ("enabled", Leaf),
-                                ("api_key", Leaf),
-                                ("model", Leaf),
-                                ("language", Leaf),
                             ])),
                         ),
                         (

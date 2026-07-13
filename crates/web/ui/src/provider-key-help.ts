@@ -31,33 +31,13 @@ const KEY_SOURCE_BY_PROVIDER: Record<string, KeySource> = {
 		url: "https://aistudio.google.com/app/apikey",
 		label: "Google AI Studio",
 	},
-	groq: {
-		url: "https://console.groq.com/keys",
-		label: "Groq Console",
-	},
 	xai: {
 		url: "https://console.x.ai/",
 		label: "xAI Console",
 	},
-	deepseek: {
-		url: "https://platform.deepseek.com/api_keys",
-		label: "DeepSeek Platform",
-	},
-	mistral: {
-		url: "https://console.mistral.ai/api-keys/",
-		label: "Mistral Console",
-	},
 	openrouter: {
 		url: "https://openrouter.ai/settings/keys",
 		label: "OpenRouter Settings",
-	},
-	cerebras: {
-		url: "https://cloud.cerebras.ai/",
-		label: "Cerebras Cloud",
-	},
-	minimax: {
-		url: "https://www.minimax.io/platform",
-		label: "MiniMax Platform",
 	},
 	moonshot: {
 		url: "https://platform.moonshot.ai/console/api-keys",
@@ -66,14 +46,6 @@ const KEY_SOURCE_BY_PROVIDER: Record<string, KeySource> = {
 	"kimi-code": {
 		url: "https://www.kimi.com/code/console",
 		label: "Kimi Code Console",
-	},
-	venice: {
-		url: "https://venice.ai/settings/api-keys",
-		label: "Venice Settings",
-	},
-	nearai: {
-		url: "https://cloud.near.ai",
-		label: "NEAR AI Cloud",
 	},
 };
 

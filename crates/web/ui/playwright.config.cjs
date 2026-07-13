@@ -62,7 +62,6 @@ function defaultSpecFiles() {
 		/onboarding-auth\.spec\.js$/,
 		/onboarding-anthropic\.spec\.js$/,
 		/openai-live\.spec\.js$/,
-		/ollama-qwen-live\.spec\.js$/,
 		/oauth\.spec\.js$/,
 		/remote-sandbox-live\.spec\.js$/,
 	];
@@ -148,10 +147,6 @@ const openaiLivePort = resolvePort("CHELIX_E2E_OPENAI_LIVE_PORT", usedPorts);
 const openaiLiveBaseURL = process.env.CHELIX_E2E_OPENAI_LIVE_BASE_URL || `http://127.0.0.1:${openaiLivePort}`;
 const openAiLiveKey = process.env.CHELIX_E2E_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "";
 const enableOpenAiLiveProject = openAiLiveKey !== "";
-const ollamaQwenLiveEnabled = process.env.CHELIX_E2E_OLLAMA_QWEN_LIVE === "1";
-const ollamaQwenLivePort = resolvePort("CHELIX_E2E_OLLAMA_QWEN_LIVE_PORT", usedPorts);
-const ollamaQwenLiveBaseURL =
-	process.env.CHELIX_E2E_OLLAMA_QWEN_LIVE_BASE_URL || `http://127.0.0.1:${ollamaQwenLivePort}`;
 // Reliability first: fresh local gateway instances by default avoid
 // hidden cross-run state leaks. Set CHELIX_E2E_REUSE_SERVER=1 to trade
 // determinism for faster startup in ad-hoc local runs.
@@ -164,7 +159,6 @@ const defaultProjectIgnore = [
 	/onboarding-auth\.spec/,
 	/onboarding-anthropic\.spec/,
 	/openai-live\.spec/,
-	/ollama-qwen-live\.spec/,
 	/oauth\.spec/,
 	/remote-sandbox-live\.spec/,
 ];
@@ -269,16 +263,6 @@ if (enableOpenAiLiveProject && includeProject("openai-live")) {
 		testMatch: /openai-live\.spec/,
 		use: {
 			baseURL: openaiLiveBaseURL,
-		},
-	});
-}
-
-if (ollamaQwenLiveEnabled && includeProject("ollama-qwen-live")) {
-	projects.push({
-		name: "ollama-qwen-live",
-		testMatch: /ollama-qwen-live\.spec/,
-		use: {
-			baseURL: ollamaQwenLiveBaseURL,
 		},
 	});
 }
@@ -403,20 +387,6 @@ if (enableOpenAiLiveProject && includeProject("openai-live")) {
 		env: {
 			...process.env,
 			CHELIX_E2E_OPENAI_LIVE_PORT: openaiLivePort,
-		},
-	});
-}
-
-if (ollamaQwenLiveEnabled && includeProject("ollama-qwen-live")) {
-	webServer.push({
-		command: "./e2e/start-gateway-ollama-qwen-live.sh",
-		cwd: __dirname,
-		url: `${ollamaQwenLiveBaseURL}/health`,
-		reuseExistingServer: reuseExistingServer,
-		timeout: 60_000,
-		env: {
-			...process.env,
-			CHELIX_E2E_OLLAMA_QWEN_LIVE_PORT: ollamaQwenLivePort,
 		},
 	});
 }

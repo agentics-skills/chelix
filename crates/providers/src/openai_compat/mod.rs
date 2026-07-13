@@ -20,7 +20,6 @@ pub use {
         split_responses_instructions_and_input, strip_think_tags, to_openai_tools,
         to_responses_api_tools, to_responses_input,
     },
-    schema_normalization::strip_null_from_typed_enums,
     strict_mode::patch_schema_for_strict_mode,
 };
 

@@ -84,7 +84,7 @@ enabled = true
 [providers.openai]
 enabled = true
 
-[providers.ollama]
+[providers.openrouter]
 enabled = true
 "#;
     let result = validate_toml_str(toml);
@@ -190,7 +190,7 @@ enabled = true
 #[test]
 fn tool_mode_field_accepted_in_provider_entry() {
     let toml = r#"
-[providers.ollama]
+[providers.openrouter]
 enabled = true
 tool_mode = "text"
 "#;
@@ -209,7 +209,7 @@ tool_mode = "text"
 #[test]
 fn url_field_accepted_in_provider_entry() {
     let toml = r#"
-[providers.ollama]
+[providers.openrouter]
 enabled = true
 url = "http://192.168.0.9:11434"
 "#;
@@ -217,7 +217,7 @@ url = "http://192.168.0.9:11434"
     let unknown = result
         .diagnostics
         .iter()
-        .find(|d| d.category == "unknown-field" && d.path.contains("providers.ollama.url"));
+        .find(|d| d.category == "unknown-field" && d.path.contains("providers.openrouter.url"));
     assert!(
         unknown.is_none(),
         "url should be accepted as a provider field alias, got: {:?}",

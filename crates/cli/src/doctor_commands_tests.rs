@@ -81,34 +81,19 @@ fn check_providers_with_config_key() {
 fn check_providers_missing_key_warns() {
     let mut config = ChelixConfig::default();
     config.providers.providers.insert(
-        "minimax".to_string(),
+        "openrouter".to_string(),
         chelix_config::schema::ProviderEntry::default(),
     );
 
-    if std::env::var("MINIMAX_API_KEY").is_err() {
+    if std::env::var("OPENROUTER_API_KEY").is_err() {
         let section = check_providers(&config);
-        let item = section.items.iter().find(|i| i.message.contains("minimax"));
+        let item = section
+            .items
+            .iter()
+            .find(|i| i.message.contains("openrouter"));
         assert!(item.is_some());
         assert_eq!(item.unwrap().status, Status::Warn);
     }
-}
-
-#[test]
-fn check_providers_ollama_optional() {
-    let mut config = ChelixConfig::default();
-    config.providers.providers.insert(
-        "ollama".to_string(),
-        chelix_config::schema::ProviderEntry::default(),
-    );
-
-    let section = check_providers(&config);
-    let ollama_item = section.items.iter().find(|i| i.message.contains("ollama"));
-    assert!(ollama_item.is_some());
-    let status = ollama_item.unwrap().status;
-    assert!(
-        status == Status::Info || status == Status::Ok,
-        "ollama should be Info or Ok, got {status:?}",
-    );
 }
 
 #[test]

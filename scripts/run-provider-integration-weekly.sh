@@ -82,40 +82,18 @@ run_openai_live_e2e() {
   (cd crates/web/ui && CI=true npx playwright test --project=openai-live e2e/specs/openai-live.spec.js)
 }
 
-run_ollama_qwen_live_e2e() {
-  if ! command -v ollama >/dev/null 2>&1; then
-    echo "==> ollama-qwen-live-e2e: skipped (ollama is not installed)"
-    return 0
-  fi
-
-  prepare_web_e2e
-  (
-    cd crates/web/ui
-    CI=true \
-      CHELIX_E2E_OLLAMA_QWEN_LIVE=1 \
-      CHELIX_E2E_OLLAMA_QWEN_MODEL="${CHELIX_E2E_OLLAMA_QWEN_MODEL:-qwen2.5:0.5b}" \
-      npx playwright test --project=ollama-qwen-live e2e/specs/ollama-qwen-live.spec.js
-  )
-}
-
 echo "Running full provider integration workflow locally..."
 
-run_provider_test minimax minimax_integration MINIMAX_API_KEY
 run_provider_test moonshot moonshot_integration MOONSHOT_API_KEY
-run_provider_test fireworks fireworks_integration FIREWORKS_API_KEY
 run_provider_test anthropic anthropic_integration ANTHROPIC_API_KEY
 run_provider_test openai openai_integration OPENAI_API_KEY
-run_provider_test nearai nearai_integration NEARAI_API_KEY
-run_provider_test mistral mistral_integration MISTRAL_API_KEY
 run_provider_test openrouter openrouter_integration OPENROUTER_API_KEY
 run_provider_test kimi-code kimi_code_integration KIMI_API_KEY
-run_provider_test deepseek deepseek_integration DEEPSEEK_API_KEY
 run_provider_test gemini gemini_integration GEMINI_API_KEY
 run_provider_test zai zai_integration Z_API_KEY
 
 run_step "provider-e2e-scenarios" ./scripts/run-provider-e2e-daily.sh
 run_step "openai-live-e2e" run_openai_live_e2e
-run_step "ollama-qwen-live-e2e" run_ollama_qwen_live_e2e
 
 if [[ "$failures" -gt 0 ]]; then
   code_failures=$((failures - external_failures))

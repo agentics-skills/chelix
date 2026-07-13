@@ -7,7 +7,6 @@ mod custom_providers;
 mod key_store;
 mod known_providers;
 mod oauth;
-mod ollama;
 mod provider_base_url;
 mod service;
 

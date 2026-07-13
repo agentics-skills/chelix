@@ -201,8 +201,7 @@ pub(crate) async fn run_streaming(
 
     // Fold datetime into the user message content so the message array before
     // it stays positionally stable, preserving KV cache prefix matching for
-    // local LLMs (Ollama, LM Studio) and prompt-cache hits for
-    // cloud providers.
+    // local OpenAI-compatible endpoints and prompt-cache hits for cloud providers.
     let effective_user_content =
         chelix_agents::prompt::prepend_datetime_to_user_content(user_content, runtime_context)
             .unwrap_or_else(|| user_content.clone());

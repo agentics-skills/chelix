@@ -14,10 +14,6 @@ use {
         custom_providers::{is_custom_provider, validation_provider_name_for_endpoint},
         key_store::parse_models_param,
         known_providers::{AuthType, KnownProvider, known_providers},
-        ollama::{
-            discover_ollama_models, normalize_ollama_api_base_url, normalize_ollama_model_id,
-            normalize_ollama_openai_base_url, ollama_model_matches, ollama_models_payload,
-        },
         provider_base_url::validate_provider_base_url,
     },
 };
@@ -58,7 +54,7 @@ impl LiveProviderSetupService {
                 .find(|p| p.name == provider_name)
                 .ok_or_else(|| format!("unknown provider: {provider_name}"))?;
             // API key is required for api-key providers unless the provider
-            // marks the key as optional (Ollama, LM Studio).
+            // marks the key as optional (local backends).
             if info.auth_type == AuthType::ApiKey && !info.key_optional && api_key.is_none() {
                 return Err("missing 'apiKey' parameter".into());
             }
@@ -100,18 +96,6 @@ impl LiveProviderSetupService {
         )
         .await;
 
-        // Ollama supports native model discovery through /api/tags.
-        if provider_name == "ollama" {
-            return self
-                .validate_ollama(
-                    &validation_provider_name,
-                    request_id.as_deref(),
-                    effective_base_url.or(provider_info.as_ref().and_then(|p| p.default_base_url)),
-                    selected_model,
-                )
-                .await;
-        }
-
         // Custom OpenAI-compatible providers: discover models via /v1/models
         // when no model is specified.
         if is_custom && selected_model.is_none() {
@@ -126,11 +110,7 @@ impl LiveProviderSetupService {
                 .await;
         }
 
-        let normalized_base_url = if provider_name == "ollama" {
-            effective_base_url.map(|url| normalize_ollama_openai_base_url(Some(url)))
-        } else {
-            effective_base_url.map(String::from)
-        };
+        let normalized_base_url = effective_base_url.map(String::from);
 
         // Build a temporary ProvidersConfig with just this provider.
         let mut temp_config = chelix_config::schema::ProvidersConfig::default();
@@ -210,111 +190,6 @@ impl LiveProviderSetupService {
         Ok(serde_json::json!({
             "valid": true,
             "models": model_list,
-        }))
-    }
-
-    /// Validate Ollama provider using native model discovery.
-    async fn validate_ollama(
-        &self,
-        validation_provider_name: &str,
-        request_id: Option<&str>,
-        base_url: Option<&str>,
-        selected_model: Option<&str>,
-    ) -> ServiceResult {
-        let ollama_api_base = normalize_ollama_api_base_url(base_url);
-        let discovered_models = match discover_ollama_models(&ollama_api_base).await {
-            Ok(models) => models,
-            Err(error) => {
-                let error = error.to_string();
-                self.emit_validation_progress(
-                    validation_provider_name,
-                    request_id,
-                    "error",
-                    progress_payload(serde_json::json!({
-                        "message": error.clone(),
-                    })),
-                )
-                .await;
-                return Ok(serde_json::json!({
-                    "valid": false,
-                    "error": error,
-                }));
-            },
-        };
-
-        if discovered_models.is_empty() {
-            let error = "No Ollama models found. Install one first with `ollama pull <model>`.";
-            self.emit_validation_progress(
-                validation_provider_name,
-                request_id,
-                "error",
-                progress_payload(serde_json::json!({
-                    "message": error,
-                })),
-            )
-            .await;
-            return Ok(serde_json::json!({
-                "valid": false,
-                "error": error,
-            }));
-        }
-
-        let models_payload = if let Some(requested_model) = selected_model {
-            let requested_model = normalize_ollama_model_id(requested_model.trim());
-            let installed = discovered_models
-                .iter()
-                .any(|installed_model| ollama_model_matches(installed_model, requested_model));
-            if !installed {
-                let error = format!(
-                    "Model '{requested_model}' is not installed in Ollama. Install it with `ollama pull {requested_model}`."
-                );
-                self.emit_validation_progress(
-                    validation_provider_name,
-                    request_id,
-                    "error",
-                    progress_payload(serde_json::json!({
-                        "message": error.clone(),
-                    })),
-                )
-                .await;
-                return Ok(serde_json::json!({
-                    "valid": false,
-                    "error": error,
-                }));
-            }
-            discovered_models
-                .iter()
-                .map(|installed_model| {
-                    let response_model = if ollama_model_matches(installed_model, requested_model) {
-                        requested_model
-                    } else {
-                        installed_model.as_str()
-                    };
-                    serde_json::json!({
-                        "id": format!("ollama::{response_model}"),
-                        "displayName": response_model,
-                        "provider": "ollama",
-                        "supportsTools": true,
-                    })
-                })
-                .collect()
-        } else {
-            ollama_models_payload(&discovered_models)
-        };
-
-        self.emit_validation_progress(
-            validation_provider_name,
-            request_id,
-            "complete",
-            progress_payload(serde_json::json!({
-                "message": "Discovered installed Ollama models.",
-                "modelCount": discovered_models.len(),
-            })),
-        )
-        .await;
-        Ok(serde_json::json!({
-            "valid": true,
-            "models": models_payload,
         }))
     }
 

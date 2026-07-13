@@ -45,7 +45,7 @@ pub struct NodeInfo {
     pub providers: Vec<NodeProviderInfo>,
 }
 
-/// A provider discovered on a remote node (e.g. ollama, openai env key).
+/// A provider discovered on a remote node (e.g. an OpenAI environment key).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeProviderInfo {
     pub provider: String,

@@ -34,11 +34,11 @@ When disabled:
 ├─────────────────────────────────────────────────────────────┤
 │  TtsProvider trait         │  SttProvider trait             │
 │  ├─ ElevenLabsTts          │  ├─ WhisperStt (OpenAI)        │
-│  ├─ OpenAiTts              │  ├─ GroqStt (Groq)             │
-│  ├─ GoogleTts              │  ├─ DeepgramStt                │
-│  ├─ PiperTts (local)       │  ├─ GoogleStt                  │
-│  └─ CoquiTts (local)       │  ├─ MistralStt                 │
-│                            │  ├─ VoxtralLocalStt (local)    │
+│  ├─ OpenAiTts              │  ├─ DeepgramStt                │
+│  ├─ GoogleTts              │  ├─ GoogleStt                  │
+│  ├─ PiperTts (local)       │  ├─ ElevenLabsStt              │
+│  └─ CoquiTts (local)       │  ├─ VoxtralLocalStt (local)    │
+│                            │  ├─ WhisperLocalStt (local)    │
 │                            │  ├─ WhisperCliStt (local)      │
 │                            │  └─ SherpaOnnxStt (local)      │
 └─────────────────────────────────────────────────────────────┘
@@ -424,11 +424,6 @@ providers = []          # Optional UI allowlist, empty = show all STT providers
 model = "whisper-1"  # or "gpt-4o-transcribe", "gpt-4o-mini-transcribe"
 language = "en"     # Optional ISO 639-1 hint
 
-[voice.stt.groq]
-api_key = "gsk_..."
-model = "whisper-large-v3-turbo"  # default
-language = "en"
-
 [voice.stt.deepgram]
 api_key = "..."
 model = "nova-3"  # default
@@ -440,11 +435,6 @@ api_key = "..."
 language = "en-US"
 # model = "latest_long"  # optional
 
-[voice.stt.mistral]
-api_key = "..."
-model = "voxtral-mini-latest"  # default
-language = "en"
-
 # Local providers - no API key, requires server or binary
 
 # Voxtral local via vLLM server
@@ -452,6 +442,11 @@ language = "en"
 # endpoint = "http://localhost:8000"  # default vLLM endpoint
 # model = "mistralai/Voxtral-Mini-3B-2507"  # optional, server default
 # language = "en"  # optional
+
+[voice.stt.whisper_local]
+# endpoint = "http://localhost:8080"  # OpenAI-compatible server
+# model = "whisper-1"
+# language = "en"
 
 [voice.stt.whisper_cli]
 # binary_path = "/usr/local/bin/whisper-cli"  # optional, searches PATH
@@ -581,11 +576,11 @@ List available STT providers.
 ```json
 [
   { "id": "whisper", "name": "OpenAI Whisper", "configured": true },
-  { "id": "groq", "name": "Groq", "configured": false },
   { "id": "deepgram", "name": "Deepgram", "configured": false },
   { "id": "google", "name": "Google Cloud", "configured": false },
-  { "id": "mistral", "name": "Mistral AI", "configured": false },
+  { "id": "elevenlabs-stt", "name": "ElevenLabs Scribe", "configured": false },
   { "id": "voxtral-local", "name": "Voxtral (Local)", "configured": false },
+  { "id": "whisper-local", "name": "Whisper (Local)", "configured": false },
   { "id": "whisper-cli", "name": "whisper.cpp", "configured": false },
   { "id": "sherpa-onnx", "name": "sherpa-onnx", "configured": false }
 ]
@@ -634,10 +629,11 @@ Change the active STT provider.
 
 **Request:**
 ```json
-{ "provider": "groq" }
+{ "provider": "deepgram" }
 ```
 
-Valid provider IDs: `whisper`, `groq`, `deepgram`, `google`, `mistral`, `voxtral-local`, `whisper-cli`, `sherpa-onnx`
+Valid provider IDs: `whisper`, `deepgram`, `google`, `elevenlabs-stt`,
+`voxtral-local`, `whisper-local`, `whisper-cli`, `sherpa-onnx`.
 
 ## Code Structure
 
@@ -657,11 +653,11 @@ src/
 └── stt/
     ├── mod.rs          # SttProvider trait, Transcript types
     ├── whisper.rs      # OpenAI Whisper implementation
-    ├── groq.rs         # Groq Whisper implementation
     ├── deepgram.rs     # Deepgram implementation
     ├── google.rs       # Google Cloud Speech-to-Text
-    ├── mistral.rs      # Mistral AI Voxtral cloud implementation
+    ├── elevenlabs.rs   # ElevenLabs Scribe implementation
     ├── voxtral_local.rs # Voxtral via local vLLM server
+    ├── whisper_local.rs # Whisper via local OpenAI-compatible server
     ├── cli_utils.rs    # Shared utilities for CLI providers
     ├── whisper_cli.rs  # whisper.cpp CLI wrapper
     └── sherpa_onnx.rs  # sherpa-onnx CLI wrapper

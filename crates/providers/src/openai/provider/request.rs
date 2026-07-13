@@ -89,17 +89,6 @@ impl OpenAiProvider {
         if let Some(explicit) = self.strict_tools_override {
             return explicit;
         }
-        if !self.capabilities.non_strict_tools_model_prefixes.is_empty() {
-            let raw_model = raw_model_id(&self.model).to_ascii_lowercase();
-            if self
-                .capabilities
-                .non_strict_tools_model_prefixes
-                .iter()
-                .any(|prefix| raw_model.starts_with(prefix))
-            {
-                return false;
-            }
-        }
         self.capabilities.default_strict_tools
     }
 
@@ -121,49 +110,10 @@ impl OpenAiProvider {
         self.capabilities.requires_gemini_tool_call_extra_content
     }
 
-    /// Whether this provider rejects `null` in JSON Schema `enum` arrays.
-    ///
-    /// Fireworks AI returns 400 "could not translate the enum None" when
-    /// any tool schema contains `null` in an `enum` array. For these
-    /// providers, `strip_null_from_typed_enums` is applied after strict-mode
-    /// patching so type-level nullability (`["string", "null"]`) remains
-    /// but the redundant null is removed from enum arrays (issue #848).
-    fn rejects_null_in_enums(&self) -> bool {
-        self.capabilities.rejects_null_in_enums
-    }
-
-    fn omits_strict_tool_field(&self) -> bool {
-        self.capabilities.omits_strict_tool_field
-    }
-
     /// Convert raw tool schemas into the provider-compatible Chat
-    /// Completions format, applying all provider-specific post-processing.
-    ///
-    /// Centralises strict-mode patching, null-enum stripping, and any
-    /// future provider quirks so callers (streaming, completion) don't
-    /// duplicate the logic.
+    /// Completions format.
     pub(super) fn prepare_chat_tools(&self, tools: &[serde_json::Value]) -> Vec<serde_json::Value> {
-        let mut converted = crate::openai_compat::to_openai_tools(tools, self.needs_strict_tools());
-
-        if self.rejects_null_in_enums() {
-            for tool in &mut converted {
-                if let Some(params) = tool.pointer_mut("/function/parameters") {
-                    crate::openai_compat::strip_null_from_typed_enums(params);
-                }
-            }
-        }
-        if self.omits_strict_tool_field() {
-            for tool in &mut converted {
-                if let Some(function) = tool
-                    .get_mut("function")
-                    .and_then(serde_json::Value::as_object_mut)
-                {
-                    function.remove("strict");
-                }
-            }
-        }
-
-        converted
+        crate::openai_compat::to_openai_tools(tools, self.needs_strict_tools())
     }
 
     /// Some backends ship chat templates that only accept a single system
@@ -182,15 +132,10 @@ impl OpenAiProvider {
         if self.requires_single_leading_system_message() {
             return SystemMessageRewriteStrategy::MergeLeadingSystem;
         }
-        self.capabilities.system_message_rewrite
+        SystemMessageRewriteStrategy::None
     }
 
     /// Rewrite system messages for providers with stricter chat template rules.
-    ///
-    /// MiniMax's `/v1/chat/completions` endpoint returns error 2013 for
-    /// `role: "system"` entries and silently ignores a top-level `"system"`
-    /// field. The only reliable way to deliver the system prompt is to
-    /// inline it into the first user message.
     ///
     /// Qwen-based OpenAI-compatible backends often only accept a single system
     /// message at the very front. For those, join all system messages with
@@ -230,53 +175,14 @@ impl OpenAiProvider {
         }
         let system_text = system_parts.join("\n\n");
 
-        if matches!(
-            rewrite_strategy,
-            SystemMessageRewriteStrategy::MergeLeadingSystem
-        ) {
-            messages.insert(
-                0,
-                serde_json::json!({
-                    "role": "system",
-                    "content": system_text,
-                }),
-            );
-            return;
-        }
-
-        // Find the first user message and prepend system content to it.
-        let system_block =
-            format!("[System Instructions]\n{system_text}\n[End System Instructions]\n\n");
-        if let Some(first_user) = messages
-            .iter_mut()
-            .find(|m| m.get("role").and_then(serde_json::Value::as_str) == Some("user"))
-        {
-            match first_user.get("content").cloned() {
-                Some(serde_json::Value::String(s)) => {
-                    first_user["content"] = serde_json::Value::String(format!("{system_block}{s}"));
-                },
-                Some(serde_json::Value::Array(mut arr)) => {
-                    // Multimodal content (text + images): prepend as a text block.
-                    arr.insert(
-                        0,
-                        serde_json::json!({ "type": "text", "text": system_block }),
-                    );
-                    first_user["content"] = serde_json::Value::Array(arr);
-                },
-                _ => {
-                    first_user["content"] = serde_json::Value::String(system_block);
-                },
-            }
-        } else {
-            // No user message yet (e.g. probe); insert a synthetic user message.
-            messages.insert(
-                0,
-                serde_json::json!({
-                    "role": "user",
-                    "content": format!("[System Instructions]\n{system_text}\n[End System Instructions]")
-                }),
-            );
-        }
+        // MergeLeadingSystem: emit exactly one leading `role: "system"` message.
+        messages.insert(
+            0,
+            serde_json::json!({
+                "role": "system",
+                "content": system_text,
+            }),
+        );
     }
 
     pub(super) fn serialize_messages_for_request(
@@ -285,7 +191,6 @@ impl OpenAiProvider {
     ) -> Vec<serde_json::Value> {
         let needs_reasoning_content = self.requires_reasoning_content_on_tool_messages();
         let needs_gemini_tool_call_extra_content = self.requires_gemini_tool_call_extra_content();
-        let strip_name = !self.capabilities.supports_user_name;
         let mut remapped_tool_call_ids = HashMap::new();
         let mut used_tool_call_ids = HashSet::new();
         let mut out = Vec::with_capacity(messages.len());
@@ -296,11 +201,6 @@ impl OpenAiProvider {
                 _ => None,
             };
             let mut value = message.to_openai_value();
-
-            // Strip the `name` field for providers that reject it entirely.
-            if strip_name && let Some(obj) = value.as_object_mut() {
-                obj.remove("name");
-            }
 
             if let Some(tool_calls) = value
                 .get_mut("tool_calls")
@@ -465,7 +365,7 @@ fn assign_openai_tool_call_id(
 mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    use crate::openai::{OpenAiProviderCapabilities, ReasoningEffortPolicy};
+    use crate::openai::OpenAiProviderCapabilities;
 
     use secrecy::Secret;
 
@@ -498,15 +398,11 @@ mod tests {
 
     #[test]
     fn system_message_rewrite_qwen_merges_multiple_messages_into_one_leading_message() {
-        let provider = provider(
-            "qwen3:0.6b",
-            "custom-ollama-qwen",
-            "http://127.0.0.1:11435/v1",
-        )
-        .with_capabilities(OpenAiProviderCapabilities {
-            qwen_models_require_single_leading_system: true,
-            ..OpenAiProviderCapabilities::DEFAULT
-        });
+        let provider = provider("qwen3:0.6b", "custom-qwen", "https://example.invalid/v1")
+            .with_capabilities(OpenAiProviderCapabilities {
+                qwen_models_require_single_leading_system: true,
+                ..OpenAiProviderCapabilities::DEFAULT
+            });
         let mut body = serde_json::json!({
             "messages": [
                 {"role": "system", "content": "You are a helpful assistant."},
@@ -529,32 +425,6 @@ mod tests {
         assert_eq!(messages[1]["role"], "user");
         assert_eq!(messages[2]["role"], "assistant");
         assert_eq!(messages[3]["role"], "user");
-    }
-
-    #[test]
-    fn system_message_rewrite_minimax_inlines_messages_into_first_user_message() {
-        let provider = provider("MiniMax-M2.7", "minimax", "https://api.minimax.io/v1")
-            .with_capabilities(OpenAiProviderCapabilities {
-                system_message_rewrite: SystemMessageRewriteStrategy::InlineIntoFirstUser,
-                ..OpenAiProviderCapabilities::DEFAULT
-            });
-        let mut body = serde_json::json!({
-            "messages": [
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": "hello"},
-                {"role": "system", "content": "The current user datetime is 2026-04-15 18:22:00 UTC."}
-            ]
-        });
-
-        provider.apply_system_prompt_rewrite(&mut body);
-
-        let messages = body_messages(&body);
-        assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0]["role"], "user");
-        assert_eq!(
-            messages[0]["content"],
-            "[System Instructions]\nYou are a helpful assistant.\n\nThe current user datetime is 2026-04-15 18:22:00 UTC.\n[End System Instructions]\n\nhello"
-        );
     }
 
     #[test]
@@ -627,91 +497,34 @@ mod tests {
         assert_eq!(messages[1]["role"], "user");
     }
 
-    // ── strict_tools and reasoning_content overrides (issue #810) ───
+    // ── strict_tools and reasoning_content overrides ────────────────
 
     #[test]
     fn strict_tools_override_false_disables_strict() {
-        let p = OpenAiProvider::new_with_name(
-            generated_api_key(),
-            "accounts/fireworks/routers/kimi-k2p5-turbo".into(),
-            "https://api.fireworks.ai/inference/v1".into(),
-            "fireworks".into(),
-        )
-        .with_strict_tools(false);
+        let p = provider("custom-model", "custom", "https://example.invalid/v1")
+            .with_strict_tools(false);
         assert!(
             !p.needs_strict_tools(),
-            "strict_tools_override=false must disable strict tools (issue #810)"
+            "strict_tools_override=false must disable strict tools"
         );
     }
 
     #[test]
     fn reasoning_content_override_true_enables_reasoning() {
-        let p = OpenAiProvider::new_with_name(
-            generated_api_key(),
-            "accounts/fireworks/routers/kimi-k2p5-turbo".into(),
-            "https://api.fireworks.ai/inference/v1".into(),
-            "fireworks".into(),
-        )
-        .with_reasoning_content(true);
+        let p = provider("kimi-k2.5", "moonshot", "https://api.moonshot.ai/v1")
+            .with_reasoning_content(true);
         assert!(
             p.requires_reasoning_content_on_tool_messages(),
-            "reasoning_content_override=true must enable reasoning_content (issue #810)"
+            "reasoning_content_override=true must enable reasoning_content"
         );
     }
 
     #[test]
-    fn fireworks_native_model_defaults_to_strict_tools() {
-        let p = provider(
-            "accounts/fireworks/models/glm-5p1",
-            "fireworks",
-            "https://api.fireworks.ai/inference/v1",
-        );
+    fn provider_defaults_to_strict_tools() {
+        let p = provider("custom-model", "custom", "https://example.invalid/v1");
         assert!(
             p.needs_strict_tools(),
-            "Native Fireworks models should use strict tools by default"
-        );
-    }
-
-    #[test]
-    fn fireworks_rejects_null_in_enums() {
-        let p = provider(
-            "accounts/fireworks/models/glm-5p1",
-            "fireworks",
-            "https://api.fireworks.ai/inference/v1",
-        )
-        .with_capabilities(OpenAiProviderCapabilities {
-            rejects_null_in_enums: true,
-            ..OpenAiProviderCapabilities::DEFAULT
-        });
-        assert!(
-            p.rejects_null_in_enums(),
-            "Fireworks should reject null in enums (issue #848)"
-        );
-    }
-
-    #[test]
-    fn fireworks_rejects_null_in_enums_from_provider_flag() {
-        let p = provider(
-            "accounts/fireworks/routers/kimi-k2p5-turbo",
-            "fireworks",
-            "https://api.fireworks.ai/inference/v1",
-        )
-        .with_capabilities(OpenAiProviderCapabilities {
-            rejects_null_in_enums: true,
-            ..OpenAiProviderCapabilities::DEFAULT
-        });
-        assert!(
-            p.rejects_null_in_enums(),
-            "Fireworks provider flag should reject null in enums (issue #848)"
-        );
-    }
-
-    #[test]
-    fn openai_allows_null_in_enums() {
-        let p = provider("gpt-4o", "openai", "https://api.openai.com/v1");
-        assert!(
-            !p.rejects_null_in_enums(),
-            "OpenAI should allow null in enums (issue #712)"
+            "providers should use strict tools by default"
         );
     }
 
@@ -849,15 +662,11 @@ mod tests {
     }
 
     #[test]
-    fn fireworks_native_model_no_reasoning_content() {
-        let p = provider(
-            "accounts/fireworks/models/glm-5p1",
-            "fireworks",
-            "https://api.fireworks.ai/inference/v1",
-        );
+    fn provider_defaults_to_no_reasoning_content() {
+        let p = provider("custom-model", "custom", "https://example.invalid/v1");
         assert!(
             !p.requires_reasoning_content_on_tool_messages(),
-            "Native Fireworks models should not add reasoning_content"
+            "providers should not add reasoning_content by default"
         );
     }
 
@@ -874,7 +683,7 @@ mod tests {
 
     #[test]
     fn deepseek_v4_auto_detects_reasoning_content() {
-        let p = provider("deepseek-v4-flash", "deepseek", "https://api.deepseek.com")
+        let p = provider("deepseek-v4-flash", "custom", "https://example.invalid/v1")
             .with_capabilities(OpenAiProviderCapabilities {
                 reasoning_content_model_prefixes: &["deepseek-v4"],
                 ..OpenAiProviderCapabilities::DEFAULT
@@ -887,7 +696,7 @@ mod tests {
 
     #[test]
     fn deepseek_non_v4_does_not_auto_detect_reasoning_content() {
-        let p = provider("deepseek-chat", "deepseek", "https://api.deepseek.com")
+        let p = provider("deepseek-chat", "custom", "https://example.invalid/v1")
             .with_capabilities(OpenAiProviderCapabilities {
                 reasoning_content_model_prefixes: &["deepseek-v4"],
                 ..OpenAiProviderCapabilities::DEFAULT
@@ -898,58 +707,16 @@ mod tests {
         );
     }
 
+    // ── Wire-format tests ───────────────────────────────────────────
+
+    /// A provider with strict_tools=false must emit `"strict": false` in the
+    /// serialized tool schemas.
     #[test]
-    fn deepseek_v4_reasoning_effort_enables_thinking_and_maps_xhigh_to_max() {
-        let mut p = provider("deepseek-v4-pro", "deepseek", "https://api.deepseek.com")
-            .with_capabilities(OpenAiProviderCapabilities {
-                reasoning_effort_policy: ReasoningEffortPolicy::DeepSeek,
-                ..OpenAiProviderCapabilities::DEFAULT
-            });
-        p.reasoning_effort = Some(chelix_agents::model::ReasoningEffort::ExtraHigh);
-        let mut body = serde_json::json!({
-            "model": "deepseek-v4-pro",
-            "messages": [{"role": "user", "content": "hello"}],
-        });
-
-        p.apply_reasoning_effort_chat(&mut body);
-
-        assert_eq!(body["reasoning_effort"], "max");
-        assert_eq!(body["thinking"], serde_json::json!({ "type": "enabled" }));
-    }
-
-    #[test]
-    fn deepseek_v4_reasoning_effort_maps_lower_levels_to_high() {
-        for effort in [
-            chelix_agents::model::ReasoningEffort::Minimal,
-            chelix_agents::model::ReasoningEffort::Low,
-            chelix_agents::model::ReasoningEffort::Medium,
-            chelix_agents::model::ReasoningEffort::High,
-        ] {
-            let mut p = provider("deepseek-v4-flash", "deepseek", "https://api.deepseek.com")
-                .with_capabilities(OpenAiProviderCapabilities {
-                    reasoning_effort_policy: ReasoningEffortPolicy::DeepSeek,
-                    ..OpenAiProviderCapabilities::DEFAULT
-                });
-            p.reasoning_effort = Some(effort);
-            assert_eq!(p.reasoning_effort_str(), Some("high"));
-        }
-    }
-
-    // ── Wire-format tests: verify serialized request body (issue #810) ──
-
-    /// Kimi router with strict_tools=false must NOT emit `"strict": true` in
-    /// the serialized tool schemas. This is the actual payload that caused the
-    /// 400 error in issue #810.
-    #[test]
-    fn kimi_router_tool_schema_omits_strict_field() {
+    fn non_strict_tool_schema_sets_strict_false() {
         use crate::openai_compat::to_openai_tools;
 
-        let p = provider(
-            "accounts/fireworks/routers/kimi-k2p5-turbo",
-            "fireworks",
-            "https://api.fireworks.ai/inference/v1",
-        )
-        .with_strict_tools(false);
+        let p = provider("custom-model", "custom", "https://example.invalid/v1")
+            .with_strict_tools(false);
 
         let tools = vec![serde_json::json!({
             "name": "get_weather",
@@ -970,75 +737,17 @@ mod tests {
         assert_eq!(
             strict_val,
             Some(false),
-            "Kimi router tools must have strict=false, got: {:?}",
+            "non-strict tools must have strict=false, got: {:?}",
             serialized[0]
         );
     }
 
+    /// Kimi with reasoning_content=true must inject `reasoning_content` into
+    /// assistant messages that carry tool calls.
     #[test]
-    fn nearai_tool_schema_omits_strict_field() {
-        let p = provider(
-            "zai-org/GLM-5.1-FP8",
-            "nearai",
-            "https://cloud-api.near.ai/v1",
-        )
-        .with_capabilities(OpenAiProviderCapabilities {
-            omits_strict_tool_field: true,
-            reasoning_effort_policy: ReasoningEffortPolicy::Unsupported,
-            ..OpenAiProviderCapabilities::DEFAULT
-        });
-        let tools = vec![serde_json::json!({
-            "name": "get_weather",
-            "description": "Get weather",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "location": { "type": "string" }
-                }
-            }
-        })];
-
-        let converted = p.prepare_chat_tools(&tools);
-        assert!(
-            converted[0]["function"].get("strict").is_none(),
-            "NEAR AI Cloud should not receive the unsupported strict tool field"
-        );
-    }
-
-    #[test]
-    fn custom_provider_with_nearai_url_does_not_omit_strict_field() {
-        let p = provider(
-            "zai-org/GLM-5.1-FP8",
-            "custom-nearai",
-            "https://cloud-api.near.ai/v1",
-        );
-        let tools = vec![serde_json::json!({
-            "name": "get_weather",
-            "description": "Get weather",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "location": { "type": "string" }
-                }
-            }
-        })];
-
-        let converted = p.prepare_chat_tools(&tools);
-
-        assert_eq!(converted[0]["function"]["strict"], true);
-    }
-
-    /// Kimi router with reasoning_content=true must inject `reasoning_content`
-    /// into assistant messages that carry tool calls. Without this, the Kimi
-    /// backend rejects the multi-turn request.
-    #[test]
-    fn kimi_router_injects_reasoning_content_on_tool_call_messages() {
-        let p = provider(
-            "accounts/fireworks/routers/kimi-k2p5-turbo",
-            "fireworks",
-            "https://api.fireworks.ai/inference/v1",
-        )
-        .with_reasoning_content(true);
+    fn kimi_injects_reasoning_content_on_tool_call_messages() {
+        let p = provider("kimi-k2.5", "moonshot", "https://api.moonshot.ai/v1")
+            .with_reasoning_content(true);
 
         let messages = vec![
             ChatMessage::user("What's the weather?"),
@@ -1067,7 +776,7 @@ mod tests {
 
     #[test]
     fn deepseek_v4_replays_persisted_tool_reasoning_content() {
-        let p = provider("deepseek-v4-flash", "deepseek", "https://api.deepseek.com")
+        let p = provider("deepseek-v4-flash", "custom", "https://example.invalid/v1")
             .with_capabilities(OpenAiProviderCapabilities {
                 reasoning_content_model_prefixes: &["deepseek-v4"],
                 ..OpenAiProviderCapabilities::DEFAULT
@@ -1114,58 +823,10 @@ mod tests {
         assert_eq!(assistant_tool_message["content"], "");
     }
 
-    /// Mistral provider must strip the `name` field from user messages.
-    #[test]
-    fn mistral_provider_strips_user_name() {
-        let p = provider(
-            "mistral-small-latest",
-            "mistral",
-            "https://api.mistral.ai/v1",
-        )
-        .with_capabilities(OpenAiProviderCapabilities {
-            supports_user_name: false,
-            ..OpenAiProviderCapabilities::DEFAULT
-        });
-        assert!(!p.capabilities.supports_user_name);
-
-        let messages = vec![ChatMessage::user_named("hello", "rokku")];
-        let serialized = p.serialize_messages_for_request(&messages);
-        assert_eq!(serialized.len(), 1);
-        assert!(
-            serialized[0].get("name").is_none(),
-            "Mistral must not have name field, got: {}",
-            serialized[0]
-        );
-    }
-
-    /// MiniMax rejects chat histories containing inconsistent user `name` values.
-    #[test]
-    fn minimax_provider_strips_user_names_from_group_chat_history() {
-        let p = provider("MiniMax-M2.7", "minimax", "https://api.minimax.io/v1").with_capabilities(
-            OpenAiProviderCapabilities {
-                supports_user_name: false,
-                ..OpenAiProviderCapabilities::DEFAULT
-            },
-        );
-        assert!(!p.capabilities.supports_user_name);
-
-        let messages = vec![
-            ChatMessage::user_named("hello", "Alice"),
-            ChatMessage::assistant("hi"),
-            ChatMessage::user_named("jumping in", "Bob"),
-        ];
-        let serialized = p.serialize_messages_for_request(&messages);
-
-        assert_eq!(serialized.len(), 3);
-        assert!(serialized[0].get("name").is_none());
-        assert!(serialized[2].get("name").is_none());
-    }
-
     /// OpenAI provider must preserve the (sanitized) `name` field.
     #[test]
     fn openai_provider_preserves_user_name() {
         let p = provider("gpt-4o", "openai", "https://api.openai.com/v1");
-        assert!(p.capabilities.supports_user_name);
 
         let messages = vec![ChatMessage::user_named("hello", "Alice")];
         let serialized = p.serialize_messages_for_request(&messages);
@@ -1187,58 +848,5 @@ mod tests {
         );
         assert_eq!(p.responses_sse_url(), "https://api.openai.com/v1/responses");
         assert_eq!(p.bearer_auth_header(), "Bearer test-key");
-    }
-
-    /// Explicit capabilities can override the default.
-    #[test]
-    fn supports_user_name_can_be_overridden() {
-        let p = provider("gpt-4o", "openai", "https://api.openai.com/v1").with_capabilities(
-            OpenAiProviderCapabilities {
-                supports_user_name: false,
-                ..OpenAiProviderCapabilities::DEFAULT
-            },
-        );
-
-        let messages = vec![ChatMessage::user_named("hello", "Alice")];
-        let serialized = p.serialize_messages_for_request(&messages);
-        assert!(
-            serialized[0].get("name").is_none(),
-            "name should be stripped when supports_user_name=false"
-        );
-    }
-
-    /// Native Fireworks model (no overrides) must NOT inject reasoning_content.
-    #[test]
-    fn fireworks_native_model_no_reasoning_content_in_serialized_messages() {
-        let p = provider(
-            "accounts/fireworks/models/glm-5p1",
-            "fireworks",
-            "https://api.fireworks.ai/inference/v1",
-        )
-        .with_capabilities(OpenAiProviderCapabilities {
-            rejects_null_in_enums: true,
-            ..OpenAiProviderCapabilities::DEFAULT
-        });
-
-        let messages = vec![
-            ChatMessage::user("What's the weather?"),
-            ChatMessage::assistant_with_tools(Some("let me check".to_string()), vec![
-                chelix_agents::model::ToolCall {
-                    id: "call_456".to_string(),
-                    name: "get_weather".to_string(),
-                    arguments: serde_json::json!({"location": "Paris"}),
-                    argument_diagnostic: None,
-                    metadata: None,
-                },
-            ]),
-            ChatMessage::tool("call_456", r#"{"temperature": 15}"#),
-        ];
-
-        let serialized = p.serialize_messages_for_request(&messages);
-        let assistant_msg = &serialized[1];
-        assert!(
-            assistant_msg.get("reasoning_content").is_none(),
-            "native Fireworks model must NOT have reasoning_content, got: {assistant_msg}"
-        );
     }
 }

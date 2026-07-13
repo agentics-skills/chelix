@@ -701,10 +701,9 @@ fn to_openai_tools_strict_nullable_enum_has_null() {
     );
 }
 
-/// Fireworks regression: canonicalization strips `"type": "string"` from
+/// Canonicalization strips `"type": "string"` from
 /// enum properties when all enum values are strings. The post-canonicalization
-/// `RestoreEnumTypeTransform` must re-infer and restore the type annotation
-/// so providers like Fireworks AI don't reject the schema with 400.
+/// `RestoreEnumTypeTransform` must re-infer and restore the type annotation.
 #[test]
 fn sanitize_restores_type_on_string_enum() {
     let mut schema = serde_json::json!({
@@ -730,7 +729,7 @@ fn sanitize_restores_type_on_string_enum() {
     assert_eq!(enum_values.len(), 3);
 }
 
-/// Fireworks regression: `"type": "boolean"` gets canonicalized to
+/// `"type": "boolean"` gets canonicalized to
 /// `"enum": [false, true]` (lower_boolean_and_null_types). The restore
 /// transform must re-add `"type": "boolean"`.
 #[test]
@@ -750,8 +749,8 @@ fn sanitize_restores_type_on_boolean_enum() {
     );
 }
 
-/// Fireworks regression: integer enum values (e.g. priority levels) must
-/// also get their type restored after canonicalization.
+/// Integer enum values (e.g. priority levels) must also get their type restored
+/// after canonicalization.
 #[test]
 fn sanitize_restores_type_on_integer_enum() {
     let mut schema = serde_json::json!({

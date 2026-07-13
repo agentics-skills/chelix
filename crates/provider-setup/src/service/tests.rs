@@ -360,19 +360,6 @@ async fn available_includes_default_base_urls() {
         Some("https://api.openai.com/v1")
     );
 
-    let ollama = arr
-        .iter()
-        .find(|p| p.get("name").and_then(|n| n.as_str()) == Some("ollama"))
-        .expect("ollama not found");
-    assert_eq!(
-        ollama.get("defaultBaseUrl").and_then(|u| u.as_str()),
-        Some("http://localhost:11434")
-    );
-    assert_eq!(
-        ollama.get("requiresModel").and_then(|r| r.as_bool()),
-        Some(false)
-    );
-
     let kimi_code = arr
         .iter()
         .find(|p| p.get("name").and_then(|n| n.as_str()) == Some("kimi-code"))
@@ -703,20 +690,7 @@ async fn save_key_accepts_new_providers() {
     let _svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
 
     let providers = known_providers();
-    for name in [
-        "mistral",
-        "openrouter",
-        "cerebras",
-        "minimax",
-        "moonshot",
-        "zai",
-        "zai-code",
-        "kimi-code",
-        "venice",
-        "nearai",
-        "ollama",
-        "lmstudio",
-    ] {
+    for name in ["openrouter", "moonshot", "zai", "zai-code", "kimi-code"] {
         let known = providers
             .iter()
             .find(|p| p.name == name && p.auth_type == AuthType::ApiKey);
@@ -743,18 +717,11 @@ async fn available_includes_new_providers() {
         .collect();
 
     for expected in [
-        "mistral",
         "openrouter",
-        "cerebras",
-        "minimax",
         "moonshot",
         "zai",
         "zai-code",
         "kimi-code",
-        "venice",
-        "nearai",
-        "ollama",
-        "lmstudio",
         "github-copilot",
     ] {
         assert!(
@@ -762,72 +729,6 @@ async fn available_includes_new_providers() {
             "{expected} not found in available providers: {names:?}"
         );
     }
-}
-
-#[tokio::test]
-async fn available_hides_local_providers_on_cloud() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
-        &ProvidersConfig::default(),
-        HashMap::new(),
-    )));
-    let svc = LiveProviderSetupService::new(
-        registry,
-        ProvidersConfig::default(),
-        Some("cloud".to_string()),
-    );
-    let result = svc.available().await.unwrap();
-    let arr = result.as_array().unwrap();
-
-    let names: Vec<&str> = arr
-        .iter()
-        .filter_map(|v| v.get("name").and_then(|n| n.as_str()))
-        .collect();
-
-    assert!(
-        !names.contains(&"ollama"),
-        "ollama should be hidden on cloud: {names:?}"
-    );
-    assert!(
-        !names.contains(&"lmstudio"),
-        "lmstudio should be hidden on cloud: {names:?}"
-    );
-    assert!(
-        names.contains(&"openai"),
-        "openai should be present on cloud: {names:?}"
-    );
-    assert!(
-        names.contains(&"anthropic"),
-        "anthropic should be present on cloud: {names:?}"
-    );
-}
-
-#[tokio::test]
-async fn available_shows_all_providers_locally() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
-        &ProvidersConfig::default(),
-        HashMap::new(),
-    )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
-    let result = svc.available().await.unwrap();
-    let arr = result.as_array().unwrap();
-
-    let names: Vec<&str> = arr
-        .iter()
-        .filter_map(|v| v.get("name").and_then(|n| n.as_str()))
-        .collect();
-
-    assert!(
-        names.contains(&"ollama"),
-        "ollama should be present locally: {names:?}"
-    );
-    assert!(
-        names.contains(&"lmstudio"),
-        "lmstudio should be present locally: {names:?}"
-    );
-    assert!(
-        names.contains(&"openai"),
-        "openai should be present locally: {names:?}"
-    );
 }
 
 #[tokio::test]
@@ -873,184 +774,6 @@ async fn validate_key_rejects_missing_api_key_for_api_key_provider() {
         .await;
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("missing 'apiKey'"));
-}
-
-#[tokio::test]
-async fn validate_key_allows_missing_api_key_for_ollama() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
-        &ProvidersConfig::default(),
-        HashMap::new(),
-    )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
-    let result = svc
-        .validate_key(serde_json::json!({"provider": "ollama"}))
-        .await;
-    assert!(result.is_ok());
-}
-
-#[tokio::test]
-async fn validate_key_ollama_without_model_returns_discovered_models() {
-    use axum::{Json, Router, routing::get};
-
-    let app = Router::new().route(
-        "/api/tags",
-        get(|| async {
-            Json(serde_json::json!({
-                "models": [
-                    {"name": "llama3.2:latest"},
-                    {"name": "qwen2.5:7b"}
-                ]
-            }))
-        }),
-    );
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind listener");
-    let addr = listener.local_addr().expect("local addr");
-    let server = tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
-        &ProvidersConfig::default(),
-        HashMap::new(),
-    )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
-    let result = svc
-        .validate_key(serde_json::json!({
-            "provider": "ollama",
-            "baseUrl": format!("http://{addr}")
-        }))
-        .await
-        .expect("validate_key should return payload");
-    server.abort();
-
-    assert_eq!(result.get("valid").and_then(|v| v.as_bool()), Some(true));
-    let models = result
-        .get("models")
-        .and_then(|v| v.as_array())
-        .expect("models array should be present");
-    assert!(
-        models
-            .iter()
-            .any(|m| m.get("id").and_then(|v| v.as_str()) == Some("ollama::llama3.2:latest"))
-    );
-    assert!(
-        models
-            .iter()
-            .any(|m| m.get("id").and_then(|v| v.as_str()) == Some("ollama::qwen2.5:7b"))
-    );
-}
-
-#[tokio::test]
-async fn validate_key_ollama_reports_uninstalled_model() {
-    use axum::{Json, Router, routing::get};
-
-    let app = Router::new().route(
-        "/api/tags",
-        get(|| async {
-            Json(serde_json::json!({
-                "models": [
-                    {"name": "llama3.2:latest"}
-                ]
-            }))
-        }),
-    );
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind listener");
-    let addr = listener.local_addr().expect("local addr");
-    let server = tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
-        &ProvidersConfig::default(),
-        HashMap::new(),
-    )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
-    let result = svc
-        .validate_key(serde_json::json!({
-            "provider": "ollama",
-            "baseUrl": format!("http://{addr}"),
-            "model": "qwen2.5:7b"
-        }))
-        .await
-        .expect("validate_key should return payload");
-    server.abort();
-
-    assert_eq!(result.get("valid").and_then(|v| v.as_bool()), Some(false));
-    let error = result.get("error").and_then(|v| v.as_str()).unwrap_or("");
-    assert!(
-        error.contains("not installed in Ollama"),
-        "unexpected error: {error}"
-    );
-}
-
-#[tokio::test]
-async fn validate_key_ollama_with_model_returns_model_list() {
-    use axum::{
-        Json, Router,
-        routing::{get, post},
-    };
-
-    let app = Router::new()
-        .route(
-            "/api/tags",
-            get(|| async {
-                Json(serde_json::json!({
-                    "models": [
-                        {"name": "llama3.2:latest"}
-                    ]
-                }))
-            }),
-        )
-        .route(
-            "/v1/chat/completions",
-            post(|| async {
-                Json(serde_json::json!({
-                    "choices": [{"message": {"content": "pong"}}],
-                    "usage": {
-                        "prompt_tokens": 1,
-                        "completion_tokens": 1,
-                        "prompt_tokens_details": {"cached_tokens": 0}
-                    }
-                }))
-            }),
-        );
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind listener");
-    let addr = listener.local_addr().expect("local addr");
-    let server = tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
-        &ProvidersConfig::default(),
-        HashMap::new(),
-    )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
-    let result = svc
-        .validate_key(serde_json::json!({
-            "provider": "ollama",
-            "baseUrl": format!("http://{addr}"),
-            "model": "llama3.2"
-        }))
-        .await
-        .expect("validate_key should return payload");
-    server.abort();
-
-    assert_eq!(result.get("valid").and_then(|v| v.as_bool()), Some(true));
-    let models = result
-        .get("models")
-        .and_then(|v| v.as_array())
-        .expect("models array should be present");
-    assert!(
-        models
-            .iter()
-            .any(|m| m.get("id").and_then(|v| v.as_str()) == Some("ollama::llama3.2"))
-    );
 }
 
 #[tokio::test]

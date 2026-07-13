@@ -33,8 +33,8 @@ pub struct KnownProvider {
     pub default_base_url: Option<&'static str>,
     /// Whether this provider requires a model to be specified.
     pub requires_model: bool,
-    /// Whether the API key is optional (e.g. Ollama and LM Studio run locally
-    /// without auth).
+    /// Whether the API key is optional (e.g. local backends that run without
+    /// auth).
     pub key_optional: bool,
     /// Whether this provider only runs locally (binds to localhost) and should
     /// be hidden from cloud deployments. Separate from `key_optional` because a
@@ -108,16 +108,6 @@ pub fn known_providers() -> Vec<KnownProvider> {
             local_only: false,
         },
         KnownProvider {
-            name: "groq",
-            display_name: "Groq",
-            auth_type: AuthType::ApiKey,
-            env_key: Some("GROQ_API_KEY"),
-            default_base_url: Some("https://api.groq.com/openai/v1"),
-            requires_model: false,
-            key_optional: false,
-            local_only: false,
-        },
-        KnownProvider {
             name: "xai",
             display_name: "xAI (Grok)",
             auth_type: AuthType::ApiKey,
@@ -128,61 +118,11 @@ pub fn known_providers() -> Vec<KnownProvider> {
             local_only: false,
         },
         KnownProvider {
-            name: "deepseek",
-            display_name: "DeepSeek",
-            auth_type: AuthType::ApiKey,
-            env_key: Some("DEEPSEEK_API_KEY"),
-            default_base_url: Some("https://api.deepseek.com"),
-            requires_model: false,
-            key_optional: false,
-            local_only: false,
-        },
-        KnownProvider {
-            name: "fireworks",
-            display_name: "Fireworks",
-            auth_type: AuthType::ApiKey,
-            env_key: Some("FIREWORKS_API_KEY"),
-            default_base_url: Some("https://api.fireworks.ai/inference/v1"),
-            requires_model: false,
-            key_optional: false,
-            local_only: false,
-        },
-        KnownProvider {
-            name: "mistral",
-            display_name: "Mistral",
-            auth_type: AuthType::ApiKey,
-            env_key: Some("MISTRAL_API_KEY"),
-            default_base_url: Some("https://api.mistral.ai/v1"),
-            requires_model: false,
-            key_optional: false,
-            local_only: false,
-        },
-        KnownProvider {
             name: "openrouter",
             display_name: "OpenRouter",
             auth_type: AuthType::ApiKey,
             env_key: Some("OPENROUTER_API_KEY"),
             default_base_url: Some("https://openrouter.ai/api/v1"),
-            requires_model: false,
-            key_optional: false,
-            local_only: false,
-        },
-        KnownProvider {
-            name: "cerebras",
-            display_name: "Cerebras",
-            auth_type: AuthType::ApiKey,
-            env_key: Some("CEREBRAS_API_KEY"),
-            default_base_url: Some("https://api.cerebras.ai/v1"),
-            requires_model: false,
-            key_optional: false,
-            local_only: false,
-        },
-        KnownProvider {
-            name: "minimax",
-            display_name: "MiniMax",
-            auth_type: AuthType::ApiKey,
-            env_key: Some("MINIMAX_API_KEY"),
-            default_base_url: Some("https://api.minimax.io/v1"),
             requires_model: false,
             key_optional: false,
             local_only: false,
@@ -218,61 +158,11 @@ pub fn known_providers() -> Vec<KnownProvider> {
             local_only: false,
         },
         KnownProvider {
-            name: "venice",
-            display_name: "Venice",
-            auth_type: AuthType::ApiKey,
-            env_key: Some("VENICE_API_KEY"),
-            default_base_url: Some("https://api.venice.ai/api/v1"),
-            requires_model: true,
-            key_optional: false,
-            local_only: false,
-        },
-        KnownProvider {
-            name: "nearai",
-            display_name: "NEAR AI Cloud",
-            auth_type: AuthType::ApiKey,
-            env_key: Some("NEARAI_API_KEY"),
-            default_base_url: Some("https://cloud-api.near.ai/v1"),
-            requires_model: false,
-            key_optional: false,
-            local_only: false,
-        },
-        KnownProvider {
-            name: "ollama",
-            display_name: "Ollama",
-            auth_type: AuthType::ApiKey,
-            env_key: Some("OLLAMA_API_KEY"),
-            default_base_url: Some("http://localhost:11434"),
-            requires_model: false,
-            key_optional: true,
-            local_only: true,
-        },
-        KnownProvider {
-            name: "lmstudio",
-            display_name: "LM Studio",
-            auth_type: AuthType::ApiKey,
-            env_key: Some("LMSTUDIO_API_KEY"),
-            default_base_url: Some("http://127.0.0.1:1234/v1"),
-            requires_model: false,
-            key_optional: true,
-            local_only: true,
-        },
-        KnownProvider {
             name: "kimi-code",
             display_name: "Kimi Code",
             auth_type: AuthType::ApiKey,
             env_key: Some("KIMI_API_KEY"),
             default_base_url: Some("https://api.kimi.com/coding/v1"),
-            requires_model: false,
-            key_optional: false,
-            local_only: false,
-        },
-        KnownProvider {
-            name: "opencode-zen",
-            display_name: "OpenCode Zen",
-            auth_type: AuthType::ApiKey,
-            env_key: Some("OPENCODE_ZEN_API_KEY"),
-            default_base_url: Some("https://opencode.ai/zen/v1"),
             requires_model: false,
             key_optional: false,
             local_only: false,
@@ -351,58 +241,14 @@ mod tests {
     fn known_providers_include_new_providers() {
         let providers = known_providers();
         let names: Vec<&str> = providers.iter().map(|p| p.name).collect();
-        // All new OpenAI-compatible providers
-        assert!(names.contains(&"mistral"), "missing mistral");
+        // OpenAI-compatible providers
         assert!(names.contains(&"openrouter"), "missing openrouter");
-        assert!(names.contains(&"cerebras"), "missing cerebras");
-        assert!(names.contains(&"minimax"), "missing minimax");
         assert!(names.contains(&"moonshot"), "missing moonshot");
         assert!(names.contains(&"zai"), "missing zai");
         assert!(names.contains(&"zai-code"), "missing zai-code");
         assert!(names.contains(&"kimi-code"), "missing kimi-code");
-        assert!(names.contains(&"venice"), "missing venice");
-        assert!(names.contains(&"nearai"), "missing nearai");
-        assert!(names.contains(&"ollama"), "missing ollama");
-        assert!(names.contains(&"lmstudio"), "missing lmstudio");
         // OAuth providers
         assert!(names.contains(&"github-copilot"), "missing github-copilot");
-    }
-
-    #[test]
-    fn lmstudio_is_local_only_with_optional_key() {
-        let providers = known_providers();
-        let lmstudio = providers
-            .iter()
-            .find(|p| p.name == "lmstudio")
-            .expect("lmstudio not in known_providers");
-        assert_eq!(lmstudio.auth_type, AuthType::ApiKey);
-        assert!(
-            lmstudio.key_optional,
-            "lmstudio runs locally and must not require an API key"
-        );
-        assert!(
-            lmstudio.is_local_only(),
-            "lmstudio must be filtered out of cloud deployments"
-        );
-        assert_eq!(lmstudio.env_key, Some("LMSTUDIO_API_KEY"));
-        assert_eq!(
-            lmstudio.default_base_url,
-            Some("http://127.0.0.1:1234/v1"),
-            "lmstudio default base URL must match LM Studio's default server port"
-        );
-    }
-
-    #[test]
-    fn is_local_only_is_superset_of_legacy_check() {
-        for p in known_providers() {
-            let legacy = p.auth_type == AuthType::Local || p.name == "ollama";
-            let typed = p.is_local_only();
-            assert!(
-                typed || !legacy,
-                "{}: legacy says local but typed disagrees",
-                p.name
-            );
-        }
     }
 
     #[test]
@@ -419,18 +265,11 @@ mod tests {
     #[test]
     fn new_api_key_providers_have_correct_env_keys() {
         let expected = [
-            ("mistral", "MISTRAL_API_KEY"),
             ("openrouter", "OPENROUTER_API_KEY"),
-            ("cerebras", "CEREBRAS_API_KEY"),
-            ("minimax", "MINIMAX_API_KEY"),
             ("moonshot", "MOONSHOT_API_KEY"),
             ("zai", "Z_API_KEY"),
             ("zai-code", "Z_CODE_API_KEY"),
             ("kimi-code", "KIMI_API_KEY"),
-            ("venice", "VENICE_API_KEY"),
-            ("nearai", "NEARAI_API_KEY"),
-            ("ollama", "OLLAMA_API_KEY"),
-            ("lmstudio", "LMSTUDIO_API_KEY"),
         ];
         let providers = known_providers();
         for (name, env_key) in expected {

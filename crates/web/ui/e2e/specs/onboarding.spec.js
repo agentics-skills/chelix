@@ -982,17 +982,10 @@ test.describe("Onboarding wizard", () => {
 			{ providerName: "OpenAI", linkName: "OpenAI Platform" },
 			{ providerName: "Kimi Code", linkName: "Kimi Code Console" },
 			{ providerName: "Anthropic", linkName: "Anthropic Console" },
-			{ providerName: "DeepSeek", linkName: "DeepSeek Platform" },
-			{ providerName: "Groq", linkName: "Groq Console" },
-			{ providerName: "Mistral", linkName: "Mistral Console" },
 			{ providerName: "Google Gemini", linkName: "Google AI Studio" },
 			{ providerName: "xAI (Grok)", linkName: "xAI Console" },
-			{ providerName: "Cerebras", linkName: "Cerebras Cloud" },
-			{ providerName: "Venice", linkName: "Venice Settings" },
-			{ providerName: "NEAR AI Cloud", linkName: "NEAR AI Cloud" },
 			{ providerName: "OpenRouter", linkName: "OpenRouter Settings" },
 			{ providerName: "Moonshot", linkName: "Moonshot Platform" },
-			{ providerName: "MiniMax", linkName: "MiniMax Platform" },
 		];
 		let matched = false;
 		for (const candidate of candidates) {

@@ -492,7 +492,6 @@ export function MemorySection(): VNode {
 					>
 						<option value="auto">Auto-detect</option>
 						<option value="local">Local GGUF</option>
-						<option value="ollama">Ollama</option>
 						<option value="openai">OpenAI</option>
 						<option value="custom">Custom OpenAI-compatible</option>
 					</select>

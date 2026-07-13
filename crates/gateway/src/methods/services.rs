@@ -342,7 +342,6 @@ fn parse_memory_provider(value: &str) -> Result<Option<chelix_config::MemoryProv
     match value {
         "auto" => Ok(None),
         "local" => Ok(Some(chelix_config::MemoryProvider::Local)),
-        "ollama" => Ok(Some(chelix_config::MemoryProvider::Ollama)),
         "openai" => Ok(Some(chelix_config::MemoryProvider::OpenAi)),
         "custom" => Ok(Some(chelix_config::MemoryProvider::Custom)),
         _ => Err(invalid_memory_config_value("provider", value)),

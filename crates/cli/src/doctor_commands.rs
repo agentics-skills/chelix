@@ -115,17 +115,9 @@ const PROVIDER_ENV_MAP: &[(&str, &str, bool)] = &[
     ("anthropic", "ANTHROPIC_API_KEY", false),
     ("openai", "OPENAI_API_KEY", false),
     ("gemini", "GEMINI_API_KEY", false),
-    ("groq", "GROQ_API_KEY", false),
     ("xai", "XAI_API_KEY", false),
-    ("deepseek", "DEEPSEEK_API_KEY", false),
-    ("mistral", "MISTRAL_API_KEY", false),
     ("openrouter", "OPENROUTER_API_KEY", false),
-    ("cerebras", "CEREBRAS_API_KEY", false),
-    ("minimax", "MINIMAX_API_KEY", false),
     ("moonshot", "MOONSHOT_API_KEY", false),
-    ("venice", "VENICE_API_KEY", false),
-    ("nearai", "NEARAI_API_KEY", false),
-    ("ollama", "OLLAMA_API_KEY", true),
     ("kimi-code", "KIMI_API_KEY", false),
 ];
 

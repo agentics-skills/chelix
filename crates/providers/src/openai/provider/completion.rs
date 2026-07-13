@@ -1,12 +1,9 @@
 use std::time::Duration;
 
-use secrecy::ExposeSecret;
-
 use tracing::{debug, trace, warn};
 
 use crate::{
     http::{retry_after_ms_from_headers, with_retry_after_marker},
-    ollama::normalize_ollama_api_base_url,
     openai_compat::{
         normalize_tool_call_arguments_from_schemas, parse_openai_compat_usage_from_payload,
         parse_tool_calls, split_responses_instructions_and_input, strip_think_tags,
@@ -18,10 +15,7 @@ use chelix_agents::model::{
     AgentToolControls, ChatMessage, CompletionResponse, Usage, decode_tool_call_arguments_from_str,
 };
 
-use {
-    super::OpenAiProvider,
-    crate::openai::{ProbeFallbackPolicy, ProbeOutputCapPolicy},
-};
+use super::OpenAiProvider;
 
 fn is_chat_endpoint_unsupported_model_error(body_text: &str) -> bool {
     let lower = body_text.to_ascii_lowercase();
@@ -42,11 +36,7 @@ fn should_warn_on_api_error(status: reqwest::StatusCode, body_text: &str) -> boo
 
 impl OpenAiProvider {
     fn apply_probe_output_cap_chat(&self, body: &mut serde_json::Value) {
-        if matches!(
-            self.capabilities.probe_output_cap_policy,
-            ProbeOutputCapPolicy::ReasoningModelsUseMaxCompletionTokens
-        ) && self.model_capabilities.reasoning
-        {
+        if self.model_capabilities.reasoning {
             // GPT-5 and reasoning models need a higher minimum output cap.
             // Values below ~10 can trigger 400 errors on some models.
             body["max_completion_tokens"] = serde_json::json!(16);
@@ -96,17 +86,6 @@ impl OpenAiProvider {
                     "openai probe model unsupported for chat/completions endpoint"
                 );
             }
-            // Ollama's OpenAI-compat layer returns 404 for models that
-            // exist but aren't wired to /v1/chat/completions.  Fall back
-            // to the native `/api/show` endpoint before giving up.
-            if status == reqwest::StatusCode::NOT_FOUND
-                && matches!(
-                    self.capabilities.probe_fallback_policy,
-                    ProbeFallbackPolicy::OllamaNativeShow
-                )
-            {
-                return self.probe_ollama_native().await;
-            }
 
             anyhow::bail!(
                 "{}",
@@ -118,42 +97,6 @@ impl OpenAiProvider {
         }
 
         Ok(())
-    }
-
-    /// Fallback probe for Ollama: POST `/api/show` with the model name.
-    ///
-    /// This confirms the model is installed and Ollama is reachable even when
-    /// the OpenAI-compat `/v1/chat/completions` endpoint returns 404.
-    async fn probe_ollama_native(&self) -> anyhow::Result<()> {
-        let api_base = normalize_ollama_api_base_url(&self.base_url);
-        let url = format!("{}/api/show", api_base.trim_end_matches('/'));
-
-        debug!(model = %self.model, url = %url, "ollama native probe via /api/show");
-
-        let mut req = self
-            .client
-            .post(&url)
-            .json(&serde_json::json!({ "name": self.model }));
-        let key = self.api_key.expose_secret().trim();
-        if !key.is_empty() {
-            req = req.header("Authorization", format!("Bearer {key}"));
-        }
-        let resp = req.send().await?;
-
-        if resp.status().is_success() {
-            return Ok(());
-        }
-
-        let status = resp.status();
-        let body_text = resp.text().await.unwrap_or_default();
-        anyhow::bail!(
-            "Model '{}' not found. Make sure it is installed (ollama pull {}) \
-             and try again. (Ollama /api/show returned HTTP {}: {})",
-            self.model,
-            self.model,
-            status,
-            body_text,
-        )
     }
 
     pub(super) async fn probe_responses(&self) -> anyhow::Result<()> {
@@ -596,46 +539,6 @@ mod tests {
             base_url.to_string(),
             provider_name.to_string(),
         )
-    }
-
-    #[test]
-    fn nearai_probe_uses_max_tokens_for_gpt_models() {
-        let provider = provider(
-            "openai/gpt-oss-120b",
-            "nearai",
-            "https://cloud-api.near.ai/v1",
-        )
-        .with_capabilities(crate::openai::OpenAiProviderCapabilities {
-            probe_output_cap_policy: ProbeOutputCapPolicy::MaxTokens,
-            ..crate::openai::OpenAiProviderCapabilities::DEFAULT
-        });
-        let mut body = serde_json::json!({
-            "model": "openai/gpt-oss-120b",
-            "messages": [{"role": "user", "content": "ping"}],
-        });
-
-        provider.apply_probe_output_cap_chat(&mut body);
-
-        assert_eq!(body["max_tokens"], 1);
-        assert!(body.get("max_completion_tokens").is_none());
-    }
-
-    #[test]
-    fn custom_provider_with_nearai_url_still_uses_default_probe_output_cap() {
-        let provider = provider(
-            "openai/gpt-5.2",
-            "custom-nearai",
-            "https://cloud-api.near.ai/v1",
-        );
-        let mut body = serde_json::json!({
-            "model": "openai/gpt-5.2",
-            "messages": [{"role": "user", "content": "ping"}],
-        });
-
-        provider.apply_probe_output_cap_chat(&mut body);
-
-        assert_eq!(body["max_completion_tokens"], 16);
-        assert!(body.get("max_tokens").is_none());
     }
 
     #[test]

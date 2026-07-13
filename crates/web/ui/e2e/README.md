@@ -60,7 +60,6 @@ single-project processes so each one starts only its own web server.
 | `onboarding-auth` | Random free port (`CHELIX_E2E_ONBOARDING_AUTH_PORT`) | `onboarding-auth.spec.js` | Separate server with remote-auth simulation |
 | `onboarding-anthropic` | Random free port (`CHELIX_E2E_ONBOARDING_ANTHROPIC_PORT`) | `onboarding-anthropic.spec.js` | Separate server proving first-run Anthropic onboarding with zero providers at startup |
 | `openai-live` | Random free port (`CHELIX_E2E_OPENAI_LIVE_PORT`) | `openai-live.spec.js` | Separate server that preserves only the existing OpenAI env and proves a real OpenAI chat turn works |
-| `ollama-qwen-live` | Random free port (`CHELIX_E2E_OLLAMA_QWEN_LIVE_PORT`) + Ollama API port (`CHELIX_E2E_OLLAMA_QWEN_API_PORT`, default `11435`) | `ollama-qwen-live.spec.js` | Opt-in server that starts a local Ollama instance, seeds a custom OpenAI-compatible Qwen provider, and proves the multiple-system-message regression is fixed |
 
 ## Spec Files
 
@@ -84,7 +83,6 @@ single-project processes so each one starts only its own web server.
 | `onboarding-auth.spec.js` | 1 | Remote onboarding auth flow with setup code and identity save |
 | `onboarding-anthropic.spec.js` | 1 | Anthropic onboarding from empty startup, model discovery, model selection |
 | `openai-live.spec.js` | 1 | Live OpenAI provider smoke test using the existing env and a real chat turn |
-| `ollama-qwen-live.spec.js` | 1 | Opt-in live Ollama smoke test for the custom OpenAI-compatible Qwen regression path |
 
 ## Shared Helpers
 
@@ -104,9 +102,6 @@ cd crates/web/ui && npx playwright test e2e/specs/sessions.spec.js
 
 # Run a specific project
 npx playwright test --project=auth
-
-# Run the opt-in Ollama/Qwen live project
-CHELIX_E2E_OLLAMA_QWEN_LIVE=1 npx playwright test --project=ollama-qwen-live e2e/specs/ollama-qwen-live.spec.js
 
 # Run with visible browser
 just ui-e2e-headed

@@ -281,7 +281,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                                 "enabled": config.voice.stt.enabled,
                                 "provider": config.voice.stt.provider,
                                 "whisper_configured": config.voice.stt.whisper.api_key.is_some(),
-                                "groq_configured": config.voice.stt.groq.api_key.is_some(),
                                 "deepgram_configured": config.voice.stt.deepgram.api_key.is_some(),
                                 "google_configured": config.voice.stt.google.api_key.is_some(),
                                 "elevenlabs_configured": config.voice.stt.elevenlabs.api_key.is_some(),
@@ -581,22 +580,10 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                                     Some(chelix_config::VoiceSttProvider::Whisper);
                                 cfg.voice.stt.enabled = true;
                             },
-                            "groq" => {
-                                cfg.voice.stt.groq.api_key = None;
-                                cfg.voice.stt.provider =
-                                    Some(chelix_config::VoiceSttProvider::Groq);
-                                cfg.voice.stt.enabled = true;
-                            },
                             "deepgram" => {
                                 cfg.voice.stt.deepgram.api_key = None;
                                 cfg.voice.stt.provider =
                                     Some(chelix_config::VoiceSttProvider::Deepgram);
-                                cfg.voice.stt.enabled = true;
-                            },
-                            "mistral" => {
-                                cfg.voice.stt.mistral.api_key = None;
-                                cfg.voice.stt.provider =
-                                    Some(chelix_config::VoiceSttProvider::Mistral);
                                 cfg.voice.stt.enabled = true;
                             },
                             _ => {},
@@ -684,18 +671,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         "whisper" => {
                             cfg.voice.stt.whisper.api_key = None;
                         },
-                        "groq" => {
-                            cfg.voice.stt.groq.api_key = None;
-                        },
                         "deepgram" => {
                             cfg.voice.stt.deepgram.api_key = None;
                         },
                         "google" | "google-tts" => {
                             cfg.voice.tts.google.api_key = None;
                             cfg.voice.stt.google.api_key = None;
-                        },
-                        "mistral" => {
-                            cfg.voice.stt.mistral.api_key = None;
                         },
                         "elevenlabs-stt" => {
                             cfg.voice.tts.elevenlabs.api_key = None;
@@ -860,7 +841,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     },
                     "provider": match memory.provider {
                         Some(chelix_config::MemoryProvider::Local) => "local",
-                        Some(chelix_config::MemoryProvider::Ollama) => "ollama",
                         Some(chelix_config::MemoryProvider::OpenAi) => "openai",
                         Some(chelix_config::MemoryProvider::Custom) => "custom",
                         None => "auto",
@@ -952,7 +932,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     .and_then(|v| v.as_str())
                     .unwrap_or(match current_memory.provider {
                         Some(chelix_config::MemoryProvider::Local) => "local",
-                        Some(chelix_config::MemoryProvider::Ollama) => "ollama",
                         Some(chelix_config::MemoryProvider::OpenAi) => "openai",
                         Some(chelix_config::MemoryProvider::Custom) => "custom",
                         None => "auto",

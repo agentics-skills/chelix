@@ -32,11 +32,6 @@ use crate::{
     model_capabilities::{ModelCapabilities, ModelInfo, extract_cw_overrides},
     model_catalogs::{ANTHROPIC_MODELS, OPENAI_COMPAT_PROVIDERS},
     model_id::{namespaced_model_id, raw_model_id},
-    nearai,
-    ollama::{
-        self, OllamaShowResponse, probe_ollama_models_batch, probe_ollama_models_batch_async,
-        resolve_ollama_tool_mode,
-    },
     openai,
 };
 
@@ -137,15 +132,12 @@ fn anthropic_fallback_catalog() -> Vec<DiscoveredModel> {
 
 /// Result of a runtime model rediscovery pass.
 ///
-/// Bundles the discovered model lists together with any Ollama `/api/show`
-/// probe results so that registration can proceed without further I/O.
-/// Ollama probe data is opaque — callers pass this struct directly to
+/// Bundles the discovered model lists so that registration can proceed
+/// without further I/O. Callers pass this struct directly to
 /// [`ProviderRegistry::register_rediscovered_models`].
 pub struct RediscoveryResult {
     /// Models discovered per provider (keyed by config name).
     pub(crate) models: HashMap<String, Vec<DiscoveredModel>>,
-    /// Ollama `/api/show` probe metadata (keyed by model ID).
-    pub(crate) ollama_probes: HashMap<String, OllamaShowResponse>,
 }
 
 impl RediscoveryResult {
@@ -157,10 +149,8 @@ impl RediscoveryResult {
 
 /// Asynchronously fetch models from all discoverable provider APIs.
 ///
-/// Runs `/v1/models` (or Ollama `/api/tags`) for each eligible provider
-/// concurrently, then batch-probes any discovered Ollama models via
-/// `/api/show` for tool-mode metadata. Returns everything needed for
-/// lock-free registration.
+/// Runs `/v1/models` for each eligible provider concurrently. Returns
+/// everything needed for lock-free registration.
 ///
 /// `provider_filter` narrows the scope to a single provider name (case-
 /// insensitive comparison against config name or alias).
@@ -256,48 +246,8 @@ pub async fn fetch_discoverable_models(
             continue;
         }
 
-        if def.config_name == "ollama" {
-            tasks.push((
-                def.config_name.into(),
-                Box::pin(ollama::discover_ollama_models_from_api(base_url)),
-            ));
-        } else if def.config_name == "nearai" {
-            tasks.push((
-                def.config_name.into(),
-                Box::pin(async move {
-                    nearai::fetch_models_from_api(base_url)
-                        .await
-                        .map_err(anyhow::Error::from)
-                }),
-            ));
-        } else {
-            tasks.push((
-                def.config_name.into(),
-                Box::pin(openai::fetch_models_from_api(key, base_url)),
-            ));
-        }
-    }
-
-    // ── OpenCode Zen (opencode.ai) ────────────────────────────────────
-    if filter_matches("opencode-zen")
-        && config.is_enabled("opencode-zen")
-        && !cfg!(test)
-        && let Some(key) = resolve_api_key(
-            config,
-            "opencode-zen",
-            "OPENCODE_ZEN_API_KEY",
-            env_overrides,
-        )
-        && should_fetch_models(config, "opencode-zen")
-    {
-        let base_url = config
-            .get("opencode-zen")
-            .and_then(|e| e.base_url.clone())
-            .or_else(|| env_value(env_overrides, "OPENCODE_ZEN_BASE_URL"))
-            .unwrap_or_else(|| crate::opencode_zen::OPENCODE_ZEN_DEFAULT_BASE_URL.into());
-        // Zen exposes an OpenAI-compatible /models endpoint.
         tasks.push((
-            "opencode-zen".into(),
+            def.config_name.into(),
             Box::pin(openai::fetch_models_from_api(key, base_url)),
         ));
     }
@@ -357,23 +307,7 @@ pub async fn fetch_discoverable_models(
         }
     }
 
-    // Batch-probe any newly discovered Ollama models for `/api/show` metadata
-    // (tool capabilities, family info). Runs outside any registry lock.
-    let ollama_probes = if let Some(ollama_models) = map.get("ollama") {
-        let ollama_base_url = config
-            .get("ollama")
-            .and_then(|e| e.base_url.clone())
-            .or_else(|| env_value(env_overrides, "OLLAMA_BASE_URL"))
-            .unwrap_or_else(|| "http://localhost:11434".into());
-        probe_ollama_models_batch_async(&ollama_base_url, ollama_models).await
-    } else {
-        HashMap::new()
-    };
-
-    RediscoveryResult {
-        models: map,
-        ollama_probes,
-    }
+    RediscoveryResult { models: map }
 }
 
 #[cfg(any(feature = "provider-openai-codex", feature = "provider-github-copilot"))]
@@ -485,21 +419,6 @@ pub type PendingDiscoveries = Vec<(
     String,
     std::sync::mpsc::Receiver<anyhow::Result<Vec<DiscoveredModel>>>,
 )>;
-
-fn start_nearai_discovery(
-    base_url: String,
-) -> std::sync::mpsc::Receiver<anyhow::Result<Vec<DiscoveredModel>>> {
-    let typed_rx = nearai::start_model_discovery(base_url);
-    let (tx, rx) = std::sync::mpsc::sync_channel(1);
-    std::thread::spawn(move || {
-        let result = typed_rx
-            .recv()
-            .map_err(anyhow::Error::from)
-            .and_then(|result| result.map_err(anyhow::Error::from));
-        let _ = tx.send(result);
-    });
-    rx
-}
 
 impl ProviderRegistry {
     #[must_use]
@@ -928,8 +847,6 @@ impl ProviderRegistry {
             reg.register_kimi_code_providers(config, env_overrides);
         }
 
-        reg.register_opencode_zen_providers(config, env_overrides, prefetched);
-
         reg
     }
 
@@ -1015,29 +932,18 @@ impl ProviderRegistry {
                 }
             }
 
-            let skip_discovery = def.models.is_empty()
-                && preferred.is_empty()
-                && !def.local_only
-                && (def.config_name == "venice" || cfg!(test));
+            let skip_discovery =
+                def.models.is_empty() && preferred.is_empty() && !def.local_only && cfg!(test);
             let user_opted_in = config
                 .get(def.config_name)
                 .is_some_and(|entry| entry.fetch_models);
             let try_fetch = def.supports_model_discovery || user_opted_in;
 
             if !skip_discovery && try_fetch && should_fetch_models(config, def.config_name) {
-                if def.config_name == "ollama" {
-                    pending.push((
-                        def.config_name.into(),
-                        ollama::start_ollama_discovery(&base_url),
-                    ));
-                } else if def.config_name == "nearai" {
-                    pending.push((def.config_name.into(), start_nearai_discovery(base_url)));
-                } else {
-                    pending.push((
-                        def.config_name.into(),
-                        openai::start_model_discovery(key.clone(), base_url),
-                    ));
-                }
+                pending.push((
+                    def.config_name.into(),
+                    openai::start_model_discovery(key.clone(), base_url),
+                ));
             }
         }
 
@@ -1062,29 +968,6 @@ impl ProviderRegistry {
                     openai::start_model_discovery(api_key.clone(), base_url.clone()),
                 ));
             }
-        }
-
-        // ── OpenCode Zen (opencode.ai) ───────────────────────────────────
-        if config.is_enabled("opencode-zen")
-            && !cfg!(test)
-            && let Some(key) = resolve_api_key(
-                config,
-                "opencode-zen",
-                "OPENCODE_ZEN_API_KEY",
-                env_overrides,
-            )
-            && should_fetch_models(config, "opencode-zen")
-        {
-            let base_url = config
-                .get("opencode-zen")
-                .and_then(|e| e.base_url.clone())
-                .or_else(|| env_value(env_overrides, "OPENCODE_ZEN_BASE_URL"))
-                .unwrap_or_else(|| crate::opencode_zen::OPENCODE_ZEN_DEFAULT_BASE_URL.into());
-            // Zen exposes an OpenAI-compatible /models endpoint.
-            pending.push((
-                "opencode-zen".into(),
-                openai::start_model_discovery(key, base_url),
-            ));
         }
 
         // ── OpenAI Codex ─────────────────────────────────────────────────

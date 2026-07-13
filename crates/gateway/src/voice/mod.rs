@@ -73,19 +73,9 @@ pub(crate) fn merge_voice_keys(cfg: &mut chelix_config::ChelixConfig) {
         cfg.voice.stt.whisper.api_key = Some(Secret::new(key));
     }
 
-    // Groq STT
-    if let Some(key) = store.load("voice-groq") {
-        cfg.voice.stt.groq.api_key = Some(Secret::new(key));
-    }
-
     // Deepgram STT
     if let Some(key) = store.load("voice-deepgram") {
         cfg.voice.stt.deepgram.api_key = Some(Secret::new(key));
-    }
-
-    // Mistral STT
-    if let Some(key) = store.load("voice-mistral") {
-        cfg.voice.stt.mistral.api_key = Some(Secret::new(key));
     }
 }
 
@@ -100,9 +90,7 @@ pub(crate) fn voice_key_store_name(provider: &str) -> String {
         "openai" | "openai-tts" => "voice-openai".to_string(),
         "google" | "google-tts" => "voice-google".to_string(),
         "whisper" => "voice-whisper".to_string(),
-        "groq" => "voice-groq".to_string(),
         "deepgram" => "voice-deepgram".to_string(),
-        "mistral" => "voice-mistral".to_string(),
         other => format!("voice-{other}"),
     }
 }
@@ -141,16 +129,10 @@ pub(crate) fn migrate_voice_keys_to_key_store(config: &chelix_config::ChelixConf
             None,
             config.voice.stt.whisper.api_key.as_ref(),
         ),
-        ("voice-groq", None, config.voice.stt.groq.api_key.as_ref()),
         (
             "voice-deepgram",
             None,
             config.voice.stt.deepgram.api_key.as_ref(),
-        ),
-        (
-            "voice-mistral",
-            None,
-            config.voice.stt.mistral.api_key.as_ref(),
         ),
     ];
 
@@ -198,14 +180,8 @@ pub(crate) fn migrate_voice_keys_to_key_store(config: &chelix_config::ChelixConf
                 "voice-whisper" => {
                     cfg.voice.stt.whisper.api_key = None;
                 },
-                "voice-groq" => {
-                    cfg.voice.stt.groq.api_key = None;
-                },
                 "voice-deepgram" => {
                     cfg.voice.stt.deepgram.api_key = None;
-                },
-                "voice-mistral" => {
-                    cfg.voice.stt.mistral.api_key = None;
                 },
                 _ => {},
             }
@@ -413,9 +389,7 @@ mod tests {
         assert_eq!(voice_key_store_name("google"), "voice-google");
         assert_eq!(voice_key_store_name("google-tts"), "voice-google");
         assert_eq!(voice_key_store_name("whisper"), "voice-whisper");
-        assert_eq!(voice_key_store_name("groq"), "voice-groq");
         assert_eq!(voice_key_store_name("deepgram"), "voice-deepgram");
-        assert_eq!(voice_key_store_name("mistral"), "voice-mistral");
         assert_eq!(voice_key_store_name("custom"), "voice-custom");
     }
 
@@ -450,7 +424,7 @@ mod tests {
         // Build a config with voice keys as if they came from TOML.
         let mut cfg = chelix_config::ChelixConfig::default();
         cfg.voice.tts.elevenlabs.api_key = Some(Secret::new("el-legacy-key".to_string()));
-        cfg.voice.stt.groq.api_key = Some(Secret::new("groq-legacy-key".to_string()));
+        cfg.voice.stt.deepgram.api_key = Some(Secret::new("deepgram-legacy-key".to_string()));
 
         migrate_voice_keys_to_key_store(&cfg);
 
@@ -460,7 +434,10 @@ mod tests {
             store.load("voice-elevenlabs").as_deref(),
             Some("el-legacy-key")
         );
-        assert_eq!(store.load("voice-groq").as_deref(), Some("groq-legacy-key"));
+        assert_eq!(
+            store.load("voice-deepgram").as_deref(),
+            Some("deepgram-legacy-key")
+        );
 
         // Running again with empty config is a no-op (keys already in store).
         let cfg2 = chelix_config::ChelixConfig::default();

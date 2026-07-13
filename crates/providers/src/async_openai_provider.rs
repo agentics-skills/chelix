@@ -21,7 +21,7 @@ use chelix_agents::model::{
 };
 
 /// Provider backed by the `async-openai` crate.
-/// Works with OpenAI and any OpenAI-compatible API (Ollama, vLLM, etc.)
+/// Works with OpenAI and custom OpenAI-compatible APIs such as vLLM.
 /// via custom base URL.
 pub struct AsyncOpenAiProvider {
     model: String,

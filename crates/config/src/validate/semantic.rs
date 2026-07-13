@@ -798,10 +798,8 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
     // Unknown voice STT providers list values
     let valid_voice_stt_providers = [
         "whisper",
-        "groq",
         "deepgram",
         "google",
-        "mistral",
         "elevenlabs",
         "elevenlabs-stt",
         "voxtral-local",
@@ -1001,16 +999,11 @@ fn check_plaintext_api_keys(config: &ChelixConfig, diagnostics: &mut Vec<Diagnos
             "voice.stt.whisper.api_key",
             &config.voice.stt.whisper.api_key,
         ),
-        ("voice.stt.groq.api_key", &config.voice.stt.groq.api_key),
         (
             "voice.stt.deepgram.api_key",
             &config.voice.stt.deepgram.api_key,
         ),
         ("voice.stt.google.api_key", &config.voice.stt.google.api_key),
-        (
-            "voice.stt.mistral.api_key",
-            &config.voice.stt.mistral.api_key,
-        ),
         (
             "voice.stt.elevenlabs.api_key",
             &config.voice.stt.elevenlabs.api_key,

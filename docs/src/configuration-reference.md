@@ -99,12 +99,11 @@
 - **Voice — Speech-to-Text**
   - [`voice.stt`](#voicestt)
   - [`voice.stt.whisper`](#voicesttwhisper)
-  - [`voice.stt.groq`](#voicesttgroq)
   - [`voice.stt.deepgram`](#voicesttdeepgram)
   - [`voice.stt.google`](#voicesttgoogle)
-  - [`voice.stt.mistral`](#voicesttmistral)
   - [`voice.stt.elevenlabs`](#voicesttelevenlabs)
   - [`voice.stt.voxtral_local`](#voicesttvoxtral-local)
+  - [`voice.stt.whisper_local`](#voicesttwhisper-local)
   - [`voice.stt.whisper_cli`](#voicesttwhisper-cli)
   - [`voice.stt.sherpa_onnx`](#voicesttsherpa-onnx)
 - **Environment**
@@ -661,7 +660,7 @@ Each channel account (`channels.<channel_type>.<account_name>`) is an arbitrary 
 | `agent_write_mode` | enum (`hybrid`, `prompt-only`, `search-only`, `off`) | `"hybrid"` | Where agent-authored memory writes are allowed to land. |
 | `user_profile_write_mode` | enum (`explicit-and-auto`, `explicit-only`, `off`) | `"explicit-and-auto"` | How Chelix writes the managed `USER.md` profile surface. |
 | `backend` | enum (`builtin`, `qmd`) | `"builtin"` | Memory backend used for search, retrieval, and indexing. |
-| `provider` | optional enum (`local`, `ollama`, `openai`, `custom`) | *auto-detect* | Embedding provider. Alias: `embedding_provider`. |
+| `provider` | optional enum (`local`, `openai`, `custom`) | *auto-detect* | Embedding provider. Alias: `embedding_provider`. |
 | `disable_rag` | bool | `false` | Disable RAG embeddings and force keyword-only memory search. |
 | `base_url` | optional string | — | Base URL for the embedding API. Alias: `embedding_base_url`. |
 | `model` | optional string | — | Model name for embeddings. Alias: `embedding_model`. |
@@ -956,15 +955,14 @@ context_window = 1_000_000
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `enabled` | bool | `true` | Enable STT globally |
-| `provider` | optional enum: `whisper`, `groq`, `deepgram`, `google`, `mistral`, `elevenlabs-stt`, `voxtral-local`, `whisper-cli`, `sherpa-onnx` | `null` | Active provider. `null` auto-selects the first configured provider. Values: `"whisper"`, `"groq"`, `"deepgram"`, `"google"`, `"mistral"`, `"elevenlabs-stt"`, `"voxtral-local"`, `"whisper-cli"`, `"sherpa-onnx"` |
+| `provider` | optional enum: `whisper`, `deepgram`, `google`, `elevenlabs-stt`, `voxtral-local`, `whisper-local`, `whisper-cli`, `sherpa-onnx` | `null` | Active provider. `null` auto-selects the first configured provider. |
 | `providers` | array of string | `[]` | Provider IDs to list in the UI. Empty means list all |
 | `whisper` | `VoiceWhisperConfig` | (see below) | OpenAI Whisper settings |
-| `groq` | `VoiceGroqSttConfig` | (see below) | Groq (Whisper-compatible) settings |
 | `deepgram` | `VoiceDeepgramConfig` | (see below) | Deepgram settings |
 | `google` | `VoiceGoogleSttConfig` | (see below) | Google Cloud Speech-to-Text settings |
-| `mistral` | `VoiceMistralSttConfig` | (see below) | Mistral AI (Voxtral Transcribe) settings |
 | `elevenlabs` | `VoiceElevenLabsSttConfig` | (see below) | ElevenLabs Scribe settings |
 | `voxtral_local` | `VoiceVoxtralLocalConfig` | (see below) | Voxtral local (vLLM server) settings |
+| `whisper_local` | `VoiceWhisperLocalConfig` | (see below) | Whisper local OpenAI-compatible server settings |
 | `whisper_cli` | `VoiceWhisperCliConfig` | (see below) | whisper-cli (whisper.cpp) settings |
 | `sherpa_onnx` | `VoiceSherpaOnnxConfig` | (see below) | sherpa-onnx offline settings |
 
@@ -978,17 +976,6 @@ context_window = 1_000_000
 | `api_key` | optional secret string | `null` | API key (from `OPENAI_API_KEY` env or config) |
 | `base_url` | optional string | `null` | Override the Whisper endpoint for compatible local servers |
 | `model` | optional string | `null` | Model to use (`whisper-1`) |
-| `language` | optional string | `null` | Language hint (ISO 639-1 code) |
-
-
-### `voice.stt.groq`
-
-**Struct:** `VoiceGroqSttConfig`
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `api_key` | optional secret string | `null` | API key (from `GROQ_API_KEY` env or config) |
-| `model` | optional string | `null` | Model to use (e.g. `"whisper-large-v3-turbo"`) |
 | `language` | optional string | `null` | Language hint (ISO 639-1 code) |
 
 
@@ -1016,17 +1003,6 @@ context_window = 1_000_000
 | `model` | optional string | `null` | Model variant (e.g. `"latest_long"`, `"latest_short"`) |
 
 
-### `voice.stt.mistral`
-
-**Struct:** `VoiceMistralSttConfig`
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `api_key` | optional secret string | `null` | API key (from `MISTRAL_API_KEY` env or config) |
-| `model` | optional string | `null` | Model to use (e.g. `"voxtral-mini-latest"`) |
-| `language` | optional string | `null` | Language hint (ISO 639-1 code) |
-
-
 ### `voice.stt.elevenlabs`
 
 **Struct:** `VoiceElevenLabsSttConfig`
@@ -1046,6 +1022,17 @@ context_window = 1_000_000
 |-----|------|---------|-------------|
 | `endpoint` | string | `"http://localhost:8000"` | vLLM server endpoint |
 | `model` | optional string | `null` | Model to use (optional, server default if not set) |
+| `language` | optional string | `null` | Language hint (ISO 639-1 code) |
+
+
+### `voice.stt.whisper_local`
+
+**Struct:** `VoiceWhisperLocalConfig`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `endpoint` | string | `"http://localhost:8080"` | OpenAI-compatible local transcription endpoint |
+| `model` | optional string | `null` | Model name exposed by the server |
 | `language` | optional string | `null` | Language hint (ISO 639-1 code) |
 
 

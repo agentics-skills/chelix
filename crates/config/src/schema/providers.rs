@@ -24,19 +24,10 @@ pub const KNOWN_PROVIDER_NAMES: &[&str] = &[
     "openai",
     // OpenAI-compatible providers (table-driven)
     "alibaba-coding",
-    "cerebras",
     "deepinfra",
-    "deepseek",
-    "fireworks",
     "gemini",
-    "lmstudio",
-    "minimax",
-    "mistral",
     "moonshot",
-    "nearai",
-    "ollama",
     "openrouter",
-    "venice",
     "zai",
     "zai-code",
     // Feature-gated providers
@@ -44,10 +35,7 @@ pub const KNOWN_PROVIDER_NAMES: &[&str] = &[
     "kimi-code",
     "openai-codex",
     // Providers registered via genai/async-openai backends
-    "groq",
     "xai",
-    // Multi-protocol proxy (opencode.ai)
-    "opencode-zen",
 ];
 
 /// OAuth provider configuration (e.g. openai-codex).
@@ -238,7 +226,7 @@ pub struct ProviderEntry {
     ///
     /// Only affects providers that support client-controlled caching
     /// (Anthropic direct, Anthropic via OpenRouter). Has no effect on
-    /// providers with automatic server-side caching (OpenAI, DeepSeek, Ollama).
+    /// providers with automatic server-side caching (OpenAI).
     #[serde(default, skip_serializing_if = "is_default_cache_retention")]
     pub cache_retention: CacheRetention,
 
@@ -277,8 +265,8 @@ pub struct ProviderEntry {
     /// probing falls back to sending a completion request. This setting
     /// controls how long to wait for that fallback.
     ///
-    /// Increase this for local LLM servers that need time to load large
-    /// models on first request (e.g. Ollama or LM Studio with large models).
+    /// Increase this for slow providers that need extra time to respond to
+    /// the first probe request.
     ///
     /// `None` (default) uses the built-in 30-second timeout.
     #[serde(default, skip_serializing_if = "Option::is_none")]

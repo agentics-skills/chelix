@@ -252,23 +252,17 @@ pub struct SttConfig {
     /// Enable STT globally.
     pub enabled: bool,
 
-    /// Default provider: "whisper", "groq", "deepgram", "google", "mistral", "voxtral-local", "whisper-cli", "sherpa-onnx", "elevenlabs".
+    /// Default provider: "whisper", "deepgram", "google", "voxtral-local", "whisper-cli", "sherpa-onnx", "elevenlabs".
     pub provider: String,
 
     /// OpenAI Whisper settings.
     pub whisper: WhisperConfig,
-
-    /// Groq (Whisper-compatible) settings.
-    pub groq: GroqSttConfig,
 
     /// Deepgram settings.
     pub deepgram: DeepgramConfig,
 
     /// Google Cloud Speech-to-Text settings.
     pub google: GoogleSttConfig,
-
-    /// Mistral AI (Voxtral) settings.
-    pub mistral: MistralSttConfig,
 
     /// Voxtral local (vLLM) settings.
     pub voxtral_local: VoxtralLocalConfig,
@@ -292,10 +286,8 @@ impl Default for SttConfig {
             enabled: false,
             provider: "whisper".into(),
             whisper: WhisperConfig::default(),
-            groq: GroqSttConfig::default(),
             deepgram: DeepgramConfig::default(),
             google: GoogleSttConfig::default(),
-            mistral: MistralSttConfig::default(),
             voxtral_local: VoxtralLocalConfig::default(),
             whisper_local: WhisperLocalConfig::default(),
             whisper_cli: WhisperCliConfig::default(),
@@ -323,26 +315,6 @@ pub struct WhisperConfig {
     pub base_url: Option<String>,
 
     /// Model to use (whisper-1).
-    pub model: Option<String>,
-
-    /// Language hint (ISO 639-1 code).
-    pub language: Option<String>,
-}
-
-/// Groq STT configuration (Whisper-compatible API).
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct GroqSttConfig {
-    /// API key (from GROQ_API_KEY env or config).
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_option_secret",
-        deserialize_with = "deserialize_option_secret"
-    )]
-    pub api_key: Option<Secret<String>>,
-
-    /// Model to use (e.g., "whisper-large-v3-turbo").
     pub model: Option<String>,
 
     /// Language hint (ISO 639-1 code).
@@ -393,26 +365,6 @@ pub struct GoogleSttConfig {
 
     /// Model variant (e.g., "latest_long", "latest_short").
     pub model: Option<String>,
-}
-
-/// Mistral AI (Voxtral Transcribe) configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct MistralSttConfig {
-    /// API key (from MISTRAL_API_KEY env or config).
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_option_secret",
-        deserialize_with = "deserialize_option_secret"
-    )]
-    pub api_key: Option<Secret<String>>,
-
-    /// Model to use (e.g., "voxtral-mini-latest").
-    pub model: Option<String>,
-
-    /// Language hint (ISO 639-1 code).
-    pub language: Option<String>,
 }
 
 /// whisper-cli (whisper.cpp) configuration.

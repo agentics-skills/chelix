@@ -9,9 +9,8 @@ use {
 };
 
 use chelix_voice::{
-    AudioFormat, DeepgramStt, ElevenLabsStt, GoogleStt, GroqStt, MistralStt, SherpaOnnxStt,
-    SttProvider, SttProviderId, TranscribeRequest, VoxtralLocalStt, WhisperCliStt, WhisperLocalStt,
-    WhisperStt,
+    AudioFormat, DeepgramStt, ElevenLabsStt, GoogleStt, SherpaOnnxStt, SttProvider, SttProviderId,
+    TranscribeRequest, VoxtralLocalStt, WhisperCliStt, WhisperLocalStt, WhisperStt,
 };
 
 use crate::services::{ServiceResult, SttService};
@@ -34,9 +33,6 @@ impl std::fmt::Debug for LiveSttService {
 pub struct SttServiceConfig {
     pub provider: String,
     pub openai_key: Option<Secret<String>>,
-    pub groq_key: Option<Secret<String>>,
-    pub groq_model: Option<String>,
-    pub groq_language: Option<String>,
     pub deepgram_key: Option<Secret<String>>,
     pub deepgram_model: Option<String>,
     pub deepgram_language: Option<String>,
@@ -44,9 +40,6 @@ pub struct SttServiceConfig {
     pub google_key: Option<Secret<String>>,
     pub google_language: Option<String>,
     pub google_model: Option<String>,
-    pub mistral_key: Option<Secret<String>>,
-    pub mistral_model: Option<String>,
-    pub mistral_language: Option<String>,
     pub voxtral_local_endpoint: Option<String>,
     pub voxtral_local_model: Option<String>,
     pub voxtral_local_language: Option<String>,
@@ -66,9 +59,6 @@ impl Default for SttServiceConfig {
         Self {
             provider: "whisper".into(),
             openai_key: None,
-            groq_key: None,
-            groq_model: None,
-            groq_language: None,
             deepgram_key: None,
             deepgram_model: None,
             deepgram_language: None,
@@ -76,9 +66,6 @@ impl Default for SttServiceConfig {
             google_key: None,
             google_language: None,
             google_model: None,
-            mistral_key: None,
-            mistral_model: None,
-            mistral_language: None,
             voxtral_local_endpoint: None,
             voxtral_local_model: None,
             voxtral_local_language: None,
@@ -130,21 +117,6 @@ impl LiveSttService {
                     None
                 }
             },
-            SttProviderId::Groq => cfg
-                .voice
-                .stt
-                .groq
-                .api_key
-                .clone()
-                .or_else(|| Self::env_secret("GROQ_API_KEY"))
-                .or_else(|| cfg.providers.get("groq").and_then(|p| p.api_key.clone()))
-                .map(|key| {
-                    Box::new(GroqStt::with_options(
-                        Some(key),
-                        cfg.voice.stt.groq.model.clone(),
-                        cfg.voice.stt.groq.language.clone(),
-                    )) as Box<dyn SttProvider + Send + Sync>
-                }),
             SttProviderId::Deepgram => cfg
                 .voice
                 .stt
@@ -173,20 +145,6 @@ impl LiveSttService {
                         Some(key),
                         cfg.voice.stt.google.language.clone(),
                         cfg.voice.stt.google.model.clone(),
-                    )) as Box<dyn SttProvider + Send + Sync>
-                }),
-            SttProviderId::Mistral => cfg
-                .voice
-                .stt
-                .mistral
-                .api_key
-                .clone()
-                .or_else(|| Self::env_secret("MISTRAL_API_KEY"))
-                .map(|key| {
-                    Box::new(MistralStt::with_options(
-                        Some(key),
-                        cfg.voice.stt.mistral.model.clone(),
-                        cfg.voice.stt.mistral.language.clone(),
                     )) as Box<dyn SttProvider + Send + Sync>
                 }),
             SttProviderId::VoxtralLocal => {
@@ -273,16 +231,6 @@ impl LiveSttService {
                     || resolve_openai_whisper_base_url(&cfg).is_some(),
             ),
             (
-                SttProviderId::Groq,
-                cfg.voice.stt.groq.api_key.is_some()
-                    || Self::env_secret("GROQ_API_KEY").is_some()
-                    || cfg
-                        .providers
-                        .get("groq")
-                        .and_then(|p| p.api_key.as_ref())
-                        .is_some(),
-            ),
-            (
                 SttProviderId::Deepgram,
                 cfg.voice.stt.deepgram.api_key.is_some()
                     || Self::env_secret("DEEPGRAM_API_KEY").is_some(),
@@ -292,11 +240,6 @@ impl LiveSttService {
                 cfg.voice.stt.google.api_key.is_some()
                     || Self::env_secret("GOOGLE_API_KEY").is_some()
                     || Self::env_secret("GOOGLE_CLOUD_API_KEY").is_some(),
-            ),
-            (
-                SttProviderId::Mistral,
-                cfg.voice.stt.mistral.api_key.is_some()
-                    || Self::env_secret("MISTRAL_API_KEY").is_some(),
             ),
             (
                 SttProviderId::VoxtralLocal,
@@ -607,18 +550,16 @@ endpoint = "http://127.0.0.1:9001/"
         let providers = service.providers().await.unwrap();
 
         let providers_arr = providers.as_array().unwrap();
-        // 6 cloud providers + 4 local providers.
-        assert_eq!(providers_arr.len(), 10);
+        // 4 cloud providers + 4 local providers.
+        assert_eq!(providers_arr.len(), 8);
         // Check all providers are listed
         let ids: Vec<_> = providers_arr
             .iter()
             .filter_map(|p| p["id"].as_str())
             .collect();
         assert!(ids.contains(&"whisper"));
-        assert!(ids.contains(&"groq"));
         assert!(ids.contains(&"deepgram"));
         assert!(ids.contains(&"google"));
-        assert!(ids.contains(&"mistral"));
         assert!(ids.contains(&"voxtral-local"));
         assert!(ids.contains(&"whisper-local"));
         assert!(ids.contains(&"whisper-cli"));

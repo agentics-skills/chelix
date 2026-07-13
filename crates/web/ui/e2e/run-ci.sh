@@ -58,10 +58,6 @@ if [ -n "${CHELIX_E2E_OPENAI_API_KEY:-${OPENAI_API_KEY:-}}" ]; then
 	SPECIAL_PROJECTS+=(openai-live)
 fi
 
-if [ "${CHELIX_E2E_OLLAMA_QWEN_LIVE:-}" = "1" ]; then
-	SPECIAL_PROJECTS+=(ollama-qwen-live)
-fi
-
 for project in "${SPECIAL_PROJECTS[@]}"; do
 	(
 		export CI=true

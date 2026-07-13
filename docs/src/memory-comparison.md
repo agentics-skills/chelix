@@ -36,7 +36,6 @@ general-purpose).
 | Provider | Chelix | OpenClaw |
 |----------|--------|----------|
 | **Local GGUF** | EmbeddingGemma-300M via llama-cpp-2 | Auto-download GGUF (~0.6 GB) |
-| **Ollama** | nomic-embed-text | Not listed |
 | **OpenAI** | text-embedding-3-small | Via API key |
 | **Gemini** | Not available | Via API key |
 | **Voyage** | Not available | Via API key |
@@ -190,7 +189,6 @@ Chelix does not run a separate memory-flush turn before compaction. OpenClaw:
 - **Dedicated `memory_save`, `memory_forget`, and `memory_delete` tools** with
   path validation and immediate re-indexing, reducing reliance on the system
   prompt for memory mutations
-- **Ollama embedding support** as a provider option
 - **Custom OpenAI-compatible embedding endpoints**
 - **Circuit breaker** with automatic fallback chain for embedding providers
 - **Web UI for memory configuration** (Settings > Memory page)

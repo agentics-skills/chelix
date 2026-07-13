@@ -28,28 +28,8 @@ import type {
 
 // ── Constants ───────────────────────────────────────────────
 
-const OPENAI_COMPATIBLE = [
-	"openai",
-	"mistral",
-	"openrouter",
-	"cerebras",
-	"minimax",
-	"moonshot",
-	"venice",
-	"nearai",
-	"ollama",
-];
-const BYOM_PROVIDERS = ["venice"];
-const RECOMMENDED_PROVIDERS = new Set([
-	"anthropic",
-	"openai",
-	"gemini",
-	"deepseek",
-	"minimax",
-	"zai",
-	"ollama",
-	"lmstudio",
-]);
+const OPENAI_COMPATIBLE = ["openai", "openrouter", "moonshot"];
+const RECOMMENDED_PROVIDERS = new Set(["anthropic", "openai", "gemini", "zai"]);
 
 const WS_RETRY_LIMIT = 75;
 const WS_RETRY_DELAY_MS = 200;
@@ -193,8 +173,6 @@ interface OnboardingProviderRowProps {
 	setApiKey: (v: string) => void;
 	endpoint: string;
 	setEndpoint: (v: string) => void;
-	model: string;
-	setModel: (v: string) => void;
 	savingModels: boolean;
 	error: string | null;
 	validationResult: ValidationResult | null;
@@ -227,8 +205,6 @@ export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode 
 		setApiKey,
 		endpoint,
 		setEndpoint,
-		model,
-		setModel,
 		savingModels,
 		error,
 		validationResult,
@@ -257,7 +233,6 @@ export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode 
 	}, [isExpanded]);
 
 	const supportsEndpoint = OPENAI_COMPATIBLE.includes(provider.name);
-	const needsModel = BYOM_PROVIDERS.includes(provider.name);
 	const keyHelp = providerApiKeyHelp(provider) as KeyHelp | null;
 
 	const [showAllModels, setShowAllModels] = useState(false);
@@ -359,18 +334,6 @@ export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode 
 								placeholder={provider.defaultBaseUrl || "https://api.example.com/v1"}
 							/>
 							<div className="text-xs text-[var(--muted)] mt-1">Leave empty to use the default endpoint.</div>
-						</div>
-					) : null}
-					{needsModel ? (
-						<div>
-							<label className="text-xs text-[var(--muted)] mb-1 block">Model ID</label>
-							<input
-								type="text"
-								className="provider-key-input w-full"
-								value={model}
-								onInput={(e) => setModel(targetValue(e))}
-								placeholder="model-id"
-							/>
 						</div>
 					) : null}
 					{error ? <ErrorPanel message={error} /> : null}
@@ -529,7 +492,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 	const [modelSelectProvider, setModelSelectProvider] = useState<string | null>(null);
 	const [apiKey, setApiKey] = useState("");
 	const [endpoint, setEndpoint] = useState("");
-	const [model, setModel] = useState("");
 	const [validationResults, setValidationResults] = useState<Record<string, ValidationResult>>({});
 	const [oauthInfo, setOauthInfo] = useState<OAuthInfo | null>(null);
 	const [oauthCallbackInput, setOauthCallbackInput] = useState("");
@@ -594,7 +556,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		setSavingModels(false);
 		setApiKey("");
 		setEndpoint("");
-		setModel("");
 		setError(null);
 		setOauthInfo(null);
 		setOauthCallbackInput("");
@@ -630,7 +591,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		if (!p) return;
 		if (p.authType === "api-key") {
 			setEndpoint(p.baseUrl || "");
-			setModel(p.model || "");
 			if (await openModelSelectForConfiguredApiProvider(p)) return;
 			setConfiguring(name);
 			setPhase("form");
@@ -647,15 +607,10 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 			setError("API key is required.");
 			return;
 		}
-		if (BYOM_PROVIDERS.includes(p.name) && !model.trim()) {
-			setError("Model ID is required.");
-			return;
-		}
 		setError(null);
 		setPhase("validating");
 		const keyVal = apiKey.trim() || p.name;
 		const endpointVal = endpoint.trim() || null;
-		const modelVal = model.trim() || null;
 		const endpointError = providerBaseUrlError(endpointVal);
 		if (endpointError) {
 			setPhase("form");
@@ -663,18 +618,14 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 			return;
 		}
 
-		validateProviderKey(p.name, keyVal, endpointVal, modelVal)
+		validateProviderKey(p.name, keyVal, endpointVal, null)
 			.then(async (result: { valid: boolean; error?: string; models?: ModelSelectorRow[] }) => {
 				if (!result.valid) {
 					setPhase("form");
 					setError(result.error || "Validation failed.");
 					return;
 				}
-				if (BYOM_PROVIDERS.includes(p.name)) {
-					saveAndFinishByom(p.name, keyVal, endpointVal, modelVal);
-					return;
-				}
-				const saveRes = await saveProviderKey(p.name, keyVal, endpointVal, modelVal);
+				const saveRes = await saveProviderKey(p.name, keyVal, endpointVal, null);
 				if (!saveRes?.ok) {
 					setPhase("form");
 					setError((saveRes?.error as { message?: string })?.message || "Failed to save credentials.");
@@ -732,7 +683,7 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 				const p = providers.find((pr) => pr.name === providerName);
 				const keyVal = apiKey.trim() || p?.name || "";
 				const endpointVal = endpoint.trim() || null;
-				const modelVal = model.trim() || (p?.keyOptional && modelIds.length > 0 ? modelIds[0] : null);
+				const modelVal = p?.keyOptional && modelIds.length > 0 ? modelIds[0] : null;
 				const res = await saveProviderKey(providerName, keyVal, endpointVal, modelVal);
 				if (!res?.ok) {
 					setSavingModels(false);
@@ -766,49 +717,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 			if (!saved) return;
 		}
 		onNext();
-	}
-
-	function saveAndFinishByom(
-		providerName: string,
-		keyVal: string,
-		endpointVal: string | null,
-		modelVal: string | null,
-	): void {
-		saveProviderKey(providerName, keyVal, endpointVal, modelVal)
-			.then(async (res: { ok?: boolean; error?: { message?: string } } | null) => {
-				if (!res?.ok) {
-					setPhase("form");
-					setError(res?.error?.message || "Failed to save credentials.");
-					return;
-				}
-				if (modelVal) {
-					const testResult = await testModel(modelVal);
-					const modelServiceUnavailable = !testResult.ok && isModelServiceNotConfigured(testResult.error || "");
-					if (!(testResult.ok || modelServiceUnavailable)) {
-						setPhase("form");
-						setError(testResult.error || "Model test failed.");
-						return;
-					}
-					await sendRpc("providers.save_models", { provider: providerName, models: [modelVal] });
-					localStorage.setItem("chelix-model", modelVal);
-				}
-				setValidationResults((prev) => ({ ...prev, [providerName]: { ok: true, message: null } }));
-				setConfiguring(null);
-				setPhase("form");
-				setProviderModels([]);
-				setSelectedModels(new Set());
-				setProbeResults(new Map());
-				setModelSearch("");
-				setApiKey("");
-				setEndpoint("");
-				setModel("");
-				setError(null);
-				refreshProviders();
-			})
-			.catch((err: Error) => {
-				setPhase("form");
-				setError(err?.message || "Failed to save credentials.");
-			});
 	}
 
 	function startOAuth(p: ProviderInfo): void {
@@ -947,8 +855,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 				setApiKey={setApiKey}
 				endpoint={endpoint}
 				setEndpoint={setEndpoint}
-				model={model}
-				setModel={setModel}
 				savingModels={savingModels}
 				error={configuring === p.name || oauthProvider === p.name ? error : null}
 				validationResult={validationResults[p.name] || null}

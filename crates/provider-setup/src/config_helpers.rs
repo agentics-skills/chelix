@@ -392,10 +392,12 @@ mod tests {
         assert!(has_explicit_provider_settings(&empty));
 
         let mut model_only = ProvidersConfig::default();
-        model_only.providers.insert("ollama".into(), ProviderEntry {
-            models: vec!["llama3".into()],
-            ..Default::default()
-        });
+        model_only
+            .providers
+            .insert("openrouter".into(), ProviderEntry {
+                models: vec!["z-ai/glm-4.6".into()],
+                ..Default::default()
+            });
         assert!(has_explicit_provider_settings(&model_only));
     }
 

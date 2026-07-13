@@ -171,7 +171,7 @@ Connected nodes report system telemetry every 30 seconds:
 - Disk total and available (root partition)
 - System uptime
 - Installed runtimes (Python, Node.js, Ruby, Go, Rust, Java)
-- Available LLM providers (Ollama models, API key presence)
+- Available LLM provider credentials
 
 This data is visible on the Nodes page and available to the agent via the
 `nodes_describe` tool.

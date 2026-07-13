@@ -386,7 +386,7 @@ impl Transform for PruneOrphanedRequiredTransform {
 /// when all enum values match the declared type (`lower_enum_with_type`), and
 /// converts `"type": "boolean"` → `"enum": [false, true]`
 /// (`lower_boolean_and_null_types`). This is correct per JSON Schema semantics
-/// but providers like Fireworks AI reject schemas without explicit `"type"`.
+/// but some OpenAI-compatible APIs require an explicit `"type"`.
 ///
 /// This transform walks every schema node and restores `"type"` when:
 /// - `"enum"` is present but `"type"` is absent
@@ -453,8 +453,7 @@ impl Transform for RestoreEnumTypeTransform {
             // `"enum": [false, true]` which adds no constraint beyond the
             // restored type. Leaving this redundant enum causes
             // `make_nullable` in strict mode to append `null` to the enum
-            // array, which Fireworks AI rejects with "could not translate
-            // the enum None" (#848).
+            // array, which some OpenAI-compatible APIs reject.
             let strip_redundant_enum =
                 inferred_type == "boolean" && is_complete_boolean_enum(values);
 
@@ -711,8 +710,8 @@ pub(crate) fn sanitize_schema_for_openai_compat(schema: &mut serde_json::Value) 
     prune_orphaned_required.transform(&mut transformed);
 
     // Re-infer `"type"` from enum values after canonicalization stripped it.
-    // Providers like Fireworks AI reject schemas without explicit type
-    // annotations even when enum values unambiguously imply the type.
+    // Explicit annotations improve compatibility when enum values
+    // unambiguously imply the type.
     let mut restore_enum_type = RecursiveTransform(RestoreEnumTypeTransform);
     restore_enum_type.transform(&mut transformed);
 
@@ -721,67 +720,6 @@ pub(crate) fn sanitize_schema_for_openai_compat(schema: &mut serde_json::Value) 
     restore_null_type.transform(&mut transformed);
 
     *schema = transformed.to_value();
-}
-
-/// Recursively remove `null` from `enum` arrays in schemas that already
-/// communicate nullability via `type` (e.g. `["string", "null"]`).
-///
-/// Strict mode's `make_nullable` adds `null` to both `type` and `enum`
-/// (issue #712, needed for OpenAI so LLMs send JSON null instead of the
-/// string "null"). However, providers like Fireworks AI reject `null` in
-/// enum arrays with "could not translate the enum None" (issue #848).
-///
-/// This function strips the redundant `null` from enum arrays when the
-/// `type` already includes `"null"`, making the schema compatible with
-/// providers that reject null enum values while preserving the type-level
-/// nullability signal.
-pub fn strip_null_from_typed_enums(schema: &mut serde_json::Value) {
-    let Some(obj) = schema.as_object_mut() else {
-        return;
-    };
-
-    // Only strip null from enum when type already communicates nullability.
-    let type_includes_null = match obj.get("type") {
-        Some(serde_json::Value::Array(arr)) => arr.iter().any(|v| v.as_str() == Some("null")),
-        Some(serde_json::Value::String(s)) => s == "null",
-        _ => false,
-    };
-
-    if type_includes_null
-        && let Some(enum_values) = obj.get_mut("enum").and_then(|v| v.as_array_mut())
-    {
-        enum_values.retain(|v| !v.is_null());
-    }
-    // An empty enum means "no value is valid" — remove it entirely.
-    if obj
-        .get("enum")
-        .and_then(|v| v.as_array())
-        .is_some_and(|a| a.is_empty())
-    {
-        obj.remove("enum");
-    }
-
-    // Recurse into sub-schemas.
-    if let Some(props) = obj.get_mut("properties").and_then(|v| v.as_object_mut()) {
-        for prop_schema in props.values_mut() {
-            strip_null_from_typed_enums(prop_schema);
-        }
-    }
-    if let Some(items) = obj.get_mut("items") {
-        strip_null_from_typed_enums(items);
-    }
-    for keyword in ["anyOf", "oneOf", "allOf"] {
-        if let Some(variants) = obj.get_mut(keyword).and_then(|v| v.as_array_mut()) {
-            for variant in variants {
-                strip_null_from_typed_enums(variant);
-            }
-        }
-    }
-    if let Some(ap) = obj.get_mut("additionalProperties")
-        && ap.is_object()
-    {
-        strip_null_from_typed_enums(ap);
-    }
 }
 
 /// Collapse union constructs that OpenRouter's non-strict Google path cannot

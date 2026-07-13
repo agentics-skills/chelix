@@ -191,7 +191,6 @@ else
   test_cmd="cargo +${nightly_toolchain} nextest run --all-features --profile ci"
 fi
 e2e_cmd="${LOCAL_VALIDATE_E2E_CMD:-cd crates/web/ui && if [ ! -d node_modules ]; then npm ci; fi && npm run e2e:install && npm run e2e}"
-ollama_qwen_e2e_cmd="${LOCAL_VALIDATE_OLLAMA_QWEN_E2E_CMD:-cd crates/web/ui && if [ ! -d node_modules ]; then npm ci; fi && npm run e2e:install && CHELIX_E2E_OLLAMA_QWEN_LIVE=1 npx playwright test --project=ollama-qwen-live e2e/specs/ollama-qwen-live.spec.js}"
 coverage_cmd="${LOCAL_VALIDATE_COVERAGE_CMD:-cargo +${nightly_toolchain} llvm-cov --workspace --all-features --html}"
 build_cmd="${LOCAL_VALIDATE_BUILD_CMD:-cargo +${nightly_toolchain} build --workspace --all-features --all-targets}"
 
@@ -285,8 +284,6 @@ cleanup_e2e_ports() {
     "${CHELIX_E2E_OAUTH_PORT:-18792}"
     "${CHELIX_E2E_ONBOARDING_ANTHROPIC_PORT:-18793}"
     "${CHELIX_E2E_OPENAI_LIVE_PORT:-18794}"
-    "${CHELIX_E2E_OLLAMA_QWEN_LIVE_PORT:-18795}"
-    "${CHELIX_E2E_OLLAMA_QWEN_API_PORT:-11435}"
   )
 
   local port
@@ -580,13 +577,6 @@ if [[ "${LOCAL_VALIDATE_SKIP_E2E:-0}" != "1" ]]; then
   run_check "local/e2e" "$e2e_cmd"
 else
   echo "Skipping E2E checks (LOCAL_VALIDATE_SKIP_E2E=1)."
-fi
-
-if [[ "${LOCAL_VALIDATE_OLLAMA_QWEN_E2E:-0}" == "1" ]]; then
-  cleanup_e2e_ports
-  run_check "local/e2e-ollama" "$ollama_qwen_e2e_cmd"
-else
-  echo "Skipping Ollama Qwen live E2E (LOCAL_VALIDATE_OLLAMA_QWEN_E2E=0)."
 fi
 
 # Coverage (optional — requires cargo-llvm-cov).

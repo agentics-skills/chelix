@@ -16,8 +16,6 @@ The e2e harness lives in `crates/web/ui`:
 
 - `playwright.config.js` configures Playwright and web server startup.
 - `e2e/start-gateway.sh` boots the gateway in deterministic test mode.
-- `e2e/start-gateway-ollama-qwen-live.sh` is the opt-in live-provider harness
-  for the custom OpenAI-compatible Qwen regression path.
 - `e2e/specs/smoke.spec.js` contains smoke coverage for critical routes.
 
 ## How Startup Works
@@ -87,11 +85,3 @@ Pull requests use the local-validation flow: the E2E workflow waits for a
 `local/e2e` commit status, published by `./scripts/local-validate.sh`.
 
 Pushes to `main`, tags, and manual dispatch still run the hosted E2E job.
-
-For the Qwen multiple-system-message regression path, there is also an opt-in
-Playwright project:
-
-```bash
-cd crates/web/ui
-CHELIX_E2E_OLLAMA_QWEN_LIVE=1 npx playwright test --project=ollama-qwen-live e2e/specs/ollama-qwen-live.spec.js
-```

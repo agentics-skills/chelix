@@ -24,7 +24,7 @@ pub struct UploadQuery {
     /// Request STT transcription for audio uploads.
     #[serde(default)]
     pub transcribe: bool,
-    /// Optional STT provider override (e.g. `whisper`, `groq`).
+    /// Optional STT provider override (e.g. `whisper`, `deepgram`).
     pub provider: Option<String>,
     /// Optional language hint for transcription.
     pub language: Option<String>,

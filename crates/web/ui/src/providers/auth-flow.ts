@@ -17,7 +17,6 @@ import {
 import * as S from "../state";
 import type { RpcResponse } from "../types";
 import {
-	BYOM_PROVIDERS,
 	bindValidationProgressEvents,
 	clearOAuthStatusTimer,
 	closeProviderModal,
@@ -107,23 +106,6 @@ export function showApiKeyForm(provider: ProviderInfo): void {
 		form.appendChild(hint);
 	}
 
-	// Model field for bring-your-own-model providers
-	let modelInp: HTMLInputElement | null = null;
-	const needsModel = BYOM_PROVIDERS.includes(provider.name);
-	if (needsModel) {
-		const modelLabel = document.createElement("label");
-		modelLabel.className = "text-xs text-[var(--muted)]";
-		modelLabel.style.marginTop = "8px";
-		modelLabel.textContent = "Model ID";
-		form.appendChild(modelLabel);
-
-		modelInp = document.createElement("input");
-		modelInp.className = "provider-key-input";
-		modelInp.type = "text";
-		modelInp.placeholder = "model-id";
-		form.appendChild(modelInp);
-	}
-
 	const validationProgress = createValidationProgress(form, "mt-2");
 
 	const btns = document.createElement("div");
@@ -146,12 +128,6 @@ export function showApiKeyForm(provider: ProviderInfo): void {
 			return;
 		}
 
-		// Model is required for bring-your-own providers
-		if (needsModel && modelInp && !modelInp.value.trim()) {
-			setFormError(errorPanel, "Model ID is required.");
-			return;
-		}
-
 		saveBtn.disabled = true;
 		saveBtn.textContent = "Saving...";
 		setValidationProgress(validationProgress, 10, "Discovering models...");
@@ -159,7 +135,6 @@ export function showApiKeyForm(provider: ProviderInfo): void {
 
 		const keyVal = key || provider.name;
 		const endpointVal = endpointInp?.value.trim() || null;
-		const modelVal = modelInp?.value.trim() || null;
 		const endpointError = providerBaseUrlError(endpointVal);
 		if (endpointError) {
 			saveBtn.disabled = false;
@@ -171,7 +146,7 @@ export function showApiKeyForm(provider: ProviderInfo): void {
 		const requestId = createValidationRequestId();
 		const stopProgressEvents = bindValidationProgressEvents(validationProgress, requestId);
 
-		validateProviderKey(provider.name, keyVal, endpointVal, modelVal, requestId)
+		validateProviderKey(provider.name, keyVal, endpointVal, null, requestId)
 			.then((result) => {
 				if (!result.valid) {
 					saveBtn.disabled = false;
@@ -181,17 +156,9 @@ export function showApiKeyForm(provider: ProviderInfo): void {
 					return;
 				}
 
-				// BYOM providers already tested the specific model -- save directly.
-				if (needsModel) {
-					completeValidationProgress(validationProgress, "Done.");
-					saveAndFinishProvider(provider, keyVal, endpointVal, modelVal, null, false);
-					return;
-				}
-
-				// Regular providers -- show model selector.
 				const models: ModelEntry[] = (result.models || []) as ModelEntry[];
 				completeValidationProgress(validationProgress, "Done.");
-				showModelSelector(provider, models, keyVal, endpointVal, modelVal);
+				showModelSelector(provider, models, keyVal, endpointVal, null);
 			})
 			.catch((err: Error) => {
 				saveBtn.disabled = false;

@@ -234,14 +234,10 @@ pub struct VoiceSttConfig {
     pub providers: Vec<String>,
     /// Whisper (OpenAI) settings.
     pub whisper: VoiceWhisperConfig,
-    /// Groq (Whisper-compatible) settings.
-    pub groq: VoiceGroqSttConfig,
     /// Deepgram settings.
     pub deepgram: VoiceDeepgramConfig,
     /// Google Cloud Speech-to-Text settings.
     pub google: VoiceGoogleSttConfig,
-    /// Mistral AI (Voxtral Transcribe) settings.
-    pub mistral: VoiceMistralSttConfig,
     /// ElevenLabs Scribe settings.
     pub elevenlabs: VoiceElevenLabsSttConfig,
     /// Voxtral local (vLLM server) settings.
@@ -261,10 +257,8 @@ impl Default for VoiceSttConfig {
             provider: None,
             providers: Vec::new(),
             whisper: VoiceWhisperConfig::default(),
-            groq: VoiceGroqSttConfig::default(),
             deepgram: VoiceDeepgramConfig::default(),
             google: VoiceGoogleSttConfig::default(),
-            mistral: VoiceMistralSttConfig::default(),
             elevenlabs: VoiceElevenLabsSttConfig::default(),
             voxtral_local: VoiceVoxtralLocalConfig::default(),
             whisper_local: VoiceWhisperLocalConfig::default(),
@@ -357,14 +351,10 @@ pub enum VoiceSttProvider {
     #[default]
     #[serde(rename = "whisper")]
     Whisper,
-    #[serde(rename = "groq")]
-    Groq,
     #[serde(rename = "deepgram")]
     Deepgram,
     #[serde(rename = "google")]
     Google,
-    #[serde(rename = "mistral")]
-    Mistral,
     #[serde(rename = "elevenlabs-stt", alias = "elevenlabs")]
     ElevenLabs,
     #[serde(rename = "voxtral-local")]
@@ -382,10 +372,8 @@ impl VoiceSttProvider {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Whisper => "whisper",
-            Self::Groq => "groq",
             Self::Deepgram => "deepgram",
             Self::Google => "google",
-            Self::Mistral => "mistral",
             Self::ElevenLabs => "elevenlabs-stt",
             Self::VoxtralLocal => "voxtral-local",
             Self::WhisperLocal => "whisper-local",
@@ -398,10 +386,8 @@ impl VoiceSttProvider {
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "whisper" => Some(Self::Whisper),
-            "groq" => Some(Self::Groq),
             "deepgram" => Some(Self::Deepgram),
             "google" => Some(Self::Google),
-            "mistral" => Some(Self::Mistral),
             "elevenlabs" | "elevenlabs-stt" => Some(Self::ElevenLabs),
             "voxtral-local" => Some(Self::VoxtralLocal),
             "whisper-local" => Some(Self::WhisperLocal),
@@ -416,10 +402,8 @@ impl VoiceSttProvider {
     pub fn name(self) -> &'static str {
         match self {
             Self::Whisper => "OpenAI Whisper",
-            Self::Groq => "Groq",
             Self::Deepgram => "Deepgram",
             Self::Google => "Google Cloud",
-            Self::Mistral => "Mistral AI",
             Self::VoxtralLocal => "Voxtral (Local)",
             Self::WhisperLocal => "Whisper (Local)",
             Self::WhisperCli => "whisper.cpp",
@@ -433,10 +417,8 @@ impl VoiceSttProvider {
     pub fn all() -> &'static [Self] {
         &[
             Self::Whisper,
-            Self::Groq,
             Self::Deepgram,
             Self::Google,
-            Self::Mistral,
             Self::VoxtralLocal,
             Self::WhisperLocal,
             Self::WhisperCli,
@@ -481,38 +463,6 @@ impl Default for VoiceWhisperConfig {
             enabled: true,
             api_key: None,
             base_url: None,
-            model: None,
-            language: None,
-        }
-    }
-}
-
-/// Groq STT configuration (Whisper-compatible API).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct VoiceGroqSttConfig {
-    /// Whether this provider is enabled.
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-    /// API key (from GROQ_API_KEY env or config).
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "crate::schema::serialize_option_secret",
-        deserialize_with = "crate::schema::deserialize_option_secret"
-    )]
-    pub api_key: Option<Secret<String>>,
-    /// Model to use (e.g., "whisper-large-v3-turbo").
-    pub model: Option<String>,
-    /// Language hint (ISO 639-1 code).
-    pub language: Option<String>,
-}
-
-impl Default for VoiceGroqSttConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            api_key: None,
             model: None,
             language: None,
         }
@@ -585,38 +535,6 @@ impl Default for VoiceGoogleSttConfig {
             service_account_json: None,
             language: None,
             model: None,
-        }
-    }
-}
-
-/// Mistral AI (Voxtral Transcribe) configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct VoiceMistralSttConfig {
-    /// Whether this provider is enabled.
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-    /// API key (from MISTRAL_API_KEY env or config).
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "crate::schema::serialize_option_secret",
-        deserialize_with = "crate::schema::deserialize_option_secret"
-    )]
-    pub api_key: Option<Secret<String>>,
-    /// Model to use (e.g., "voxtral-mini-latest").
-    pub model: Option<String>,
-    /// Language hint (ISO 639-1 code).
-    pub language: Option<String>,
-}
-
-impl Default for VoiceMistralSttConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            api_key: None,
-            model: None,
-            language: None,
         }
     }
 }

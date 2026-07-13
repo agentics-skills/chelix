@@ -7,7 +7,7 @@ use chelix_agents::model::{
 };
 
 /// Provider backed by the `genai` crate (supports Anthropic, OpenAI, Gemini,
-/// Groq, Ollama, xAI, DeepSeek, Cohere, and more via a single client).
+/// multiple model APIs, including xAI and Cohere, via a single client).
 pub struct GenaiProvider {
     model: String,
     provider_name: String,

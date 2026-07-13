@@ -701,10 +701,10 @@ mod tests {
     #[test]
     fn test_http_404_maps_to_model_not_found() {
         let raw = "OpenAI API error HTTP 404: model not found";
-        let result = parse_chat_error(raw, Some("ollama"));
+        let result = parse_chat_error(raw, Some("openrouter"));
         assert_eq!(result["type"], "model_not_found");
         assert_eq!(result["title"], "Model not found");
-        assert_eq!(result["provider"], "ollama");
+        assert_eq!(result["provider"], "openrouter");
         assert_eq!(result["title_key"], "errors:chat.modelNotFound.title");
         assert_eq!(result["detail_key"], "errors:chat.modelNotFound.detail");
     }

@@ -75,10 +75,8 @@ test.describe("Voice provider visibility", () => {
 
 		// Cloud STT
 		expect(pageText).toContain("OpenAI Whisper");
-		expect(pageText).toContain("Groq");
 		expect(pageText).toContain("Deepgram");
 		expect(pageText).toContain("Google Cloud STT");
-		expect(pageText).toContain("Mistral");
 		expect(pageText).toContain("ElevenLabs Scribe");
 
 		// Local STT
@@ -139,10 +137,8 @@ test.describe("Local provider setup instructions", () => {
 // They skip gracefully when the key is not set.
 
 const OPENAI_KEY = process.env.CHELIX_E2E_OPENAI_API_KEY || "";
-const GROQ_KEY = process.env.CHELIX_E2E_GROQ_API_KEY || "";
 const DEEPGRAM_KEY = process.env.CHELIX_E2E_DEEPGRAM_API_KEY || "";
 const GOOGLE_KEY = process.env.CHELIX_E2E_GOOGLE_API_KEY || "";
-const MISTRAL_KEY = process.env.CHELIX_E2E_MISTRAL_API_KEY || "";
 const ELEVENLABS_KEY = process.env.CHELIX_E2E_ELEVENLABS_API_KEY || "";
 
 test.describe("Cloud STT provider configuration", () => {
@@ -156,20 +152,6 @@ test.describe("Cloud STT provider configuration", () => {
 
 		// After saving, the provider card should show as available
 		const card = providerCard(page, "OpenAI Whisper");
-		await expect(card).toBeVisible();
-
-		expect(pageErrors).toEqual([]);
-	});
-
-	test("configure Groq with API key", async ({ page }) => {
-		test.skip(!GROQ_KEY, "requires CHELIX_E2E_GROQ_API_KEY");
-		const pageErrors = watchPageErrors(page);
-		await openVoicePage(page);
-		await waitForProviderCards(page);
-
-		await configureCloudProvider(page, "Groq", GROQ_KEY);
-
-		const card = providerCard(page, "Groq");
 		await expect(card).toBeVisible();
 
 		expect(pageErrors).toEqual([]);
@@ -198,20 +180,6 @@ test.describe("Cloud STT provider configuration", () => {
 		await configureCloudProvider(page, "Google Cloud STT", GOOGLE_KEY);
 
 		const card = providerCard(page, "Google Cloud STT");
-		await expect(card).toBeVisible();
-
-		expect(pageErrors).toEqual([]);
-	});
-
-	test("configure Mistral (Voxtral) with API key", async ({ page }) => {
-		test.skip(!MISTRAL_KEY, "requires CHELIX_E2E_MISTRAL_API_KEY");
-		const pageErrors = watchPageErrors(page);
-		await openVoicePage(page);
-		await waitForProviderCards(page);
-
-		await configureCloudProvider(page, "Mistral (Voxtral)", MISTRAL_KEY);
-
-		const card = providerCard(page, "Mistral (Voxtral)");
 		await expect(card).toBeVisible();
 
 		expect(pageErrors).toEqual([]);

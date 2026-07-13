@@ -565,37 +565,11 @@ impl NodeHost {
     async fn handle_system_providers(&self) -> Result<serde_json::Value> {
         let mut providers = Vec::new();
 
-        // Check Ollama at localhost:11434.
-        if let Ok(resp) = reqwest::Client::new()
-            .get("http://localhost:11434/api/tags")
-            .timeout(Duration::from_secs(3))
-            .send()
-            .await
-            && resp.status().is_success()
-            && let Ok(body) = resp.json::<serde_json::Value>().await
-        {
-            let models: Vec<String> = body
-                .get("models")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(String::from))
-                        .collect()
-                })
-                .unwrap_or_default();
-            providers.push(serde_json::json!({
-                "provider": "ollama",
-                "models": models,
-            }));
-        }
-
         // Check for known API key env vars (presence only, never the values).
         let api_key_checks = [
             ("OPENAI_API_KEY", "openai"),
             ("ANTHROPIC_API_KEY", "anthropic"),
             ("GOOGLE_API_KEY", "google"),
-            ("MISTRAL_API_KEY", "mistral"),
-            ("GROQ_API_KEY", "groq"),
             ("TOGETHER_API_KEY", "together"),
         ];
         for (env_var, provider_name) in api_key_checks {

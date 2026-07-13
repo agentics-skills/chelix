@@ -4,8 +4,6 @@ mod cli_utils;
 mod deepgram;
 mod elevenlabs;
 mod google;
-mod groq;
-mod mistral;
 pub mod mock;
 mod openai_compat;
 mod sherpa_onnx;
@@ -15,9 +13,9 @@ mod whisper_cli;
 mod whisper_local;
 
 pub use {
-    deepgram::DeepgramStt, elevenlabs::ElevenLabsStt, google::GoogleStt, groq::GroqStt,
-    mistral::MistralStt, mock::MockStt, sherpa_onnx::SherpaOnnxStt, voxtral_local::VoxtralLocalStt,
-    whisper::WhisperStt, whisper_cli::WhisperCliStt, whisper_local::WhisperLocalStt,
+    deepgram::DeepgramStt, elevenlabs::ElevenLabsStt, google::GoogleStt, mock::MockStt,
+    sherpa_onnx::SherpaOnnxStt, voxtral_local::VoxtralLocalStt, whisper::WhisperStt,
+    whisper_cli::WhisperCliStt, whisper_local::WhisperLocalStt,
 };
 
 use {

@@ -26,7 +26,7 @@ use crate::openai_codex;
 #[allow(unused_imports)]
 use crate::{
     anthropic, async_openai_provider, config_helpers::*, discovered_model::*, genai_provider,
-    model_capabilities::*, model_catalogs::*, model_id::*, ollama::*, openai, opencode_zen,
+    model_capabilities::*, model_catalogs::*, model_id::*, openai,
 };
 
 const CUSTOM_REASONING_CONTENT_MODEL_PREFIXES: &[&str] = &["kimi-", "deepseek-v4"];
@@ -59,8 +59,8 @@ pub(crate) fn openai_builtin_capabilities(
 
 impl ProviderRegistry {
     /// Register models from a [`RediscoveryResult`], skipping those already
-    /// present. All I/O (model list fetches, Ollama probes) must be completed
-    /// before calling this — it only does fast in-memory work.
+    /// present. All I/O (model list fetches) must be completed before calling
+    /// this — it only does fast in-memory work.
     ///
     /// Returns the number of newly registered models.
     pub fn register_rediscovered_models(
@@ -160,58 +160,6 @@ impl ProviderRegistry {
             }
         }
 
-        // ── OpenCode Zen builtin ──────────────────────────────────────
-        if let Some(models) = fetched.get("opencode-zen")
-            && config.is_enabled("opencode-zen")
-            && let Some(key) = resolve_api_key(
-                config,
-                "opencode-zen",
-                "OPENCODE_ZEN_API_KEY",
-                env_overrides,
-            )
-        {
-            let base_url = config
-                .get("opencode-zen")
-                .and_then(|e| e.base_url.clone())
-                .or_else(|| env_value(env_overrides, "OPENCODE_ZEN_BASE_URL"))
-                .unwrap_or_else(|| opencode_zen::OPENCODE_ZEN_DEFAULT_BASE_URL.into());
-            let alias = config.get("opencode-zen").and_then(|e| e.alias.clone());
-            let provider_label = alias.unwrap_or_else(|| "opencode-zen".into());
-            let global_cw = self.global_cw_overrides.clone();
-            let provider_cw = config
-                .get("opencode-zen")
-                .map(|e| extract_cw_overrides(&e.model_overrides))
-                .unwrap_or_default();
-
-            for model in models {
-                let caps = model
-                    .capabilities
-                    .unwrap_or_else(|| ModelCapabilities::infer(&model.id));
-                if self.has_provider_model(&provider_label, &model.id) {
-                    continue;
-                }
-                let provider: Arc<dyn LlmProvider> = Arc::new(opencode_zen::ZenProvider::new(
-                    key.clone(),
-                    model.id.clone(),
-                    base_url.clone(),
-                    global_cw.clone(),
-                    provider_cw.clone(),
-                ));
-                self.register(
-                    ModelInfo {
-                        id: model.id.clone(),
-                        provider: provider_label.clone(),
-                        display_name: model.display_name.clone(),
-                        created_at: model.created_at,
-                        recommended: model.recommended,
-                        capabilities: caps,
-                    },
-                    provider,
-                );
-                added += 1;
-            }
-        }
-
         // ── OpenAI-compatible providers ───────────────────────────────
         for def in OPENAI_COMPAT_PROVIDERS {
             let Some(models) = fetched.get(def.config_name) else {
@@ -252,16 +200,6 @@ impl ProviderRegistry {
                 .get(def.config_name)
                 .map(|e| e.tool_mode)
                 .unwrap_or_default();
-            let is_ollama = def.config_name == "ollama";
-
-            // Use pre-fetched Ollama `/api/show` probes (already collected
-            // outside the registry lock by `fetch_discoverable_models`).
-            let empty_probes = HashMap::new();
-            let ollama_probes: &HashMap<String, OllamaShowResponse> = if is_ollama {
-                &result.ollama_probes
-            } else {
-                &empty_probes
-            };
 
             for model in models {
                 let caps = model
@@ -270,17 +208,12 @@ impl ProviderRegistry {
                 if self.has_provider_model(&provider_label, &model.id) {
                     continue;
                 }
-                let effective_tool_mode = if is_ollama {
-                    resolve_ollama_tool_mode(
-                        config_tool_mode,
-                        &model.id,
-                        ollama_probes.get(&model.id),
-                    )
-                } else if !matches!(config_tool_mode, chelix_config::ToolMode::Auto) {
-                    config_tool_mode
-                } else {
-                    chelix_config::ToolMode::Auto
-                };
+                let effective_tool_mode =
+                    if !matches!(config_tool_mode, chelix_config::ToolMode::Auto) {
+                        config_tool_mode
+                    } else {
+                        chelix_config::ToolMode::Auto
+                    };
 
                 let mut oai = openai::OpenAiProvider::new_with_name(
                     key.clone(),
@@ -418,12 +351,6 @@ impl ProviderRegistry {
                 "Claude Sonnet 4 (genai)",
             ),
             ("OPENAI_API_KEY", "openai", "gpt-4o", "GPT-4o (genai)"),
-            (
-                "GROQ_API_KEY",
-                "groq",
-                "llama-3.1-8b-instant",
-                "Llama 3.1 8B (genai/groq)",
-            ),
             ("XAI_API_KEY", "xai", "grok-3-mini", "Grok 3 Mini (genai)"),
         ];
 
@@ -862,13 +789,11 @@ impl ProviderRegistry {
             // Some providers need an explicit model before they can answer;
             // keep discovery off there when no model is configured.
             // OpenRouter supports `/models`, so we discover dynamically.
-            let skip_discovery = def.models.is_empty()
-                && preferred.is_empty()
-                && !def.local_only
-                && (def.config_name == "venice" || cfg!(test));
+            let skip_discovery =
+                def.models.is_empty() && preferred.is_empty() && !def.local_only && cfg!(test);
             // Respect `supports_model_discovery`: providers whose API lacks a
-            // /models endpoint (e.g. MiniMax) skip live fetch unless the user
-            // explicitly opted in via `fetch_models = true` in config.
+            // /models endpoint skip live fetch unless the user explicitly
+            // opted in via `fetch_models = true` in config.
             let user_opted_in = config
                 .get(def.config_name)
                 .is_some_and(|entry| entry.fetch_models);
@@ -896,17 +821,6 @@ impl ProviderRegistry {
                 .map(|e| e.tool_mode)
                 .unwrap_or_default();
 
-            // For Ollama, probe each model's family info to decide native vs text
-            // tool calling. For non-Ollama, just pass through the config tool mode.
-            let is_ollama = def.config_name == "ollama";
-
-            // Batch-probe Ollama models for family metadata (best-effort, 3s timeout).
-            let ollama_probes: HashMap<String, OllamaShowResponse> = if is_ollama {
-                probe_ollama_models_batch(&base_url, &models)
-            } else {
-                HashMap::new()
-            };
-
             for model in models {
                 let caps = model
                     .capabilities
@@ -922,18 +836,13 @@ impl ProviderRegistry {
                 }
 
                 // Determine effective tool mode for this model.
-                let effective_tool_mode = if is_ollama {
-                    resolve_ollama_tool_mode(
-                        config_tool_mode,
-                        &model_id,
-                        ollama_probes.get(&model_id),
-                    )
-                } else if !matches!(config_tool_mode, chelix_config::ToolMode::Auto) {
-                    config_tool_mode
-                } else {
-                    // Non-Ollama providers: let OpenAiProvider use its default logic.
-                    chelix_config::ToolMode::Auto
-                };
+                let effective_tool_mode =
+                    if !matches!(config_tool_mode, chelix_config::ToolMode::Auto) {
+                        config_tool_mode
+                    } else {
+                        // Let OpenAiProvider use its default logic.
+                        chelix_config::ToolMode::Auto
+                    };
 
                 let mut oai = openai::OpenAiProvider::new_with_name(
                     key.clone(),
@@ -1090,95 +999,6 @@ impl ProviderRegistry {
                 provider = %name,
                 "registered custom OpenAI-compatible provider"
             );
-        }
-    }
-
-    pub(crate) fn register_opencode_zen_providers(
-        &mut self,
-        config: &ProvidersConfig,
-        env_overrides: &HashMap<String, String>,
-        prefetched: &HashMap<String, Vec<DiscoveredModel>>,
-    ) {
-        if !config.is_enabled("opencode-zen") {
-            return;
-        }
-        let Some(key) = resolve_api_key(
-            config,
-            "opencode-zen",
-            "OPENCODE_ZEN_API_KEY",
-            env_overrides,
-        ) else {
-            return;
-        };
-
-        let base_url = config
-            .get("opencode-zen")
-            .and_then(|e| e.base_url.clone())
-            .or_else(|| env_value(env_overrides, "OPENCODE_ZEN_BASE_URL"))
-            .unwrap_or_else(|| opencode_zen::OPENCODE_ZEN_DEFAULT_BASE_URL.into());
-
-        let alias = config.get("opencode-zen").and_then(|e| e.alias.clone());
-        let provider_label = alias.unwrap_or_else(|| "opencode-zen".into());
-
-        let preferred = configured_models_for_provider(config, "opencode-zen");
-        let discovered = if should_fetch_models(config, "opencode-zen") {
-            match prefetched.get("opencode-zen") {
-                Some(live) => live.clone(),
-                // Live fetch was requested but produced no result — fall back to
-                // the static catalog so the provider is still usable.
-                None => catalog_to_discovered(opencode_zen::OPENCODE_ZEN_MODELS, 2),
-            }
-        } else {
-            // Discovery explicitly disabled: only register models the user
-            // pinned in [providers.opencode-zen] models = [...]. Consistent with
-            // how other built-in providers behave when fetch_models = false.
-            Vec::new()
-        };
-        let models = merge_preferred_and_discovered_models(preferred, discovered);
-
-        if models.is_empty() {
-            tracing::debug!(
-                "opencode-zen: no models to register (discovery disabled and no pinned models)"
-            );
-            return;
-        }
-
-        let global_cw = self.global_cw_overrides.clone();
-        let provider_cw = config
-            .get("opencode-zen")
-            .map(|e| extract_cw_overrides(&e.model_overrides))
-            .unwrap_or_default();
-
-        let mut added = 0usize;
-        for model in models {
-            if self.has_provider_model(&provider_label, &model.id) {
-                continue;
-            }
-            let provider: Arc<dyn LlmProvider> = Arc::new(opencode_zen::ZenProvider::new(
-                key.clone(),
-                model.id.clone(),
-                base_url.clone(),
-                global_cw.clone(),
-                provider_cw.clone(),
-            ));
-            self.register(
-                ModelInfo {
-                    id: model.id.clone(),
-                    provider: provider_label.clone(),
-                    display_name: model.display_name.clone(),
-                    created_at: model.created_at,
-                    recommended: model.recommended,
-                    capabilities: model
-                        .capabilities
-                        .unwrap_or_else(|| ModelCapabilities::infer(&model.id)),
-                },
-                provider,
-            );
-            added += 1;
-        }
-
-        if added > 0 {
-            tracing::info!(model_count = added, "registered OpenCode Zen provider");
         }
     }
 

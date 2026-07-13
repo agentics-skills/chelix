@@ -254,68 +254,6 @@ pub(crate) fn log_startup_model_inventory(reg: &ProviderRegistry) {
     }
 }
 
-// ── Ollama helpers ───────────────────────────────────────────────────────────
-
-pub(crate) async fn ollama_has_model(base_url: &str, model: &str) -> bool {
-    let url = format!("{}/api/tags", base_url.trim_end_matches('/'));
-    let response = match reqwest::Client::new().get(url).send().await {
-        Ok(resp) => resp,
-        Err(_) => return false,
-    };
-    if !response.status().is_success() {
-        return false;
-    }
-    let value: serde_json::Value = match response.json().await {
-        Ok(v) => v,
-        Err(_) => return false,
-    };
-    value
-        .get("models")
-        .and_then(|m| m.as_array())
-        .map(|models| {
-            models.iter().any(|m| {
-                let name = m.get("name").and_then(|n| n.as_str()).unwrap_or_default();
-                name == model || name.starts_with(&format!("{model}:"))
-            })
-        })
-        .unwrap_or(false)
-}
-
-pub(crate) async fn ensure_ollama_model(base_url: &str, model: &str) {
-    if ollama_has_model(base_url, model).await {
-        return;
-    }
-
-    warn!(
-        model = %model,
-        base_url = %base_url,
-        "memory: missing Ollama embedding model, attempting auto-pull"
-    );
-
-    let url = format!("{}/api/pull", base_url.trim_end_matches('/'));
-    let pull = reqwest::Client::new()
-        .post(url)
-        .json(&serde_json::json!({ "name": model, "stream": false }))
-        .send()
-        .await;
-
-    match pull {
-        Ok(resp) if resp.status().is_success() => {
-            info!(model = %model, "memory: Ollama model pull complete");
-        },
-        Ok(resp) => {
-            warn!(
-                model = %model,
-                status = %resp.status(),
-                "memory: Ollama model pull failed"
-            );
-        },
-        Err(e) => {
-            warn!(model = %model, error = %e, "memory: Ollama model pull request failed");
-        },
-    }
-}
-
 // ── Approval manager ─────────────────────────────────────────────────────────
 
 pub fn approval_manager_from_config(config: &chelix_config::ChelixConfig) -> ApprovalManager {
