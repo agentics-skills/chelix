@@ -159,6 +159,10 @@ function handleChatToolCallStart(p: ChatPayload, isActive: boolean, isChatPage: 
 	handleToolCallStartDom(p, eventSession);
 }
 
+function updateActiveTokenBarContextBudget(p: ChatPayload, isActive: boolean, isChatPage: boolean): void {
+	if (isActive && isChatPage && p.contextBudget) updateTokenBar(p.contextBudget);
+}
+
 function handleChatToolCallEnd(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
 	updateSessionRunId(eventSession, p.runId);
 	// The assistant tool-call frame was persisted at tool start; completion
@@ -191,6 +195,7 @@ function handleChatToolCallEnd(p: ChatPayload, isActive: boolean, isChatPage: bo
 		toolHistoryIndex as number | undefined,
 	);
 	updateSessionHistoryIndex(eventSession, toolHistoryIndex as number | undefined);
+	updateActiveTokenBarContextBudget(p, isActive, isChatPage);
 	if (!(isActive && isChatPage)) return;
 	const toolCard =
 		(document.getElementById(toolCallCardId(p)) as HTMLElement | null) || createToolCallCardForPayload(p);

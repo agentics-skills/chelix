@@ -586,6 +586,7 @@ export function renderHistory(
 	S.setSessionCurrentContextTokens(0);
 	S.setChatBatchLoading(true);
 	const pendingTerminalToolMetadata = new Map<string, PendingTerminalToolMetadata>();
+	let latestToolContextBudget: ContextBudgetMetadata | null = null;
 	history.forEach((msg) => {
 		if (msg.role === "user") {
 			msgEls.push(renderHistoryUserMessage(msg as UserMsg));
@@ -622,6 +623,7 @@ export function renderHistory(
 			msgEls.push(card);
 		} else if (msg.role === "tool_result") {
 			const toolResult = msg as ToolResultMsg;
+			latestToolContextBudget = toolResult.contextBudget || null;
 			const toolCard = renderHistoryToolResult(toolResult);
 			msgEls.push(toolCard);
 			const pending = toolResult.tool_call_id ? pendingTerminalToolMetadata.get(toolResult.tool_call_id) : undefined;
@@ -651,6 +653,7 @@ export function renderHistory(
 			terminalMetadataData(pending.message, { historyIndex: pending.message.historyIndex }),
 		);
 	}
+	updateTokenBar(latestToolContextBudget);
 	S.setChatBatchLoading(false);
 	if (S.chatMsgBox) highlightCodeBlocks(S.chatMsgBox);
 	const historyTailIndex = computeHistoryTailIndex(history);

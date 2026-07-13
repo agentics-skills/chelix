@@ -153,6 +153,135 @@ test.describe("WebSocket connection lifecycle", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
+	test("tool call context budget updates token bar immediately and only from real metadata", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await page.goto("/chats/main");
+		await waitForWsConnected(page);
+		await waitForChatSessionReady(page);
+
+		await expectRpcOk(page, "system-event", {
+			event: "chat",
+			payload: {
+				sessionKey: "main",
+				state: "tool_call_end",
+				toolCallId: "context-budget-1",
+				toolName: "execute_command",
+				success: true,
+				result: { stdout: "first", exit_code: 0 },
+				contextBudget: {
+					contextWindow: 200000,
+					compactionRatio: 85,
+					currentTokens: 42500,
+					compactionBudget: 170000,
+					usagePercent: 21,
+					compactionRequired: false,
+				},
+			},
+		});
+		await expect(page.locator("#tokenBar")).toContainText("[25%]");
+
+		await expectRpcOk(page, "system-event", {
+			event: "chat",
+			payload: {
+				sessionKey: "main",
+				state: "tool_call_end",
+				toolCallId: "context-budget-2",
+				toolName: "execute_command",
+				success: true,
+				result: { stdout: "second", exit_code: 0 },
+			},
+		});
+		await expect(page.locator("#tokenBar")).toContainText("[25%]");
+
+		await expectRpcOk(page, "system-event", {
+			event: "chat",
+			payload: {
+				sessionKey: "main",
+				state: "tool_call_end",
+				toolCallId: "context-budget-3",
+				toolName: "execute_command",
+				success: true,
+				result: { stdout: "third", exit_code: 0 },
+				contextBudget: {
+					contextWindow: 200000,
+					compactionRatio: 85,
+					currentTokens: 170000,
+					compactionBudget: 170000,
+					usagePercent: 85,
+					compactionRequired: true,
+				},
+			},
+		});
+		await expect(page.locator("#tokenBar")).toContainText("[100%]");
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("session history restores context budget from the latest tool call", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await page.goto("/chats/main");
+		await waitForWsConnected(page);
+		await waitForChatSessionReady(page);
+
+		await page.route("**/api/sessions/history-budget/history*", async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({
+					historyCacheHit: false,
+					historyTruncated: false,
+					history: [
+						{
+							role: "tool_result",
+							tool_call_id: "history-budget-1",
+							tool_name: "execute_command",
+							success: true,
+							result: { stdout: "first", exit_code: 0 },
+							contextBudget: {
+								contextWindow: 200000,
+								compactionRatio: 85,
+								currentTokens: 42500,
+								compactionBudget: 170000,
+								usagePercent: 21,
+								compactionRequired: false,
+							},
+						},
+						{
+							role: "tool_result",
+							tool_call_id: "history-budget-2",
+							tool_name: "execute_command",
+							success: true,
+							result: { stdout: "second", exit_code: 0 },
+							contextBudget: {
+								contextWindow: 200000,
+								compactionRatio: 85,
+								currentTokens: 85000,
+								compactionBudget: 170000,
+								usagePercent: 42,
+								compactionRequired: false,
+							},
+						},
+					],
+				}),
+			});
+		});
+		await mockRpcOkResponse(page, "sessions.switch", {
+			entry: { key: "history-budget", messageCount: 2 },
+			historyOmitted: true,
+			replying: false,
+		});
+		await page.evaluate(async () => {
+			const appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
+			if (!appScript) throw new Error("app module script not found");
+			const appUrl = new URL(appScript.src, window.location.origin);
+			const prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
+			const sessions = await import(`${prefix}js/sessions.js`);
+			sessions.switchSession("history-budget");
+		});
+
+		await expect(page.locator("#tokenBar")).toContainText("[50%]");
+		expect(pageErrors).toEqual([]);
+	});
+
 	test("memory info updates from tick events", async ({ page }) => {
 		await page.goto("/");
 		await waitForWsConnected(page);

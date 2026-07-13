@@ -2,6 +2,7 @@
 
 import { formatTokens, parseErrorMessage, renderDocument, sendRpc, updateCountdown } from "./helpers";
 import * as S from "./state";
+import type { ContextBudgetMetadata } from "./types/ws-events";
 
 interface ErrorCardData {
 	icon?: string;
@@ -495,17 +496,28 @@ export function setComposerStopButton(active: boolean, sessionKey: string = S.ac
 	}
 }
 
-export function updateTokenBar(): void {
-	const bar = S.$("tokenBar");
-	if (!bar) return;
-	const total =
-		S.sessionCurrentContextTokens || S.sessionCurrentInputTokens || S.sessionTokens.input + S.sessionTokens.output;
+function contextBudgetPercent(contextBudget: ContextBudgetMetadata): number | null {
+	const { contextWindow, compactionRatio, currentTokens } = contextBudget;
+	if (
+		!Number.isFinite(contextWindow) ||
+		contextWindow <= 0 ||
+		!Number.isFinite(compactionRatio) ||
+		compactionRatio <= 0 ||
+		!Number.isFinite(currentTokens) ||
+		currentTokens < 0
+	) {
+		return null;
+	}
+	const percent = (currentTokens / contextWindow / (compactionRatio / 100)) * 100;
+	return Math.min(100, Math.max(0, Math.round(percent)));
+}
+
+function tokenBarUsageText(total: number): string {
 	let text = formatTokens(total);
 	if (S.sessionContextWindow > 0) {
 		const pct = Math.min(100, Math.max(0, Math.round((total / S.sessionContextWindow) * 100)));
 		text += ` (${pct}%)`;
 	}
-	bar.title = total > 0 ? "Context tokens used by the latest assistant turn" : "";
 	if (text === "0 (0%)") {
 		text = "";
 	}
@@ -515,5 +527,33 @@ export function updateTokenBar(): void {
 	if (S.commandModeEnabled) {
 		text += `${text ? " \u00b7 " : ""}/sh mode`;
 	}
-	bar.textContent = text;
+	return text;
+}
+
+function tokenBarBudgetText(bar: HTMLElement, contextBudget?: ContextBudgetMetadata | null): string {
+	if (contextBudget === null) return "";
+	if (contextBudget === undefined) {
+		return bar.querySelector<HTMLElement>("[data-context-budget-percent]")?.textContent || "";
+	}
+	const percent = contextBudgetPercent(contextBudget);
+	return percent === null ? "" : `[${percent}%]`;
+}
+
+function appendTokenBarBudget(bar: HTMLElement, budgetText: string): void {
+	if (!budgetText) return;
+	const budgetEl = document.createElement("span");
+	budgetEl.dataset.contextBudgetPercent = "true";
+	budgetEl.textContent = budgetText;
+	bar.append(" ", budgetEl);
+}
+
+export function updateTokenBar(contextBudget?: ContextBudgetMetadata | null): void {
+	const bar = S.$("tokenBar");
+	if (!bar) return;
+	const budgetText = tokenBarBudgetText(bar, contextBudget);
+	const total =
+		S.sessionCurrentContextTokens || S.sessionCurrentInputTokens || S.sessionTokens.input + S.sessionTokens.output;
+	bar.title = total > 0 ? "Context tokens used by the latest assistant turn" : "";
+	bar.textContent = tokenBarUsageText(total);
+	appendTokenBarBudget(bar, budgetText);
 }

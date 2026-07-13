@@ -999,7 +999,7 @@ test.describe("Chat input and slash commands", () => {
 		});
 	});
 
-	test("token bar shows current context tokens and context used", async ({ page }) => {
+	test("token bar shows current context tokens and compaction-relative context budget", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 
 		await expect
@@ -1016,12 +1016,19 @@ test.describe("Chat input and slash commands", () => {
 					state.setSessionCurrentContextTokens(62000);
 					state.setSessionContextWindow(200000);
 					state.setSessionToolsEnabled(true);
-					chatUi.updateTokenBar();
+					chatUi.updateTokenBar({
+						contextWindow: 200000,
+						compactionRatio: 85,
+						currentTokens: 62000,
+						compactionBudget: 170000,
+						usagePercent: 31,
+						compactionRequired: false,
+					});
 					var tokenBar = document.getElementById("tokenBar");
 					return tokenBar && tokenBar.offsetParent !== null ? tokenBar.textContent || "" : "";
 				});
 			})
-			.toBe("62.0K (31%)");
+			.toBe("62.0K (31%) [36%]");
 
 		expect(pageErrors).toEqual([]);
 	});
