@@ -1,10 +1,13 @@
 mod schema_normalization;
 
 use super::{
+    ResponsesSseLineResult, ResponsesStreamState, finalize_responses_stream,
     normalize_tool_call_arguments_from_schemas, parse_responses_completion, parse_tool_calls,
-    sanitize_schema_for_openai_compat, strict_mode::patch_schema_for_strict_mode, to_openai_tools,
-    to_responses_api_tools,
+    process_responses_sse_line, sanitize_schema_for_openai_compat,
+    strict_mode::patch_schema_for_strict_mode, to_openai_tools, to_responses_api_tools,
 };
+
+use chelix_agents::model::StreamEvent;
 
 /// Recursively assert that every `required` entry has a corresponding key in
 /// `properties`. Panics with `path` context on the first orphaned entry.
@@ -1054,4 +1057,111 @@ fn sanitize_draft07_schema_strips_unsupported_keywords() {
     );
     // The root `type: object` must survive.
     assert_eq!(schema["type"], "object");
+}
+
+#[test]
+fn responses_completed_emits_raw_event_and_final_usage() {
+    let event = serde_json::json!({
+        "type": "response.completed",
+        "response": {
+            "usage": {
+                "input_tokens": 12,
+                "output_tokens": 7,
+                "input_tokens_details": { "cached_tokens": 3 }
+            }
+        }
+    });
+    let mut state = ResponsesStreamState::default();
+
+    let result = process_responses_sse_line(&event.to_string(), &mut state);
+
+    assert!(matches!(
+        result,
+        ResponsesSseLineResult::Completed(events)
+            if matches!(events.as_slice(), [StreamEvent::ProviderRaw(raw)] if raw == &event)
+    ));
+
+    let finalized = finalize_responses_stream(&mut state);
+    assert!(matches!(
+        finalized.as_slice(),
+        [StreamEvent::Done(usage)]
+            if usage.input_tokens == 12
+                && usage.output_tokens == 7
+                && usage.cache_read_tokens == 3
+    ));
+}
+
+#[test]
+fn responses_done_sentinel_is_successful_terminal_event() {
+    let mut state = ResponsesStreamState::default();
+
+    let result = process_responses_sse_line("[DONE]", &mut state);
+
+    assert!(matches!(
+        result,
+        ResponsesSseLineResult::Completed(events) if events.is_empty()
+    ));
+}
+
+#[test]
+fn responses_failed_is_terminal_error() {
+    let event = serde_json::json!({
+        "type": "response.failed",
+        "response": { "error": { "message": "upstream failed" } }
+    });
+    let mut state = ResponsesStreamState::default();
+
+    let result = process_responses_sse_line(&event.to_string(), &mut state);
+
+    assert!(matches!(
+        result,
+        ResponsesSseLineResult::Failed(events)
+            if matches!(
+                events.as_slice(),
+                [StreamEvent::ProviderRaw(raw), StreamEvent::Error(message)]
+                    if raw == &event && message == "upstream failed"
+            )
+    ));
+}
+
+#[test]
+fn responses_incomplete_is_terminal_error() {
+    let event = serde_json::json!({
+        "type": "response.incomplete",
+        "response": { "incomplete_details": { "reason": "max_output_tokens" } }
+    });
+    let mut state = ResponsesStreamState::default();
+
+    let result = process_responses_sse_line(&event.to_string(), &mut state);
+
+    assert!(matches!(
+        result,
+        ResponsesSseLineResult::Failed(events)
+            if matches!(
+                events.as_slice(),
+                [StreamEvent::ProviderRaw(raw), StreamEvent::Error(message)]
+                    if raw == &event && message == "response incomplete: max_output_tokens"
+            )
+    ));
+}
+
+#[test]
+fn responses_error_event_is_terminal_error() {
+    let event = serde_json::json!({
+        "type": "error",
+        "error": { "message": "request rejected" }
+    });
+    let mut state = ResponsesStreamState::default();
+
+    let result = process_responses_sse_line(&event.to_string(), &mut state);
+
+    assert!(matches!(
+        result,
+        ResponsesSseLineResult::Failed(events)
+            if matches!(
+                events.as_slice(),
+                [StreamEvent::ProviderRaw(raw), StreamEvent::Error(message)]
+                    if raw == &event && message == "request rejected"
+            )
+    ));
 }

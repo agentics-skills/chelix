@@ -19,10 +19,11 @@ use {
 
 use {
     super::super::openai_compat::{
-        ResponsesStreamState, SseLineResult, StreamingToolState, finalize_responses_stream,
-        finalize_stream, parse_openai_compat_usage_from_payload, parse_responses_completion,
-        parse_tool_calls, process_openai_sse_line, process_responses_sse_line,
-        split_responses_instructions_and_input, to_openai_tools, to_responses_api_tools,
+        ResponsesSseLineResult, ResponsesStreamState, SseLineResult, StreamingToolState,
+        finalize_responses_stream, finalize_stream, parse_openai_compat_usage_from_payload,
+        parse_responses_completion, parse_tool_calls, process_openai_sse_line,
+        process_responses_sse_line, split_responses_instructions_and_input, to_openai_tools,
+        to_responses_api_tools,
     },
     chelix_agents::model::{
         ChatMessage, CompletionResponse, LlmProvider, StreamEvent, ToolCall, Usage,
@@ -741,14 +742,19 @@ async fn collect_streamed_responses_completion(
             };
 
             match process_responses_sse_line(data, &mut state) {
-                SseLineResult::Done => {
+                ResponsesSseLineResult::Completed(new_events) => {
+                    extend_events_or_error(&mut events, new_events)?;
                     extend_events_or_error(&mut events, finalize_responses_stream(&mut state))?;
                     return Ok(stream_events_to_completion(events));
                 },
-                SseLineResult::Events(new_events) => {
+                ResponsesSseLineResult::Failed(new_events) => {
+                    extend_events_or_error(&mut events, new_events)?;
+                    anyhow::bail!("Responses API stream failed without an error event");
+                },
+                ResponsesSseLineResult::Events(new_events) => {
                     extend_events_or_error(&mut events, new_events)?;
                 },
-                SseLineResult::Skip => {},
+                ResponsesSseLineResult::Skip => {},
             }
         }
         if offset > 0 {
@@ -764,14 +770,19 @@ async fn collect_streamed_responses_completion(
             .or_else(|| line.strip_prefix("data:"))
     {
         match process_responses_sse_line(data, &mut state) {
-            SseLineResult::Done => {
+            ResponsesSseLineResult::Completed(new_events) => {
+                extend_events_or_error(&mut events, new_events)?;
                 extend_events_or_error(&mut events, finalize_responses_stream(&mut state))?;
                 return Ok(stream_events_to_completion(events));
             },
-            SseLineResult::Events(new_events) => {
+            ResponsesSseLineResult::Failed(new_events) => {
+                extend_events_or_error(&mut events, new_events)?;
+                anyhow::bail!("Responses API stream failed without an error event");
+            },
+            ResponsesSseLineResult::Events(new_events) => {
                 extend_events_or_error(&mut events, new_events)?;
             },
-            SseLineResult::Skip => {},
+            ResponsesSseLineResult::Skip => {},
         }
     }
 
@@ -1159,18 +1170,27 @@ impl GitHubCopilotProvider {
                     };
 
                     match process_responses_sse_line(data, &mut state) {
-                        SseLineResult::Done => {
+                        ResponsesSseLineResult::Completed(events) => {
+                            for event in events {
+                                yield event;
+                            }
                             for event in finalize_responses_stream(&mut state) {
                                 yield event;
                             }
                             return;
                         }
-                        SseLineResult::Events(events) => {
+                        ResponsesSseLineResult::Failed(events) => {
+                            for event in events {
+                                yield event;
+                            }
+                            return;
+                        }
+                        ResponsesSseLineResult::Events(events) => {
                             for event in events {
                                 yield event;
                             }
                         }
-                        SseLineResult::Skip => {}
+                        ResponsesSseLineResult::Skip => {}
                     }
                 }
             }
@@ -1183,18 +1203,27 @@ impl GitHubCopilotProvider {
                     .or_else(|| line.strip_prefix("data:"))
             {
                 match process_responses_sse_line(data, &mut state) {
-                    SseLineResult::Done => {
+                    ResponsesSseLineResult::Completed(events) => {
+                        for event in events {
+                            yield event;
+                        }
                         for event in finalize_responses_stream(&mut state) {
                             yield event;
                         }
                         return;
                     }
-                    SseLineResult::Events(events) => {
+                    ResponsesSseLineResult::Failed(events) => {
+                        for event in events {
+                            yield event;
+                        }
+                        return;
+                    }
+                    ResponsesSseLineResult::Events(events) => {
                         for event in events {
                             yield event;
                         }
                     }
-                    SseLineResult::Skip => {}
+                    ResponsesSseLineResult::Skip => {}
                 }
             }
 

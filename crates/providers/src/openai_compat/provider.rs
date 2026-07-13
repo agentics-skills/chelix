@@ -679,6 +679,23 @@ pub enum SseLineResult {
     Events(Vec<StreamEvent>),
 }
 
+/// Result of processing a single Responses API SSE line.
+///
+/// Unlike Chat Completions, the Responses API distinguishes successful and
+/// unsuccessful terminal events. The caller must not finalize a failed stream
+/// with [`StreamEvent::Done`].
+#[derive(Debug)]
+pub enum ResponsesSseLineResult {
+    /// No actionable event (invalid JSON or an unrecognized event type).
+    Skip,
+    /// Non-terminal events to yield.
+    Events(Vec<StreamEvent>),
+    /// The stream completed successfully; yield events before finalizing.
+    Completed(Vec<StreamEvent>),
+    /// The stream failed or was incomplete; yield events and stop without finalizing.
+    Failed(Vec<StreamEvent>),
+}
+
 /// Emit a `ReasoningDelta`, stripping leading whitespace at the start of a
 /// think block so the UI doesn't show a blank prefix.
 fn emit_reasoning(text: String, strip_leading_ws: &mut bool, events: &mut Vec<StreamEvent>) {
@@ -1022,22 +1039,26 @@ pub struct ResponsesStreamState {
 
 /// Process a single SSE data line from a Responses API stream.
 ///
-/// Returns [`SseLineResult`] indicating whether to skip, yield events, or stop.
+/// Returns [`ResponsesSseLineResult`] indicating whether to skip, yield events,
+/// or stop without converting a provider error into a successful completion.
 ///
 /// Handles the event types emitted by the Responses API:
 /// - `response.output_text.delta` → text delta + `ProviderRaw`
 /// - `response.output_item.added` (type=function_call) → tool call start + `ProviderRaw`
 /// - `response.function_call_arguments.delta` → tool call arguments delta + `ProviderRaw`
 /// - `response.function_call_arguments.done` → tool call complete + `ProviderRaw`
-/// - `response.completed` → parse usage, done
-/// - `error` / `response.failed` → error + `ProviderRaw`
-pub fn process_responses_sse_line(data: &str, state: &mut ResponsesStreamState) -> SseLineResult {
+/// - `response.completed` → `ProviderRaw`, parse usage, successful terminal
+/// - `error` / `response.failed` / `response.incomplete` → error + `ProviderRaw`, failed terminal
+pub fn process_responses_sse_line(
+    data: &str,
+    state: &mut ResponsesStreamState,
+) -> ResponsesSseLineResult {
     if data == "[DONE]" {
-        return SseLineResult::Done;
+        return ResponsesSseLineResult::Completed(Vec::new());
     }
 
     let Ok(evt) = serde_json::from_str::<serde_json::Value>(data) else {
-        return SseLineResult::Skip;
+        return ResponsesSseLineResult::Skip;
     };
 
     // Emit ProviderRaw for every parsed event, mirroring the Chat Completions path.
@@ -1048,9 +1069,9 @@ pub fn process_responses_sse_line(data: &str, state: &mut ResponsesStreamState) 
             if let Some(delta) = evt["delta"].as_str()
                 && !delta.is_empty()
             {
-                SseLineResult::Events(vec![raw, StreamEvent::Delta(delta.to_string())])
+                ResponsesSseLineResult::Events(vec![raw, StreamEvent::Delta(delta.to_string())])
             } else {
-                SseLineResult::Events(vec![raw])
+                ResponsesSseLineResult::Events(vec![raw])
             }
         },
         "response.output_item.added" => {
@@ -1060,14 +1081,14 @@ pub fn process_responses_sse_line(data: &str, state: &mut ResponsesStreamState) 
                 let index = responses_output_index(&evt, state.current_tool_index);
                 state.current_tool_index = state.current_tool_index.max(index + 1);
                 state.tool_calls.insert(index, (id.clone(), name.clone()));
-                SseLineResult::Events(vec![raw, StreamEvent::ToolCallStart {
+                ResponsesSseLineResult::Events(vec![raw, StreamEvent::ToolCallStart {
                     id,
                     name,
                     index,
                     metadata: None,
                 }])
             } else {
-                SseLineResult::Events(vec![raw])
+                ResponsesSseLineResult::Events(vec![raw])
             }
         },
         "response.function_call_arguments.delta" => {
@@ -1076,20 +1097,20 @@ pub fn process_responses_sse_line(data: &str, state: &mut ResponsesStreamState) 
             {
                 let index =
                     responses_output_index(&evt, state.current_tool_index.saturating_sub(1));
-                SseLineResult::Events(vec![raw, StreamEvent::ToolCallArgumentsDelta {
+                ResponsesSseLineResult::Events(vec![raw, StreamEvent::ToolCallArgumentsDelta {
                     index,
                     delta: delta.to_string(),
                 }])
             } else {
-                SseLineResult::Events(vec![raw])
+                ResponsesSseLineResult::Events(vec![raw])
             }
         },
         "response.function_call_arguments.done" => {
             let index = responses_output_index(&evt, state.current_tool_index.saturating_sub(1));
             if state.completed_tool_calls.insert(index) {
-                SseLineResult::Events(vec![raw, StreamEvent::ToolCallComplete { index }])
+                ResponsesSseLineResult::Events(vec![raw, StreamEvent::ToolCallComplete { index }])
             } else {
-                SseLineResult::Events(vec![raw])
+                ResponsesSseLineResult::Events(vec![raw])
             }
         },
         "response.completed" => {
@@ -1103,7 +1124,7 @@ pub fn process_responses_sse_line(data: &str, state: &mut ResponsesStreamState) 
                 state.cache_read_tokens = parsed.cache_read_tokens;
                 state.cache_write_tokens = parsed.cache_write_tokens;
             }
-            SseLineResult::Done
+            ResponsesSseLineResult::Completed(vec![raw])
         },
         "error" | "response.failed" => {
             let msg = evt["error"]["message"]
@@ -1111,9 +1132,22 @@ pub fn process_responses_sse_line(data: &str, state: &mut ResponsesStreamState) 
                 .or_else(|| evt["response"]["error"]["message"].as_str())
                 .or_else(|| evt["message"].as_str())
                 .unwrap_or("unknown error");
-            SseLineResult::Events(vec![raw, StreamEvent::Error(msg.to_string())])
+            ResponsesSseLineResult::Failed(vec![raw, StreamEvent::Error(msg.to_string())])
         },
-        _ => SseLineResult::Events(vec![raw]),
+        "response.incomplete" => {
+            let msg = evt["response"]["incomplete_details"]["reason"]
+                .as_str()
+                .map(|reason| format!("response incomplete: {reason}"))
+                .or_else(|| {
+                    evt["response"]["error"]["message"]
+                        .as_str()
+                        .map(ToString::to_string)
+                })
+                .or_else(|| evt["message"].as_str().map(ToString::to_string))
+                .unwrap_or_else(|| "response incomplete".to_string());
+            ResponsesSseLineResult::Failed(vec![raw, StreamEvent::Error(msg)])
+        },
+        _ => ResponsesSseLineResult::Events(vec![raw]),
     }
 }
 

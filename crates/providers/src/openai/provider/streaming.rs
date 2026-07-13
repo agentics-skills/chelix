@@ -7,9 +7,9 @@ use tracing::{debug, trace};
 use crate::{
     http::{retry_after_ms_from_headers, with_retry_after_marker},
     openai_compat::{
-        ResponsesStreamState, SseLineResult, StreamingToolState, finalize_responses_stream,
-        finalize_stream, process_openai_sse_line, process_responses_sse_line,
-        split_responses_instructions_and_input, to_responses_api_tools,
+        ResponsesSseLineResult, ResponsesStreamState, SseLineResult, StreamingToolState,
+        finalize_responses_stream, finalize_stream, process_openai_sse_line,
+        process_responses_sse_line, split_responses_instructions_and_input, to_responses_api_tools,
     },
 };
 
@@ -116,16 +116,25 @@ impl OpenAiProvider {
                     };
 
                     match process_responses_sse_line(data, &mut state) {
-                        SseLineResult::Done => {
+                        ResponsesSseLineResult::Completed(events) => {
+                            for event in events {
+                                yield event;
+                            }
                             stream_done = true;
                             break;
                         }
-                        SseLineResult::Events(events) => {
+                        ResponsesSseLineResult::Failed(events) => {
+                            for event in events {
+                                yield event;
+                            }
+                            return;
+                        }
+                        ResponsesSseLineResult::Events(events) => {
                             for event in events {
                                 yield event;
                             }
                         }
-                        SseLineResult::Skip => {}
+                        ResponsesSseLineResult::Skip => {}
                     }
                 }
                 if stream_done {
@@ -142,12 +151,23 @@ impl OpenAiProvider {
                         .or_else(|| line.strip_prefix("data:"))
                 {
                     match process_responses_sse_line(data, &mut state) {
-                        SseLineResult::Done | SseLineResult::Skip => {}
-                        SseLineResult::Events(events) => {
+                        ResponsesSseLineResult::Completed(events) => {
                             for event in events {
                                 yield event;
                             }
                         }
+                        ResponsesSseLineResult::Failed(events) => {
+                            for event in events {
+                                yield event;
+                            }
+                            return;
+                        }
+                        ResponsesSseLineResult::Events(events) => {
+                            for event in events {
+                                yield event;
+                            }
+                        }
+                        ResponsesSseLineResult::Skip => {}
                     }
                 }
             }
@@ -293,5 +313,92 @@ impl OpenAiProvider {
                 yield event;
             }
         })
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use {
+        axum::{Router, body::Body, http::header::CONTENT_TYPE, response::Response, routing::post},
+        chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent},
+        futures::StreamExt,
+        secrecy::Secret,
+    };
+
+    use super::OpenAiProvider;
+
+    async fn responses_sse_events(body: String) -> Vec<StreamEvent> {
+        let app = Router::new().route(
+            "/v1/responses",
+            post(move || {
+                let body = body.clone();
+                async move {
+                    Response::builder()
+                        .header(CONTENT_TYPE, "text/event-stream")
+                        .body(Body::from(body))
+                        .unwrap()
+                }
+            }),
+        );
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let provider = OpenAiProvider::new(
+            Secret::new("test-key".to_string()),
+            "gpt-5.4".to_string(),
+            format!("http://{addr}"),
+        )
+        .with_wire_api(chelix_config::schema::WireApi::Responses);
+
+        provider
+            .stream(vec![ChatMessage::user("hello")])
+            .collect()
+            .await
+    }
+
+    #[tokio::test]
+    async fn responses_sse_processes_completed_event_without_trailing_newline() {
+        let completed = serde_json::json!({
+            "type": "response.completed",
+            "response": {
+                "usage": {
+                    "input_tokens": 12,
+                    "output_tokens": 7,
+                    "input_tokens_details": { "cached_tokens": 3 }
+                }
+            }
+        });
+
+        let events = responses_sse_events(format!("data: {completed}")).await;
+
+        assert!(matches!(
+            events.as_slice(),
+            [StreamEvent::ProviderRaw(raw), StreamEvent::Done(usage)]
+                if raw == &completed
+                    && usage.input_tokens == 12
+                    && usage.output_tokens == 7
+                    && usage.cache_read_tokens == 3
+        ));
+    }
+
+    #[tokio::test]
+    async fn responses_sse_stops_after_failed_event_without_done() {
+        let failed = serde_json::json!({
+            "type": "response.failed",
+            "response": { "error": { "message": "upstream failed" } }
+        });
+
+        let events = responses_sse_events(format!("data: {failed}\n\n")).await;
+
+        assert!(matches!(
+            events.as_slice(),
+            [StreamEvent::ProviderRaw(raw), StreamEvent::Error(message)]
+                if raw == &failed && message == "upstream failed"
+        ));
     }
 }
