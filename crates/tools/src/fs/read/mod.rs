@@ -11,6 +11,8 @@
 pub(crate) mod image;
 pub(crate) mod pdf;
 
+#[cfg(test)]
+mod concurrency_tests;
 mod tool;
 
 pub use tool::*;

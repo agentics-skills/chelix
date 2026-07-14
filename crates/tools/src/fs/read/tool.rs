@@ -20,12 +20,14 @@ use crate::{
         shared::{
             BinaryPolicy, DEFAULT_MAX_READ_BYTES, DEFAULT_READ_LINE_LIMIT, FsErrorKind,
             FsPathPolicy, FsState, MAX_READ_OUTPUT_BYTES, READ_LOOP_THRESHOLD,
-            compute_adaptive_read_cap, enforce_path_policy, format_numbered_lines_with_cap,
-            fs_error_payload, io_error_to_typed_payload, is_binary_extension, looks_binary,
-            require_absolute, session_key_from,
+            canonicalize_for_create, compute_adaptive_read_cap, enforce_path_policy,
+            format_numbered_lines_with_cap, fs_error_payload, fs_request_operation_lock_key,
+            host_fs_operation_lock_key, io_error_to_typed_payload, is_binary_extension,
+            looks_binary, require_absolute, sandbox_fs_operation_lock_key, session_key_from,
+            with_fs_read_lock,
         },
     },
-    sandbox::{ExecEnv, SandboxRouter, file_system::sandbox_file_system_for_session},
+    sandbox::{ExecEnv, SandboxRouter},
 };
 
 use super::{image, image::is_image_extension, pdf::read_pdf};
@@ -199,37 +201,53 @@ impl ReadTool {
             .unwrap_or(MAX_READ_OUTPUT_BYTES)
     }
 
-    #[instrument(skip(self), fields(file_path = %file_path))]
+    async fn resolve_env(&self, session_key: &str) -> Result<ExecEnv> {
+        match self.sandbox_router.as_deref() {
+            Some(router) => router.resolve_env(session_key).await,
+            None => Ok(ExecEnv::Host),
+        }
+    }
+
+    async fn operation_lock_key(file_path: &str, session_key: &str, env: &ExecEnv) -> String {
+        match env {
+            ExecEnv::Sandbox { .. } => sandbox_fs_operation_lock_key(session_key, file_path),
+            ExecEnv::Host => {
+                // Match Write's canonical parent + file-name key even when the
+                // target does not exist yet. Preserve Read's typed not-found
+                // response if the parent itself cannot be canonicalized.
+                let canonical = match fs::canonicalize(file_path).await {
+                    Ok(canonical) => canonical,
+                    Err(_) => canonicalize_for_create(file_path)
+                        .await
+                        .unwrap_or_else(|_| Path::new(file_path).to_path_buf()),
+                };
+                host_fs_operation_lock_key(&canonical)
+            },
+        }
+    }
+
+    #[instrument(skip(self, env), fields(file_path = %file_path))]
     async fn read_impl(
         &self,
         file_path: &str,
         offset: usize,
         limit: usize,
         session_key: &str,
+        env: &ExecEnv,
     ) -> Result<Value> {
         require_absolute(file_path, "file_path")?;
-
-        let router = self.sandbox_router.as_deref();
-        let env = match router {
-            Some(router) => router.resolve_env(session_key).await?,
-            None => ExecEnv::Host,
-        };
 
         // Sandbox reads always go through the bridge. The host filesystem path,
         // including canonical path policy and mtime handling, is unreachable here.
         match env {
-            ExecEnv::Sandbox { .. } => {
-                let router = router.ok_or_else(|| {
-                    Error::message("sandbox environment resolved without a sandbox router")
-                })?;
+            ExecEnv::Sandbox { backend, id } => {
                 if let Some(ref policy) = self.path_policy
                     && let Some(payload) = enforce_path_policy(policy, Path::new(file_path))
                 {
                     return Ok(payload);
                 }
                 let max = self.effective_max_read_bytes();
-                let sandbox_fs = sandbox_file_system_for_session(router, session_key).await?;
-                let result = sandbox_fs.read_file(file_path, max).await?;
+                let result = backend.read_file(id, file_path, max).await?;
                 match result {
                     SandboxReadResult::Ok(bytes) => {
                         return Ok(self.render_bytes_to_payload(
@@ -342,6 +360,7 @@ impl ReadTool {
         offset: usize,
         page_limit: usize,
         session_key: &str,
+        env: &ExecEnv,
     ) -> Result<Value> {
         let max_bytes = self.effective_render_byte_cap();
         let mut next_offset = offset;
@@ -354,7 +373,7 @@ impl ReadTool {
 
         for page_index in 0..MAX_AUTO_PAGED_READS {
             let payload = self
-                .read_impl(file_path, next_offset, page_limit, session_key)
+                .read_impl(file_path, next_offset, page_limit, session_key, env)
                 .await?;
             let Some(page) = Self::parse_text_page(&payload) else {
                 return Ok(payload);
@@ -523,6 +542,130 @@ impl ReadTool {
 
         payload
     }
+
+    async fn execute_locked(
+        &self,
+        file_path: &str,
+        offset: usize,
+        limit: usize,
+        pages: Option<&str>,
+        session_key: &str,
+        explicit_offset: bool,
+        explicit_limit: bool,
+        env: &ExecEnv,
+    ) -> Result<Value> {
+        let lower = file_path.to_ascii_lowercase();
+        let is_special = lower.ends_with(".pdf") || is_image_extension(&lower);
+
+        // PDF and image dispatches bypass read_impl, so the three
+        // gates that live inside read_impl must run here first:
+        //  1. Path policy
+        //  2. Sandbox routing (PDF/image extraction is host-only for
+        //     now — return a typed payload if sandboxed)
+        //  3. FsState read recording (so must-read-before-write works)
+        if is_special {
+            match env {
+                ExecEnv::Sandbox { .. } => {
+                    if let Some(ref policy) = self.path_policy
+                        && let Some(payload) = enforce_path_policy(policy, Path::new(file_path))
+                    {
+                        return Ok(payload);
+                    }
+                    // PDF extraction and image resize run host-side; we
+                    // can't invoke them inside a container. Return a clear
+                    // typed payload so the LLM knows to fall back to the
+                    // raw binary Read path.
+                    return Ok(json!({
+                        "kind": "unsupported_in_sandbox",
+                        "file_path": file_path,
+                        "error": "PDF and image processing is not available for sandboxed sessions. \
+                                  Use Read without a .pdf/.png/.jpg extension or access the file \
+                                  from a non-sandboxed session.",
+                    }));
+                },
+                ExecEnv::Host => {
+                    if let Some(ref policy) = self.path_policy {
+                        let p = Path::new(file_path);
+                        let canonical = fs::canonicalize(p)
+                            .await
+                            .unwrap_or_else(|_| p.to_path_buf());
+                        if let Some(payload) = enforce_path_policy(policy, &canonical) {
+                            return Ok(payload);
+                        }
+                    }
+                    // Record in FsState so must-read-before-write passes for
+                    // subsequent writes to this path.
+                    if let Some(ref state) = self.fs_state {
+                        let canonical = fs::canonicalize(file_path)
+                            .await
+                            .unwrap_or_else(|_| std::path::PathBuf::from(file_path));
+                        let mtime = fs::metadata(file_path)
+                            .await
+                            .ok()
+                            .and_then(|m| m.modified().ok());
+                        let mut guard = state
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        guard.record_read(session_key, canonical, offset, limit, mtime);
+                    }
+                },
+            }
+        }
+
+        // PDF dispatch.
+        if lower.ends_with(".pdf") {
+            return match read_pdf(file_path, pages).await {
+                Ok(value) => Ok(value),
+                Err(e) => {
+                    #[cfg(feature = "metrics")]
+                    counter!(
+                        tools_metrics::EXECUTION_ERRORS_TOTAL,
+                        labels::TOOL => "Read".to_string()
+                    )
+                    .increment(1);
+                    Err(e)
+                },
+            };
+        }
+
+        // Image dispatch.
+        if is_image_extension(&lower) {
+            return match image::read_image(file_path).await {
+                Ok(value) => Ok(value),
+                Err(e) => {
+                    #[cfg(feature = "metrics")]
+                    counter!(
+                        tools_metrics::EXECUTION_ERRORS_TOTAL,
+                        labels::TOOL => "Read".to_string()
+                    )
+                    .increment(1);
+                    Err(e)
+                },
+            };
+        }
+
+        let should_auto_page = !explicit_limit && !explicit_offset;
+        let result = if should_auto_page {
+            self.read_with_auto_paging(file_path, offset, limit, session_key, env)
+                .await
+        } else {
+            self.read_impl(file_path, offset, limit, session_key, env)
+                .await
+        };
+
+        match result {
+            Ok(value) => Ok(value),
+            Err(e) => {
+                #[cfg(feature = "metrics")]
+                counter!(
+                    tools_metrics::EXECUTION_ERRORS_TOTAL,
+                    labels::TOOL => "Read".to_string()
+                )
+                .increment(1);
+                Err(e)
+            },
+        }
+    }
 }
 
 #[async_trait]
@@ -598,126 +741,33 @@ impl AgentTool for ReadTool {
             .map(|v| v as usize)
             .unwrap_or(DEFAULT_READ_LINE_LIMIT)
             .max(1);
-        let pages = params
-            .get("pages")
-            .and_then(Value::as_str)
-            .map(str::to_string);
+        let pages = params.get("pages").and_then(Value::as_str);
         let session_key = session_key_from(&params).to_string();
+        require_absolute(file_path, "file_path")?;
+        with_fs_read_lock(
+            fs_request_operation_lock_key(&session_key, file_path),
+            async {
+                let env = self.resolve_env(&session_key).await?;
+                let lock_key = Self::operation_lock_key(file_path, &session_key, &env).await;
 
-        let lower = file_path.to_ascii_lowercase();
-        let is_special = lower.ends_with(".pdf") || is_image_extension(&lower);
-
-        // PDF and image dispatches bypass read_impl, so the three
-        // gates that live inside read_impl must run here first:
-        //  1. Path policy
-        //  2. Sandbox routing (PDF/image extraction is host-only for
-        //     now — return a typed payload if sandboxed)
-        //  3. FsState read recording (so must-read-before-write works)
-        if is_special {
-            let env = match self.sandbox_router.as_deref() {
-                Some(router) => router.resolve_env(&session_key).await?,
-                None => ExecEnv::Host,
-            };
-            match env {
-                ExecEnv::Sandbox { .. } => {
-                    if let Some(ref policy) = self.path_policy
-                        && let Some(payload) = enforce_path_policy(policy, Path::new(file_path))
-                    {
-                        return Ok(payload);
-                    }
-                    // PDF extraction and image resize run host-side; we
-                    // can't invoke them inside a container. Return a clear
-                    // typed payload so the LLM knows to fall back to the
-                    // raw binary Read path.
-                    return Ok(json!({
-                        "kind": "unsupported_in_sandbox",
-                        "file_path": file_path,
-                        "error": "PDF and image processing is not available for sandboxed sessions. \
-                                  Use Read without a .pdf/.png/.jpg extension or access the file \
-                                  from a non-sandboxed session.",
-                    }));
-                },
-                ExecEnv::Host => {
-                    if let Some(ref policy) = self.path_policy {
-                        let p = Path::new(file_path);
-                        let canonical = fs::canonicalize(p)
-                            .await
-                            .unwrap_or_else(|_| p.to_path_buf());
-                        if let Some(payload) = enforce_path_policy(policy, &canonical) {
-                            return Ok(payload);
-                        }
-                    }
-                    // Record in FsState so must-read-before-write passes for
-                    // subsequent writes to this path.
-                    if let Some(ref state) = self.fs_state {
-                        let canonical = fs::canonicalize(file_path)
-                            .await
-                            .unwrap_or_else(|_| std::path::PathBuf::from(file_path));
-                        let mtime = fs::metadata(file_path)
-                            .await
-                            .ok()
-                            .and_then(|m| m.modified().ok());
-                        let mut guard = state
-                            .lock()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner());
-                        guard.record_read(&session_key, canonical, offset, limit, mtime);
-                    }
-                },
-            }
-        }
-
-        // PDF dispatch.
-        if lower.ends_with(".pdf") {
-            return match read_pdf(file_path, pages.as_deref()).await {
-                Ok(value) => Ok(value),
-                Err(e) => {
-                    #[cfg(feature = "metrics")]
-                    counter!(
-                        tools_metrics::EXECUTION_ERRORS_TOTAL,
-                        labels::TOOL => "Read".to_string()
-                    )
-                    .increment(1);
-                    Err(e.into())
-                },
-            };
-        }
-
-        // Image dispatch.
-        if is_image_extension(&lower) {
-            return match image::read_image(file_path).await {
-                Ok(value) => Ok(value),
-                Err(e) => {
-                    #[cfg(feature = "metrics")]
-                    counter!(
-                        tools_metrics::EXECUTION_ERRORS_TOTAL,
-                        labels::TOOL => "Read".to_string()
-                    )
-                    .increment(1);
-                    Err(e.into())
-                },
-            };
-        }
-
-        let should_auto_page = !explicit_limit && !explicit_offset;
-        let result = if should_auto_page {
-            self.read_with_auto_paging(file_path, offset, limit, &session_key)
-                .await
-        } else {
-            self.read_impl(file_path, offset, limit, &session_key).await
-        };
-
-        match result {
-            Ok(value) => Ok(value),
-            Err(e) => {
-                #[cfg(feature = "metrics")]
-                counter!(
-                    tools_metrics::EXECUTION_ERRORS_TOTAL,
-                    labels::TOOL => "Read".to_string()
+                with_fs_read_lock(
+                    lock_key,
+                    self.execute_locked(
+                        file_path,
+                        offset,
+                        limit,
+                        pages,
+                        &session_key,
+                        explicit_offset,
+                        explicit_limit,
+                        &env,
+                    ),
                 )
-                .increment(1);
-                Err(e.into())
+                .await
             },
-        }
+        )
+        .await
+        .map_err(Into::into)
     }
 }
 

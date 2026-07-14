@@ -23,9 +23,9 @@ use crate::{
     error::Error,
     fs::shared::{
         FsPathPolicy, FsState, canonicalize_for_create, enforce_must_read_before_write,
-        enforce_path_policy, host_mutation_queue_key, note_fs_mutation, reject_if_symlink,
-        require_absolute, require_fs_mutation_approval, sandbox_mutation_queue_key,
-        session_key_from, with_fs_mutation_lock,
+        enforce_path_policy, fs_request_operation_lock_key, host_fs_operation_lock_key,
+        note_fs_mutation, reject_if_symlink, require_absolute, require_fs_mutation_approval,
+        sandbox_fs_operation_lock_key, session_key_from, with_fs_mutation_lock,
     },
     sandbox::{ExecEnv, SandboxRouter, file_system::sandbox_file_system_for_session},
 };
@@ -112,7 +112,7 @@ impl WriteTool {
                     return Ok(payload);
                 }
                 return with_fs_mutation_lock(
-                    sandbox_mutation_queue_key(session_key, file_path),
+                    sandbox_fs_operation_lock_key(session_key, file_path),
                     async {
                         // must-read-before-write: skip for sandbox Write because we
                         // can't cheaply check whether the file exists inside the
@@ -159,7 +159,7 @@ impl WriteTool {
             return Ok(payload);
         }
 
-        with_fs_mutation_lock(host_mutation_queue_key(&canonical), async {
+        with_fs_mutation_lock(host_fs_operation_lock_key(&canonical), async {
             let target_exists = tokio::fs::try_exists(&canonical).await.unwrap_or(false);
             let mut checkpoint_id: Option<String> = None;
 
@@ -285,18 +285,24 @@ impl AgentTool for WriteTool {
             .ok_or_else(|| Error::message("missing 'content' parameter"))?;
         let session_key = session_key_from(&params).to_string();
 
-        match self.write_impl(file_path, content, &session_key).await {
-            Ok(value) => Ok(value),
-            Err(e) => {
-                #[cfg(feature = "metrics")]
-                counter!(
-                    tools_metrics::EXECUTION_ERRORS_TOTAL,
-                    labels::TOOL => "Write".to_string()
-                )
-                .increment(1);
-                Err(e.into())
+        with_fs_mutation_lock(
+            fs_request_operation_lock_key(&session_key, file_path),
+            async {
+                match self.write_impl(file_path, content, &session_key).await {
+                    Ok(value) => Ok(value),
+                    Err(e) => {
+                        #[cfg(feature = "metrics")]
+                        counter!(
+                            tools_metrics::EXECUTION_ERRORS_TOTAL,
+                            labels::TOOL => "Write".to_string()
+                        )
+                        .increment(1);
+                        Err(e.into())
+                    },
+                }
             },
-        }
+        )
+        .await
     }
 }
 

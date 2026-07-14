@@ -10,10 +10,12 @@ use {
     base64::{Engine as _, engine::general_purpose::STANDARD as BASE64},
     serde_json::{Value, json},
     std::{
+        borrow::Cow,
+        collections::HashMap,
         ffi::OsString,
         io::{self, Read as _, Write as _},
         path::{Path, PathBuf},
-        sync::Arc,
+        sync::{Arc, Mutex, OnceLock, Weak},
         time::Duration,
     },
     tar::{Archive, Builder, EntryType, Header},
@@ -543,6 +545,39 @@ enum OciPathKind {
     Other,
 }
 
+type OciCopyGateMap = Mutex<HashMap<String, Weak<tokio::sync::Semaphore>>>;
+
+fn oci_copy_gate(cli: &str, container_name: &str) -> Arc<tokio::sync::Semaphore> {
+    static GATES: OnceLock<OciCopyGateMap> = OnceLock::new();
+    let gates = GATES.get_or_init(|| Mutex::new(HashMap::new()));
+    let key = format!("{cli}:{container_name}");
+    let mut gates = gates
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    gates.retain(|_, gate| gate.strong_count() > 0);
+    if let Some(gate) = gates.get(&key).and_then(Weak::upgrade) {
+        return gate;
+    }
+
+    let gate = Arc::new(tokio::sync::Semaphore::new(1));
+    gates.insert(key, Arc::downgrade(&gate));
+    gate
+}
+
+async fn acquire_oci_copy_permit(
+    cli: &str,
+    container_name: &str,
+) -> Result<tokio::sync::OwnedSemaphorePermit> {
+    oci_copy_gate(cli, container_name)
+        .acquire_owned()
+        .await
+        .map_err(|_| {
+            Error::message(format!(
+                "{cli} copy gate closed for container '{container_name}'"
+            ))
+        })
+}
+
 fn classify_container_copy_error(stderr: &str) -> Option<ContainerCopyErrorKind> {
     let lower = stderr.to_ascii_lowercase();
     if lower.contains("permission denied") {
@@ -555,6 +590,18 @@ fn classify_container_copy_error(stderr: &str) -> Option<ContainerCopyErrorKind>
         return Some(ContainerCopyErrorKind::NotFound);
     }
     None
+}
+
+fn oci_copy_failure_detail(stderr: &str, exit_code: Option<i32>) -> Cow<'_, str> {
+    let detail = stderr.trim();
+    if !detail.is_empty() {
+        return Cow::Borrowed(detail);
+    }
+
+    exit_code.map_or_else(
+        || Cow::Borrowed("process terminated without an exit code"),
+        |code| Cow::Owned(format!("exit code {code}")),
+    )
 }
 
 async fn oci_run_shell_command(
@@ -696,42 +743,88 @@ fn extract_single_file_from_tar_reader<R: io::Read>(
     max_bytes: u64,
 ) -> Result<SandboxReadResult> {
     let mut archive = Archive::new(reader);
-    let mut entries = archive.entries().map_err(|error| {
+    let result = (|| -> Result<SandboxReadResult> {
+        let mut entries = archive.entries().map_err(|error| {
+            Error::message(format!(
+                "failed to read OCI tar stream for '{file_path}': {error}"
+            ))
+        })?;
+
+        let Some(entry_result) = entries.next() else {
+            return Err(Error::message(format!(
+                "OCI tar stream for '{file_path}' was empty"
+            )));
+        };
+        let mut entry = entry_result.map_err(|error| {
+            Error::message(format!(
+                "failed to decode OCI tar entry for '{file_path}': {error}"
+            ))
+        })?;
+
+        let entry_size = entry.size();
+        let file_result = if entry.header().entry_type() != EntryType::Regular {
+            io::copy(&mut entry, &mut io::sink()).map_err(|error| {
+                Error::message(format!(
+                    "failed to drain non-file OCI tar entry for '{file_path}': {error}"
+                ))
+            })?;
+            SandboxReadResult::NotRegularFile
+        } else if entry_size > max_bytes {
+            io::copy(&mut entry, &mut io::sink()).map_err(|error| {
+                Error::message(format!(
+                    "failed to drain oversized OCI tar entry for '{file_path}': {error}"
+                ))
+            })?;
+            SandboxReadResult::TooLarge(entry_size)
+        } else {
+            let mut bytes = Vec::with_capacity(entry_size as usize);
+            entry.read_to_end(&mut bytes).map_err(|error| {
+                Error::message(format!(
+                    "failed to read OCI tar payload for '{file_path}': {error}"
+                ))
+            })?;
+            if bytes.len() as u64 > max_bytes {
+                SandboxReadResult::TooLarge(bytes.len() as u64)
+            } else {
+                SandboxReadResult::Ok(bytes)
+            }
+        };
+        drop(entry);
+
+        for trailing_entry in entries {
+            let mut trailing_entry = trailing_entry.map_err(|error| {
+                Error::message(format!(
+                    "failed to decode trailing OCI tar entry for '{file_path}': {error}"
+                ))
+            })?;
+            io::copy(&mut trailing_entry, &mut io::sink()).map_err(|error| {
+                Error::message(format!(
+                    "failed to drain trailing OCI tar entry for '{file_path}': {error}"
+                ))
+            })?;
+        }
+        Ok(file_result)
+    })();
+
+    // `docker cp ... -` owns stdout until the complete tar stream is written.
+    // The tar iterator stops after the first zero header, so consume the
+    // remaining trailer and transport bytes before waiting on the child. If we
+    // close the pipe early, Docker can report a broken pipe as a failed copy.
+    let mut reader = archive.into_inner();
+    let drain_result = io::copy(&mut reader, &mut io::sink()).map_err(|error| {
         Error::message(format!(
-            "failed to read OCI tar stream for '{file_path}': {error}"
+            "failed to drain OCI tar stream for '{file_path}': {error}"
         ))
-    })?;
+    });
 
-    let Some(entry_result) = entries.next() else {
-        return Err(Error::message(format!(
-            "OCI tar stream for '{file_path}' was empty"
-        )));
-    };
-    let mut entry = entry_result.map_err(|error| {
-        Error::message(format!(
-            "failed to decode OCI tar entry for '{file_path}': {error}"
-        ))
-    })?;
-
-    if entry.header().entry_type() != EntryType::Regular {
-        return Ok(SandboxReadResult::NotRegularFile);
+    match (result, drain_result) {
+        (Ok(result), Ok(_)) => Ok(result),
+        (Ok(_), Err(drain_error)) => Err(drain_error),
+        (Err(error), Ok(_)) => Err(error),
+        (Err(error), Err(drain_error)) => Err(Error::message(format!(
+            "{error}; additionally failed to drain OCI tar transport: {drain_error}"
+        ))),
     }
-
-    let entry_size = entry.size();
-    if entry_size > max_bytes {
-        return Ok(SandboxReadResult::TooLarge(entry_size));
-    }
-
-    let mut bytes = Vec::with_capacity(entry_size as usize);
-    entry.read_to_end(&mut bytes).map_err(|error| {
-        Error::message(format!(
-            "failed to read OCI tar payload for '{file_path}': {error}"
-        ))
-    })?;
-    if bytes.len() as u64 > max_bytes {
-        return Ok(SandboxReadResult::TooLarge(bytes.len() as u64));
-    }
-    Ok(SandboxReadResult::Ok(bytes))
 }
 
 #[cfg(test)]
@@ -989,6 +1082,7 @@ pub async fn oci_container_read_file(
     file_path: &str,
     max_bytes: u64,
 ) -> Result<SandboxReadResult> {
+    let copy_permit = acquire_oci_copy_permit(cli, container_name).await?;
     match oci_probe_file_kind(cli, container_name, file_path).await? {
         OciPathKind::Missing => Ok(SandboxReadResult::NotFound),
         OciPathKind::File { bytes } if bytes > max_bytes => Ok(SandboxReadResult::TooLarge(bytes)),
@@ -997,6 +1091,7 @@ pub async fn oci_container_read_file(
             let container_name = container_name.to_string();
             let file_path = file_path.to_string();
             tokio::task::spawn_blocking(move || -> Result<SandboxReadResult> {
+                let _copy_permit = copy_permit;
                 let mut child = std::process::Command::new(&cli)
                     .args(["cp", &format!("{container_name}:{file_path}"), "-"])
                     .stdout(std::process::Stdio::piped())
@@ -1008,14 +1103,6 @@ pub async fn oci_container_read_file(
                     .take()
                     .ok_or_else(|| Error::message("failed to open OCI copy stdout"))?;
                 let result = extract_single_file_from_tar_reader(stdout, &file_path, max_bytes);
-                let stop_child = matches!(
-                    result,
-                    Ok(SandboxReadResult::NotRegularFile | SandboxReadResult::TooLarge(_))
-                );
-
-                if stop_child {
-                    let _ = child.kill();
-                }
 
                 let mut stderr = String::new();
                 if let Some(mut stderr_pipe) = child.stderr.take() {
@@ -1023,15 +1110,12 @@ pub async fn oci_container_read_file(
                 }
                 let status = child.wait()?;
 
-                if stop_child {
-                    return result;
-                }
-
                 if status.success() {
                     return result;
                 }
 
-                if let Some(kind) = classify_container_copy_error(stderr.trim()) {
+                let detail = oci_copy_failure_detail(&stderr, status.code());
+                if let Some(kind) = classify_container_copy_error(&detail) {
                     return Ok(match kind {
                         ContainerCopyErrorKind::NotFound => SandboxReadResult::NotFound,
                         ContainerCopyErrorKind::PermissionDenied => {
@@ -1041,8 +1125,7 @@ pub async fn oci_container_read_file(
                 }
 
                 Err(Error::message(format!(
-                    "{cli} cp failed for '{file_path}': {}",
-                    stderr.trim()
+                    "{cli} cp failed for '{file_path}': {detail}"
                 )))
             })
             .await
@@ -1059,6 +1142,7 @@ pub async fn oci_container_write_file(
     file_path: &str,
     content: &[u8],
 ) -> Result<Option<Value>> {
+    let _copy_permit = acquire_oci_copy_permit(cli, container_name).await?;
     if let Some(payload) = oci_probe_write_target(cli, container_name, file_path).await? {
         return Ok(Some(payload));
     }
@@ -1093,14 +1177,14 @@ pub async fn oci_container_write_file(
     }
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let detail = stderr.trim();
-    if let Some(kind) = classify_container_copy_error(detail) {
+    let detail = oci_copy_failure_detail(&stderr, output.status.code());
+    if let Some(kind) = classify_container_copy_error(&detail) {
         return match kind {
             ContainerCopyErrorKind::NotFound => Err(Error::message(format!(
                 "cannot resolve parent of '{file_path}': directory does not exist in container"
             ))),
             ContainerCopyErrorKind::PermissionDenied => {
-                Ok(Some(permission_denied_payload(file_path, detail)))
+                Ok(Some(permission_denied_payload(file_path, &detail)))
             },
         };
     }
@@ -1223,7 +1307,23 @@ mod tests {
     use {
         super::{test_helpers::MockSandbox, *},
         crate::{command::CommandOutput, sandbox::types::SandboxScope},
+        std::sync::atomic::{AtomicBool, Ordering},
     };
+
+    struct EofTrackingReader {
+        inner: io::Cursor<Vec<u8>>,
+        reached_eof: Arc<AtomicBool>,
+    }
+
+    impl io::Read for EofTrackingReader {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            let read = self.inner.read(buffer)?;
+            if read == 0 {
+                self.reached_eof.store(true, Ordering::SeqCst);
+            }
+            Ok(read)
+        }
+    }
 
     fn test_id() -> SandboxId {
         SandboxId {
@@ -1347,6 +1447,70 @@ mod tests {
         let tar_bytes = build_single_file_tar("/tmp/example.txt", b"hello tar").unwrap();
         let result = extract_single_file_from_tar(&tar_bytes, "/tmp/example.txt", 4).unwrap();
         assert!(matches!(result, SandboxReadResult::TooLarge(9)));
+    }
+
+    #[test]
+    fn extract_single_file_from_tar_drains_transport_to_eof() {
+        let tar_bytes = build_single_file_tar("/tmp/example.txt", b"hello tar").unwrap();
+        let reached_eof = Arc::new(AtomicBool::new(false));
+        let reader = EofTrackingReader {
+            inner: io::Cursor::new(tar_bytes),
+            reached_eof: Arc::clone(&reached_eof),
+        };
+
+        let result = extract_single_file_from_tar_reader(reader, "/tmp/example.txt", 1024).unwrap();
+
+        assert!(matches!(result, SandboxReadResult::Ok(bytes) if bytes == b"hello tar"));
+        assert!(
+            reached_eof.load(Ordering::SeqCst),
+            "OCI tar transport must be consumed through physical EOF"
+        );
+    }
+
+    #[test]
+    fn extract_oversized_file_from_tar_drains_transport_to_eof() {
+        let tar_bytes = build_single_file_tar("/tmp/example.txt", b"hello tar").unwrap();
+        let reached_eof = Arc::new(AtomicBool::new(false));
+        let reader = EofTrackingReader {
+            inner: io::Cursor::new(tar_bytes),
+            reached_eof: Arc::clone(&reached_eof),
+        };
+
+        let result = extract_single_file_from_tar_reader(reader, "/tmp/example.txt", 4).unwrap();
+
+        assert!(matches!(result, SandboxReadResult::TooLarge(9)));
+        assert!(
+            reached_eof.load(Ordering::SeqCst),
+            "oversized OCI tar transport must be consumed through physical EOF"
+        );
+    }
+
+    #[test]
+    fn oci_copy_failure_detail_falls_back_to_exit_code() {
+        assert_eq!(oci_copy_failure_detail("", Some(17)), "exit code 17");
+        assert_eq!(
+            oci_copy_failure_detail("  ", None),
+            "process terminated without an exit code"
+        );
+        assert_eq!(
+            oci_copy_failure_detail(" copy failed\n", Some(17)),
+            "copy failed"
+        );
+    }
+
+    #[tokio::test]
+    async fn oci_copy_gate_serializes_paths_in_same_container() {
+        let first = oci_copy_gate("docker", "parallel-read-container");
+        let second = oci_copy_gate("docker", "parallel-read-container");
+        let other = oci_copy_gate("docker", "independent-container");
+        assert!(Arc::ptr_eq(&first, &second));
+        assert!(!Arc::ptr_eq(&first, &other));
+
+        let permit = first.clone().acquire_owned().await.unwrap();
+        assert!(second.clone().try_acquire_owned().is_err());
+        let _other_permit = other.try_acquire_owned().unwrap();
+        drop(permit);
+        let _second_permit = second.try_acquire_owned().unwrap();
     }
 
     #[tokio::test]

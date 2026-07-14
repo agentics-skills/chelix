@@ -30,59 +30,279 @@ use {
 /// to Read's response payload.
 pub const READ_LOOP_THRESHOLD: usize = 3;
 
-type MutationQueueMap = Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>;
-
-fn mutation_queue_map() -> &'static MutationQueueMap {
-    static QUEUES: OnceLock<MutationQueueMap> = OnceLock::new();
-    QUEUES.get_or_init(|| Mutex::new(HashMap::new()))
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FsOperationKind {
+    Read,
+    Mutation,
 }
 
-/// Serialize filesystem mutations that target the same logical path.
+#[derive(Default)]
+struct FsOperationGateState {
+    active: bool,
+    waiting_reads: usize,
+    waiting_mutations: usize,
+}
+
+struct FsOperationGate {
+    state: Mutex<FsOperationGateState>,
+    changed: tokio::sync::watch::Sender<u64>,
+}
+
+impl FsOperationGate {
+    fn new() -> Self {
+        let (changed, _) = tokio::sync::watch::channel(0);
+        Self {
+            state: Mutex::new(FsOperationGateState::default()),
+            changed,
+        }
+    }
+
+    fn notify_changed(&self) {
+        self.changed
+            .send_modify(|version| *version = version.wrapping_add(1));
+    }
+}
+
+struct FsOperationGateEntry {
+    gate: Arc<FsOperationGate>,
+    users: usize,
+}
+
+type FsOperationLockMap = Mutex<HashMap<String, FsOperationGateEntry>>;
+
+fn fs_operation_lock_map() -> &'static FsOperationLockMap {
+    static LOCKS: OnceLock<FsOperationLockMap> = OnceLock::new();
+    LOCKS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+struct FsOperationLockRegistration {
+    key: String,
+    gate: Arc<FsOperationGate>,
+    kind: FsOperationKind,
+    waiting: bool,
+}
+
+impl FsOperationLockRegistration {
+    fn new(key: String, kind: FsOperationKind) -> Self {
+        let gate = {
+            let mut locks = fs_operation_lock_map()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let entry = locks
+                .entry(key.clone())
+                .or_insert_with(|| FsOperationGateEntry {
+                    gate: Arc::new(FsOperationGate::new()),
+                    users: 0,
+                });
+            entry.users = entry.users.saturating_add(1);
+            Arc::clone(&entry.gate)
+        };
+
+        {
+            let mut state = gate
+                .state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            match kind {
+                FsOperationKind::Read => {
+                    state.waiting_reads = state.waiting_reads.saturating_add(1);
+                },
+                FsOperationKind::Mutation => {
+                    state.waiting_mutations = state.waiting_mutations.saturating_add(1);
+                },
+            }
+        }
+        gate.notify_changed();
+
+        Self {
+            key,
+            gate,
+            kind,
+            waiting: true,
+        }
+    }
+
+    fn try_acquire(&mut self) -> bool {
+        let mut state = self
+            .gate
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let can_acquire = !state.active
+            && match self.kind {
+                FsOperationKind::Read => state.waiting_mutations == 0,
+                FsOperationKind::Mutation => true,
+            };
+        if !can_acquire {
+            return false;
+        }
+
+        match self.kind {
+            FsOperationKind::Read => {
+                state.waiting_reads = state.waiting_reads.saturating_sub(1);
+            },
+            FsOperationKind::Mutation => {
+                state.waiting_mutations = state.waiting_mutations.saturating_sub(1);
+            },
+        }
+        state.active = true;
+        self.waiting = false;
+        true
+    }
+}
+
+impl Drop for FsOperationLockRegistration {
+    fn drop(&mut self) {
+        if self.waiting {
+            let should_notify = {
+                let mut state = self
+                    .gate
+                    .state
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                match self.kind {
+                    FsOperationKind::Read => {
+                        state.waiting_reads = state.waiting_reads.saturating_sub(1);
+                    },
+                    FsOperationKind::Mutation => {
+                        state.waiting_mutations = state.waiting_mutations.saturating_sub(1);
+                    },
+                }
+                !state.active
+            };
+            if should_notify {
+                self.gate.notify_changed();
+            }
+        }
+
+        let mut locks = fs_operation_lock_map()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let should_remove = locks.get_mut(&self.key).is_some_and(|current| {
+            if !Arc::ptr_eq(&current.gate, &self.gate) {
+                return false;
+            }
+            if current.users > 1 {
+                current.users -= 1;
+                return false;
+            }
+            true
+        });
+        if should_remove {
+            locks.remove(&self.key);
+        }
+    }
+}
+
+struct FsOperationLease {
+    registration: Option<FsOperationLockRegistration>,
+}
+
+impl Drop for FsOperationLease {
+    fn drop(&mut self) {
+        let Some(registration) = self.registration.take() else {
+            return;
+        };
+        {
+            let mut state = registration
+                .gate
+                .state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            state.active = false;
+        }
+        registration.gate.notify_changed();
+        drop(registration);
+    }
+}
+
+async fn acquire_fs_operation_lock(key: String, kind: FsOperationKind) -> FsOperationLease {
+    let mut registration = FsOperationLockRegistration::new(key, kind);
+    let mut changed = registration.gate.changed.subscribe();
+    loop {
+        if registration.try_acquire() {
+            return FsOperationLease {
+                registration: Some(registration),
+            };
+        }
+        let _ = changed.changed().await;
+    }
+}
+
+async fn with_fs_operation_lock_kind<T, F>(key: String, kind: FsOperationKind, op: F) -> T
+where
+    F: Future<Output = T>,
+{
+    let lease = acquire_fs_operation_lock(key, kind).await;
+    let result = op.await;
+    drop(lease);
+    result
+}
+
+/// Serialize a coherent read against mutations for the same logical path.
 ///
-/// Host mutations should use a canonical absolute path as the key. Sandbox
-/// mutations should include the session key in the namespace so two isolated
-/// sandboxes writing the same in-container path do not block each other.
+/// Waiting mutations have priority over reads. Yielding once before admission
+/// lets mutation futures scheduled in the same executor turn register their
+/// intent without adding timing-based delays.
+pub async fn with_fs_read_lock<T, F>(key: String, op: F) -> T
+where
+    F: Future<Output = T>,
+{
+    tokio::task::yield_now().await;
+    with_fs_operation_lock_kind(key, FsOperationKind::Read, op).await
+}
+
+/// Serialize a filesystem mutation against all operations for the same path.
+///
+/// Mutations already waiting for a key are admitted before queued reads. An
+/// active operation is never interrupted, preserving atomic operation bodies.
 pub async fn with_fs_mutation_lock<T, F>(key: String, op: F) -> T
 where
     F: Future<Output = T>,
 {
-    let gate = {
-        let mut queues = mutation_queue_map()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        queues
-            .entry(key.clone())
-            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
-            .clone()
-    };
-
-    let guard = gate.lock().await;
-    let result = op.await;
-    drop(guard);
-
-    let mut queues = mutation_queue_map()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let should_remove = queues
-        .get(&key)
-        .is_some_and(|current| Arc::ptr_eq(current, &gate) && Arc::strong_count(current) == 2);
-    if should_remove {
-        queues.remove(&key);
-    }
-
-    result
+    with_fs_operation_lock_kind(key, FsOperationKind::Mutation, op).await
 }
 
-/// Key for host-side filesystem mutation serialization.
+/// Backwards-compatible mutation-priority operation wrapper.
+pub async fn with_fs_operation_lock<T, F>(key: String, op: F) -> T
+where
+    F: Future<Output = T>,
+{
+    with_fs_mutation_lock(key, op).await
+}
+
+/// Key for host-side filesystem operation serialization.
 #[must_use]
-pub fn host_mutation_queue_key(path: &Path) -> String {
+pub fn host_fs_operation_lock_key(path: &Path) -> String {
     format!("host:{}", path.display())
 }
 
-/// Key for sandbox-side filesystem mutation serialization.
+/// Key for sandbox-side filesystem operation serialization.
+#[must_use]
+pub fn sandbox_fs_operation_lock_key(session_key: &str, file_path: &str) -> String {
+    format!("sandbox:{session_key}:{file_path}")
+}
+
+/// Early request-level key used before execution environment resolution.
+///
+/// This lets a mutation announce writer intent before sandbox preparation or
+/// host canonicalization. The later host/sandbox key still provides canonical
+/// alias handling and guards the complete filesystem operation.
+#[must_use]
+pub fn fs_request_operation_lock_key(session_key: &str, file_path: &str) -> String {
+    format!("request:{session_key}:{file_path}")
+}
+
+/// Backwards-compatible host mutation key helper.
+#[must_use]
+pub fn host_mutation_queue_key(path: &Path) -> String {
+    host_fs_operation_lock_key(path)
+}
+
+/// Backwards-compatible sandbox mutation key helper.
 #[must_use]
 pub fn sandbox_mutation_queue_key(session_key: &str, file_path: &str) -> String {
-    format!("sandbox:{session_key}:{file_path}")
+    sandbox_fs_operation_lock_key(session_key, file_path)
 }
 
 /// Strategy for handling binary files encountered by `Read`.
@@ -855,6 +1075,31 @@ mod tests {
         },
     };
 
+    async fn wait_for_operation_waiters(key: &str, reads: usize, mutations: usize) {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let gate = {
+                    let locks = fs_operation_lock_map()
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    locks.get(key).map(|entry| Arc::clone(&entry.gate))
+                };
+                if let Some(gate) = gate {
+                    let state = gate
+                        .state
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    if state.waiting_reads >= reads && state.waiting_mutations >= mutations {
+                        return;
+                    }
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("filesystem operation waiters did not register");
+    }
+
     #[test]
     fn adaptive_read_cap_small_context_clamps_to_min() {
         // 8K tokens × 4 chars × 0.2 = 6400 bytes; below the 50 KB min.
@@ -952,12 +1197,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mutation_lock_serializes_same_key() {
+    async fn operation_lock_serializes_same_key() {
         let entered_second = Arc::new(AtomicBool::new(false));
         let entered_second_task = Arc::clone(&entered_second);
 
         let first = tokio::spawn(async move {
-            with_fs_mutation_lock("host:/tmp/demo".to_string(), async {
+            with_fs_operation_lock("host:/tmp/demo".to_string(), async {
                 tokio::time::sleep(Duration::from_millis(100)).await;
             })
             .await;
@@ -966,7 +1211,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(20)).await;
 
         let second = tokio::spawn(async move {
-            with_fs_mutation_lock("host:/tmp/demo".to_string(), async {
+            with_fs_operation_lock("host:/tmp/demo".to_string(), async {
                 entered_second_task.store(true, Ordering::SeqCst);
             })
             .await;
@@ -981,6 +1226,70 @@ mod tests {
         first.await.unwrap();
         second.await.unwrap();
         assert!(entered_second.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn operation_lock_prioritizes_waiting_mutation_over_read() {
+        let key = "host:/tmp/writer-priority".to_string();
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let (holder_entered_tx, holder_entered_rx) = tokio::sync::oneshot::channel();
+        let (release_holder_tx, release_holder_rx) = tokio::sync::oneshot::channel();
+
+        let holder_key = key.clone();
+        let holder = tokio::spawn(async move {
+            with_fs_mutation_lock(holder_key, async move {
+                holder_entered_tx.send(()).unwrap();
+                release_holder_rx.await.unwrap();
+            })
+            .await;
+        });
+        holder_entered_rx.await.unwrap();
+
+        let read_key = key.clone();
+        let read_order = Arc::clone(&order);
+        let read = tokio::spawn(async move {
+            with_fs_read_lock(read_key, async move {
+                read_order.lock().unwrap().push("read");
+            })
+            .await;
+        });
+        wait_for_operation_waiters(&key, 1, 0).await;
+
+        let mutation_key = key.clone();
+        let mutation_order = Arc::clone(&order);
+        let mutation = tokio::spawn(async move {
+            with_fs_mutation_lock(mutation_key, async move {
+                mutation_order.lock().unwrap().push("mutation");
+            })
+            .await;
+        });
+        wait_for_operation_waiters(&key, 1, 1).await;
+
+        release_holder_tx.send(()).unwrap();
+        holder.await.unwrap();
+        mutation.await.unwrap();
+        read.await.unwrap();
+
+        assert_eq!(*order.lock().unwrap(), ["mutation", "read"]);
+    }
+
+    #[tokio::test]
+    async fn operation_lock_prioritizes_same_turn_mutation() {
+        let key = "host:/tmp/same-turn-writer-priority".to_string();
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let read_order = Arc::clone(&order);
+        let mutation_order = Arc::clone(&order);
+
+        tokio::join!(
+            with_fs_read_lock(key.clone(), async move {
+                read_order.lock().unwrap().push("read");
+            }),
+            with_fs_mutation_lock(key, async move {
+                mutation_order.lock().unwrap().push("mutation");
+            }),
+        );
+
+        assert_eq!(*order.lock().unwrap(), ["mutation", "read"]);
     }
 
     #[test]
