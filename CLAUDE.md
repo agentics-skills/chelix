@@ -30,7 +30,6 @@ fields need updates in `check_semantic_warnings()`.
 
 ## Rust Style and Idioms
 
-- **File size limit: 1,500 lines.** CI enforces this via `scripts/check-file-size.sh`. Split large files into modules by domain. Existing oversize files are allowlisted for incremental decomposition.
 - Do not add implementation code to `mod.rs` or `lib.rs`. Keep those files for module wiring, exports, and crate setup, move real logic into dedicated sibling modules.
 - Use traits for behaviour boundaries. Prefer generics for hot paths, `dyn Trait` for heterogeneous/runtime dispatch.
 - Derive `Default` when all fields have sensible defaults.
@@ -93,7 +92,7 @@ npx tsc --noEmit       # Type check (strict, must be 0 errors)
 
 ### TypeScript Rules
 
-- **File size limit: 1,500 lines** (same rule as Rust). Split large files into modules by domain.
+- **File size limit: 1,500 lines**. Split large files into modules by domain.
   - Pages: extract sections/modals into `pages/sections/`, `pages/channels/`, `pages/chat/`, etc.
   - Utilities: extract sub-modules into sibling directories (`providers/`, `sessions/`, `ws/`).
   - Keep shared signals, types, and re-exports in the main file; move logic into sub-modules.
