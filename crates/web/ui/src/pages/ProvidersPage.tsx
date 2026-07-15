@@ -5,7 +5,7 @@ import type { VNode } from "preact";
 import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { onEvent } from "../events";
-import { modelVersionScore, sendRpc } from "../helpers";
+import { sendRpc } from "../helpers";
 import { t } from "../i18n";
 import { fetchModels } from "../models";
 import { updateNavCount } from "../nav-counts";
@@ -13,43 +13,16 @@ import { testModel } from "../provider-validation";
 import { openModelSelectorForProvider, openProviderModal } from "../providers";
 import { connected } from "../signals";
 import * as S from "../state";
+import type { ModelInfo, ProviderInfo } from "../types";
 import { ConfirmDialog, requestConfirm } from "../ui";
 
 // ── Types ───────────────────────────────────────────────────
-
-interface ConfiguredModelEntry {
-	id: string;
-	provider: string;
-	displayName?: string;
-	providerDisplayName?: string;
-	authType?: string;
-	preferred?: boolean;
-	recommended?: boolean;
-	createdAt?: number | null;
-	disabled?: boolean;
-	unsupported?: boolean;
-	unsupportedReason?: string | null;
-	supportsTools?: boolean;
-	providerOnly?: boolean;
-	[key: string]: unknown;
-}
-
-interface ProviderMetaEntry {
-	name: string;
-	displayName?: string;
-	authType?: string;
-	configured?: boolean;
-	model?: string;
-	uiOrder?: number;
-	[key: string]: unknown;
-}
 
 interface ProviderGroup {
 	provider: string;
 	providerDisplayName: string;
 	authType: string;
-	selectedModel: string | null;
-	models: ConfiguredModelEntry[];
+	models: ModelInfo[];
 }
 
 interface DetectProgressData {
@@ -76,8 +49,8 @@ interface TestResult {
 
 // ── Signals ─────────────────────────────────────────────────
 
-const configuredModels = signal<ConfiguredModelEntry[]>([]);
-const providerMetaSig = signal<Map<string, ProviderMetaEntry>>(new Map());
+const configuredModels = signal<ModelInfo[]>([]);
+const providerMetaSig = signal<Map<string, ProviderInfo>>(new Map());
 const loading = signal(false);
 const detectingModels = signal(false);
 const detectSummary = signal<DetectSummaryData | null>(null);
@@ -87,10 +60,6 @@ const deletingProvider = signal("");
 const testingProvider = signal("");
 const testResult = signal<TestResult | null>(null);
 const providerActionError = signal("");
-
-function countUniqueProviders(models: ConfiguredModelEntry[]): number {
-	return new Set(models.map((m) => m.provider)).size;
-}
 
 function progressFromPayload(payload: Partial<DetectProgressData> | null | undefined): DetectProgressData {
 	return {
@@ -154,45 +123,26 @@ function handleModelsUpdatedEvent(payload: unknown): void {
 function fetchProviders(): Promise<void> {
 	loading.value = true;
 	testResult.value = null;
-	return Promise.all([sendRpc("models.list_all", {}), sendRpc("providers.available", {})])
+	return Promise.all([
+		sendRpc<ModelInfo[]>("models.list_all", {}),
+		sendRpc<ProviderInfo[]>("providers.available", {}),
+	])
 		.then(([modelsRes, providersRes]) => {
 			loading.value = false;
-			const providerMeta = new Map<string, ProviderMetaEntry>();
-			let configuredProviders: ProviderMetaEntry[] = [];
+			const providerMeta = new Map<string, ProviderInfo>();
 			if (providersRes?.ok) {
-				configuredProviders = ((providersRes.payload as ProviderMetaEntry[]) || []).filter(
-					(configuredProvider) => configuredProvider.configured,
-				);
-				for (const providerMetaEntry of (providersRes.payload as ProviderMetaEntry[]) || []) {
-					providerMeta.set(providerMetaEntry.name, providerMetaEntry);
+				for (const provider of providersRes.payload || []) {
+					if (provider.configured) providerMeta.set(provider.name, provider);
 				}
 			}
 			providerMetaSig.value = providerMeta;
 
-			let models: ConfiguredModelEntry[] = [];
-			if (modelsRes?.ok) {
-				models = ((modelsRes.payload as ConfiguredModelEntry[]) || []).map((m) => ({
-					...m,
-					providerDisplayName: providerMeta.get(m.provider)?.displayName || m.provider,
-					authType: providerMeta.get(m.provider)?.authType || "api-key",
-				}));
-			}
-
-			// Include configured providers that don't currently expose a model.
-			const modelProviders = new Set(models.map((m) => m.provider));
-			const providerOnlyRows: ConfiguredModelEntry[] = configuredProviders
-				.filter((providerWithoutModels) => !modelProviders.has(providerWithoutModels.name))
-				.map((providerWithoutModels) => ({
-					id: `provider:${providerWithoutModels.name}`,
-					provider: providerWithoutModels.name,
-					displayName: providerWithoutModels.displayName,
-					providerDisplayName: providerWithoutModels.displayName,
-					providerOnly: true,
-					authType: providerWithoutModels.authType,
-				}));
-
-			configuredModels.value = [...models, ...providerOnlyRows];
-			updateNavCount("providers", countUniqueProviders(configuredModels.value));
+			configuredModels.value = modelsRes?.ok ? modelsRes.payload || [] : [];
+			const providerNames = new Set([
+				...providerMeta.keys(),
+				...configuredModels.value.map((model) => model.provider),
+			]);
+			updateNavCount("providers", providerNames.size);
 		})
 		.catch(() => {
 			loading.value = false;
@@ -247,23 +197,29 @@ async function cancelDetection(): Promise<void> {
 	}
 }
 
-function groupProviderRows(models: ConfiguredModelEntry[], metaMap: Map<string, ProviderMetaEntry>): ProviderGroup[] {
+function groupProviderRows(models: ModelInfo[], metaMap: Map<string, ProviderInfo>): ProviderGroup[] {
 	const groups = new Map<string, ProviderGroup>();
+	for (const provider of metaMap.values()) {
+		groups.set(provider.name, {
+			provider: provider.name,
+			providerDisplayName: provider.displayName,
+			authType: provider.authType,
+			models: [],
+		});
+	}
+
 	for (const row of models) {
 		const key = row.provider;
 		if (!groups.has(key)) {
+			const provider = metaMap.get(key);
 			groups.set(key, {
 				provider: key,
-				providerDisplayName: row.providerDisplayName || row.displayName || key,
-				authType: row.authType || "api-key",
-				selectedModel: metaMap?.get(key)?.model || null,
+				providerDisplayName: provider?.displayName || key,
+				authType: provider?.authType || "api-key",
 				models: [],
 			});
 		}
-		const groupEntry = groups.get(key)!;
-		if (!row.providerOnly) {
-			groupEntry.models.push(row);
-		}
+		groups.get(key)?.models.push(row);
 	}
 
 	const result = Array.from(groups.values());
@@ -277,28 +233,55 @@ function groupProviderRows(models: ConfiguredModelEntry[], metaMap: Map<string, 
 		if (!hasAOrder && hasBOrder) return 1;
 		return a.providerDisplayName.localeCompare(b.providerDisplayName);
 	});
-	for (const providerGroup of result) {
-		providerGroup.models.sort((a, b) => {
-			// Preferred > recommended > newest date > highest version number > alpha.
-			const aPref = a.preferred ? 1 : 0;
-			const bPref = b.preferred ? 1 : 0;
-			if (aPref !== bPref) return bPref - aPref;
-			const aRec = a.recommended ? 1 : 0;
-			const bRec = b.recommended ? 1 : 0;
-			if (aRec !== bRec) return bRec - aRec;
-			const aTime = a.createdAt || 0;
-			const bTime = b.createdAt || 0;
-			if (aTime !== bTime) return bTime - aTime;
-			const aVer = modelVersionScore(a.id);
-			const bVer = modelVersionScore(b.id);
-			if (aVer !== bVer) return bVer - aVer;
-			return (a.displayName || a.id).localeCompare(b.displayName || b.id);
-		});
-	}
 	return result;
 }
 
 const DEFAULT_VISIBLE_MODELS = 3;
+
+function recordValue(value: string | number | boolean | null | undefined): string {
+	return value === null || value === undefined ? "null" : String(value);
+}
+
+function ModelRecord({ model }: { model: ModelInfo }): VNode {
+	const fields: Array<[string, string]> = [
+		["id", model.id],
+		["provider", model.provider],
+		["display_name", model.display_name],
+		["created_at", recordValue(model.created_at)],
+		["recommended", recordValue(model.recommended)],
+		["preferred", recordValue(model.preferred)],
+		["disabled", recordValue(model.disabled)],
+		["unsupported", recordValue(model.unsupported)],
+		["unsupported_reason", recordValue(model.unsupported_reason)],
+		["unsupported_provider", recordValue(model.unsupported_provider)],
+		["unsupported_updated_at", recordValue(model.unsupported_updated_at)],
+		["context_length", recordValue(model.context_length)],
+		["max_input_tokens", recordValue(model.max_input_tokens)],
+		["max_output_tokens", recordValue(model.max_output_tokens)],
+		["input_modalities", JSON.stringify(model.input_modalities)],
+		["output_modalities", JSON.stringify(model.output_modalities)],
+		["tool_calling", recordValue(model.tool_calling)],
+		["streaming", recordValue(model.streaming)],
+		["zeroDataRetentionEnabled", recordValue(model.zeroDataRetentionEnabled)],
+		["reasoning.supported_efforts", JSON.stringify(model.reasoning.supported_efforts)],
+		["reasoning.summary", recordValue(model.reasoning.summary)],
+		["reasoning.include", JSON.stringify(model.reasoning.include)],
+	];
+
+	return (
+		<dl
+			data-testid={`provider-model-record-${model.id}`}
+			className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2"
+		>
+			{fields.map(([name, value]) => (
+				<div key={name} className="flex min-w-0 gap-2">
+					<dt className="shrink-0 font-mono text-[var(--muted)]">{name}:</dt>
+					<dd className="min-w-0 break-all text-[var(--text)]">{value}</dd>
+				</div>
+			))}
+		</dl>
+	);
+}
 
 function ProviderSection({ group }: { group: ProviderGroup }): VNode {
 	const [expanded, setExpanded] = useState(false);
@@ -332,7 +315,7 @@ function ProviderSection({ group }: { group: ProviderGroup }): VNode {
 		});
 	}
 
-	function onToggleModel(model: ConfiguredModelEntry): void {
+	function onToggleModel(model: ModelInfo): void {
 		const method = model.disabled ? "models.enable" : "models.disable";
 		sendRpc(method, { modelId: model.id }).then((res) => {
 			if (res?.ok) {
@@ -438,35 +421,28 @@ function ProviderSection({ group }: { group: ProviderGroup }): VNode {
 							<div className="min-w-0 flex-1">
 								<div className="flex items-center gap-2 min-w-0">
 									<div className="text-sm font-medium text-[var(--text-strong)] truncate">
-										{model.displayName || model.id}
+										{model.display_name}
 									</div>
 									{model.preferred ? <span className="recommended-badge">{t("providers:preferred")}</span> : null}
 									{model.unsupported ? (
 										<span
 											className="provider-item-badge warning"
-											title={model.unsupportedReason || t("providers:modelNotSupported")}
+											title={model.unsupported_reason || t("providers:modelNotSupported")}
 										>
 											{t("providers:unsupported")}
 										</span>
 									) : null}
-									{model.supportsTools ? null : (
+									{model.tool_calling ? null : (
 										<span className="provider-item-badge warning">{t("providers:chatOnly")}</span>
 									)}
 									{model.disabled ? <span className="provider-item-badge muted">{t("providers:disabled")}</span> : null}
 								</div>
-								<div className="mt-1 text-xs text-[var(--muted)] font-mono opacity-75">{model.id}</div>
-								{model.unsupported && model.unsupportedReason ? (
+								{model.unsupported && model.unsupported_reason ? (
 									<div className="mt-0.5 text-xs font-medium text-[var(--danger,#ef4444)]">
-										{model.unsupportedReason}
+										{model.unsupported_reason}
 									</div>
 								) : null}
-								{model.createdAt ? (
-									<time
-										className="mt-0.5 text-xs text-[var(--muted)] opacity-60 block"
-										data-epoch-ms={model.createdAt * 1000}
-										data-format="year-month"
-									/>
-								) : null}
+								<ModelRecord model={model} />
 							</div>
 							<button
 								className="provider-btn provider-btn-secondary provider-btn-sm"

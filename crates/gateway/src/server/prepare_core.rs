@@ -23,7 +23,7 @@ use {
         state::GatewayState,
     },
     chelix_projects::ProjectStore,
-    chelix_providers::ProviderRegistry,
+    chelix_providers::{ProviderRegistry, discover_models},
     chelix_sessions::{
         metadata::{SessionMetadata, SqliteSessionMetadata},
         session_events::SessionEventBus,
@@ -133,35 +133,6 @@ pub async fn prepare_gateway_core(
         )
     };
 
-    // Kick off discovery workers immediately, but build a static startup
-    // registry first so gateway startup does not block on network I/O.
-    let startup_discovery_pending =
-        ProviderRegistry::fire_discoveries(&effective_providers, &config_env_overrides);
-    let registry = Arc::new(tokio::sync::RwLock::new(
-        ProviderRegistry::from_config_with_static_catalogs(
-            &effective_providers,
-            &config_env_overrides,
-            chelix_providers::extract_cw_overrides(&config.models),
-        ),
-    ));
-    let (provider_summary, providers_available_at_startup) = {
-        let reg = registry.read().await;
-        log_startup_model_inventory(&reg);
-        (reg.provider_summary(), !reg.is_empty())
-    };
-    if !providers_available_at_startup {
-        let config_path = chelix_config::find_or_default_config_path();
-        let provider_keys_path = chelix_config::config_dir()
-            .unwrap_or_else(|| PathBuf::from(".chelix"))
-            .join("provider_keys.json");
-        warn!(
-            provider_summary = %provider_summary,
-            config_path = %config_path.display(),
-            provider_keys_path = %provider_keys_path.display(),
-            "no LLM providers in static startup catalog; model/chat services remain active and will pick up providers after credentials are saved or background discovery completes"
-        );
-    }
-
     if !has_explicit_provider_settings {
         if auto_detected_provider_sources.is_empty() {
             info!("llm auto-detect: no providers detected from env/files");
@@ -180,6 +151,27 @@ pub async fn prepare_gateway_core(
             );
         }
     }
+
+    let registry = Arc::new(tokio::sync::RwLock::new(
+        ProviderRegistry::discover(&effective_providers, &config_env_overrides).await,
+    ));
+    let (provider_summary, providers_available_at_startup) = {
+        let reg = registry.read().await;
+        log_startup_model_inventory(&reg);
+        (reg.provider_summary(), !reg.is_empty())
+    };
+    if !providers_available_at_startup {
+        let config_path = chelix_config::find_or_default_config_path();
+        let provider_keys_path = chelix_config::config_dir()
+            .unwrap_or_else(|| PathBuf::from(".chelix"))
+            .join("provider_keys.json");
+        warn!(
+            provider_summary = %provider_summary,
+            config_path = %config_path.display(),
+            provider_keys_path = %provider_keys_path.display(),
+            "no LLM providers resolved from configuration and model discovery; model/chat services remain active and will pick up providers after credentials are saved"
+        );
+    }
     startup_mem_probe.checkpoint("providers.registry.initialized");
 
     // Refresh dynamic provider model discovery daily.
@@ -188,28 +180,33 @@ pub async fn prepare_gateway_core(
     {
         let registry_for_refresh = Arc::clone(&registry);
         let provider_config_for_refresh = base_provider_config.clone();
+        let env_overrides_for_refresh = config_env_overrides.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(DYNAMIC_PROVIDER_MODEL_REFRESH_INTERVAL);
             interval.tick().await;
             loop {
                 interval.tick().await;
-                let mut reg = registry_for_refresh.write().await;
-                let refresh_results = reg.refresh_dynamic_models(&provider_config_for_refresh);
-                for (provider_name, refreshed) in refresh_results {
-                    if !refreshed {
-                        continue;
-                    }
-                    let model_count = reg
-                        .list_models()
-                        .iter()
-                        .filter(|m| m.provider == provider_name)
-                        .count();
-                    info!(
-                        provider = %provider_name,
-                        models = model_count,
-                        "daily dynamic provider model refresh complete"
+                let key_store = crate::provider_setup::KeyStore::new();
+                let effective = crate::provider_setup::config_with_saved_keys(
+                    &provider_config_for_refresh,
+                    &key_store,
+                );
+                let discovery = discover_models(&effective, &env_overrides_for_refresh, None).await;
+                let (new_models, model_count, provider_summary) = {
+                    let mut reg = registry_for_refresh.write().await;
+                    let new_models = reg.refresh_from_discovery(
+                        &effective,
+                        &env_overrides_for_refresh,
+                        &discovery,
                     );
-                }
+                    (new_models, reg.list_models().len(), reg.provider_summary())
+                };
+                info!(
+                    models = model_count,
+                    new_models,
+                    provider_summary = %provider_summary,
+                    "daily provider model discovery refresh complete"
+                );
             }
         });
     }
@@ -271,7 +268,6 @@ pub async fn prepare_gateway_core(
         deploy_platform.clone(),
     )
     .with_env_overrides(config_env_overrides.clone())
-    .with_global_cw_overrides(chelix_providers::extract_cw_overrides(&config.models))
     .with_error_parser(crate::chat_error::parse_chat_error)
     .with_callback_bind_addr(bind.to_string());
     provider_setup.set_priority_models(live_model_service.priority_models_handle());
@@ -1155,12 +1151,9 @@ pub async fn prepare_gateway_core(
         services,
         session_mutations,
         registry,
-        effective_providers,
-        config_env_overrides,
         runtime_env_overrides,
         provider_summary,
         mcp_configured_count,
-        startup_discovery_pending,
         model_store,
         live_model_service,
         provider_setup_service,

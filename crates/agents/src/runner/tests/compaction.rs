@@ -31,8 +31,8 @@ impl LlmProvider for ThresholdProvider {
         "threshold-model"
     }
 
-    fn context_window(&self) -> u32 {
-        10
+    fn context_window(&self) -> Option<u32> {
+        Some(10)
     }
 
     async fn complete(
@@ -64,6 +64,10 @@ impl LlmProvider for ResumeProvider {
 
     fn id(&self) -> &str {
         "resume-model"
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
     }
 
     async fn complete(

@@ -13,7 +13,6 @@ use {
             normalize_provider_name, ui_offered_provider_order, ui_offered_provider_set,
         },
         custom_providers::is_custom_provider,
-        key_store::normalize_model_list,
         known_providers::known_providers,
     },
 };
@@ -21,7 +20,7 @@ use {
 impl LiveProviderSetupService {
     pub(super) async fn available_inner(&self) -> ServiceResult {
         let is_cloud = self.deploy_platform.is_some();
-        let active_config = self.config_snapshot();
+        let active_config = self.effective_config();
         let offered_order = ui_offered_provider_order(&active_config);
         let offered = ui_offered_provider_set(&offered_order);
         let offered_rank: HashMap<String, usize> = offered_order
@@ -48,13 +47,11 @@ impl LiveProviderSetupService {
                     return None;
                 }
 
-                // Get saved config for this provider (baseUrl, preferred models)
-                let saved_config = self.key_store.load_config(provider.name);
-                let base_url = saved_config.as_ref().and_then(|c| c.base_url.clone());
-                let models = saved_config
-                    .map(|c| normalize_model_list(c.models))
+                let entry = active_config.get(provider.name);
+                let base_url = entry.and_then(|config| config.base_url.clone());
+                let models = entry
+                    .map(|config| config.models.clone())
                     .unwrap_or_default();
-                let model = models.first().cloned();
 
                 Some((
                     offered_rank.get(&normalized_name).copied(),
@@ -67,7 +64,6 @@ impl LiveProviderSetupService {
                         "defaultBaseUrl": provider.default_base_url,
                         "baseUrl": base_url,
                         "models": models,
-                        "model": model,
                         "requiresModel": provider.requires_model,
                         "keyOptional": provider.key_optional,
                     }),
@@ -85,9 +81,13 @@ impl LiveProviderSetupService {
                 continue;
             }
             let display_name = config.display_name.clone().unwrap_or_else(|| name.clone());
-            let base_url = config.base_url.clone();
-            let models = normalize_model_list(config.models.clone());
-            let model = models.first().cloned();
+            let entry = active_config.get(&name);
+            let base_url = entry
+                .and_then(|provider| provider.base_url.clone())
+                .or(config.base_url.clone());
+            let models = entry
+                .map(|provider| provider.models.clone())
+                .unwrap_or_default();
 
             providers.push((
                 None,
@@ -100,7 +100,6 @@ impl LiveProviderSetupService {
                     "defaultBaseUrl": base_url,
                     "baseUrl": base_url,
                     "models": models,
-                    "model": model,
                     "requiresModel": true,
                     "keyOptional": false,
                     "isCustom": true,

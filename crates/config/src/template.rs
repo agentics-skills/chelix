@@ -120,14 +120,20 @@ port = {port}                           # Port number (auto-generated for this i
 #   enabled   - Whether to use this provider (default: true)
 #   api_key   - API key (or use env var like ANTHROPIC_API_KEY)
 #   base_url  - Override API endpoint
-#   models    - Preferred models shown first (optional)
+#   models.<model_id> - Ordered allowlist entry with per-model metadata (optional)
 #   fetch_models - Discover models from provider API when available (default: true)
 #   stream_transport - Streaming transport: "sse", "websocket", or "auto" (default: "sse")
 #   alias     - Custom name for metrics labels (useful for multiple instances)
 #   strict_tools - Force strict/non-strict tool schemas (default: auto-detect per provider)
 #   policy    - Per-provider tool policy override (allow/deny lists)
-#   model_overrides.<model_id>.context_window - Override context window for a specific model
 #   probe_timeout_secs - Timeout for completion-based model probes (default: 30s).
+#
+# Declare selected models only as [providers.<name>.models."<raw-model-id>"]
+# tables. Tables are evaluated in declaration order. Configuration metadata wins
+# field by field; /models discovery fills missing fields; optional defaults apply
+# last. Models are excluded unless context_length, max_input_tokens,
+# max_output_tokens, and reasoning.supported_efforts resolve. With no model
+# tables, every discovered model with complete metadata is accepted.
 
 # [providers]
 # offered = ["github-copilot", "openai-codex", "openai", "anthropic", "openrouter", "moonshot", "zai"]
@@ -142,76 +148,89 @@ port = {port}                           # Port number (auto-generated for this i
 # [providers.anthropic]
 # enabled = true
 # api_key = "sk-ant-..."                      # Or set ANTHROPIC_API_KEY env var
-# models = ["claude-sonnet-4-5-20250929"]     # Optional preferred models
 # fetch_models = true                          # Set false to skip remote discovery
 # base_url = "https://api.anthropic.com"     # API endpoint
 # alias = "anthropic"                         # Custom name for metrics
 # cache_retention = "short"                    # Prompt caching: "none" | "short" | "long"
 # policy.deny = ["execute_command"]            # Deny specific tools when using this provider
 # policy.allow = []                            # Restrict to only these tools (empty = all allowed)
-# [providers.anthropic.model_overrides.claude-opus-4-6]
-# context_window = 1_000_000                   # Provider-scoped model override
+# [providers.anthropic.models."claude-sonnet-4-5-20250929"]
 
 # ── OpenAI ────────────────────────────────────────────────────
 # [providers.openai]
 # enabled = true
 # api_key = "sk-..."                          # Or set OPENAI_API_KEY env var
-# models = ["gpt-5.3", "gpt-5.2"]            # Preferred models shown first
 # fetch_models = true
 # stream_transport = "sse"                     # "sse" | "websocket" | "auto"
 # base_url = "https://api.openai.com/v1"     # API endpoint (change for Azure, etc.)
 # alias = "openai"
+# [providers.openai.models."gpt-5.3"]
+# [providers.openai.models."gpt-5.2"]
 
 # ── Google Gemini ─────────────────────────────────────────────
 # [providers.gemini]
 # enabled = true
 # api_key = "..."                             # Or set GEMINI_API_KEY / GOOGLE_API_KEY env var
-# models = ["gemini-2.5-flash", "gemini-2.5-pro"]
 # fetch_models = true
 # base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
 # alias = "gemini"
+# [providers.gemini.models."gemini-2.5-flash"]
+# [providers.gemini.models."gemini-2.5-pro"]
 
 # ── DeepInfra ─────────────────────────────────────────────────
 # [providers.deepinfra]
 # enabled = true
 # api_key = "..."                             # Or set DEEPINFRA_API_KEY env var
-# models = ["meta-llama/Llama-4-Maverick-17B-128E-Instruct"]
 # base_url = "https://api.deepinfra.com/v1/openai"
 # alias = "deepinfra"
+# [providers.deepinfra.models."meta-llama/Llama-4-Maverick-17B-128E-Instruct"]
 
 # ── xAI (Grok) ────────────────────────────────────────────────
 # [providers.xai]
 # enabled = true
 # api_key = "..."                             # Or set XAI_API_KEY env var
-# models = ["grok-3-mini"]
 # alias = "xai"
+# [providers.xai.models."grok-3-mini"]
 
 # ── OpenRouter (multi-provider gateway) ───────────────────────
 # [providers.openrouter]
 # enabled = true
 # api_key = "..."                             # Or set OPENROUTER_API_KEY env var
-# models = ["anthropic/claude-3.5-sonnet"]    # Any model IDs on OpenRouter
 # base_url = "https://openrouter.ai/api/v1"
+# [providers.openrouter.models."anthropic/claude-3.5-sonnet"]
 
 # ── Moonshot (Kimi) ─────────────────────────────────────────
 # [providers.moonshot]
 # enabled = true
 # api_key = "..."                             # Or set MOONSHOT_API_KEY env var
-# models = ["kimi-k2.5"]                      # Preferred models shown first
 # base_url = "https://api.moonshot.ai/v1"
 # alias = "moonshot"
+# [providers.moonshot.models."kimi-k2.5"]
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MODEL OVERRIDES (GLOBAL)
+# COMPLETE MODEL METADATA EXAMPLE
 # ══════════════════════════════════════════════════════════════════════════════
-# Override context window sizes for specific models across all providers.
-# Provider-scoped overrides ([providers.<name>.model_overrides.<id>]) take precedence.
+# The same table format carries complete metadata when config supplies it.
 #
-# [models.claude-opus-4-6]
-# context_window = 1_000_000                  # Override the built-in heuristic
+# [providers.custom-ai-0xff-dad]
+# enabled = true
+# base_url = "https://ai.0xff.dad/v1"
+# wire_api = "responses"
 #
-# [models.glm-5-turbo]
-# context_window = 200_000
+# [providers.custom-ai-0xff-dad.models."Combos/cx/gpt-sol"]
+# context_length = 400000
+# max_input_tokens = 272000
+# max_output_tokens = 128000
+# input_modalities = ["text", "image", "audio", "file"]
+# output_modalities = ["text"]
+# tool_calling = true
+# streaming = true
+# zeroDataRetentionEnabled = true
+#
+# [providers.custom-ai-0xff-dad.models."Combos/cx/gpt-sol".reasoning]
+# supported_efforts = ["none", "minimal", "low", "medium", "high", "xhigh"]
+# summary = "detailed"
+# include = ["reasoning.encrypted_content"]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CHAT SETTINGS
@@ -226,7 +245,7 @@ port = {port}                           # Port number (auto-generated for this i
                                       #   "live-reload"            - Re-read MEMORY.md before each turn
                                       #   "frozen-at-session-start" - Freeze the first MEMORY.md snapshot per session
 # workspace_file_max_chars = 32000  # Optional: per-file prompt cap for AGENTS.md / TOOLS.md before truncation.
-# priority_models = ["claude-opus-4-5", "gpt-5.2", "gemini-3-flash"]  # Optional: models to pin first in selectors
+# priority_models = ["claude-opus-4-5", "gpt-5.2", "gemini-3-flash"]  # Optional cross-provider selector order
 
 # ══════════════════════════════════════════════════════════════════════════════
 # AUXILIARY MODELS
@@ -532,15 +551,6 @@ port = {port}                           # Port number (auto-generated for this i
 # start = "08:00"
 # end = "24:00"
 # timezone = "local"                # "local" or IANA name like "Europe/Paris"
-
-# ══════════════════════════════════════════════════════════════════════════════
-# FAILOVER
-# ══════════════════════════════════════════════════════════════════════════════
-
-# [failover]
-# enabled = true                    # Enable automatic failover
-# exact_model = false               # When true, user-selected models are exact — no fallback
-# fallback_models = []              # Ordered list of fallback models
 
 # ══════════════════════════════════════════════════════════════════════════════
 # VOICE

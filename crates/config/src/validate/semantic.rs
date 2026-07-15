@@ -2,7 +2,7 @@ use {
     super::*,
     crate::{
         container_mounts::sandbox_mount_validation,
-        schema::{ChelixConfig, KNOWN_PROVIDER_NAMES, ToolChoice},
+        schema::{ChelixConfig, KNOWN_PROVIDER_NAMES, PartialModelMetadata, ToolChoice},
     },
     secrecy::ExposeSecret,
     std::path::Path,
@@ -561,8 +561,8 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         }
     }
 
-    // agents.presets.*.reasoning_effort is now a typed enum (ReasoningEffort)
-    // and validated at deserialization time (step 4). No semantic check needed.
+    // agents.presets.*.reasoning_effort is provider-defined. Runtime validates
+    // it against the selected model's resolved reasoning.supported_efforts.
 
     // SSRF allowlist CIDR validation
     for (idx, entry) in config.tools.web.fetch.ssrf_allowlist.iter().enumerate() {
@@ -879,23 +879,13 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         });
     }
 
-    // Validate global model overrides.
-    // Negative values are rejected by u32 deserialization (type error),
-    // so we only need to guard zero and unusually large values here.
-    for (model_id, override_cfg) in &config.models {
-        validate_context_window(
-            override_cfg.context_window,
-            &format!("models.{model_id}.context_window"),
-            diagnostics,
-        );
-    }
-
-    // Validate provider-scoped model overrides.
+    // Model records may be partial because discovery can supplement them.
+    // Validate every explicitly configured value without requiring absent ones.
     for (provider_name, provider_entry) in &config.providers.providers {
-        for (model_id, override_cfg) in &provider_entry.model_overrides {
-            validate_context_window(
-                override_cfg.context_window,
-                &format!("providers.{provider_name}.model_overrides.{model_id}.context_window"),
+        for (model_id, metadata) in &provider_entry.models {
+            validate_model_metadata(
+                metadata,
+                &format!("providers.{provider_name}.models.{model_id}"),
                 diagnostics,
             );
         }
@@ -906,24 +896,72 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
     check_plaintext_api_keys(config, diagnostics);
 }
 
-/// Validate a `context_window` override value (optional field).
-fn validate_context_window(value: Option<u32>, path: &str, diagnostics: &mut Vec<Diagnostic>) {
-    let Some(cw) = value else {
-        return;
-    };
-    if cw == 0 {
+fn validate_model_metadata(
+    metadata: &PartialModelMetadata,
+    path: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    for (field, value) in [
+        ("context_length", metadata.context_length),
+        ("max_input_tokens", metadata.max_input_tokens),
+        ("max_output_tokens", metadata.max_output_tokens),
+    ] {
+        validate_token_limit(value, &format!("{path}.{field}"), diagnostics);
+    }
+
+    if let (Some(context), Some(input), Some(output)) = (
+        metadata.context_length,
+        metadata.max_input_tokens,
+        metadata.max_output_tokens,
+    ) && input.saturating_add(output) > context
+    {
         diagnostics.push(Diagnostic {
             severity: Severity::Error,
             category: "invalid-value",
             path: path.into(),
-            message: "context_window must be at least 1".into(),
+            message: format!(
+                "max_input_tokens ({input}) + max_output_tokens ({output}) exceeds context_length ({context})"
+            ),
         });
-    } else if cw > 10_000_000 {
+    }
+
+    if metadata.reasoning.as_ref().is_some_and(|reasoning| {
+        reasoning
+            .supported_efforts
+            .as_ref()
+            .is_some_and(Vec::is_empty)
+            && (reasoning.summary.is_some()
+                || reasoning
+                    .include
+                    .as_ref()
+                    .is_some_and(|values| !values.is_empty()))
+    }) {
+        diagnostics.push(Diagnostic {
+            severity: Severity::Error,
+            category: "invalid-value",
+            path: format!("{path}.reasoning"),
+            message: "summary/include cannot be set when supported_efforts is empty".into(),
+        });
+    }
+}
+
+fn validate_token_limit(value: Option<u32>, path: &str, diagnostics: &mut Vec<Diagnostic>) {
+    let Some(value) = value else {
+        return;
+    };
+    if value == 0 {
+        diagnostics.push(Diagnostic {
+            severity: Severity::Error,
+            category: "invalid-value",
+            path: path.into(),
+            message: "token limit must be at least 1".into(),
+        });
+    } else if value > 10_000_000 {
         diagnostics.push(Diagnostic {
             severity: Severity::Warning,
             category: "invalid-value",
             path: path.into(),
-            message: format!("context_window is {cw}, which is unusually large (> 10M)"),
+            message: format!("token limit is {value}, which is unusually large (> 10M)"),
         });
     }
 }

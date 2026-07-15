@@ -3,13 +3,60 @@
 use {
     super::*,
     crate::{KeyStore, known_providers::AuthType},
-    chelix_config::schema::{ProviderEntry, ProvidersConfig},
+    chelix_config::schema::{
+        ModelConfigMap, ModelModality, PartialModelMetadata, PartialReasoningMetadata,
+        ProviderEntry, ProvidersConfig,
+    },
     chelix_oauth::{OAuthTokens, TokenStore},
     chelix_providers::ProviderRegistry,
     chelix_service_traits::{NoopProviderSetupService, ProviderSetupService},
     std::{collections::HashMap, sync::Arc},
     tokio::sync::RwLock,
 };
+
+fn complete_model_metadata() -> PartialModelMetadata {
+    PartialModelMetadata {
+        context_length: Some(128_000),
+        max_input_tokens: Some(96_000),
+        max_output_tokens: Some(32_000),
+        input_modalities: Some(vec![ModelModality::Text, ModelModality::Image]),
+        output_modalities: Some(vec![ModelModality::Text]),
+        tool_calling: Some(true),
+        streaming: Some(true),
+        zero_data_retention_enabled: Some(true),
+        reasoning: Some(PartialReasoningMetadata {
+            supported_efforts: Some(Vec::new()),
+            ..Default::default()
+        }),
+    }
+}
+
+fn complete_model_map(ids: &[&str]) -> ModelConfigMap {
+    ids.iter()
+        .map(|id| ((*id).to_string(), complete_model_metadata()))
+        .collect()
+}
+
+fn discovered_model_record(
+    id: &str,
+    created: i64,
+    output_modalities: &[&str],
+) -> serde_json::Value {
+    serde_json::json!({
+        "id": id,
+        "object": "model",
+        "created": created,
+        "context_length": 128_000,
+        "max_input_tokens": 96_000,
+        "max_output_tokens": 32_000,
+        "input_modalities": ["text", "image"],
+        "output_modalities": output_modalities,
+        "tool_calling": true,
+        "streaming": true,
+        "zeroDataRetentionEnabled": true,
+        "reasoning": { "supported_efforts": [] }
+    })
+}
 
 #[tokio::test]
 async fn noop_service_returns_empty() {
@@ -20,9 +67,9 @@ async fn noop_service_returns_empty() {
 
 #[tokio::test]
 async fn remove_key_rejects_unknown_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     let result = svc
@@ -33,9 +80,9 @@ async fn remove_key_rejects_unknown_provider() {
 
 #[tokio::test]
 async fn remove_key_rejects_missing_params() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     assert!(svc.remove_key(serde_json::json!({})).await.is_err());
@@ -43,9 +90,9 @@ async fn remove_key_rejects_missing_params() {
 
 #[tokio::test]
 async fn disabled_provider_is_not_reported_configured() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     let provider = known_providers()
@@ -66,9 +113,9 @@ async fn disabled_provider_is_not_reported_configured() {
 
 #[tokio::test]
 async fn live_service_lists_providers() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     let result = svc.available().await.unwrap();
@@ -88,9 +135,9 @@ async fn live_service_lists_providers() {
 
 #[tokio::test]
 async fn available_marks_provider_configured_from_generic_provider_env() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None)
         .with_env_overrides(HashMap::from([
@@ -118,9 +165,9 @@ async fn available_marks_provider_configured_from_generic_provider_env() {
 
 #[tokio::test]
 async fn available_hides_unconfigured_providers_not_in_offered_list() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let config = ProvidersConfig {
         offered: vec!["openai".into()],
@@ -147,9 +194,9 @@ async fn available_hides_unconfigured_providers_not_in_offered_list() {
 
 #[tokio::test]
 async fn available_respects_offered_order() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let config = ProvidersConfig {
         offered: vec!["github-copilot".into(), "openai".into(), "anthropic".into()],
@@ -186,9 +233,9 @@ async fn available_respects_offered_order() {
 
 #[tokio::test]
 async fn available_accepts_offered_provider_aliases() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let config = ProvidersConfig {
         offered: vec!["claude".into()],
@@ -212,9 +259,9 @@ async fn available_accepts_offered_provider_aliases() {
 
 #[tokio::test]
 async fn available_hides_configured_provider_outside_offered() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let mut config = ProvidersConfig {
         offered: vec!["openai".into()],
@@ -266,9 +313,9 @@ async fn available_includes_subscription_provider_with_oauth_token_outside_offer
         ..ProvidersConfig::default()
     };
 
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let mut svc = LiveProviderSetupService::new(registry, config, None);
     svc.token_store = token_store;
@@ -297,7 +344,7 @@ async fn available_includes_configured_custom_provider_outside_offered() {
             "custom-openrouter-ai",
             Some("sk-test".into()),
             Some("https://openrouter.ai/api/v1".into()),
-            Some(vec!["openai::gpt-5.2".into()]),
+            Some(complete_model_map(&["gpt-5.2"])),
             Some("openrouter.ai".into()),
         )
         .expect("save custom provider");
@@ -313,9 +360,9 @@ async fn available_includes_configured_custom_provider_outside_offered() {
             ..Default::default()
         });
 
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let mut svc = LiveProviderSetupService::new(registry, config, None);
     svc.key_store = key_store;
@@ -338,13 +385,113 @@ async fn available_includes_configured_custom_provider_outside_offered() {
         custom.get("displayName").and_then(|v| v.as_str()),
         Some("openrouter.ai")
     );
+    let models = custom
+        .get("models")
+        .and_then(|value| value.as_object())
+        .expect("models should use the canonical object-map contract");
+    assert_eq!(models.keys().map(String::as_str).collect::<Vec<_>>(), vec![
+        "gpt-5.2"
+    ]);
+    let metadata = models
+        .get("gpt-5.2")
+        .and_then(|value| value.as_object())
+        .expect("model metadata should be an object");
+    assert_eq!(
+        metadata
+            .get("context_length")
+            .and_then(|value| value.as_u64()),
+        Some(128_000)
+    );
+    assert_eq!(
+        metadata
+            .get("reasoning")
+            .and_then(|value| value.get("supported_efforts"))
+            .and_then(|value| value.as_array()),
+        Some(&Vec::new())
+    );
+}
+
+#[tokio::test]
+async fn available_serializes_config_first_ordered_model_map() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let key_store = KeyStore::with_path(dir.path().join("provider_keys.json"));
+    let mut saved_models = complete_model_map(&["saved-only", "gpt-5", "gpt-4o"]);
+    saved_models
+        .get_mut("gpt-5")
+        .expect("saved gpt-5 metadata")
+        .context_length = Some(128_000);
+    key_store
+        .save_config("openai", Some("sk-test".into()), None, Some(saved_models))
+        .expect("save provider config");
+
+    let mut configured_models = ModelConfigMap::new();
+    configured_models.insert("gpt-5".into(), PartialModelMetadata {
+        context_length: Some(256_000),
+        ..Default::default()
+    });
+    configured_models.insert("gpt-4o".into(), PartialModelMetadata {
+        tool_calling: Some(false),
+        ..Default::default()
+    });
+    let mut config = ProvidersConfig::default();
+    config.providers.insert("openai".into(), ProviderEntry {
+        models: configured_models,
+        ..Default::default()
+    });
+
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
+        &ProvidersConfig::default(),
+        &HashMap::new(),
+    )));
+    let mut svc = LiveProviderSetupService::new(registry, config, None);
+    svc.key_store = key_store;
+
+    let result = svc.available().await.expect("providers.available");
+    let openai = result
+        .as_array()
+        .and_then(|providers| {
+            providers.iter().find(|provider| {
+                provider.get("name").and_then(|value| value.as_str()) == Some("openai")
+            })
+        })
+        .expect("openai should be present");
+    let models = openai
+        .get("models")
+        .and_then(|value| value.as_object())
+        .expect("models should be an object map");
+
+    assert_eq!(models.keys().map(String::as_str).collect::<Vec<_>>(), vec![
+        "gpt-5", "gpt-4o"
+    ]);
+    assert_eq!(
+        models
+            .get("gpt-5")
+            .and_then(|value| value.get("context_length"))
+            .and_then(|value| value.as_u64()),
+        Some(256_000)
+    );
+    assert_eq!(
+        models
+            .get("gpt-5")
+            .and_then(|value| value.get("max_input_tokens"))
+            .and_then(|value| value.as_u64()),
+        Some(96_000)
+    );
+    assert_eq!(
+        models
+            .get("gpt-4o")
+            .and_then(|value| value.get("tool_calling"))
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+    assert!(models.get("saved-only").is_none());
 }
 
 #[tokio::test]
 async fn available_includes_default_base_urls() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     let result = svc.available().await.unwrap();
@@ -372,9 +519,9 @@ async fn available_includes_default_base_urls() {
 
 #[tokio::test]
 async fn save_key_rejects_unknown_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     let result = svc
@@ -385,9 +532,9 @@ async fn save_key_rejects_unknown_provider() {
 
 #[tokio::test]
 async fn save_key_rejects_missing_params() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     assert!(svc.save_key(serde_json::json!({})).await.is_err());
@@ -400,9 +547,9 @@ async fn save_key_rejects_missing_params() {
 
 #[tokio::test]
 async fn save_key_rejects_completion_endpoint_base_url_for_any_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
 
@@ -422,9 +569,9 @@ async fn save_key_rejects_completion_endpoint_base_url_for_any_provider() {
 
 #[tokio::test]
 async fn save_key_rejects_invalid_base_url_for_any_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
 
@@ -443,9 +590,9 @@ async fn save_key_rejects_invalid_base_url_for_any_provider() {
 
 #[tokio::test]
 async fn add_custom_rejects_completion_endpoint_base_url() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
 
@@ -453,7 +600,6 @@ async fn add_custom_rejects_completion_endpoint_base_url() {
         .add_custom(serde_json::json!({
             "apiKey": "sk-test",
             "baseUrl": "https://api.deepinfra.com/v1/openai/chat/completions",
-            "model": "Qwen/Qwen3.5-397B-A17B",
         }))
         .await
         .expect_err("custom completion endpoint should be rejected")
@@ -465,9 +611,9 @@ async fn add_custom_rejects_completion_endpoint_base_url() {
 
 #[tokio::test]
 async fn validate_key_rejects_custom_completion_endpoint_base_url() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
 
@@ -476,7 +622,6 @@ async fn validate_key_rejects_custom_completion_endpoint_base_url() {
             "provider": "custom-deepinfra-com",
             "apiKey": "sk-test",
             "baseUrl": "https://api.deepinfra.com/v1/openai/chat/completions",
-            "model": "Qwen/Qwen3.5-397B-A17B",
         }))
         .await
         .expect_err("custom completion endpoint validation should be rejected")
@@ -488,9 +633,9 @@ async fn validate_key_rejects_custom_completion_endpoint_base_url() {
 
 #[tokio::test]
 async fn oauth_start_rejects_unknown_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     let result = svc
@@ -501,9 +646,9 @@ async fn oauth_start_rejects_unknown_provider() {
 
 #[tokio::test]
 async fn oauth_start_ignores_redirect_uri_override_for_registered_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
 
@@ -541,9 +686,9 @@ async fn oauth_start_ignores_redirect_uri_override_for_registered_provider() {
 
 #[tokio::test]
 async fn oauth_start_stores_pending_state_for_registered_redirect_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
 
@@ -581,9 +726,9 @@ async fn oauth_start_stores_pending_state_for_registered_redirect_provider() {
 
 #[tokio::test]
 async fn oauth_complete_accepts_callback_input_parameter() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
 
@@ -602,9 +747,9 @@ async fn oauth_complete_accepts_callback_input_parameter() {
 
 #[tokio::test]
 async fn oauth_complete_rejects_provider_mismatch_without_consuming_state() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
 
@@ -668,9 +813,9 @@ async fn oauth_complete_rejects_provider_mismatch_without_consuming_state() {
 
 #[tokio::test]
 async fn oauth_status_returns_not_authenticated() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     let result = svc
@@ -683,9 +828,9 @@ async fn oauth_status_returns_not_authenticated() {
 
 #[tokio::test]
 async fn save_key_accepts_new_providers() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let _svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
 
@@ -703,9 +848,9 @@ async fn save_key_accepts_new_providers() {
 
 #[tokio::test]
 async fn available_includes_new_providers() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     let result = svc.available().await.unwrap();
@@ -733,9 +878,9 @@ async fn available_includes_new_providers() {
 
 #[tokio::test]
 async fn validate_key_rejects_unknown_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     let result = svc
@@ -747,9 +892,9 @@ async fn validate_key_rejects_unknown_provider() {
 
 #[tokio::test]
 async fn validate_key_rejects_missing_provider_param() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     let result = svc.validate_key(serde_json::json!({})).await;
@@ -764,9 +909,9 @@ async fn validate_key_rejects_missing_provider_param() {
 
 #[tokio::test]
 async fn validate_key_rejects_missing_api_key_for_api_key_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     let result = svc
@@ -785,9 +930,9 @@ async fn validate_key_custom_provider_without_model_returns_discovered_models() 
         get(|| async {
             Json(serde_json::json!({
                 "data": [
-                    {"id": "gpt-4o", "object": "model", "created": 1700000000},
-                    {"id": "gpt-4o-mini", "object": "model", "created": 1700000001},
-                    {"id": "dall-e-3", "object": "model", "created": 1700000002}
+                    discovered_model_record("gpt-4o", 1_700_000_000, &["text"]),
+                    discovered_model_record("gpt-4o-mini", 1_700_000_001, &["text"]),
+                    discovered_model_record("image-output", 1_700_000_002, &["image"])
                 ]
             }))
         }),
@@ -800,9 +945,9 @@ async fn validate_key_custom_provider_without_model_returns_discovered_models() 
         let _ = axum::serve(listener, app).await;
     });
 
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     let result = svc
@@ -833,7 +978,8 @@ async fn validate_key_custom_provider_without_model_returns_discovered_models() 
     assert!(
         !models
             .iter()
-            .any(|m| m.get("id").and_then(|v| v.as_str()) == Some("custom-test-server::dall-e-3"))
+            .any(|m| m.get("id").and_then(|v| v.as_str())
+                == Some("custom-test-server::image-output"))
     );
 }
 
@@ -846,7 +992,7 @@ async fn validate_key_custom_provider_uses_saved_base_url_when_request_omits_it(
         get(|| async {
             Json(serde_json::json!({
                 "data": [
-                    {"id": "gpt-4o-mini", "object": "model", "created": 1700000001}
+                    discovered_model_record("gpt-4o-mini", 1_700_000_001, &["text"])
                 ]
             }))
         }),
@@ -859,9 +1005,9 @@ async fn validate_key_custom_provider_uses_saved_base_url_when_request_omits_it(
         let _ = axum::serve(listener, app).await;
     });
 
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     svc.key_store
@@ -911,9 +1057,9 @@ async fn validate_key_custom_provider_discovery_error_returns_invalid() {
         let _ = axum::serve(listener, app).await;
     });
 
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     let result = svc
@@ -955,7 +1101,7 @@ async fn validate_key_custom_provider_returns_discovered_models_without_probing(
             get(|| async {
                 Json(serde_json::json!({
                     "data": [
-                        {"id": "llama-3.1-70b", "object": "model", "created": 1700000000},
+                        discovered_model_record("llama-3.1-70b", 1_700_000_000, &["text"]),
                     ]
                 }))
             }),
@@ -983,9 +1129,9 @@ async fn validate_key_custom_provider_returns_discovered_models_without_probing(
         let _ = axum::serve(listener, app).await;
     });
 
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     let result = svc
@@ -1018,9 +1164,9 @@ async fn validate_key_custom_provider_connection_refused_returns_error() {
     let addr = listener.local_addr().expect("local addr");
     drop(listener);
 
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_env_with_config(
+    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
-        HashMap::new(),
+        &HashMap::new(),
     )));
     let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
     let result = svc

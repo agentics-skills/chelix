@@ -20,16 +20,12 @@ use crate::openai_compat::to_responses_api_tools;
 
 mod catalog;
 
-pub use catalog::{
-    available_models, default_model_catalog, has_stored_tokens, live_models, start_model_discovery,
-};
+pub use catalog::{fetch_models, has_stored_tokens};
 
 use catalog::load_codex_cli_tokens;
 
 #[cfg(test)]
-use catalog::{
-    CODEX_MODELS_CLIENT_VERSION, DEFAULT_CODEX_MODELS, parse_codex_cli_tokens, parse_models_payload,
-};
+use catalog::{CODEX_MODELS_CLIENT_VERSION, parse_codex_cli_tokens, parse_models_payload};
 
 pub struct OpenAiCodexProvider {
     model: String,
@@ -78,11 +74,9 @@ impl OpenAiCodexProvider {
         }
     }
 
-    /// Add `reasoning.effort` to a Responses-API request body when an effort
-    /// is configured. GPT-5 family models accept `none`, `minimal`, `low`,
-    /// `medium`, `high`, `xhigh`, and `max`.
+    /// Add the exact provider-defined `reasoning.effort` to a Responses request.
     fn apply_reasoning(&self, body: &mut serde_json::Value) {
-        if let Some(effort) = self.reasoning_effort {
+        if let Some(effort) = self.reasoning_effort.as_ref() {
             body["reasoning"]["effort"] = serde_json::json!(effort.as_str());
         }
     }
@@ -370,11 +364,11 @@ impl LlmProvider for OpenAiCodexProvider {
     }
 
     fn supports_tools(&self) -> bool {
-        super::supports_tools_for_model(&self.model)
+        false
     }
 
     fn reasoning_effort(&self) -> Option<ReasoningEffort> {
-        self.reasoning_effort
+        self.reasoning_effort.clone()
     }
 
     fn with_reasoning_effort(
@@ -832,10 +826,13 @@ mod tests {
         assert!(provider.reasoning_effort().is_none());
 
         let updated = Arc::clone(&provider)
-            .with_reasoning_effort(ReasoningEffort::High)
+            .with_reasoning_effort(ReasoningEffort::from("ultra"))
             .expect("openai-codex must support reasoning_effort");
 
-        assert_eq!(updated.reasoning_effort(), Some(ReasoningEffort::High));
+        assert_eq!(
+            updated.reasoning_effort(),
+            Some(ReasoningEffort::from("ultra"))
+        );
         // Original provider is unchanged (immutable update).
         assert!(provider.reasoning_effort().is_none());
         assert_eq!(updated.id(), "gpt-5.4");
@@ -862,25 +859,17 @@ mod tests {
     }
 
     #[test]
-    fn apply_reasoning_maps_each_effort_level_to_wire_value() {
-        for (effort, expected) in [
-            (ReasoningEffort::None, "none"),
-            (ReasoningEffort::Minimal, "minimal"),
-            (ReasoningEffort::Low, "low"),
-            (ReasoningEffort::Medium, "medium"),
-            (ReasoningEffort::High, "high"),
-            (ReasoningEffort::ExtraHigh, "xhigh"),
-            (ReasoningEffort::Max, "max"),
-        ] {
+    fn apply_reasoning_preserves_provider_defined_wire_value() {
+        for expected in ["max", "ultra"] {
             let mut provider = OpenAiCodexProvider::new("gpt-5.4".to_string());
-            provider.reasoning_effort = Some(effort);
+            provider.reasoning_effort = Some(expected.into());
             let mut body = serde_json::json!({
                 "include": ["reasoning.encrypted_content"],
             });
             provider.apply_reasoning(&mut body);
             assert_eq!(
                 body["reasoning"]["effort"], expected,
-                "unexpected wire value for {effort:?}"
+                "provider-defined effort must be passed through unchanged"
             );
             assert_eq!(
                 body["include"],
@@ -1252,16 +1241,6 @@ mod tests {
             CODEX_MODELS_CLIENT_VERSION, "1.0.0",
             "If you need to change CODEX_MODELS_CLIENT_VERSION, ensure the new value \
              satisfies the Codex API's minimal_client_version (>= 0.98.0). See issue #354."
-        );
-    }
-
-    #[test]
-    fn default_codex_models_includes_latest() {
-        let ids: Vec<&str> = DEFAULT_CODEX_MODELS.iter().map(|(id, _)| *id).collect();
-        assert!(ids.contains(&"gpt-5.4"), "missing gpt-5.4 in defaults");
-        assert!(
-            ids.contains(&"gpt-5.3-codex-spark"),
-            "missing gpt-5.3-codex-spark in defaults"
         );
     }
 

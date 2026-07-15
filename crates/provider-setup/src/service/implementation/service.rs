@@ -15,7 +15,7 @@ use {
     async_trait::async_trait,
     serde_json::{Map, Value},
     tokio::sync::{OnceCell, RwLock},
-    tracing::{info, warn},
+    tracing::info,
 };
 
 use {
@@ -53,17 +53,14 @@ pub struct LiveProviderSetupService {
     /// When set, local-only providers are hidden from
     /// the available list because they cannot run on cloud VMs.
     pub(crate) deploy_platform: Option<String>,
-    /// Shared priority models list from `LiveModelService`. Updated by
-    /// `save_model` so the dropdown ordering reflects the latest preference.
+    /// Shared priority models list from `LiveModelService`. Updated when the
+    /// ordered model selection changes so the dropdown reflects that order.
     pub(crate) priority_models: Option<Arc<RwLock<Vec<String>>>>,
     /// Monotonic sequence used to drop stale async registry refreshes.
     registry_rebuild_seq: Arc<AtomicU64>,
     /// Static env overrides (for example config `[env]`) used when resolving
     /// provider credentials without mutating the process environment.
     pub(crate) env_overrides: HashMap<String, String>,
-    /// Global context-window overrides extracted from `[models.*].context_window`.
-    /// Set once at construction, then cloned into spawned tasks.
-    pub(crate) global_cw_overrides: HashMap<String, u32>,
     /// Injected error parser for interpreting provider API errors.
     pub(crate) error_parser: ErrorParser,
     /// Address the OAuth callback server binds to. Defaults to `127.0.0.1`
@@ -89,7 +86,6 @@ impl LiveProviderSetupService {
             priority_models: None,
             registry_rebuild_seq: Arc::new(AtomicU64::new(0)),
             env_overrides: HashMap::new(),
-            global_cw_overrides: HashMap::new(),
             error_parser: default_error_parser,
             callback_bind_addr: "127.0.0.1".to_string(),
         }
@@ -97,12 +93,6 @@ impl LiveProviderSetupService {
 
     pub fn with_env_overrides(mut self, env_overrides: HashMap<String, String>) -> Self {
         self.env_overrides = env_overrides;
-        self
-    }
-
-    /// Set global context-window overrides (from `[models.*].context_window`).
-    pub fn with_global_cw_overrides(mut self, overrides: HashMap<String, u32>) -> Self {
-        self.global_cw_overrides = overrides;
         self
     }
 
@@ -122,8 +112,8 @@ impl LiveProviderSetupService {
         self
     }
 
-    /// Wire the shared priority models handle from `LiveModelService` so
-    /// `save_model` can update dropdown ordering at runtime.
+    /// Wire the shared priority models handle from `LiveModelService` so model
+    /// selection changes can update dropdown ordering at runtime.
     pub fn set_priority_models(&mut self, handle: Arc<RwLock<Vec<String>>>) {
         self.priority_models = Some(handle);
     }
@@ -165,7 +155,6 @@ impl LiveProviderSetupService {
         let config = Arc::clone(&self.config);
         let key_store = self.key_store.clone();
         let env_overrides = self.env_overrides.clone();
-        let cw_overrides = self.global_cw_overrides.clone();
         let provider_name = provider_name.to_string();
 
         tokio::spawn(async move {
@@ -182,27 +171,7 @@ impl LiveProviderSetupService {
                 config_with_saved_keys(&base, &key_store)
             };
 
-            let new_registry = match tokio::task::spawn_blocking(move || {
-                ProviderRegistry::from_env_with_config_and_overrides(
-                    &effective,
-                    &env_overrides,
-                    cw_overrides,
-                )
-            })
-            .await
-            {
-                Ok(registry) => registry,
-                Err(error) => {
-                    warn!(
-                        provider = %provider_name,
-                        reason,
-                        rebuild_seq,
-                        error = %error,
-                        "provider registry async rebuild worker failed"
-                    );
-                    return;
-                },
-            };
+            let new_registry = ProviderRegistry::discover(&effective, &env_overrides).await;
 
             let current_seq = latest_seq.load(Ordering::Acquire);
             if rebuild_seq != current_seq {
@@ -340,12 +309,8 @@ impl LiveProviderSetupService {
         config_with_saved_keys(&base, &self.key_store)
     }
 
-    pub(crate) fn build_registry(&self, config: &ProvidersConfig) -> ProviderRegistry {
-        ProviderRegistry::from_env_with_config_and_overrides(
-            config,
-            &self.env_overrides,
-            self.global_cw_overrides.clone(),
-        )
+    pub(crate) async fn build_registry(&self, config: &ProvidersConfig) -> ProviderRegistry {
+        ProviderRegistry::discover(config, &self.env_overrides).await
     }
 }
 
@@ -377,10 +342,6 @@ impl ProviderSetupService for LiveProviderSetupService {
 
     async fn validate_key(&self, params: Value) -> ServiceResult {
         self.validate_key_inner(params).await
-    }
-
-    async fn save_model(&self, params: Value) -> ServiceResult {
-        self.save_model_inner(params).await
     }
 
     async fn save_models(&self, params: Value) -> ServiceResult {

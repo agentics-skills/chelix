@@ -5,9 +5,8 @@ pub use chelix_config::schema::{AgentToolControls, ReasoningEffort, ToolChoice};
 
 mod types;
 pub use types::{
-    CompletionResponse, MAX_CAPTURED_PROVIDER_RAW_EVENTS, ModelMetadata, TOOL_CALL_METADATA_KEYS,
-    ToolCall, ToolCallArgumentDiagnostic, ToolCallArgumentSource, Usage,
-    push_capped_provider_raw_event,
+    CompletionResponse, MAX_CAPTURED_PROVIDER_RAW_EVENTS, TOOL_CALL_METADATA_KEYS, ToolCall,
+    ToolCallArgumentDiagnostic, ToolCallArgumentSource, Usage, push_capped_provider_raw_event,
 };
 
 mod chat;
@@ -787,9 +786,9 @@ mod tests {
         }
     }
 
-    // ── ModelMetadata default trait impl ────────────────────────────
+    // ── Context metadata default trait impl ─────────────────────────
 
-    /// Minimal provider to test default `model_metadata()` behavior.
+    /// Minimal provider to test explicit context metadata behavior.
     struct StubProvider;
 
     #[async_trait::async_trait]
@@ -802,8 +801,8 @@ mod tests {
             "stub-model"
         }
 
-        fn context_window(&self) -> u32 {
-            42_000
+        fn context_window(&self) -> Option<u32> {
+            Some(42_000)
         }
 
         async fn complete(
@@ -822,12 +821,10 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn default_model_metadata_returns_context_window() {
+    #[test]
+    fn context_window_is_explicit() {
         let provider = StubProvider;
-        let meta = provider.model_metadata().await.unwrap();
-        assert_eq!(meta.id, "stub-model");
-        assert_eq!(meta.context_length, 42_000);
+        assert_eq!(provider.context_window(), Some(42_000));
     }
 
     // ── Sender name tests ─────────────────────────────────────────────

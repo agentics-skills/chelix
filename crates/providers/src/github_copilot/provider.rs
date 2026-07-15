@@ -6,10 +6,11 @@
 //!
 //! The Copilot API itself is OpenAI-compatible (`/chat/completions`).
 
-use std::{collections::HashSet, pin::Pin, sync::mpsc, time::Duration};
+use std::{pin::Pin, time::Duration};
 
 use {
     async_trait::async_trait,
+    chelix_config::WireApi,
     chelix_oauth::{OAuthTokens, TokenStore},
     futures::StreamExt,
     secrecy::{ExposeSecret, Secret},
@@ -102,14 +103,16 @@ pub struct GitHubCopilotProvider {
     model: String,
     client: &'static reqwest::Client,
     token_store: TokenStore,
+    wire_api: WireApi,
 }
 
 impl GitHubCopilotProvider {
-    pub fn new(model: String) -> Self {
+    pub fn new(model: String, wire_api: WireApi) -> Self {
         Self {
             model,
             client: crate::shared_http_client(),
             token_store: TokenStore::new(),
+            wire_api,
         }
     }
 
@@ -208,24 +211,6 @@ pub fn has_stored_tokens() -> bool {
     }
     found
 }
-
-/// Known Copilot models.
-/// The list is intentionally broad; if a model isn't available for the user's
-/// plan Copilot will return an error.
-pub const COPILOT_MODELS: &[(&str, &str)] = &[
-    ("gpt-4o", "GPT-4o (Copilot)"),
-    ("gpt-4.1", "GPT-4.1 (Copilot)"),
-    ("gpt-4.1-mini", "GPT-4.1 Mini (Copilot)"),
-    ("gpt-4.1-nano", "GPT-4.1 Nano (Copilot)"),
-    ("gpt-5.4", "GPT-5.4 (Copilot)"),
-    ("gpt-5.4-pro", "GPT-5.4 Pro (Copilot)"),
-    ("gpt-5.2-pro", "GPT-5.2 Pro (Copilot)"),
-    ("o1", "o1 (Copilot)"),
-    ("o1-mini", "o1-mini (Copilot)"),
-    ("o3-mini", "o3-mini (Copilot)"),
-    ("claude-sonnet-4", "Claude Sonnet 4 (Copilot)"),
-    ("gemini-2.0-flash", "Gemini 2.0 Flash (Copilot)"),
-];
 
 /// Build a [`CopilotAuth`] from an `account_id` value that may contain a
 /// proxy-ep hostname persisted from a previous token exchange.
@@ -342,105 +327,8 @@ async fn fetch_copilot_auth_with_fallback(
     fetch_copilot_auth(client, &token_store).await
 }
 
-pub fn default_model_catalog() -> Vec<super::super::DiscoveredModel> {
-    super::super::catalog_to_discovered(COPILOT_MODELS, 3)
-}
-
-fn normalize_display_name(model_id: &str, display_name: Option<&str>) -> String {
-    let normalized = display_name
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .unwrap_or(model_id);
-    if normalized == model_id {
-        model_id.to_string()
-    } else {
-        normalized.to_string()
-    }
-}
-
-fn is_likely_model_id(model_id: &str) -> bool {
-    if model_id.is_empty() || model_id.len() > 120 {
-        return false;
-    }
-    if model_id.chars().any(char::is_whitespace) {
-        return false;
-    }
-    model_id
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | ':'))
-}
-
-fn parse_model_entry(entry: &serde_json::Value) -> Option<super::super::DiscoveredModel> {
-    let obj = entry.as_object()?;
-    let model_id = obj
-        .get("id")
-        .or_else(|| obj.get("slug"))
-        .or_else(|| obj.get("model"))
-        .and_then(serde_json::Value::as_str)?;
-
-    if !is_likely_model_id(model_id) {
-        return None;
-    }
-
-    let display_name = obj
-        .get("display_name")
-        .or_else(|| obj.get("displayName"))
-        .or_else(|| obj.get("name"))
-        .or_else(|| obj.get("title"))
-        .and_then(serde_json::Value::as_str);
-
-    let created_at = obj.get("created").and_then(serde_json::Value::as_i64);
-
-    Some(
-        super::super::DiscoveredModel::new(
-            model_id,
-            normalize_display_name(model_id, display_name),
-        )
-        .with_created_at(created_at),
-    )
-}
-
-fn collect_candidate_arrays<'a>(
-    value: &'a serde_json::Value,
-    out: &mut Vec<&'a serde_json::Value>,
-) {
-    match value {
-        serde_json::Value::Array(items) => out.extend(items),
-        serde_json::Value::Object(map) => {
-            for key in ["models", "data", "items", "results", "available"] {
-                if let Some(nested) = map.get(key) {
-                    collect_candidate_arrays(nested, out);
-                }
-            }
-        },
-        _ => {},
-    }
-}
-
 fn parse_models_payload(value: &serde_json::Value) -> Vec<super::super::DiscoveredModel> {
-    let mut candidates = Vec::new();
-    collect_candidate_arrays(value, &mut candidates);
-
-    let mut models = Vec::new();
-    let mut seen = HashSet::new();
-    for entry in candidates {
-        if let Some(model) = parse_model_entry(entry)
-            && seen.insert(model.id.clone())
-        {
-            models.push(model);
-        }
-    }
-
-    // Sort by created_at descending (newest first). Models without a
-    // timestamp are placed after those with one, preserving relative order.
-    models.sort_by(|a, b| match (a.created_at, b.created_at) {
-        (Some(a_ts), Some(b_ts)) => b_ts.cmp(&a_ts), // newest first
-        (Some(_), None) => std::cmp::Ordering::Less, // timestamp before no-timestamp
-        (None, Some(_)) => std::cmp::Ordering::Greater,
-        (None, None) => std::cmp::Ordering::Equal,
-    });
-
-    models
+    super::super::openai::parse_models_value(value).unwrap_or_default()
 }
 
 async fn fetch_models_from_api(
@@ -471,62 +359,17 @@ async fn fetch_models_from_api(
     Ok(models)
 }
 
-/// Spawn model discovery in a background thread and return the receiver
-/// immediately, without blocking.
-pub fn start_model_discovery() -> mpsc::Receiver<anyhow::Result<Vec<super::super::DiscoveredModel>>>
-{
-    let (tx, rx) = mpsc::sync_channel(1);
-    std::thread::spawn(move || {
-        let result = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(anyhow::Error::from)
-            .and_then(|rt| {
-                rt.block_on(async {
-                    let client = reqwest::Client::builder()
-                        .timeout(Duration::from_secs(8))
-                        .build()?;
-                    let token_store = TokenStore::new();
-                    let auth = fetch_copilot_auth_with_fallback(&client, &token_store).await?;
-                    fetch_models_from_api(&client, &auth).await
-                })
-            });
-        let _ = tx.send(result);
-    });
-    rx
-}
-
-fn fetch_models_blocking() -> anyhow::Result<Vec<super::super::DiscoveredModel>> {
-    start_model_discovery()
-        .recv()
-        .map_err(|err| anyhow::anyhow!("copilot model discovery worker failed: {err}"))?
-}
-
-pub fn live_models() -> anyhow::Result<Vec<super::super::DiscoveredModel>> {
-    let models = fetch_models_blocking()?;
+/// Fetch current Copilot model records without static fallback catalogs.
+pub async fn fetch_models() -> anyhow::Result<Vec<super::super::DiscoveredModel>> {
+    let client = super::super::shared_http_client();
+    let token_store = TokenStore::new();
+    let auth = fetch_copilot_auth_with_fallback(client, &token_store).await?;
+    let models = fetch_models_from_api(client, &auth).await?;
     debug!(
         model_count = models.len(),
         "loaded github-copilot live models"
     );
     Ok(models)
-}
-
-pub fn available_models() -> Vec<super::super::DiscoveredModel> {
-    let fallback = default_model_catalog();
-    let discovered = match live_models() {
-        Ok(models) => models,
-        Err(err) => {
-            let msg = err.to_string();
-            if msg.contains("not logged in") || msg.contains("tokens not found") {
-                debug!(error = %err, "github-copilot not configured, using fallback catalog");
-            } else {
-                warn!(error = %err, "failed to fetch github-copilot models, using fallback catalog");
-            }
-            return fallback;
-        },
-    };
-
-    super::super::merge_discovered_with_fallback_catalog(discovered, fallback)
 }
 
 // ── Enterprise streaming-to-sync bridge ──────────────────────────────────────
@@ -850,21 +693,6 @@ fn stream_events_to_completion(events: Vec<StreamEvent>) -> CompletionResponse {
 
 // ── Responses API helpers ────────────────────────────────────────────────────
 
-/// Returns `true` if the given model is known to require the Responses API
-/// (`/responses`) instead of Chat Completions (`/chat/completions`).
-fn needs_responses_api(model: &str) -> bool {
-    let m = model.to_ascii_lowercase();
-    m.starts_with("gpt-5.4") || m == "gpt-5.2-pro" || m.starts_with("codex-")
-}
-
-/// Returns `true` if an error body from the Chat Completions API indicates
-/// that the model only supports the Responses API.
-fn is_responses_api_required_error(body: &str) -> bool {
-    let lower = body.to_ascii_lowercase();
-    lower.contains("unsupported_api_for_model")
-        || lower.contains("not accessible via the /chat/completions")
-}
-
 // ── LlmProvider impl ────────────────────────────────────────────────────────
 
 #[async_trait]
@@ -878,7 +706,7 @@ impl LlmProvider for GitHubCopilotProvider {
     }
 
     fn supports_tools(&self) -> bool {
-        super::super::supports_tools_for_model(&self.model)
+        false
     }
 
     async fn complete(
@@ -886,7 +714,7 @@ impl LlmProvider for GitHubCopilotProvider {
         messages: &[ChatMessage],
         tools: &[serde_json::Value],
     ) -> anyhow::Result<CompletionResponse> {
-        if needs_responses_api(&self.model) {
+        if matches!(self.wire_api, WireApi::Responses) {
             return self.complete_responses(messages, tools).await;
         }
 
@@ -937,17 +765,6 @@ impl LlmProvider for GitHubCopilotProvider {
             let retry_after_ms = super::super::retry_after_ms_from_headers(http_resp.headers());
             let body_text = http_resp.text().await.unwrap_or_default();
 
-            // Fallback: if the model requires Responses API, retry with it.
-            if status == reqwest::StatusCode::BAD_REQUEST
-                && is_responses_api_required_error(&body_text)
-            {
-                debug!(
-                    model = %self.model,
-                    "chat completions returned unsupported_api_for_model, retrying with responses API"
-                );
-                return self.complete_responses(messages, tools).await;
-            }
-
             warn!(status = %status, body = %body_text, "github-copilot API error");
             anyhow::bail!(
                 "{}",
@@ -989,7 +806,7 @@ impl LlmProvider for GitHubCopilotProvider {
         messages: Vec<ChatMessage>,
         tools: Vec<serde_json::Value>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        if needs_responses_api(&self.model) {
+        if matches!(self.wire_api, WireApi::Responses) {
             return self.stream_responses_api(messages, tools);
         }
         self.stream_chat_completions(messages, tools)
@@ -1286,24 +1103,6 @@ impl GitHubCopilotProvider {
                         let status = e.status().map(|s| s.as_u16()).unwrap_or(0);
                         let retry_after_ms = super::super::retry_after_ms_from_headers(r.headers());
                         let body_text = r.text().await.unwrap_or_default();
-
-                        // Fallback: if this is an unsupported API error,
-                        // switch to Responses API streaming.
-                        if status == 400
-                            && is_responses_api_required_error(&body_text)
-                        {
-                            debug!(
-                                model = %self.model,
-                                "chat completions returned unsupported_api_for_model, \
-                                 falling back to responses API streaming"
-                            );
-                            let mut responses_stream =
-                                self.stream_responses_api(messages, tools);
-                            while let Some(event) = responses_stream.next().await {
-                                yield event;
-                            }
-                            return;
-                        }
 
                         yield StreamEvent::Error(super::super::with_retry_after_marker(
                             format!("HTTP {status}: {body_text}"),

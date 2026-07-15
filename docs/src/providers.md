@@ -27,21 +27,45 @@ Configure providers through the web UI or directly in configuration files.
 
 ### Custom OpenAI-Compatible
 
-Any OpenAI-compatible endpoint can be added with a `custom-` prefix:
+Any OpenAI-compatible endpoint can be added with a `custom-` prefix. This is
+the canonical complete-record format:
 
 ```toml
-[providers.custom-myservice]
+[providers.custom-ai-0xff-dad]
 enabled = true
-api_key = "..."
-base_url = "https://my-service.example.com/v1"
-fetch_models = true
-models = ["my-model"]
+base_url = "https://ai.0xff.dad/v1"
+wire_api = "responses"
+
+[providers.custom-ai-0xff-dad.models."Combos/cx/gpt-sol"]
+context_length = 400000
+max_input_tokens = 272000
+max_output_tokens = 128000
+input_modalities = ["text", "image", "audio", "file"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = true
+
+[providers.custom-ai-0xff-dad.models."Combos/cx/gpt-sol".reasoning]
+supported_efforts = ["none", "minimal", "low", "medium", "high", "xhigh"]
+summary = "detailed"
+include = ["reasoning.encrypted_content"]
 ```
 
-For `custom-*` providers, `models = [...]` is a whitelist when set: only those
-model IDs are registered. With `fetch_models = true`, Chelix still calls
-`/models` and uses returned metadata such as `capabilities` and `context_length`
-for the whitelisted models.
+For a discovery-backed allowlist, use the same table format without fields:
+
+```toml
+[providers.custom-ai-0xff-dad]
+enabled = true
+base_url = "https://ai.0xff.dad/v1"
+wire_api = "responses"
+
+[providers.custom-ai-0xff-dad.models."Combos/cx/gpt-sol"]
+[providers.custom-ai-0xff-dad.models."Combos/cx/gpt-mini"]
+[providers.custom-ai-0xff-dad.models."Combos/cx/gpt-nano"]
+```
+
+Chelix calls `/models` and merges returned metadata into those records.
 
 ## Configuration
 
@@ -66,19 +90,43 @@ enabled = true
 
 [providers.openai]
 enabled = true
-models = ["gpt-5.3", "gpt-5.2"]
 stream_transport = "sse"              # "sse", "websocket", or "auto"
+
+[providers.openai.models."gpt-5.3"]
+[providers.openai.models."gpt-5.2"]
 
 [providers.gemini]
 enabled = true
-models = ["gemini-2.5-flash", "gemini-2.5-pro"]
 # api_key = "..."                     # Or set GEMINI_API_KEY / GOOGLE_API_KEY env var
 # fetch_models = true                 # Discover models from the API
 # base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
 
+[providers.gemini.models."gemini-2.5-flash"]
+[providers.gemini.models."gemini-2.5-pro"]
+
 [chat]
 priority_models = ["gpt-5.2"]
 ```
+
+### Model Metadata Resolution
+
+Models are declared only as
+`[providers.<name>.models."<raw-model-id>"]` tables. The tables form an ordered
+allowlist and preserve declaration order. With no model tables, every
+discovered model that resolves completely is accepted.
+
+Chelix resolves each selected model in this order:
+
+1. Configuration metadata wins field by field.
+2. Provider `/models` metadata fills fields omitted by configuration.
+3. Optional defaults apply only after the merge.
+4. Incomplete or inconsistent records are excluded.
+
+The mandatory fields are `context_length`, `max_input_tokens`,
+`max_output_tokens`, and `reasoning.supported_efforts`. An empty
+`supported_efforts` array explicitly identifies a non-reasoning model.
+`reasoning.summary` and `reasoning.include` describe provider request metadata;
+they do not enable reasoning or select an effort.
 
 ### Provider Entry Options
 
@@ -89,7 +137,7 @@ Each provider supports these options:
 | `enabled`          | `true`   | Enable or disable the provider             |
 | `api_key`          | —        | API key (overrides env var)                |
 | `base_url`         | —        | Override API endpoint URL                  |
-| `models`           | `[]`     | Preferred models shown first in the picker |
+| `models.<model_id>` | —       | Ordered model metadata table               |
 | `fetch_models`     | `true`   | Discover available models from the API     |
 | `stream_transport` | `"sse"`  | `"sse"`, `"websocket"`, or `"auto"`        |
 | `alias`            | —        | Custom label for metrics                   |
@@ -109,7 +157,9 @@ Google Gemini uses an API key from
 ```toml
 [providers.gemini]
 enabled = true
-models = ["gemini-2.5-flash", "gemini-2.5-pro"]
+
+[providers.gemini.models."gemini-2.5-flash"]
+[providers.gemini.models."gemini-2.5-pro"]
 ```
 
 Gemini supports native tool calling, vision/multimodal inputs, streaming, and
@@ -185,8 +235,9 @@ Requires an active GitHub Copilot subscription.
 
 - **Per session**: Use the model selector in the chat UI.
 - **Per message**: Use `/model <name>` in chat.
-- **Global defaults**: Use `[providers].offered`, provider `models = [...]`, and
-  `[chat].priority_models` in `chelix.toml`.
+- **Provider selection**: Use ordered
+	`[providers.<name>.models."<raw-model-id>"]` tables.
+- **Cross-provider ordering**: Use `[chat].priority_models` in `chelix.toml`.
 
 ## Troubleshooting
 

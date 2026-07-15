@@ -33,94 +33,24 @@ mod tools;
 mod voice;
 
 pub use {
-    agents::*, chat::*, code_index::*, hooks::*, memory::*, modes::*, phone::*, providers::*,
-    runtime::*, system::*, tools::*, voice::*,
+    agents::*,
+    chat::*,
+    chelix_common::{
+        ModelConfigMap, ModelMetadata, ModelMetadataError, ModelModality, ModelReasoningMetadata,
+        PartialModelMetadata, PartialReasoningMetadata, ReasoningEffort, ReasoningInclude,
+        ReasoningSummary,
+    },
+    code_index::*,
+    hooks::*,
+    memory::*,
+    modes::*,
+    phone::*,
+    providers::*,
+    runtime::*,
+    system::*,
+    tools::*,
+    voice::*,
 };
-
-// ── Reasoning effort ──────────────────────────────────────────────────────
-
-/// Reasoning/thinking effort level for models that support extended thinking.
-///
-/// Maps to provider-specific parameters:
-/// - **Anthropic**: `thinking.budget_tokens`
-/// - **OpenAI**: `reasoning_effort` field on o-series / GPT-5 models
-/// - **Gemini**: `thinkingBudget` or `thinkingLevel`
-/// - **Other providers**: ignored if unsupported
-///
-/// Not all providers support every level. Providers map unsupported levels
-/// to their nearest supported equivalent (e.g. `Max` → `ExtraHigh` when
-/// the provider caps at `High`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ReasoningEffort {
-    None,
-    Minimal,
-    Low,
-    Medium,
-    High,
-    /// Extra-high reasoning effort. Serializes as `"xhigh"`.
-    #[serde(rename = "xhigh")]
-    ExtraHigh,
-    Max,
-}
-
-impl ReasoningEffort {
-    /// All levels in ascending order.
-    pub const ALL: &[Self] = &[
-        Self::None,
-        Self::Minimal,
-        Self::Low,
-        Self::Medium,
-        Self::High,
-        Self::ExtraHigh,
-        Self::Max,
-    ];
-
-    /// Wire / serialization name (matches serde output).
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::None => "none",
-            Self::Minimal => "minimal",
-            Self::Low => "low",
-            Self::Medium => "medium",
-            Self::High => "high",
-            Self::ExtraHigh => "xhigh",
-            Self::Max => "max",
-        }
-    }
-
-    /// Human-readable label for UI display.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::None => "None",
-            Self::Minimal => "Minimal",
-            Self::Low => "Low",
-            Self::Medium => "Medium",
-            Self::High => "High",
-            Self::ExtraHigh => "Extra High",
-            Self::Max => "Max",
-        }
-    }
-}
-
-impl TryFrom<&str> for ReasoningEffort {
-    type Error = String;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "none" => Ok(Self::None),
-            "minimal" => Ok(Self::Minimal),
-            "low" => Ok(Self::Low),
-            "medium" => Ok(Self::Medium),
-            "high" => Ok(Self::High),
-            "xhigh" => Ok(Self::ExtraHigh),
-            "max" => Ok(Self::Max),
-            other => Err(format!("unknown reasoning effort: {other}")),
-        }
-    }
-}
 
 /// Agent identity (name, emoji, theme).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -318,7 +248,6 @@ pub struct ChelixConfig {
     pub user: UserProfile,
     pub hooks: Option<HooksConfig>,
     pub memory: MemoryEmbeddingConfig,
-    pub failover: FailoverConfig,
     pub heartbeat: HeartbeatConfig,
     pub voice: VoiceConfig,
     pub phone: PhoneConfig,
@@ -330,17 +259,6 @@ pub struct ChelixConfig {
     pub auxiliary: AuxiliaryModelsConfig,
     /// Code-index configuration for codebase search tools.
     pub code_index: CodeIndexTomlConfig,
-    /// Per-model overrides that apply across all providers.
-    ///
-    /// Keys are normalized model IDs. Provider-scoped overrides
-    /// (`[providers.<name>.models.<id>]`) take precedence over these.
-    ///
-    /// ```toml
-    /// [models.claude-opus-4-6]
-    /// context_window = 1_000_000
-    /// ```
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub models: HashMap<String, ModelOverride>,
     /// Upstream HTTP/SOCKS proxy for all outbound requests.
     ///
     /// Supports `http://`, `https://`, `socks5://`, and `socks5h://` schemes.

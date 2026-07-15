@@ -70,6 +70,24 @@ bnd = "0.0.0.0"
 }
 
 #[test]
+fn legacy_allowed_models_is_rejected() {
+    let result = validate_toml_str(
+        r#"
+[chat]
+allowed_models = ["legacy-model"]
+"#,
+    );
+    let diagnostic = result.diagnostics.iter().find(|diagnostic| {
+        diagnostic.category == "unknown-field" && diagnostic.path == "chat.allowed_models"
+    });
+    assert!(
+        diagnostic.is_some_and(|diagnostic| diagnostic.severity == Severity::Error),
+        "legacy allowed_models should be rejected: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn empty_config_is_valid() {
     let result = validate_toml_str("");
     assert!(
@@ -88,7 +106,14 @@ port = 8080
 
 [providers.anthropic]
 enabled = true
-models = ["claude-sonnet-4-20250514"]
+
+[providers.anthropic.models."claude-sonnet-4-20250514"]
+context_length = 200000
+max_input_tokens = 180000
+max_output_tokens = 20000
+
+[providers.anthropic.models."claude-sonnet-4-20250514".reasoning]
+supported_efforts = []
 
 [auth]
 disabled = false
@@ -109,9 +134,6 @@ backend = "builtin"
 provider = "local"
 
 [metrics]
-enabled = true
-
-[failover]
 enabled = true
 
 [heartbeat]

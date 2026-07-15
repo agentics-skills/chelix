@@ -8,6 +8,7 @@ version.workspace    = true
 [dependencies]
 chelix-agents     = { workspace = true }
 chelix-code-index = { workspace = true }
+chelix-common     = { workspace = true }
 chelix-config     = { workspace = true }
 chelix-providers  = { workspace = true }
 chelix-qmd        = { optional = true, workspace = true }

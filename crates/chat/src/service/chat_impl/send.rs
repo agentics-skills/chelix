@@ -98,7 +98,7 @@ impl LiveChatService {
             .and_then(|v| v.as_str())
             .map(String::from);
         let explicit_model = params.get("model").and_then(|v| v.as_str());
-        let requested_reasoning_effort_override = requested_reasoning_effort(&params)?;
+        let requested_reasoning_effort_override = requested_reasoning_effort(&params);
         let tool_controls =
             chelix_config::schema::AgentToolControls::from_tool_context(Some(&params));
         // Use streaming-only mode if explicitly requested or if no tools are registered.
@@ -542,7 +542,7 @@ impl LiveChatService {
 
         let provider: Arc<dyn chelix_agents::model::LlmProvider> = {
             let reg = self.providers.read().await;
-            let primary = if let Some(id) = model_id {
+            if let Some(id) = model_id {
                 reg.get(id).ok_or_else(|| {
                     let available: Vec<_> =
                         reg.list_models().iter().map(|m| m.id.clone()).collect();
@@ -554,31 +554,6 @@ impl LiveChatService {
             } else {
                 reg.first()
                     .ok_or_else(|| "no LLM providers configured".to_string())?
-            };
-
-            // When exact_model is set and the user explicitly selected a model,
-            // skip failover — use the chosen model or fail.
-            let user_selected = model_id.is_some();
-            let skip_failover = !self.failover_config.enabled
-                || (self.failover_config.exact_model && user_selected);
-
-            if skip_failover {
-                primary
-            } else {
-                let fallbacks = if self.failover_config.fallback_models.is_empty() {
-                    // Auto-build: same model on other providers first, then same
-                    // provider's other models, then everything else.
-                    reg.fallback_providers_for(primary.id(), primary.name())
-                } else {
-                    reg.providers_for_models(&self.failover_config.fallback_models)
-                };
-                if fallbacks.is_empty() {
-                    primary
-                } else {
-                    let mut chain = vec![primary];
-                    chain.extend(fallbacks);
-                    Arc::new(chelix_agents::provider_chain::ProviderChain::new(chain))
-                }
             }
         };
         info!(
@@ -859,11 +834,9 @@ impl LiveChatService {
             self.session_state_store.as_deref(),
         )
         .await;
-        let resolved_reasoning_effort = requested_reasoning_effort_override
-            .map(|effort| effort.as_str().to_string())
-            .or_else(|| {
-                resolved_turn_reasoning_effort(session_entry.as_ref(), &persona, &session_agent_id)
-            });
+        let resolved_reasoning_effort = requested_reasoning_effort_override.or_else(|| {
+            resolved_turn_reasoning_effort(session_entry.as_ref(), &persona, &session_agent_id)
+        });
         let provider =
             apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
         let runtime_limits = persona.config.agent_runtime_limits(&session_agent_id);

@@ -338,6 +338,8 @@ mod tests {
         tokio_stream::Stream,
     };
 
+    const TEST_CONTEXT_WINDOW: u32 = 128_000;
+
     /// Mock provider that makes one write_file call then returns.
     struct MemoryWritingProvider {
         call_count: std::sync::atomic::AtomicUsize,
@@ -351,6 +353,10 @@ mod tests {
 
         fn id(&self) -> &str {
             "mock-model"
+        }
+
+        fn context_window(&self) -> Option<u32> {
+            Some(TEST_CONTEXT_WINDOW)
         }
 
         fn supports_tools(&self) -> bool {
@@ -507,6 +513,10 @@ mod tests {
 
             fn id(&self) -> &str {
                 "fail-model"
+            }
+
+            fn context_window(&self) -> Option<u32> {
+                Some(TEST_CONTEXT_WINDOW)
             }
 
             fn supports_tools(&self) -> bool {

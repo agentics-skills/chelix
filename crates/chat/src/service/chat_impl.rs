@@ -65,44 +65,32 @@ pub(super) fn resolved_turn_reasoning_effort(
         .config
         .agents
         .get_preset(agent_id)
-        .and_then(|preset| preset.reasoning_effort)
+        .and_then(|preset| preset.reasoning_effort.as_ref())
         .map(|effort| effort.as_str().to_string())
 }
 
-pub(super) fn requested_reasoning_effort(
-    params: &Value,
-) -> Result<Option<ReasoningEffort>, String> {
-    let Some(value) = params
+pub(super) fn requested_reasoning_effort(params: &Value) -> Option<String> {
+    params
         .get("reasoningEffort")
         .or_else(|| params.get("reasoning_effort"))
         .and_then(Value::as_str)
-        .map(str::trim)
-    else {
-        return Ok(None);
-    };
-    if value.is_empty() {
-        return Ok(None);
-    }
-    ReasoningEffort::try_from(value).map(Some)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 pub(super) fn apply_reasoning_effort_to_provider(
     provider: Arc<dyn chelix_agents::model::LlmProvider>,
     reasoning_effort: Option<&str>,
 ) -> Result<Arc<dyn chelix_agents::model::LlmProvider>, String> {
-    let Some(reasoning_effort) = reasoning_effort
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
+    let Some(reasoning_effort) = reasoning_effort else {
         return Ok(provider);
     };
-    let effort = ReasoningEffort::try_from(reasoning_effort)?;
     Arc::clone(&provider)
-        .with_reasoning_effort(effort)
+        .with_reasoning_effort(ReasoningEffort::from(reasoning_effort))
         .ok_or_else(|| {
             format!(
-                "model '{}' does not support reasoning_effort",
-                provider.id()
+                "model '{}' does not support reasoning_effort '{reasoning_effort}'",
+                provider.id(),
             )
         })
 }
@@ -145,7 +133,7 @@ impl ChatService for LiveChatService {
             .unwrap_or(false);
 
         let explicit_model = params.get("model").and_then(|v| v.as_str());
-        let requested_reasoning_effort_override = requested_reasoning_effort(&params)?;
+        let requested_reasoning_effort_override = requested_reasoning_effort(&params);
         let tool_controls =
             chelix_config::schema::AgentToolControls::from_tool_context(Some(&params));
         let stream_only = !self.has_tools_sync();
@@ -216,11 +204,9 @@ impl ChatService for LiveChatService {
             self.session_state_store.as_deref(),
         )
         .await;
-        let resolved_reasoning_effort = requested_reasoning_effort_override
-            .map(|effort| effort.as_str().to_string())
-            .or_else(|| {
-                resolved_turn_reasoning_effort(session_entry.as_ref(), &persona, &session_agent_id)
-            });
+        let resolved_reasoning_effort = requested_reasoning_effort_override.or_else(|| {
+            resolved_turn_reasoning_effort(session_entry.as_ref(), &persona, &session_agent_id)
+        });
         let provider =
             apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
         let mut runtime_context = build_prompt_runtime_context(
@@ -882,11 +868,19 @@ impl ChatService for LiveChatService {
         let context_window = {
             let reg = self.providers.read().await;
             let session_model = session_entry.as_ref().and_then(|e| e.model.as_deref());
-            if let Some(id) = session_model {
-                reg.get(id).map(|p| p.context_window()).unwrap_or(200_000)
+            let provider = if let Some(id) = session_model {
+                reg.get(id)
+                    .ok_or_else(|| format!("model '{id}' is not registered"))?
             } else {
-                reg.first().map(|p| p.context_window()).unwrap_or(200_000)
-            }
+                reg.first()
+                    .ok_or_else(|| "no model is registered for this session".to_string())?
+            };
+            provider.context_window().ok_or_else(|| {
+                format!(
+                    "model '{}' has no resolved context_length metadata",
+                    provider.id()
+                )
+            })?
         };
 
         // Sandbox info

@@ -28,12 +28,12 @@ fn parse_models_payload_from_nested_data_array() {
     let models = parse_models_payload(&value);
     assert_eq!(models.len(), 2);
     assert_eq!(models[0].id, "gpt-5.3-codex");
-    assert_eq!(models[0].display_name, "GPT 5.3 Codex");
+    assert_eq!(models[0].display_name, "gpt-5.3-codex");
     assert_eq!(models[1].id, "gpt-5.1-codex-mini");
 }
 
 #[test]
-fn parse_models_payload_ignores_invalid_ids_and_dedupes() {
+fn parse_models_payload_ignores_empty_ids_and_dedupes_without_id_heuristics() {
     let value = serde_json::json!({
         "models": [
             {"id": "gpt-5.3"},
@@ -43,8 +43,9 @@ fn parse_models_payload_ignores_invalid_ids_and_dedupes() {
         ]
     });
     let models = parse_models_payload(&value);
-    assert_eq!(models.len(), 1);
+    assert_eq!(models.len(), 2);
     assert_eq!(models[0].id, "gpt-5.3");
+    assert_eq!(models[1].id, "this has spaces");
 }
 
 #[test]

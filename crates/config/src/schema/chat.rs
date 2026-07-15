@@ -18,11 +18,6 @@ pub struct ChatConfig {
     pub workspace_file_max_chars: usize,
     /// Preferred model IDs to show first in selectors (full or raw model IDs).
     pub priority_models: Vec<String>,
-    /// Legacy model allowlist. Kept for backward compatibility.
-    /// Model visibility is provider-driven (`providers.<name>.models` +
-    /// live discovery), so this field is currently ignored.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub allowed_models: Vec<String>,
 }
 
 fn default_auto_title() -> bool {
@@ -49,7 +44,6 @@ impl Default for ChatConfig {
             prompt_memory_mode: default_prompt_memory_mode(),
             workspace_file_max_chars: default_workspace_file_max_chars(),
             priority_models: Vec::new(),
-            allowed_models: Vec::new(),
         }
     }
 }

@@ -9,7 +9,6 @@ export let connected = false;
 export let subscribed = false;
 export let reconnectDelay = 1000;
 export const pending: Record<string, (value: RpcResponse) => void> = {};
-export let models: unknown[] = [];
 export let activeSessionKey: string = localStorage.getItem("chelix-session") || "main";
 export let activeProjectId: string = localStorage.getItem("chelix-project") || "";
 export let sessions: unknown[] = [];
@@ -41,7 +40,6 @@ export let modelComboLabel: HTMLElement | null = null;
 export let modelDropdown: HTMLElement | null = null;
 export let modelSearchInput: HTMLElement | null = null;
 export let modelDropdownList: HTMLElement | null = null;
-export let selectedModelId: string = localStorage.getItem("chelix-model") || "";
 export let modelIdx = -1;
 
 // Node selector elements — created dynamically inside the chat page
@@ -130,10 +128,6 @@ export function setSubscribed(v: boolean): void {
 export function setReconnectDelay(v: number): void {
 	reconnectDelay = v;
 }
-export function setModels(v: unknown[]): void {
-	models = v;
-	// Store signal is now owned by model-store.ts; don't overwrite here.
-}
 export function setActiveSessionKey(v: string): void {
 	activeSessionKey = v;
 	// Store signal is now owned by session-store.ts; don't overwrite here.
@@ -199,10 +193,6 @@ export function setModelSearchInput(v: HTMLElement | null): void {
 }
 export function setModelDropdownList(v: HTMLElement | null): void {
 	modelDropdownList = v;
-}
-export function setSelectedModelId(v: string): void {
-	selectedModelId = v;
-	// Store signal is now owned by model-store.ts; don't overwrite here.
 }
 export function setModelIdx(v: number): void {
 	modelIdx = v;

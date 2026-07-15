@@ -1009,6 +1009,7 @@ version = "0.1.0"
 dependencies = [
  "chelix-agents",
  "chelix-code-index",
+ "chelix-common",
  "chelix-config",
  "chelix-providers",
  "chelix-qmd",
@@ -1778,6 +1779,7 @@ dependencies = [
  "async-trait",
  "chelix-metrics",
  "futures",
+ "indexmap 2.14.0",
  "ipnet",
  "reqwest 0.13.2",
  "secrecy 0.8.0",
@@ -1795,6 +1797,7 @@ name = "chelix-config"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chelix-common",
  "chelix-metrics",
  "chrono-tz",
  "directories",
@@ -2500,6 +2503,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-tungstenite 0.26.2",
+ "toml 0.8.23",
  "tracing",
 ]
 

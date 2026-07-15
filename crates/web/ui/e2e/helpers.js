@@ -41,6 +41,61 @@ function watchPageErrors(page) {
 	return pageErrors;
 }
 
+/** Build one complete canonical model registry record for UI tests. */
+function modelRecord({
+	id,
+	provider,
+	displayName = id,
+	createdAt = null,
+	recommended = false,
+	preferred = false,
+	disabled = false,
+	unsupported = false,
+	unsupportedReason = null,
+	unsupportedProvider = null,
+	unsupportedUpdatedAt = null,
+	contextLength = 128_000,
+	maxInputTokens = 96_000,
+	maxOutputTokens = 32_000,
+	inputModalities = ["text"],
+	outputModalities = ["text"],
+	toolCalling = true,
+	streaming = true,
+	zeroDataRetentionEnabled = true,
+	supportedEfforts = [],
+	reasoningSummary,
+	reasoningInclude = [],
+}) {
+	const reasoning = {
+		supported_efforts: supportedEfforts,
+		include: reasoningInclude,
+	};
+	if (reasoningSummary !== undefined) reasoning.summary = reasoningSummary;
+
+	return {
+		id,
+		provider,
+		display_name: displayName,
+		created_at: createdAt,
+		recommended,
+		preferred,
+		disabled,
+		unsupported,
+		unsupported_reason: unsupportedReason,
+		unsupported_provider: unsupportedProvider,
+		unsupported_updated_at: unsupportedUpdatedAt,
+		context_length: contextLength,
+		max_input_tokens: maxInputTokens,
+		max_output_tokens: maxOutputTokens,
+		input_modalities: inputModalities,
+		output_modalities: outputModalities,
+		tool_calling: toolCalling,
+		streaming,
+		zeroDataRetentionEnabled,
+		reasoning,
+	};
+}
+
 /**
  * Wait for the WebSocket connection status dot to reach "connected".
  * Note: #statusText is intentionally set to "" when connected, so we
@@ -356,6 +411,7 @@ async function expectNoPageHorizontalOverflow(page, label = "page", testInfo = n
 module.exports = {
 	expectPageContentMounted,
 	watchPageErrors,
+	modelRecord,
 	waitForWsConnected,
 	waitForChatSessionReady,
 	navigateAndWait,

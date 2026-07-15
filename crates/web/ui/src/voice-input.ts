@@ -13,6 +13,7 @@ import { renderAudioPlayer, renderMarkdown, sendRpc, warmAudioPlayback } from ".
 import { t } from "./i18n";
 import { bumpSessionCount, seedSessionPreviewFromUserText, setSessionReplying } from "./sessions";
 import * as S from "./state";
+import { modelStore } from "./stores/model-store";
 import { sessionStore } from "./stores/session-store";
 
 // ── Shared state ─────────────────────────────────────────────
@@ -436,7 +437,7 @@ function sendTranscribedMessage(
 	};
 	if (audioFilename) chatParams._audio_filename = audioFilename;
 	if (providerInfo?.id) chatParams._stt_provider = providerInfo.id;
-	const selectedModel = S.selectedModelId;
+	const selectedModel = modelStore.selectedModelId.value;
 	if (selectedModel) chatParams.model = selectedModel;
 
 	bumpSessionCount(S.activeSessionKey, 1);

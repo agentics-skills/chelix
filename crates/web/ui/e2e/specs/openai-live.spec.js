@@ -4,12 +4,6 @@ const { expectRpcOk, navigateAndWait, sendRpcFromPage, waitForWsConnected, watch
 const OPENAI_API_KEY = process.env.CHELIX_E2E_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "";
 const SENTINEL = "OPENAI_LIVE_E2E_OK";
 
-function isLikelyFunctionCallingModel(modelId) {
-	if (typeof modelId !== "string") return false;
-	const rawId = modelId.replace(/^openai::/, "");
-	return !/(?:search|audio|realtime)-preview/i.test(rawId);
-}
-
 test.describe("Live OpenAI provider", () => {
 	test.describe.configure({ mode: "serial" });
 
@@ -24,9 +18,9 @@ test.describe("Live OpenAI provider", () => {
 
 		const modelsResponse = await expectRpcOk(page, "models.list", {});
 		const openAiModels = (modelsResponse.payload || []).filter(
-			(model) => typeof model?.id === "string" && model.id.startsWith("openai::") && model.supportsTools === true,
+			(model) => model?.provider === "openai" && model.tool_calling === true,
 		);
-		const openAiModel = openAiModels.find((model) => isLikelyFunctionCallingModel(model.id)) || openAiModels[0] || null;
+		const openAiModel = openAiModels[0] || null;
 
 		expect(
 			openAiModel,

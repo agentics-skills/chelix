@@ -34,7 +34,19 @@ export type {
 	UpdateAvailability,
 } from "./gon";
 
-export type { ModelInfo } from "./model";
+export type {
+	ModelConfigMap,
+	ModelInfo,
+	ModelMetadata,
+	ModelModality,
+	ModelReasoningMetadata,
+	PartialModelMetadata,
+	PartialReasoningMetadata,
+	ProviderInfo,
+	ReasoningEffort,
+	ReasoningInclude,
+	ReasoningSummary,
+} from "./model";
 
 export type { RpcError, RpcFrame, RpcResponse } from "./rpc";
 

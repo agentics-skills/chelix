@@ -45,6 +45,7 @@ genai          = { optional = true, workspace = true }
 axum     = { workspace = true }
 http     = { workspace = true }
 tempfile = { workspace = true }
+toml     = { workspace = true }
 
 [lints]
 workspace = true

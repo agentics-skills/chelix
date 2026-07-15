@@ -6,7 +6,7 @@
 // typed use `unknown` as a placeholder -- callers can narrow with
 // `as` casts until we refine the type here.
 
-import type { ModelInfo } from "./model";
+import type { ModelInfo, ProviderInfo } from "./model";
 import type { SessionMeta } from "./session";
 
 /** Maps every RPC method to its response payload type. */
@@ -106,6 +106,8 @@ export interface RpcMethodMap {
 	// ── Models ──────────────────────────────────────────────────
 	"models.cancel_detect": unknown;
 	"models.detect_supported": unknown;
+	"models.disable": unknown;
+	"models.enable": unknown;
 	"models.list": ModelInfo[];
 	"models.list_all": ModelInfo[];
 	"models.test": unknown;
@@ -135,13 +137,12 @@ export interface RpcMethodMap {
 
 	// ── Providers ───────────────────────────────────────────────
 	"providers.add_custom": unknown;
-	"providers.available": unknown;
+	"providers.available": ProviderInfo[];
 	"providers.oauth.complete": unknown;
 	"providers.oauth.start": unknown;
 	"providers.oauth.status": unknown;
 	"providers.remove_key": unknown;
 	"providers.save_key": unknown;
-	"providers.save_model": unknown;
 	"providers.save_models": unknown;
 	"providers.validate_key": unknown;
 

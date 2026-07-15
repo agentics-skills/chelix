@@ -1049,9 +1049,42 @@ test.describe("Onboarding wizard", () => {
 						payload = { type: "hello-ok" };
 					} else if (request.method === "providers.available") {
 						payload = [
-							{ name: "openai", displayName: "OpenAI", authType: "api-key", configured: false },
-							{ name: "perplexity", displayName: "Perplexity", authType: "api-key", configured: true },
-							{ name: "together", displayName: "Together AI", authType: "api-key", configured: false },
+							{
+								name: "openai",
+								displayName: "OpenAI",
+								authType: "api-key",
+								configured: false,
+								defaultBaseUrl: "https://api.openai.com/v1",
+								baseUrl: null,
+								models: {},
+								requiresModel: false,
+								keyOptional: false,
+								uiOrder: 30,
+							},
+							{
+								name: "perplexity",
+								displayName: "Perplexity",
+								authType: "api-key",
+								configured: true,
+								defaultBaseUrl: "https://api.perplexity.ai",
+								baseUrl: null,
+								models: {},
+								requiresModel: false,
+								keyOptional: false,
+								uiOrder: 60,
+							},
+							{
+								name: "together",
+								displayName: "Together AI",
+								authType: "api-key",
+								configured: false,
+								defaultBaseUrl: "https://api.together.xyz/v1",
+								baseUrl: null,
+								models: {},
+								requiresModel: false,
+								keyOptional: false,
+								uiOrder: 70,
+							},
 						];
 					}
 					const response = { type: "res", id: request.id, ok: true, payload };

@@ -83,7 +83,7 @@ fn build_explore_sessions(
                         "theme": agent.theme,
                         "isDefault": agent.is_default,
                         "model": preset.and_then(|preset| preset.model.clone()),
-                        "reasoningEffort": preset.and_then(|preset| preset.reasoning_effort).map(ReasoningEffort::as_str),
+                        "reasoningEffort": preset.and_then(|preset| preset.reasoning_effort.as_ref()).map(ReasoningEffort::as_str),
                     })
                 })
                 .collect::<Vec<_>>();
@@ -199,10 +199,10 @@ fn build_send_to_session(
                     "_session_key": req.key,
                 });
                 if let Some(model_override) = req.model_override {
-                    let reasoning_effort = model_override.reasoning_effort;
-                    let model = model_from_override(&state, model_override).await?;
+                    let model = model_from_override(&state, &model_override).await?;
                     params["model"] = serde_json::json!(model);
-                    params["reasoningEffort"] = serde_json::json!(reasoning_effort.as_str());
+                    params["reasoningEffort"] =
+                        serde_json::json!(model_override.reasoning_effort.as_str());
                 }
                 let chat = state.chat();
                 if req.wait_for_reply {
@@ -248,37 +248,37 @@ async fn resolve_model_and_reasoning_effort(
     let (model, effort) = if let Some(model_override) = model_override {
         (
             model_override.model.clone(),
-            model_override.reasoning_effort,
+            model_override.reasoning_effort.clone(),
         )
     } else {
         preset_model_and_reasoning(state, agent_id).await?
     };
 
-    validate_model_and_reasoning_effort(state, &model, effort).await?;
+    validate_model_and_reasoning_effort(state, &model, &effort).await?;
     Ok((model, effort))
 }
 
 #[tracing::instrument(skip(state, model_override))]
 async fn model_from_override(
     state: &GatewayState,
-    model_override: chelix_tools::session_model_override::ModelOverride,
+    model_override: &chelix_tools::session_model_override::ModelOverride,
 ) -> chelix_tools::Result<String> {
     validate_model_and_reasoning_effort(
         state,
         &model_override.model,
-        model_override.reasoning_effort,
+        &model_override.reasoning_effort,
     )
     .await?;
-    Ok(model_override.model)
+    Ok(model_override.model.clone())
 }
 
 #[tracing::instrument(skip(state))]
 async fn validate_model_and_reasoning_effort(
     state: &GatewayState,
     model: &str,
-    _reasoning_effort: ReasoningEffort,
+    reasoning_effort: &ReasoningEffort,
 ) -> chelix_tools::Result<()> {
-    validate_base_model(state, model).await
+    validate_base_model(state, model, reasoning_effort).await
 }
 
 #[tracing::instrument(skip(state))]
@@ -302,7 +302,7 @@ async fn preset_model_and_reasoning(
             "agent '{agent_id}' has no preset model; pass model+reasoning_effort or configure [agents.presets.{agent_id}].model"
         ))
     })?;
-    let effort = preset.reasoning_effort.ok_or_else(|| {
+    let effort = preset.reasoning_effort.clone().ok_or_else(|| {
         chelix_tools::Error::message(format!(
             "agent '{agent_id}' has no reasoning_effort; pass model+reasoning_effort or configure [agents.presets.{agent_id}].reasoning_effort"
         ))
@@ -319,7 +319,11 @@ async fn agent_presets(
 }
 
 #[tracing::instrument(skip(state))]
-async fn validate_base_model(state: &GatewayState, model_id: &str) -> chelix_tools::Result<()> {
+async fn validate_base_model(
+    state: &GatewayState,
+    model_id: &str,
+    reasoning_effort: &ReasoningEffort,
+) -> chelix_tools::Result<()> {
     let models = state
         .services
         .model
@@ -341,13 +345,22 @@ async fn validate_base_model(state: &GatewayState, model_id: &str) -> chelix_too
         )));
     };
 
-    if !model
-        .get("supportsReasoning")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
+    let supported_efforts = model
+        .get("reasoning")
+        .and_then(|reasoning| reasoning.get("supported_efforts"))
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            chelix_tools::Error::message(format!(
+                "model '{model_id}' has no reasoning.supported_efforts metadata"
+            ))
+        })?;
+    if !supported_efforts
+        .iter()
+        .any(|supported| supported.as_str() == Some(reasoning_effort.as_str()))
     {
         return Err(chelix_tools::Error::message(format!(
-            "model '{model_id}' does not support reasoning_effort"
+            "model '{model_id}' does not support reasoning_effort '{}'",
+            reasoning_effort.as_str()
         )));
     }
     Ok(())

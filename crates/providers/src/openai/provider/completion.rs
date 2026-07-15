@@ -35,16 +35,6 @@ fn should_warn_on_api_error(status: reqwest::StatusCode, body_text: &str) -> boo
 }
 
 impl OpenAiProvider {
-    fn apply_probe_output_cap_chat(&self, body: &mut serde_json::Value) {
-        if self.model_capabilities.reasoning {
-            // GPT-5 and reasoning models need a higher minimum output cap.
-            // Values below ~10 can trigger 400 errors on some models.
-            body["max_completion_tokens"] = serde_json::json!(16);
-        } else {
-            body["max_tokens"] = serde_json::json!(1);
-        }
-    }
-
     pub(super) async fn probe_chat_completions(&self) -> anyhow::Result<()> {
         let messages = vec![ChatMessage::user("ping")];
         let mut openai_messages = self.serialize_messages_for_request(&messages);
@@ -54,9 +44,6 @@ impl OpenAiProvider {
             "messages": openai_messages,
         });
         self.apply_system_prompt_rewrite(&mut body);
-        // Probes only answer "can this model respond at all?".
-        // Keep them cheap instead of mirroring full reasoning budgets.
-        self.apply_probe_output_cap_chat(&mut body);
 
         let url = self.chat_completions_url();
         debug!(model = %self.model, url = %url, "openai probe request");
@@ -358,6 +345,7 @@ impl OpenAiProvider {
             body["tools"] = serde_json::Value::Array(to_responses_api_tools(tools));
         }
         super::core::apply_openai_responses_tool_choice(&mut body, options)?;
+        self.apply_reasoning_effort_responses(&mut body);
 
         debug!(
             model = %self.model,
@@ -530,64 +518,119 @@ fn collect_model_ids<'a>(value: &'a serde_json::Value, out: &mut Vec<&'a str>) {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use super::*;
+    use std::{collections::HashMap, sync::Arc};
 
-    fn provider(model: &str, provider_name: &str, base_url: &str) -> OpenAiProvider {
-        OpenAiProvider::new_with_name(
-            secrecy::Secret::new("test-key".to_string()),
-            model.to_string(),
-            base_url.to_string(),
-            provider_name.to_string(),
-        )
-    }
+    use {
+        axum::{
+            Json, Router,
+            body::Body,
+            extract::State,
+            http::{Uri, header::CONTENT_TYPE},
+            response::Response,
+            routing::post,
+        },
+        chelix_agents::model::{ChatMessage, LlmProvider, ReasoningEffort},
+        secrecy::Secret,
+        tokio::sync::Mutex,
+    };
 
-    #[test]
-    fn probe_output_cap_uses_resolved_model_reasoning_capability() {
-        let provider = provider("custom-reasoner", "custom", "https://example.invalid/v1")
-            .with_model_capabilities(crate::ModelCapabilities {
-                reasoning: true,
-                ..crate::ModelCapabilities::infer("custom-reasoner")
+    use super::OpenAiProvider;
+
+    type CapturedBodies = Arc<Mutex<HashMap<String, serde_json::Value>>>;
+
+    async fn capture_request(
+        State(captured): State<CapturedBodies>,
+        uri: Uri,
+        Json(body): Json<serde_json::Value>,
+    ) -> Response<Body> {
+        captured.lock().await.insert(uri.path().to_string(), body);
+
+        if uri.path().ends_with("/responses") {
+            let completed = serde_json::json!({
+                "type": "response.completed",
+                "response": {
+                    "usage": {
+                        "input_tokens": 1,
+                        "output_tokens": 1,
+                        "input_tokens_details": { "cached_tokens": 0 }
+                    }
+                }
             });
-        let mut body = serde_json::json!({
-            "model": "custom-reasoner",
-            "messages": [{"role": "user", "content": "ping"}],
-        });
+            return Response::builder()
+                .header(CONTENT_TYPE, "text/event-stream")
+                .body(Body::from(format!("data: {completed}\n\n")))
+                .expect("responses fixture should build");
+        }
 
-        provider.apply_probe_output_cap_chat(&mut body);
-
-        assert_eq!(body["max_completion_tokens"], 16);
-        assert!(body.get("max_tokens").is_none());
+        Response::builder()
+            .header(CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                serde_json::json!({
+                    "choices": [{ "message": { "content": "ok" } }],
+                    "usage": { "prompt_tokens": 1, "completion_tokens": 1 }
+                })
+                .to_string(),
+            ))
+            .expect("chat fixture should build")
     }
 
-    #[test]
-    fn probe_output_cap_does_not_infer_reasoning_from_model_name_when_capability_false() {
-        let provider = provider("gpt-5.2", "custom", "https://example.invalid/v1")
-            .with_model_capabilities(crate::ModelCapabilities {
-                reasoning: false,
-                ..crate::ModelCapabilities::infer("gpt-5.2")
-            });
-        let mut body = serde_json::json!({
-            "model": "gpt-5.2",
-            "messages": [{"role": "user", "content": "ping"}],
+    async fn start_capture_server() -> (String, CapturedBodies) {
+        let captured = Arc::new(Mutex::new(HashMap::new()));
+        let app = Router::new()
+            .route("/v1/chat/completions", post(capture_request))
+            .route("/v1/responses", post(capture_request))
+            .with_state(Arc::clone(&captured));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("capture server should bind");
+        let address = listener
+            .local_addr()
+            .expect("capture server should have an address");
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("capture server should run");
         });
-
-        provider.apply_probe_output_cap_chat(&mut body);
-
-        assert_eq!(body["max_tokens"], 1);
-        assert!(body.get("max_completion_tokens").is_none());
+        (format!("http://{address}/v1"), captured)
     }
 
-    #[test]
-    fn openai_probe_still_uses_max_completion_tokens_for_gpt5_models() {
-        let provider = provider("gpt-5.2", "openai", "https://api.openai.com/v1");
-        let mut body = serde_json::json!({
-            "model": "gpt-5.2",
-            "messages": [{"role": "user", "content": "ping"}],
-        });
+    #[tokio::test]
+    async fn max_reasoning_effort_is_sent_exactly_in_both_openai_wire_formats() {
+        let (base_url, captured) = start_capture_server().await;
+        let messages = [ChatMessage::user("hello")];
 
-        provider.apply_probe_output_cap_chat(&mut body);
+        let chat = Arc::new(OpenAiProvider::new_with_name(
+            Secret::new("test-key".to_string()),
+            "Combos/z.ai/glm".to_string(),
+            base_url.clone(),
+            "custom-ai-0xff-dad".to_string(),
+        ));
+        let chat = chat
+            .with_reasoning_effort(ReasoningEffort::from("max"))
+            .expect("chat provider should accept max");
+        chat.complete(&messages, &[])
+            .await
+            .expect("chat fixture should complete");
 
-        assert_eq!(body["max_completion_tokens"], 16);
-        assert!(body.get("max_tokens").is_none());
+        let responses = Arc::new(
+            OpenAiProvider::new_with_name(
+                Secret::new("test-key".to_string()),
+                "Combos/z.ai/glm".to_string(),
+                base_url,
+                "custom-ai-0xff-dad".to_string(),
+            )
+            .with_wire_api(chelix_config::WireApi::Responses),
+        );
+        let responses = responses
+            .with_reasoning_effort(ReasoningEffort::from("max"))
+            .expect("responses provider should accept max");
+        responses
+            .complete(&messages, &[])
+            .await
+            .expect("responses fixture should complete");
+
+        let captured = captured.lock().await;
+        assert_eq!(captured["/v1/chat/completions"]["reasoning_effort"], "max");
+        assert_eq!(captured["/v1/responses"]["reasoning"]["effort"], "max");
     }
 }

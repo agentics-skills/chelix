@@ -21,7 +21,7 @@ use tracing::{debug, warn};
 
 use crate::schema::{
     AgentIdentity, AgentPreset, McpServerId, PresetMcpPolicy, PresetSandboxMode, PresetToolPolicy,
-    is_default_agent_preset,
+    ReasoningEffort, is_default_agent_preset,
 };
 
 /// Frontmatter fields parsed from the YAML block.
@@ -115,11 +115,7 @@ pub fn parse_agent_md(content: &str) -> anyhow::Result<(String, AgentPreset)> {
         delegate_only: fm.delegate_only,
         max_iterations: fm.max_iterations,
         timeout_secs: fm.timeout_secs,
-        reasoning_effort: fm
-            .reasoning_effort
-            .as_deref()
-            .map(|value| value.try_into().map_err(anyhow::Error::msg))
-            .transpose()?,
+        reasoning_effort: fm.reasoning_effort.map(ReasoningEffort::from),
         mcp: parse_mcp_policy(fm.mcp_allow_servers, fm.mcp_deny_servers)?,
         sandbox: crate::schema::PresetSandboxPolicy {
             mode: fm
@@ -159,6 +155,7 @@ pub fn render_agent_md(name: &str, preset: &AgentPreset) -> anyhow::Result<Strin
         timeout_secs: preset.timeout_secs,
         reasoning_effort: preset
             .reasoning_effort
+            .as_ref()
             .map(|effort| effort.as_str().to_string()),
         mcp_allow_servers,
         mcp_deny_servers,
@@ -592,7 +589,7 @@ Search thoroughly.
                 name: Some("Secure Agent".into()),
                 ..Default::default()
             },
-            reasoning_effort: Some(ReasoningEffort::High),
+            reasoning_effort: Some(ReasoningEffort::from("ultra")),
             mcp: PresetMcpPolicy::Allow(vec![McpServerId::new("github"), McpServerId::new("jira")]),
             sandbox: PresetSandboxPolicy {
                 mode: Some(PresetSandboxMode::All),
@@ -608,7 +605,10 @@ Search thoroughly.
         let (name, parsed) = parse_agent_md(&rendered).unwrap();
 
         assert_eq!(name, "secure");
-        assert_eq!(parsed.reasoning_effort, Some(ReasoningEffort::High));
+        assert_eq!(
+            parsed.reasoning_effort,
+            Some(ReasoningEffort::from("ultra"))
+        );
         assert!(matches!(parsed.mcp, PresetMcpPolicy::Allow(ref servers) if servers.len() == 2));
         if let PresetMcpPolicy::Allow(servers) = &parsed.mcp {
             assert_eq!(servers[0].as_str(), "github");

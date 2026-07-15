@@ -30,7 +30,27 @@ pub(super) fn build_schema_map() -> KnownKeys {
         ]))
     };
 
-    let model_override = || Struct(HashMap::from([("context_window", Leaf)]));
+    let reasoning_metadata = || {
+        Struct(HashMap::from([
+            ("supported_efforts", Array(Box::new(Leaf))),
+            ("summary", Leaf),
+            ("include", Array(Box::new(Leaf))),
+        ]))
+    };
+
+    let model_metadata = || {
+        Struct(HashMap::from([
+            ("context_length", Leaf),
+            ("max_input_tokens", Leaf),
+            ("max_output_tokens", Leaf),
+            ("input_modalities", Array(Box::new(Leaf))),
+            ("output_modalities", Array(Box::new(Leaf))),
+            ("tool_calling", Leaf),
+            ("streaming", Leaf),
+            ("zeroDataRetentionEnabled", Leaf),
+            ("reasoning", reasoning_metadata()),
+        ]))
+    };
 
     let provider_entry = || {
         Struct(HashMap::from([
@@ -38,7 +58,7 @@ pub(super) fn build_schema_map() -> KnownKeys {
             ("api_key", Leaf),
             ("base_url", Leaf),
             ("url", Leaf),
-            ("models", Leaf),
+            ("models", Map(Box::new(model_metadata()))),
             ("fetch_models", Leaf),
             ("stream_transport", Leaf),
             ("wire_api", Leaf),
@@ -47,7 +67,6 @@ pub(super) fn build_schema_map() -> KnownKeys {
             ("cache_retention", Leaf),
             ("strict_tools", Leaf),
             ("policy", tool_policy_entry()),
-            ("model_overrides", Map(Box::new(model_override()))),
             ("probe_timeout_secs", Leaf),
         ]))
     };
@@ -396,7 +415,6 @@ pub(super) fn build_schema_map() -> KnownKeys {
                 ("prompt_memory_mode", Leaf),
                 ("workspace_file_max_chars", Leaf),
                 ("priority_models", Leaf),
-                ("allowed_models", Leaf),
             ])),
         ),
         (
@@ -542,14 +560,6 @@ pub(super) fn build_schema_map() -> KnownKeys {
                 ("prefetch_limit", Leaf),
                 ("auto_extract_interval", Leaf),
                 ("enable_session_summary", Leaf),
-            ])),
-        ),
-        (
-            "failover",
-            Struct(HashMap::from([
-                ("enabled", Leaf),
-                ("exact_model", Leaf),
-                ("fallback_models", Leaf),
             ])),
         ),
         (
@@ -820,7 +830,6 @@ pub(super) fn build_schema_map() -> KnownKeys {
                 ),
             ])),
         ),
-        ("models", Map(Box::new(model_override()))),
     ]))
 }
 

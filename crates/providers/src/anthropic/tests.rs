@@ -117,24 +117,22 @@ fn with_retry_after_marker_appends_retry_hint() {
 }
 
 #[test]
-fn apply_thinking_injects_budget_for_high_effort() {
+fn apply_thinking_preserves_provider_defined_effort() {
     let provider = AnthropicProvider {
-        context_window_global: std::collections::HashMap::new(),
-        context_window_provider: std::collections::HashMap::new(),
         api_key: secrecy::Secret::new("test".into()),
         model: "claude-opus-4-5-20251101".into(),
         base_url: "https://api.anthropic.com".into(),
         client: crate::shared_http_client(),
         alias: None,
-        reasoning_effort: Some(chelix_agents::model::ReasoningEffort::High),
+        reasoning_effort: Some(chelix_agents::model::ReasoningEffort::from("ultra")),
         cache_retention: chelix_config::CacheRetention::Short,
     };
     let mut body = serde_json::json!({ "model": "claude-opus-4-5-20251101", "max_tokens": 4096 });
     provider.apply_thinking(&mut body);
 
-    assert_eq!(body["thinking"]["type"], "enabled");
-    assert_eq!(body["thinking"]["budget_tokens"], 32768);
-    assert!(body["max_tokens"].as_u64().unwrap() > 32768);
+    assert_eq!(body["thinking"]["type"], "adaptive");
+    assert_eq!(body["output_config"]["effort"], "ultra");
+    assert_eq!(body["max_tokens"], 4096);
 }
 
 #[test]
@@ -150,23 +148,21 @@ fn apply_thinking_skipped_when_no_effort() {
 }
 
 #[test]
-fn apply_thinking_low_effort_budget() {
+fn apply_thinking_preserves_max_effort() {
     let provider = AnthropicProvider {
-        context_window_global: std::collections::HashMap::new(),
-        context_window_provider: std::collections::HashMap::new(),
         api_key: secrecy::Secret::new("test".into()),
         model: "claude-sonnet-4-5-20250929".into(),
         base_url: "https://api.anthropic.com".into(),
         client: crate::shared_http_client(),
         alias: None,
-        reasoning_effort: Some(chelix_agents::model::ReasoningEffort::Low),
+        reasoning_effort: Some(chelix_agents::model::ReasoningEffort::from("max")),
         cache_retention: chelix_config::CacheRetention::Short,
     };
     let mut body = serde_json::json!({ "model": "test", "max_tokens": 4096 });
     provider.apply_thinking(&mut body);
 
-    assert_eq!(body["thinking"]["budget_tokens"], 4096);
-    assert!(body["max_tokens"].as_u64().unwrap() > 4096);
+    assert_eq!(body["thinking"]["type"], "adaptive");
+    assert_eq!(body["output_config"]["effort"], "max");
 }
 
 #[test]
@@ -181,11 +177,11 @@ fn with_reasoning_effort_creates_new_provider() {
     assert!(provider.reasoning_effort().is_none());
 
     let with_effort = provider
-        .with_reasoning_effort(chelix_agents::model::ReasoningEffort::High)
+        .with_reasoning_effort(chelix_agents::model::ReasoningEffort::from("ultra"))
         .expect("anthropic supports reasoning_effort");
     assert_eq!(
         with_effort.reasoning_effort(),
-        Some(chelix_agents::model::ReasoningEffort::High)
+        Some(chelix_agents::model::ReasoningEffort::from("ultra"))
     );
     assert_eq!(with_effort.id(), "claude-opus-4-5-20251101");
 }
@@ -208,7 +204,7 @@ async fn probe_request_caps_anthropic_output_to_one_token() {
 }
 
 #[tokio::test]
-async fn fetch_models_from_api_paginates_deduplicates_and_marks_first_three_once() {
+async fn fetch_models_from_api_paginates_and_deduplicates_without_inferred_recommendations() {
     let mut responses = HashMap::new();
     responses.insert(
         None,
@@ -252,14 +248,11 @@ async fn fetch_models_from_api_paginates_deduplicates_and_marks_first_three_once
         "claude-haiku-4-5",
         "claude-3-7-sonnet-20250219",
     ]);
-    assert!(models[0].recommended);
-    assert!(models[1].recommended);
-    assert!(models[2].recommended);
-    assert!(!models[3].recommended);
+    assert!(models.iter().all(|model| !model.recommended));
 }
 
 #[tokio::test]
-async fn fetch_models_from_api_ignores_non_chat_entries() {
+async fn fetch_models_from_api_does_not_filter_models_by_id() {
     let mut responses = HashMap::new();
     responses.insert(
         None,
@@ -282,7 +275,11 @@ async fn fetch_models_from_api_ignores_non_chat_entries() {
         .expect("model discovery should succeed");
 
     let ids: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();
-    assert_eq!(ids, vec!["claude-sonnet-4-6", "claude-opus-4-6"]);
+    assert_eq!(ids, vec![
+        "claude-sonnet-4-6",
+        "claude-embeddings-v1",
+        "claude-opus-4-6",
+    ]);
 }
 
 #[tokio::test]
@@ -305,7 +302,7 @@ async fn fetch_models_from_api_errors_on_http_failure() {
 }
 
 #[tokio::test]
-async fn fetch_models_from_api_errors_when_no_chat_models_are_returned() {
+async fn fetch_models_from_api_accepts_arbitrary_explicit_model_records() {
     let mut responses = HashMap::new();
     responses.insert(
         None,
@@ -321,11 +318,12 @@ async fn fetch_models_from_api_errors_when_no_chat_models_are_returned() {
     );
     let base_url = start_models_mock(Arc::new(Mutex::new(responses))).await;
 
-    let err = fetch_models_from_api(secrecy::Secret::new("test-key".into()), base_url)
+    let models = fetch_models_from_api(secrecy::Secret::new("test-key".into()), base_url)
         .await
-        .expect_err("empty chat-capable catalog should error");
+        .expect("explicit model records should be preserved");
 
-    assert!(err.to_string().contains("returned no models"));
+    assert_eq!(models.len(), 1);
+    assert_eq!(models[0].id, "claude-embeddings-v1");
 }
 
 #[test]
@@ -506,8 +504,6 @@ fn caching_disabled_returns_plain_string_system() {
 #[test]
 fn cache_retention_none_skips_cache_control() {
     let provider = AnthropicProvider {
-        context_window_global: std::collections::HashMap::new(),
-        context_window_provider: std::collections::HashMap::new(),
         api_key: secrecy::Secret::new("test".into()),
         model: "claude-sonnet-4-5-20250929".into(),
         base_url: "https://api.anthropic.com".into(),
@@ -557,22 +553,5 @@ fn parse_models_payload_does_not_mark_recommendations() {
     assert!(!models[0].recommended);
     assert!(!models[1].recommended);
     assert!(!models[2].recommended);
-    assert!(!models[3].recommended);
-}
-
-#[test]
-fn mark_recommended_models_marks_first_three_globally() {
-    let mut models = vec![
-        crate::DiscoveredModel::new("claude-opus-4-6", "Claude Opus 4.6"),
-        crate::DiscoveredModel::new("claude-sonnet-4-6", "Claude Sonnet 4.6"),
-        crate::DiscoveredModel::new("claude-haiku-4-5", "Claude Haiku 4.5"),
-        crate::DiscoveredModel::new("claude-3-7-sonnet-20250219", "Claude 3.7 Sonnet"),
-    ];
-
-    mark_recommended_models(&mut models);
-
-    assert!(models[0].recommended);
-    assert!(models[1].recommended);
-    assert!(models[2].recommended);
     assert!(!models[3].recommended);
 }

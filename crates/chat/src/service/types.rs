@@ -409,8 +409,6 @@ pub struct LiveChatService {
     pub(in crate::service) active_reply_medium: Arc<RwLock<HashMap<String, ReplyMedium>>>,
     /// Startup configuration snapshot for chat hot-path decisions.
     pub(in crate::service) config: chelix_config::ChelixConfig,
-    /// Failover configuration for automatic model/provider failover.
-    pub(in crate::service) failover_config: chelix_config::schema::FailoverConfig,
 }
 
 impl LiveChatService {
@@ -442,17 +440,11 @@ impl LiveChatService {
             active_partial_assistant: Arc::new(RwLock::new(HashMap::new())),
             active_reply_medium: Arc::new(RwLock::new(HashMap::new())),
             config: chelix_config::discover_and_load(),
-            failover_config: chelix_config::schema::FailoverConfig::default(),
         }
     }
 
     pub fn with_config(mut self, config: chelix_config::ChelixConfig) -> Self {
         self.config = config;
-        self
-    }
-
-    pub fn with_failover(mut self, config: chelix_config::schema::FailoverConfig) -> Self {
-        self.failover_config = config;
         self
     }
 

@@ -23,8 +23,8 @@ pub fn model_override_schema() -> Value {
                 "type": "string"
             },
             "reasoning_effort": {
-                "description": "Reasoning effort to use with the model override. Required inside model_override. Do not pass null or empty strings.",
-                "enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+                "description": "Exact reasoning effort advertised by the selected model's reasoning.supported_efforts metadata. Required inside model_override. Do not pass null or empty strings.",
+                "minLength": 1,
                 "type": "string"
             }
         }
@@ -50,22 +50,9 @@ pub fn parse_model_override(params: &Value) -> Result<Option<ModelOverride>> {
         .to_string();
     let reasoning_effort = str_param(value, "reasoning_effort")
         .ok_or_else(|| Error::message("model_override.reasoning_effort must be a non-empty string"))
-        .and_then(parse_reasoning_effort)?;
+        .map(ReasoningEffort::from)?;
     Ok(Some(ModelOverride {
         model,
         reasoning_effort,
     }))
-}
-
-fn parse_reasoning_effort(value: &str) -> Result<ReasoningEffort> {
-    ReasoningEffort::try_from(value).map_err(|error| {
-        Error::message(format!(
-            "invalid reasoning_effort '{value}'; {error}; expected one of: {}",
-            ReasoningEffort::ALL
-                .iter()
-                .map(|effort| effort.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ))
-    })
 }

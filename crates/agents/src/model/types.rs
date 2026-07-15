@@ -105,10 +105,3 @@ pub fn push_capped_provider_raw_event(
         raw_events.push(raw_event);
     }
 }
-
-/// Runtime model metadata fetched from provider APIs.
-#[derive(Debug, Clone)]
-pub struct ModelMetadata {
-    pub id: String,
-    pub context_length: u32,
-}

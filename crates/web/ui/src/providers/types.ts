@@ -1,30 +1,15 @@
 // ── Shared types for provider sub-modules ────────────────────
 
+import type { ModelInfo, ProviderInfo } from "../types/model";
+
+export type ModelEntry = ModelInfo;
+export type { ProviderInfo };
+
 export interface ProviderModalElements {
 	modal: HTMLElement;
 	body: HTMLElement;
 	title: HTMLElement;
 	close: HTMLElement;
-}
-
-export interface ProviderInfo {
-	name: string;
-	displayName: string;
-	authType: string;
-	keyOptional?: boolean;
-	configured?: boolean;
-	isCustom?: boolean;
-	uiOrder?: number;
-	defaultBaseUrl?: string;
-	models?: string[];
-}
-
-export interface ModelEntry {
-	id: string;
-	displayName: string;
-	provider?: string;
-	supportsTools?: boolean;
-	createdAt?: number;
 }
 
 export interface ValidationProgressState {

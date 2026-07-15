@@ -39,7 +39,7 @@ pub(crate) fn configured_models_for_provider(
     normalize_unique_models(
         configured
             .into_iter()
-            .map(|model| configured_model_for_provider(model.trim()).to_string()),
+            .map(|(model, _)| configured_model_for_provider(model.trim()).to_string()),
     )
 }
 

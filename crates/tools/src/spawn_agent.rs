@@ -189,13 +189,13 @@ impl SpawnAgentTool {
         provider: Arc<dyn LlmProvider>,
         preset: Option<&AgentPreset>,
     ) -> Arc<dyn LlmProvider> {
-        let Some(effort) = preset.and_then(|p| p.reasoning_effort) else {
+        let Some(effort) = preset.and_then(|p| p.reasoning_effort.as_ref()) else {
             return provider;
         };
         // Warn if the provider already has a (different) reasoning effort from
         // the model ID suffix — the preset value will take precedence.
         if let Some(existing) = provider.reasoning_effort()
-            && existing != effort
+            && existing.as_str() != effort.as_str()
         {
             tracing::warn!(
                 model = %provider.id(),
@@ -205,7 +205,7 @@ impl SpawnAgentTool {
             );
         }
         let cloned = Arc::clone(&provider);
-        let new_provider = cloned.with_reasoning_effort(effort);
+        let new_provider = cloned.with_reasoning_effort(effort.clone());
         if new_provider.is_none() {
             info!(
                 model = %provider.id(),

@@ -177,13 +177,6 @@ pub fn has_stored_tokens() -> bool {
     TokenStore::new().load(PROVIDER_NAME).is_some()
 }
 
-/// Known Kimi Code models.
-pub const KIMI_CODE_MODELS: &[(&str, &str)] = &[
-    ("kimi-for-coding", "Kimi For Coding"),
-    ("kimi-k2.5", "Kimi K2.5"),
-    ("kimi-k2.6", "Kimi K2.6"),
-];
-
 // ── LlmProvider impl ────────────────────────────────────────────────────────
 
 #[async_trait]
@@ -576,19 +569,6 @@ mod tests {
     #[test]
     fn has_stored_tokens_returns_false_without_tokens() {
         let _ = has_stored_tokens();
-    }
-
-    #[test]
-    fn kimi_code_models_not_empty() {
-        assert!(!KIMI_CODE_MODELS.is_empty());
-    }
-
-    #[test]
-    fn kimi_code_models_have_unique_ids() {
-        let mut ids: Vec<&str> = KIMI_CODE_MODELS.iter().map(|(id, _)| *id).collect();
-        ids.sort();
-        ids.dedup();
-        assert_eq!(ids.len(), KIMI_CODE_MODELS.len());
     }
 
     #[test]

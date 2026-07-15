@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use tracing::warn;
 
-use {crate::raw_model_id, chelix_agents::model::ChatMessage};
+use chelix_agents::model::ChatMessage;
 
 use {
     super::OpenAiProvider,
@@ -10,15 +10,13 @@ use {
 };
 
 impl OpenAiProvider {
-    /// For OpenRouter Anthropic models, inject `cache_control` breakpoints
-    /// on the system message and the last user message to enable prompt
-    /// caching passthrough to Anthropic.
+    /// Inject provider-configured `cache_control` breakpoints on the system
+    /// message and the last user message.
     pub(super) fn apply_openrouter_cache_control(&self, messages: &mut [serde_json::Value]) {
         if !matches!(
             self.capabilities.cache_control_policy,
             CacheControlPolicy::OpenRouterAnthropic
-        ) || !self.model.starts_with("anthropic/")
-            || matches!(self.cache_retention, chelix_config::CacheRetention::None)
+        ) || matches!(self.cache_retention, chelix_config::CacheRetention::None)
         {
             return;
         }
@@ -96,14 +94,7 @@ impl OpenAiProvider {
         if let Some(explicit) = self.reasoning_content_override {
             return explicit;
         }
-        if self.capabilities.default_reasoning_content_on_tool_messages {
-            return true;
-        }
-        let raw_model = raw_model_id(&self.model).to_ascii_lowercase();
-        self.capabilities
-            .reasoning_content_model_prefixes
-            .iter()
-            .any(|prefix| raw_model.starts_with(prefix))
+        self.capabilities.default_reasoning_content_on_tool_messages
     }
 
     fn requires_gemini_tool_call_extra_content(&self) -> bool {
@@ -116,20 +107,8 @@ impl OpenAiProvider {
         crate::openai_compat::to_openai_tools(tools, self.needs_strict_tools())
     }
 
-    /// Some backends ship chat templates that only accept a single system
-    /// message at the front of the conversation. Qwen-based OpenAI-compatible
-    /// backends commonly behave this way (e.g. llama.cpp chat templates).
-    fn requires_single_leading_system_message(&self) -> bool {
-        if !self.capabilities.qwen_models_require_single_leading_system {
-            return false;
-        }
-        raw_model_id(&self.model)
-            .to_ascii_lowercase()
-            .contains("qwen")
-    }
-
     fn system_message_rewrite_strategy(&self) -> SystemMessageRewriteStrategy {
-        if self.requires_single_leading_system_message() {
+        if self.capabilities.requires_single_leading_system_message {
             return SystemMessageRewriteStrategy::MergeLeadingSystem;
         }
         SystemMessageRewriteStrategy::None
@@ -397,10 +376,10 @@ mod tests {
     }
 
     #[test]
-    fn system_message_rewrite_qwen_merges_multiple_messages_into_one_leading_message() {
-        let provider = provider("qwen3:0.6b", "custom-qwen", "https://example.invalid/v1")
+    fn explicit_system_message_policy_merges_multiple_messages() {
+        let provider = provider("arbitrary-model", "custom", "https://example.invalid/v1")
             .with_capabilities(OpenAiProviderCapabilities {
-                qwen_models_require_single_leading_system: true,
+                requires_single_leading_system_message: true,
                 ..OpenAiProviderCapabilities::DEFAULT
             });
         let mut body = serde_json::json!({
@@ -448,7 +427,7 @@ mod tests {
     }
 
     #[test]
-    fn system_message_rewrite_qwen_model_on_openai_provider_is_unchanged() {
+    fn model_name_does_not_enable_system_message_rewrite() {
         let provider = provider("qwen3-coder-plus", "openai", "https://api.openai.com/v1");
         let mut body = serde_json::json!({
             "messages": [
@@ -470,14 +449,14 @@ mod tests {
     }
 
     #[test]
-    fn system_message_rewrite_alibaba_qwen_merges_multiple_messages_into_one_leading_message() {
+    fn provider_policy_applies_without_model_name_matching() {
         let provider = provider(
-            "qwen3.5-plus",
+            "arbitrary-model",
             "alibaba-coding",
             "https://coding-intl.dashscope.aliyuncs.com/v1",
         )
         .with_capabilities(OpenAiProviderCapabilities {
-            qwen_models_require_single_leading_system: true,
+            requires_single_leading_system_message: true,
             ..OpenAiProviderCapabilities::DEFAULT
         });
         let mut body = serde_json::json!({
@@ -541,35 +520,6 @@ mod tests {
         });
         let mut metadata = serde_json::Map::new();
         metadata.insert("thought_signature".to_string(), serde_json::json!("sig123"));
-        let messages =
-            p.serialize_messages_for_request(&[ChatMessage::assistant_with_tools(None, vec![
-                chelix_agents::model::ToolCall {
-                    id: "call_1".to_string(),
-                    name: "get_weather".to_string(),
-                    arguments: serde_json::json!({"location": "London"}),
-                    argument_diagnostic: None,
-                    metadata: Some(metadata),
-                },
-            ])]);
-
-        let tool_call = &messages[0]["tool_calls"][0];
-        assert!(tool_call.get("thought_signature").is_none());
-        assert_eq!(
-            tool_call["extra_content"]["google"]["thought_signature"],
-            "sig123"
-        );
-    }
-
-    #[test]
-    fn direct_gemini_provider_defaults_to_extra_content() {
-        let p = provider(
-            "gemini-3.1-flash-lite",
-            "gemini",
-            "https://generativelanguage.googleapis.com/v1beta/openai",
-        );
-        let mut metadata = serde_json::Map::new();
-        metadata.insert("thought_signature".to_string(), serde_json::json!("sig123"));
-
         let messages =
             p.serialize_messages_for_request(&[ChatMessage::assistant_with_tools(None, vec![
                 chelix_agents::model::ToolCall {
@@ -681,32 +631,6 @@ mod tests {
         assert!(p.requires_reasoning_content_on_tool_messages());
     }
 
-    #[test]
-    fn deepseek_v4_auto_detects_reasoning_content() {
-        let p = provider("deepseek-v4-flash", "custom", "https://example.invalid/v1")
-            .with_capabilities(OpenAiProviderCapabilities {
-                reasoning_content_model_prefixes: &["deepseek-v4"],
-                ..OpenAiProviderCapabilities::DEFAULT
-            });
-        assert!(
-            p.requires_reasoning_content_on_tool_messages(),
-            "DeepSeek V4 thinking-mode tool calls require reasoning_content replay (issue #959)"
-        );
-    }
-
-    #[test]
-    fn deepseek_non_v4_does_not_auto_detect_reasoning_content() {
-        let p = provider("deepseek-chat", "custom", "https://example.invalid/v1")
-            .with_capabilities(OpenAiProviderCapabilities {
-                reasoning_content_model_prefixes: &["deepseek-v4"],
-                ..OpenAiProviderCapabilities::DEFAULT
-            });
-        assert!(
-            !p.requires_reasoning_content_on_tool_messages(),
-            "DeepSeek reasoning_content replay should stay scoped to V4 thinking models"
-        );
-    }
-
     // ── Wire-format tests ───────────────────────────────────────────
 
     /// A provider with strict_tools=false must emit `"strict": false` in the
@@ -775,12 +699,9 @@ mod tests {
     }
 
     #[test]
-    fn deepseek_v4_replays_persisted_tool_reasoning_content() {
+    fn explicit_policy_replays_persisted_tool_reasoning_content() {
         let p = provider("deepseek-v4-flash", "custom", "https://example.invalid/v1")
-            .with_capabilities(OpenAiProviderCapabilities {
-                reasoning_content_model_prefixes: &["deepseek-v4"],
-                ..OpenAiProviderCapabilities::DEFAULT
-            });
+            .with_reasoning_content(true);
         let persisted = vec![
             serde_json::json!({"role": "user", "content": "What is the weather?"}),
             serde_json::json!({

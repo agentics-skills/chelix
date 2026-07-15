@@ -240,7 +240,7 @@ async fn ws_system_presence_shows_connected_client() {
 #[tokio::test]
 async fn gateway_startup_with_llm_wiring_does_not_block() {
     let resolved_auth = auth::resolve_auth(None, None);
-    let registry = Arc::new(tokio::sync::RwLock::new(ProviderRegistry::from_env()));
+    let registry = Arc::new(tokio::sync::RwLock::new(ProviderRegistry::empty()));
 
     let mut services = GatewayServices::noop();
     if !registry.read().await.is_empty() {
@@ -282,7 +282,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
     // Even without real API keys the override path must work.
     // Force it with an empty registry to exercise set_chat unconditionally.
     let resolved_auth2 = auth::resolve_auth(None, None);
-    let registry2 = Arc::new(tokio::sync::RwLock::new(ProviderRegistry::from_env()));
+    let registry2 = Arc::new(tokio::sync::RwLock::new(ProviderRegistry::empty()));
     let state2 = GatewayState::new(resolved_auth2, GatewayServices::noop());
     let tmp2 = tempfile::tempdir().unwrap();
     let session_store2 = Arc::new(chelix_sessions::store::SessionStore::new(

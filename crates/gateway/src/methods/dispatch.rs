@@ -187,7 +187,6 @@ const WRITE_METHODS: &[&str] = &[
     "models.cancel_detect",
     "models.test",
     "providers.save_key",
-    "providers.save_model",
     "providers.save_models",
     "providers.validate_key",
     "providers.remove_key",

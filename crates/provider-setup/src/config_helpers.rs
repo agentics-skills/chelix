@@ -7,10 +7,13 @@ use std::{
 
 use secrecy::{ExposeSecret, Secret};
 
-use {chelix_config::schema::ProvidersConfig, chelix_oauth::TokenStore};
+use {
+    chelix_config::schema::{ModelConfigMap, ProvidersConfig},
+    chelix_oauth::TokenStore,
+};
 
 use crate::{
-    key_store::{KeyStore, ProviderConfig, normalize_model_list},
+    key_store::{KeyStore, ProviderConfig},
     known_providers::{AuthType, known_providers},
     oauth::{codex_cli_auth_has_access_token, codex_cli_auth_path},
 };
@@ -101,6 +104,19 @@ pub(crate) fn ui_offered_provider_set(offered_order: &[String]) -> Option<BTreeS
 
 // ── Merge saved keys into config ───────────────────────────────────────────
 
+fn merge_model_maps(preferred: &mut ModelConfigMap, fallback: ModelConfigMap) {
+    if preferred.is_empty() {
+        *preferred = fallback;
+        return;
+    }
+
+    preferred.iter_mut().for_each(|(model_id, metadata)| {
+        if let Some(fallback_metadata) = fallback.get(model_id) {
+            *metadata = std::mem::take(metadata).with_fallback(fallback_metadata.clone());
+        }
+    });
+}
+
 /// Merge persisted provider configs into a ProvidersConfig so the registry rebuild
 /// picks them up without needing env vars.
 pub fn config_with_saved_keys(base: &ProvidersConfig, key_store: &KeyStore) -> ProvidersConfig {
@@ -123,9 +139,7 @@ pub fn config_with_saved_keys(base: &ProvidersConfig, key_store: &KeyStore) -> P
             {
                 dst.base_url = Some(base_url);
             }
-            if dst.models.is_empty() && !entry.models.is_empty() {
-                dst.models = normalize_model_list(entry.models);
-            }
+            merge_model_maps(&mut dst.models, entry.models);
         }
     }
 
@@ -146,7 +160,9 @@ pub fn config_with_saved_keys(base: &ProvidersConfig, key_store: &KeyStore) -> P
             entry.base_url = saved.base_url;
         }
         if !saved.models.is_empty() {
+            let fallback = std::mem::take(&mut entry.models);
             entry.models = saved.models;
+            merge_model_maps(&mut entry.models, fallback);
         }
     }
 
@@ -170,13 +186,7 @@ pub fn config_with_saved_keys(base: &ProvidersConfig, key_store: &KeyStore) -> P
             entry.base_url = Some(url);
         }
 
-        if !saved.models.is_empty() {
-            // Merge: saved models (from "Choose model" UI) go first, then
-            // config models. normalize_model_list deduplicates.
-            let mut merged = saved.models;
-            merged.append(&mut entry.models);
-            entry.models = normalize_model_list(merged);
-        }
+        merge_model_maps(&mut entry.models, saved.models);
     }
 
     config
@@ -190,7 +200,7 @@ pub fn has_explicit_provider_settings(config: &ProvidersConfig) -> bool {
             .api_key
             .as_ref()
             .is_some_and(|k| !k.expose_secret().trim().is_empty())
-            || entry.models.iter().any(|model| !model.trim().is_empty())
+            || !entry.models.is_empty()
             || entry
                 .base_url
                 .as_deref()
@@ -319,7 +329,29 @@ pub fn detect_auto_provider_sources_with_overrides(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use {super::*, chelix_config::schema::ProviderEntry};
+    use {
+        super::*,
+        chelix_config::schema::{PartialModelMetadata, PartialReasoningMetadata, ProviderEntry},
+    };
+
+    fn model_metadata() -> PartialModelMetadata {
+        PartialModelMetadata {
+            context_length: Some(128_000),
+            max_input_tokens: Some(96_000),
+            max_output_tokens: Some(32_000),
+            reasoning: Some(PartialReasoningMetadata {
+                supported_efforts: Some(Vec::new()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    fn model_map(ids: &[&str]) -> ModelConfigMap {
+        ids.iter()
+            .map(|id| ((*id).to_string(), model_metadata()))
+            .collect()
+    }
 
     #[test]
     fn config_with_saved_keys_merges_base_url_and_models() {
@@ -330,7 +362,7 @@ mod tests {
                 "openai",
                 Some("sk-saved".into()),
                 Some("https://custom.api.com/v1".into()),
-                Some(vec!["gpt-4o".into()]),
+                Some(model_map(&["gpt-4o"])),
             )
             .unwrap();
 
@@ -342,7 +374,53 @@ mod tests {
             Some("sk-saved")
         );
         assert_eq!(entry.base_url.as_deref(), Some("https://custom.api.com/v1"));
-        assert_eq!(entry.models, vec!["gpt-4o"]);
+        assert_eq!(
+            entry.models.keys().map(String::as_str).collect::<Vec<_>>(),
+            vec!["gpt-4o"]
+        );
+    }
+
+    #[test]
+    fn config_model_allowlist_and_fields_take_precedence_over_saved_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = KeyStore::with_path(dir.path().join("keys.json"));
+        let mut saved_models = model_map(&["gpt-4o", "gpt-5"]);
+        saved_models.get_mut("gpt-4o").unwrap().tool_calling = Some(true);
+        store
+            .save_config("openai", Some("sk-saved".into()), None, Some(saved_models))
+            .unwrap();
+
+        let mut configured_metadata = PartialModelMetadata {
+            context_length: Some(200_000),
+            tool_calling: Some(false),
+            ..Default::default()
+        };
+        configured_metadata.reasoning = Some(PartialReasoningMetadata::default());
+        let mut configured_models = ModelConfigMap::new();
+        configured_models.insert("gpt-4o".into(), configured_metadata);
+        let mut base = ProvidersConfig::default();
+        base.providers.insert("openai".into(), ProviderEntry {
+            models: configured_models,
+            ..Default::default()
+        });
+
+        let merged = config_with_saved_keys(&base, &store);
+        let models = &merged.get("openai").unwrap().models;
+        assert_eq!(models.keys().map(String::as_str).collect::<Vec<_>>(), vec![
+            "gpt-4o"
+        ]);
+        let metadata = models.get("gpt-4o").unwrap();
+        assert_eq!(metadata.context_length, Some(200_000));
+        assert_eq!(metadata.max_input_tokens, Some(96_000));
+        assert_eq!(metadata.max_output_tokens, Some(32_000));
+        assert_eq!(metadata.tool_calling, Some(false));
+        assert_eq!(
+            metadata
+                .reasoning
+                .as_ref()
+                .and_then(|reasoning| reasoning.supported_efforts.as_ref()),
+            Some(&Vec::new())
+        );
     }
 
     #[test]
@@ -395,7 +473,7 @@ mod tests {
         model_only
             .providers
             .insert("openrouter".into(), ProviderEntry {
-                models: vec!["z-ai/glm-4.6".into()],
+                models: model_map(&["z-ai/glm-4.6"]),
                 ..Default::default()
             });
         assert!(has_explicit_provider_settings(&model_only));

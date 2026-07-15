@@ -96,16 +96,29 @@ enabled = true
 
 [providers.openai]
 enabled = true
-models = ["gpt-5.3", "gpt-5.2"]
 stream_transport = "sse"        # "sse", "websocket", or "auto"
+
+[providers.openai.models."gpt-5.3"]
+[providers.openai.models."gpt-5.2"]
 
 [providers.gemini]
 enabled = true
-models = ["gemini-2.5-flash", "gemini-2.5-pro"]
+
+[providers.gemini.models."gemini-2.5-flash"]
+[providers.gemini.models."gemini-2.5-pro"]
 
 [chat]
 priority_models = ["gpt-5.2"]
 ```
+
+Selected models use one TOML form:
+`[providers.<name>.models."<raw-model-id>"]`. These tables form an ordered
+allowlist. Configuration wins field by field, `/models` discovery supplements
+missing metadata, and optional defaults apply last. Chelix excludes a model
+unless `context_length`,
+`max_input_tokens`, `max_output_tokens`, and
+`reasoning.supported_efforts` resolve to a valid record. Use
+`chat.priority_models` only for cross-provider selector ordering.
 
 See [Providers](providers.md) for the full list of supported providers and
 configuration options.

@@ -18,7 +18,7 @@ use {
 };
 
 use {
-    chelix_providers::{ProviderRegistry, model_id::raw_model_id},
+    chelix_providers::{ProviderRegistry, discover_models, model_id::raw_model_id},
     chelix_service_traits::{ModelService, ServiceError, ServiceResult},
 };
 
@@ -539,6 +539,40 @@ impl LiveModelService {
             .await;
         }
     }
+
+    fn model_value(
+        model: &chelix_providers::ModelInfo,
+        preferred: bool,
+        disabled: bool,
+        unsupported: Option<&UnsupportedModelInfo>,
+    ) -> Result<Value, serde_json::Error> {
+        let mut value = serde_json::to_value(model)?;
+        if let Some(object) = value.as_object_mut() {
+            object.insert("preferred".into(), Value::Bool(preferred));
+            object.insert("disabled".into(), Value::Bool(disabled));
+            object.insert("unsupported".into(), Value::Bool(unsupported.is_some()));
+            object.insert(
+                "unsupported_reason".into(),
+                unsupported
+                    .map(|info| Value::String(info.detail.clone()))
+                    .unwrap_or(Value::Null),
+            );
+            object.insert(
+                "unsupported_provider".into(),
+                unsupported
+                    .and_then(|info| info.provider.clone())
+                    .map(Value::String)
+                    .unwrap_or(Value::Null),
+            );
+            object.insert(
+                "unsupported_updated_at".into(),
+                unsupported
+                    .map(|info| Value::from(info.updated_at_ms))
+                    .unwrap_or(Value::Null),
+            );
+        }
+        Ok(value)
+    }
 }
 
 #[async_trait]
@@ -567,7 +601,7 @@ impl ModelService for LiveModelService {
             &order,
             all_models
                 .iter()
-                .filter(|m| chelix_providers::is_chat_capable_model(&m.id))
+                .filter(|model| model.supports_text_chat())
                 .filter(|m| !disabled.is_disabled(&m.id))
                 .filter(|m| disabled.unsupported_info(&m.id).is_none()),
         );
@@ -587,23 +621,10 @@ impl ModelService for LiveModelService {
             })
             .map(|m| {
                 let preferred = Self::priority_rank(&order, m) != usize::MAX;
-                serde_json::json!({
-                    "id": m.id,
-                    "provider": m.provider,
-                    "displayName": m.display_name,
-                    "supportsTools": m.capabilities.tools,
-                    "supportsVision": m.capabilities.vision,
-                    "supportsReasoning": m.capabilities.reasoning,
-                    "preferred": preferred,
-                    "recommended": m.recommended,
-                    "createdAt": m.created_at,
-                    "unsupported": false,
-                    "unsupportedReason": Value::Null,
-                    "unsupportedProvider": Value::Null,
-                    "unsupportedUpdatedAt": Value::Null,
-                })
+                Self::model_value(m, preferred, false, None)
             })
-            .collect();
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(ServiceError::message)?;
         Ok(serde_json::json!(models))
     }
 
@@ -614,9 +635,7 @@ impl ModelService for LiveModelService {
         let all_models = reg.list_models();
         let prioritized = Self::prioritize_models(
             &order,
-            all_models
-                .iter()
-                .filter(|m| chelix_providers::is_chat_capable_model(&m.id)),
+            all_models.iter().filter(|model| model.supports_text_chat()),
         );
         info!(model_count = prioritized.len(), "models.list_all response");
         let models: Vec<_> = prioritized
@@ -625,24 +644,10 @@ impl ModelService for LiveModelService {
             .map(|m| {
                 let preferred = Self::priority_rank(&order, m) != usize::MAX;
                 let unsupported = disabled.unsupported_info(&m.id);
-                serde_json::json!({
-                    "id": m.id,
-                    "provider": m.provider,
-                    "displayName": m.display_name,
-                    "supportsTools": m.capabilities.tools,
-                    "supportsVision": m.capabilities.vision,
-                    "supportsReasoning": m.capabilities.reasoning,
-                    "preferred": preferred,
-                    "recommended": m.recommended,
-                    "createdAt": m.created_at,
-                    "disabled": disabled.is_disabled(&m.id),
-                    "unsupported": unsupported.is_some(),
-                    "unsupportedReason": unsupported.map(|u| u.detail.clone()),
-                    "unsupportedProvider": unsupported.and_then(|u| u.provider.clone()),
-                    "unsupportedUpdatedAt": unsupported.map(|u| u.updated_at_ms),
-                })
+                Self::model_value(m, preferred, disabled.is_disabled(&m.id), unsupported)
             })
-            .collect();
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(ServiceError::message)?;
         Ok(serde_json::json!(models))
     }
 
@@ -745,19 +750,16 @@ impl ModelService for LiveModelService {
         // are found before probing.
         {
             let env_snapshot = self.env_overrides.read().await.clone();
-            let result = chelix_providers::fetch_discoverable_models(
+            let discovery = discover_models(
                 &self.providers_config,
                 &env_snapshot,
                 provider_filter.as_deref(),
             )
             .await;
-            if !result.is_empty() {
+            if !discovery.is_empty() {
                 let mut reg = self.providers.write().await;
-                let new_count = reg.register_rediscovered_models(
-                    &self.providers_config,
-                    &env_snapshot,
-                    &result,
-                );
+                let new_count =
+                    reg.refresh_from_discovery(&self.providers_config, &env_snapshot, &discovery);
                 if new_count > 0 {
                     tracing::info!(
                         new_models = new_count,

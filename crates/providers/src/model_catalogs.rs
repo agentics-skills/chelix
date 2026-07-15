@@ -1,89 +1,6 @@
-//! Static model catalogs and OpenAI-compatible provider definitions.
+//! OpenAI-compatible provider transport definitions.
 
 use crate::openai::{CacheControlPolicy, OpenAiProviderCapabilities};
-
-/// Known Anthropic Claude models (model_id, display_name).
-/// Current models listed first, then legacy models.
-pub(crate) const ANTHROPIC_MODELS: &[(&str, &str)] = &[
-    // Anthropic currently documents Claude 4.6 using alias IDs rather than
-    // dated snapshot IDs. Register the documented aliases instead of
-    // inventing snapshot suffixes that the API rejects.
-    ("claude-opus-4-6", "Claude Opus 4.6"),
-    ("claude-sonnet-4-6", "Claude Sonnet 4.6"),
-    ("claude-opus-4-5-20251101", "Claude Opus 4.5"),
-    ("claude-sonnet-4-5-20250929", "Claude Sonnet 4.5"),
-    ("claude-haiku-4-5-20251001", "Claude Haiku 4.5"),
-    ("claude-opus-4-1-20250805", "Claude Opus 4.1"),
-    ("claude-sonnet-4-20250514", "Claude Sonnet 4"),
-    ("claude-opus-4-20250514", "Claude Opus 4"),
-    ("claude-3-7-sonnet-20250219", "Claude 3.7 Sonnet"),
-    ("claude-3-haiku-20240307", "Claude 3 Haiku"),
-];
-
-/// Known Z.AI (Zhipu) models.
-/// See: <https://docs.z.ai/api-reference/llm/chat-completion>
-pub(crate) const ZAI_MODELS: &[(&str, &str)] = &[
-    ("glm-5", "GLM-5"),
-    ("glm-4.7", "GLM-4.7"),
-    ("glm-4.7-flash", "GLM-4.7 Flash"),
-    ("glm-4.7-flashx", "GLM-4.7 FlashX"),
-    ("glm-4.6", "GLM-4.6"),
-    ("glm-4.6v", "GLM-4.6V (Vision)"),
-    ("glm-4.6v-flash", "GLM-4.6V Flash"),
-    ("glm-4.5", "GLM-4.5"),
-    ("glm-4.5-air", "GLM-4.5 Air"),
-    ("glm-4.5-airx", "GLM-4.5 AirX"),
-    ("glm-4.5-flash", "GLM-4.5 Flash"),
-    ("glm-4.5v", "GLM-4.5V (Vision)"),
-    ("glm-4-32b-0414-128k", "GLM-4 32B 128K"),
-];
-
-/// Known Alibaba Cloud Coding Plan models.
-/// See: <https://www.alibabacloud.com/help/en/model-studio/coding-plan>
-pub(crate) const ALIBABA_CODING_MODELS: &[(&str, &str)] = &[
-    ("qwen3.6-plus", "Qwen 3.6 Plus"),
-    ("kimi-k2.5", "Kimi K2.5"),
-    ("glm-5", "GLM-5"),
-    ("MiniMax-M2.5", "MiniMax M2.5"),
-    ("qwen3.5-plus", "Qwen 3.5 Plus"),
-    ("qwen3-max-2026-01-23", "Qwen3 Max"),
-    ("qwen3-coder-next", "Qwen3 Coder Next"),
-    ("qwen3-coder-plus", "Qwen3 Coder Plus"),
-    ("glm-4.7", "GLM-4.7"),
-];
-
-/// Known DeepInfra models.
-/// See: <https://deepinfra.com/models>
-pub(crate) const DEEPINFRA_MODELS: &[(&str, &str)] = &[
-    (
-        "meta-llama/Llama-4-Maverick-17B-128E-Instruct",
-        "Llama 4 Maverick",
-    ),
-    ("meta-llama/Llama-4-Scout-17B-16E-Instruct", "Llama 4 Scout"),
-    ("deepseek-ai/DeepSeek-V3", "DeepSeek V3"),
-    ("deepseek-ai/DeepSeek-R1", "DeepSeek R1"),
-    ("Qwen/Qwen3-235B-A22B", "Qwen3 235B"),
-    ("Qwen/Qwen3-32B", "Qwen3 32B"),
-    (
-        "mistralai/Mistral-Small-24B-Instruct-2501",
-        "Mistral Small 24B",
-    ),
-    ("google/gemma-3-27b-it", "Gemma 3 27B"),
-];
-
-/// Known Moonshot models.
-pub(crate) const MOONSHOT_MODELS: &[(&str, &str)] =
-    &[("kimi-k2.5", "Kimi K2.5"), ("kimi-k2.6", "Kimi K2.6")];
-
-/// Known Google Gemini models.
-/// See: <https://ai.google.dev/gemini-api/docs/models>
-pub(crate) const GEMINI_MODELS: &[(&str, &str)] = &[
-    ("gemini-3.1-pro-preview", "Gemini 3.1 Pro Preview"),
-    ("gemini-3.1-flash-lite", "Gemini 3.1 Flash-Lite"),
-    ("gemini-3-flash-preview", "Gemini 3 Flash Preview"),
-    ("gemini-2.5-flash", "Gemini 2.5 Flash"),
-    ("gemini-2.5-pro", "Gemini 2.5 Pro"),
-];
 
 /// OpenAI-compatible provider definition for table-driven registration.
 pub(crate) struct OpenAiCompatDef {
@@ -91,12 +8,6 @@ pub(crate) struct OpenAiCompatDef {
     pub(crate) env_key: &'static str,
     pub(crate) env_base_url_key: &'static str,
     pub(crate) default_base_url: &'static str,
-    pub(crate) models: &'static [(&'static str, &'static str)],
-    /// Whether to attempt `/models` discovery by default. APIs that do not
-    /// expose a models endpoint should set this to `false` so the static
-    /// catalog is used without a noisy warning.
-    /// Users can still override via `fetch_models = true` in config.
-    pub(crate) supports_model_discovery: bool,
     /// When `false`, a dummy API key (the provider name) is used if none is
     /// configured. Intended for local servers that don't authenticate.
     pub(crate) requires_api_key: bool,
@@ -116,8 +27,6 @@ impl OpenAiCompatDef {
         env_key: "",
         env_base_url_key: "",
         default_base_url: "",
-        models: &[],
-        supports_model_discovery: true,
         requires_api_key: true,
         local_only: false,
         capabilities: OpenAiProviderCapabilities::DEFAULT,
@@ -142,7 +51,6 @@ pub(crate) const OPENAI_COMPAT_PROVIDERS: &[OpenAiCompatDef] = &[
         env_key: "MOONSHOT_API_KEY",
         env_base_url_key: "MOONSHOT_BASE_URL",
         default_base_url: "https://api.moonshot.ai/v1",
-        models: MOONSHOT_MODELS,
         capabilities: OpenAiProviderCapabilities {
             default_reasoning_content_on_tool_messages: true,
             ..OpenAiProviderCapabilities::DEFAULT
@@ -154,7 +62,6 @@ pub(crate) const OPENAI_COMPAT_PROVIDERS: &[OpenAiCompatDef] = &[
         env_key: "Z_API_KEY",
         env_base_url_key: "Z_BASE_URL",
         default_base_url: "https://api.z.ai/api/paas/v4",
-        models: ZAI_MODELS,
         ..OpenAiCompatDef::DEFAULT
     },
     OpenAiCompatDef {
@@ -162,7 +69,6 @@ pub(crate) const OPENAI_COMPAT_PROVIDERS: &[OpenAiCompatDef] = &[
         env_key: "Z_CODE_API_KEY",
         env_base_url_key: "Z_CODE_BASE_URL",
         default_base_url: "https://api.z.ai/api/coding/paas/v4",
-        models: ZAI_MODELS,
         ..OpenAiCompatDef::DEFAULT
     },
     OpenAiCompatDef {
@@ -170,7 +76,6 @@ pub(crate) const OPENAI_COMPAT_PROVIDERS: &[OpenAiCompatDef] = &[
         env_key: "DEEPINFRA_API_KEY",
         env_base_url_key: "DEEPINFRA_BASE_URL",
         default_base_url: "https://api.deepinfra.com/v1/openai",
-        models: DEEPINFRA_MODELS,
         ..OpenAiCompatDef::DEFAULT
     },
     OpenAiCompatDef {
@@ -178,9 +83,8 @@ pub(crate) const OPENAI_COMPAT_PROVIDERS: &[OpenAiCompatDef] = &[
         env_key: "ALIBABA_CODING_API_KEY",
         env_base_url_key: "ALIBABA_CODING_BASE_URL",
         default_base_url: "https://coding-intl.dashscope.aliyuncs.com/v1",
-        models: ALIBABA_CODING_MODELS,
         capabilities: OpenAiProviderCapabilities {
-            qwen_models_require_single_leading_system: true,
+            requires_single_leading_system_message: true,
             ..OpenAiProviderCapabilities::DEFAULT
         },
         ..OpenAiCompatDef::DEFAULT
@@ -190,7 +94,6 @@ pub(crate) const OPENAI_COMPAT_PROVIDERS: &[OpenAiCompatDef] = &[
         env_key: "GEMINI_API_KEY",
         env_base_url_key: "GEMINI_BASE_URL",
         default_base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
-        models: GEMINI_MODELS,
         capabilities: OpenAiProviderCapabilities {
             default_strict_tools: false,
             requires_gemini_tool_call_extra_content: true,
@@ -203,54 +106,7 @@ pub(crate) const OPENAI_COMPAT_PROVIDERS: &[OpenAiCompatDef] = &[
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use {super::*, crate::catalog_to_discovered};
-
-    #[test]
-    fn model_lists_not_empty() {
-        assert!(!ANTHROPIC_MODELS.is_empty());
-        assert!(!crate::openai::default_model_catalog().is_empty());
-        assert!(!ZAI_MODELS.is_empty());
-        assert!(!DEEPINFRA_MODELS.is_empty());
-        assert!(!MOONSHOT_MODELS.is_empty());
-        assert!(!GEMINI_MODELS.is_empty());
-    }
-
-    #[test]
-    fn model_lists_have_unique_ids() {
-        let openai_models = crate::openai::default_model_catalog();
-        let mut openai_ids: Vec<&str> = openai_models.iter().map(|m| m.id.as_str()).collect();
-        openai_ids.sort();
-        openai_ids.dedup();
-        assert_eq!(
-            openai_ids.len(),
-            openai_models.len(),
-            "duplicate OpenAI model IDs found"
-        );
-
-        for models in [
-            ANTHROPIC_MODELS,
-            DEEPINFRA_MODELS,
-            ZAI_MODELS,
-            MOONSHOT_MODELS,
-            GEMINI_MODELS,
-        ] {
-            let mut ids: Vec<&str> = models.iter().map(|(id, _)| *id).collect();
-            ids.sort();
-            ids.dedup();
-            assert_eq!(ids.len(), models.len(), "duplicate model IDs found");
-        }
-    }
-
-    #[test]
-    fn anthropic_catalog_uses_documented_claude_46_aliases() {
-        let anthropic_ids: Vec<&str> = ANTHROPIC_MODELS.iter().map(|(id, _)| *id).collect();
-
-        assert!(anthropic_ids.contains(&"claude-opus-4-6"));
-        assert!(anthropic_ids.contains(&"claude-sonnet-4-6"));
-        assert!(!anthropic_ids.contains(&"claude-opus-4-6-20260301"));
-        assert!(!anthropic_ids.contains(&"claude-sonnet-4-6-20260301"));
-        assert!(!anthropic_ids.contains(&"claude-haiku-4-6-20260301"));
-    }
+    use super::*;
 
     #[test]
     fn openai_compat_providers_have_unique_names() {
@@ -305,26 +161,6 @@ mod tests {
         );
         assert!(alibaba.requires_api_key);
         assert!(!alibaba.local_only);
-        assert!(alibaba.supports_model_discovery);
-    }
-
-    #[test]
-    fn alibaba_coding_models_no_duplicates() {
-        let mut ids: Vec<&str> = ALIBABA_CODING_MODELS.iter().map(|(id, _)| *id).collect();
-        ids.sort();
-        ids.dedup();
-        assert_eq!(
-            ids.len(),
-            ALIBABA_CODING_MODELS.len(),
-            "duplicate model IDs"
-        );
-    }
-
-    #[test]
-    fn alibaba_coding_models_have_recommended() {
-        let discovered = catalog_to_discovered(ALIBABA_CODING_MODELS, 4);
-        let recommended_count = discovered.iter().filter(|m| m.recommended).count();
-        assert_eq!(recommended_count, 4);
     }
 
     /// Cross-validate that every provider registered in this crate appears in

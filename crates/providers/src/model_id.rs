@@ -19,15 +19,6 @@ pub fn raw_model_id(model_id: &str) -> &str {
         .unwrap_or(model_id)
 }
 
-#[must_use]
-pub(crate) fn capability_model_id(model_id: &str) -> &str {
-    let raw = raw_model_id(model_id).trim();
-    raw.rsplit('/')
-        .next()
-        .filter(|id| !id.is_empty())
-        .unwrap_or(raw)
-}
-
 pub(crate) fn configured_model_for_provider(model_id: &str) -> &str {
     raw_model_id(model_id)
 }

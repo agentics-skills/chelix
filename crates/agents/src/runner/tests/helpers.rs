@@ -31,6 +31,8 @@ pub(super) use {
 
 pub(super) use crate::tool_parsing::parse_tool_call_from_text;
 
+pub(super) const TEST_CONTEXT_WINDOW: u32 = 128_000;
+
 // ── Recording hook ──────────────────────────────────────────────────────
 
 pub(super) struct RecordingHook {
@@ -124,6 +126,10 @@ impl LlmProvider for MockProvider {
         "mock-model"
     }
 
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
+    }
+
     async fn complete(
         &self,
         _messages: &[ChatMessage],
@@ -161,6 +167,10 @@ impl LlmProvider for ToolCallingProvider {
 
     fn id(&self) -> &str {
         "mock-model"
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
     }
 
     fn supports_tools(&self) -> bool {
@@ -225,6 +235,10 @@ impl LlmProvider for TextToolCallingProvider {
 
     fn id(&self) -> &str {
         "mock-no-native"
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
     }
 
     fn supports_tools(&self) -> bool {
@@ -494,6 +508,10 @@ impl LlmProvider for MultiToolProvider {
         "mock-model"
     }
 
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
+    }
+
     fn supports_tools(&self) -> bool {
         true
     }
@@ -555,8 +573,8 @@ impl LlmProvider for PreemptiveOverflowProvider {
         true
     }
 
-    fn context_window(&self) -> u32 {
-        120
+    fn context_window(&self) -> Option<u32> {
+        Some(120)
     }
 
     async fn complete(
@@ -605,6 +623,10 @@ impl LlmProvider for VisionEnabledProvider {
 
     fn id(&self) -> &str {
         "gpt-4o"
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
     }
 
     fn supports_tools(&self) -> bool {

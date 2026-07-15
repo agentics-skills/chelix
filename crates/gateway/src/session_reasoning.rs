@@ -20,6 +20,7 @@ pub async fn preset_defaults_for_agent(
         preset.model.clone(),
         preset
             .reasoning_effort
+            .as_ref()
             .map(|effort| effort.as_str().to_string()),
     )
 }

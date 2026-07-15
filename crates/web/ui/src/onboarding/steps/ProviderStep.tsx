@@ -2,7 +2,7 @@
 
 import type { VNode } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { modelVersionScore, sendRpc } from "../../helpers";
+import { sendRpc } from "../../helpers";
 import { t } from "../../i18n";
 import { providerApiKeyHelp } from "../../provider-key-help";
 import { completeProviderOAuth, startProviderOAuth } from "../../provider-oauth";
@@ -15,6 +15,7 @@ import {
 	validateProviderKey,
 } from "../../provider-validation";
 import { targetValue } from "../../typed-events";
+import { modelConfigMapFromSelection, selectedModelIdsFromConfig } from "../../types/model";
 import { ErrorPanel } from "../shared";
 import type {
 	KeyHelp,
@@ -46,74 +47,12 @@ export function sortProviders(list: ProviderInfo[]): ProviderInfo[] {
 	return list;
 }
 
-function normalizeProviderToken(value: string | undefined): string {
-	return String(value || "")
-		.toLowerCase()
-		.replace(/[^a-z0-9]/g, "");
-}
-
-function normalizeModelToken(value: string | undefined): string {
-	return String(value || "")
-		.trim()
-		.toLowerCase();
-}
-
-function stripModelNamespace(modelId: string | undefined): string {
-	if (!modelId || typeof modelId !== "string") return "";
-	const sep = modelId.lastIndexOf("::");
-	return sep >= 0 ? modelId.slice(sep + 2) : modelId;
-}
-
-export function resolveSavedModelSelection(
-	savedModels: string[] | undefined,
-	availableModels: ModelSelectorRow[],
-): Set<string> {
-	const selected = new Set<string>();
-	if (!(savedModels?.length && savedModels.length > 0) || availableModels.length === 0) return selected;
-
-	const exactIdLookup = new Map<string, string>();
-	const rawIdLookup = new Map<string, string>();
-	for (const mdl of availableModels) {
-		const id = String(mdl?.id || "").trim();
-		if (!id) continue;
-		exactIdLookup.set(normalizeModelToken(id), id);
-		const rawId = normalizeModelToken(stripModelNamespace(id));
-		if (rawId && !rawIdLookup.has(rawId)) rawIdLookup.set(rawId, id);
-	}
-
-	for (const savedModel of savedModels) {
-		const savedNorm = normalizeModelToken(savedModel);
-		if (!savedNorm) continue;
-		const exact = exactIdLookup.get(savedNorm);
-		if (exact) {
-			selected.add(exact);
-			continue;
-		}
-		const raw = normalizeModelToken(stripModelNamespace(savedModel));
-		const mapped = rawIdLookup.get(raw);
-		if (mapped) selected.add(mapped);
-	}
-	return selected;
-}
-
 function modelBelongsToProvider(providerName: string, mdl: ModelSelectorRow): boolean {
-	const needle = normalizeProviderToken(providerName);
-	if (!needle) return false;
-	const modelProvider = normalizeProviderToken(mdl?.provider);
-	if (modelProvider?.includes(needle)) return true;
-	const modelId = String(mdl?.id || "");
-	const modelPrefix = normalizeProviderToken(modelId.split("::")[0]);
-	return modelPrefix === needle;
+	return mdl.provider === providerName;
 }
 
 function toModelSelectorRow(modelRow: RawModelRow): ModelSelectorRow {
-	return {
-		id: modelRow.id,
-		displayName: modelRow.displayName || modelRow.id,
-		provider: modelRow.provider,
-		supportsTools: modelRow.supportsTools,
-		createdAt: modelRow.createdAt || 0,
-	};
+	return modelRow;
 }
 
 // ── ModelSelectCard ─────────────────────────────────────────
@@ -133,19 +72,19 @@ export function ModelSelectCard({
 	return (
 		<div className={`model-card ${selected ? "selected" : ""}`} onClick={onToggle}>
 			<div className="flex flex-wrap items-center justify-between gap-2">
-				<span className="text-sm font-medium text-[var(--text)]">{model.displayName}</span>
+				<span className="text-sm font-medium text-[var(--text)]">{model.display_name}</span>
 				<div className="flex flex-wrap gap-2 justify-end">
-					{model.supportsTools ? <span className="recommended-badge">Tools</span> : null}
+					{model.tool_calling ? <span className="recommended-badge">Tools</span> : null}
 					{probe === "probing" ? <span className="tier-badge">Probing{"\u2026"}</span> : null}
 					{probeError ? <span className="provider-item-badge warning">Unsupported</span> : null}
 				</div>
 			</div>
 			<div className="text-xs text-[var(--muted)] mt-1 font-mono">{model.id}</div>
 			{probeError ? <div className="text-xs font-medium text-[var(--danger,#ef4444)] mt-0.5">{probeError}</div> : null}
-			{model.createdAt ? (
+			{model.created_at ? (
 				<time
 					className="text-xs text-[var(--muted)] mt-0.5 opacity-60 block"
-					data-epoch-ms={model.createdAt * 1000}
+					data-epoch-ms={model.created_at * 1000}
 					data-format="year-month"
 				/>
 			) : null}
@@ -242,19 +181,16 @@ export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode 
 		const aRec = a.recommended ? 1 : 0;
 		const bRec = b.recommended ? 1 : 0;
 		if (aRec !== bRec) return bRec - aRec;
-		const aTime = a.createdAt || 0;
-		const bTime = b.createdAt || 0;
+		const aTime = a.created_at || 0;
+		const bTime = b.created_at || 0;
 		if (aTime !== bTime) return bTime - aTime;
-		const aVer = modelVersionScore(a.id);
-		const bVer = modelVersionScore(b.id);
-		if (aVer !== bVer) return bVer - aVer;
-		return (a.displayName || a.id).localeCompare(b.displayName || b.id);
+		return a.display_name.localeCompare(b.display_name);
 	});
 
 	const filteredModels = sortedModels.filter(
 		(m) =>
 			!modelSearch ||
-			m.displayName.toLowerCase().includes(modelSearch.toLowerCase()) ||
+			m.display_name.toLowerCase().includes(modelSearch.toLowerCase()) ||
 			m.id.toLowerCase().includes(modelSearch.toLowerCase()),
 	);
 
@@ -576,7 +512,7 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		if (provider.authType !== "api-key" || !provider.configured) return false;
 		const existingModels = await loadModelsForProvider(provider.name);
 		if (existingModels.length === 0) return false;
-		const saved = resolveSavedModelSelection(provider.models, existingModels);
+		const saved = selectedModelIdsFromConfig(existingModels, provider.models);
 		setModelSelectProvider(provider.name);
 		setConfiguring(provider.name);
 		setProviderModels(existingModels);
@@ -618,14 +554,14 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 			return;
 		}
 
-		validateProviderKey(p.name, keyVal, endpointVal, null)
+		validateProviderKey(p.name, keyVal, endpointVal)
 			.then(async (result: { valid: boolean; error?: string; models?: ModelSelectorRow[] }) => {
 				if (!result.valid) {
 					setPhase("form");
 					setError(result.error || "Validation failed.");
 					return;
 				}
-				const saveRes = await saveProviderKey(p.name, keyVal, endpointVal, null);
+				const saveRes = await saveProviderKey(p.name, keyVal, endpointVal);
 				if (!saveRes?.ok) {
 					setPhase("form");
 					setError((saveRes?.error as { message?: string })?.message || "Failed to save credentials.");
@@ -676,6 +612,7 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		const providerName = modelSelectProvider || configuring;
 		if (!providerName) return false;
 		const modelIds = Array.from(selectedModels);
+		const modelsForSave = modelConfigMapFromSelection(providerModels, selectedModels);
 		setSavingModels(true);
 		setError(null);
 		try {
@@ -683,15 +620,14 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 				const p = providers.find((pr) => pr.name === providerName);
 				const keyVal = apiKey.trim() || p?.name || "";
 				const endpointVal = endpoint.trim() || null;
-				const modelVal = p?.keyOptional && modelIds.length > 0 ? modelIds[0] : null;
-				const res = await saveProviderKey(providerName, keyVal, endpointVal, modelVal);
+				const res = await saveProviderKey(providerName, keyVal, endpointVal);
 				if (!res?.ok) {
 					setSavingModels(false);
 					setError((res?.error as { message?: string })?.message || "Failed to save credentials.");
 					return false;
 				}
 			}
-			const res = await sendRpc("providers.save_models", { provider: providerName, models: modelIds });
+			const res = await sendRpc("providers.save_models", { provider: providerName, models: modelsForSave });
 			if (!res?.ok) {
 				setSavingModels(false);
 				setError((res?.error as { message?: string })?.message || "Failed to save model preferences.");

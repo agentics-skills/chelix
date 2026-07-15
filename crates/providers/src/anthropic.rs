@@ -1,9 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    pin::Pin,
-    sync::mpsc,
-    time::Duration,
-};
+use std::{collections::HashSet, pin::Pin, time::Duration};
 
 use {async_trait::async_trait, futures::StreamExt, secrecy::ExposeSecret, tokio_stream::Stream};
 
@@ -25,11 +20,6 @@ pub struct AnthropicProvider {
     reasoning_effort: Option<chelix_agents::model::ReasoningEffort>,
     /// Prompt cache retention policy. When `None`, caching is disabled.
     cache_retention: chelix_config::CacheRetention,
-    /// Global per-model context window overrides from `[models.<id>]` config.
-    context_window_global: HashMap<String, u32>,
-    /// Provider-scoped per-model context window overrides from
-    /// `[providers.<name>.model_overrides.<id>]` config.
-    context_window_provider: HashMap<String, u32>,
 }
 
 const ANTHROPIC_MODELS_ENDPOINT_PATH: &str = "/v1/models";
@@ -44,8 +34,6 @@ impl AnthropicProvider {
             alias: None,
             reasoning_effort: None,
             cache_retention: chelix_config::CacheRetention::Short,
-            context_window_global: HashMap::new(),
-            context_window_provider: HashMap::new(),
         }
     }
 
@@ -64,8 +52,6 @@ impl AnthropicProvider {
             alias,
             reasoning_effort: None,
             cache_retention: chelix_config::CacheRetention::Short,
-            context_window_global: HashMap::new(),
-            context_window_provider: HashMap::new(),
         }
     }
 
@@ -80,46 +66,15 @@ impl AnthropicProvider {
         !matches!(self.cache_retention, chelix_config::CacheRetention::None)
     }
 
-    /// Set context window override maps extracted from config.
-    ///
-    /// `global` comes from `[models.<id>].context_window` and
-    /// `provider` comes from `[providers.<name>.model_overrides.<id>].context_window`.
-    #[must_use]
-    pub fn with_context_window_overrides(
-        mut self,
-        global: HashMap<String, u32>,
-        provider: HashMap<String, u32>,
-    ) -> Self {
-        self.context_window_global = global;
-        self.context_window_provider = provider;
-        self
-    }
-
-    /// Apply `thinking` configuration to an Anthropic request body based on
-    /// the configured reasoning effort.
+    /// Apply the exact provider-defined reasoning effort to an Anthropic request.
     fn apply_thinking(&self, body: &mut serde_json::Value) {
-        use chelix_agents::model::ReasoningEffort;
-        let Some(effort) = self.reasoning_effort else {
+        let Some(effort) = self.reasoning_effort.as_ref() else {
             return;
         };
-        let budget_tokens: u64 = match effort {
-            ReasoningEffort::None => return,
-            ReasoningEffort::Minimal => 1024,
-            ReasoningEffort::Low => 4096,
-            ReasoningEffort::Medium => 10240,
-            ReasoningEffort::High => 32768,
-            ReasoningEffort::ExtraHigh | ReasoningEffort::Max => 65536,
-        };
         body["thinking"] = serde_json::json!({
-            "type": "enabled",
-            "budget_tokens": budget_tokens,
+            "type": "adaptive",
         });
-        // Extended thinking requires higher max_tokens than budget_tokens.
-        if let Some(max_tokens) = body["max_tokens"].as_u64()
-            && max_tokens <= budget_tokens
-        {
-            body["max_tokens"] = serde_json::json!(budget_tokens + 4096);
-        }
+        body["output_config"]["effort"] = serde_json::json!(effort.as_str());
     }
 
     async fn probe_request(&self) -> anyhow::Result<()> {
@@ -290,19 +245,12 @@ fn normalize_display_name(model_id: &str, display_name: Option<&str>) -> String 
 }
 
 fn parse_model_entry(entry: &serde_json::Value) -> Option<crate::DiscoveredModel> {
-    let obj = entry.as_object()?;
-    let model_id = obj.get("id").and_then(serde_json::Value::as_str)?;
-
-    if !super::is_chat_capable_model(model_id) {
-        return None;
-    }
-
-    let display_name = obj.get("display_name").and_then(serde_json::Value::as_str);
-
-    Some(crate::DiscoveredModel::new(
-        model_id,
-        normalize_display_name(model_id, display_name),
-    ))
+    let mut model = crate::openai::parse_models_value(entry)
+        .ok()?
+        .into_iter()
+        .next()?;
+    model.display_name = normalize_display_name(&model.id, Some(&model.display_name));
+    Some(model)
 }
 
 fn parse_models_payload(value: &serde_json::Value) -> Vec<crate::DiscoveredModel> {
@@ -324,12 +272,6 @@ fn parse_models_payload(value: &serde_json::Value) -> Vec<crate::DiscoveredModel
     }
 
     models
-}
-
-fn mark_recommended_models(models: &mut [crate::DiscoveredModel]) {
-    for model in models.iter_mut().take(3) {
-        model.recommended = true;
-    }
 }
 
 fn models_endpoint(base_url: &str) -> String {
@@ -400,29 +342,11 @@ pub async fn fetch_models_from_api(
         after_id = Some(next_after_id);
     }
 
-    mark_recommended_models(&mut models);
-
     if models.is_empty() {
         anyhow::bail!("anthropic models API returned no models");
     }
 
     Ok(models)
-}
-
-pub fn start_model_discovery(
-    api_key: secrecy::Secret<String>,
-    base_url: String,
-) -> mpsc::Receiver<anyhow::Result<Vec<crate::DiscoveredModel>>> {
-    let (tx, rx) = mpsc::sync_channel(1);
-    std::thread::spawn(move || {
-        let result = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(anyhow::Error::from)
-            .and_then(|rt| rt.block_on(fetch_models_from_api(api_key, base_url)));
-        let _ = tx.send(result);
-    });
-    rx
 }
 
 /// Convert tool schemas from the generic format to Anthropic's tool format.
@@ -682,7 +606,7 @@ impl LlmProvider for AnthropicProvider {
     }
 
     fn reasoning_effort(&self) -> Option<chelix_agents::model::ReasoningEffort> {
-        self.reasoning_effort
+        self.reasoning_effort.clone()
     }
 
     fn with_reasoning_effort(
@@ -697,8 +621,6 @@ impl LlmProvider for AnthropicProvider {
             alias: self.alias.clone(),
             reasoning_effort: Some(effort),
             cache_retention: self.cache_retention,
-            context_window_global: self.context_window_global.clone(),
-            context_window_provider: self.context_window_provider.clone(),
         }))
     }
 
@@ -708,18 +630,6 @@ impl LlmProvider for AnthropicProvider {
 
     fn supports_tools(&self) -> bool {
         true
-    }
-
-    fn context_window(&self) -> u32 {
-        crate::context_window_for_model_with_config(
-            &self.model,
-            &self.context_window_global,
-            &self.context_window_provider,
-        )
-    }
-
-    fn supports_vision(&self) -> bool {
-        super::supports_vision_for_model(&self.model)
     }
 
     async fn complete(
@@ -756,7 +666,8 @@ impl LlmProvider for AnthropicProvider {
 
         if self
             .reasoning_effort
-            .is_some_and(|effort| !matches!(effort, chelix_agents::model::ReasoningEffort::None))
+            .as_ref()
+            .is_some_and(|effort| effort.as_str() != "none")
             && matches!(
                 options.tool_choice,
                 Some(ToolChoice::Tool { .. } | ToolChoice::Any)
@@ -900,9 +811,7 @@ impl LlmProvider for AnthropicProvider {
                 body["tools"] = serde_json::Value::Array(to_anthropic_tools(&tools));
             }
 
-            if self.reasoning_effort.is_some_and(|effort| {
-                !matches!(effort, chelix_agents::model::ReasoningEffort::None)
-            })
+            if self.reasoning_effort.as_ref().is_some_and(|effort| effort.as_str() != "none")
                 && matches!(options.tool_choice, Some(ToolChoice::Tool { .. } | ToolChoice::Any))
             {
                 yield StreamEvent::Error(

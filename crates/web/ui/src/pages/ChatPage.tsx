@@ -29,6 +29,7 @@ import { routes } from "../routes";
 import { bindSandboxImageEvents, bindSandboxToggleEvents, updateSandboxImageUI, updateSandboxUI } from "../sandbox";
 import { switchSession } from "../sessions";
 import * as S from "../state";
+import { modelStore } from "../stores/model-store";
 import { copyToClipboard } from "../ui";
 import { initVadButton, initVoiceInput, teardownVoiceInput } from "../voice-input";
 import {
@@ -498,20 +499,20 @@ function toggleMcp(): void {
 
 interface ModelNotice {
 	id: string;
-	displayName?: string;
+	display_name?: string;
 	provider?: string;
-	supportsTools?: boolean;
+	tool_calling?: boolean;
 }
 
 export function showModelNotice(model: ModelNotice): void {
 	if (!S.chatMsgBox) return;
-	if (model.supportsTools !== false) return;
+	if (model.tool_calling !== false) return;
 	slashInjectStyles();
 	const tpl = document.getElementById("tpl-model-notice") as HTMLTemplateElement | null;
 	if (!tpl) return;
 	const card = (tpl.content.cloneNode(true) as DocumentFragment).firstElementChild as HTMLElement;
 	const nameEl = card.querySelector("[data-model-name]");
-	if (nameEl) nameEl.textContent = model.displayName || model.id;
+	if (nameEl) nameEl.textContent = model.display_name || model.id;
 	const providerEl = card.querySelector("[data-provider]");
 	if (providerEl) providerEl.textContent = model.provider || "local";
 	S.chatMsgBox.appendChild(card);
@@ -714,9 +715,9 @@ function bindContextModals(): {
 }
 
 function syncModelComboLabel(): void {
-	if (!(S.models.length > 0 && S.modelComboLabel)) return;
-	const models = S.models as Array<{ id: string; displayName?: string }>;
-	const found = models.find((m) => m.id === S.selectedModelId);
+	if (!S.modelComboLabel) return;
+	const models = modelStore.models.value;
+	const found = modelStore.selectedModel.value;
 	if (found) {
 		const label = modelDisplayLabel(found);
 		S.modelComboLabel.textContent = label;

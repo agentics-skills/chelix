@@ -7,13 +7,8 @@ use {
     tokio_stream::Stream,
 };
 
-use tracing::debug;
-
-use crate::{ModelCapabilities, context_window_for_model_with_config};
-
 use chelix_agents::model::{
-    AgentToolControls, ChatMessage, CompletionResponse, LlmProvider, ModelMetadata, StreamEvent,
-    ToolChoice,
+    AgentToolControls, ChatMessage, CompletionResponse, LlmProvider, StreamEvent, ToolChoice,
 };
 
 use super::super::{OpenAiProvider, OpenAiProviderCapabilities};
@@ -34,8 +29,6 @@ impl OpenAiProvider {
         base_url: String,
         provider_name: String,
     ) -> Self {
-        let model_capabilities = ModelCapabilities::infer(&model);
-        let capabilities = default_capabilities_for_provider(&provider_name);
         Self {
             api_key,
             model,
@@ -44,17 +37,12 @@ impl OpenAiProvider {
             client: crate::shared_http_client(),
             stream_transport: ProviderStreamTransport::Sse,
             wire_api: WireApi::ChatCompletions,
-            metadata_cache: tokio::sync::OnceCell::new(),
             tool_mode_override: None,
             reasoning_effort: None,
             cache_retention: chelix_config::CacheRetention::Short,
             strict_tools_override: None,
             reasoning_content_override: None,
-            capabilities,
-            model_capabilities,
-            context_window_global: std::collections::HashMap::new(),
-            context_window_provider: std::collections::HashMap::new(),
-            discovered_context_window: None,
+            capabilities: OpenAiProviderCapabilities::DEFAULT,
             probe_timeout_secs: None,
         }
     }
@@ -62,18 +50,6 @@ impl OpenAiProvider {
     #[must_use]
     pub(crate) fn with_capabilities(mut self, capabilities: OpenAiProviderCapabilities) -> Self {
         self.capabilities = capabilities;
-        self
-    }
-
-    #[must_use]
-    pub(crate) fn with_model_capabilities(mut self, capabilities: ModelCapabilities) -> Self {
-        self.model_capabilities = capabilities;
-        self
-    }
-
-    #[must_use]
-    pub(crate) fn with_discovered_context_window(mut self, context_window: Option<u32>) -> Self {
-        self.discovered_context_window = context_window;
         self
     }
 
@@ -120,7 +96,7 @@ impl OpenAiProvider {
         self
     }
 
-    /// Create a copy of this provider with a fresh metadata cache.
+    /// Create a copy of this provider.
     ///
     /// Centralises the field-by-field copy so callers like
     /// `with_reasoning_effort` stay in sync when new fields are added.
@@ -133,34 +109,14 @@ impl OpenAiProvider {
             client: self.client,
             stream_transport: self.stream_transport,
             wire_api: self.wire_api,
-            metadata_cache: tokio::sync::OnceCell::new(),
             tool_mode_override: self.tool_mode_override,
-            reasoning_effort: self.reasoning_effort,
+            reasoning_effort: self.reasoning_effort.clone(),
             cache_retention: self.cache_retention,
             strict_tools_override: self.strict_tools_override,
             reasoning_content_override: self.reasoning_content_override,
             capabilities: self.capabilities,
-            model_capabilities: self.model_capabilities,
-            context_window_global: self.context_window_global.clone(),
-            context_window_provider: self.context_window_provider.clone(),
-            discovered_context_window: self.discovered_context_window,
             probe_timeout_secs: self.probe_timeout_secs,
         }
-    }
-
-    /// Set context window override maps extracted from config.
-    ///
-    /// `global` comes from `[models.<id>].context_window` and
-    /// `provider` comes from `[providers.<name>.model_overrides.<id>].context_window`.
-    #[must_use]
-    pub fn with_context_window_overrides(
-        mut self,
-        global: std::collections::HashMap<String, u32>,
-        provider: std::collections::HashMap<String, u32>,
-    ) -> Self {
-        self.context_window_global = global;
-        self.context_window_provider = provider;
-        self
     }
 
     pub(crate) async fn send_chat_completions_request(
@@ -188,20 +144,9 @@ impl OpenAiProvider {
         format!("Bearer {}", self.api_key.expose_secret().trim())
     }
 
-    /// Return the reasoning effort string if configured.
-    ///
-    /// Uses the OpenAI reasoning-effort vocabulary.
-    pub(crate) fn reasoning_effort_str(&self) -> Option<&'static str> {
-        use chelix_agents::model::ReasoningEffort;
-        self.reasoning_effort.map(|e| match e {
-            ReasoningEffort::None => "none",
-            ReasoningEffort::Minimal => "minimal",
-            ReasoningEffort::Low => "low",
-            ReasoningEffort::Medium => "medium",
-            ReasoningEffort::High => "high",
-            ReasoningEffort::ExtraHigh => "xhigh",
-            ReasoningEffort::Max => "max",
-        })
+    /// Return the exact provider-defined reasoning effort if configured.
+    pub(crate) fn reasoning_effort_str(&self) -> Option<&str> {
+        self.reasoning_effort.as_ref().map(|effort| effort.as_str())
     }
 
     /// Apply `reasoning_effort` for the **Chat Completions** API (used by
@@ -247,18 +192,6 @@ impl OpenAiProvider {
     }
 }
 
-fn default_capabilities_for_provider(provider_name: &str) -> OpenAiProviderCapabilities {
-    if provider_name == "gemini" {
-        return OpenAiProviderCapabilities {
-            default_strict_tools: false,
-            requires_gemini_tool_call_extra_content: true,
-            ..OpenAiProviderCapabilities::DEFAULT
-        };
-    }
-
-    OpenAiProviderCapabilities::DEFAULT
-}
-
 #[async_trait]
 impl LlmProvider for OpenAiProvider {
     fn name(&self) -> &str {
@@ -266,7 +199,7 @@ impl LlmProvider for OpenAiProvider {
     }
 
     fn reasoning_effort(&self) -> Option<chelix_agents::model::ReasoningEffort> {
-        self.reasoning_effort
+        self.reasoning_effort.clone()
     }
 
     fn with_reasoning_effort(
@@ -286,80 +219,12 @@ impl LlmProvider for OpenAiProvider {
         match self.tool_mode_override {
             Some(chelix_config::ToolMode::Native) => true,
             Some(chelix_config::ToolMode::Text | chelix_config::ToolMode::Off) => false,
-            Some(chelix_config::ToolMode::Auto) | None => self.model_capabilities.tools,
+            Some(chelix_config::ToolMode::Auto) | None => false,
         }
     }
 
     fn tool_mode(&self) -> Option<chelix_config::ToolMode> {
         self.tool_mode_override
-    }
-
-    fn context_window(&self) -> u32 {
-        let normalized = crate::model_id::capability_model_id(&self.model);
-        if let Some(&context_window) = self.context_window_provider.get(normalized) {
-            return context_window;
-        }
-        if let Some(&context_window) = self.context_window_global.get(normalized) {
-            return context_window;
-        }
-        self.discovered_context_window.unwrap_or_else(|| {
-            context_window_for_model_with_config(
-                &self.model,
-                &self.context_window_global,
-                &self.context_window_provider,
-            )
-        })
-    }
-
-    fn supports_vision(&self) -> bool {
-        self.model_capabilities.vision
-    }
-
-    async fn model_metadata(&self) -> anyhow::Result<ModelMetadata> {
-        let meta = self
-            .metadata_cache
-            .get_or_try_init(|| async {
-                let url = format!("{}/models/{}", self.base_url, self.model);
-                debug!(url = %url, model = %self.model, "fetching model metadata");
-
-                let resp = self
-                    .client
-                    .get(&url)
-                    .header(
-                        "Authorization",
-                        format!("Bearer {}", self.api_key.expose_secret()),
-                    )
-                    .send()
-                    .await?;
-
-                if !resp.status().is_success() {
-                    anyhow::bail!(
-                        "model metadata API returned HTTP {}",
-                        resp.status().as_u16()
-                    );
-                }
-
-                let body: serde_json::Value = resp.json().await?;
-
-                // OpenAI uses "context_window", some compat providers use "context_length".
-                let context_length = body
-                    .get("context_window")
-                    .or_else(|| body.get("context_length"))
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v as u32)
-                    .unwrap_or_else(|| self.context_window());
-
-                Ok(ModelMetadata {
-                    id: body
-                        .get("id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or(&self.model)
-                        .to_string(),
-                    context_length,
-                })
-            })
-            .await?;
-        Ok(meta.clone())
     }
 
     async fn complete(
@@ -541,7 +406,7 @@ mod tests {
 
         assert!(
             provider
-                .with_reasoning_effort(ReasoningEffort::High)
+                .with_reasoning_effort(ReasoningEffort::from("ultra"))
                 .is_some(),
             "OpenAI-compatible providers accept the reasoning_effort field"
         );

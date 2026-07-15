@@ -106,23 +106,6 @@ interface CreateElAttrs {
 	[key: string]: string | undefined;
 }
 
-/**
- * Extract the highest version number from a model ID for sorting.
- * e.g. "gpt-5.4-mini" -> 5.4, "claude-opus-4-6-20260301" -> 20260301, "o4-mini" -> 4
- * For models with a date suffix the date itself becomes the sort key, which is
- * intentional -- newer dates rank higher.  Returns 0 when no number is found.
- */
-export function modelVersionScore(id: string): number {
-	const matches = (id || "").match(/\d+(?:\.\d+)?/g);
-	if (!matches) return 0;
-	let max = 0;
-	for (const m of matches) {
-		const v = Number.parseFloat(m);
-		if (v > max) max = v;
-	}
-	return max;
-}
-
 function translatedOrFallback(
 	key: string | undefined,
 	opts: Record<string, unknown> | undefined,

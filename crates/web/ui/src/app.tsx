@@ -46,7 +46,7 @@ import * as _sessionHistoryCache from "./stores/session-history-cache";
 import * as _sessionStoreModule from "./stores/session-store";
 import { insertSessionInOrder, sessionStore } from "./stores/session-store";
 import { initTheme, injectMarkdownStyles } from "./theme";
-import type { SessionMeta } from "./types";
+import type { ModelInfo, SessionMeta } from "./types";
 import type { VaultStatus } from "./types/gon";
 import { GlobalDialogs, Toasts } from "./ui";
 import { connect } from "./websocket";
@@ -115,15 +115,10 @@ interface AuthStatus {
 interface BootstrapData {
 	channels?: { channels?: unknown[] } | unknown[];
 	sessions?: unknown[];
-	models?: ModelEntry[];
+	models?: ModelInfo[];
 	projects?: ProjectEntry[];
 	sandbox?: unknown;
 	counts?: Record<string, number>;
-}
-
-interface ModelEntry {
-	id: string;
-	[key: string]: unknown;
 }
 
 interface ProjectEntry {
@@ -425,7 +420,6 @@ function clearSensitiveData(): void {
 
 	// Clear model and project stores
 	modelStore.setAll([]);
-	S.setModels([]);
 	projectStore.setAll([]);
 	S.setProjects([]);
 
@@ -587,20 +581,16 @@ function applyIdentity(identity: IdentityInfo | null): void {
 	}
 }
 
-function applyModels(models: ModelEntry[]): void {
+function applyModels(models: ModelInfo[]): void {
 	const arr = models || [];
-	modelStore.setAll(arr as never[]);
-	// Dual-write to state.js for backward compat
-	S.setModels(arr);
+	modelStore.setAll(arr);
 	if (arr.length === 0) return;
 	const saved = localStorage.getItem("chelix-model") || "";
 	const found = arr.find((m) => m.id === saved);
 	if (found) {
 		modelStore.select(found.id);
-		S.setSelectedModelId(found.id);
 	} else {
 		modelStore.select(arr[0].id);
-		S.setSelectedModelId(arr[0].id);
 		localStorage.setItem("chelix-model", modelStore.selectedModelId.value);
 	}
 }

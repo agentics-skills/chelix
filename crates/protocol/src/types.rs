@@ -49,7 +49,7 @@ pub struct ErrorShape {
     pub code: String,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub details: Option<serde_json::Value>,
+    pub details: Option<Box<serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retryable: Option<bool>,
     #[serde(rename = "retryAfterMs", skip_serializing_if = "Option::is_none")]
@@ -718,6 +718,22 @@ mod tests {
         assert_eq!(error_codes::INTERNAL, "INTERNAL");
         assert_eq!(error_codes::PROTOCOL_ERROR, "PROTOCOL_ERROR");
         assert_eq!(error_codes::PAYLOAD_TOO_LARGE, "PAYLOAD_TOO_LARGE");
+    }
+
+    #[test]
+    fn error_shape_details_round_trip_preserves_wire_shape() {
+        let json = serde_json::json!({
+            "code": error_codes::INVALID_REQUEST,
+            "message": "invalid request",
+            "details": {
+                "field": "model",
+                "reason": "missing metadata",
+            },
+        });
+
+        let error: ErrorShape = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(error.details.as_deref(), Some(&json["details"]));
+        assert_eq!(serde_json::to_value(error).unwrap(), json);
     }
 
     // ── GatewayFrame round-trip with new fields ────────────────────────

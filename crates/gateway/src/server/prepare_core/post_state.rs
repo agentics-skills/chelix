@@ -5,7 +5,7 @@ use std::{
 
 use {
     secrecy::Secret,
-    tracing::{debug, info, warn},
+    tracing::{info, warn},
 };
 
 #[cfg(feature = "wasm")]
@@ -17,7 +17,7 @@ mod session_tools;
 use credential_env::{CredentialEnvVarProvider, ensure_sandbox_api_key};
 
 use {
-    chelix_providers::{PendingDiscoveries, ProviderRegistry},
+    chelix_providers::ProviderRegistry,
     chelix_sessions::{
         metadata::SqliteSessionMetadata, session_events::SessionEventBus, store::SessionStore,
     },
@@ -60,12 +60,9 @@ pub(super) struct PostStateInputs {
     pub services: GatewayServices,
     pub session_mutations: Arc<chelix_service_traits::SessionMutationCoordinator>,
     pub registry: Arc<tokio::sync::RwLock<ProviderRegistry>>,
-    pub effective_providers: chelix_config::schema::ProvidersConfig,
-    pub config_env_overrides: std::collections::HashMap<String, String>,
     pub runtime_env_overrides: std::collections::HashMap<String, String>,
     pub provider_summary: String,
     pub mcp_configured_count: usize,
-    pub startup_discovery_pending: PendingDiscoveries,
     pub model_store: Arc<tokio::sync::RwLock<crate::chat::DisabledModelsStore>>,
     pub live_model_service: Arc<LiveModelService>,
     pub provider_setup_service: Arc<LiveProviderSetupService>,
@@ -233,12 +230,9 @@ pub(super) async fn complete_startup(
         mut services,
         session_mutations,
         registry,
-        effective_providers,
-        config_env_overrides,
         runtime_env_overrides,
         provider_summary,
         mcp_configured_count,
-        startup_discovery_pending,
         model_store,
         live_model_service,
         provider_setup_service,
@@ -374,11 +368,8 @@ pub(super) async fn complete_startup(
         vault.clone(),
     );
 
-    // Wire the LLM provider registry for lightweight generation (auto-title,
-    // session summary, tts.generate_phrase). This wiring was removed in
-    // 56facfe3; restore it so `state.inner.llm_providers` is populated. The
-    // background discovery task mutates the same Arc in place (`*reg =
-    // new_registry`), so a single clone here stays valid after discovery.
+    // Wire the shared LLM provider registry for lightweight generation
+    // (auto-title, session summary, tts.generate_phrase).
     state.inner.write().await.llm_providers = Some(Arc::clone(&registry));
 
     {
@@ -488,82 +479,6 @@ pub(super) async fn complete_startup(
         };
 
     let webauthn_registry = build_webauthn_registry(&config, port).await?;
-
-    if startup_discovery_pending.is_empty() {
-        debug!("startup model discovery skipped, no pending provider discoveries");
-    } else {
-        let registry_for_startup_discovery = Arc::clone(&registry);
-        let state_for_startup_discovery = Arc::clone(&state);
-        let provider_config_for_startup_discovery = effective_providers.clone();
-        let provider_config_for_registry_rebuild = provider_config_for_startup_discovery.clone();
-        let global_cw_overrides = chelix_providers::extract_cw_overrides(&config.models);
-        let env_overrides_for_startup_discovery = config_env_overrides.clone();
-        tokio::spawn(async move {
-            let startup_discovery_started = std::time::Instant::now();
-            let prefetched = match tokio::task::spawn_blocking(move || {
-                ProviderRegistry::collect_discoveries(startup_discovery_pending)
-            })
-            .await
-            {
-                Ok(prefetched) => prefetched,
-                Err(error) => {
-                    warn!(
-                        error = %error,
-                        "startup background model discovery worker failed while collecting results"
-                    );
-                    return;
-                },
-            };
-
-            let prefetched_models: usize = prefetched.values().map(Vec::len).sum();
-            let new_registry = match tokio::task::spawn_blocking(move || {
-                ProviderRegistry::from_config_with_prefetched(
-                    &provider_config_for_registry_rebuild,
-                    &env_overrides_for_startup_discovery,
-                    &prefetched,
-                    global_cw_overrides.clone(),
-                )
-            })
-            .await
-            {
-                Ok(new_registry) => new_registry,
-                Err(error) => {
-                    warn!(
-                        error = %error,
-                        "startup background model discovery worker failed while rebuilding registry"
-                    );
-                    return;
-                },
-            };
-
-            let provider_summary = new_registry.provider_summary();
-            let model_count = new_registry.list_models().len();
-            {
-                let mut reg = registry_for_startup_discovery.write().await;
-                *reg = new_registry;
-            }
-
-            info!(
-                provider_summary = %provider_summary,
-                models = model_count,
-                prefetched_models,
-                elapsed_ms = startup_discovery_started.elapsed().as_millis(),
-                "startup background model discovery complete, provider registry updated"
-            );
-
-            broadcast(
-                &state_for_startup_discovery,
-                "models.updated",
-                serde_json::json!({
-                    "reason": "startup-discovery",
-                    "models": model_count,
-                    "providerSummary": provider_summary,
-                }),
-                BroadcastOpts::default(),
-            )
-            .await;
-        });
-    }
 
     {
         let mut inner = state.inner.write().await;
@@ -1126,8 +1041,7 @@ pub(super) async fn complete_startup(
         .with_session_state_store(Arc::clone(&session_state_store))
         .with_tools(Arc::clone(&shared_tool_registry))
         .with_session_mutations(Arc::clone(&session_mutations))
-        .with_config(config.clone())
-        .with_failover(config.failover.clone());
+        .with_config(config.clone());
 
         if let Some(ref hooks) = state.inner.read().await.hook_registry {
             chat_service = chat_service.with_hooks_arc(Arc::clone(hooks));

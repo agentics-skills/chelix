@@ -1,42 +1,35 @@
-#![allow(unused_imports)]
+//! Config-first model resolution and provider transport construction.
 
-use super::*;
-
-use std::{
-    collections::{HashMap, HashSet},
-    future::Future,
-    pin::Pin,
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use {
-    chelix_config::schema::{ProviderStreamTransport, ProvidersConfig},
+    chelix_agents::model::LlmProvider,
+    chelix_common::ModelConfigMap,
+    chelix_config::schema::{ProviderEntry, ProviderStreamTransport, ProvidersConfig},
     secrecy::ExposeSecret,
-    tokio_stream::Stream,
 };
 
-use chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent};
-
-#[cfg(feature = "provider-github-copilot")]
-use crate::github_copilot;
-#[cfg(feature = "provider-kimi-code")]
-use crate::kimi_code;
-#[cfg(feature = "provider-openai-codex")]
-use crate::openai_codex;
-#[allow(unused_imports)]
 use crate::{
-    anthropic, async_openai_provider, config_helpers::*, discovered_model::*, genai_provider,
-    model_capabilities::*, model_catalogs::*, model_id::*, openai,
+    anthropic,
+    config_helpers::{env_value, oauth_discovery_enabled, resolve_api_key},
+    discovered_model::{ResolvedModel, resolve_models},
+    model_capabilities::ModelInfo,
+    model_catalogs::{OPENAI_COMPAT_PROVIDERS, OpenAiCompatDef},
+    openai,
 };
 
-const CUSTOM_REASONING_CONTENT_MODEL_PREFIXES: &[&str] = &["kimi-", "deepseek-v4"];
+use super::{DiscoveryResult, ProviderRegistry, discover_models};
+
 const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 
 fn resolve_openai_base_url(
     config: &ProvidersConfig,
     env_overrides: &HashMap<String, String>,
 ) -> (String, bool) {
-    if let Some(base_url) = config.get("openai").and_then(|e| e.base_url.clone()) {
+    if let Some(base_url) = config
+        .get("openai")
+        .and_then(|entry| entry.base_url.clone())
+    {
         return (base_url, true);
     }
     if let Some(base_url) = env_value(env_overrides, "OPENAI_BASE_URL") {
@@ -57,1075 +50,470 @@ pub(crate) fn openai_builtin_capabilities(
     }
 }
 
+fn configured_models<'a>(
+    config: &'a ProvidersConfig,
+    provider_name: &str,
+    empty: &'a ModelConfigMap,
+) -> &'a ModelConfigMap {
+    config
+        .get(provider_name)
+        .map(|entry| &entry.models)
+        .unwrap_or(empty)
+}
+
+fn resolved_models(
+    config: &ProvidersConfig,
+    discovery: &DiscoveryResult,
+    provider_name: &str,
+) -> Vec<ResolvedModel> {
+    let empty = ModelConfigMap::new();
+    resolve_models(
+        configured_models(config, provider_name, &empty),
+        discovery.models_for(provider_name),
+    )
+}
+
 impl ProviderRegistry {
-    /// Register models from a [`RediscoveryResult`], skipping those already
-    /// present. All I/O (model list fetches) must be completed before calling
-    /// this — it only does fast in-memory work.
-    ///
-    /// Returns the number of newly registered models.
-    pub fn register_rediscovered_models(
-        &mut self,
-        config: &ProvidersConfig,
-        env_overrides: &HashMap<String, String>,
-        result: &RediscoveryResult,
-    ) -> usize {
-        let fetched = &result.models;
-        let mut added = 0usize;
-
-        // ── Anthropic builtin ─────────────────────────────────────────
-        if fetched.contains_key("anthropic")
-            && config.is_enabled("anthropic")
-            && let Some(key) =
-                resolve_api_key(config, "anthropic", "ANTHROPIC_API_KEY", env_overrides)
-        {
-            let base_url = config
-                .get("anthropic")
-                .and_then(|e| e.base_url.clone())
-                .or_else(|| env_value(env_overrides, "ANTHROPIC_BASE_URL"))
-                .unwrap_or_else(|| "https://api.anthropic.com".into());
-            let alias = config.get("anthropic").and_then(|e| e.alias.clone());
-            let provider_label = alias.clone().unwrap_or_else(|| "anthropic".into());
-            let cache_retention = config
-                .get("anthropic")
-                .map(|e| e.cache_retention)
-                .unwrap_or(chelix_config::CacheRetention::Short);
-            let models = Self::desired_anthropic_models(config, fetched);
-            let provider_cw = config
-                .get("anthropic")
-                .map(|e| extract_cw_overrides(&e.model_overrides))
-                .unwrap_or_default();
-
-            added += self.replace_anthropic_catalog(
-                models,
-                &key,
-                &base_url,
-                &provider_label,
-                alias,
-                cache_retention,
-                provider_cw,
-            );
-        }
-
-        // ── OpenAI builtin ────────────────────────────────────────────
-        if let Some(models) = fetched.get("openai")
-            && config.is_enabled("openai")
-            && let Some(key) = resolve_api_key(config, "openai", "OPENAI_API_KEY", env_overrides)
-        {
-            let (base_url, base_url_overridden) = resolve_openai_base_url(config, env_overrides);
-            let capabilities = openai_builtin_capabilities(base_url_overridden);
-            let alias = config.get("openai").and_then(|e| e.alias.clone());
-            let provider_label = alias.unwrap_or_else(|| "openai".into());
-            let stream_transport = config
-                .get("openai")
-                .map(|entry| entry.stream_transport)
-                .unwrap_or(ProviderStreamTransport::Sse);
-
-            for model in models {
-                let caps = model
-                    .capabilities
-                    .unwrap_or_else(|| ModelCapabilities::infer(&model.id));
-                if self.has_provider_model(&provider_label, &model.id) {
-                    continue;
-                }
-                let provider = Arc::new(
-                    openai::OpenAiProvider::new_with_name(
-                        key.clone(),
-                        model.id.clone(),
-                        base_url.clone(),
-                        provider_label.clone(),
-                    )
-                    .with_stream_transport(stream_transport)
-                    .with_capabilities(capabilities)
-                    .with_model_capabilities(caps)
-                    .with_context_window_overrides(
-                        self.global_cw_overrides.clone(),
-                        config
-                            .get("openai")
-                            .map(|e| extract_cw_overrides(&e.model_overrides))
-                            .unwrap_or_default(),
-                    ),
-                );
-                self.register(
-                    ModelInfo {
-                        id: model.id.clone(),
-                        provider: provider_label.clone(),
-                        display_name: model.display_name.clone(),
-                        created_at: model.created_at,
-                        recommended: model.recommended,
-                        capabilities: caps,
-                    },
-                    provider,
-                );
-                added += 1;
-            }
-        }
-
-        // ── OpenAI-compatible providers ───────────────────────────────
-        for def in OPENAI_COMPAT_PROVIDERS {
-            let Some(models) = fetched.get(def.config_name) else {
-                continue;
-            };
-            if !config.is_enabled(def.config_name) {
-                continue;
-            }
-
-            let key = resolve_api_key(config, def.config_name, def.env_key, env_overrides);
-            let key = if !def.requires_api_key {
-                key.or_else(|| Some(secrecy::Secret::new(def.config_name.into())))
-            } else if def.config_name == "gemini" {
-                key.or_else(|| env_value(env_overrides, "GOOGLE_API_KEY").map(secrecy::Secret::new))
-            } else {
-                key
-            };
-            let Some(key) = key else {
-                continue;
-            };
-
-            let base_url = config
-                .get(def.config_name)
-                .and_then(|e| e.base_url.clone())
-                .or_else(|| env_value(env_overrides, def.env_base_url_key))
-                .unwrap_or_else(|| def.default_base_url.into());
-            let alias = config.get(def.config_name).and_then(|e| e.alias.clone());
-            let provider_label = alias.unwrap_or_else(|| def.config_name.into());
-            let stream_transport = config
-                .get(def.config_name)
-                .map(|entry| entry.stream_transport)
-                .unwrap_or(ProviderStreamTransport::Sse);
-            let cache_retention = config
-                .get(def.config_name)
-                .map(|e| e.cache_retention)
-                .unwrap_or(chelix_config::CacheRetention::Short);
-            let config_tool_mode = config
-                .get(def.config_name)
-                .map(|e| e.tool_mode)
-                .unwrap_or_default();
-
-            for model in models {
-                let caps = model
-                    .capabilities
-                    .unwrap_or_else(|| ModelCapabilities::infer(&model.id));
-                if self.has_provider_model(&provider_label, &model.id) {
-                    continue;
-                }
-                let effective_tool_mode =
-                    if !matches!(config_tool_mode, chelix_config::ToolMode::Auto) {
-                        config_tool_mode
-                    } else {
-                        chelix_config::ToolMode::Auto
-                    };
-
-                let mut oai = openai::OpenAiProvider::new_with_name(
-                    key.clone(),
-                    model.id.clone(),
-                    base_url.clone(),
-                    provider_label.clone(),
-                )
-                .with_stream_transport(stream_transport)
-                .with_capabilities(def.capabilities)
-                .with_model_capabilities(caps)
-                .with_cache_retention(cache_retention)
-                .with_context_window_overrides(
-                    self.global_cw_overrides.clone(),
-                    config
-                        .get(def.config_name)
-                        .map(|e| extract_cw_overrides(&e.model_overrides))
-                        .unwrap_or_default(),
-                );
-
-                if !matches!(effective_tool_mode, chelix_config::ToolMode::Auto) {
-                    oai = oai.with_tool_mode(effective_tool_mode);
-                }
-                if let Some(strict) = config.get(def.config_name).and_then(|e| e.strict_tools) {
-                    oai = oai.with_strict_tools(strict);
-                }
-                if let Some(timeout) = config
-                    .get(def.config_name)
-                    .and_then(|e| e.probe_timeout_secs)
-                {
-                    oai = oai.with_probe_timeout_secs(Some(timeout));
-                }
-
-                self.register(
-                    ModelInfo {
-                        id: model.id.clone(),
-                        provider: provider_label.clone(),
-                        display_name: model.display_name.clone(),
-                        created_at: model.created_at,
-                        recommended: model.recommended,
-                        capabilities: caps,
-                    },
-                    Arc::new(oai),
-                );
-                added += 1;
-            }
-        }
-
-        // ── Custom providers ──────────────────────────────────────────
-        for (name, entry) in &config.providers {
-            if !name.starts_with("custom-") || !entry.enabled {
-                continue;
-            }
-            let Some(models) = fetched.get(name.as_str()) else {
-                continue;
-            };
-            let Some(api_key) = entry
-                .api_key
-                .as_ref()
-                .filter(|k| !k.expose_secret().is_empty())
-            else {
-                continue;
-            };
-            let Some(base_url) = entry.base_url.as_ref().filter(|u| !u.trim().is_empty()) else {
-                continue;
-            };
-            let custom_tool_mode = entry.tool_mode;
-
-            for model in models {
-                let caps = model
-                    .capabilities
-                    .unwrap_or_else(|| ModelCapabilities::infer(&model.id));
-                if self.has_provider_model(name, &model.id) {
-                    continue;
-                }
-                let mut oai = openai::OpenAiProvider::new_with_name(
-                    api_key.clone(),
-                    model.id.clone(),
-                    base_url.clone(),
-                    name.clone(),
-                )
-                .with_stream_transport(entry.stream_transport)
-                .with_cache_retention(entry.cache_retention)
-                .with_model_capabilities(caps)
-                .with_capabilities(openai::OpenAiProviderCapabilities {
-                    reasoning_content_model_prefixes: CUSTOM_REASONING_CONTENT_MODEL_PREFIXES,
-                    qwen_models_require_single_leading_system: true,
-                    ..openai::OpenAiProviderCapabilities::DEFAULT
-                })
-                .with_context_window_overrides(
-                    self.global_cw_overrides.clone(),
-                    extract_cw_overrides(&entry.model_overrides),
-                );
-                if !matches!(entry.wire_api, chelix_config::WireApi::ChatCompletions) {
-                    oai = oai.with_wire_api(entry.wire_api);
-                }
-                if !matches!(custom_tool_mode, chelix_config::ToolMode::Auto) {
-                    oai = oai.with_tool_mode(custom_tool_mode);
-                }
-                if let Some(strict) = entry.strict_tools {
-                    oai = oai.with_strict_tools(strict);
-                }
-                oai = oai.with_probe_timeout_secs(entry.probe_timeout_secs);
-                self.register(
-                    ModelInfo {
-                        id: model.id.clone(),
-                        provider: name.clone(),
-                        display_name: model.display_name.clone(),
-                        created_at: model.created_at,
-                        recommended: model.recommended,
-                        capabilities: caps,
-                    },
-                    Arc::new(oai),
-                );
-                added += 1;
-            }
-        }
-
-        added
+    /// Build a registry from complete config-only records without network I/O.
+    #[must_use]
+    pub fn from_config(config: &ProvidersConfig, env_overrides: &HashMap<String, String>) -> Self {
+        Self::from_discovery(config, env_overrides, &DiscoveryResult::empty())
     }
 
-    #[cfg(feature = "provider-genai")]
-    pub(crate) fn register_genai_providers(
+    /// Discover models asynchronously and build a registry from resolved records.
+    pub async fn discover(
+        config: &ProvidersConfig,
+        env_overrides: &HashMap<String, String>,
+    ) -> Self {
+        let discovery = discover_models(config, env_overrides, None).await;
+        Self::from_discovery(config, env_overrides, &discovery)
+    }
+
+    /// Build a registry from config and an already fetched discovery snapshot.
+    #[must_use]
+    pub fn from_discovery(
+        config: &ProvidersConfig,
+        env_overrides: &HashMap<String, String>,
+        discovery: &DiscoveryResult,
+    ) -> Self {
+        let mut registry = Self::empty();
+        registry.register_anthropic(config, env_overrides, discovery);
+        registry.register_openai(config, env_overrides, discovery);
+        registry.register_openai_compatible(config, env_overrides, discovery);
+        registry.register_custom(config, discovery);
+        registry.register_openai_codex(config, discovery);
+        registry.register_github_copilot(config, discovery);
+        registry.register_kimi_code(config, env_overrides, discovery);
+        registry
+    }
+
+    /// Replace only providers whose discovery request completed successfully.
+    ///
+    /// Failed requests are absent from `discovery` and leave current entries untouched.
+    pub fn refresh_from_discovery(
         &mut self,
         config: &ProvidersConfig,
         env_overrides: &HashMap<String, String>,
-    ) {
-        use crate::genai_provider;
+        discovery: &DiscoveryResult,
+    ) -> usize {
+        let previous_ids: std::collections::HashSet<String> =
+            self.models.iter().map(|model| model.id.clone()).collect();
 
-        // (env_key, provider_config_name, model_id, display_name)
-        let genai_models: &[(&str, &str, &str, &str)] = &[
-            (
-                "ANTHROPIC_API_KEY",
-                "anthropic",
-                "claude-sonnet-4-20250514",
-                "Claude Sonnet 4 (genai)",
-            ),
-            ("OPENAI_API_KEY", "openai", "gpt-4o", "GPT-4o (genai)"),
-            ("XAI_API_KEY", "xai", "grok-3-mini", "Grok 3 Mini (genai)"),
-        ];
-
-        for &(env_key, provider_name, default_model_id, display_name) in genai_models {
-            if !config.is_enabled(provider_name) {
-                continue;
+        if discovery.models.contains_key("anthropic") {
+            self.remove_provider(&provider_label(config, "anthropic"));
+            self.register_anthropic(config, env_overrides, discovery);
+        }
+        if discovery.models.contains_key("openai") {
+            self.remove_provider(&provider_label(config, "openai"));
+            self.register_openai(config, env_overrides, discovery);
+        }
+        for definition in OPENAI_COMPAT_PROVIDERS {
+            if discovery.models.contains_key(definition.config_name) {
+                self.remove_provider(&provider_label(config, definition.config_name));
+                self.register_one_openai_compatible(config, env_overrides, discovery, definition);
             }
-
-            // Use config api_key or fall back to env var.
-            let Some(resolved_key) = resolve_api_key(config, provider_name, env_key, env_overrides)
-            else {
-                continue;
-            };
-
-            let model_id = configured_models_for_provider(config, provider_name)
-                .into_iter()
-                .next()
-                .unwrap_or_else(|| default_model_id.to_string());
-
-            // Get alias if configured (for metrics differentiation).
-            let alias = config.get(provider_name).and_then(|e| e.alias.clone());
-            let genai_provider_name = alias.unwrap_or_else(|| format!("genai/{provider_name}"));
-            if self.has_model_any_provider(&model_id) {
-                continue;
+        }
+        for name in config
+            .providers
+            .keys()
+            .filter(|name| name.starts_with("custom-"))
+        {
+            if discovery.models.contains_key(name) {
+                self.remove_provider(name);
+                self.register_one_custom(config, discovery, name);
             }
+        }
+        #[cfg(feature = "provider-openai-codex")]
+        if discovery.models.contains_key("openai-codex") {
+            self.remove_provider(&provider_label(config, "openai-codex"));
+            self.register_openai_codex(config, discovery);
+        }
+        #[cfg(feature = "provider-github-copilot")]
+        if discovery.models.contains_key("github-copilot") {
+            self.remove_provider(&provider_label(config, "github-copilot"));
+            self.register_github_copilot(config, discovery);
+        }
 
-            let provider = Arc::new(genai_provider::GenaiProvider::new(
-                model_id.clone(),
-                genai_provider_name.clone(),
-                resolved_key,
-            ));
+        self.models
+            .iter()
+            .filter(|model| !previous_ids.contains(&model.id))
+            .count()
+    }
+
+    fn register_resolved<F>(
+        &mut self,
+        provider_name: &str,
+        models: Vec<ResolvedModel>,
+        mut build_provider: F,
+    ) -> usize
+    where
+        F: FnMut(&str) -> Arc<dyn LlmProvider>,
+    {
+        let pending: Vec<ResolvedModel> = models
+            .into_iter()
+            .filter(|model| !self.has_provider_model(provider_name, &model.id))
+            .collect();
+        let count = pending.len();
+        pending.into_iter().for_each(|model| {
+            let provider = build_provider(&model.id);
             self.register(
                 ModelInfo {
-                    id: model_id.clone(),
-                    provider: genai_provider_name,
-                    display_name: display_name.into(),
-                    created_at: None,
-                    recommended: false,
-                    capabilities: ModelCapabilities::infer(&model_id),
+                    id: model.id,
+                    provider: provider_name.to_string(),
+                    display_name: model.display_name,
+                    created_at: model.created_at,
+                    recommended: model.recommended,
+                    metadata: model.metadata,
                 },
                 provider,
             );
-        }
+        });
+        count
     }
 
-    #[cfg(feature = "provider-async-openai")]
-    pub(crate) fn register_async_openai_providers(
+    fn register_anthropic(
         &mut self,
         config: &ProvidersConfig,
         env_overrides: &HashMap<String, String>,
-    ) {
-        use crate::async_openai_provider;
-
-        if !config.is_enabled("openai") {
-            return;
+        discovery: &DiscoveryResult,
+    ) -> usize {
+        if !config.is_enabled("anthropic") {
+            return 0;
         }
-
-        let Some(key) = resolve_api_key(config, "openai", "OPENAI_API_KEY", env_overrides) else {
-            return;
+        let Some(key) = resolve_api_key(config, "anthropic", "ANTHROPIC_API_KEY", env_overrides)
+        else {
+            return 0;
         };
+        let base_url = config
+            .get("anthropic")
+            .and_then(|entry| entry.base_url.clone())
+            .or_else(|| env_value(env_overrides, "ANTHROPIC_BASE_URL"))
+            .unwrap_or_else(|| "https://api.anthropic.com".into());
+        let alias = config
+            .get("anthropic")
+            .and_then(|entry| entry.alias.clone());
+        let provider_name = alias.clone().unwrap_or_else(|| "anthropic".into());
+        let cache_retention = config
+            .get("anthropic")
+            .map(|entry| entry.cache_retention)
+            .unwrap_or_default();
+        let models = resolved_models(config, discovery, "anthropic");
 
-        let (base_url, _) = resolve_openai_base_url(config, env_overrides);
+        self.register_resolved(&provider_name, models, move |model_id| {
+            Arc::new(
+                anthropic::AnthropicProvider::with_alias(
+                    key.clone(),
+                    model_id.to_string(),
+                    base_url.clone(),
+                    alias.clone(),
+                )
+                .with_cache_retention(cache_retention),
+            )
+        })
+    }
 
-        let model_id = configured_models_for_provider(config, "openai")
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| "gpt-4o".to_string());
-
-        // Get alias if configured (for metrics differentiation).
-        let alias = config.get("openai").and_then(|e| e.alias.clone());
-        let provider_label = alias.clone().unwrap_or_else(|| "async-openai".into());
-        if self.has_model_any_provider(&model_id) {
-            return;
+    fn register_openai(
+        &mut self,
+        config: &ProvidersConfig,
+        env_overrides: &HashMap<String, String>,
+        discovery: &DiscoveryResult,
+    ) -> usize {
+        if !config.is_enabled("openai") {
+            return 0;
         }
+        let Some(key) = resolve_api_key(config, "openai", "OPENAI_API_KEY", env_overrides) else {
+            return 0;
+        };
+        let (base_url, base_url_overridden) = resolve_openai_base_url(config, env_overrides);
+        let capabilities = openai_builtin_capabilities(base_url_overridden);
+        let provider_name = provider_label(config, "openai");
+        let entry = config.get("openai").cloned().unwrap_or_default();
+        let models = resolved_models(config, discovery, "openai");
+        let transport_provider_name = provider_name.clone();
 
-        let provider = Arc::new(async_openai_provider::AsyncOpenAiProvider::with_alias(
-            key,
-            model_id.clone(),
-            base_url,
-            alias,
-        ));
-        self.register(
-            ModelInfo {
-                id: model_id.clone(),
-                provider: provider_label,
-                display_name: "GPT-4o (async-openai)".into(),
-                created_at: None,
-                recommended: false,
-                capabilities: ModelCapabilities::infer(&model_id),
-            },
-            provider,
-        );
+        self.register_resolved(&provider_name, models, move |model_id| {
+            Arc::new(configure_openai_transport(
+                openai::OpenAiProvider::new_with_name(
+                    key.clone(),
+                    model_id.to_string(),
+                    base_url.clone(),
+                    transport_provider_name.clone(),
+                )
+                .with_capabilities(capabilities),
+                &entry,
+            ))
+        })
+    }
+
+    fn register_openai_compatible(
+        &mut self,
+        config: &ProvidersConfig,
+        env_overrides: &HashMap<String, String>,
+        discovery: &DiscoveryResult,
+    ) -> usize {
+        OPENAI_COMPAT_PROVIDERS
+            .iter()
+            .map(|definition| {
+                self.register_one_openai_compatible(config, env_overrides, discovery, definition)
+            })
+            .sum()
+    }
+
+    fn register_one_openai_compatible(
+        &mut self,
+        config: &ProvidersConfig,
+        env_overrides: &HashMap<String, String>,
+        discovery: &DiscoveryResult,
+        definition: &OpenAiCompatDef,
+    ) -> usize {
+        if !config.is_enabled(definition.config_name) {
+            return 0;
+        }
+        let Some(key) =
+            super::discovery::resolve_compatible_api_key(config, definition, env_overrides)
+        else {
+            return 0;
+        };
+        let base_url = config
+            .get(definition.config_name)
+            .and_then(|entry| entry.base_url.clone())
+            .or_else(|| env_value(env_overrides, definition.env_base_url_key))
+            .unwrap_or_else(|| definition.default_base_url.into());
+        let entry = config
+            .get(definition.config_name)
+            .cloned()
+            .unwrap_or_default();
+        if definition.local_only {
+            let has_explicit_entry = config.get(definition.config_name).is_some();
+            let has_env_base_url = env_value(env_overrides, definition.env_base_url_key).is_some();
+            if !has_explicit_entry && !has_env_base_url && entry.models.is_empty() {
+                return 0;
+            }
+        }
+        let provider_name = provider_label(config, definition.config_name);
+        let models = resolved_models(config, discovery, definition.config_name);
+        let capabilities = definition.capabilities;
+        let transport_provider_name = provider_name.clone();
+
+        self.register_resolved(&provider_name, models, move |model_id| {
+            Arc::new(configure_openai_transport(
+                openai::OpenAiProvider::new_with_name(
+                    key.clone(),
+                    model_id.to_string(),
+                    base_url.clone(),
+                    transport_provider_name.clone(),
+                )
+                .with_capabilities(capabilities),
+                &entry,
+            ))
+        })
+    }
+
+    fn register_custom(&mut self, config: &ProvidersConfig, discovery: &DiscoveryResult) -> usize {
+        config
+            .providers
+            .keys()
+            .filter(|name| name.starts_with("custom-"))
+            .map(|name| self.register_one_custom(config, discovery, name))
+            .sum()
+    }
+
+    fn register_one_custom(
+        &mut self,
+        config: &ProvidersConfig,
+        discovery: &DiscoveryResult,
+        name: &str,
+    ) -> usize {
+        let Some(entry) = config.get(name).filter(|entry| entry.enabled) else {
+            return 0;
+        };
+        let Some(api_key) = entry
+            .api_key
+            .as_ref()
+            .filter(|key| !key.expose_secret().is_empty())
+        else {
+            return 0;
+        };
+        let Some(base_url) = entry.base_url.as_ref().filter(|url| !url.trim().is_empty()) else {
+            return 0;
+        };
+        let entry = entry.clone();
+        let models = resolved_models(config, discovery, name);
+
+        self.register_resolved(name, models, move |model_id| {
+            Arc::new(configure_openai_transport(
+                openai::OpenAiProvider::new_with_name(
+                    api_key.clone(),
+                    model_id.to_string(),
+                    base_url.clone(),
+                    name.to_string(),
+                ),
+                &entry,
+            ))
+        })
     }
 
     #[cfg(feature = "provider-openai-codex")]
-    pub(super) fn register_openai_codex_providers(
+    fn register_openai_codex(
         &mut self,
         config: &ProvidersConfig,
-        prefetched: &HashMap<String, Vec<DiscoveredModel>>,
-    ) {
-        use crate::openai_codex;
-        let source = OpenAiCodexDiscovery;
-        let catalog = if source.should_fetch_models(config) {
-            // Use pre-fetched live models from parallel discovery.
-            let fallback = openai_codex::default_model_catalog();
-            match prefetched.get("openai-codex") {
-                Some(live) => {
-                    let merged = merge_discovered_with_fallback_catalog(live.clone(), fallback);
-                    tracing::info!(
-                        model_count = merged.len(),
-                        "loaded openai-codex models catalog"
-                    );
-                    merged
-                },
-                None => fallback,
-            }
-        } else {
-            Vec::new()
-        };
-        self.register_dynamic_source_models(&source, config, catalog);
+        discovery: &DiscoveryResult,
+    ) -> usize {
+        if !oauth_discovery_enabled(config, "openai-codex")
+            || !crate::openai_codex::has_stored_tokens()
+        {
+            return 0;
+        }
+        let provider_name = provider_label(config, "openai-codex");
+        let transport = config
+            .get("openai-codex")
+            .map(|entry| entry.stream_transport)
+            .unwrap_or(ProviderStreamTransport::Sse);
+        let models = resolved_models(config, discovery, "openai-codex");
+        self.register_resolved(&provider_name, models, move |model_id| {
+            Arc::new(
+                crate::openai_codex::OpenAiCodexProvider::new_with_transport(
+                    model_id.to_string(),
+                    transport,
+                ),
+            )
+        })
     }
 
-    pub fn refresh_openai_codex_models(&mut self, config: &ProvidersConfig) -> bool {
-        #[cfg(feature = "provider-openai-codex")]
-        {
-            let source = OpenAiCodexDiscovery;
-            self.refresh_dynamic_source_models(&source, config)
-        }
-
-        #[cfg(not(feature = "provider-openai-codex"))]
-        {
-            let _ = config;
-            false
-        }
+    #[cfg(not(feature = "provider-openai-codex"))]
+    fn register_openai_codex(
+        &mut self,
+        _config: &ProvidersConfig,
+        _discovery: &DiscoveryResult,
+    ) -> usize {
+        0
     }
 
     #[cfg(feature = "provider-github-copilot")]
-    pub(super) fn register_github_copilot_providers(
+    fn register_github_copilot(
         &mut self,
         config: &ProvidersConfig,
-        prefetched: &HashMap<String, Vec<DiscoveredModel>>,
-    ) {
-        let source = GitHubCopilotDiscovery;
-        let catalog = if source.should_fetch_models(config) {
-            // Use pre-fetched live models from parallel discovery.
-            let fallback = crate::github_copilot::default_model_catalog();
-            match prefetched.get("github-copilot") {
-                Some(live) => {
-                    let merged = merge_discovered_with_fallback_catalog(live.clone(), fallback);
-                    tracing::debug!(
-                        model_count = merged.len(),
-                        "loaded github-copilot models catalog"
-                    );
-                    merged
-                },
-                None => fallback,
-            }
-        } else {
-            Vec::new()
-        };
-        self.register_dynamic_source_models(&source, config, catalog);
+        discovery: &DiscoveryResult,
+    ) -> usize {
+        if !oauth_discovery_enabled(config, "github-copilot")
+            || !crate::github_copilot::has_stored_tokens()
+        {
+            return 0;
+        }
+        let provider_name = provider_label(config, "github-copilot");
+        let wire_api = config
+            .get("github-copilot")
+            .map(|entry| entry.wire_api)
+            .unwrap_or_default();
+        let models = resolved_models(config, discovery, "github-copilot");
+        self.register_resolved(&provider_name, models, move |model_id| {
+            Arc::new(crate::github_copilot::GitHubCopilotProvider::new(
+                model_id.to_string(),
+                wire_api,
+            ))
+        })
     }
 
-    pub fn refresh_github_copilot_models(&mut self, config: &ProvidersConfig) -> bool {
-        #[cfg(feature = "provider-github-copilot")]
-        {
-            let source = GitHubCopilotDiscovery;
-            self.refresh_dynamic_source_models(&source, config)
-        }
-
-        #[cfg(not(feature = "provider-github-copilot"))]
-        {
-            let _ = config;
-            false
-        }
-    }
-
-    pub fn refresh_dynamic_models(&mut self, config: &ProvidersConfig) -> Vec<(String, bool)> {
-        #[cfg(any(feature = "provider-openai-codex", feature = "provider-github-copilot"))]
-        {
-            let mut results = Vec::new();
-            for source in Self::dynamic_discovery_sources() {
-                let refreshed = self.refresh_dynamic_source_models(source.as_ref(), config);
-                results.push((source.provider_name().to_string(), refreshed));
-            }
-            results
-        }
-
-        #[cfg(not(any(feature = "provider-openai-codex", feature = "provider-github-copilot")))]
-        {
-            let _ = config;
-            Vec::new()
-        }
+    #[cfg(not(feature = "provider-github-copilot"))]
+    fn register_github_copilot(
+        &mut self,
+        _config: &ProvidersConfig,
+        _discovery: &DiscoveryResult,
+    ) -> usize {
+        0
     }
 
     #[cfg(feature = "provider-kimi-code")]
-    pub(super) fn register_kimi_code_providers(
+    fn register_kimi_code(
         &mut self,
         config: &ProvidersConfig,
         env_overrides: &HashMap<String, String>,
-    ) {
-        use crate::kimi_code;
-
+        discovery: &DiscoveryResult,
+    ) -> usize {
         if !config.is_enabled("kimi-code") {
-            return;
+            return 0;
         }
-
         let api_key = resolve_api_key(config, "kimi-code", "KIMI_API_KEY", env_overrides);
-        let has_oauth_tokens = kimi_code::has_stored_tokens();
-        if api_key.is_none() && !has_oauth_tokens {
-            return;
+        if api_key.is_none() && !crate::kimi_code::has_stored_tokens() {
+            return 0;
         }
-
         let base_url = config
             .get("kimi-code")
-            .and_then(|e| e.base_url.clone())
+            .and_then(|entry| entry.base_url.clone())
             .or_else(|| env_value(env_overrides, "KIMI_BASE_URL"))
             .unwrap_or_else(|| "https://api.kimi.com/coding/v1".into());
+        let provider_name = provider_label(config, "kimi-code");
+        let models = resolved_models(config, discovery, "kimi-code");
 
-        let build_provider = |model_id: &str| -> Arc<dyn LlmProvider> {
-            if let Some(api_key) = api_key.as_ref() {
-                Arc::new(kimi_code::KimiCodeProvider::new_with_api_key(
-                    api_key.clone(),
-                    model_id.into(),
+        self.register_resolved(&provider_name, models, move |model_id| {
+            if let Some(key) = api_key.as_ref() {
+                Arc::new(crate::kimi_code::KimiCodeProvider::new_with_api_key(
+                    key.clone(),
+                    model_id.to_string(),
                     base_url.clone(),
                 ))
             } else {
-                Arc::new(kimi_code::KimiCodeProvider::new(model_id.into()))
+                Arc::new(crate::kimi_code::KimiCodeProvider::new(
+                    model_id.to_string(),
+                ))
             }
-        };
-
-        let preferred = configured_models_for_provider(config, "kimi-code");
-        let discovered = if should_fetch_models(config, "kimi-code") {
-            catalog_to_discovered(kimi_code::KIMI_CODE_MODELS, 1)
-        } else {
-            Vec::new()
-        };
-        let models = merge_preferred_and_discovered_models(preferred, discovered);
-        for model in models {
-            let caps = model
-                .capabilities
-                .unwrap_or_else(|| ModelCapabilities::infer(&model.id));
-            let (model_id, display_name, created_at, recommended) = (
-                model.id,
-                model.display_name,
-                model.created_at,
-                model.recommended,
-            );
-            if self.has_provider_model("kimi-code", &model_id) {
-                continue;
-            }
-            let provider = build_provider(&model_id);
-            self.register(
-                ModelInfo {
-                    id: model_id,
-                    provider: "kimi-code".into(),
-                    display_name,
-                    created_at,
-                    recommended,
-                    capabilities: caps,
-                },
-                provider,
-            );
-        }
+        })
     }
 
-    pub(crate) fn register_builtin_providers(
+    #[cfg(not(feature = "provider-kimi-code"))]
+    fn register_kimi_code(
         &mut self,
-        config: &ProvidersConfig,
-        env_overrides: &HashMap<String, String>,
-        prefetched: &HashMap<String, Vec<DiscoveredModel>>,
-    ) {
-        // Anthropic — register all known Claude models when API key is available.
-        if config.is_enabled("anthropic")
-            && let Some(key) =
-                resolve_api_key(config, "anthropic", "ANTHROPIC_API_KEY", env_overrides)
-        {
-            let base_url = config
-                .get("anthropic")
-                .and_then(|e| e.base_url.clone())
-                .or_else(|| env_value(env_overrides, "ANTHROPIC_BASE_URL"))
-                .unwrap_or_else(|| "https://api.anthropic.com".into());
-
-            // Get alias if configured (for metrics differentiation).
-            let alias = config.get("anthropic").and_then(|e| e.alias.clone());
-            let provider_label = alias.clone().unwrap_or_else(|| "anthropic".into());
-            let cache_retention = config
-                .get("anthropic")
-                .map(|e| e.cache_retention)
-                .unwrap_or(chelix_config::CacheRetention::Short);
-            let models = Self::desired_anthropic_models(config, prefetched);
-            let provider_cw = config
-                .get("anthropic")
-                .map(|e| extract_cw_overrides(&e.model_overrides))
-                .unwrap_or_default();
-            self.register_anthropic_catalog(
-                models,
-                &key,
-                &base_url,
-                &provider_label,
-                alias,
-                cache_retention,
-                provider_cw,
-            );
-        }
-
-        // OpenAI — register all known OpenAI models when API key is available.
-        if config.is_enabled("openai")
-            && let Some(key) = resolve_api_key(config, "openai", "OPENAI_API_KEY", env_overrides)
-        {
-            let (base_url, base_url_overridden) = resolve_openai_base_url(config, env_overrides);
-            let capabilities = openai_builtin_capabilities(base_url_overridden);
-
-            // Get alias if configured (for metrics differentiation).
-            let alias = config.get("openai").and_then(|e| e.alias.clone());
-            let provider_label = alias.clone().unwrap_or_else(|| "openai".into());
-            let stream_transport = config
-                .get("openai")
-                .map(|entry| entry.stream_transport)
-                .unwrap_or(ProviderStreamTransport::Sse);
-            let preferred = configured_models_for_provider(config, "openai");
-            let discovered = if should_fetch_models(config, "openai") {
-                // Use pre-fetched live models from parallel discovery.
-                let fallback = openai::default_model_catalog();
-                match prefetched.get("openai") {
-                    Some(live) => {
-                        let merged = merge_discovered_with_fallback_catalog(live.clone(), fallback);
-                        tracing::debug!(model_count = merged.len(), "loaded openai models catalog");
-                        merged
-                    },
-                    None => fallback,
-                }
-            } else {
-                Vec::new()
-            };
-            let models = merge_preferred_and_discovered_models(preferred, discovered);
-
-            for model in models {
-                let caps = model
-                    .capabilities
-                    .unwrap_or_else(|| ModelCapabilities::infer(&model.id));
-                let (model_id, display_name, created_at, recommended) = (
-                    model.id,
-                    model.display_name,
-                    model.created_at,
-                    model.recommended,
-                );
-                if self.has_provider_model(&provider_label, &model_id) {
-                    continue;
-                }
-                let provider = Arc::new(
-                    openai::OpenAiProvider::new_with_name(
-                        key.clone(),
-                        model_id.clone(),
-                        base_url.clone(),
-                        provider_label.clone(),
-                    )
-                    .with_stream_transport(stream_transport)
-                    .with_capabilities(capabilities)
-                    .with_model_capabilities(caps)
-                    .with_context_window_overrides(
-                        self.global_cw_overrides.clone(),
-                        config
-                            .get("openai")
-                            .map(|e| extract_cw_overrides(&e.model_overrides))
-                            .unwrap_or_default(),
-                    ),
-                );
-                self.register(
-                    ModelInfo {
-                        id: model_id,
-                        provider: provider_label.clone(),
-                        display_name,
-                        created_at,
-                        recommended,
-                        capabilities: caps,
-                    },
-                    provider,
-                );
-            }
-        }
+        _config: &ProvidersConfig,
+        _env_overrides: &HashMap<String, String>,
+        _discovery: &DiscoveryResult,
+    ) -> usize {
+        0
     }
+}
 
-    pub(crate) fn register_openai_compatible_providers(
-        &mut self,
-        config: &ProvidersConfig,
-        env_overrides: &HashMap<String, String>,
-        prefetched: &HashMap<String, Vec<DiscoveredModel>>,
-    ) {
-        for def in OPENAI_COMPAT_PROVIDERS {
-            if !config.is_enabled(def.config_name) {
-                continue;
-            }
+fn provider_label(config: &ProvidersConfig, provider_name: &str) -> String {
+    config
+        .get(provider_name)
+        .and_then(|entry| entry.alias.clone())
+        .unwrap_or_else(|| provider_name.to_string())
+}
 
-            let key = resolve_api_key(config, def.config_name, def.env_key, env_overrides);
-
-            // Local providers don't require an API key — use a dummy value.
-            // Gemini accepts both GEMINI_API_KEY and GOOGLE_API_KEY.
-            let key = if !def.requires_api_key {
-                key.or_else(|| Some(secrecy::Secret::new(def.config_name.into())))
-            } else if def.config_name == "gemini" {
-                key.or_else(|| env_value(env_overrides, "GOOGLE_API_KEY").map(secrecy::Secret::new))
-            } else {
-                key
-            };
-
-            let Some(key) = key else {
-                continue;
-            };
-
-            let base_url = config
-                .get(def.config_name)
-                .and_then(|e| e.base_url.clone())
-                .or_else(|| env_value(env_overrides, def.env_base_url_key))
-                .unwrap_or_else(|| def.default_base_url.into());
-
-            // Get alias if configured (for metrics differentiation).
-            let alias = config.get(def.config_name).and_then(|e| e.alias.clone());
-            let provider_label = alias.unwrap_or_else(|| def.config_name.into());
-            let cache_retention = config
-                .get(def.config_name)
-                .map(|e| e.cache_retention)
-                .unwrap_or(chelix_config::CacheRetention::Short);
-            let stream_transport = config
-                .get(def.config_name)
-                .map(|entry| entry.stream_transport)
-                .unwrap_or(ProviderStreamTransport::Sse);
-            let preferred = configured_models_for_provider(config, def.config_name);
-            if def.local_only {
-                let has_explicit_entry = config.get(def.config_name).is_some();
-                let has_env_base_url = env_value(env_overrides, def.env_base_url_key).is_some();
-                if !has_explicit_entry && !has_env_base_url && preferred.is_empty() {
-                    continue;
-                }
-            }
-            // Some providers need an explicit model before they can answer;
-            // keep discovery off there when no model is configured.
-            // OpenRouter supports `/models`, so we discover dynamically.
-            let skip_discovery =
-                def.models.is_empty() && preferred.is_empty() && !def.local_only && cfg!(test);
-            // Respect `supports_model_discovery`: providers whose API lacks a
-            // /models endpoint skip live fetch unless the user explicitly
-            // opted in via `fetch_models = true` in config.
-            let user_opted_in = config
-                .get(def.config_name)
-                .is_some_and(|entry| entry.fetch_models);
-            let try_fetch = def.supports_model_discovery || user_opted_in;
-            let static_catalog =
-                || -> Vec<DiscoveredModel> { catalog_to_discovered(def.models, 2) };
-            let discovered =
-                if !skip_discovery && try_fetch && should_fetch_models(config, def.config_name) {
-                    // Use pre-fetched results from parallel discovery.
-                    match prefetched.get(def.config_name) {
-                        Some(models) => models.clone(),
-                        None => static_catalog(),
-                    }
-                } else if !def.supports_model_discovery && !def.models.is_empty() {
-                    // Provider has no /models endpoint — use the static catalog.
-                    static_catalog()
-                } else {
-                    Vec::new()
-                };
-            let models = merge_preferred_and_discovered_models(preferred, discovered);
-
-            // Resolve per-provider tool_mode from config (defaults to Auto).
-            let config_tool_mode = config
-                .get(def.config_name)
-                .map(|e| e.tool_mode)
-                .unwrap_or_default();
-
-            for model in models {
-                let caps = model
-                    .capabilities
-                    .unwrap_or_else(|| ModelCapabilities::infer(&model.id));
-                let (model_id, display_name, created_at, recommended) = (
-                    model.id,
-                    model.display_name,
-                    model.created_at,
-                    model.recommended,
-                );
-                if self.has_provider_model(&provider_label, &model_id) {
-                    continue;
-                }
-
-                // Determine effective tool mode for this model.
-                let effective_tool_mode =
-                    if !matches!(config_tool_mode, chelix_config::ToolMode::Auto) {
-                        config_tool_mode
-                    } else {
-                        // Let OpenAiProvider use its default logic.
-                        chelix_config::ToolMode::Auto
-                    };
-
-                let mut oai = openai::OpenAiProvider::new_with_name(
-                    key.clone(),
-                    model_id.clone(),
-                    base_url.clone(),
-                    provider_label.clone(),
-                )
-                .with_stream_transport(stream_transport)
-                .with_capabilities(def.capabilities)
-                .with_model_capabilities(caps)
-                .with_cache_retention(cache_retention)
-                .with_context_window_overrides(
-                    self.global_cw_overrides.clone(),
-                    config
-                        .get(def.config_name)
-                        .map(|e| extract_cw_overrides(&e.model_overrides))
-                        .unwrap_or_default(),
-                );
-
-                if !matches!(effective_tool_mode, chelix_config::ToolMode::Auto) {
-                    oai = oai.with_tool_mode(effective_tool_mode);
-                }
-                if let Some(strict) = config.get(def.config_name).and_then(|e| e.strict_tools) {
-                    oai = oai.with_strict_tools(strict);
-                }
-
-                if let Some(timeout) = config
-                    .get(def.config_name)
-                    .and_then(|e| e.probe_timeout_secs)
-                {
-                    oai = oai.with_probe_timeout_secs(Some(timeout));
-                }
-
-                let provider = Arc::new(oai);
-                self.register(
-                    ModelInfo {
-                        id: model_id,
-                        provider: provider_label.clone(),
-                        display_name,
-                        created_at,
-                        recommended,
-                        capabilities: caps,
-                    },
-                    provider,
-                );
-            }
-        }
+fn configure_openai_transport(
+    mut provider: openai::OpenAiProvider,
+    entry: &ProviderEntry,
+) -> openai::OpenAiProvider {
+    provider = provider
+        .with_stream_transport(entry.stream_transport)
+        .with_cache_retention(entry.cache_retention)
+        .with_probe_timeout_secs(entry.probe_timeout_secs);
+    if !matches!(entry.wire_api, chelix_config::WireApi::ChatCompletions) {
+        provider = provider.with_wire_api(entry.wire_api);
     }
-
-    /// Register custom OpenAI-compatible providers (names starting with `custom-`).
-    /// These are user-added endpoints that may support model discovery via `/v1/models`.
-    pub(crate) fn register_custom_providers(
-        &mut self,
-        config: &ProvidersConfig,
-        prefetched: &HashMap<String, Vec<DiscoveredModel>>,
-    ) {
-        for (name, entry) in &config.providers {
-            if !name.starts_with("custom-") || !entry.enabled {
-                continue;
-            }
-
-            let Some(api_key) = entry
-                .api_key
-                .as_ref()
-                .filter(|k| !k.expose_secret().is_empty())
-            else {
-                continue;
-            };
-
-            let Some(base_url) = entry.base_url.as_ref().filter(|u| !u.trim().is_empty()) else {
-                continue;
-            };
-
-            let preferred = configured_models_for_provider(config, name);
-
-            // Use pre-fetched results from parallel discovery.
-            let discovered = if should_fetch_models(config, name) {
-                match prefetched.get(name.as_str()) {
-                    Some(models) => models.clone(),
-                    None => Vec::new(),
-                }
-            } else {
-                Vec::new()
-            };
-
-            let models = merge_preferred_and_discovered_models_whitelist(preferred, discovered);
-            if models.is_empty() {
-                tracing::debug!(
-                    provider = %name,
-                    "custom provider has no models — skipping registration"
-                );
-                continue;
-            }
-
-            let custom_tool_mode = entry.tool_mode;
-            for model in models {
-                let caps = model
-                    .capabilities
-                    .unwrap_or_else(|| ModelCapabilities::infer(&model.id));
-                let (model_id, display_name, created_at, recommended, context_window) = (
-                    model.id,
-                    model.display_name,
-                    model.created_at,
-                    model.recommended,
-                    model.context_window,
-                );
-                if self.has_provider_model(name, &model_id) {
-                    continue;
-                }
-                let mut oai = openai::OpenAiProvider::new_with_name(
-                    api_key.clone(),
-                    model_id.clone(),
-                    base_url.clone(),
-                    name.clone(),
-                )
-                .with_stream_transport(entry.stream_transport)
-                .with_cache_retention(entry.cache_retention)
-                .with_model_capabilities(caps)
-                .with_discovered_context_window(context_window)
-                .with_capabilities(openai::OpenAiProviderCapabilities {
-                    reasoning_content_model_prefixes: CUSTOM_REASONING_CONTENT_MODEL_PREFIXES,
-                    qwen_models_require_single_leading_system: true,
-                    ..openai::OpenAiProviderCapabilities::DEFAULT
-                })
-                .with_context_window_overrides(
-                    self.global_cw_overrides.clone(),
-                    extract_cw_overrides(&entry.model_overrides),
-                );
-                if !matches!(entry.wire_api, chelix_config::WireApi::ChatCompletions) {
-                    oai = oai.with_wire_api(entry.wire_api);
-                }
-                if !matches!(custom_tool_mode, chelix_config::ToolMode::Auto) {
-                    oai = oai.with_tool_mode(custom_tool_mode);
-                }
-                if let Some(strict) = entry.strict_tools {
-                    oai = oai.with_strict_tools(strict);
-                }
-                oai = oai.with_probe_timeout_secs(entry.probe_timeout_secs);
-                let provider = Arc::new(oai);
-                self.register(
-                    ModelInfo {
-                        id: model_id,
-                        provider: name.clone(),
-                        display_name,
-                        created_at,
-                        recommended,
-                        capabilities: caps,
-                    },
-                    provider,
-                );
-            }
-
-            tracing::info!(
-                provider = %name,
-                "registered custom OpenAI-compatible provider"
-            );
-        }
+    if !matches!(entry.tool_mode, chelix_config::ToolMode::Auto) {
+        provider = provider.with_tool_mode(entry.tool_mode);
     }
-
-    pub fn get(&self, model_id: &str) -> Option<Arc<dyn LlmProvider>> {
-        self.resolve_registry_model_id(model_id, None)
-            .as_deref()
-            .and_then(|id| self.providers.get(id))
-            .cloned()
+    if let Some(strict_tools) = entry.strict_tools {
+        provider = provider.with_strict_tools(strict_tools);
     }
-
-    pub fn first(&self) -> Option<Arc<dyn LlmProvider>> {
-        self.models
-            .iter()
-            .enumerate()
-            .min_by_key(|(idx, m)| (subscription_preference_rank(&m.provider), *idx))
-            .map(|(_, m)| m)
-            .and_then(|m| self.providers.get(&m.id))
-            .cloned()
-    }
-
-    /// Return the first provider that supports tool calling,
-    /// falling back to the first provider overall.
-    pub fn first_with_tools(&self) -> Option<Arc<dyn LlmProvider>> {
-        self.models
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, m)| self.providers.get(&m.id).map(|p| (idx, m, p)))
-            .filter(|(_, _, p)| p.supports_tools())
-            .min_by_key(|(idx, m, _)| (subscription_preference_rank(&m.provider), *idx))
-            .map(|(_, _, p)| Arc::clone(p))
-            .or_else(|| self.first())
-    }
-
-    pub fn list_models(&self) -> &[ModelInfo] {
-        &self.models
-    }
-
-    /// Return all registered providers in registration order.
-    pub fn all_providers(&self) -> Vec<Arc<dyn LlmProvider>> {
-        self.models
-            .iter()
-            .filter_map(|m| self.providers.get(&m.id).cloned())
-            .collect()
-    }
-
-    /// Return providers for the given model IDs (in order), skipping unknown IDs.
-    pub fn providers_for_models(&self, model_ids: &[String]) -> Vec<Arc<dyn LlmProvider>> {
-        model_ids
-            .iter()
-            .filter_map(|id| {
-                self.resolve_registry_model_id(id, None)
-                    .as_deref()
-                    .and_then(|rid| self.providers.get(rid))
-                    .cloned()
-            })
-            .collect()
-    }
-
-    /// Return fallback providers ordered by affinity to the given primary:
-    ///
-    /// 1. Same model ID on a different provider backend (e.g. `gpt-4o` via openrouter)
-    /// 2. Subscription providers (`openai-codex`, `github-copilot`)
-    /// 3. Other models from the same provider (e.g. `claude-opus-4` when primary is `claude-sonnet-4`)
-    /// 4. Models from other providers
-    ///
-    /// The primary itself is excluded from the result.
-    pub fn fallback_providers_for(
-        &self,
-        primary_model_id: &str,
-        primary_provider_name: &str,
-    ) -> Vec<Arc<dyn LlmProvider>> {
-        let primary_raw_model_id = raw_model_id(primary_model_id);
-        let mut ranked: Vec<(u8, usize, usize, Arc<dyn LlmProvider>)> = Vec::new();
-
-        for (idx, info) in self.models.iter().enumerate() {
-            if info.id == primary_model_id && info.provider == primary_provider_name {
-                continue; // skip the primary itself
-            }
-            let Some(p) = self.providers.get(&info.id).cloned() else {
-                continue;
-            };
-            let provider_rank = subscription_preference_rank(&info.provider);
-            let bucket = if raw_model_id(&info.id) == primary_raw_model_id {
-                0
-            } else if provider_rank == 0 {
-                1
-            } else if info.provider == primary_provider_name {
-                2
-            } else {
-                3
-            };
-            ranked.push((bucket, provider_rank, idx, p));
-        }
-
-        ranked.sort_by_key(|(bucket, provider_rank, idx, _)| (*bucket, *provider_rank, *idx));
-        ranked.into_iter().map(|(_, _, _, p)| p).collect()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.providers.is_empty()
-    }
-
-    pub fn provider_summary(&self) -> String {
-        if self.providers.is_empty() {
-            return "no LLM providers configured".into();
-        }
-        let provider_count = self
-            .models
-            .iter()
-            .map(|m| m.provider.as_str())
-            .collect::<HashSet<_>>()
-            .len();
-        let model_count = self.models.len();
-        format!(
-            "{} provider{}, {} model{}",
-            provider_count,
-            if provider_count == 1 {
-                ""
-            } else {
-                "s"
-            },
-            model_count,
-            if model_count == 1 {
-                ""
-            } else {
-                "s"
-            },
-        )
-    }
+    provider
 }

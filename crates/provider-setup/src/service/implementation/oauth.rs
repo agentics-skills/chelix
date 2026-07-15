@@ -59,7 +59,6 @@ impl LiveProviderSetupService {
         let registry = Arc::clone(&self.registry);
         let config = self.effective_config();
         let env_overrides = self.env_overrides.clone();
-        let cw_overrides = self.global_cw_overrides.clone();
         let poll_headers = extra_headers.clone();
         tokio::spawn(async move {
             let poll_extra = poll_headers.as_ref();
@@ -81,11 +80,7 @@ impl LiveProviderSetupService {
                         );
                         return;
                     }
-                    let new_registry = ProviderRegistry::from_env_with_config_and_overrides(
-                        &config,
-                        &env_overrides,
-                        cw_overrides,
-                    );
+                    let new_registry = ProviderRegistry::discover(&config, &env_overrides).await;
                     let provider_summary = new_registry.provider_summary();
                     let model_count = new_registry.list_models().len();
                     let mut reg = registry.write().await;
@@ -142,7 +137,7 @@ impl LiveProviderSetupService {
         // If tokens already exist, skip launching a fresh OAuth flow.
         if has_oauth_tokens(&provider_name, &self.token_store) {
             let effective = self.effective_config();
-            let new_registry = self.build_registry(&effective);
+            let new_registry = self.build_registry(&effective).await;
             let provider_summary = new_registry.provider_summary();
             let model_count = new_registry.list_models().len();
             let mut reg = self.registry.write().await;
@@ -200,7 +195,6 @@ impl LiveProviderSetupService {
         let registry = Arc::clone(&self.registry);
         let config = self.effective_config();
         let env_overrides = self.env_overrides.clone();
-        let cw_overrides = self.global_cw_overrides.clone();
         let bind_addr = self.callback_bind_addr.clone();
         let pending_oauth = Arc::clone(&self.pending_oauth);
         let callback_state = expected_state.clone();
@@ -231,11 +225,8 @@ impl LiveProviderSetupService {
                                 return;
                             }
                             // Rebuild registry with new tokens
-                            let new_registry = ProviderRegistry::from_env_with_config_and_overrides(
-                                &config,
-                                &env_overrides,
-                                cw_overrides,
-                            );
+                            let new_registry =
+                                ProviderRegistry::discover(&config, &env_overrides).await;
                             let provider_summary = new_registry.provider_summary();
                             let model_count = new_registry.list_models().len();
                             let mut reg = registry.write().await;
@@ -347,7 +338,7 @@ impl LiveProviderSetupService {
         self.set_provider_enabled_in_memory(&pending.provider_name, true);
 
         let effective = self.effective_config();
-        let new_registry = self.build_registry(&effective);
+        let new_registry = self.build_registry(&effective).await;
         let provider_summary = new_registry.provider_summary();
         let model_count = new_registry.list_models().len();
         let mut reg = self.registry.write().await;

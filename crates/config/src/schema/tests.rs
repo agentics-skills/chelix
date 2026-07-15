@@ -870,7 +870,14 @@ fn provider_entry_wire_api_from_toml() {
 enabled = true
 base_url = "https://gmn.example.com/v1"
 wire_api = "responses"
-models = ["gpt-5.3-codex"]
+
+[providers.custom-mn.models."gpt-5.3-codex"]
+context_length = 400000
+max_input_tokens = 272000
+max_output_tokens = 128000
+
+[providers.custom-mn.models."gpt-5.3-codex".reasoning]
+supported_efforts = ["low", "medium", "high"]
 "#;
     let config: ChelixConfig = toml::from_str(toml_str).unwrap();
     let entry = config.providers.get("custom-mn").unwrap();

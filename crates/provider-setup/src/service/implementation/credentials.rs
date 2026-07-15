@@ -1,7 +1,7 @@
-//! Credential management — `save_key`, `remove_key`, `save_model`,
-//! `save_models` implementations.
+//! Credential management — `save_key`, `remove_key`, and `save_models`.
 
 use {
+    chelix_config::schema::ModelConfigMap,
     serde_json::Value,
     tracing::{info, warn},
 };
@@ -33,7 +33,7 @@ impl LiveProviderSetupService {
         // API key is optional for some providers (e.g., local backends).
         let api_key = params.get("apiKey").and_then(|v| v.as_str());
         let base_url = params.get("baseUrl").and_then(|v| v.as_str());
-        let models = parse_models_param(&params);
+        let models = parse_models_param(&params).map_err(ServiceError::message)?;
 
         // Custom providers bypass known_providers() validation.
         let is_custom = is_custom_provider(provider_name);
@@ -69,7 +69,7 @@ impl LiveProviderSetupService {
             has_base_url = normalized_base_url
                 .as_ref()
                 .is_some_and(|url| !url.trim().is_empty()),
-            models = models.len(),
+            models = models.as_ref().map_or(0, ModelConfigMap::len),
             key_store_path = %key_store_path.display(),
             "saving provider config"
         );
@@ -79,7 +79,7 @@ impl LiveProviderSetupService {
             provider_name,
             api_key.map(String::from),
             normalized_base_url,
-            (!models.is_empty()).then_some(models),
+            models,
         ) {
             warn!(
                 provider = provider_name,
@@ -94,7 +94,7 @@ impl LiveProviderSetupService {
 
         // Rebuild the provider registry with saved keys merged into config.
         let effective = self.effective_config();
-        let new_registry = self.build_registry(&effective);
+        let new_registry = self.build_registry(&effective).await;
         let provider_summary = new_registry.provider_summary();
         let model_count = new_registry.list_models().len();
         let mut reg = self.registry.write().await;
@@ -150,7 +150,7 @@ impl LiveProviderSetupService {
 
         // Rebuild the provider registry without the removed provider.
         let effective = self.effective_config();
-        let new_registry = self.build_registry(&effective);
+        let new_registry = self.build_registry(&effective).await;
         let mut reg = self.registry.write().await;
         *reg = new_registry;
 
@@ -159,51 +159,6 @@ impl LiveProviderSetupService {
             "removed provider credentials and rebuilt registry"
         );
 
-        Ok(serde_json::json!({ "ok": true }))
-    }
-
-    pub(super) async fn save_model_inner(&self, params: Value) -> ServiceResult {
-        let provider_name = params
-            .get("provider")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "missing 'provider' parameter".to_string())?;
-
-        let model = params
-            .get("model")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "missing 'model' parameter".to_string())?;
-
-        // Validate provider exists (known or custom).
-        if !is_custom_provider(provider_name) {
-            let known = known_providers();
-            if !known.iter().any(|p| p.name == provider_name) {
-                return Err(format!("unknown provider: {provider_name}").into());
-            }
-        }
-
-        // Prepend chosen model to existing saved models so it appears first.
-        let mut models = vec![model.to_string()];
-        if let Some(existing) = self.key_store.load_config(provider_name) {
-            models.extend(existing.models);
-        }
-
-        self.key_store
-            .save_config(provider_name, None, None, Some(models))
-            .map_err(ServiceError::message)?;
-
-        // Update the cross-provider priority list.
-        if let Some(ref priority) = self.priority_models {
-            let mut list = priority.write().await;
-            let normalized = model.to_string();
-            list.retain(|m| m != &normalized);
-            list.insert(0, normalized);
-        }
-
-        info!(
-            provider = provider_name,
-            model, "saved model preference and queued async registry rebuild"
-        );
-        self.queue_registry_rebuild(provider_name, "save_model");
         Ok(serde_json::json!({ "ok": true }))
     }
 
@@ -217,13 +172,9 @@ impl LiveProviderSetupService {
             .and_then(|v| v.as_str())
             .ok_or_else(|| "missing 'provider' parameter".to_string())?;
 
-        let models: Vec<String> = params
-            .get("models")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| "missing 'models' array parameter".to_string())?
-            .iter()
-            .filter_map(|v| v.as_str().map(String::from))
-            .collect();
+        let models = parse_models_param(&params)
+            .map_err(ServiceError::message)?
+            .ok_or_else(|| "missing 'models' object parameter".to_string())?;
 
         // Validate provider exists (known or custom).
         if !is_custom_provider(provider_name) {
@@ -240,16 +191,16 @@ impl LiveProviderSetupService {
         // Update the cross-provider priority list.
         if let Some(ref priority) = self.priority_models {
             let mut list = priority.write().await;
-            for m in models.iter().rev() {
-                list.retain(|existing| existing != m);
-                list.insert(0, m.clone());
+            for model_id in models.keys().rev() {
+                list.retain(|existing| existing != model_id);
+                list.insert(0, model_id.clone());
             }
         }
 
         info!(
             provider = provider_name,
             count = models.len(),
-            models = ?models,
+            models = ?models.keys().collect::<Vec<_>>(),
             "saved model preferences and queued async registry rebuild"
         );
         self.queue_registry_rebuild(provider_name, "save_models");

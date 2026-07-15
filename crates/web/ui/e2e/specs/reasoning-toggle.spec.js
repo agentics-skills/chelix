@@ -1,5 +1,22 @@
 const { expect, test } = require("../base-test");
-const { navigateAndWait, waitForWsConnected, watchPageErrors } = require("../helpers");
+const { modelRecord, navigateAndWait, waitForWsConnected, watchPageErrors } = require("../helpers");
+
+const REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
+
+function reasoningModel() {
+	return modelRecord({
+		id: "anthropic::claude-opus-4-5",
+		displayName: "Claude Opus 4.5",
+		provider: "anthropic",
+		supportedEfforts: REASONING_EFFORTS,
+		reasoningSummary: "detailed",
+		reasoningInclude: ["reasoning.encrypted_content"],
+	});
+}
+
+function nonReasoningModel() {
+	return modelRecord({ id: "openai::gpt-4o", displayName: "GPT-4o", provider: "openai" });
+}
 
 /** Set mock models in the browser and freeze the store so bootstrap/WS cannot overwrite. */
 async function setMockModels(page, models, selectedId, effort) {
@@ -18,12 +35,12 @@ async function setMockModels(page, models, selectedId, effort) {
 			store.modelStore.fetch = () => Promise.resolve();
 			store.modelStore.setAll = () => {};
 			// Select the model ID BEFORE setting the list so that when the models
-			// signal updates, the computed selectedModel/supportsReasoning resolve
+			// signal updates, the selected model and supported efforts resolve
 			// immediately without a brief "model not found" gap.
 			store.select(selectedId);
 			store.setAll(models);
-			// Set effort AFTER models so supportsReasoning is true; the effect
-			// in reasoning-toggle resets effort to "" when supportsReasoning=false.
+			// Set effort AFTER models expose supported efforts; the effect resets
+			// effort to "" while the selected model has no supported effort values.
 			if (effort) store.setReasoningEffort(effort);
 		},
 		[models, selectedId, effort],
@@ -41,8 +58,8 @@ test.describe("reasoning effort toggle", () => {
 
 		await setMockModels(
 			page,
-			[{ id: "gpt-4o", displayName: "GPT-4o", provider: "openai", supportsReasoning: false }],
-			"gpt-4o",
+			[nonReasoningModel()],
+			"openai::gpt-4o",
 		);
 
 		const reasoningCombo = page.locator("#reasoningCombo");
@@ -55,8 +72,8 @@ test.describe("reasoning effort toggle", () => {
 
 		await setMockModels(
 			page,
-			[{ id: "claude-opus-4-5", displayName: "Claude Opus 4.5", provider: "anthropic", supportsReasoning: true }],
-			"claude-opus-4-5",
+			[reasoningModel()],
+			"anthropic::claude-opus-4-5",
 		);
 
 		const reasoningCombo = page.locator("#reasoningCombo");
@@ -64,13 +81,13 @@ test.describe("reasoning effort toggle", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
-	test("clicking toggle opens dropdown with Off/Low/Medium/High options", async ({ page }) => {
+	test("clicking toggle shows exactly the registry-supported efforts", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 
 		await setMockModels(
 			page,
-			[{ id: "claude-opus-4-5", displayName: "Claude Opus 4.5", provider: "anthropic", supportsReasoning: true }],
-			"claude-opus-4-5",
+			[reasoningModel()],
+			"anthropic::claude-opus-4-5",
 		);
 
 		const comboBtn = page.locator("#reasoningComboBtn");
@@ -81,13 +98,15 @@ test.describe("reasoning effort toggle", () => {
 		await expect(dropdown).toBeVisible();
 
 		const items = page.locator("#reasoningDropdownList .model-dropdown-item");
-		await expect(items).toHaveCount(6);
+		await expect(items).toHaveCount(8);
 		await expect(items.nth(0)).toHaveText("Off");
-		await expect(items.nth(1)).toHaveText("Minimal");
-		await expect(items.nth(2)).toHaveText("Low");
-		await expect(items.nth(3)).toHaveText("Medium");
-		await expect(items.nth(4)).toHaveText("High");
-		await expect(items.nth(5)).toHaveText("Extra High");
+		await expect(items.nth(1)).toHaveText("minimal");
+		await expect(items.nth(2)).toHaveText("low");
+		await expect(items.nth(3)).toHaveText("medium");
+		await expect(items.nth(4)).toHaveText("high");
+		await expect(items.nth(5)).toHaveText("xhigh");
+		await expect(items.nth(6)).toHaveText("max");
+		await expect(items.nth(7)).toHaveText("ultra");
 
 		expect(pageErrors).toEqual([]);
 	});
@@ -97,8 +116,8 @@ test.describe("reasoning effort toggle", () => {
 
 		await setMockModels(
 			page,
-			[{ id: "claude-opus-4-5", displayName: "Claude Opus 4.5", provider: "anthropic", supportsReasoning: true }],
-			"claude-opus-4-5",
+			[reasoningModel()],
+			"anthropic::claude-opus-4-5",
 		);
 
 		const comboBtn = page.locator("#reasoningComboBtn");
@@ -106,7 +125,7 @@ test.describe("reasoning effort toggle", () => {
 		await comboBtn.click();
 
 		// Wait for dropdown to be visible before selecting
-		const highItem = page.locator("#reasoningDropdownList .model-dropdown-item").filter({ hasText: /^High$/ });
+		const highItem = page.locator("#reasoningDropdownList .model-dropdown-item").filter({ hasText: /^high$/ });
 		await expect(highItem).toBeVisible();
 		await highItem.click();
 
@@ -114,7 +133,7 @@ test.describe("reasoning effort toggle", () => {
 		await expect(dropdown).toBeHidden();
 
 		const label = page.locator("#reasoningComboLabel");
-		await expect(label).toHaveText("High");
+		await expect(label).toHaveText("high");
 
 		expect(pageErrors).toEqual([]);
 	});
@@ -124,11 +143,11 @@ test.describe("reasoning effort toggle", () => {
 
 		await setMockModels(
 			page,
-			[{ id: "claude-opus-4-5", displayName: "Claude Opus 4.5", provider: "anthropic", supportsReasoning: true }],
-			"claude-opus-4-5",
+			[reasoningModel()],
+			"anthropic::claude-opus-4-5",
 		);
 
-		await page.evaluate(async () => {
+		await page.evaluate(async (model) => {
 			var appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
 			var appUrl = new URL(appScript.src, window.location.origin);
 			var prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
@@ -136,13 +155,13 @@ test.describe("reasoning effort toggle", () => {
 			switchModule.restoreSessionState({
 				id: 0,
 				key: "main",
-				model: "claude-opus-4-5",
+				model: "anthropic::claude-opus-4-5",
 				reasoningEffort: "high",
 			});
 		});
 
 		const label = page.locator("#reasoningComboLabel");
-		await expect(label).toHaveText("High");
+		await expect(label).toHaveText("high");
 
 		const effort = await page.evaluate(async () => {
 			var appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
@@ -181,8 +200,8 @@ test.describe("reasoning effort toggle", () => {
 		// Set up a reasoning model and select high effort
 		await setMockModels(
 			page,
-			[{ id: "claude-opus-4-5", displayName: "Claude Opus 4.5", provider: "anthropic", supportsReasoning: true }],
-			"claude-opus-4-5",
+			[reasoningModel()],
+			"anthropic::claude-opus-4-5",
 			"high",
 		);
 
@@ -192,7 +211,7 @@ test.describe("reasoning effort toggle", () => {
 
 		const payloads = await page.evaluate(() => window.__chatSendPayloads);
 		expect(payloads.length).toBeGreaterThan(0);
-		expect(payloads[0].model).toBe("claude-opus-4-5");
+		expect(payloads[0].model).toBe("anthropic::claude-opus-4-5");
 		expect(payloads[0].reasoningEffort).toBe("high");
 
 		expect(pageErrors).toEqual([]);
@@ -203,15 +222,8 @@ test.describe("reasoning effort toggle", () => {
 
 		await setMockModels(
 			page,
-			[
-				{
-					id: "claude-opus-4-5",
-					displayName: "Claude Opus 4.5",
-					provider: "anthropic",
-					supportsReasoning: true,
-				},
-			],
-			"claude-opus-4-5",
+			[reasoningModel()],
+			"anthropic::claude-opus-4-5",
 		);
 
 		const modelBtn = page.locator("#modelComboBtn");
@@ -229,16 +241,8 @@ test.describe("reasoning effort toggle", () => {
 
 		await setMockModels(
 			page,
-			[
-				{
-					id: "claude-opus-4-5",
-					displayName: "Claude Opus 4.5",
-					provider: "anthropic",
-					supportsReasoning: true,
-				},
-				{ id: "gpt-4o", displayName: "GPT-4o", provider: "openai", supportsReasoning: false },
-			],
-			"claude-opus-4-5",
+			[reasoningModel(), nonReasoningModel()],
+			"anthropic::claude-opus-4-5",
 			"high",
 		);
 
@@ -252,7 +256,7 @@ test.describe("reasoning effort toggle", () => {
 			var appUrl = new URL(appScript.src, window.location.origin);
 			var prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
 			var store = await import(`${prefix}js/stores/model-store.js`);
-			store.select("gpt-4o");
+			store.select("openai::gpt-4o");
 		});
 
 		// Combo should be hidden
@@ -291,13 +295,11 @@ test.describe("reasoning effort toggle", () => {
 			// Simulate the boot race: sessions.switch restores the reasoning
 			// effort while the model list is still empty (model unresolved),
 			// then the model list arrives afterwards.
-			store.select("claude-opus-4-5");
+			store.select("anthropic::claude-opus-4-5");
 			store.models.value = [];
 			store.setReasoningEffort("high");
-			store.models.value = [
-				{ id: "claude-opus-4-5", displayName: "Claude Opus 4.5", provider: "anthropic", supportsReasoning: true },
-			];
-		});
+			store.models.value = [model];
+		}, reasoningModel());
 
 		const reasoningCombo = page.locator("#reasoningCombo");
 		await expect(reasoningCombo).toBeVisible();

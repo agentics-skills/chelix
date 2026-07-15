@@ -281,7 +281,7 @@ pub(crate) async fn run_streaming(
                 StreamEvent::Done(usage) => {
                     clear_unsupported_model(state, model_store, model_id).await;
 
-                    // Record streaming completion metrics (mirroring provider_chain.rs)
+                    // Record streaming completion metrics.
                     #[cfg(feature = "metrics")]
                     {
                         let duration = stream_start.elapsed().as_secs_f64();

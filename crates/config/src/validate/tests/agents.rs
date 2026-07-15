@@ -184,44 +184,21 @@ max_iterations = 0
 }
 
 #[test]
-fn reasoning_effort_valid_values_no_error() {
-    for effort in &["none", "minimal", "low", "medium", "high", "xhigh", "max"] {
-        let toml = format!(
-            r#"
-            [agents.presets.thinker]
-            model = "claude-opus-4-5-20251101"
-            reasoning_effort = "{effort}"
-            "#
-        );
-        let result = validate_toml_str(&toml);
-        let errors: Vec<_> = result
-            .diagnostics
-            .iter()
-            .filter(|d| d.path.contains("reasoning_effort") && d.severity == Severity::Error)
-            .collect();
-        assert!(
-            errors.is_empty(),
-            "effort={effort} should be valid: {errors:?}"
-        );
-    }
-}
-
-#[test]
-fn reasoning_effort_invalid_value_reports_type_error() {
+fn reasoning_effort_accepts_provider_defined_value() {
     let toml = r#"
     [agents.presets.thinker]
     model = "claude-opus-4-5-20251101"
-    reasoning_effort = "extreme"
+    reasoning_effort = "ultra"
     "#;
     let result = validate_toml_str(toml);
-    let error = result
+    let errors: Vec<_> = result
         .diagnostics
         .iter()
-        .find(|d| d.category == "type-error" && d.severity == Severity::Error);
+        .filter(|d| d.path.contains("reasoning_effort") && d.severity == Severity::Error)
+        .collect();
     assert!(
-        error.is_some(),
-        "invalid reasoning_effort should produce type error: {:?}",
-        result.diagnostics
+        errors.is_empty(),
+        "provider-defined effort should pass schema validation: {errors:?}"
     );
 }
 

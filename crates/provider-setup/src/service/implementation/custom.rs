@@ -12,6 +12,7 @@ use {
             base_url_to_display_name, derive_provider_name_from_url,
             existing_custom_provider_for_base_url, make_unique_provider_name,
         },
+        key_store::parse_models_param,
     },
 };
 
@@ -31,10 +32,7 @@ impl LiveProviderSetupService {
             .filter(|s| !s.trim().is_empty())
             .ok_or_else(|| "missing 'apiKey' parameter".to_string())?;
 
-        let model = params
-            .get("model")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.trim().is_empty());
+        let models = parse_models_param(&params).map_err(ServiceError::message)?;
 
         let base_name = derive_provider_name_from_url(base_url)
             .ok_or_else(|| "could not parse endpoint URL".to_string())?;
@@ -46,8 +44,6 @@ impl LiveProviderSetupService {
             .unwrap_or_else(|| make_unique_provider_name(&base_name, &existing));
         let reused_existing_provider = existing.contains_key(&provider_name);
         let display_name = base_url_to_display_name(base_url);
-
-        let models = model.map(|m| vec![m.to_string()]);
 
         self.key_store
             .save_config_with_display_name(
@@ -62,10 +58,10 @@ impl LiveProviderSetupService {
         set_provider_enabled_in_config(&provider_name, true)?;
         self.set_provider_enabled_in_memory(&provider_name, true);
 
-        // Rebuild synchronously so the just-added custom provider is immediately
+        // Rebuild before returning so the just-added custom provider is immediately
         // available for model probing in the same UI flow.
         let effective = self.effective_config();
-        let new_registry = self.build_registry(&effective);
+        let new_registry = self.build_registry(&effective).await;
         let provider_summary = new_registry.provider_summary();
         let model_count = new_registry.list_models().len();
         let mut reg = self.registry.write().await;

@@ -46,28 +46,35 @@ fn config_validate_toml(bencher: divan::Bencher) {
     });
 }
 
-// ── Provider model lookups ──────────────────────────────────────────────────
+// ── Provider model metadata ─────────────────────────────────────────────────
 
-const MODEL_IDS: &[&str] = &[
-    "claude-sonnet-4-5-20250929",
-    "gpt-4o",
-    "gpt-5",
-    "gemini-2.0-flash",
-    "codestral-latest",
-    "mistral-large-latest",
-    "o3",
-    "kimi-k2.5",
-    "unknown-model-xyz",
-];
-
-#[divan::bench(args = MODEL_IDS)]
-fn context_window_lookup(model_id: &str) -> u32 {
-    divan::black_box(chelix_providers::context_window_for_model(model_id))
+fn benchmark_model_metadata() -> chelix_common::ModelMetadata {
+    chelix_common::PartialModelMetadata {
+        context_length: Some(400_000),
+        max_input_tokens: Some(272_000),
+        max_output_tokens: Some(128_000),
+        reasoning: Some(chelix_common::PartialReasoningMetadata {
+            supported_efforts: Some(Vec::new()),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+    .resolve()
+    .expect("benchmark metadata must be complete")
 }
 
-#[divan::bench(args = MODEL_IDS)]
-fn vision_support_lookup(model_id: &str) -> bool {
-    divan::black_box(chelix_providers::supports_vision_for_model(model_id))
+#[divan::bench]
+fn context_window_lookup(bencher: divan::Bencher) {
+    let metadata = benchmark_model_metadata();
+    bencher.bench_local(|| divan::black_box(metadata.context_length));
+}
+
+#[divan::bench]
+fn vision_support_lookup(bencher: divan::Bencher) {
+    let metadata = benchmark_model_metadata();
+    bencher.bench_local(|| {
+        divan::black_box(metadata.supports_input(chelix_common::ModelModality::Image))
+    });
 }
 
 #[divan::bench]

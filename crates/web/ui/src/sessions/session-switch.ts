@@ -110,7 +110,6 @@ export function restoreSessionState(entry: SessionMeta, projectId?: string): voi
 	updateSessionProjectSelect(effectiveProjectId);
 	if (entry.model) {
 		modelStore.select(entry.model);
-		S.setSelectedModelId(entry.model);
 		localStorage.setItem("chelix-model", entry.model);
 		const found = modelStore.getById(entry.model);
 		if (S.modelComboLabel) {

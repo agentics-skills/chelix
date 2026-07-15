@@ -36,22 +36,11 @@ pub(crate) use config_helpers::{
     resolve_api_key, should_fetch_models, subscription_preference_rank,
 };
 #[allow(unused_imports)]
-pub(crate) use discovered_model::{
-    merge_discovered_with_fallback_catalog, merge_preferred_and_discovered_models,
-    merge_preferred_and_discovered_models_whitelist,
-};
-#[allow(unused_imports)]
 pub(crate) use http::{retry_after_ms_from_headers, with_retry_after_marker};
 #[allow(unused_imports)]
 pub(crate) use model_id::{MODEL_ID_NAMESPACE_SEP, namespaced_model_id, raw_model_id};
 pub use {
-    discovered_model::{DiscoveredModel, catalog_to_discovered},
-    model_capabilities::{
-        ModelCapabilities, ModelInfo, context_window_for_model,
-        context_window_for_model_with_config, extract_cw_overrides, is_chat_capable_model,
-        supports_reasoning_for_model, supports_tools_for_model, supports_vision_for_model,
-    },
-    registry::{
-        PendingDiscoveries, ProviderRegistry, RediscoveryResult, fetch_discoverable_models,
-    },
+    discovered_model::{DiscoveredModel, ResolvedModel, resolve_models},
+    model_capabilities::ModelInfo,
+    registry::{DiscoveryResult, ProviderRegistry, discover_models},
 };

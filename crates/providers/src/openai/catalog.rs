@@ -1,243 +1,285 @@
-use std::{collections::HashSet, sync::mpsc, time::Duration};
+//! OpenAI-compatible model discovery.
 
-use secrecy::ExposeSecret;
+use std::time::Duration;
 
-use tracing::{debug, warn};
+use {
+    chelix_common::{
+        ModelModality, PartialModelMetadata, PartialReasoningMetadata, ReasoningEffort,
+        ReasoningInclude, ReasoningSummary,
+    },
+    secrecy::ExposeSecret,
+    serde::Deserialize,
+};
 
-use crate::{DiscoveredModel, ModelCapabilities};
+use crate::{DiscoveredModel, discovered_model::deduplicate_discovered};
 
 const OPENAI_MODELS_ENDPOINT_PATH: &str = "/models";
 
-#[derive(Clone, Copy)]
-struct ModelCatalogEntry {
-    id: &'static str,
-    display_name: &'static str,
+#[derive(Debug, Deserialize)]
+struct ModelEntry {
+    #[serde(default, alias = "slug", alias = "model")]
+    id: Option<String>,
+    #[serde(
+        default,
+        alias = "display_name",
+        alias = "displayName",
+        alias = "title"
+    )]
+    name: Option<String>,
+    #[serde(default, alias = "created_at")]
+    created: Option<i64>,
+    #[serde(default)]
+    recommended: Option<bool>,
+    #[serde(default)]
+    context_length: Option<u32>,
+    #[serde(default)]
+    max_input_tokens: Option<u32>,
+    #[serde(default)]
+    max_output_tokens: Option<u32>,
+    #[serde(default)]
+    input_modalities: Option<Vec<ModelModality>>,
+    #[serde(default)]
+    output_modalities: Option<Vec<ModelModality>>,
+    #[serde(default)]
+    tool_calling: Option<bool>,
+    #[serde(default)]
+    streaming: Option<bool>,
+    #[serde(default, rename = "zeroDataRetentionEnabled")]
+    zero_data_retention_enabled: Option<bool>,
+    #[serde(default)]
+    reasoning: Option<ReasoningMetadata>,
+    #[serde(default)]
+    capabilities: Option<CapiCapabilities>,
+    #[serde(default)]
+    architecture: Option<OpenRouterArchitecture>,
+    #[serde(default)]
+    supported_parameters: Option<Vec<String>>,
+    #[serde(default)]
+    top_provider: Option<OpenRouterProviderMetadata>,
 }
 
-impl ModelCatalogEntry {
-    const fn new(id: &'static str, display_name: &'static str) -> Self {
-        Self { id, display_name }
+#[derive(Debug, Deserialize)]
+struct ReasoningMetadata {
+    #[serde(default)]
+    supported_efforts: Option<Vec<ReasoningEffort>>,
+    #[serde(default)]
+    summary: Option<ReasoningSummary>,
+    #[serde(default)]
+    include: Option<Vec<ReasoningInclude>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CapiCapabilities {
+    #[serde(default, rename = "type")]
+    capability_type: Option<String>,
+    #[serde(default)]
+    limits: Option<CapiLimits>,
+    #[serde(default)]
+    supports: Option<CapiSupports>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CapiLimits {
+    #[serde(default)]
+    max_prompt_tokens: Option<u32>,
+    #[serde(default)]
+    max_output_tokens: Option<u32>,
+    #[serde(default)]
+    max_context_window_tokens: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CapiSupports {
+    #[serde(default)]
+    tool_calls: Option<bool>,
+    #[serde(default)]
+    streaming: Option<bool>,
+    #[serde(default)]
+    vision: Option<bool>,
+    #[serde(default)]
+    thinking: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenRouterArchitecture {
+    #[serde(default)]
+    input_modalities: Option<Vec<ModelModality>>,
+    #[serde(default)]
+    output_modalities: Option<Vec<ModelModality>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenRouterProviderMetadata {
+    #[serde(default)]
+    context_length: Option<u32>,
+    #[serde(default)]
+    max_completion_tokens: Option<u32>,
+}
+
+impl ModelEntry {
+    fn into_discovered(self) -> Option<DiscoveredModel> {
+        let id = self.id?.trim().to_string();
+        if id.is_empty() {
+            return None;
+        }
+
+        if self
+            .capabilities
+            .as_ref()
+            .and_then(|capabilities| capabilities.capability_type.as_deref())
+            .is_some_and(|capability_type| capability_type != "chat")
+        {
+            return None;
+        }
+
+        let limits = self
+            .capabilities
+            .as_ref()
+            .and_then(|capabilities| capabilities.limits.as_ref());
+        let supports = self
+            .capabilities
+            .as_ref()
+            .and_then(|capabilities| capabilities.supports.as_ref());
+        let architecture = self.architecture.as_ref();
+
+        let context_length = self
+            .context_length
+            .or_else(|| limits.and_then(|limits| limits.max_context_window_tokens))
+            .or_else(|| {
+                self.top_provider
+                    .as_ref()
+                    .and_then(|provider| provider.context_length)
+            });
+        let max_input_tokens = self
+            .max_input_tokens
+            .or_else(|| limits.and_then(|limits| limits.max_prompt_tokens));
+        let max_output_tokens = self
+            .max_output_tokens
+            .or_else(|| limits.and_then(|limits| limits.max_output_tokens))
+            .or_else(|| {
+                self.top_provider
+                    .as_ref()
+                    .and_then(|provider| provider.max_completion_tokens)
+            });
+        let input_modalities = self
+            .input_modalities
+            .or_else(|| architecture.and_then(|value| value.input_modalities.clone()))
+            .or_else(|| supports.and_then(input_modalities_from_capi));
+        let output_modalities = self
+            .output_modalities
+            .or_else(|| architecture.and_then(|value| value.output_modalities.clone()));
+        let tool_calling = self
+            .tool_calling
+            .or_else(|| supports.and_then(|supports| supports.tool_calls))
+            .or_else(|| {
+                self.supported_parameters
+                    .as_ref()
+                    .map(|parameters| parameters.iter().any(|parameter| parameter == "tools"))
+            });
+        let streaming = self
+            .streaming
+            .or_else(|| supports.and_then(|supports| supports.streaming));
+        let reasoning = self
+            .reasoning
+            .map(|reasoning| PartialReasoningMetadata {
+                supported_efforts: reasoning.supported_efforts,
+                summary: reasoning.summary,
+                include: reasoning.include,
+            })
+            .or_else(|| supports.and_then(reasoning_from_capi));
+
+        let display_name = self
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .unwrap_or(&id)
+            .to_string();
+
+        Some(
+            DiscoveredModel::new(id, display_name)
+                .with_created_at(self.created)
+                .with_recommended(self.recommended.unwrap_or(false))
+                .with_metadata(PartialModelMetadata {
+                    context_length,
+                    max_input_tokens,
+                    max_output_tokens,
+                    input_modalities,
+                    output_modalities,
+                    tool_calling,
+                    streaming,
+                    zero_data_retention_enabled: self.zero_data_retention_enabled,
+                    reasoning,
+                }),
+        )
     }
 }
 
-const DEFAULT_OPENAI_MODELS: &[ModelCatalogEntry] = &[
-    ModelCatalogEntry::new("gpt-5.2", "GPT-5.2"),
-    ModelCatalogEntry::new("gpt-5.2-chat-latest", "GPT-5.2 Chat Latest"),
-    ModelCatalogEntry::new("gpt-5-mini", "GPT-5 Mini"),
-];
-
-#[must_use]
-pub fn default_model_catalog() -> Vec<DiscoveredModel> {
-    DEFAULT_OPENAI_MODELS
-        .iter()
-        .map(|entry| {
-            DiscoveredModel::new(entry.id, entry.display_name)
-                .with_recommended(is_recommended_openai_model(entry.id))
-        })
-        .collect()
-}
-
-fn title_case_chunk(chunk: &str) -> String {
-    if chunk.is_empty() {
-        return String::new();
-    }
-    let mut chars = chunk.chars();
-    match chars.next() {
-        Some(first) => {
-            let mut out = String::new();
-            out.push(first.to_ascii_uppercase());
-            out.push_str(chars.as_str());
-            out
-        },
-        None => String::new(),
-    }
-}
-
-fn format_gpt_display_name(model_id: &str) -> String {
-    let Some(rest) = model_id.strip_prefix("gpt-") else {
-        return model_id.to_string();
-    };
-    let mut parts = rest.split('-');
-    let Some(base) = parts.next() else {
-        return "GPT".to_string();
-    };
-    let mut out = format!("GPT-{base}");
-    for part in parts {
-        out.push(' ');
-        out.push_str(&title_case_chunk(part));
-    }
-    out
-}
-
-fn format_chatgpt_display_name(model_id: &str) -> String {
-    let Some(rest) = model_id.strip_prefix("chatgpt-") else {
-        return model_id.to_string();
-    };
-    let mut parts = rest.split('-');
-    let Some(base) = parts.next() else {
-        return "ChatGPT".to_string();
-    };
-    let mut out = format!("ChatGPT-{base}");
-    for part in parts {
-        out.push(' ');
-        out.push_str(&title_case_chunk(part));
-    }
-    out
-}
-
-fn formatted_model_name(model_id: &str) -> String {
-    if model_id.starts_with("gpt-") {
-        return format_gpt_display_name(model_id);
-    }
-    if model_id.starts_with("chatgpt-") {
-        return format_chatgpt_display_name(model_id);
-    }
-    model_id.to_string()
-}
-
-fn normalize_display_name(model_id: &str, display_name: Option<&str>) -> String {
-    let normalized = display_name
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .unwrap_or(model_id);
-    if normalized == model_id {
-        return formatted_model_name(model_id);
-    }
-    normalized.to_string()
-}
-
-fn is_likely_model_id(model_id: &str) -> bool {
-    if model_id.is_empty() || model_id.len() > 160 {
-        return false;
-    }
-    if model_id.chars().any(char::is_whitespace) {
-        return false;
-    }
-    model_id
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | ':' | '/'))
-}
-
-/// Delegates to the shared [`super::super::is_chat_capable_model`] for filtering
-/// non-chat models during discovery.
-fn is_chat_capable_model(model_id: &str) -> bool {
-    crate::is_chat_capable_model(model_id)
-}
-
-fn metadata_bool(obj: &serde_json::Map<String, serde_json::Value>, keys: &[&str]) -> Option<bool> {
-    keys.iter()
-        .find_map(|key| obj.get(*key).and_then(serde_json::Value::as_bool))
-}
-
-fn parse_capabilities(entry: &serde_json::Value) -> Option<ModelCapabilities> {
-    let capabilities = entry.get("capabilities")?.as_object()?;
-    let tools = metadata_bool(capabilities, &["tool_calling", "tools", "function_calling"])
-        .unwrap_or(false);
-    let vision = metadata_bool(capabilities, &["vision"]).unwrap_or(false);
-    let reasoning = metadata_bool(capabilities, &["reasoning"])
-        .or_else(|| metadata_bool(capabilities, &["thinking"]))
-        .unwrap_or(false);
-    Some(ModelCapabilities {
-        text_generation: true,
-        tools,
-        vision,
-        reasoning,
+fn input_modalities_from_capi(supports: &CapiSupports) -> Option<Vec<ModelModality>> {
+    supports.vision.map(|vision| {
+        let mut modalities = vec![ModelModality::Text];
+        if vision {
+            modalities.push(ModelModality::Image);
+        }
+        modalities
     })
 }
 
-fn parse_context_window(entry: &serde_json::Value) -> Option<u32> {
-    ["context_length", "context_window", "max_input_tokens"]
-        .iter()
-        .find_map(|key| entry.get(*key).and_then(serde_json::Value::as_u64))
-        .and_then(|value| u32::try_from(value).ok())
-        .filter(|value| *value > 0)
+fn reasoning_from_capi(supports: &CapiSupports) -> Option<PartialReasoningMetadata> {
+    match supports.thinking {
+        Some(false) => Some(PartialReasoningMetadata {
+            supported_efforts: Some(Vec::new()),
+            ..Default::default()
+        }),
+        Some(true) | None => None,
+    }
 }
 
-fn parse_model_entry(entry: &serde_json::Value) -> Option<DiscoveredModel> {
-    let obj = entry.as_object()?;
-    let model_id = obj
-        .get("id")
-        .or_else(|| obj.get("slug"))
-        .or_else(|| obj.get("model"))
-        .and_then(serde_json::Value::as_str)?;
-
-    if !is_likely_model_id(model_id) {
-        return None;
-    }
-
-    let display_name = obj
-        .get("display_name")
-        .or_else(|| obj.get("displayName"))
-        .or_else(|| obj.get("name"))
-        .or_else(|| obj.get("title"))
-        .and_then(serde_json::Value::as_str);
-
-    let created_at = obj.get("created").and_then(serde_json::Value::as_i64);
-
-    let recommended = is_recommended_openai_model(model_id);
-    let mut model = DiscoveredModel::new(model_id, normalize_display_name(model_id, display_name))
-        .with_created_at(created_at)
-        .with_recommended(recommended);
-    if let Some(capabilities) = parse_capabilities(entry) {
-        model = model.with_capabilities(capabilities);
-    }
-    if let Some(context_window) = parse_context_window(entry) {
-        model = model.with_context_window(context_window);
-    }
-    Some(model)
-}
-
-/// Known OpenAI flagship model IDs (latest generation, no date suffix).
-/// These are the models most users care about.
-fn is_recommended_openai_model(model_id: &str) -> bool {
-    matches!(
-        model_id,
-        "gpt-5.4" | "gpt-5.4-mini" | "gpt-5.4-pro" | "o4-mini" | "o3"
-    )
-}
-
-fn collect_candidate_arrays<'a>(
+fn collect_model_entries<'a>(
     value: &'a serde_json::Value,
-    out: &mut Vec<&'a serde_json::Value>,
+    entries: &mut Vec<&'a serde_json::Value>,
 ) {
     match value {
-        serde_json::Value::Array(items) => out.extend(items),
-        serde_json::Value::Object(map) => {
-            for key in ["models", "data", "items", "results", "available"] {
-                if let Some(nested) = map.get(key) {
-                    collect_candidate_arrays(nested, out);
+        serde_json::Value::Array(items) => entries.extend(items),
+        serde_json::Value::Object(object) => {
+            let mut found_envelope = false;
+            for key in ["data", "models", "items", "results", "available"] {
+                if let Some(nested) = object.get(key) {
+                    found_envelope = true;
+                    collect_model_entries(nested, entries);
                 }
+            }
+            if !found_envelope
+                && ["id", "slug", "model"]
+                    .iter()
+                    .any(|key| object.contains_key(*key))
+            {
+                entries.push(value);
             }
         },
         _ => {},
     }
 }
 
-fn parse_models_payload(value: &serde_json::Value) -> Vec<DiscoveredModel> {
-    let mut candidates = Vec::new();
-    collect_candidate_arrays(value, &mut candidates);
+/// Parse typed partial model records from a recognized model-list envelope.
+pub(crate) fn parse_models_value(
+    value: &serde_json::Value,
+) -> anyhow::Result<Vec<DiscoveredModel>> {
+    let mut entries = Vec::new();
+    collect_model_entries(value, &mut entries);
+    let models = entries
+        .into_iter()
+        .map(|entry| serde_json::from_value::<ModelEntry>(entry.clone()))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter_map(ModelEntry::into_discovered)
+        .collect();
+    Ok(deduplicate_discovered(models))
+}
 
-    let mut models = Vec::new();
-    let mut seen = HashSet::new();
-    for entry in candidates {
-        if let Some(model) = parse_model_entry(entry)
-            && is_chat_capable_model(&model.id)
-            && seen.insert(model.id.clone())
-        {
-            models.push(model);
-        }
-    }
-
-    // Sort by created_at descending (newest first). Models without a
-    // timestamp are placed after those with one, preserving relative order.
-    models.sort_by(|a, b| match (a.created_at, b.created_at) {
-        (Some(a_ts), Some(b_ts)) => b_ts.cmp(&a_ts), // newest first
-        (Some(_), None) => std::cmp::Ordering::Less, // timestamp before no-timestamp
-        (None, Some(_)) => std::cmp::Ordering::Greater,
-        (None, None) => std::cmp::Ordering::Equal,
-    });
-
-    models
+fn parse_models_payload(body: &str) -> anyhow::Result<Vec<DiscoveredModel>> {
+    let value: serde_json::Value = serde_json::from_str(body)?;
+    parse_models_value(&value)
 }
 
 fn models_endpoint(base_url: &str) -> String {
@@ -247,13 +289,12 @@ fn models_endpoint(base_url: &str) -> String {
     )
 }
 
-/// Fetch available models from the OpenAI-compatible `/models` endpoint.
+/// Fetch partial model records from an OpenAI-compatible `/models` endpoint.
 pub async fn fetch_models_from_api(
     api_key: secrecy::Secret<String>,
     base_url: String,
 ) -> anyhow::Result<Vec<DiscoveredModel>> {
-    let client = crate::shared_http_client();
-    let response = client
+    let response = crate::shared_http_client()
         .get(models_endpoint(&base_url))
         .timeout(Duration::from_secs(15))
         .header(
@@ -268,68 +309,11 @@ pub async fn fetch_models_from_api(
     if !status.is_success() {
         anyhow::bail!("openai models API error HTTP {status}");
     }
-    let payload: serde_json::Value = serde_json::from_str(&body)?;
-    let models = parse_models_payload(&payload);
+    let models = parse_models_payload(&body)?;
     if models.is_empty() {
-        anyhow::bail!("openai models API returned no models");
+        anyhow::bail!("openai models API returned no model records");
     }
     Ok(models)
-}
-
-/// Spawn model discovery in a background thread and return the receiver
-/// immediately, without blocking. Call `.recv()` later to collect the result.
-pub fn start_model_discovery(
-    api_key: secrecy::Secret<String>,
-    base_url: String,
-) -> mpsc::Receiver<anyhow::Result<Vec<DiscoveredModel>>> {
-    let (tx, rx) = mpsc::sync_channel(1);
-    std::thread::spawn(move || {
-        let result = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(anyhow::Error::from)
-            .and_then(|rt| rt.block_on(fetch_models_from_api(api_key, base_url)));
-        let _ = tx.send(result);
-    });
-    rx
-}
-
-fn fetch_models_blocking(
-    api_key: secrecy::Secret<String>,
-    base_url: String,
-) -> anyhow::Result<Vec<DiscoveredModel>> {
-    start_model_discovery(api_key, base_url)
-        .recv()
-        .map_err(|err| anyhow::anyhow!("openai model discovery worker failed: {err}"))?
-}
-
-pub fn live_models(
-    api_key: &secrecy::Secret<String>,
-    base_url: &str,
-) -> anyhow::Result<Vec<DiscoveredModel>> {
-    let models = fetch_models_blocking(api_key.clone(), base_url.to_string())?;
-    debug!(model_count = models.len(), "loaded live models");
-    Ok(models)
-}
-
-#[must_use]
-pub fn available_models(api_key: &secrecy::Secret<String>, base_url: &str) -> Vec<DiscoveredModel> {
-    let fallback = default_model_catalog();
-    if cfg!(test) {
-        return fallback;
-    }
-
-    let discovered = match live_models(api_key, base_url) {
-        Ok(models) => models,
-        Err(err) => {
-            warn!(error = %err, base_url = %base_url, "failed to fetch openai models, using fallback catalog");
-            return fallback;
-        },
-    };
-
-    let merged = crate::merge_discovered_with_fallback_catalog(discovered, fallback);
-    debug!(model_count = merged.len(), "loaded openai models catalog");
-    merged
 }
 
 #[cfg(test)]
@@ -338,59 +322,197 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_model_entry_reads_provider_capabilities_and_context_length() {
-        let entry = serde_json::json!({
-            "id": "Combos/z.ai/glm",
-            "created": 1_782_516_658_i64,
-            "context_length": 1_000_000,
-            "capabilities": {
-                "tool_calling": true,
-                "reasoning": true,
-                "vision": false,
-                "thinking": true
-            }
-        });
-
-        let model = parse_model_entry(&entry).expect("model parses");
-        assert_eq!(model.id, "Combos/z.ai/glm");
-        assert_eq!(model.context_window, Some(1_000_000));
-        assert_eq!(
-            model.capabilities,
-            Some(ModelCapabilities {
-                text_generation: true,
-                tools: true,
-                vision: false,
-                reasoning: true,
+    fn parses_capi_limits_and_supports_without_inference() {
+        let models = parse_models_payload(
+            &serde_json::json!({
+                "data": [{
+                    "id": "capi-model",
+                    "name": "CAPI Model",
+                    "capabilities": {
+                        "type": "chat",
+                        "limits": {
+                            "max_context_window_tokens": 400_000,
+                            "max_prompt_tokens": 272_000,
+                            "max_output_tokens": 128_000
+                        },
+                        "supports": {
+                            "tool_calls": true,
+                            "streaming": true,
+                            "vision": true,
+                            "thinking": false
+                        }
+                    }
+                }]
             })
+            .to_string(),
+        )
+        .unwrap();
+
+        let metadata = &models[0].metadata;
+        assert_eq!(metadata.context_length, Some(400_000));
+        assert_eq!(metadata.max_input_tokens, Some(272_000));
+        assert_eq!(metadata.max_output_tokens, Some(128_000));
+        assert_eq!(
+            metadata.input_modalities,
+            Some(vec![ModelModality::Text, ModelModality::Image])
+        );
+        assert_eq!(metadata.tool_calling, Some(true));
+        assert_eq!(metadata.streaming, Some(true));
+        assert_eq!(
+            metadata
+                .reasoning
+                .as_ref()
+                .and_then(|reasoning| reasoning.supported_efforts.as_ref()),
+            Some(&Vec::new())
         );
     }
 
     #[test]
-    fn parse_model_entry_uses_thinking_when_reasoning_is_missing() {
-        let entry = serde_json::json!({
-            "id": "Combos/cx/gpt",
-            "max_input_tokens": 400_000,
-            "capabilities": {
-                "tool_calling": true,
-                "thinking": true,
-                "vision": true
-            }
-        });
-
-        let model = parse_model_entry(&entry).expect("model parses");
-        assert_eq!(model.context_window, Some(400_000));
-        assert!(model.capabilities.expect("capabilities parsed").reasoning);
+    fn thinking_true_does_not_invent_supported_efforts() {
+        let models = parse_models_payload(
+            &serde_json::json!({
+                "data": [{
+                    "id": "reasoning-model",
+                    "capabilities": {
+                        "type": "chat",
+                        "supports": { "thinking": true }
+                    }
+                }]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        assert!(models[0].metadata.reasoning.is_none());
     }
 
     #[test]
-    fn parse_model_entry_leaves_metadata_empty_for_bare_entries() {
-        let entry = serde_json::json!({
-            "id": "Combos/cx/gpt-mini",
-            "created": 1_782_516_658_i64
-        });
+    fn parses_openrouter_metadata_without_derived_token_values() {
+        let models = parse_models_payload(
+            &serde_json::json!({
+                "data": [{
+                    "id": "vendor/model",
+                    "name": "Vendor Model",
+                    "context_length": 200_000,
+                    "architecture": {
+                        "input_modalities": ["text", "image", "file"],
+                        "output_modalities": ["text"]
+                    },
+                    "supported_parameters": ["tools", "temperature"],
+                    "top_provider": {
+                        "context_length": 180_000,
+                        "max_completion_tokens": 20_000
+                    },
+                    "reasoning": {
+                        "supported_efforts": ["low", "high"]
+                    }
+                }]
+            })
+            .to_string(),
+        )
+        .unwrap();
 
-        let model = parse_model_entry(&entry).expect("model parses");
-        assert_eq!(model.capabilities, None);
-        assert_eq!(model.context_window, None);
+        let metadata = &models[0].metadata;
+        assert_eq!(metadata.context_length, Some(200_000));
+        assert_eq!(metadata.max_input_tokens, None);
+        assert_eq!(metadata.max_output_tokens, Some(20_000));
+        assert_eq!(metadata.tool_calling, Some(true));
+        assert_eq!(
+            metadata
+                .reasoning
+                .as_ref()
+                .and_then(|reasoning| reasoning.supported_efforts.clone()),
+            Some(vec!["low".into(), "high".into()])
+        );
+    }
+
+    #[test]
+    fn parses_top_level_full_record_and_zdr() {
+        let models = parse_models_payload(
+            &serde_json::json!({
+                "data": [{
+                    "id": "full-model",
+                    "context_length": 400_000,
+                    "max_input_tokens": 272_000,
+                    "max_output_tokens": 128_000,
+                    "input_modalities": ["text", "audio"],
+                    "output_modalities": ["text"],
+                    "tool_calling": false,
+                    "streaming": true,
+                    "zeroDataRetentionEnabled": false,
+                    "reasoning": { "supported_efforts": [] }
+                }]
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(models[0].metadata.zero_data_retention_enabled, Some(false));
+        assert_eq!(models[0].metadata.tool_calling, Some(false));
+    }
+
+    #[test]
+    fn parses_reasoning_summary_and_include_without_applying_them() {
+        let models = parse_models_payload(
+            &serde_json::json!({
+                "data": [{
+                    "id": "reasoning-model",
+                    "reasoning": {
+                        "supported_efforts": ["low", "high"],
+                        "summary": "concise",
+                        "include": ["reasoning.encrypted_content"]
+                    }
+                }]
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let reasoning = models[0].metadata.reasoning.as_ref().unwrap();
+        assert_eq!(reasoning.summary, Some(ReasoningSummary::Concise));
+        assert_eq!(
+            reasoning.include,
+            Some(vec![ReasoningInclude::EncryptedContent])
+        );
+    }
+
+    #[test]
+    fn parses_nested_model_envelopes_and_explicit_recommendation() {
+        let models = parse_models_payload(
+            r#"{"data":{"items":[{"slug":"nested","display_name":"Nested","recommended":true}]}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].id, "nested");
+        assert_eq!(models[0].display_name, "Nested");
+        assert!(models[0].recommended);
+    }
+
+    #[test]
+    fn bare_standard_openai_entry_stays_partial() {
+        let models = parse_models_payload(
+            r#"{"data":[{"id":"bare","object":"model","created":123,"owned_by":"owner"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].metadata, PartialModelMetadata::default());
+    }
+
+    #[test]
+    fn excludes_explicit_non_chat_capi_records() {
+        let models = parse_models_payload(
+            r#"{"data":[{"id":"embedding","capabilities":{"type":"embeddings"}}]}"#,
+        )
+        .unwrap();
+        assert!(models.is_empty());
+    }
+
+    #[test]
+    fn rejects_unknown_reasoning_effort() {
+        let error = parse_models_payload(
+            r#"{"data":[{"id":"model","reasoning":{"supported_efforts":["ultra"]}}]}"#,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("unknown variant"));
     }
 }

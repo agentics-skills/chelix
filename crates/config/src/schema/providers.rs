@@ -51,24 +51,6 @@ pub struct OAuthProviderConfig {
     pub callback_port: u16,
 }
 
-/// Override configuration for a specific model.
-///
-/// Used in both `[models.<id>]` (global) and `[providers.<name>.model_overrides.<id>]`
-/// (provider-scoped) sections of `chelix.toml`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct ModelOverride {
-    /// Override the context window size (in tokens) for this model.
-    ///
-    /// When set, this value takes precedence over the built-in heuristic.
-    /// Must be between 1 and 10,000,000 (inclusive).
-    ///
-    /// Provider-scoped overrides (`[providers.<name>.model_overrides.<id>]`)
-    /// take precedence over global overrides (`[models.<id>]`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub context_window: Option<u32>,
-}
-
 /// LLM provider configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -178,10 +160,12 @@ pub struct ProviderEntry {
     #[serde(alias = "url")]
     pub base_url: Option<String>,
 
-    /// Preferred model IDs for this provider.
-    /// These are shown first in model pickers.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub models: Vec<String>,
+    /// Ordered model allowlist and highest-priority metadata source.
+    ///
+    /// An empty map allows every model whose discovery metadata resolves to a
+    /// complete record. A non-empty map limits registration to these IDs.
+    #[serde(default, skip_serializing_if = "ModelConfigMap::is_empty")]
+    pub models: ModelConfigMap,
 
     /// Whether to fetch provider model catalogs dynamically when available.
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
@@ -247,18 +231,6 @@ pub struct ProviderEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy: Option<ToolPolicyConfig>,
 
-    /// Per-model overrides for context window and other model-specific settings.
-    ///
-    /// Keys are normalized model IDs (as displayed in the chat UI).
-    /// These take precedence over global `[models.<id>]` overrides.
-    ///
-    /// ```toml
-    /// [providers.zai-code.models.glm-5-turbo]
-    /// context_window = 200_000
-    /// ```
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub model_overrides: HashMap<String, ModelOverride>,
-
     /// Timeout in seconds for completion-based model probes.
     ///
     /// When the lightweight catalog check (`GET /v1/models`) is unavailable,
@@ -288,7 +260,6 @@ impl std::fmt::Debug for ProviderEntry {
             .field("cache_retention", &self.cache_retention)
             .field("strict_tools", &self.strict_tools)
             .field("policy", &self.policy)
-            .field("model_overrides", &self.model_overrides)
             .field("probe_timeout_secs", &self.probe_timeout_secs)
             .finish()
     }
@@ -300,7 +271,7 @@ impl Default for ProviderEntry {
             enabled: true,
             api_key: None,
             base_url: None,
-            models: Vec::new(),
+            models: ModelConfigMap::new(),
             fetch_models: true,
             stream_transport: ProviderStreamTransport::Sse,
             wire_api: WireApi::ChatCompletions,
@@ -309,7 +280,6 @@ impl Default for ProviderEntry {
             cache_retention: CacheRetention::Short,
             strict_tools: None,
             policy: None,
-            model_overrides: HashMap::new(),
             probe_timeout_secs: None,
         }
     }

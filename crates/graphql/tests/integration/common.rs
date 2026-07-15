@@ -738,10 +738,6 @@ impl chelix_service_traits::ProviderSetupService for MockProviderSetup {
         self.0.call("providers.validate_key", p)
     }
 
-    async fn save_model(&self, p: Value) -> ServiceResult {
-        self.0.call("providers.save_model", p)
-    }
-
     async fn save_models(&self, p: Value) -> ServiceResult {
         self.0.call("providers.save_models", p)
     }

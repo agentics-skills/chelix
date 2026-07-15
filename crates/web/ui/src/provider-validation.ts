@@ -1,5 +1,5 @@
 import { sendRpc } from "./helpers";
-import type { RpcResponse } from "./types";
+import type { ModelInfo, RpcResponse } from "./types";
 
 const MODEL_SERVICE_NOT_CONFIGURED = "model service not configured";
 const MODEL_TEST_RETRY_ATTEMPTS = 40;
@@ -21,20 +21,13 @@ interface DetectPayload {
 
 interface ValidateKeyPayload {
 	valid?: boolean;
-	models?: ValidatedModel[];
+	models?: ModelInfo[];
 	error?: string;
-}
-
-export interface ValidatedModel {
-	id: string;
-	displayName: string;
-	provider?: string;
-	supportsTools?: boolean;
 }
 
 export interface ValidateKeyResult {
 	valid: boolean;
-	models?: ValidatedModel[];
+	models?: ModelInfo[];
 	error?: string;
 }
 
@@ -135,12 +128,10 @@ export async function validateProviderKey(
 	provider: string,
 	apiKey: string,
 	baseUrl: string | null,
-	model: string | null,
 	requestId?: string,
 ): Promise<ValidateKeyResult> {
 	const payload: Record<string, string> = { provider, apiKey };
 	if (baseUrl) payload.baseUrl = baseUrl;
-	if (model) payload.model = model;
 	if (requestId) payload.requestId = requestId;
 
 	const res = (await sendRpc("providers.validate_key", payload)) as RpcResponse<ValidateKeyPayload>;
@@ -201,11 +192,9 @@ export function buildSaveKeyPayload(
 	providerName: string,
 	apiKey: string,
 	baseUrl: string | null,
-	model: string | null,
 ): Record<string, string> {
 	const payload: Record<string, string> = { provider: providerName, apiKey };
 	if (baseUrl) payload.baseUrl = baseUrl;
-	if (model) payload.model = model;
 	return payload;
 }
 
@@ -217,9 +206,8 @@ export function saveProviderKey(
 	providerName: string,
 	apiKey: string,
 	baseUrl: string | null,
-	model: string | null,
 ): Promise<RpcResponse> {
-	const payload = buildSaveKeyPayload(providerName, apiKey, baseUrl, model);
+	const payload = buildSaveKeyPayload(providerName, apiKey, baseUrl);
 	return sendRpc("providers.save_key", payload);
 }
 

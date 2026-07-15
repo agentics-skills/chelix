@@ -116,34 +116,6 @@ impl ServerConfig {
     }
 }
 
-/// Failover configuration for automatic model/provider failover.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct FailoverConfig {
-    /// Whether failover is enabled. Defaults to true.
-    pub enabled: bool,
-    /// Treat user-selected models as exact choices. When true and a model
-    /// is explicitly selected (per-session or per-request), failover is
-    /// suppressed for that request — the selected model is used or the
-    /// request fails. Defaults to false.
-    #[serde(default)]
-    pub exact_model: bool,
-    /// Ordered list of fallback model IDs to try when the primary fails.
-    /// If empty, the chain is built from all registered models.
-    #[serde(default)]
-    pub fallback_models: Vec<String>,
-}
-
-impl Default for FailoverConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            exact_model: false,
-            fallback_models: Vec::new(),
-        }
-    }
-}
-
 /// Heartbeat configuration — periodic health-check agent turn.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]

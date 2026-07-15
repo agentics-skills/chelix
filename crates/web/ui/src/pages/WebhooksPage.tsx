@@ -543,7 +543,7 @@ function WebhookModal(): VNode | null {
 					}}
 					placeholder={
 						modelsSig.value.length > 0
-							? `(default: ${modelsSig.value[0].displayName || modelsSig.value[0].id})`
+							? `(default: ${modelsSig.value[0].display_name || modelsSig.value[0].id})`
 							: "(server default)"
 					}
 				/>

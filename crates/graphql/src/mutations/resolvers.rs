@@ -723,11 +723,6 @@ impl ProviderMutation {
         from_service(s.provider_setup.validate_key(input.0).await)
     }
 
-    async fn save_model(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
-        let s = services!(ctx);
-        from_service(s.provider_setup.save_model(input.0).await)
-    }
-
     async fn save_models(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
         let s = services!(ctx);
         from_service(s.provider_setup.save_models(input.0).await)

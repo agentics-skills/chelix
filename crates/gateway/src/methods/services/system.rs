@@ -911,19 +911,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
     reg.register(
-        "providers.save_model",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .provider_setup
-                    .save_model(ctx.params.clone())
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-    reg.register(
         "providers.save_models",
         Box::new(|ctx| {
             Box::pin(async move {

@@ -5,7 +5,7 @@ use {async_trait::async_trait, futures::StreamExt, tokio_stream::Stream};
 use super::{
     AgentToolControls, ReasoningEffort, ToolChoice,
     chat::ChatMessage,
-    types::{CompletionResponse, ModelMetadata, Usage},
+    types::{CompletionResponse, Usage},
 };
 
 // ── Stream events ───────────────────────────────────────────────────────────
@@ -81,8 +81,8 @@ pub trait LlmProvider: Send + Sync {
 
     /// Context window size in tokens for this model.
     /// Used to detect when conversation approaches the limit and trigger auto-compact.
-    fn context_window(&self) -> u32 {
-        200_000
+    fn context_window(&self) -> Option<u32> {
+        None
     }
 
     /// Whether this provider supports vision (image inputs).
@@ -207,18 +207,6 @@ pub trait LlmProvider: Send + Sync {
     /// the server supports one.
     async fn check_availability(&self) -> anyhow::Result<()> {
         self.probe().await
-    }
-
-    /// Fetch runtime model metadata from the provider API.
-    ///
-    /// The default implementation returns a `ModelMetadata` derived from the
-    /// static `context_window()` value. Providers that support a `/models`
-    /// endpoint can override this to fetch the actual context length at runtime.
-    async fn model_metadata(&self) -> anyhow::Result<ModelMetadata> {
-        Ok(ModelMetadata {
-            id: self.id().to_string(),
-            context_length: self.context_window(),
-        })
     }
 }
 

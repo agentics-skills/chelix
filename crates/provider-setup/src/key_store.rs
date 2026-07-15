@@ -4,53 +4,16 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use {serde_json::Value, tracing::warn};
+use {chelix_config::schema::ModelConfigMap, serde_json::Value, tracing::warn};
 
-use chelix_providers::model_id::raw_model_id;
-
-// ── Model normalization helpers ────────────────────────────────────────────
-
-pub(crate) fn normalize_model_list(models: impl IntoIterator<Item = String>) -> Vec<String> {
-    let mut out = Vec::new();
-    for model in models {
-        let trimmed = model.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        // Persist raw IDs so provider-local preferences don't collide with
-        // another provider's namespace (e.g. "openai::gpt-5.2").
-        let normalized = raw_model_id(trimmed).trim().to_string();
-        if normalized.is_empty() {
-            continue;
-        }
-        if out.iter().any(|existing: &String| existing == &normalized) {
-            continue;
-        }
-        out.push(normalized);
-    }
-    out
-}
-
-pub(crate) fn parse_models_param(params: &Value) -> Vec<String> {
-    let from_array = params
+pub(crate) fn parse_models_param(
+    params: &Value,
+) -> Result<Option<ModelConfigMap>, serde_json::Error> {
+    params
         .get("models")
-        .and_then(Value::as_array)
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(Value::as_str)
-                .map(ToString::to_string)
-                .collect::<Vec<String>>()
-        })
-        .unwrap_or_default();
-
-    let mut models = normalize_model_list(from_array);
-    if models.is_empty()
-        && let Some(model) = params.get("model").and_then(Value::as_str)
-    {
-        models = normalize_model_list([model.to_string()]);
-    }
-    models
+        .cloned()
+        .map(serde_json::from_value)
+        .transpose()
 }
 
 // ── ProviderConfig ─────────────────────────────────────────────────────────
@@ -63,37 +26,10 @@ pub struct ProviderConfig {
     pub api_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,
-    #[serde(
-        default,
-        alias = "model",
-        deserialize_with = "deserialize_provider_models",
-        skip_serializing_if = "Vec::is_empty"
-    )]
-    pub models: Vec<String>,
+    #[serde(default, skip_serializing_if = "ModelConfigMap::is_empty")]
+    pub models: ModelConfigMap,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
-}
-
-fn deserialize_provider_models<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value: Value = serde::Deserialize::deserialize(deserializer)?;
-    let normalized = match value {
-        Value::Null => Vec::new(),
-        Value::String(model) => vec![model],
-        Value::Array(values) => values
-            .into_iter()
-            .filter_map(|value| value.as_str().map(ToString::to_string))
-            .collect(),
-        _ => {
-            return Err(serde::de::Error::custom(
-                "models must be a string or string array",
-            ));
-        },
-    };
-
-    Ok(normalize_model_list(normalized))
 }
 
 // ── KeyStore ───────────────────────────────────────────────────────────────
@@ -140,7 +76,7 @@ impl KeyStore {
         self.lock().path.clone()
     }
 
-    /// Load all provider configs. Handles migration from old format (string values).
+    /// Load all provider configs from the canonical object format.
     fn load_all_configs_from_path(path: &PathBuf) -> HashMap<String, ProviderConfig> {
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
@@ -156,31 +92,14 @@ impl KeyStore {
             },
         };
 
-        // Try parsing as new format first
-        if let Ok(configs) = serde_json::from_str::<HashMap<String, ProviderConfig>>(&content) {
-            return configs;
-        }
-
-        // Fall back to old format migration: { "provider": "api-key-string" }
-        if let Ok(old_format) = serde_json::from_str::<HashMap<String, String>>(&content) {
-            return old_format
-                .into_iter()
-                .map(|(k, v)| {
-                    (k, ProviderConfig {
-                        api_key: Some(v),
-                        base_url: None,
-                        models: Vec::new(),
-                        display_name: None,
-                    })
-                })
-                .collect();
-        }
-
-        warn!(
-            path = %path.display(),
-            "provider key store is invalid JSON and will be ignored"
-        );
-        HashMap::new()
+        serde_json::from_str::<HashMap<String, ProviderConfig>>(&content).unwrap_or_else(|error| {
+            warn!(
+                path = %path.display(),
+                error = %error,
+                "provider key store does not match the canonical schema and will be ignored"
+            );
+            HashMap::new()
+        })
     }
 
     pub fn load_all_configs(&self) -> HashMap<String, ProviderConfig> {
@@ -291,7 +210,7 @@ impl KeyStore {
         provider: &str,
         api_key: Option<String>,
         base_url: Option<String>,
-        models: Option<Vec<String>>,
+        models: Option<ModelConfigMap>,
     ) -> crate::error::Result<()> {
         self.save_config_with_display_name(provider, api_key, base_url, models, None)
     }
@@ -324,29 +243,14 @@ impl KeyStore {
         match chelix_vault::migration::load_encrypted_or_plaintext(vault, &path, "provider_keys")
             .await
         {
-            Ok(Some(content)) => {
-                if let Ok(configs) =
-                    serde_json::from_str::<HashMap<String, ProviderConfig>>(&content)
-                {
-                    return configs;
-                }
-                // Fall back to old format migration
-                if let Ok(old_format) = serde_json::from_str::<HashMap<String, String>>(&content) {
-                    return old_format
-                        .into_iter()
-                        .map(|(k, v)| {
-                            (k, ProviderConfig {
-                                api_key: Some(v),
-                                base_url: None,
-                                models: Vec::new(),
-                                display_name: None,
-                            })
-                        })
-                        .collect();
-                }
-                warn!("encrypted provider key store is invalid JSON");
-                HashMap::new()
-            },
+            Ok(Some(content)) => serde_json::from_str::<HashMap<String, ProviderConfig>>(&content)
+                .unwrap_or_else(|error| {
+                    warn!(
+                        error = %error,
+                        "encrypted provider key store does not match the canonical schema"
+                    );
+                    HashMap::new()
+                }),
             Ok(None) => HashMap::new(),
             Err(chelix_vault::VaultError::Sealed) => {
                 warn!("vault sealed, falling back to plaintext provider key store");
@@ -400,7 +304,7 @@ impl KeyStore {
         provider: &str,
         api_key: Option<String>,
         base_url: Option<String>,
-        models: Option<Vec<String>>,
+        models: Option<ModelConfigMap>,
         display_name: Option<String>,
     ) -> crate::error::Result<()> {
         let guard = self.lock();
@@ -419,7 +323,7 @@ impl KeyStore {
             };
         }
         if let Some(models) = models {
-            entry.models = normalize_model_list(models);
+            entry.models = models;
         }
         if let Some(name) = display_name {
             entry.display_name = Some(name);
@@ -432,7 +336,33 @@ impl KeyStore {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*,
+        chelix_config::schema::{PartialModelMetadata, PartialReasoningMetadata},
+    };
+
+    fn model_metadata() -> PartialModelMetadata {
+        PartialModelMetadata {
+            context_length: Some(128_000),
+            max_input_tokens: Some(96_000),
+            max_output_tokens: Some(32_000),
+            reasoning: Some(PartialReasoningMetadata {
+                supported_efforts: Some(Vec::new()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    fn model_map(ids: &[&str]) -> ModelConfigMap {
+        ids.iter()
+            .map(|id| ((*id).to_string(), model_metadata()))
+            .collect()
+    }
+
+    fn model_ids(models: &ModelConfigMap) -> Vec<&str> {
+        models.keys().map(String::as_str).collect()
+    }
 
     #[test]
     fn key_store_save_and_load() {
@@ -496,7 +426,7 @@ mod tests {
                 "openai",
                 Some("sk-openai".into()),
                 Some("https://custom.api.com/v1".into()),
-                Some(vec!["gpt-4o".into()]),
+                Some(model_map(&["gpt-4o", "gpt-4o-mini"])),
             )
             .unwrap();
 
@@ -506,7 +436,13 @@ mod tests {
             config.base_url.as_deref(),
             Some("https://custom.api.com/v1")
         );
-        assert_eq!(config.models, vec!["gpt-4o"]);
+        assert_eq!(model_ids(&config.models), vec!["gpt-4o", "gpt-4o-mini"]);
+        assert!(
+            config
+                .models
+                .values()
+                .all(|metadata| metadata.clone().resolve().is_ok())
+        );
     }
 
     #[test]
@@ -520,13 +456,13 @@ mod tests {
                 "openai",
                 Some("sk-openai".into()),
                 Some("https://custom.api.com/v1".into()),
-                Some(vec!["gpt-4o".into()]),
+                Some(model_map(&["gpt-4o"])),
             )
             .unwrap();
 
         // Update only models, preserve others
         store
-            .save_config("openai", None, None, Some(vec!["gpt-4o-mini".into()]))
+            .save_config("openai", None, None, Some(model_map(&["gpt-4o-mini"])))
             .unwrap();
 
         let config = store.load_config("openai").unwrap();
@@ -535,7 +471,7 @@ mod tests {
             config.base_url.as_deref(),
             Some("https://custom.api.com/v1")
         ); // preserved
-        assert_eq!(config.models, vec!["gpt-4o-mini"]); // updated
+        assert_eq!(model_ids(&config.models), vec!["gpt-4o-mini"]); // updated
     }
 
     #[test]
@@ -548,7 +484,7 @@ mod tests {
                 "anthropic",
                 Some("sk-anthropic".into()),
                 Some("https://api.anthropic.com".into()),
-                Some(vec!["claude-sonnet-4".into()]),
+                Some(model_map(&["claude-sonnet-4"])),
             )
             .unwrap();
 
@@ -557,13 +493,13 @@ mod tests {
                 "openai",
                 Some("sk-openai".into()),
                 Some("https://api.openai.com/v1".into()),
-                Some(vec!["gpt-4o".into()]),
+                Some(model_map(&["gpt-4o"])),
             )
             .unwrap();
 
         // Update only OpenAI models, Anthropic should remain unchanged.
         store
-            .save_config("openai", None, None, Some(vec!["gpt-5".into()]))
+            .save_config("openai", None, None, Some(model_map(&["gpt-5"])))
             .unwrap();
 
         let anthropic = store.load_config("anthropic").unwrap();
@@ -572,7 +508,7 @@ mod tests {
             anthropic.base_url.as_deref(),
             Some("https://api.anthropic.com")
         );
-        assert_eq!(anthropic.models, vec!["claude-sonnet-4"]);
+        assert_eq!(model_ids(&anthropic.models), vec!["claude-sonnet-4"]);
 
         let openai = store.load_config("openai").unwrap();
         assert_eq!(openai.api_key.as_deref(), Some("sk-openai"));
@@ -580,7 +516,7 @@ mod tests {
             openai.base_url.as_deref(),
             Some("https://api.openai.com/v1")
         );
-        assert_eq!(openai.models, vec!["gpt-5"]);
+        assert_eq!(model_ids(&openai.models), vec!["gpt-5"]);
     }
 
     #[test]
@@ -590,10 +526,8 @@ mod tests {
 
         let mut handles = Vec::new();
         for (provider, key, models) in [
-            ("openai", "sk-openai", vec!["gpt-5".to_string()]),
-            ("anthropic", "sk-anthropic", vec![
-                "claude-sonnet-4".to_string(),
-            ]),
+            ("openai", "sk-openai", model_map(&["gpt-5"])),
+            ("anthropic", "sk-anthropic", model_map(&["claude-sonnet-4"])),
         ] {
             let store = store.clone();
             handles.push(std::thread::spawn(move || {
@@ -625,7 +559,7 @@ mod tests {
                 "openai",
                 Some("sk-openai".into()),
                 Some("https://custom.api.com/v1".into()),
-                Some(vec!["gpt-4o".into()]),
+                Some(model_map(&["gpt-4o"])),
             )
             .unwrap();
 
@@ -637,15 +571,14 @@ mod tests {
         let config = store.load_config("openai").unwrap();
         assert_eq!(config.api_key.as_deref(), Some("sk-openai")); // preserved
         assert!(config.base_url.is_none()); // cleared
-        assert_eq!(config.models, vec!["gpt-4o"]); // preserved
+        assert_eq!(model_ids(&config.models), vec!["gpt-4o"]); // preserved
     }
 
     #[test]
-    fn key_store_migrates_old_format() {
+    fn key_store_rejects_legacy_string_format() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("keys.json");
 
-        // Write old format: simple string values
         let old_data = serde_json::json!({
             "anthropic": "sk-old-key",
             "openai": "sk-openai-old"
@@ -653,15 +586,8 @@ mod tests {
         std::fs::write(&path, serde_json::to_string(&old_data).unwrap()).unwrap();
 
         let store = KeyStore::with_path(path);
-
-        // Should migrate and read correctly
-        let config = store.load_config("anthropic").unwrap();
-        assert_eq!(config.api_key.as_deref(), Some("sk-old-key"));
-        assert!(config.base_url.is_none());
-        assert!(config.models.is_empty());
-
-        // load() should still work
-        assert_eq!(store.load("openai").unwrap(), "sk-openai-old");
+        assert!(store.load_all_configs().is_empty());
+        assert!(store.load("openai").is_none());
     }
 
     #[test]
@@ -674,7 +600,7 @@ mod tests {
                 "custom-together-ai",
                 Some("sk-test".into()),
                 Some("https://api.together.ai/v1".into()),
-                Some(vec!["meta-llama/Llama-3-70b".into()]),
+                Some(model_map(&["meta-llama/Llama-3-70b"])),
                 Some("together.ai".into()),
             )
             .unwrap();
@@ -686,16 +612,20 @@ mod tests {
             Some("https://api.together.ai/v1")
         );
         assert_eq!(config.display_name.as_deref(), Some("together.ai"));
+        assert_eq!(model_ids(&config.models), vec!["meta-llama/Llama-3-70b"]);
     }
 
     #[test]
-    fn normalize_model_list_strips_provider_namespace() {
-        let models = normalize_model_list(vec![
-            "openai::gpt-5.2".into(),
-            "custom-openrouter-ai::gpt-5.2".into(),
-            "gpt-5.2".into(),
-            "  anthropic/claude-sonnet-4-5  ".into(),
+    fn models_param_requires_canonical_object_and_preserves_order() {
+        let models = model_map(&["gpt-5.2", "anthropic/claude-sonnet-4-5"]);
+        let params = serde_json::json!({ "models": models });
+        let parsed = parse_models_param(&params).unwrap().unwrap();
+        assert_eq!(model_ids(&parsed), vec![
+            "gpt-5.2",
+            "anthropic/claude-sonnet-4-5"
         ]);
-        assert_eq!(models, vec!["gpt-5.2", "anthropic/claude-sonnet-4-5"]);
+
+        let legacy = serde_json::json!({ "models": ["gpt-5.2"] });
+        assert!(parse_models_param(&legacy).is_err());
     }
 }

@@ -154,6 +154,10 @@ impl LlmProvider for NoToolsRoutingProvider {
         "no-tools-routing-model"
     }
 
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
+    }
+
     fn supports_tools(&self) -> bool {
         true
     }
@@ -240,6 +244,10 @@ impl LlmProvider for NoToolsStreamingRoutingProvider {
 
     fn id(&self) -> &str {
         "no-tools-streaming-routing-model"
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
     }
 
     fn supports_tools(&self) -> bool {
@@ -437,6 +445,10 @@ impl LlmProvider for RecordingMessagesProvider {
         "recording-messages-model"
     }
 
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
+    }
+
     async fn complete(
         &self,
         messages: &[ChatMessage],
@@ -563,6 +575,10 @@ impl LlmProvider for StreamingUsageProvider {
         "streaming-usage-model"
     }
 
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
+    }
+
     async fn complete(
         &self,
         _messages: &[ChatMessage],
@@ -609,6 +625,10 @@ impl LlmProvider for StreamingChunksProvider {
 
     fn id(&self) -> &str {
         "streaming-chunks-model"
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
     }
 
     async fn complete(
@@ -768,6 +788,10 @@ impl LlmProvider for NonStreamingUsageProvider {
         "non-streaming-usage-model"
     }
 
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
+    }
+
     fn supports_tools(&self) -> bool {
         true
     }
@@ -877,6 +901,10 @@ impl LlmProvider for CommandSimulatingProvider {
 
     fn id(&self) -> &str {
         "mock-model"
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
     }
 
     fn supports_tools(&self) -> bool {
@@ -1000,9 +1028,9 @@ async fn test_execute_command_tool_end_to_end() {
     {
         assert!(success, "execute_command tool should succeed");
         assert_eq!(name, "execute_command");
-        assert_eq!(context_budget.context_window, 200_000);
+        assert_eq!(context_budget.context_window, TEST_CONTEXT_WINDOW);
         assert_eq!(context_budget.compaction_ratio, 85);
-        assert_eq!(context_budget.compaction_budget, 170_000);
+        assert_eq!(context_budget.compaction_budget, 108_800);
         assert!(context_budget.current_tokens > 0);
         assert!(!context_budget.compaction_required);
     }
@@ -1020,6 +1048,10 @@ impl LlmProvider for HookModifiedCommandProvider {
 
     fn id(&self) -> &str {
         "hook-modified-command-model"
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
     }
 
     fn supports_tools(&self) -> bool {
@@ -1210,6 +1242,10 @@ impl LlmProvider for DirectCommandNoToolProvider {
         "mock-direct-command"
     }
 
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
+    }
+
     fn supports_tools(&self) -> bool {
         true
     }
@@ -1390,6 +1426,10 @@ impl LlmProvider for NativeTextFunctionProvider {
 
     fn id(&self) -> &str {
         "mock-native-function"
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
     }
 
     fn supports_tools(&self) -> bool {

@@ -14,7 +14,6 @@ pub use {
     runner::AgentRunError,
 };
 pub mod lazy_tools;
-pub mod provider_chain;
 pub mod response_sanitizer;
 pub mod silent_turn;
 pub mod skills;

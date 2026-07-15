@@ -2,7 +2,11 @@
 
 use {secrecy::Secret, serde_json::Value, tracing::info};
 
-use chelix_service_traits::{ServiceError, ServiceResult};
+use {
+    chelix_config::schema::ModelConfigMap,
+    chelix_providers::{model_id::namespaced_model_id, resolve_models},
+    chelix_service_traits::{ServiceError, ServiceResult},
+};
 
 use {
     super::{
@@ -27,7 +31,9 @@ impl LiveProviderSetupService {
 
         let api_key = params.get("apiKey").and_then(|v| v.as_str());
         let base_url = params.get("baseUrl").and_then(|v| v.as_str());
-        let preferred_models = parse_models_param(&params);
+        let preferred_models = parse_models_param(&params)
+            .map_err(ServiceError::message)?
+            .unwrap_or_default();
         let request_id = params
             .get("requestId")
             .and_then(Value::as_str)
@@ -78,7 +84,9 @@ impl LiveProviderSetupService {
         }
         validate_provider_base_url(effective_base_url).map_err(ServiceError::message)?;
 
-        let selected_model = preferred_models.first().map(String::as_str);
+        let selected_model = preferred_models
+            .first()
+            .map(|(model_id, _)| model_id.as_str());
         let validation_provider_name = validation_provider_name_for_endpoint(
             provider_name,
             provider_info.as_ref().and_then(|p| p.default_base_url),
@@ -126,7 +134,7 @@ impl LiveProviderSetupService {
         );
 
         // Build a temporary registry from the temp config.
-        let temp_registry = self.build_registry(&temp_config);
+        let temp_registry = self.build_registry(&temp_config).await;
 
         // Filter models for this provider.
         let models: Vec<_> = temp_registry
@@ -165,17 +173,10 @@ impl LiveProviderSetupService {
 
         let model_list: Vec<Value> = models
             .iter()
-            .filter(|m| chelix_providers::is_chat_capable_model(&m.id))
-            .map(|m| {
-                let supports_tools = temp_registry.get(&m.id).is_some_and(|p| p.supports_tools());
-                serde_json::json!({
-                    "id": m.id,
-                    "displayName": m.display_name,
-                    "provider": m.provider,
-                    "supportsTools": supports_tools,
-                })
-            })
-            .collect();
+            .filter(|model| model.supports_text_chat())
+            .map(serde_json::to_value)
+            .collect::<Result<_, _>>()
+            .map_err(ServiceError::message)?;
 
         self.emit_validation_progress(
             &validation_provider_name,
@@ -209,16 +210,56 @@ impl LiveProviderSetupService {
         .await
         {
             Ok(discovered) => {
-                let model_list: Vec<Value> = discovered
+                let resolved = resolve_models(&ModelConfigMap::new(), discovered);
+                let model_list: Vec<Value> = resolved
                     .iter()
-                    .map(|m| {
-                        serde_json::json!({
-                            "id": format!("{provider_name}::{}", m.id),
-                            "displayName": &m.display_name,
-                            "provider": provider_name,
-                        })
+                    .filter(|model| {
+                        model
+                            .metadata
+                            .supports_input(chelix_config::schema::ModelModality::Text)
+                            && model
+                                .metadata
+                                .supports_output(chelix_config::schema::ModelModality::Text)
                     })
-                    .collect();
+                    .map(|model| {
+                        let mut value =
+                            serde_json::to_value(&model.metadata).map_err(ServiceError::message)?;
+                        let object = value.as_object_mut().ok_or_else(|| {
+                            ServiceError::message("model metadata did not serialize as an object")
+                        })?;
+                        object.insert(
+                            "id".into(),
+                            Value::String(namespaced_model_id(provider_name, &model.id)),
+                        );
+                        object.insert(
+                            "display_name".into(),
+                            Value::String(model.display_name.clone()),
+                        );
+                        object.insert("provider".into(), Value::String(provider_name.into()));
+                        object.insert(
+                            "created_at".into(),
+                            model.created_at.map_or(Value::Null, Value::from),
+                        );
+                        object.insert("recommended".into(), Value::Bool(model.recommended));
+                        Ok(value)
+                    })
+                    .collect::<ServiceResult<Vec<_>>>()?;
+                if model_list.is_empty() {
+                    let error = "No discovered model has complete mandatory metadata.";
+                    self.emit_validation_progress(
+                        validation_provider_name,
+                        request_id,
+                        "error",
+                        progress_payload(serde_json::json!({
+                            "message": error,
+                        })),
+                    )
+                    .await;
+                    return Ok(serde_json::json!({
+                        "valid": false,
+                        "error": error,
+                    }));
+                }
                 self.emit_validation_progress(
                     validation_provider_name,
                     request_id,

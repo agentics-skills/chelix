@@ -1,241 +1,262 @@
-//! Discovered model types and merge helpers for model list composition.
+//! Partial model discovery and strict registry resolution.
 
 use std::collections::{HashMap, HashSet};
 
-use crate::model_capabilities::ModelCapabilities;
+use chelix_common::{ModelConfigMap, ModelMetadata, PartialModelMetadata};
 
-/// A model discovered from a provider API (e.g. `/v1/models`).
-///
-/// Replaces bare `(String, String)` tuples so that optional metadata
-/// such as `created_at` can travel alongside the id/display_name pair.
+/// A model returned by a provider catalog before config precedence and strict validation.
 #[derive(Debug, Clone)]
 pub struct DiscoveredModel {
     pub id: String,
     pub display_name: String,
-    /// Unix timestamp from the API (e.g. OpenAI `created` field).
-    /// Used to sort models newest-first. `None` for static catalog entries.
+    /// Unix timestamp from the provider API.
     pub created_at: Option<i64>,
-    /// Flagged by the provider as a recommended/flagship model.
-    /// Used to surface the most relevant models in the UI.
+    /// Explicit provider recommendation; never inferred from the model ID.
     pub recommended: bool,
-    pub capabilities: Option<ModelCapabilities>,
-    /// Context window (in tokens) reported by the provider API
-    /// (e.g. `context_length` / `max_input_tokens` from `/v1/models`).
-    /// `None` for static catalog entries or APIs that don't expose it.
-    pub context_window: Option<u32>,
+    pub metadata: PartialModelMetadata,
 }
 
 impl DiscoveredModel {
+    #[must_use]
     pub fn new(id: impl Into<String>, display_name: impl Into<String>) -> Self {
         Self {
             id: id.into(),
             display_name: display_name.into(),
             created_at: None,
             recommended: false,
-            capabilities: None,
-            context_window: None,
+            metadata: PartialModelMetadata::default(),
         }
     }
 
+    #[must_use]
     pub fn with_created_at(mut self, created_at: Option<i64>) -> Self {
         self.created_at = created_at;
         self
     }
 
+    #[must_use]
     pub fn with_recommended(mut self, recommended: bool) -> Self {
         self.recommended = recommended;
         self
     }
 
-    pub fn with_capabilities(mut self, capabilities: ModelCapabilities) -> Self {
-        self.capabilities = Some(capabilities);
-        self
-    }
-
-    pub fn with_context_window(mut self, context_window: u32) -> Self {
-        self.context_window = Some(context_window);
+    #[must_use]
+    pub fn with_metadata(mut self, metadata: PartialModelMetadata) -> Self {
+        self.metadata = metadata;
         self
     }
 }
 
-/// Convert a static model catalog into `DiscoveredModel` entries, marking
-/// the first `recommended_count` as recommended.
-pub fn catalog_to_discovered(
-    catalog: &[(&str, &str)],
-    recommended_count: usize,
-) -> Vec<DiscoveredModel> {
-    catalog
+/// A complete model record accepted by the registry.
+#[derive(Debug, Clone)]
+pub struct ResolvedModel {
+    pub id: String,
+    pub display_name: String,
+    pub created_at: Option<i64>,
+    pub recommended: bool,
+    pub metadata: ModelMetadata,
+}
+
+/// Apply config precedence and allowlist semantics, then reject incomplete records.
+///
+/// A non-empty config map is an ordered allowlist. An empty map accepts every
+/// discovered model that resolves successfully.
+#[must_use]
+pub fn resolve_models(
+    configured: &ModelConfigMap,
+    discovered: Vec<DiscoveredModel>,
+) -> Vec<ResolvedModel> {
+    if configured.is_empty() {
+        return discovered
+            .into_iter()
+            .filter_map(resolve_discovered_model)
+            .collect();
+    }
+
+    let mut discovered_by_id: HashMap<String, DiscoveredModel> = discovered
+        .into_iter()
+        .map(|model| (model.id.clone(), model))
+        .collect();
+
+    configured
         .iter()
-        .enumerate()
-        .map(|(i, (id, name))| {
-            DiscoveredModel::new(*id, *name).with_recommended(i < recommended_count)
+        .filter_map(|(model_id, configured_metadata)| {
+            let discovered = discovered_by_id.remove(model_id);
+            let (display_name, created_at, recommended, discovered_metadata) = discovered
+                .map(|model| {
+                    (
+                        model.display_name,
+                        model.created_at,
+                        model.recommended,
+                        model.metadata,
+                    )
+                })
+                .unwrap_or_else(|| {
+                    (
+                        model_id.clone(),
+                        None,
+                        false,
+                        PartialModelMetadata::default(),
+                    )
+                });
+            let merged = configured_metadata
+                .clone()
+                .with_fallback(discovered_metadata);
+            match merged.resolve() {
+                Ok(metadata) => Some(ResolvedModel {
+                    id: model_id.clone(),
+                    display_name,
+                    created_at,
+                    recommended,
+                    metadata,
+                }),
+                Err(error) => {
+                    tracing::debug!(
+                        model = %model_id,
+                        error = %error,
+                        "excluding unresolved configured model"
+                    );
+                    None
+                },
+            }
         })
         .collect()
 }
 
-fn merge_models(
-    preferred: Vec<String>,
-    discovered: Vec<DiscoveredModel>,
-    append_unpreferred_discovered: bool,
-) -> Vec<DiscoveredModel> {
-    let discovered_by_id: HashMap<String, &DiscoveredModel> =
-        discovered.iter().map(|m| (m.id.clone(), m)).collect();
-    let mut merged = Vec::new();
+fn resolve_discovered_model(model: DiscoveredModel) -> Option<ResolvedModel> {
+    match model.metadata.resolve() {
+        Ok(metadata) => Some(ResolvedModel {
+            id: model.id,
+            display_name: model.display_name,
+            created_at: model.created_at,
+            recommended: model.recommended,
+            metadata,
+        }),
+        Err(error) => {
+            tracing::debug!(model = %model.id, error = %error, "excluding unresolved discovered model");
+            None
+        },
+    }
+}
+
+/// Keep the first discovered record for each model ID.
+#[must_use]
+pub(crate) fn deduplicate_discovered(models: Vec<DiscoveredModel>) -> Vec<DiscoveredModel> {
     let mut seen = HashSet::new();
-
-    for model_id in preferred {
-        if !seen.insert(model_id.clone()) {
-            continue;
-        }
-        let model = if let Some(d) = discovered_by_id.get(&model_id) {
-            DiscoveredModel {
-                id: model_id,
-                display_name: d.display_name.clone(),
-                created_at: d.created_at,
-                recommended: d.recommended,
-                capabilities: d.capabilities,
-                context_window: d.context_window,
-            }
-        } else {
-            DiscoveredModel::new(model_id.clone(), model_id)
-        };
-        merged.push(model);
-    }
-
-    if append_unpreferred_discovered {
-        for model in discovered {
-            if !seen.insert(model.id.clone()) {
-                continue;
-            }
-            merged.push(model);
-        }
-    }
-
-    merged
-}
-
-pub(crate) fn merge_preferred_and_discovered_models(
-    preferred: Vec<String>,
-    discovered: Vec<DiscoveredModel>,
-) -> Vec<DiscoveredModel> {
-    merge_models(preferred, discovered, true)
-}
-
-pub(crate) fn merge_preferred_and_discovered_models_whitelist(
-    preferred: Vec<String>,
-    discovered: Vec<DiscoveredModel>,
-) -> Vec<DiscoveredModel> {
-    let append_unpreferred_discovered = preferred.is_empty();
-    merge_models(preferred, discovered, append_unpreferred_discovered)
-}
-
-pub(crate) fn merge_discovered_with_fallback_catalog(
-    discovered: Vec<DiscoveredModel>,
-    fallback: Vec<DiscoveredModel>,
-) -> Vec<DiscoveredModel> {
-    if discovered.is_empty() {
-        return fallback;
-    }
-
-    let fallback_by_id: HashMap<String, DiscoveredModel> =
-        fallback.into_iter().map(|m| (m.id.clone(), m)).collect();
-    discovered
+    models
         .into_iter()
-        .map(|m| {
-            let display_name = if m.display_name.trim().is_empty() {
-                fallback_by_id
-                    .get(&m.id)
-                    .map(|fb| fb.display_name.clone())
-                    .unwrap_or_else(|| m.id.clone())
-            } else {
-                m.display_name
-            };
-            DiscoveredModel {
-                id: m.id,
-                display_name,
-                created_at: m.created_at,
-                recommended: m.recommended,
-                capabilities: m.capabilities,
-                context_window: m.context_window,
-            }
-        })
+        .filter(|model| seen.insert(model.id.clone()))
         .collect()
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use super::*;
+    use {
+        super::*,
+        chelix_common::{PartialReasoningMetadata, ReasoningEffort},
+    };
 
-    #[test]
-    fn merge_discovered_with_fallback_keeps_discovered_when_non_empty() {
-        let merged = merge_discovered_with_fallback_catalog(
-            vec![
-                DiscoveredModel::new("live-a", "Live A"),
-                DiscoveredModel::new("live-b", "Live B"),
-            ],
-            vec![
-                DiscoveredModel::new("live-a", "Fallback A"),
-                DiscoveredModel::new("fallback-only", "Fallback Only"),
-            ],
-        );
-
-        let ids: Vec<&str> = merged.iter().map(|m| m.id.as_str()).collect();
-        assert_eq!(ids, vec!["live-a", "live-b"]);
+    fn complete_metadata(context_length: u32) -> PartialModelMetadata {
+        PartialModelMetadata {
+            context_length: Some(context_length),
+            max_input_tokens: Some(context_length - 1_000),
+            max_output_tokens: Some(1_000),
+            reasoning: Some(PartialReasoningMetadata {
+                supported_efforts: Some(Vec::new()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
     }
 
     #[test]
-    fn merge_discovered_with_fallback_uses_fallback_when_discovered_empty() {
-        let merged = merge_discovered_with_fallback_catalog(Vec::new(), vec![
-            DiscoveredModel::new("fallback-a", "Fallback A"),
-            DiscoveredModel::new("fallback-b", "Fallback B"),
+    fn nonempty_config_is_ordered_allowlist_and_config_wins() {
+        let mut configured = ModelConfigMap::new();
+        configured.insert("allowed-b".into(), PartialModelMetadata {
+            context_length: Some(20_000),
+            ..Default::default()
+        });
+        configured.insert("allowed-a".into(), PartialModelMetadata::default());
+
+        let discovered = vec![
+            DiscoveredModel::new("allowed-a", "Allowed A").with_metadata(complete_metadata(10_000)),
+            DiscoveredModel::new("excluded", "Excluded").with_metadata(complete_metadata(10_000)),
+            DiscoveredModel::new("allowed-b", "Allowed B").with_metadata(complete_metadata(10_000)),
+        ];
+
+        let resolved = resolve_models(&configured, discovered);
+        let ids: Vec<&str> = resolved.iter().map(|model| model.id.as_str()).collect();
+        assert_eq!(ids, vec!["allowed-b", "allowed-a"]);
+        assert_eq!(resolved[0].metadata.context_length, 20_000);
+    }
+
+    #[test]
+    fn empty_config_accepts_all_complete_discovered_models() {
+        let resolved = resolve_models(&ModelConfigMap::new(), vec![
+            DiscoveredModel::new("complete-a", "Complete A")
+                .with_metadata(complete_metadata(10_000)),
+            DiscoveredModel::new("complete-b", "Complete B")
+                .with_metadata(complete_metadata(20_000)),
         ]);
-
-        let ids: Vec<&str> = merged.iter().map(|m| m.id.as_str()).collect();
-        assert_eq!(ids, vec!["fallback-a", "fallback-b"]);
+        assert_eq!(resolved.len(), 2);
     }
 
     #[test]
-    fn whitelist_merge_keeps_only_preferred_when_preferred_non_empty() {
-        let merged =
-            merge_preferred_and_discovered_models_whitelist(vec!["preferred-a".into()], vec![
-                DiscoveredModel::new("preferred-a", "Preferred A"),
-                DiscoveredModel::new("discovered-only", "Discovered Only"),
-            ]);
-
-        let ids: Vec<&str> = merged.iter().map(|m| m.id.as_str()).collect();
-        assert_eq!(ids, vec!["preferred-a"]);
-        assert_eq!(merged[0].display_name, "Preferred A");
+    fn incomplete_models_are_excluded() {
+        let resolved = resolve_models(&ModelConfigMap::new(), vec![DiscoveredModel::new(
+            "incomplete",
+            "Incomplete",
+        )]);
+        assert!(resolved.is_empty());
     }
 
     #[test]
-    fn whitelist_merge_preserves_discovered_metadata_for_preferred_models() {
-        let capabilities = ModelCapabilities {
-            text_generation: true,
-            tools: true,
-            vision: false,
-            reasoning: true,
+    fn complete_config_only_model_is_accepted() {
+        let mut configured = ModelConfigMap::new();
+        configured.insert("config-only".into(), complete_metadata(10_000));
+        let resolved = resolve_models(&configured, Vec::new());
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved[0].id, "config-only");
+    }
+
+    #[test]
+    fn reasoning_true_without_known_efforts_remains_unresolved() {
+        let metadata = PartialModelMetadata {
+            context_length: Some(10_000),
+            max_input_tokens: Some(9_000),
+            max_output_tokens: Some(1_000),
+            reasoning: Some(PartialReasoningMetadata {
+                supported_efforts: None,
+                ..Default::default()
+            }),
+            ..Default::default()
         };
-        let merged =
-            merge_preferred_and_discovered_models_whitelist(vec!["combo/glm".into()], vec![
-                DiscoveredModel::new("combo/glm", "Combo GLM")
-                    .with_capabilities(capabilities)
-                    .with_context_window(1_000_000),
-            ]);
-
-        assert_eq!(merged.len(), 1);
-        assert_eq!(merged[0].capabilities, Some(capabilities));
-        assert_eq!(merged[0].context_window, Some(1_000_000));
+        let resolved = resolve_models(&ModelConfigMap::new(), vec![
+            DiscoveredModel::new("unknown-efforts", "Unknown Efforts").with_metadata(metadata),
+        ]);
+        assert!(resolved.is_empty());
     }
 
     #[test]
-    fn whitelist_merge_keeps_all_discovered_when_preferred_empty() {
-        let merged = merge_preferred_and_discovered_models_whitelist(Vec::new(), vec![
-            DiscoveredModel::new("live-a", "Live A"),
-            DiscoveredModel::new("live-b", "Live B"),
+    fn configured_efforts_supplement_discovery() {
+        let mut configured = ModelConfigMap::new();
+        configured.insert("reasoning".into(), PartialModelMetadata {
+            reasoning: Some(PartialReasoningMetadata {
+                supported_efforts: Some(vec!["max".into(), "ultra".into()]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        let mut discovered_metadata = complete_metadata(10_000);
+        discovered_metadata.reasoning = None;
+        let resolved = resolve_models(&configured, vec![
+            DiscoveredModel::new("reasoning", "Reasoning").with_metadata(discovered_metadata),
         ]);
-
-        let ids: Vec<&str> = merged.iter().map(|m| m.id.as_str()).collect();
-        assert_eq!(ids, vec!["live-a", "live-b"]);
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved[0].metadata.reasoning.supported_efforts, vec![
+            ReasoningEffort::from("max"),
+            ReasoningEffort::from("ultra")
+        ]);
     }
 }

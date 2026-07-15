@@ -35,7 +35,6 @@
   - [`tls`](#tls)
   - [`graphql`](#graphql)
   - [`upstream_proxy`](#upstream-proxy)
-  - [`failover`](#failover)
 - **Observability**
   - [`metrics`](#metrics)
 - **Identity & User**
@@ -169,17 +168,6 @@ Runtime GraphQL server configuration.
 
 ---
 
-### `failover` — FailoverConfig
-
-Automatic model/provider failover configuration.
-
-| Key               | Type  | Default | Description                                                                                                                |
-| ----------------- | ----- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `enabled`         | bool  | `true`  | Whether failover is enabled.                                                                                               |
-| `fallback_models` | array | `[]`    | Ordered list of fallback model IDs to try when the primary fails. If empty, the chain is built from all registered models. |
-
----
-
 ## Observability
 
 ### `metrics` — MetricsConfig
@@ -228,7 +216,6 @@ User profile collected during onboarding.
 | `prompt_memory_mode`       | enum: `live-reload`, `frozen-at-session-start` | `"live-reload"` | How `MEMORY.md` is loaded into the prompt for an ongoing session. `live-reload` reloads from disk before each turn; `frozen-at-session-start` freezes the initial content for the session lifetime. |
 | `workspace_file_max_chars` | integer                                        | `32000`         | Maximum characters from each workspace prompt file (`AGENTS.md`, `TOOLS.md`).                                                                                                                       |
 | `priority_models`          | array                                          | `[]`            | Preferred model IDs to show first in selectors (full or raw model IDs).                                                                                                                             |
-| `allowed_models`           | array                                          | `[]`            | ⚠️ **Deprecated.** Legacy model allowlist kept for backward compatibility; currently ignored (model visibility is provider-driven). Will be removed in a future release.                            |
 
 ### `agents` — AgentsConfig
 
@@ -754,7 +741,7 @@ JSON object that may contain provider-specific keys plus a `tools` sub-block
 | `enabled`          | bool                                    | `true`               | Whether this provider is enabled.                              |
 | `api_key`          | optional string (secret)                | —                    | Override the API key. Env var takes precedence if set.         |
 | `base_url`         | optional string                         | —                    | Override the base URL. Alias: `url`.                           |
-| `models`           | array of string                         | `[]`                 | Preferred model IDs shown first in model pickers.              |
+| `models.<model_id>` | `PartialModelMetadata` table            | —                    | Ordered allowlist entry and highest-priority metadata source.  |
 | `fetch_models`     | bool                                    | `true`               | Whether to fetch provider model catalogs dynamically.          |
 | `stream_transport` | enum (`sse`, `websocket`, `auto`)       | `"sse"`              | Streaming transport for this provider.                         |
 | `wire_api`         | enum (`chat-completions`, `responses`)  | `"chat-completions"` | Wire format for this provider's HTTP API.                      |
@@ -762,30 +749,44 @@ JSON object that may contain provider-specific keys plus a `tools` sub-block
 | `tool_mode`        | enum (`auto`, `native`, `text`, `off`)  | `"auto"`             | How tool calling is handled for this provider.                 |
 | `cache_retention`  | enum (`none`, `short`, `long`)          | `"short"`            | Prompt cache retention policy.                                 |
 | `policy`           | optional `ToolPolicyConfig` (see below) | —                    | Tool policy override merged on top of global `[tools.policy]`. |
-| `model_overrides`  | map of `ModelOverride`                  | `{}`                 | Per-model context window overrides. Keys are model IDs.        |
 
-For `custom-*` providers, a non-empty `models` list is treated as a whitelist.
-If `fetch_models = true`, `/models` is still fetched and returned model metadata
-(for example `capabilities` and `context_length`) is applied to matching
-whitelisted models.
+### `providers.<name>.models.<model_id>` — PartialModelMetadata
 
-### `providers.<name>.model_overrides.<model_id>` — ModelOverride
+Declare each model only as a
+`[providers.<name>.models."<raw-model-id>"]` table. The table name contains the
+provider's raw model ID. These tables form an ordered allowlist; with no model
+tables, every discovered model whose metadata resolves to a complete record is
+accepted. Configuration values take precedence field by field, provider
+`/models` discovery supplements missing fields, and optional defaults apply
+last. A model is excluded when mandatory metadata remains missing or its token
+limits/modalities/reasoning metadata are inconsistent.
 
-| Key              | Type             | Default | Description                                                                                                      |
-| ---------------- | ---------------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
-| `context_window` | optional integer | —       | Override the context window size (in tokens) for this model. Must be ≥ 1. Values > 10,000,000 produce a warning. |
+| Key                       | Type                        | Default            | Description                                                        |
+| ------------------------- | --------------------------- | ------------------ | ------------------------------------------------------------------ |
+| `context_length`          | optional positive integer   | —                  | Mandatory after config and discovery are merged.                   |
+| `max_input_tokens`        | optional positive integer   | —                  | Mandatory after merge; input + output must fit the context window. |
+| `max_output_tokens`       | optional positive integer   | —                  | Mandatory after merge; input + output must fit the context window. |
+| `input_modalities`        | array of modality           | `text`, `image`    | Accepted input media; must be non-empty and unique.                |
+| `output_modalities`       | array of modality           | `text`             | Produced output media; must be non-empty and unique.               |
+| `tool_calling`            | bool                        | `true`             | Whether native tool calling is supported.                          |
+| `streaming`               | bool                        | `true`             | Whether streaming is supported.                                    |
+| `zeroDataRetentionEnabled` | bool                       | `true`             | Whether zero-data-retention operation is supported.                |
+| `reasoning`               | `PartialReasoningMetadata`  | —                  | Reasoning metadata; `supported_efforts` is mandatory after merge.  |
 
-### `models` — Global Model Overrides
+Modalities are `text`, `image`, `audio`, `video`, and `file`.
 
-**Struct:** `HashMap<String, ModelOverride>`
+### `providers.<name>.models.<model_id>.reasoning` — PartialReasoningMetadata
 
-Per-model overrides that apply across all providers. Provider-scoped overrides
-(`providers.<name>.model_overrides.<id>`) take precedence over these.
+| Key                 | Type                      | Default                                      | Description                                                                  |
+| ------------------- | ------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------- |
+| `supported_efforts` | array of reasoning effort | —                                            | Mandatory after merge; `[]` explicitly marks a non-reasoning model.          |
+| `summary`           | optional enum             | `detailed` for reasoning models              | Metadata for reasoning-summary requests: `auto`, `concise`, or `detailed`.   |
+| `include`           | array of enum             | `reasoning.encrypted_content` when reasoning | Additional reasoning payload metadata.                                       |
 
-```toml
-[models.claude-opus-4-6]
-context_window = 1_000_000
-```
+Supported effort values are `none`, `minimal`, `low`, `medium`, `high`,
+`xhigh`, and `max`. `summary` and `include` are metadata-only: they neither
+enable reasoning nor select an effort. They must not request reasoning options
+when `supported_efforts = []`.
 
 ### `providers.<name>.policy`
 

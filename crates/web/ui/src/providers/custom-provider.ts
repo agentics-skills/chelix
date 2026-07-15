@@ -1,14 +1,11 @@
 // ── Custom OpenAI-compatible provider form ───────────────────
 
 import { sendRpc } from "../helpers";
-import { fetchModels } from "../models";
 import { providerBaseUrlError, validateProviderKey } from "../provider-validation";
-import * as S from "../state";
 import type { RpcResponse } from "../types";
 import { showModelSelector } from "./auth-flow";
 import {
 	bindValidationProgressEvents,
-	closeProviderModal,
 	completeValidationProgress,
 	createValidationProgress,
 	createValidationRequestId,
@@ -52,18 +49,6 @@ export function showCustomProviderForm(): void {
 	keyInp.placeholder = "sk-...";
 	form.appendChild(keyInp);
 
-	// Model ID (optional)
-	const modelLabel = document.createElement("label");
-	modelLabel.className = "text-xs text-[var(--muted)] mt-2";
-	modelLabel.textContent = "Model ID (optional)";
-	form.appendChild(modelLabel);
-
-	const modelInp = document.createElement("input");
-	modelInp.className = "provider-key-input";
-	modelInp.type = "text";
-	modelInp.placeholder = "Leave blank for auto-discovery";
-	form.appendChild(modelInp);
-
 	const errorPanel = document.createElement("div");
 	errorPanel.className = "alert-error-text text-[var(--error)] whitespace-pre-line";
 	errorPanel.style.display = "none";
@@ -87,7 +72,6 @@ export function showCustomProviderForm(): void {
 	saveBtn.addEventListener("click", () => {
 		const url = urlInp.value.trim();
 		const key = keyInp.value.trim();
-		const model = modelInp.value.trim() || null;
 
 		if (!url) {
 			setFormError(errorPanel, "Endpoint URL is required.");
@@ -108,7 +92,7 @@ export function showCustomProviderForm(): void {
 		setValidationProgress(validationProgress, 8, "Saving provider settings...");
 		setFormError(errorPanel, null);
 
-		sendRpc<AddCustomPayload>("providers.add_custom", { baseUrl: url, apiKey: key, model: model })
+		sendRpc<AddCustomPayload>("providers.add_custom", { baseUrl: url, apiKey: key })
 			.then((res: RpcResponse<AddCustomPayload>) => {
 				if (!res?.ok) {
 					saveBtn.disabled = false;
@@ -125,13 +109,13 @@ export function showCustomProviderForm(): void {
 				const stopProgressEvents = bindValidationProgressEvents(validationProgress, requestId);
 
 				// Validate the provider to discover models
-				validateProviderKey(providerName, key, url, model, requestId)
+				validateProviderKey(providerName, key, url, requestId)
 					.then((valResult) => {
-						if (!(valResult.valid || model)) {
+						if (!valResult.valid) {
 							saveBtn.disabled = false;
 							saveBtn.textContent = "Add Provider";
 							resetValidationProgress(validationProgress);
-							setFormError(errorPanel, valResult.error || "No models discovered. Please specify a model ID.");
+							setFormError(errorPanel, valResult.error || "No models with complete metadata were discovered.");
 							return;
 						}
 
@@ -142,28 +126,21 @@ export function showCustomProviderForm(): void {
 								name: providerName,
 								displayName: displayName,
 								authType: "api-key",
+								configured: true,
+								defaultBaseUrl: url,
+								baseUrl: url,
+								models: {},
+								requiresModel: true,
 								keyOptional: false,
 								isCustom: true,
+								uiOrder: 0,
 							};
-							showModelSelector(customProvider, valResult.models as ModelEntry[], key, url, model, true);
-						} else if (model) {
-							// Model specified manually -- save it and finish
-							sendRpc("providers.save_model", { provider: providerName, model: model }).then(() => {
-								completeValidationProgress(validationProgress, "Done.");
-								fetchModels();
-								if (S.refreshProvidersPage) S.refreshProvidersPage();
-								m.body.textContent = "";
-								const status = document.createElement("div");
-								status.className = "provider-status";
-								status.textContent = `${displayName} configured successfully!`;
-								m.body.appendChild(status);
-								setTimeout(closeProviderModal, 1500);
-							});
+							showModelSelector(customProvider, valResult.models as ModelEntry[], key, url, true);
 						} else {
 							saveBtn.disabled = false;
 							saveBtn.textContent = "Add Provider";
 							resetValidationProgress(validationProgress);
-							setFormError(errorPanel, "No models discovered. Please specify a model ID.");
+							setFormError(errorPanel, "No models with complete metadata were discovered.");
 						}
 					})
 					.catch((err: Error) => {

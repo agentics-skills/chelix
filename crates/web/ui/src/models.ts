@@ -17,16 +17,16 @@ export { setSessionModel };
 
 export interface ModelLabelInfo {
 	id: string;
-	displayName?: string;
+	display_name?: string;
 }
 
 export function modelDisplayLabel(model: ModelLabelInfo): string {
-	return model.displayName || model.id;
+	return model.display_name || model.id;
 }
 
 export function modelTitle(model: ModelLabelInfo): string {
 	const label = modelDisplayLabel(model);
-	return model.displayName && model.displayName !== model.id ? `${model.displayName} (${model.id})` : label;
+	return model.display_name && model.display_name !== model.id ? `${model.display_name} (${model.id})` : label;
 }
 
 function updateModelComboLabel(model: ModelInfo): void {
@@ -38,9 +38,6 @@ function updateModelComboLabel(model: ModelInfo): void {
 
 export function fetchModels(): Promise<void> {
 	return modelStore.fetch().then(() => {
-		// Dual-write to state.js for backward compat
-		S.setModels(modelStore.models.value);
-		S.setSelectedModelId(modelStore.selectedModelId.value);
 		const model = modelStore.selectedModel.value;
 		if (model) updateModelComboLabel(model);
 
@@ -55,11 +52,9 @@ export function fetchModels(): Promise<void> {
 
 export function selectModel(m: ModelInfo): void {
 	modelStore.select(m.id);
-	// Dual-write to state.js for backward compat
-	S.setSelectedModelId(m.id);
 	updateModelComboLabel(m);
 	localStorage.setItem("chelix-model", m.id);
-	setSessionModel(S.activeSessionKey, m.id, m.supportsReasoning ? modelStore.reasoningEffort.value : "");
+	setSessionModel(S.activeSessionKey, m.id, m.reasoning.supported_efforts.length > 0 ? modelStore.reasoningEffort.value : "");
 	closeModelDropdown();
 	// Show notice if model doesn't support tools
 	showModelNotice(m);
@@ -106,7 +101,7 @@ function buildModelItem(m: ModelInfo, currentId: string): HTMLDivElement {
 		meta.appendChild(prov);
 	}
 
-	if (m.supportsReasoning) {
+	if (m.reasoning.supported_efforts.length > 0) {
 		const brainIcon = document.createElement("span");
 		brainIcon.className = "icon icon-xs icon-brain";
 		brainIcon.title = "Supports reasoning";
@@ -118,7 +113,7 @@ function buildModelItem(m: ModelInfo, currentId: string): HTMLDivElement {
 		const badge = document.createElement("span");
 		badge.className = "model-item-unsupported";
 		badge.textContent = t("common:labels.unsupported");
-		if (m.unsupportedReason) badge.title = m.unsupportedReason;
+		if (m.unsupported_reason) badge.title = m.unsupported_reason;
 		meta.appendChild(badge);
 	}
 
@@ -133,7 +128,7 @@ export function renderModelList(query: string): void {
 	const q = query.toLowerCase();
 	const allModels = modelStore.models.value;
 	const filtered = allModels.filter((m) => {
-		const label = (m.displayName || m.id).toLowerCase();
+		const label = (m.display_name || m.id).toLowerCase();
 		const provider = (m.provider || "").toLowerCase();
 		return !q || label.indexOf(q) !== -1 || provider.indexOf(q) !== -1 || m.id.toLowerCase().indexOf(q) !== -1;
 	});

@@ -1,6 +1,6 @@
 // ── Provider auth flows: OAuth, API key form, model selector ──
 
-import { modelVersionScore, sendRpc } from "../helpers";
+import { sendRpc } from "../helpers";
 import { fetchModels } from "../models";
 import { providerApiKeyHelp } from "../provider-key-help";
 import { completeProviderOAuth, startProviderOAuth } from "../provider-oauth";
@@ -16,6 +16,7 @@ import {
 } from "../provider-validation";
 import * as S from "../state";
 import type { RpcResponse } from "../types";
+import { modelConfigMapFromSelection, selectedModelIdsFromConfig } from "../types/model";
 import {
 	bindValidationProgressEvents,
 	clearOAuthStatusTimer,
@@ -31,7 +32,6 @@ import {
 	setOAuthStatusTimer,
 	setValidationProgress,
 	shouldUseCustomProviderForOpenAi,
-	stripModelNamespace,
 } from "./shared";
 import type { AddCustomPayload, ModelEntry, ModelSelectorWrapper, ProbeResult, ProviderInfo } from "./types";
 
@@ -146,7 +146,7 @@ export function showApiKeyForm(provider: ProviderInfo): void {
 		const requestId = createValidationRequestId();
 		const stopProgressEvents = bindValidationProgressEvents(validationProgress, requestId);
 
-		validateProviderKey(provider.name, keyVal, endpointVal, null, requestId)
+		validateProviderKey(provider.name, keyVal, endpointVal, requestId)
 			.then((result) => {
 				if (!result.valid) {
 					saveBtn.disabled = false;
@@ -156,9 +156,9 @@ export function showApiKeyForm(provider: ProviderInfo): void {
 					return;
 				}
 
-				const models: ModelEntry[] = (result.models || []) as ModelEntry[];
+				const models = result.models || [];
 				completeValidationProgress(validationProgress, "Done.");
-				showModelSelector(provider, models, keyVal, endpointVal, null);
+				showModelSelector(provider, models, keyVal, endpointVal);
 			})
 			.catch((err: Error) => {
 				saveBtn.disabled = false;
@@ -183,7 +183,6 @@ export function showModelSelector(
 	models: ModelEntry[],
 	keyVal: string | null,
 	endpointVal: string | null,
-	modelVal: string | null,
 	skipSave?: boolean,
 ): void {
 	const m = els();
@@ -223,7 +222,7 @@ export function showModelSelector(
 		if (!currentFilter) return models;
 		const q = currentFilter.toLowerCase();
 		return models.filter(
-			(mdl: ModelEntry) => mdl.displayName.toLowerCase().includes(q) || mdl.id.toLowerCase().includes(q),
+			(mdl: ModelEntry) => mdl.display_name.toLowerCase().includes(q) || mdl.id.toLowerCase().includes(q),
 		);
 	}
 
@@ -272,7 +271,7 @@ export function showModelSelector(
 		if (filter) {
 			const q = filter.toLowerCase();
 			filtered = models.filter(
-				(mdl: ModelEntry) => mdl.displayName.toLowerCase().includes(q) || mdl.id.toLowerCase().includes(q),
+				(mdl: ModelEntry) => mdl.display_name.toLowerCase().includes(q) || mdl.id.toLowerCase().includes(q),
 			);
 		}
 		if (filtered.length === 0) {
@@ -291,13 +290,13 @@ export function showModelSelector(
 
 			const name = document.createElement("span");
 			name.className = "text-sm font-medium text-[var(--text)]";
-			name.textContent = mdl.displayName;
+			name.textContent = mdl.display_name;
 			header.appendChild(name);
 
 			const badges = document.createElement("div");
 			badges.className = "flex gap-2";
 
-			if (mdl.supportsTools) {
+			if (mdl.tool_calling) {
 				const toolsBadge = document.createElement("span");
 				toolsBadge.className = "recommended-badge";
 				toolsBadge.textContent = "Tools";
@@ -366,7 +365,7 @@ export function showModelSelector(
 		errorArea.style.display = "none";
 		continueBtn.disabled = true;
 		continueBtn.textContent = "Saving\u2026";
-		saveAndFinishProvider(provider, keyVal, endpointVal, modelVal, Array.from(selectedIds), !!skipSave);
+		saveAndFinishProvider(provider, models, keyVal, endpointVal, selectedIds, !!skipSave);
 	});
 	btns.appendChild(continueBtn);
 
@@ -387,25 +386,17 @@ export function showModelSelector(
 
 function saveAndFinishProvider(
 	provider: ProviderInfo,
+	models: ModelEntry[],
 	keyVal: string | null,
 	endpointVal: string | null,
-	modelVal: string | null,
-	selectedModelIds: string[] | null,
+	selectedModelIds: Set<string>,
 	skipSave: boolean,
 ): void {
-	// selectedModelIds can be a single string (legacy callers) or an array
-	const modelIds: string[] = Array.isArray(selectedModelIds)
-		? selectedModelIds
-		: selectedModelIds
-			? [selectedModelIds]
-			: [];
-
 	const m = els();
 	const saveAsCustomProvider = !skipSave && shouldUseCustomProviderForOpenAi(provider, endpointVal);
-
-	const modelsForSave = saveAsCustomProvider ? modelIds.map(stripModelNamespace) : [...modelIds];
-	const firstModelForSave = modelsForSave[0] || null;
-	const effectiveModelVal = provider.keyOptional && firstModelForSave ? firstModelForSave : modelVal;
+	const modelIds = Array.from(selectedModelIds);
+	const modelsForSave = modelConfigMapFromSelection(models, selectedModelIds);
+	const firstRawModelId = Object.keys(modelsForSave)[0];
 
 	function showError(msg: string): void {
 		const wrapperEl = m.body.querySelector(".provider-key-form") as ModelSelectorWrapper | null;
@@ -419,11 +410,13 @@ function saveAndFinishProvider(
 	if (skipSave) {
 		savePromise = Promise.resolve({ ok: true });
 	} else if (saveAsCustomProvider) {
-		const customPayload: Record<string, string | null> = { baseUrl: endpointVal, apiKey: keyVal };
-		if (firstModelForSave) customPayload.model = firstModelForSave;
-		savePromise = sendRpc("providers.add_custom", customPayload);
+		savePromise = sendRpc("providers.add_custom", {
+			baseUrl: endpointVal,
+			apiKey: keyVal,
+			models: modelsForSave,
+		});
 	} else {
-		savePromise = saveProviderKey(provider.name, keyVal || "", endpointVal, effectiveModelVal);
+		savePromise = saveProviderKey(provider.name, keyVal || "", endpointVal);
 	}
 
 	savePromise
@@ -443,7 +436,7 @@ function saveAndFinishProvider(
 			if (modelIds.length > 0) {
 				// Test first model as a connectivity check
 				const firstModelId = modelIds[0];
-				const firstModelForTest = saveAsCustomProvider ? `${savedProviderName}::${modelsForSave[0]}` : firstModelId;
+				const firstModelForTest = saveAsCustomProvider ? `${savedProviderName}::${firstRawModelId}` : firstModelId;
 				const testResult: TestModelResult = await testModel(firstModelForTest);
 				const modelServiceUnavailable = !testResult.ok && isModelServiceNotConfigured(testResult.error || "");
 				modelTimedOut = !testResult.ok && isTimeoutError(testResult.error || "");
@@ -673,19 +666,10 @@ function pollOAuthStatus(provider: ProviderInfo, onAuthenticated: () => void): v
 function showOAuthModelSelector(provider: ProviderInfo): void {
 	sendRpc<ModelEntry[]>("models.list", {}).then((modelsRes: RpcResponse<ModelEntry[]>) => {
 		const allModels: ModelEntry[] = modelsRes?.ok ? (modelsRes.payload as ModelEntry[]) || [] : [];
-		const needle = provider.name.replace(/-/g, "").toLowerCase();
-		const provModels = allModels.filter((entry: ModelEntry) =>
-			entry.provider?.toLowerCase().replace(/-/g, "").includes(needle),
-		);
+		const provModels = allModels.filter((entry: ModelEntry) => entry.provider === provider.name);
 
 		if (provModels.length > 0) {
-			const mapped: ModelEntry[] = provModels.map((entry: ModelEntry) => ({
-				id: entry.id,
-				displayName: entry.displayName || entry.id,
-				provider: entry.provider,
-				supportsTools: entry.supportsTools,
-			}));
-			showModelSelector(provider, mapped, null, null, null, true);
+			showModelSelector(provider, provModels, null, null, true);
 		} else {
 			fetchModels();
 			if (S.refreshProvidersPage) S.refreshProvidersPage();
@@ -711,10 +695,7 @@ export function openModelSelectorForProvider(providerName: string, providerDispl
 	Promise.all([sendRpc<ModelEntry[]>("models.list", {}), sendRpc<ProviderInfo[]>("providers.available", {})]).then(
 		([modelsRes, providersRes]: [RpcResponse<ModelEntry[]>, RpcResponse<ProviderInfo[]>]) => {
 			const allModels: ModelEntry[] = modelsRes?.ok ? (modelsRes.payload as ModelEntry[]) || [] : [];
-			const needle = providerName.replace(/-/g, "").toLowerCase();
-			const provModels = allModels.filter((entry: ModelEntry) =>
-				entry.provider?.toLowerCase().replace(/-/g, "").includes(needle),
-			);
+			const provModels = allModels.filter((entry: ModelEntry) => entry.provider === providerName);
 
 			if (provModels.length === 0) {
 				m.body.textContent = "";
@@ -737,24 +718,15 @@ export function openModelSelectorForProvider(providerName: string, providerDispl
 			}
 
 			// Get saved preferred models for this provider.
-			const savedModels: Set<string> = new Set();
+			let savedModels = new Set<string>();
 			if (providersRes?.ok) {
 				const providerMeta = ((providersRes.payload as ProviderInfo[]) || []).find(
 					(p: ProviderInfo) => p.name === providerName,
 				);
-				if (providerMeta?.models) {
-					for (const sm of providerMeta.models) savedModels.add(sm);
-				}
+				if (providerMeta) savedModels = selectedModelIdsFromConfig(provModels, providerMeta.models);
 			}
 
-			const mapped: ModelEntry[] = provModels.map((entry: ModelEntry) => ({
-				id: entry.id,
-				displayName: entry.displayName || entry.id,
-				provider: entry.provider,
-				supportsTools: entry.supportsTools,
-				createdAt: entry.createdAt || 0,
-			}));
-			showMultiModelSelector(providerName, providerDisplayName, mapped, savedModels);
+			showMultiModelSelector(providerName, providerDisplayName, provModels, savedModels);
 		},
 	);
 }
@@ -836,13 +808,10 @@ function showMultiModelSelector(
 			const aSel = selectedIds.has(a.id) ? 0 : 1;
 			const bSel = selectedIds.has(b.id) ? 0 : 1;
 			if (aSel !== bSel) return aSel - bSel;
-			const aTime = a.createdAt || 0;
-			const bTime = b.createdAt || 0;
+			const aTime = a.created_at || 0;
+			const bTime = b.created_at || 0;
 			if (aTime !== bTime) return bTime - aTime;
-			const aVer = modelVersionScore(a.id);
-			const bVer = modelVersionScore(b.id);
-			if (aVer !== bVer) return bVer - aVer;
-			return (a.displayName || a.id).localeCompare(b.displayName || b.id);
+			return a.display_name.localeCompare(b.display_name);
 		});
 	}
 
@@ -853,7 +822,7 @@ function showMultiModelSelector(
 		if (filter) {
 			const q = filter.toLowerCase();
 			filtered = models.filter(
-				(entry: ModelEntry) => entry.displayName.toLowerCase().includes(q) || entry.id.toLowerCase().includes(q),
+				(entry: ModelEntry) => entry.display_name.toLowerCase().includes(q) || entry.id.toLowerCase().includes(q),
 			);
 		}
 		if (filtered.length === 0) {
@@ -873,12 +842,12 @@ function showMultiModelSelector(
 
 			const nameSpan = document.createElement("span");
 			nameSpan.className = "text-sm font-medium text-[var(--text)] truncate";
-			nameSpan.textContent = mdl.displayName;
+			nameSpan.textContent = mdl.display_name;
 			header.appendChild(nameSpan);
 
 			const badges = document.createElement("div");
 			badges.className = "flex gap-2";
-			if (mdl.supportsTools) {
+			if (mdl.tool_calling) {
 				const toolsBadge = document.createElement("span");
 				toolsBadge.className = "recommended-badge";
 				toolsBadge.textContent = "Tools";
@@ -912,10 +881,10 @@ function showMultiModelSelector(
 				card.appendChild(errorLine);
 			}
 
-			if (mdl.createdAt) {
+			if (mdl.created_at) {
 				const dateLine = document.createElement("time");
 				dateLine.className = "text-xs text-[var(--muted)] mt-0.5 opacity-60 block";
-				dateLine.setAttribute("data-epoch-ms", String(mdl.createdAt * 1000));
+				dateLine.setAttribute("data-epoch-ms", String(mdl.created_at * 1000));
 				dateLine.setAttribute("data-format", "year-month");
 				card.appendChild(dateLine);
 			}
@@ -970,7 +939,8 @@ function showMultiModelSelector(
 		saveBtn.textContent = "Saving\u2026";
 		errorArea.style.display = "none";
 
-		sendRpc("providers.save_models", { provider: providerName, models: Array.from(selectedIds) })
+		const modelsForSave = modelConfigMapFromSelection(models, selectedIds);
+		sendRpc("providers.save_models", { provider: providerName, models: modelsForSave })
 			.then((res: RpcResponse) => {
 				if (!res?.ok) {
 					saveBtn.disabled = false;

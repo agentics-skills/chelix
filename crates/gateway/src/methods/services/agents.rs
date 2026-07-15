@@ -953,7 +953,7 @@ fn preset_from_rpc_params(
             .and_then(serde_json::Value::as_u64);
     }
     if let Some(re) = optional_string(params, "reasoning_effort") {
-        preset.reasoning_effort = Some(re.as_str().try_into().map_err(parse_preset_param_error)?);
+        preset.reasoning_effort = Some(re.into());
     }
     if params.get("mcp_mode").is_some() || params.get("mcp_servers").is_some() {
         preset.mcp = parse_mcp_policy_param(params);

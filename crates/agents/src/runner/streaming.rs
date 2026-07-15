@@ -121,6 +121,12 @@ pub async fn run_agent_loop_streaming_with_limits(
         is_multimodal,
         "starting streaming agent loop"
     );
+    let context_window = provider.context_window().ok_or_else(|| {
+        anyhow::anyhow!(
+            "model '{}' has no resolved context metadata; use a registry provider",
+            provider.id()
+        )
+    })?;
 
     let mut messages: Vec<ChatMessage> = vec![ChatMessage::system(system_prompt)];
     let history_len = history.as_ref().map_or(0, Vec::len);
@@ -290,7 +296,7 @@ pub async fn run_agent_loop_streaming_with_limits(
         }
 
         let context_budget =
-            super::evaluate_context_budget(&messages, &schemas_for_api, provider.context_window());
+            super::evaluate_context_budget(&messages, &schemas_for_api, context_window);
         if super::should_trigger_automatic_checkpoint(&limits, iterations, &context_budget) {
             let (summary_messages, continuation_messages) =
                 super::split_context_for_compaction(messages, compaction_continuation_start);
