@@ -386,7 +386,7 @@ port = {port}                           # Port number (auto-generated for this i
 #                                   # results point at the persisted file. Override per agent with
 #                                   # `max_tool_result_bytes` on the agent preset.
 # registry_mode = "full"            # "full" = all schemas every turn, "lazy" = catalog + on-demand get_tool schema fetch
-# agent_loop_detector_window = 2    # Fire intervention after N identical failing tool calls in a row
+# agent_loop_detector_window = 2    # Fire after N model rounds repeat an equivalent failure
 
 # ── Maps ─────────────────────────────────────────────────────────────────────
 

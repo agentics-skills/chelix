@@ -253,9 +253,9 @@ pub enum RunnerEvent {
         arguments: serde_json::Value,
         error: String,
     },
-    /// The loop detector fired after observing repeated identical tool-call
-    /// failures. `stage` is 1 for the nudge/directive intervention and 2 for
-    /// the stronger tool-stripping escalation (see issue #658).
+    /// The loop detector fired after equivalent tool failures repeated across
+    /// distinct model rounds. `stage` is 1 for the nudge/directive intervention
+    /// and 2 for the stronger tool-stripping escalation.
     LoopInterventionFired {
         stage: u8,
         tool_name: String,
@@ -719,21 +719,18 @@ pub(crate) fn channel_binding_from_tool_context(
     }
 }
 
-/// Consume the detector's post-batch action (if any) and apply it to the
-/// runner state: push the directive user message into `messages`, emit the
+/// Apply one action already computed atomically for a complete model round:
+/// push the directive user message into `messages`, emit the
 /// `LoopInterventionFired` UI event, and set `strip_tools_next_iter` when
-/// stage 2 fires. Shared by the streaming and non-streaming loops (issue
-/// #658).
+/// stage 2 fires. Shared by the streaming and non-streaming loops.
 pub(crate) fn apply_loop_detector_intervention(
-    loop_detector: &mut ToolLoopDetector,
+    loop_detector: &ToolLoopDetector,
+    action: LoopDetectorAction,
     messages: &mut Vec<ChatMessage>,
     strip_tools_next_iter: &mut bool,
     on_event: Option<&OnEvent>,
 ) {
-    if !loop_detector.is_enabled() {
-        return;
-    }
-    match loop_detector.consume_pending_action() {
+    match action {
         LoopDetectorAction::None => {},
         LoopDetectorAction::InjectNudge => {
             let window = loop_detector.window_snapshot();

@@ -44,9 +44,10 @@ pub struct ToolsConfig {
     #[serde(default)]
     pub registry_mode: ToolRegistryMode,
     /// Window size for the tool-call reflex-loop detector. When this many
-    /// consecutive tool calls share the same tool + (args or error), the
-    /// runner injects a directive intervention message. Set to 0 to disable.
-    /// Default 2.
+    /// consecutive model rounds contain equivalent failures (same tool and
+    /// either the same normalized arguments or the same non-empty error), the
+    /// runner injects a directive intervention message. Sibling calls from one
+    /// model response count as one round. Set to 0 to disable. Default 2.
     #[serde(default = "default_agent_loop_detector_window")]
     pub agent_loop_detector_window: usize,
     /// When the loop detector fires a second time (stage 2), strip the tool

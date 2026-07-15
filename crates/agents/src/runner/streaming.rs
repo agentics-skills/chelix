@@ -965,10 +965,10 @@ pub async fn run_agent_loop_streaming_with_limits(
         // Execute all tools concurrently and collect results in order.
         let results = futures::future::join_all(tool_futures).await;
 
-        // Process results in original order: emit events, append messages.
-        // Intervention is derived from the detector's post-batch state
-        // via `consume_pending_action()` below — see the non-streaming
-        // path for the rationale (issue #658).
+        // Process results in original order: emit events, append messages, and
+        // collect detector outcomes. The complete model round is recorded once
+        // after every sibling result has been persisted.
+        let mut round_outcomes = Vec::with_capacity(tool_calls.len());
         for (tc, (success, mut result, error, rejected)) in tool_calls.iter().zip(results) {
             if success {
                 info!(tool = %tc.name, id = %tc.id, "tool execution succeeded");
@@ -983,14 +983,14 @@ pub async fn run_agent_loop_streaming_with_limits(
                 warn!(tool = %tc.name, id = %tc.id, error = %error.as_deref().unwrap_or(""), "tool execution failed");
             }
 
-            // Record outcome in the loop detector (issue #658).
+            // Collect one outcome per call without mutating detector state. The
+            // detector consumes the complete batch atomically below.
             if loop_detector.is_enabled() {
-                let fp = if success {
+                round_outcomes.push(if success {
                     ToolCallFingerprint::success(&tc.name, &tc.arguments)
                 } else {
                     ToolCallFingerprint::failure(&tc.name, &tc.arguments, error.as_deref())
-                };
-                let _ = loop_detector.record(fp);
+                });
             }
 
             if rejected && let Some(cb) = on_event {
@@ -1084,9 +1084,11 @@ pub async fn run_agent_loop_streaming_with_limits(
             messages.push(ChatMessage::tool(&tc.id, &tool_result_str));
         }
 
-        // Apply loop-detector intervention if one fired during this batch.
+        // Record and act on the complete LLM tool-call batch exactly once.
+        let loop_action = loop_detector.record_round(&round_outcomes);
         apply_loop_detector_intervention(
-            &mut loop_detector,
+            &loop_detector,
+            loop_action,
             &mut messages,
             &mut strip_tools_next_iter,
             on_event,
