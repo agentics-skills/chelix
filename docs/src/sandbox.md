@@ -381,6 +381,9 @@ pids_max = 256
 
 How resource limits are applied depends on the backend:
 
+Docker and Podman sandboxes use one CPU by default. Set `cpu_quota` to override
+that launch limit.
+
 | Limit          | Docker         | Apple Container | WASM                 | Restricted Host       | cgroup (Linux) |
 | -------------- | -------------- | --------------- | -------------------- | --------------------- | -------------- |
 | `memory_limit` | `--memory`     | `--memory`      | Wasmtime reservation | `ulimit -v`           | `MemoryMax=`   |

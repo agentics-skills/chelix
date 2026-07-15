@@ -42,6 +42,8 @@ pub(crate) enum BackendKind {
     Podman,
 }
 
+const DEFAULT_OCI_CPU_QUOTA: f64 = 1.0;
+
 /// Docker/Podman-based sandbox implementation.
 ///
 /// The `cli` field selects the container CLI binary (`"docker"` or `"podman"`).
@@ -160,9 +162,8 @@ impl DockerSandbox {
         if let Some(ref mem) = limits.memory_limit {
             args.extend(["--memory".to_string(), mem.clone()]);
         }
-        if let Some(cpu) = limits.cpu_quota {
-            args.extend(["--cpus".to_string(), cpu.to_string()]);
-        }
+        let cpu = limits.cpu_quota.unwrap_or(DEFAULT_OCI_CPU_QUOTA);
+        args.extend(["--cpus".to_string(), cpu.to_string()]);
         if let Some(pids) = limits.pids_max {
             args.extend(["--pids-limit".to_string(), pids.to_string()]);
         }

@@ -331,6 +331,13 @@ fn test_docker_resource_args() {
     ]);
 }
 
+#[test]
+fn test_docker_resource_args_default_to_one_cpu() {
+    let docker = DockerSandbox::new(SandboxConfig::default());
+
+    assert_eq!(docker.resource_args(), vec!["--cpus", "1"]);
+}
+
 fn mount_volume_for_guest<'a>(args: &'a [String], guest: &str) -> Option<&'a str> {
     let marker = format!(":{guest}:");
     args.chunks_exact(2)

@@ -335,7 +335,7 @@ port = {port}                           # Port number (auto-generated for this i
 
 # [sandbox.resource_limits]
 # memory_limit = "512M"             # Memory limit (e.g., "512M", "1G")
-# cpu_quota = 0.5                   # CPU quota as fraction
+# cpu_quota = 1.0                   # CPU quota; Docker/Podman default to one core when unset
 # pids_max = 100                    # Maximum number of processes
 
 # [sandbox.wasm_tool_limits]

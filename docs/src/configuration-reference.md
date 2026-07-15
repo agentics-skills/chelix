@@ -338,7 +338,7 @@ inside the sandbox. This invariant is not configurable. Add other mounts with
 | Key            | Type             | Default | Description                                                            |
 | -------------- | ---------------- | ------- | ---------------------------------------------------------------------- |
 | `memory_limit` | optional string  | `null`  | Memory limit for sandbox containers (e.g. `"512M"`, `"1G"`).           |
-| `cpu_quota`    | optional float   | `null`  | CPU quota as a fraction (e.g. `0.5` = half a core, `2.0` = two cores). |
+| `cpu_quota`    | optional float   | `null`  | CPU quota as a fraction. Docker/Podman use one core when unset.        |
 | `pids_max`     | optional integer | `null`  | Maximum number of PIDs allowed in the sandbox.                         |
 
 ### `sandbox.tools_policy` — ToolPolicyConfig

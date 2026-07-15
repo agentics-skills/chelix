@@ -571,6 +571,7 @@ pub struct ResourceLimitsConfig {
     /// Memory limit (e.g. "512M", "1G").
     pub memory_limit: Option<String>,
     /// CPU quota as a fraction (e.g. 0.5 = half a core, 2.0 = two cores).
+    /// Docker and Podman sandboxes default to one core when unset.
     pub cpu_quota: Option<f64>,
     /// Maximum number of PIDs.
     pub pids_max: Option<u32>,
