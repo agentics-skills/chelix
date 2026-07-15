@@ -5,8 +5,8 @@ use {async_trait::async_trait, futures::StreamExt, secrecy::ExposeSecret, tokio_
 use tracing::{debug, trace, warn};
 
 use chelix_agents::model::{
-    AgentToolControls, ChatMessage, CompletionResponse, ContentPart, LlmProvider, StreamEvent,
-    ToolCall, ToolChoice, Usage, UserContent,
+    AgentToolControls, ChatMessage, CompletionOptions, CompletionResponse, ContentPart,
+    LlmProvider, StreamEvent, ToolCall, ToolChoice, Usage, UserContent,
 };
 
 pub struct AnthropicProvider {
@@ -637,7 +637,7 @@ impl LlmProvider for AnthropicProvider {
         messages: &[ChatMessage],
         tools: &[serde_json::Value],
     ) -> anyhow::Result<CompletionResponse> {
-        self.complete_with_options(messages, tools, &AgentToolControls::default())
+        self.complete_with_options(messages, tools, &CompletionOptions::default())
             .await
     }
 
@@ -645,14 +645,14 @@ impl LlmProvider for AnthropicProvider {
         &self,
         messages: &[ChatMessage],
         tools: &[serde_json::Value],
-        options: &AgentToolControls,
+        options: &CompletionOptions,
     ) -> anyhow::Result<CompletionResponse> {
         let caching = self.caching_enabled();
         let (system_value, anthropic_messages) = to_anthropic_messages(messages, caching);
 
         let mut body = serde_json::json!({
             "model": self.model,
-            "max_tokens": 4096,
+            "max_tokens": options.max_output_tokens.unwrap_or(4096),
             "messages": anthropic_messages,
         });
 
@@ -669,14 +669,14 @@ impl LlmProvider for AnthropicProvider {
             .as_ref()
             .is_some_and(|effort| effort.as_str() != "none")
             && matches!(
-                options.tool_choice,
+                options.tool_controls.tool_choice,
                 Some(ToolChoice::Tool { .. } | ToolChoice::Any)
             )
         {
             anyhow::bail!("Anthropic forced tool_choice is not compatible with extended thinking");
         }
 
-        apply_anthropic_tool_choice(&mut body, options)?;
+        apply_anthropic_tool_choice(&mut body, &options.tool_controls)?;
 
         self.apply_thinking(&mut body);
 

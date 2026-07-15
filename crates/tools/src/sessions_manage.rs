@@ -441,25 +441,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sessions_create_rejects_invalid_reasoning_effort() -> TestResult<()> {
-        let create_fn: CreateSessionFn =
-            Arc::new(move |_req| Box::pin(async move { Ok(serde_json::json!({ "ok": true })) }));
+    async fn sessions_create_preserves_provider_defined_reasoning_effort() -> TestResult<()> {
+        let captured_override = Arc::new(std::sync::Mutex::new(None::<ModelOverride>));
+        let captured_ref = Arc::clone(&captured_override);
+        let create_fn: CreateSessionFn = Arc::new(move |req| {
+            let captured_ref = Arc::clone(&captured_ref);
+            Box::pin(async move {
+                *captured_ref.lock().unwrap_or_else(|e| e.into_inner()) = req.model_override;
+                Ok(serde_json::json!({ "ok": true }))
+            })
+        });
         let tool = SessionsCreateTool::new(create_fn);
 
-        let result = tool
-            .execute(serde_json::json!({
-                "agent_id": "main",
-                "model_override": {
-                    "model": "anthropic::claude-opus-4-5-20251101",
-                    "reasoning_effort": "ultra"
-                }
-            }))
-            .await;
+        tool.execute(serde_json::json!({
+            "agent_id": "main",
+            "model_override": {
+                "model": "anthropic::claude-opus-4-5-20251101",
+                "reasoning_effort": "ultra"
+            }
+        }))
+        .await?;
 
-        let err = result
-            .err()
-            .ok_or_else(|| std::io::Error::other("expected invalid reasoning effort to fail"))?;
-        assert!(err.to_string().contains("invalid reasoning_effort"));
+        let model_override = captured_override
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+            .ok_or_else(|| std::io::Error::other("callback did not receive model_override"))?;
+        assert_eq!(model_override.model, "anthropic::claude-opus-4-5-20251101");
+        assert_eq!(model_override.reasoning_effort.as_str(), "ultra");
         Ok(())
     }
 

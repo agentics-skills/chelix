@@ -1,6 +1,6 @@
 //! Conversation summarization checkpoints.
 //!
-//! When the agent loop reaches 85% of its context window (or the user runs
+//! When the agent loop reaches 85% of its available input budget (or the user runs
 //! `/compact`), the session model itself summarizes the conversation and a
 //! [`PersistedMessage::Checkpoint`] is appended to the session history. The
 //! stored history is never mutated, so forks from any point keep working.
@@ -20,7 +20,7 @@
 use std::sync::Arc;
 
 use {
-    chelix_agents::model::{LlmProvider, values_to_chat_messages},
+    chelix_agents::model::{CompletionOptions, LlmProvider, values_to_chat_messages},
     chelix_sessions::{PersistedMessage, store::SessionStore},
     tracing::info,
 };
@@ -243,8 +243,15 @@ pub(crate) async fn summarize_session_from_prompt(
         "{SUMMARY_INSTRUCTIONS}\n\n{SUMMARY_REQUEST}"
     )));
 
+    let max_output_tokens = provider.max_output_tokens().ok_or_else(|| {
+        Error::message(format!(
+            "model '{}' has no resolved max_output_tokens metadata",
+            provider.id()
+        ))
+    })?;
+    let completion_options = CompletionOptions::with_max_output_tokens(max_output_tokens);
     let response = provider
-        .complete(&messages, tools)
+        .complete_with_options(&messages, tools, &completion_options)
         .await
         .map_err(|e| Error::message(format!("summarization request failed: {e}")))?;
 
@@ -266,8 +273,8 @@ pub(crate) async fn summarize_session_from_prompt(
     );
     let message = checkpoint.to_value();
 
-    store
-        .append(session_key, &message)
+    let index = store
+        .append_with_index(session_key, &message)
         .await
         .map_err(|source| Error::external("failed to append checkpoint", source))?;
 
@@ -282,12 +289,60 @@ pub(crate) async fn summarize_session_from_prompt(
 
     Ok(CheckpointOutcome {
         message,
-        index: history.len(),
+        index,
         model: provider.id().to_string(),
         input_tokens: response.usage.input_tokens,
         output_tokens: response.usage.output_tokens,
         messages_summarized: u32::try_from(messages_summarized).unwrap_or(u32::MAX),
     })
+}
+
+/// Reload and validate the provider context after appending a checkpoint.
+///
+/// A successful append is not enough to resume the agent loop: the same
+/// checkpoint must be readable as the latest checkpoint and reconstruct into
+/// a non-empty provider context. Any mismatch fails closed instead of silently
+/// resuming with missing or unrelated history.
+pub(crate) async fn reload_checkpoint_context(
+    store: &Arc<SessionStore>,
+    session_key: &str,
+    outcome: &CheckpointOutcome,
+) -> error::Result<Vec<chelix_agents::ChatMessage>> {
+    let history = store
+        .read(session_key)
+        .await
+        .map_err(|source| Error::external("failed to reload compacted session history", source))?;
+
+    let persisted_checkpoint = history.get(outcome.index).ok_or_else(|| {
+        Error::message(format!(
+            "reloaded session history is missing checkpoint at index {}",
+            outcome.index
+        ))
+    })?;
+    if persisted_checkpoint != &outcome.message {
+        return Err(Error::message(format!(
+            "reloaded session history does not match checkpoint at index {}",
+            outcome.index
+        )));
+    }
+
+    let latest_checkpoint = history
+        .iter()
+        .rposition(|message| message["role"].as_str() == Some("checkpoint"));
+    if latest_checkpoint != Some(outcome.index) {
+        return Err(Error::message(format!(
+            "checkpoint at index {} is no longer the latest checkpoint",
+            outcome.index
+        )));
+    }
+
+    let context = values_to_chat_messages(&history);
+    if context.is_empty() {
+        return Err(Error::message(
+            "reloaded checkpoint produced an empty provider context",
+        ));
+    }
+    Ok(context)
 }
 
 fn find_preserved_tail_start(
@@ -370,7 +425,9 @@ mod tests {
     use std::pin::Pin;
 
     use {
-        chelix_agents::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent, Usage},
+        chelix_agents::model::{
+            ChatMessage, CompletionOptions, CompletionResponse, LlmProvider, StreamEvent, Usage,
+        },
         tokio_stream::Stream,
     };
 
@@ -380,6 +437,7 @@ mod tests {
         response_text: Option<String>,
         seen_messages: std::sync::Mutex<Vec<ChatMessage>>,
         seen_tools: std::sync::Mutex<Vec<serde_json::Value>>,
+        seen_options: std::sync::Mutex<Vec<CompletionOptions>>,
     }
 
     impl MockProvider {
@@ -388,6 +446,19 @@ mod tests {
                 response_text: response_text.map(str::to_string),
                 seen_messages: std::sync::Mutex::new(Vec::new()),
                 seen_tools: std::sync::Mutex::new(Vec::new()),
+                seen_options: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        fn response(&self) -> CompletionResponse {
+            CompletionResponse {
+                text: self.response_text.clone(),
+                tool_calls: Vec::new(),
+                usage: Usage {
+                    input_tokens: 100,
+                    output_tokens: 50,
+                    ..Usage::default()
+                },
             }
         }
     }
@@ -402,6 +473,10 @@ mod tests {
             "mock-model"
         }
 
+        fn max_output_tokens(&self) -> Option<u32> {
+            Some(12_800)
+        }
+
         async fn complete(
             &self,
             messages: &[ChatMessage],
@@ -409,15 +484,22 @@ mod tests {
         ) -> anyhow::Result<CompletionResponse> {
             *self.seen_messages.lock().unwrap_or_else(|e| e.into_inner()) = messages.to_vec();
             *self.seen_tools.lock().unwrap_or_else(|e| e.into_inner()) = tools.to_vec();
-            Ok(CompletionResponse {
-                text: self.response_text.clone(),
-                tool_calls: Vec::new(),
-                usage: Usage {
-                    input_tokens: 100,
-                    output_tokens: 50,
-                    ..Usage::default()
-                },
-            })
+            Ok(self.response())
+        }
+
+        async fn complete_with_options(
+            &self,
+            messages: &[ChatMessage],
+            tools: &[serde_json::Value],
+            options: &CompletionOptions,
+        ) -> anyhow::Result<CompletionResponse> {
+            *self.seen_messages.lock().unwrap_or_else(|e| e.into_inner()) = messages.to_vec();
+            *self.seen_tools.lock().unwrap_or_else(|e| e.into_inner()) = tools.to_vec();
+            self.seen_options
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(options.clone());
+            Ok(self.response())
         }
 
         fn stream(
@@ -432,6 +514,26 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         (dir, store)
+    }
+
+    fn test_checkpoint_outcome(index: usize) -> CheckpointOutcome {
+        let message = PersistedMessage::checkpoint(
+            "summary",
+            "mock-model",
+            "mock",
+            100,
+            50,
+            u32::try_from(index).unwrap_or(u32::MAX),
+        )
+        .to_value();
+        CheckpointOutcome {
+            message,
+            index,
+            model: "mock-model".to_string(),
+            input_tokens: 100,
+            output_tokens: 50,
+            messages_summarized: u32::try_from(index).unwrap_or(u32::MAX),
+        }
     }
 
     async fn seed_history(store: &Arc<SessionStore>, key: &str) {
@@ -518,6 +620,14 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         assert_eq!(seen_tools, tools);
+        let seen_options = provider
+            .seen_options
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        assert_eq!(seen_options.len(), 1);
+        assert_eq!(seen_options[0].max_output_tokens, Some(12_800));
+        assert_eq!(seen_options[0].tool_controls, Default::default());
     }
 
     #[tokio::test]
@@ -620,7 +730,9 @@ mod tests {
         let stored = store.read("preserved-tail").await.unwrap();
         assert_eq!(&stored[..history.len()], history.as_slice());
 
-        let resumed = values_to_chat_messages(&stored);
+        let resumed = reload_checkpoint_context(&store, "preserved-tail", &outcome)
+            .await
+            .unwrap();
         assert_eq!(resumed.len(), 3);
         assert!(matches!(
             &resumed[0],
@@ -645,6 +757,63 @@ mod tests {
             continuation[0].to_openai_value(),
             continuation[1].to_openai_value(),
         ]);
+    }
+
+    #[tokio::test]
+    async fn reload_checkpoint_context_propagates_read_failure() {
+        let (dir, store) = test_store();
+        let session_key = "unreadable";
+        let session_path = dir.path().join(format!(
+            "{}.jsonl",
+            SessionStore::key_to_filename(session_key)
+        ));
+        std::fs::create_dir(session_path).unwrap();
+
+        let error = reload_checkpoint_context(&store, session_key, &test_checkpoint_outcome(0))
+            .await
+            .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("failed to reload compacted session history")
+        );
+    }
+
+    #[tokio::test]
+    async fn reload_checkpoint_context_rejects_missing_checkpoint() {
+        let (_dir, store) = test_store();
+
+        let error = reload_checkpoint_context(&store, "missing", &test_checkpoint_outcome(0))
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("missing checkpoint at index 0"));
+    }
+
+    #[tokio::test]
+    async fn reload_checkpoint_context_rejects_superseded_checkpoint() {
+        let (_dir, store) = test_store();
+        let outcome = test_checkpoint_outcome(0);
+        store.append("superseded", &outcome.message).await.unwrap();
+        store
+            .append(
+                "superseded",
+                &PersistedMessage::checkpoint("newer summary", "mock-model", "mock", 100, 50, 1)
+                    .to_value(),
+            )
+            .await
+            .unwrap();
+
+        let error = reload_checkpoint_context(&store, "superseded", &outcome)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("is no longer the latest checkpoint")
+        );
     }
 
     #[tokio::test]

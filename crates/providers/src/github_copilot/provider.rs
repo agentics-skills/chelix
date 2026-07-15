@@ -27,8 +27,8 @@ use {
         to_responses_api_tools,
     },
     chelix_agents::model::{
-        ChatMessage, CompletionResponse, LlmProvider, StreamEvent, ToolCall, Usage,
-        decode_tool_call_arguments_from_str,
+        ChatMessage, CompletionOptions, CompletionResponse, LlmProvider, StreamEvent, ToolCall,
+        Usage, decode_tool_call_arguments_from_str,
     },
 };
 
@@ -383,6 +383,7 @@ async fn collect_streamed_completion(
     model: &str,
     messages: &[ChatMessage],
     tools: &[serde_json::Value],
+    max_output_tokens: Option<u32>,
 ) -> anyhow::Result<CompletionResponse> {
     let openai_messages: Vec<serde_json::Value> =
         messages.iter().map(ChatMessage::to_openai_value).collect();
@@ -395,6 +396,9 @@ async fn collect_streamed_completion(
 
     if !tools.is_empty() {
         body["tools"] = serde_json::Value::Array(to_openai_tools(tools, true));
+    }
+    if let Some(max_output_tokens) = max_output_tokens {
+        body["max_completion_tokens"] = serde_json::json!(max_output_tokens);
     }
 
     debug!(
@@ -515,6 +519,7 @@ async fn collect_streamed_responses_completion(
     model: &str,
     messages: &[ChatMessage],
     tools: &[serde_json::Value],
+    max_output_tokens: Option<u32>,
 ) -> anyhow::Result<CompletionResponse> {
     let (instructions, input) = split_responses_instructions_and_input(messages.to_vec());
 
@@ -529,6 +534,9 @@ async fn collect_streamed_responses_completion(
     if !tools.is_empty() {
         body["tools"] = serde_json::Value::Array(to_responses_api_tools(tools));
         body["tool_choice"] = serde_json::json!("auto");
+    }
+    if let Some(max_output_tokens) = max_output_tokens {
+        body["max_output_tokens"] = serde_json::json!(max_output_tokens);
     }
 
     let http_resp = client
@@ -714,8 +722,21 @@ impl LlmProvider for GitHubCopilotProvider {
         messages: &[ChatMessage],
         tools: &[serde_json::Value],
     ) -> anyhow::Result<CompletionResponse> {
+        self.complete_with_options(messages, tools, &CompletionOptions::default())
+            .await
+    }
+
+    async fn complete_with_options(
+        &self,
+        messages: &[ChatMessage],
+        tools: &[serde_json::Value],
+        options: &CompletionOptions,
+    ) -> anyhow::Result<CompletionResponse> {
+        options.reject_forced_tool_choice(self.name())?;
         if matches!(self.wire_api, WireApi::Responses) {
-            return self.complete_responses(messages, tools).await;
+            return self
+                .complete_responses(messages, tools, options.max_output_tokens)
+                .await;
         }
 
         let auth = self.get_copilot_auth().await?;
@@ -723,8 +744,15 @@ impl LlmProvider for GitHubCopilotProvider {
         // Enterprise proxy only supports streaming — delegate to the
         // streaming path and collect the result.
         if auth.is_enterprise {
-            return collect_streamed_completion(self.client, &auth, &self.model, messages, tools)
-                .await;
+            return collect_streamed_completion(
+                self.client,
+                &auth,
+                &self.model,
+                messages,
+                tools,
+                options.max_output_tokens,
+            )
+            .await;
         }
 
         let openai_messages: Vec<serde_json::Value> =
@@ -736,6 +764,9 @@ impl LlmProvider for GitHubCopilotProvider {
 
         if !tools.is_empty() {
             body["tools"] = serde_json::Value::Array(to_openai_tools(tools, true));
+        }
+        if let Some(max_output_tokens) = options.max_output_tokens {
+            body["max_completion_tokens"] = serde_json::json!(max_output_tokens);
         }
 
         debug!(
@@ -819,6 +850,7 @@ impl GitHubCopilotProvider {
         &self,
         messages: &[ChatMessage],
         tools: &[serde_json::Value],
+        max_output_tokens: Option<u32>,
     ) -> anyhow::Result<CompletionResponse> {
         let auth = self.get_copilot_auth().await?;
 
@@ -829,6 +861,7 @@ impl GitHubCopilotProvider {
                 &self.model,
                 messages,
                 tools,
+                max_output_tokens,
             )
             .await;
         }
@@ -845,6 +878,9 @@ impl GitHubCopilotProvider {
         if !tools.is_empty() {
             body["tools"] = serde_json::Value::Array(to_responses_api_tools(tools));
             body["tool_choice"] = serde_json::json!("auto");
+        }
+        if let Some(max_output_tokens) = max_output_tokens {
+            body["max_output_tokens"] = serde_json::json!(max_output_tokens);
         }
 
         debug!(

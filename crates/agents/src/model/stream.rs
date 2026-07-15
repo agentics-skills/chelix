@@ -3,7 +3,7 @@ use std::{pin::Pin, sync::Arc, time::Duration};
 use {async_trait::async_trait, futures::StreamExt, tokio_stream::Stream};
 
 use super::{
-    AgentToolControls, ReasoningEffort, ToolChoice,
+    AgentToolControls, CompletionOptions, ReasoningEffort, ToolChoice,
     chat::ChatMessage,
     types::{CompletionResponse, Usage},
 };
@@ -66,9 +66,15 @@ pub trait LlmProvider: Send + Sync {
         &self,
         messages: &[ChatMessage],
         tools: &[serde_json::Value],
-        options: &AgentToolControls,
+        options: &CompletionOptions,
     ) -> anyhow::Result<CompletionResponse> {
-        reject_unsupported_tool_choice(self.name(), options)?;
+        options.reject_forced_tool_choice(self.name())?;
+        if options.max_output_tokens.is_some() {
+            anyhow::bail!(
+                "provider {} does not support a per-request output token limit",
+                self.name()
+            );
+        }
         self.complete(messages, tools).await
     }
 
@@ -79,9 +85,18 @@ pub trait LlmProvider: Send + Sync {
         false
     }
 
-    /// Context window size in tokens for this model.
-    /// Used to detect when conversation approaches the limit and trigger auto-compact.
+    /// Total context window size in tokens for this model.
     fn context_window(&self) -> Option<u32> {
+        None
+    }
+
+    /// Maximum input tokens accepted by this resolved model.
+    fn max_input_tokens(&self) -> Option<u32> {
+        None
+    }
+
+    /// Maximum output tokens produced by this resolved model.
+    fn max_output_tokens(&self) -> Option<u32> {
         None
     }
 

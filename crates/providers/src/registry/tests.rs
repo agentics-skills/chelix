@@ -74,6 +74,9 @@ include = ["reasoning.encrypted_content"]
     let configured = provider
         .with_reasoning_effort(ReasoningEffort::from("max"))
         .expect("runtime provider should accept configured max effort");
+    assert_eq!(configured.context_window(), Some(400_000));
+    assert_eq!(configured.max_input_tokens(), Some(272_000));
+    assert_eq!(configured.max_output_tokens(), Some(128_000));
     assert_eq!(
         configured
             .reasoning_effort()

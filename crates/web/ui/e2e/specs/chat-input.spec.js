@@ -1016,19 +1016,37 @@ test.describe("Chat input and slash commands", () => {
 					state.setSessionCurrentContextTokens(62000);
 					state.setSessionContextWindow(200000);
 					state.setSessionToolsEnabled(true);
-					chatUi.updateTokenBar({
+					var budget = {
 						contextWindow: 200000,
+						maxInputTokens: 200000,
+						maxOutputTokens: 12800,
 						compactionRatio: 85,
-						currentTokens: 62000,
+						promptTokens: 62000,
+						toolSchemaTokens: 0,
+						availableInputTokens: 200000,
 						compactionBudget: 170000,
-						usagePercent: 31,
+						usagePercent: 36,
 						compactionRequired: false,
-					});
+					};
+					chatUi.updateTokenBar(budget);
 					var tokenBar = document.getElementById("tokenBar");
-					return tokenBar && tokenBar.offsetParent !== null ? tokenBar.textContent || "" : "";
+					var normal = tokenBar && tokenBar.offsetParent !== null ? tokenBar.textContent || "" : "";
+					chatUi.updateTokenBar({
+						...budget,
+						promptTokens: 180000,
+						usagePercent: 105,
+						compactionRequired: true,
+					});
+					return {
+						normal,
+						overBudget: tokenBar && tokenBar.offsetParent !== null ? tokenBar.textContent || "" : "",
+					};
 				});
 			})
-			.toBe("62.0K (31%) [36%]");
+			.toEqual({
+				normal: "62.0K (31%) [36%]",
+				overBudget: "62.0K (31%) [105%]",
+			});
 
 		expect(pageErrors).toEqual([]);
 	});

@@ -10,7 +10,10 @@ use {
 use chelix_common::hooks::{HookAction, HookPayload, HookRegistry};
 
 use crate::{
-    model::{AgentToolControls, ChatMessage, LlmProvider, ToolCall, ToolChoice, UserContent},
+    model::{
+        AgentToolControls, ChatMessage, CompletionOptions, LlmProvider, ToolCall, ToolChoice,
+        UserContent,
+    },
     response_sanitizer::recover_tool_calls_from_content,
     tool_arg_validator::validate_tool_args,
     tool_loop_detector::ToolCallFingerprint,
@@ -134,6 +137,18 @@ pub async fn run_agent_loop_with_context_and_limits(
     let context_window = provider.context_window().ok_or_else(|| {
         anyhow::anyhow!(
             "model '{}' has no resolved context metadata; use a registry provider",
+            provider.id()
+        )
+    })?;
+    let max_input_tokens = provider.max_input_tokens().ok_or_else(|| {
+        anyhow::anyhow!(
+            "model '{}' has no resolved max_input_tokens metadata; use a registry provider",
+            provider.id()
+        )
+    })?;
+    let max_output_tokens = provider.max_output_tokens().ok_or_else(|| {
+        anyhow::anyhow!(
+            "model '{}' has no resolved max_output_tokens metadata; use a registry provider",
             provider.id()
         )
     })?;
@@ -297,8 +312,13 @@ pub async fn run_agent_loop_with_context_and_limits(
             }
         }
 
-        let context_budget =
-            super::evaluate_context_budget(&messages, &schemas_for_api, context_window);
+        let context_budget = super::evaluate_context_budget(
+            &messages,
+            &schemas_for_api,
+            context_window,
+            max_input_tokens,
+            max_output_tokens,
+        );
         if super::should_trigger_automatic_checkpoint(&limits, iterations, &context_budget) {
             let (summary_messages, continuation_messages) =
                 super::split_context_for_compaction(messages, compaction_continuation_start);
@@ -323,8 +343,9 @@ pub async fn run_agent_loop_with_context_and_limits(
         let completion_result = if schemas_for_api.is_empty() {
             provider.complete(&messages, &[]).await
         } else {
+            let completion_options = CompletionOptions::from(tool_controls.clone());
             provider
-                .complete_with_options(&messages, &schemas_for_api, &tool_controls)
+                .complete_with_options(&messages, &schemas_for_api, &completion_options)
                 .await
         };
 

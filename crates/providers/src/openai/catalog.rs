@@ -508,11 +508,19 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_reasoning_effort() {
-        let error = parse_models_payload(
+    fn preserves_provider_defined_reasoning_effort() {
+        let models = parse_models_payload(
             r#"{"data":[{"id":"model","reasoning":{"supported_efforts":["ultra"]}}]}"#,
         )
-        .unwrap_err();
-        assert!(error.to_string().contains("unknown variant"));
+        .unwrap();
+
+        assert_eq!(
+            models[0]
+                .metadata
+                .reasoning
+                .as_ref()
+                .and_then(|reasoning| reasoning.supported_efforts.as_ref()),
+            Some(&vec![ReasoningEffort::from("ultra")])
+        );
     }
 }

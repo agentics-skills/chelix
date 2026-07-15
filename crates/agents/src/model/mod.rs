@@ -17,6 +17,9 @@ pub use convert::{
     extract_tool_call_metadata, provider_values_to_chat_messages, values_to_chat_messages,
 };
 
+mod options;
+pub use options::CompletionOptions;
+
 mod stream;
 pub use stream::{LlmProvider, StreamEvent};
 
@@ -805,6 +808,14 @@ mod tests {
             Some(42_000)
         }
 
+        fn max_input_tokens(&self) -> Option<u32> {
+            Some(30_000)
+        }
+
+        fn max_output_tokens(&self) -> Option<u32> {
+            Some(12_000)
+        }
+
         async fn complete(
             &self,
             _: &[ChatMessage],
@@ -822,9 +833,11 @@ mod tests {
     }
 
     #[test]
-    fn context_window_is_explicit() {
+    fn model_token_limits_are_explicit() {
         let provider = StubProvider;
         assert_eq!(provider.context_window(), Some(42_000));
+        assert_eq!(provider.max_input_tokens(), Some(30_000));
+        assert_eq!(provider.max_output_tokens(), Some(12_000));
     }
 
     // ── Sender name tests ─────────────────────────────────────────────

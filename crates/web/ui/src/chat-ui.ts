@@ -497,19 +497,16 @@ export function setComposerStopButton(active: boolean, sessionKey: string = S.ac
 }
 
 function contextBudgetPercent(contextBudget: ContextBudgetMetadata): number | null {
-	const { contextWindow, compactionRatio, currentTokens } = contextBudget;
+	const { promptTokens, compactionBudget } = contextBudget;
 	if (
-		!Number.isFinite(contextWindow) ||
-		contextWindow <= 0 ||
-		!Number.isFinite(compactionRatio) ||
-		compactionRatio <= 0 ||
-		!Number.isFinite(currentTokens) ||
-		currentTokens < 0
+		!Number.isFinite(promptTokens) ||
+		promptTokens < 0 ||
+		!Number.isFinite(compactionBudget) ||
+		compactionBudget <= 0
 	) {
 		return null;
 	}
-	const percent = (currentTokens / contextWindow / (compactionRatio / 100)) * 100;
-	return Math.min(100, Math.max(0, Math.round(percent)));
+	return Math.floor((promptTokens * 100) / compactionBudget);
 }
 
 function tokenBarUsageText(total: number): string {

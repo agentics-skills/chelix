@@ -65,8 +65,12 @@ export interface ToolError {
 
 export interface ContextBudgetMetadata {
 	contextWindow: number;
+	maxInputTokens: number;
+	maxOutputTokens: number;
 	compactionRatio: number;
-	currentTokens: number;
+	promptTokens: number;
+	toolSchemaTokens: number;
+	availableInputTokens: number;
 	compactionBudget: number;
 	usagePercent: number;
 	compactionRequired: boolean;

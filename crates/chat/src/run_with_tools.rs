@@ -1055,7 +1055,9 @@ pub(crate) async fn run_with_tools(
                 info!(
                     run_id,
                     session = session_key,
-                    current_tokens = context_budget.current_tokens,
+                    prompt_tokens = context_budget.prompt_tokens,
+                    tool_schema_tokens = context_budget.tool_schema_tokens,
+                    available_input_tokens = context_budget.available_input_tokens,
                     compaction_budget = context_budget.compaction_budget,
                     usage_percent = context_budget.usage_percent,
                     "agent loop reached automatic compaction threshold"
@@ -1110,6 +1112,31 @@ pub(crate) async fn run_with_tools(
                     },
                 };
 
+                let compacted_chat =
+                    match compaction::reload_checkpoint_context(store, session_key, &outcome).await
+                    {
+                        Ok(context) => context,
+                        Err(error) => {
+                            warn!(run_id, error = %error, "automatic compaction reload failed");
+                            broadcast(
+                                state,
+                                "chat",
+                                serde_json::json!({
+                                    "runId": run_id,
+                                    "sessionKey": session_key,
+                                    "state": "auto_compact",
+                                    "phase": "error",
+                                    "error": error.to_string(),
+                                }),
+                                BroadcastOpts::default(),
+                            )
+                            .await;
+                            break Err(AgentRunError::Other(anyhow::anyhow!(error.to_string())));
+                        },
+                    };
+                next_history = Some(compacted_chat);
+                resume_from_history = true;
+
                 let mut payload = serde_json::json!({
                     "runId": run_id,
                     "sessionKey": session_key,
@@ -1126,11 +1153,6 @@ pub(crate) async fn run_with_tools(
                 }
                 broadcast(state, "chat", payload, BroadcastOpts::default()).await;
                 notify_channels_of_compaction(state, session_key, &outcome).await;
-
-                let compacted_history_raw = store.read(session_key).await.unwrap_or_default();
-                let compacted_chat = values_to_chat_messages(&compacted_history_raw);
-                next_history = (!compacted_chat.is_empty()).then_some(compacted_chat);
-                resume_from_history = true;
             },
             Err(error) => break Err(error),
         }

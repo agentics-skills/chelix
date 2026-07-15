@@ -9,6 +9,10 @@ use {
 
 use crate::spawn_agent_tasks::{SpawnCancelTool, SpawnResultTool, SpawnStatusTool};
 
+const TEST_CONTEXT_WINDOW: u32 = 128_000;
+const TEST_MAX_INPUT_TOKENS: u32 = 96_000;
+const TEST_MAX_OUTPUT_TOKENS: u32 = 32_000;
+
 /// Mock provider that returns a fixed response.
 struct MockProvider {
     response: String,
@@ -29,6 +33,18 @@ impl LlmProvider for NotifyProvider {
 
     fn id(&self) -> &str {
         "notify-model"
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
     }
 
     async fn complete(
@@ -62,6 +78,18 @@ impl LlmProvider for FailingProvider {
 
     fn id(&self) -> &str {
         "failing-model"
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
     }
 
     async fn complete(
@@ -103,6 +131,18 @@ impl LlmProvider for MockProvider {
 
     fn id(&self) -> &str {
         &self.model_id
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
     }
 
     async fn complete(
@@ -792,6 +832,18 @@ async fn test_timeout_cancels_long_running_agent() {
 
         fn id(&self) -> &str {
             "slow-model"
+        }
+
+        fn context_window(&self) -> Option<u32> {
+            Some(TEST_CONTEXT_WINDOW)
+        }
+
+        fn max_input_tokens(&self) -> Option<u32> {
+            Some(TEST_MAX_INPUT_TOKENS)
+        }
+
+        fn max_output_tokens(&self) -> Option<u32> {
+            Some(TEST_MAX_OUTPUT_TOKENS)
         }
 
         async fn complete(

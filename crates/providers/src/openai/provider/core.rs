@@ -8,7 +8,8 @@ use {
 };
 
 use chelix_agents::model::{
-    AgentToolControls, ChatMessage, CompletionResponse, LlmProvider, StreamEvent, ToolChoice,
+    AgentToolControls, ChatMessage, CompletionOptions, CompletionResponse, LlmProvider,
+    StreamEvent, ToolChoice,
 };
 
 use super::super::{OpenAiProvider, OpenAiProviderCapabilities};
@@ -232,7 +233,7 @@ impl LlmProvider for OpenAiProvider {
         messages: &[ChatMessage],
         tools: &[serde_json::Value],
     ) -> anyhow::Result<CompletionResponse> {
-        self.complete_with_options(messages, tools, &AgentToolControls::default())
+        self.complete_with_options(messages, tools, &CompletionOptions::default())
             .await
     }
 
@@ -240,7 +241,7 @@ impl LlmProvider for OpenAiProvider {
         &self,
         messages: &[ChatMessage],
         tools: &[serde_json::Value],
-        options: &AgentToolControls,
+        options: &CompletionOptions,
     ) -> anyhow::Result<CompletionResponse> {
         if matches!(self.wire_api, WireApi::Responses) {
             return self.complete_responses(messages, tools, options).await;

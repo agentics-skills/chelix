@@ -19,7 +19,9 @@ use {
         SseLineResult, StreamingToolState, finalize_stream, parse_openai_compat_usage_from_payload,
         parse_tool_calls, process_openai_sse_line, to_openai_tools,
     },
-    chelix_agents::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent},
+    chelix_agents::model::{
+        ChatMessage, CompletionOptions, CompletionResponse, LlmProvider, StreamEvent,
+    },
 };
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -198,6 +200,17 @@ impl LlmProvider for KimiCodeProvider {
         messages: &[ChatMessage],
         tools: &[serde_json::Value],
     ) -> anyhow::Result<CompletionResponse> {
+        self.complete_with_options(messages, tools, &CompletionOptions::default())
+            .await
+    }
+
+    async fn complete_with_options(
+        &self,
+        messages: &[ChatMessage],
+        tools: &[serde_json::Value],
+        options: &CompletionOptions,
+    ) -> anyhow::Result<CompletionResponse> {
+        options.reject_forced_tool_choice(self.name())?;
         let token = self.get_auth_token().await?;
 
         let openai_messages: Vec<serde_json::Value> =
@@ -209,6 +222,9 @@ impl LlmProvider for KimiCodeProvider {
 
         if !tools.is_empty() {
             body["tools"] = serde_json::Value::Array(to_openai_tools(tools, true));
+        }
+        if let Some(max_output_tokens) = options.max_output_tokens {
+            body["max_completion_tokens"] = serde_json::json!(max_output_tokens);
         }
 
         debug!(

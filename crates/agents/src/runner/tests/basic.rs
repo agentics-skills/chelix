@@ -6,8 +6,8 @@ use {
     super::helpers::*,
     crate::{
         model::{
-            AgentToolControls, ChatMessage, CompletionResponse, LlmProvider, StreamEvent, ToolCall,
-            Usage,
+            AgentToolControls, ChatMessage, CompletionOptions, CompletionResponse, LlmProvider,
+            StreamEvent, ToolCall, Usage,
         },
         tool_parsing::new_synthetic_tool_call_id,
     },
@@ -158,6 +158,14 @@ impl LlmProvider for NoToolsRoutingProvider {
         Some(TEST_CONTEXT_WINDOW)
     }
 
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
+    }
+
     fn supports_tools(&self) -> bool {
         true
     }
@@ -181,7 +189,7 @@ impl LlmProvider for NoToolsRoutingProvider {
         &self,
         _messages: &[ChatMessage],
         _tools: &[serde_json::Value],
-        _options: &AgentToolControls,
+        _options: &CompletionOptions,
     ) -> Result<CompletionResponse> {
         self.complete_with_options_calls
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -248,6 +256,14 @@ impl LlmProvider for NoToolsStreamingRoutingProvider {
 
     fn context_window(&self) -> Option<u32> {
         Some(TEST_CONTEXT_WINDOW)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
     }
 
     fn supports_tools(&self) -> bool {
@@ -449,6 +465,14 @@ impl LlmProvider for RecordingMessagesProvider {
         Some(TEST_CONTEXT_WINDOW)
     }
 
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
+    }
+
     async fn complete(
         &self,
         messages: &[ChatMessage],
@@ -579,6 +603,14 @@ impl LlmProvider for StreamingUsageProvider {
         Some(TEST_CONTEXT_WINDOW)
     }
 
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
+    }
+
     async fn complete(
         &self,
         _messages: &[ChatMessage],
@@ -629,6 +661,14 @@ impl LlmProvider for StreamingChunksProvider {
 
     fn context_window(&self) -> Option<u32> {
         Some(TEST_CONTEXT_WINDOW)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
     }
 
     async fn complete(
@@ -792,6 +832,14 @@ impl LlmProvider for NonStreamingUsageProvider {
         Some(TEST_CONTEXT_WINDOW)
     }
 
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
+    }
+
     fn supports_tools(&self) -> bool {
         true
     }
@@ -905,6 +953,14 @@ impl LlmProvider for CommandSimulatingProvider {
 
     fn context_window(&self) -> Option<u32> {
         Some(TEST_CONTEXT_WINDOW)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
     }
 
     fn supports_tools(&self) -> bool {
@@ -1029,9 +1085,18 @@ async fn test_execute_command_tool_end_to_end() {
         assert!(success, "execute_command tool should succeed");
         assert_eq!(name, "execute_command");
         assert_eq!(context_budget.context_window, TEST_CONTEXT_WINDOW);
+        assert_eq!(context_budget.max_input_tokens, TEST_MAX_INPUT_TOKENS);
+        assert_eq!(context_budget.max_output_tokens, TEST_MAX_OUTPUT_TOKENS);
         assert_eq!(context_budget.compaction_ratio, 85);
-        assert_eq!(context_budget.compaction_budget, 108_800);
-        assert!(context_budget.current_tokens > 0);
+        assert_eq!(
+            context_budget.available_input_tokens,
+            TEST_MAX_INPUT_TOKENS as usize - context_budget.tool_schema_tokens
+        );
+        assert_eq!(
+            context_budget.compaction_budget,
+            context_budget.available_input_tokens * 85 / 100
+        );
+        assert!(context_budget.prompt_tokens > 0);
         assert!(!context_budget.compaction_required);
     }
 }
@@ -1052,6 +1117,14 @@ impl LlmProvider for HookModifiedCommandProvider {
 
     fn context_window(&self) -> Option<u32> {
         Some(TEST_CONTEXT_WINDOW)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
     }
 
     fn supports_tools(&self) -> bool {
@@ -1246,6 +1319,14 @@ impl LlmProvider for DirectCommandNoToolProvider {
         Some(TEST_CONTEXT_WINDOW)
     }
 
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
+    }
+
     fn supports_tools(&self) -> bool {
         true
     }
@@ -1430,6 +1511,14 @@ impl LlmProvider for NativeTextFunctionProvider {
 
     fn context_window(&self) -> Option<u32> {
         Some(TEST_CONTEXT_WINDOW)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
     }
 
     fn supports_tools(&self) -> bool {

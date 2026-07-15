@@ -92,7 +92,7 @@ pub(crate) fn should_trigger_automatic_checkpoint(
 ) -> bool {
     let safe_checkpoint_resume = limits.resume_after_checkpoint
         && iteration == 1
-        && context_budget.current_tokens < context_budget.context_window as usize;
+        && context_budget.prompt_tokens < context_budget.available_input_tokens;
     limits.automatic_checkpointing && context_budget.compaction_required && !safe_checkpoint_resume
 }
 
@@ -660,37 +660,44 @@ pub(crate) fn estimate_message_tokens(message: &ChatMessage) -> usize {
 }
 
 #[must_use]
-pub(crate) fn estimate_prompt_tokens(
-    messages: &[ChatMessage],
-    tool_schemas: &[serde_json::Value],
-) -> usize {
-    let message_tokens: usize = messages.iter().map(estimate_message_tokens).sum();
-    let tool_tokens: usize = tool_schemas
+pub(crate) fn estimate_prompt_tokens(messages: &[ChatMessage]) -> usize {
+    messages.iter().map(estimate_message_tokens).sum()
+}
+
+#[must_use]
+pub(crate) fn estimate_tool_schema_tokens(tool_schemas: &[serde_json::Value]) -> usize {
+    tool_schemas
         .iter()
         .map(|schema| estimate_prompt_text_tokens(&schema.to_string()))
-        .sum();
-    message_tokens.saturating_add(tool_tokens)
+        .sum()
 }
 
 pub(crate) fn evaluate_context_budget(
     messages: &[ChatMessage],
     tool_schemas: &[serde_json::Value],
     context_window: u32,
+    max_input_tokens: u32,
+    max_output_tokens: u32,
 ) -> ContextBudgetMetadata {
-    let context_window = context_window as usize;
-    let current_tokens = estimate_prompt_tokens(messages, tool_schemas);
-    let compaction_budget = context_window.saturating_mul(AUTO_COMPACTION_RATIO) / 100;
+    let prompt_tokens = estimate_prompt_tokens(messages);
+    let tool_schema_tokens = estimate_tool_schema_tokens(tool_schemas);
+    let available_input_tokens = (max_input_tokens as usize).saturating_sub(tool_schema_tokens);
+    let compaction_budget = available_input_tokens.saturating_mul(AUTO_COMPACTION_RATIO) / 100;
     ContextBudgetMetadata {
-        context_window: context_window as u32,
+        context_window,
+        max_input_tokens,
+        max_output_tokens,
         compaction_ratio: AUTO_COMPACTION_RATIO,
-        current_tokens,
+        prompt_tokens,
+        tool_schema_tokens,
+        available_input_tokens,
         compaction_budget,
-        usage_percent: if context_window == 0 {
+        usage_percent: if compaction_budget == 0 {
             0
         } else {
-            current_tokens.saturating_mul(100) / context_window
+            prompt_tokens.saturating_mul(100) / compaction_budget
         },
-        compaction_required: context_window > 0 && current_tokens >= compaction_budget,
+        compaction_required: prompt_tokens >= compaction_budget,
     }
 }
 

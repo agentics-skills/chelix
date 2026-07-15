@@ -8,8 +8,8 @@ use std::{
 
 use {
     chelix_agents::model::{
-        AgentToolControls, ChatMessage, CompletionResponse, LlmProvider, ReasoningEffort,
-        StreamEvent,
+        AgentToolControls, ChatMessage, CompletionOptions, CompletionResponse, LlmProvider,
+        ReasoningEffort, StreamEvent,
     },
     chelix_common::{ModelMetadata, ModelModality},
     tokio_stream::Stream,
@@ -49,7 +49,7 @@ impl LlmProvider for RegistryModelProvider {
         &self,
         messages: &[ChatMessage],
         tools: &[serde_json::Value],
-        options: &AgentToolControls,
+        options: &CompletionOptions,
     ) -> anyhow::Result<CompletionResponse> {
         self.inner
             .complete_with_options(messages, tools, options)
@@ -70,6 +70,14 @@ impl LlmProvider for RegistryModelProvider {
 
     fn context_window(&self) -> Option<u32> {
         Some(self.metadata.context_length)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(self.metadata.max_input_tokens)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(self.metadata.max_output_tokens)
     }
 
     fn supports_vision(&self) -> bool {

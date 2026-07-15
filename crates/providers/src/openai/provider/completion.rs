@@ -12,7 +12,7 @@ use crate::{
 };
 
 use chelix_agents::model::{
-    AgentToolControls, ChatMessage, CompletionResponse, Usage, decode_tool_call_arguments_from_str,
+    ChatMessage, CompletionOptions, CompletionResponse, Usage, decode_tool_call_arguments_from_str,
 };
 
 use super::OpenAiProvider;
@@ -240,7 +240,7 @@ impl OpenAiProvider {
         &self,
         messages: &[ChatMessage],
         tools: &[serde_json::Value],
-        options: &AgentToolControls,
+        options: &CompletionOptions,
     ) -> anyhow::Result<CompletionResponse> {
         let mut openai_messages = self.serialize_messages_for_request(messages);
         self.apply_openrouter_cache_control(&mut openai_messages);
@@ -253,7 +253,10 @@ impl OpenAiProvider {
         if !tools.is_empty() {
             body["tools"] = serde_json::Value::Array(self.prepare_chat_tools(tools));
         }
-        super::core::apply_openai_chat_tool_choice(&mut body, options)?;
+        super::core::apply_openai_chat_tool_choice(&mut body, &options.tool_controls)?;
+        if let Some(max_output_tokens) = options.max_output_tokens {
+            body["max_completion_tokens"] = serde_json::json!(max_output_tokens);
+        }
 
         self.apply_reasoning_effort_chat(&mut body);
 
@@ -330,7 +333,7 @@ impl OpenAiProvider {
         &self,
         messages: &[ChatMessage],
         tools: &[serde_json::Value],
-        options: &AgentToolControls,
+        options: &CompletionOptions,
     ) -> anyhow::Result<CompletionResponse> {
         let (instructions, input) = split_responses_instructions_and_input(messages.to_vec());
         let mut body = serde_json::json!({
@@ -344,7 +347,10 @@ impl OpenAiProvider {
         if !tools.is_empty() {
             body["tools"] = serde_json::Value::Array(to_responses_api_tools(tools));
         }
-        super::core::apply_openai_responses_tool_choice(&mut body, options)?;
+        super::core::apply_openai_responses_tool_choice(&mut body, &options.tool_controls)?;
+        if let Some(max_output_tokens) = options.max_output_tokens {
+            body["max_output_tokens"] = serde_json::json!(max_output_tokens);
+        }
         self.apply_reasoning_effort_responses(&mut body);
 
         debug!(
@@ -529,7 +535,7 @@ mod tests {
             response::Response,
             routing::post,
         },
-        chelix_agents::model::{ChatMessage, LlmProvider, ReasoningEffort},
+        chelix_agents::model::{ChatMessage, CompletionOptions, LlmProvider, ReasoningEffort},
         secrecy::Secret,
         tokio::sync::Mutex,
     };
@@ -632,5 +638,77 @@ mod tests {
         let captured = captured.lock().await;
         assert_eq!(captured["/v1/chat/completions"]["reasoning_effort"], "max");
         assert_eq!(captured["/v1/responses"]["reasoning"]["effort"], "max");
+    }
+
+    #[tokio::test]
+    async fn output_limit_is_summary_only_in_both_openai_wire_formats() {
+        let (base_url, captured) = start_capture_server().await;
+        let messages = [ChatMessage::user("hello")];
+        let chat = OpenAiProvider::new_with_name(
+            Secret::new("test-key".to_string()),
+            "test-chat".to_string(),
+            base_url.clone(),
+            "test-provider".to_string(),
+        );
+        let responses = OpenAiProvider::new_with_name(
+            Secret::new("test-key".to_string()),
+            "test-responses".to_string(),
+            base_url,
+            "test-provider".to_string(),
+        )
+        .with_wire_api(chelix_config::WireApi::Responses);
+
+        chat.complete(&messages, &[])
+            .await
+            .expect("ordinary chat completion should succeed");
+        responses
+            .complete(&messages, &[])
+            .await
+            .expect("ordinary responses completion should succeed");
+        {
+            let captured = captured.lock().await;
+            assert!(
+                captured["/v1/chat/completions"]
+                    .get("max_completion_tokens")
+                    .is_none()
+            );
+            assert!(
+                captured["/v1/chat/completions"]
+                    .get("max_output_tokens")
+                    .is_none()
+            );
+            assert!(
+                captured["/v1/responses"]
+                    .get("max_completion_tokens")
+                    .is_none()
+            );
+            assert!(captured["/v1/responses"].get("max_output_tokens").is_none());
+        }
+
+        let options = CompletionOptions::with_max_output_tokens(12_800);
+        chat.complete_with_options(&messages, &[], &options)
+            .await
+            .expect("limited chat completion should succeed");
+        responses
+            .complete_with_options(&messages, &[], &options)
+            .await
+            .expect("limited responses completion should succeed");
+
+        let captured = captured.lock().await;
+        assert_eq!(
+            captured["/v1/chat/completions"]["max_completion_tokens"],
+            12_800
+        );
+        assert!(
+            captured["/v1/chat/completions"]
+                .get("max_output_tokens")
+                .is_none()
+        );
+        assert_eq!(captured["/v1/responses"]["max_output_tokens"], 12_800);
+        assert!(
+            captured["/v1/responses"]
+                .get("max_completion_tokens")
+                .is_none()
+        );
     }
 }

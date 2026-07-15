@@ -11,8 +11,12 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct ContextBudgetMetadata {
     pub context_window: u32,
+    pub max_input_tokens: u32,
+    pub max_output_tokens: u32,
     pub compaction_ratio: usize,
-    pub current_tokens: usize,
+    pub prompt_tokens: usize,
+    pub tool_schema_tokens: usize,
+    pub available_input_tokens: usize,
     pub compaction_budget: usize,
     pub usage_percent: usize,
     pub compaction_required: bool,
@@ -906,10 +910,14 @@ mod tests {
             reasoning: None,
             context_budget: Some(ContextBudgetMetadata {
                 context_window: 200_000,
+                max_input_tokens: 180_000,
+                max_output_tokens: 20_000,
                 compaction_ratio: 85,
-                current_tokens: 42_000,
-                compaction_budget: 170_000,
-                usage_percent: 21,
+                prompt_tokens: 42_000,
+                tool_schema_tokens: 10_000,
+                available_input_tokens: 170_000,
+                compaction_budget: 144_500,
+                usage_percent: 29,
                 compaction_required: false,
             }),
             created_at: Some(12345),
@@ -923,13 +931,20 @@ mod tests {
         assert!(json["success"].as_bool().unwrap());
         assert_eq!(json["result"]["stdout"], "file.txt");
         assert_eq!(json["contextBudget"]["contextWindow"], 200_000);
+        assert_eq!(json["contextBudget"]["maxInputTokens"], 180_000);
+        assert_eq!(json["contextBudget"]["maxOutputTokens"], 20_000);
         assert_eq!(json["contextBudget"]["compactionRatio"], 85);
-        assert_eq!(json["contextBudget"]["usagePercent"], 21);
+        assert_eq!(json["contextBudget"]["promptTokens"], 42_000);
+        assert_eq!(json["contextBudget"]["toolSchemaTokens"], 10_000);
+        assert_eq!(json["contextBudget"]["availableInputTokens"], 170_000);
+        assert_eq!(json["contextBudget"]["compactionBudget"], 144_500);
+        assert_eq!(json["contextBudget"]["usagePercent"], 29);
         assert!(
             !json["contextBudget"]["compactionRequired"]
                 .as_bool()
                 .unwrap()
         );
+        assert!(json["contextBudget"].get("currentTokens").is_none());
         assert!(json["contextBudget"].get("tokensNeeded").is_none());
         assert!(json.get("error").is_none());
     }

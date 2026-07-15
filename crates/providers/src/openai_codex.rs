@@ -12,8 +12,9 @@ use {
 };
 
 use chelix_agents::model::{
-    AgentToolControls, ChatMessage, CompletionResponse, LlmProvider, ReasoningEffort, StreamEvent,
-    ToolCall, Usage, UserContent, decode_tool_call_arguments_from_str,
+    AgentToolControls, ChatMessage, CompletionOptions, CompletionResponse, LlmProvider,
+    ReasoningEffort, StreamEvent, ToolCall, Usage, UserContent,
+    decode_tool_call_arguments_from_str,
 };
 
 use crate::openai_compat::to_responses_api_tools;
@@ -390,7 +391,7 @@ impl LlmProvider for OpenAiCodexProvider {
         messages: &[ChatMessage],
         tools: &[serde_json::Value],
     ) -> anyhow::Result<CompletionResponse> {
-        self.complete_with_options(messages, tools, &AgentToolControls::default())
+        self.complete_with_options(messages, tools, &CompletionOptions::default())
             .await
     }
 
@@ -398,7 +399,7 @@ impl LlmProvider for OpenAiCodexProvider {
         &self,
         messages: &[ChatMessage],
         tools: &[serde_json::Value],
-        options: &AgentToolControls,
+        options: &CompletionOptions,
     ) -> anyhow::Result<CompletionResponse> {
         self.ensure_supported_stream_transport()?;
 
@@ -432,11 +433,17 @@ impl LlmProvider for OpenAiCodexProvider {
             "include": ["reasoning.encrypted_content"],
         });
         self.apply_reasoning(&mut body);
+        if let Some(max_output_tokens) = options.max_output_tokens {
+            body["max_output_tokens"] = serde_json::json!(max_output_tokens);
+        }
 
         if !tools.is_empty() {
             body["tools"] = serde_json::Value::Array(to_responses_api_tools(tools));
         }
-        crate::openai::provider::core::apply_openai_responses_tool_choice(&mut body, options)?;
+        crate::openai::provider::core::apply_openai_responses_tool_choice(
+            &mut body,
+            &options.tool_controls,
+        )?;
 
         trace!(body = %serde_json::to_string(&body).unwrap_or_default(), "openai-codex request body");
 

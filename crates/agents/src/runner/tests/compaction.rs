@@ -35,6 +35,14 @@ impl LlmProvider for ThresholdProvider {
         Some(10)
     }
 
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(9)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(1)
+    }
+
     async fn complete(
         &self,
         _messages: &[ChatMessage],
@@ -70,6 +78,14 @@ impl LlmProvider for ResumeProvider {
         Some(TEST_CONTEXT_WINDOW)
     }
 
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
+    }
+
     async fn complete(
         &self,
         messages: &[ChatMessage],
@@ -97,52 +113,82 @@ impl LlmProvider for ResumeProvider {
 #[test]
 fn context_budget_uses_fixed_eighty_five_percent_threshold() {
     let messages = vec![ChatMessage::user("hello")];
-    let metadata = evaluate_context_budget(&messages, &[], 100_000);
+    let metadata = evaluate_context_budget(&messages, &[], 40_000, 27_200, 12_800);
 
-    assert_eq!(metadata.context_window, 100_000);
+    assert_eq!(metadata.context_window, 40_000);
+    assert_eq!(metadata.max_input_tokens, 27_200);
+    assert_eq!(metadata.max_output_tokens, 12_800);
     assert_eq!(metadata.compaction_ratio, AUTO_COMPACTION_RATIO);
-    assert_eq!(metadata.compaction_budget, 85_000);
+    assert_eq!(metadata.prompt_tokens, estimate_prompt_tokens(&messages));
+    assert_eq!(metadata.tool_schema_tokens, 0);
+    assert_eq!(metadata.available_input_tokens, 27_200);
+    assert_eq!(metadata.compaction_budget, 23_120);
     assert!(!metadata.compaction_required);
 }
 
 #[test]
 fn context_budget_reports_real_usage_percent() {
     let messages = vec![ChatMessage::user("a".repeat(400))];
-    let metadata = evaluate_context_budget(&messages, &[], 1_000);
+    let metadata = evaluate_context_budget(&messages, &[], 1_200, 1_000, 200);
 
-    assert_eq!(
-        metadata.current_tokens,
-        estimate_prompt_tokens(&messages, &[])
-    );
+    assert_eq!(metadata.prompt_tokens, estimate_prompt_tokens(&messages));
     assert_eq!(
         metadata.usage_percent,
-        metadata.current_tokens * 100 / 1_000
+        metadata.prompt_tokens * 100 / metadata.compaction_budget
     );
 }
 
 #[test]
-fn context_budget_includes_tool_schemas() {
+fn context_budget_subtracts_tool_schemas_once() {
     let messages = vec![ChatMessage::user("hello")];
     let schemas = vec![serde_json::json!({
         "name": "large_tool",
         "description": "x".repeat(400),
     })];
 
-    let without_tools = evaluate_context_budget(&messages, &[], 1_000);
-    let with_tools = evaluate_context_budget(&messages, &schemas, 1_000);
+    let without_tools = evaluate_context_budget(&messages, &[], 1_200, 1_000, 200);
+    let with_tools = evaluate_context_budget(&messages, &schemas, 1_200, 1_000, 200);
 
-    assert!(with_tools.current_tokens > without_tools.current_tokens);
+    assert_eq!(with_tools.prompt_tokens, without_tools.prompt_tokens);
+    assert_eq!(
+        with_tools.tool_schema_tokens,
+        estimate_tool_schema_tokens(&schemas)
+    );
+    assert_eq!(
+        with_tools.available_input_tokens,
+        1_000usize.saturating_sub(with_tools.tool_schema_tokens)
+    );
+    assert!(with_tools.compaction_budget < without_tools.compaction_budget);
+}
+
+#[test]
+fn context_budget_saturates_when_tool_schemas_exceed_input_limit() {
+    let messages = vec![ChatMessage::user("hello")];
+    let schemas = vec![serde_json::json!({"description": "x".repeat(400)})];
+
+    let metadata = evaluate_context_budget(&messages, &schemas, 100, 1, 99);
+
+    assert!(metadata.tool_schema_tokens > metadata.max_input_tokens as usize);
+    assert_eq!(metadata.available_input_tokens, 0);
+    assert_eq!(metadata.compaction_budget, 0);
+    assert!(metadata.compaction_required);
 }
 
 #[test]
 fn context_budget_triggers_at_threshold() {
     let messages = vec![ChatMessage::user("a".repeat(400))];
-    let current_tokens = estimate_prompt_tokens(&messages, &[]);
-    let context_window = u32::try_from(current_tokens * 100 / AUTO_COMPACTION_RATIO)
-        .expect("test context window should fit u32");
-    let metadata = evaluate_context_budget(&messages, &[], context_window);
+    let prompt_tokens = estimate_prompt_tokens(&messages);
+    let max_input_tokens = u32::try_from(prompt_tokens * 100 / AUTO_COMPACTION_RATIO)
+        .expect("test input limit should fit u32");
+    let metadata = evaluate_context_budget(
+        &messages,
+        &[],
+        max_input_tokens + 100,
+        max_input_tokens,
+        100,
+    );
 
-    assert!(metadata.current_tokens >= metadata.compaction_budget);
+    assert!(metadata.prompt_tokens >= metadata.compaction_budget);
     assert!(metadata.compaction_required);
 }
 
@@ -155,7 +201,7 @@ fn context_budget_never_mutates_prompt_messages() {
     let before: Vec<serde_json::Value> =
         messages.iter().map(ChatMessage::to_openai_value).collect();
 
-    let _ = evaluate_context_budget(&messages, &[], 100);
+    let _ = evaluate_context_budget(&messages, &[], 200, 100, 100);
 
     let after: Vec<serde_json::Value> = messages.iter().map(ChatMessage::to_openai_value).collect();
     assert_eq!(after, before);
@@ -170,7 +216,8 @@ fn checkpoint_resume_bypasses_only_the_first_automatic_checkpoint_gate() {
     };
     let metadata = chelix_sessions::message::ContextBudgetMetadata {
         context_window: 100,
-        current_tokens: 89,
+        prompt_tokens: 89,
+        available_input_tokens: 100,
         compaction_required: true,
         ..Default::default()
     };
@@ -182,24 +229,27 @@ fn checkpoint_resume_bypasses_only_the_first_automatic_checkpoint_gate() {
         &limits, 2, &metadata
     ));
 
-    let oversized = chelix_sessions::message::ContextBudgetMetadata {
-        current_tokens: 100,
+    let at_hard_limit = chelix_sessions::message::ContextBudgetMetadata {
+        prompt_tokens: 100,
         ..metadata
     };
     assert!(super::super::should_trigger_automatic_checkpoint(
-        &limits, 1, &oversized
+        &limits,
+        1,
+        &at_hard_limit
     ));
 }
 
 #[test]
-fn zero_context_window_reports_without_triggering() {
+fn zero_input_capacity_requires_compaction() {
     let messages = vec![ChatMessage::user("hello")];
-    let metadata = evaluate_context_budget(&messages, &[], 0);
+    let metadata = evaluate_context_budget(&messages, &[], 0, 0, 0);
 
     assert_eq!(metadata.context_window, 0);
+    assert_eq!(metadata.available_input_tokens, 0);
     assert_eq!(metadata.compaction_budget, 0);
     assert_eq!(metadata.usage_percent, 0);
-    assert!(!metadata.compaction_required);
+    assert!(metadata.compaction_required);
 }
 
 #[tokio::test]

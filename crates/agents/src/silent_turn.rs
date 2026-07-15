@@ -339,6 +339,8 @@ mod tests {
     };
 
     const TEST_CONTEXT_WINDOW: u32 = 128_000;
+    const TEST_MAX_INPUT_TOKENS: u32 = 96_000;
+    const TEST_MAX_OUTPUT_TOKENS: u32 = 32_000;
 
     /// Mock provider that makes one write_file call then returns.
     struct MemoryWritingProvider {
@@ -357,6 +359,14 @@ mod tests {
 
         fn context_window(&self) -> Option<u32> {
             Some(TEST_CONTEXT_WINDOW)
+        }
+
+        fn max_input_tokens(&self) -> Option<u32> {
+            Some(TEST_MAX_INPUT_TOKENS)
+        }
+
+        fn max_output_tokens(&self) -> Option<u32> {
+            Some(TEST_MAX_OUTPUT_TOKENS)
         }
 
         fn supports_tools(&self) -> bool {

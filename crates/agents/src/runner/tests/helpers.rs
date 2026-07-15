@@ -17,10 +17,11 @@ pub(super) use {
     super::super::{
         AUTO_COMPACTION_RATIO, AgentLoopLimits, AgentRunError, AgentRunResult, OnEvent,
         RunnerEvent, apply_before_llm_call_modify_payload, estimate_prompt_tokens,
-        evaluate_context_budget, explicit_shell_command_from_user_content,
-        is_substantive_answer_text, legacy_public_tool_alias, resolve_tool_lookup, retry::*,
-        run_agent_loop, run_agent_loop_with_context, run_agent_loop_with_context_and_limits,
-        sanitize_tool_name, sanitize_tool_result, streaming::run_agent_loop_streaming,
+        estimate_tool_schema_tokens, evaluate_context_budget,
+        explicit_shell_command_from_user_content, is_substantive_answer_text,
+        legacy_public_tool_alias, resolve_tool_lookup, retry::*, run_agent_loop,
+        run_agent_loop_with_context, run_agent_loop_with_context_and_limits, sanitize_tool_name,
+        sanitize_tool_result, streaming::run_agent_loop_streaming,
         tool_result::persist_and_truncate,
     },
     crate::{
@@ -32,6 +33,8 @@ pub(super) use {
 pub(super) use crate::tool_parsing::parse_tool_call_from_text;
 
 pub(super) const TEST_CONTEXT_WINDOW: u32 = 128_000;
+pub(super) const TEST_MAX_INPUT_TOKENS: u32 = 96_000;
+pub(super) const TEST_MAX_OUTPUT_TOKENS: u32 = 32_000;
 
 // ── Recording hook ──────────────────────────────────────────────────────
 
@@ -130,6 +133,14 @@ impl LlmProvider for MockProvider {
         Some(TEST_CONTEXT_WINDOW)
     }
 
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
+    }
+
     async fn complete(
         &self,
         _messages: &[ChatMessage],
@@ -171,6 +182,14 @@ impl LlmProvider for ToolCallingProvider {
 
     fn context_window(&self) -> Option<u32> {
         Some(TEST_CONTEXT_WINDOW)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
     }
 
     fn supports_tools(&self) -> bool {
@@ -239,6 +258,14 @@ impl LlmProvider for TextToolCallingProvider {
 
     fn context_window(&self) -> Option<u32> {
         Some(TEST_CONTEXT_WINDOW)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
     }
 
     fn supports_tools(&self) -> bool {
@@ -512,6 +539,14 @@ impl LlmProvider for MultiToolProvider {
         Some(TEST_CONTEXT_WINDOW)
     }
 
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
+    }
+
     fn supports_tools(&self) -> bool {
         true
     }
@@ -577,6 +612,14 @@ impl LlmProvider for PreemptiveOverflowProvider {
         Some(120)
     }
 
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(100)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(20)
+    }
+
     async fn complete(
         &self,
         _messages: &[ChatMessage],
@@ -627,6 +670,14 @@ impl LlmProvider for VisionEnabledProvider {
 
     fn context_window(&self) -> Option<u32> {
         Some(TEST_CONTEXT_WINDOW)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
     }
 
     fn supports_tools(&self) -> bool {

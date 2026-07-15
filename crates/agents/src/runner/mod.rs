@@ -46,4 +46,7 @@ pub(crate) use helpers::{
 
 // Items only consumed by runner tests.
 #[cfg(test)]
-pub(crate) use helpers::{AUTO_COMPACTION_RATIO, estimate_prompt_tokens, legacy_public_tool_alias};
+pub(crate) use helpers::{
+    AUTO_COMPACTION_RATIO, estimate_prompt_tokens, estimate_tool_schema_tokens,
+    legacy_public_tool_alias,
+};
