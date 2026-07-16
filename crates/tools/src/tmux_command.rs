@@ -21,7 +21,7 @@ use crate::{
     approval::{ApprovalAction, ApprovalDecision, ApprovalManager},
     command::{
         CommandCompletionEvent, CommandCompletionFn, CommandNodeProvider, CommandOptions,
-        CommandOutput, EnvVarProvider, redact_command_output, run_shell_command,
+        CommandOutput, EnvVarProvider, InjectedEnvVar, redact_command_output, run_shell_command,
     },
     error::Error,
     params::without_null_params,
@@ -130,6 +130,29 @@ struct ManagedRun {
     redaction_env: Vec<(String, String)>,
 }
 
+#[derive(Default)]
+struct CommandEnvironment {
+    values: Vec<(String, String)>,
+    secrets: Vec<(String, String)>,
+}
+
+impl From<Vec<InjectedEnvVar>> for CommandEnvironment {
+    fn from(vars: Vec<InjectedEnvVar>) -> Self {
+        let mut environment = Self {
+            values: Vec::with_capacity(vars.len()),
+            secrets: Vec::new(),
+        };
+        for var in vars {
+            let value = var.value.expose_secret().clone();
+            if var.secret {
+                environment.secrets.push((var.key.clone(), value.clone()));
+            }
+            environment.values.push((var.key, value));
+        }
+        environment
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ManagedTerminal {
     id: String,
@@ -178,7 +201,7 @@ impl TmuxTerminalManager {
         &self,
         session_key: &str,
         params: ExecuteCommandParams,
-        env: Vec<(String, String)>,
+        env: CommandEnvironment,
     ) -> Result<ExecuteCommandResponse> {
         let command = params.command.trim();
         if command.is_empty() {
@@ -229,7 +252,7 @@ impl TmuxTerminalManager {
             params.custom_cwd.as_deref(),
             &run_id,
             marker_enabled,
-            &env,
+            &env.values,
         );
 
         self.paste_text(&terminal, &paste_text).await?;
@@ -242,7 +265,7 @@ impl TmuxTerminalManager {
             marker_enabled,
             completed: false,
             exit_code: None,
-            redaction_env: env.clone(),
+            redaction_env: env.secrets.clone(),
         });
         self.store_terminal(updated.clone()).await;
 
@@ -285,7 +308,7 @@ impl TmuxTerminalManager {
         let timed_out = !last_capture.completed;
         let mut output = last_capture.output;
         truncate_output_for_display(&mut output, self.max_output_bytes);
-        redact_text_output(&mut output, &env);
+        redact_text_output(&mut output, &env.secrets);
         let terminal_id = updated.id.clone();
         let message = if timed_out {
             format!(
@@ -920,16 +943,15 @@ impl ExecuteCommandTool {
             .min(MAX_TIMEOUT_MILLIS)
     }
 
-    async fn command_env(&self) -> Vec<(String, String)> {
+    async fn command_env(&self) -> Result<CommandEnvironment> {
         let Some(provider) = self.env_provider.as_ref() else {
-            return Vec::new();
+            return Ok(CommandEnvironment::default());
         };
         provider
             .get_env_vars()
             .await
-            .into_iter()
-            .map(|(key, value)| (key, value.expose_secret().clone()))
-            .collect()
+            .map(CommandEnvironment::from)
+            .map_err(|error| Error::message(format!("failed to load command environment: {error}")))
     }
 
     fn fire_completion(&self, command: &str, result: &CommandOutput) {
@@ -1064,17 +1086,17 @@ impl ExecuteCommandTool {
         timeout_millis: u64,
     ) -> Result<CommandOutput> {
         self.approval_check(command, session_key).await?;
-        let env = self.command_env().await;
+        let env = self.command_env().await?;
         let opts = CommandOptions {
             timeout: Duration::from_millis(timeout_millis),
             max_output_bytes: self.manager.max_output_bytes,
             working_dir: self.direct_working_dir(params.custom_cwd.as_deref()).await,
-            env: env.clone(),
+            env: env.values,
         };
 
         debug!(session = session_key, command, "running command on host");
         let mut result = run_shell_command(command, &opts).await?;
-        redact_command_output(&mut result, &env);
+        redact_command_output(&mut result, &env.secrets);
         self.fire_completion(command, &result);
         Ok(result)
     }
@@ -1101,7 +1123,7 @@ impl ExecuteCommandTool {
 
         match self.manager.sandbox_router.resolve_env(session_key).await? {
             ExecEnv::Sandbox { .. } => {
-                let env = self.command_env().await;
+                let env = self.command_env().await?;
                 let response = self
                     .manager
                     .execute_command(session_key, params, env)
@@ -1625,6 +1647,35 @@ mod tests {
             (payload.find("export TOKEN"), payload.find(START_PREFIX)),
             (Some(export), Some(start)) if export < start
         ));
+    }
+
+    #[test]
+    fn command_environment_redacts_only_secret_values() {
+        let environment = CommandEnvironment::from(vec![
+            InjectedEnvVar {
+                key: "SECRET_TOKEN".to_string(),
+                value: secrecy::Secret::new("hidden-value".to_string()),
+                secret: true,
+            },
+            InjectedEnvVar {
+                key: "PUBLIC_MODE".to_string(),
+                value: secrecy::Secret::new("visible-value".to_string()),
+                secret: false,
+            },
+        ]);
+
+        assert_eq!(environment.values.len(), 2);
+        assert_eq!(environment.secrets, vec![(
+            "SECRET_TOKEN".to_string(),
+            "hidden-value".to_string()
+        )]);
+        let mut output = CommandOutput {
+            stdout: "hidden-value visible-value".to_string(),
+            stderr: String::new(),
+            exit_code: 0,
+        };
+        redact_command_output(&mut output, &environment.secrets);
+        assert_eq!(output.stdout, "[REDACTED] visible-value");
     }
 
     #[test]

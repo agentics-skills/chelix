@@ -3,6 +3,18 @@
 Chelix runs LLM-generated commands inside containers to protect your host
 system. The sandbox backend controls which container technology is used.
 
+## Environment Variables
+
+Manage sandbox command environment variables at `/settings/environment`.
+
+- **Secret** defaults to enabled. Secret values are masked in the settings list
+  and redacted from command output. Disable it for ordinary configuration values
+  that should remain visible in both places.
+- **Enabled** defaults to enabled. Disabled variables remain stored in the list
+  but are not injected into sandbox commands.
+- Vault encryption at rest is independent of **Secret**. Changing visibility
+  does not change how the value is stored.
+
 ## Backend Selection
 
 Configure in `chelix.toml`:

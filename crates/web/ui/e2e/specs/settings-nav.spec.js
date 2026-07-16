@@ -425,10 +425,132 @@ test.describe("Settings navigation", () => {
 	// Those checks are intentionally covered elsewhere in the agents UI.
 
 	test("environment page has add form", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
 		await navigateAndWait(page, "/settings/environment");
 		await expect(page.getByRole("heading", { name: "Environment" })).toBeVisible();
-		await expect(page.getByPlaceholder("KEY_NAME")).toHaveAttribute("autocomplete", "off");
-		await expect(page.getByPlaceholder("Value")).toHaveAttribute("autocomplete", "new-password");
+		const addForm = page.getByRole("form", { name: "Add environment variable" });
+		await expect(addForm.getByPlaceholder("KEY_NAME")).toHaveAttribute("autocomplete", "off");
+		await expect(addForm.getByPlaceholder("Value")).toHaveAttribute("autocomplete", "new-password");
+		await expect(addForm.getByRole("checkbox", { name: /^Secret/ })).toBeChecked();
+		await expect(addForm.getByRole("checkbox", { name: /^Enabled/ })).toBeChecked();
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("environment controls preserve rows and expose only non-secret values", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		const timestamp = "2026-07-16T12:00:00Z";
+		const variables = [
+			{
+				id: 101,
+				key: "VISIBLE_SETTING",
+				rawValue: "visible-value",
+				secret: false,
+				enabled: true,
+				encrypted: true,
+			},
+			{
+				id: 102,
+				key: "SECRET_SETTING",
+				rawValue: "top-secret-value",
+				secret: true,
+				enabled: true,
+				encrypted: true,
+			},
+		];
+		const posts = [];
+		const patches = [];
+		const listBody = () => ({
+			env_vars: variables.map(({ rawValue, ...variable }) => ({
+				...variable,
+				value: variable.secret ? null : rawValue,
+				created_at: timestamp,
+				updated_at: timestamp,
+			})),
+		});
+		const fulfillJson = (route, body) =>
+			route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+
+		await page.route("**/api/env", async (route) => {
+			const request = route.request();
+			if (request.method() === "GET") {
+				await fulfillJson(route, listBody());
+				return;
+			}
+			if (request.method() !== "POST") throw new Error(`Unexpected /api/env method: ${request.method()}`);
+
+			const body = request.postDataJSON();
+			posts.push(body);
+			variables.push({
+				id: 102 + posts.length,
+				key: body.key,
+				rawValue: body.value,
+				secret: body.secret,
+				enabled: body.enabled,
+				encrypted: true,
+			});
+			await fulfillJson(route, { ok: true });
+		});
+
+		await page.route("**/api/env/*", async (route) => {
+			const request = route.request();
+			if (request.method() !== "PATCH") throw new Error(`Unexpected env item method: ${request.method()}`);
+			const id = Number(new URL(request.url()).pathname.split("/").pop());
+			const body = request.postDataJSON();
+			patches.push({ id, body });
+			const variable = variables.find((candidate) => candidate.id === id);
+			if (!variable) throw new Error(`Unknown mocked environment variable: ${id}`);
+			variable.secret = body.secret;
+			variable.enabled = body.enabled;
+			await fulfillJson(route, { ok: true });
+		});
+
+		await navigateAndWait(page, "/settings/environment");
+		await expect(page.getByRole("heading", { name: "Environment" })).toBeVisible();
+
+		const rowFor = (key) => page.locator(".provider-item").filter({ has: page.getByText(key, { exact: true }) });
+		const visibleRow = rowFor("VISIBLE_SETTING");
+		const secretRow = rowFor("SECRET_SETTING");
+		await expect(visibleRow.getByText("visible-value", { exact: true })).toBeVisible();
+		await expect(secretRow.getByText("••••••••", { exact: true })).toBeVisible();
+		await expect(page.getByText("top-secret-value", { exact: true })).toHaveCount(0);
+
+		await visibleRow.getByRole("checkbox", { name: "Enabled", exact: true }).uncheck();
+		await expect(visibleRow).toBeVisible();
+		await expect(visibleRow.getByRole("checkbox", { name: "Enabled", exact: true })).not.toBeChecked();
+		await expect.poll(() => patches.length).toBe(1);
+		expect(patches[0]).toEqual({ id: 101, body: { secret: false, enabled: false } });
+		expect(patches[0].body).not.toHaveProperty("value");
+
+		await secretRow.getByRole("checkbox", { name: "Secret", exact: true }).uncheck();
+		await expect(secretRow.getByText("top-secret-value", { exact: true })).toBeVisible();
+		await expect.poll(() => patches.length).toBe(2);
+		expect(patches[1]).toEqual({ id: 102, body: { secret: false, enabled: true } });
+
+		const addForm = page.getByRole("form", { name: "Add environment variable" });
+		await addForm.getByPlaceholder("KEY_NAME").fill("NEW_DEFAULT_SETTING");
+		await addForm.getByPlaceholder("Value").fill("new-secret-value");
+		await addForm.getByRole("button", { name: "Add", exact: true }).click();
+		await expect(rowFor("NEW_DEFAULT_SETTING")).toBeVisible();
+		expect(posts).toEqual([{ key: "NEW_DEFAULT_SETTING", value: "new-secret-value", secret: true, enabled: true }]);
+		await expect(addForm.getByRole("checkbox", { name: /^Secret/ })).toBeChecked();
+		await expect(addForm.getByRole("checkbox", { name: /^Enabled/ })).toBeChecked();
+
+		await addForm.getByRole("checkbox", { name: /^Secret/ }).uncheck();
+		await expect(addForm.getByPlaceholder("Value")).toHaveAttribute("type", "text");
+		await addForm.getByPlaceholder("KEY_NAME").fill("NEW_VISIBLE_SETTING");
+		await addForm.getByPlaceholder("Value").fill("new-visible-value");
+		await addForm.getByRole("button", { name: "Add", exact: true }).click();
+		const newVisibleRow = rowFor("NEW_VISIBLE_SETTING");
+		await expect(newVisibleRow.getByText("new-visible-value", { exact: true })).toBeVisible();
+		expect(posts[1]).toEqual({
+			key: "NEW_VISIBLE_SETTING",
+			value: "new-visible-value",
+			secret: false,
+			enabled: true,
+		});
+		await expect(addForm.getByRole("checkbox", { name: /^Secret/ })).toBeChecked();
+		await expect(addForm.getByRole("checkbox", { name: /^Enabled/ })).toBeChecked();
+		expect(pageErrors).toEqual([]);
 	});
 
 	test("security page renders", async ({ page }) => {
@@ -452,15 +574,15 @@ test.describe("Settings navigation", () => {
 		const pageErrors = watchPageErrors(page);
 		await navigateAndWait(page, "/settings/environment");
 		await expect(page.getByRole("heading", { name: "Environment" })).toBeVisible();
-		// If env vars exist, they should have either Encrypted or Plaintext badge
+		// If env vars exist, each row should show storage state independently of visibility.
 		const items = page.locator(".provider-item");
 		const count = await items.count();
 		if (count > 0) {
 			const firstItem = items.first();
 			const hasBadge = await firstItem.locator(".provider-item-badge").count();
 			expect(hasBadge).toBeGreaterThan(0);
-			const badgeText = await firstItem.locator(".provider-item-badge").first().textContent();
-			expect(["Encrypted", "Plaintext"]).toContain(badgeText.trim());
+			const badgeText = await firstItem.locator(".provider-item-badge").allTextContents();
+			expect(badgeText.some((text) => ["Encrypted", "Plaintext"].includes(text.trim()))).toBeTruthy();
 		}
 		expect(pageErrors).toEqual([]);
 	});

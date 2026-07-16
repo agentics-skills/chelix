@@ -23,9 +23,16 @@ pub type CommandCompletionFn = Arc<dyn Fn(CommandCompletionEvent) + Send + Sync>
 
 /// Provider of environment variables to inject at command execution boundaries.
 /// Values are wrapped in `Secret` to prevent accidental logging.
+#[derive(Debug, Clone)]
+pub struct InjectedEnvVar {
+    pub key: String,
+    pub value: secrecy::Secret<String>,
+    pub secret: bool,
+}
+
 #[async_trait]
 pub trait EnvVarProvider: Send + Sync {
-    async fn get_env_vars(&self) -> Vec<(String, secrecy::Secret<String>)>;
+    async fn get_env_vars(&self) -> anyhow::Result<Vec<InjectedEnvVar>>;
 }
 
 /// Provider that routes command execution to a remote node.

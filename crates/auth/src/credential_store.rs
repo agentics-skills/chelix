@@ -20,8 +20,8 @@ mod util;
 pub use {
     legacy::{AuthMode, AuthResult, ResolvedAuth, authorize_connect, resolve_auth},
     types::{
-        ApiKeyEntry, ApiKeyVerification, AuthIdentity, AuthMethod, EnvVarEntry, PasskeyEntry,
-        SshAuthMode, SshKeyEntry, SshResolvedTarget, SshTargetEntry, VALID_SCOPES,
+        ApiKeyEntry, ApiKeyVerification, AuthIdentity, AuthMethod, EnvVarEntry, EnvVarValue,
+        PasskeyEntry, SshAuthMode, SshKeyEntry, SshResolvedTarget, SshTargetEntry, VALID_SCOPES,
     },
     util::is_loopback,
 };

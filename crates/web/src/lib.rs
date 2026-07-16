@@ -143,7 +143,8 @@ fn build_api_routes() -> Router<AppState> {
         )
         .route(
             "/api/env/{id}",
-            axum::routing::delete(chelix_httpd::env_routes::env_delete),
+            axum::routing::patch(chelix_httpd::env_routes::env_update)
+                .delete(chelix_httpd::env_routes::env_delete),
         )
         .route("/api/ssh", get(chelix_httpd::ssh_routes::ssh_status))
         .route("/api/ssh/doctor", get(chelix_httpd::ssh_routes::ssh_doctor))

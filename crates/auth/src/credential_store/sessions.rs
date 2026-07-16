@@ -220,6 +220,8 @@ impl CredentialStore {
                 key        TEXT    NOT NULL UNIQUE,
                 value      TEXT    NOT NULL,
                 encrypted  INTEGER NOT NULL DEFAULT 0,
+                secret     INTEGER NOT NULL DEFAULT 1,
+                enabled    INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT    NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT    NOT NULL DEFAULT (datetime('now'))
             )",

@@ -262,32 +262,92 @@ async fn test_credential_store_env_vars() {
 
     assert!(store.list_env_vars().await.unwrap().is_empty());
 
-    let id = store.set_env_var("MY_KEY", "secret123").await.unwrap();
+    let id = store
+        .set_env_var("MY_KEY", "secret123", true, true)
+        .await
+        .unwrap();
     assert!(id > 0);
 
     let vars = store.list_env_vars().await.unwrap();
     assert_eq!(vars.len(), 1);
     assert_eq!(vars[0].key, "MY_KEY");
+    assert_eq!(vars[0].value, None);
+    assert!(vars[0].secret);
+    assert!(vars[0].enabled);
     assert!(!vars[0].encrypted);
 
-    let values = store.get_all_env_values().await.unwrap();
+    let values = store.get_enabled_env_values().await.unwrap();
     assert_eq!(values.len(), 1);
-    assert_eq!(values[0], ("MY_KEY".into(), "secret123".into()));
+    assert_eq!(values[0].key, "MY_KEY");
+    assert_eq!(values[0].value, "secret123");
+    assert!(values[0].secret);
 
-    store.set_env_var("MY_KEY", "updated").await.unwrap();
-    let values = store.get_all_env_values().await.unwrap();
+    store
+        .set_env_var("MY_KEY", "updated", false, true)
+        .await
+        .unwrap();
+    let values = store.get_enabled_env_values().await.unwrap();
     assert_eq!(values.len(), 1);
-    assert_eq!(values[0].1, "updated");
+    assert_eq!(values[0].value, "updated");
+    assert!(!values[0].secret);
 
-    store.set_env_var("OTHER", "val").await.unwrap();
+    let vars = store.list_env_vars().await.unwrap();
+    assert_eq!(vars[0].value.as_deref(), Some("updated"));
+    assert!(!vars[0].secret);
+
+    store
+        .set_env_var("OTHER", "val", false, false)
+        .await
+        .unwrap();
     let vars = store.list_env_vars().await.unwrap();
     assert_eq!(vars.len(), 2);
+    let other = vars.iter().find(|var| var.key == "OTHER").unwrap();
+    assert_eq!(other.value.as_deref(), Some("val"));
+    assert!(!other.enabled);
+    assert_eq!(store.get_enabled_env_values().await.unwrap().len(), 1);
 
     let first_id = vars.iter().find(|v| v.key == "MY_KEY").unwrap().id;
     store.delete_env_var(first_id).await.unwrap();
     let vars = store.list_env_vars().await.unwrap();
     assert_eq!(vars.len(), 1);
     assert_eq!(vars[0].key, "OTHER");
+}
+
+#[tokio::test]
+async fn update_env_var_flags_preserves_stored_value() {
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    let store = CredentialStore::new(pool).await.unwrap();
+    let id = store
+        .set_env_var("TOGGLE_ME", "unchanged", true, true)
+        .await
+        .unwrap();
+    let before: (String, i64) =
+        sqlx::query_as("SELECT value, encrypted FROM env_variables WHERE id = ?")
+            .bind(id)
+            .fetch_one(store.db_pool())
+            .await
+            .unwrap();
+
+    assert!(store.update_env_var_flags(id, false, false).await.unwrap());
+
+    let after: (String, i64) =
+        sqlx::query_as("SELECT value, encrypted FROM env_variables WHERE id = ?")
+            .bind(id)
+            .fetch_one(store.db_pool())
+            .await
+            .unwrap();
+    assert_eq!(after, before);
+    let entry = store.list_env_vars().await.unwrap().remove(0);
+    assert_eq!(entry.value.as_deref(), Some("unchanged"));
+    assert!(!entry.secret);
+    assert!(!entry.enabled);
+    assert!(store.get_enabled_env_values().await.unwrap().is_empty());
+    assert!(
+        !store
+            .update_env_var_flags(i64::MAX, true, true)
+            .await
+            .unwrap()
+    );
 }
 
 #[tokio::test]
@@ -508,6 +568,27 @@ async fn vault_store(password: &str) -> (CredentialStore, Arc<Vault>) {
     (store, vault)
 }
 
+#[tokio::test]
+async fn environment_variable_flags_default_to_true() {
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    let store = CredentialStore::new(pool).await.unwrap();
+
+    sqlx::query("INSERT INTO env_variables (key, value) VALUES (?, ?)")
+        .bind("DEFAULT_FLAGS")
+        .bind("value")
+        .execute(store.db_pool())
+        .await
+        .unwrap();
+
+    let flags: (bool, bool) =
+        sqlx::query_as("SELECT secret, enabled FROM env_variables WHERE key = ?")
+            .bind("DEFAULT_FLAGS")
+            .fetch_one(store.db_pool())
+            .await
+            .unwrap();
+    assert_eq!(flags, (true, true));
+}
+
 #[cfg(feature = "vault")]
 #[tokio::test]
 async fn test_ssh_keys_encrypt_when_vault_is_unsealed() {
@@ -715,7 +796,7 @@ async fn test_env_var_encryption_when_vault_unsealed() {
     let (store, _vault) = vault_store(&vault_password).await;
 
     store
-        .set_env_var("SECRET_KEY", &secret_value)
+        .set_env_var("SECRET_KEY", &secret_value, true, true)
         .await
         .unwrap();
 
@@ -737,7 +818,7 @@ async fn test_env_var_plaintext_when_vault_encryption_disabled() {
     store.disable_vault_encryption();
 
     store
-        .set_env_var("DISABLED_KEY", &visible_value)
+        .set_env_var("DISABLED_KEY", &visible_value, true, true)
         .await
         .unwrap();
 
@@ -759,7 +840,7 @@ async fn test_env_var_plaintext_when_vault_sealed() {
     vault.seal().await;
 
     store
-        .set_env_var("PLAIN_KEY", &visible_value)
+        .set_env_var("PLAIN_KEY", &visible_value, true, true)
         .await
         .unwrap();
 
@@ -779,17 +860,30 @@ async fn test_env_var_decrypt_round_trip() {
     let api_token = fixture_secret("vault-env-round-trip-api-token");
     let (store, _vault) = vault_store(&vault_password).await;
 
-    store.set_env_var("API_TOKEN", &api_token).await.unwrap();
     store
-        .set_env_var("WEBHOOK_URL", "https://example.com/hook")
+        .set_env_var("API_TOKEN", &api_token, true, true)
+        .await
+        .unwrap();
+    store
+        .set_env_var("WEBHOOK_URL", "https://example.com/hook", false, true)
         .await
         .unwrap();
 
-    let values = store.get_all_env_values().await.unwrap();
+    let values = store.get_enabled_env_values().await.unwrap();
     assert_eq!(values.len(), 2);
-    assert_eq!(values[0], ("API_TOKEN".into(), api_token));
+    assert_eq!(values[0].key, "API_TOKEN");
+    assert_eq!(values[0].value, api_token);
+    assert!(values[0].secret);
+    assert_eq!(values[1].key, "WEBHOOK_URL");
+    assert_eq!(values[1].value, "https://example.com/hook");
+    assert!(!values[1].secret);
+
+    let entries = store.list_env_vars().await.unwrap();
+    assert_eq!(entries[0].value, None);
     assert_eq!(
-        values[1],
-        ("WEBHOOK_URL".into(), "https://example.com/hook".into())
+        entries[1].value.as_deref(),
+        Some("https://example.com/hook")
     );
+    assert!(entries[0].encrypted);
+    assert!(entries[1].encrypted);
 }

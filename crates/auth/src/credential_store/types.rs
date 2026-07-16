@@ -67,14 +67,31 @@ pub const VALID_SCOPES: &[&str] = &[
     "operator.pairing",
 ];
 
-/// An environment variable entry (for listing in the UI, never exposes the value).
+/// An environment variable entry for the settings UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnvVarEntry {
     pub id: i64,
     pub key: String,
+    /// Present only for variables explicitly marked as non-secret.
+    pub value: Option<String>,
+    pub secret: bool,
+    pub enabled: bool,
     pub created_at: String,
     pub updated_at: String,
     pub encrypted: bool,
+}
+
+/// A decrypted, enabled environment variable for runtime consumers.
+pub struct EnvVarValue {
+    pub key: String,
+    pub value: String,
+    pub secret: bool,
+}
+
+impl From<EnvVarValue> for (String, String) {
+    fn from(value: EnvVarValue) -> Self {
+        (value.key, value.value)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -260,24 +260,24 @@ impl WebSearchTool {
         self
     }
 
-    async fn runtime_env_values(&self) -> HashMap<String, String> {
+    async fn runtime_env_values(&self) -> anyhow::Result<HashMap<String, String>> {
         let Some(provider) = self.env_provider.as_ref() else {
-            return HashMap::new();
+            return Ok(HashMap::new());
         };
 
-        provider
+        Ok(provider
             .get_env_vars()
-            .await
+            .await?
             .into_iter()
-            .filter_map(|(key, value)| {
-                let value = value.expose_secret().clone();
-                if key.trim().is_empty() || value.trim().is_empty() {
+            .filter_map(|var| {
+                let value = var.value.expose_secret().clone();
+                if var.key.trim().is_empty() || value.trim().is_empty() {
                     None
                 } else {
-                    Some((key, value))
+                    Some((var.key, value))
                 }
             })
-            .collect()
+            .collect())
     }
 
     fn lookup_env_value(env_values: &HashMap<String, String>, key: &str) -> Option<String> {
@@ -302,24 +302,24 @@ impl WebSearchTool {
     }
 
     #[cfg(test)]
-    async fn env_value_with_provider(&self, key: &str) -> Option<String> {
-        let runtime_env = self.runtime_env_values().await;
-        Self::lookup_env_value(&runtime_env, key)
+    async fn env_value_with_provider(&self, key: &str) -> anyhow::Result<Option<String>> {
+        let runtime_env = self.runtime_env_values().await?;
+        Ok(Self::lookup_env_value(&runtime_env, key))
     }
 
-    async fn current_api_key(&self) -> String {
+    async fn current_api_key(&self) -> anyhow::Result<String> {
         let configured = self.configured_api_key.expose_secret();
         if !configured.trim().is_empty() {
-            return configured.clone();
+            return Ok(configured.clone());
         }
 
-        let runtime_env = self.runtime_env_values().await;
+        let runtime_env = self.runtime_env_values().await?;
         for key in self.api_key_candidates() {
             if let Some(value) = Self::lookup_env_value(&runtime_env, key) {
-                return value;
+                return Ok(value);
             }
         }
-        String::new()
+        Ok(String::new())
     }
 
     fn cache_get(&self, key: &str) -> Option<serde_json::Value> {
@@ -778,7 +778,7 @@ impl AgentTool for WebSearchTool {
             .map(|n| n.clamp(1, 10) as u8)
             .unwrap_or(self.max_results);
 
-        let api_key = self.current_api_key().await;
+        let api_key = self.current_api_key().await?;
 
         // Include key presence in cache key so hot key changes invalidate stale
         // no-key results.
@@ -852,7 +852,7 @@ impl AgentTool for WebSearchTool {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use {super::*, std::sync::Arc};
+    use {super::*, crate::command::InjectedEnvVar, std::sync::Arc};
 
     struct MockEnvProvider {
         vars: Vec<(String, String)>,
@@ -860,11 +860,16 @@ mod tests {
 
     #[async_trait]
     impl EnvVarProvider for MockEnvProvider {
-        async fn get_env_vars(&self) -> Vec<(String, Secret<String>)> {
-            self.vars
+        async fn get_env_vars(&self) -> anyhow::Result<Vec<InjectedEnvVar>> {
+            Ok(self
+                .vars
                 .iter()
-                .map(|(k, v)| (k.clone(), Secret::new(v.clone())))
-                .collect()
+                .map(|(key, value)| InjectedEnvVar {
+                    key: key.clone(),
+                    value: Secret::new(value.clone()),
+                    secret: true,
+                })
+                .collect())
         }
     }
 
@@ -1039,7 +1044,7 @@ mod tests {
         let tool = brave_tool().with_env_provider(provider);
 
         assert_eq!(
-            tool.env_value_with_provider(&key).await.as_deref(),
+            tool.env_value_with_provider(&key).await.unwrap().as_deref(),
             Some("dynamic-value")
         );
     }
@@ -1059,7 +1064,7 @@ mod tests {
         )
         .with_env_provider(provider);
 
-        assert_eq!(tool.current_api_key().await, "configured-key");
+        assert_eq!(tool.current_api_key().await.unwrap(), "configured-key");
     }
 
     #[test]

@@ -74,8 +74,11 @@ impl LiveMcpService {
     async fn refresh_manager_env_overrides(&self) {
         let credential_store = self.credential_store.read().await.clone();
         let env_overrides = if let Some(store) = credential_store {
-            match store.get_all_env_values().await {
-                Ok(db_env_vars) => merge_env_overrides(&self.config_env_overrides, db_env_vars),
+            match store.get_enabled_env_values().await {
+                Ok(db_env_vars) => merge_env_overrides(
+                    &self.config_env_overrides,
+                    db_env_vars.into_iter().map(Into::into).collect(),
+                ),
                 Err(error) => {
                     warn!(%error, "failed to refresh MCP env overrides from credential store");
                     self.config_env_overrides.clone()

@@ -459,10 +459,11 @@ pub async fn prepare_gateway_core(
             .expect("failed to init credential store"),
     );
 
-    let runtime_env_overrides = match credential_store.get_all_env_values().await {
-        Ok(db_env_vars) => {
-            crate::mcp_service::merge_env_overrides(&config_env_overrides, db_env_vars)
-        },
+    let runtime_env_overrides = match credential_store.get_enabled_env_values().await {
+        Ok(db_env_vars) => crate::mcp_service::merge_env_overrides(
+            &config_env_overrides,
+            db_env_vars.into_iter().map(Into::into).collect(),
+        ),
         Err(error) => {
             warn!(%error, "failed to load persisted env overrides from credential store");
             config_env_overrides.clone()

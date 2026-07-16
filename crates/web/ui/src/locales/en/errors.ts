@@ -107,7 +107,9 @@ export default {
 		ENV_KEY_INVALID: "Environment variable key must contain only letters, digits, and underscores.",
 		ENV_LIST_FAILED: "Failed to load environment variables.",
 		ENV_SET_FAILED: "Failed to save environment variable.",
+		ENV_UPDATE_FAILED: "Failed to update environment variable.",
 		ENV_DELETE_FAILED: "Failed to delete environment variable.",
+		ENV_NOT_FOUND: "Environment variable not found.",
 	},
 	countdown: {
 		resetReady: "Limit should be reset now \u2014 try again!",

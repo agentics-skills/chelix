@@ -5,7 +5,7 @@ use {
         http::StatusCode,
         response::{IntoResponse, Response},
     },
-    serde::Serialize,
+    serde::{Deserialize, Serialize},
 };
 
 use chelix_gateway::auth::EnvVarEntry;
@@ -17,7 +17,23 @@ const ENV_KEY_REQUIRED: &str = "ENV_KEY_REQUIRED";
 const ENV_KEY_INVALID: &str = "ENV_KEY_INVALID";
 const ENV_LIST_FAILED: &str = "ENV_LIST_FAILED";
 const ENV_SET_FAILED: &str = "ENV_SET_FAILED";
+const ENV_UPDATE_FAILED: &str = "ENV_UPDATE_FAILED";
 const ENV_DELETE_FAILED: &str = "ENV_DELETE_FAILED";
+const ENV_NOT_FOUND: &str = "ENV_NOT_FOUND";
+
+#[derive(Deserialize)]
+pub struct EnvSetRequest {
+    key: String,
+    value: String,
+    secret: bool,
+    enabled: bool,
+}
+
+#[derive(Deserialize)]
+pub struct EnvFlagsRequest {
+    secret: bool,
+    enabled: bool,
+}
 
 /// Successful mutation response (`{"ok": true}`).
 #[derive(Serialize)]
@@ -56,6 +72,14 @@ impl ApiError {
     fn bad_request(code: &'static str, msg: &str) -> Self {
         Self {
             status: StatusCode::BAD_REQUEST,
+            code,
+            message: msg.into(),
+        }
+    }
+
+    fn not_found(code: &'static str, msg: &str) -> Self {
+        Self {
+            status: StatusCode::NOT_FOUND,
             code,
             message: msg.into(),
         }
@@ -102,7 +126,7 @@ impl IntoResponse for EnvListResponse {
 
 // ── Route handlers ───────────────────────────────────────────────────────────
 
-/// List all environment variables (names only, no values).
+/// List environment variables, including values explicitly marked non-secret.
 pub async fn env_list(
     State(state): State<crate::server::AppState>,
 ) -> Result<EnvListResponse, ApiError> {
@@ -120,22 +144,13 @@ pub async fn env_list(
 /// Set (upsert) an environment variable.
 pub async fn env_set(
     State(state): State<crate::server::AppState>,
-    Json(body): Json<serde_json::Value>,
+    Json(body): Json<EnvSetRequest>,
 ) -> Result<OkResponse, ApiError> {
     let store = state.gateway.credential_store.as_ref().ok_or_else(|| {
         ApiError::service_unavailable(ENV_STORE_UNAVAILABLE, "no credential store")
     })?;
 
-    let key = body
-        .get("key")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim();
-    let value = body
-        .get("value")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+    let key = body.key.trim();
 
     if key.is_empty() {
         return Err(ApiError::bad_request(ENV_KEY_REQUIRED, "key is required"));
@@ -150,9 +165,33 @@ pub async fn env_set(
     }
 
     store
-        .set_env_var(key, &value)
+        .set_env_var(key, &body.value, body.secret, body.enabled)
         .await
         .map_err(|err| ApiError::internal(ENV_SET_FAILED, err))?;
+
+    Ok(OkResponse::success())
+}
+
+/// Update environment variable visibility and runtime participation.
+pub async fn env_update(
+    State(state): State<crate::server::AppState>,
+    Path(id): Path<i64>,
+    Json(body): Json<EnvFlagsRequest>,
+) -> Result<OkResponse, ApiError> {
+    let store = state.gateway.credential_store.as_ref().ok_or_else(|| {
+        ApiError::service_unavailable(ENV_STORE_UNAVAILABLE, "no credential store")
+    })?;
+
+    let updated = store
+        .update_env_var_flags(id, body.secret, body.enabled)
+        .await
+        .map_err(|err| ApiError::internal(ENV_UPDATE_FAILED, err))?;
+    if !updated {
+        return Err(ApiError::not_found(
+            ENV_NOT_FOUND,
+            "environment variable not found",
+        ));
+    }
 
     Ok(OkResponse::success())
 }
@@ -205,5 +244,26 @@ mod tests {
         let json = response_json(response).await;
         assert_eq!(json["code"], ENV_SET_FAILED);
         assert_eq!(json["error"], "boom");
+    }
+
+    #[test]
+    fn environment_requests_require_explicit_flags() {
+        let missing_set_flags = serde_json::json!({
+            "key": "REQUIRED_FLAGS",
+            "value": "value"
+        });
+        assert!(serde_json::from_value::<EnvSetRequest>(missing_set_flags).is_err());
+
+        let missing_enabled = serde_json::json!({ "secret": true });
+        assert!(serde_json::from_value::<EnvFlagsRequest>(missing_enabled).is_err());
+
+        let explicit_flags = serde_json::json!({
+            "key": "REQUIRED_FLAGS",
+            "value": "value",
+            "secret": true,
+            "enabled": true
+        });
+        let parsed = serde_json::from_value::<EnvSetRequest>(explicit_flags);
+        assert!(parsed.is_ok());
     }
 }
