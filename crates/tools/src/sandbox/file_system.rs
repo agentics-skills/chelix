@@ -19,6 +19,7 @@ use {
         time::Duration,
     },
     tar::{Archive, Builder, EntryType, Header},
+    time::OffsetDateTime,
 };
 
 use crate::{
@@ -836,17 +837,35 @@ fn extract_single_file_from_tar(
     extract_single_file_from_tar_reader(io::Cursor::new(tar_bytes), file_path, max_bytes)
 }
 
-fn build_single_file_tar(file_path: &str, content: &[u8]) -> Result<Vec<u8>> {
+fn build_single_file_tar(
+    file_path: &str,
+    content: &[u8],
+    modified_at: OffsetDateTime,
+) -> Result<Vec<u8>> {
     let entry_name: OsString = Path::new(file_path)
         .file_name()
         .ok_or_else(|| Error::message(format!("'{file_path}' has no file name")))?
         .to_owned();
+    let mtime = u64::try_from(modified_at.unix_timestamp()).map_err(|_| {
+        Error::message(format!(
+            "cannot encode pre-epoch OCI write timestamp for '{file_path}'"
+        ))
+    })?;
+    let precise_mtime = format!("{mtime}.{:09}", modified_at.nanosecond());
 
     let mut builder = Builder::new(Vec::new());
+    builder
+        .append_pax_extensions([("mtime", precise_mtime.as_bytes())])
+        .map_err(|error| {
+            Error::message(format!(
+                "failed to add OCI tar metadata for '{file_path}': {error}"
+            ))
+        })?;
     let mut header = Header::new_ustar();
     header.set_entry_type(EntryType::Regular);
     header.set_mode(0o644);
     header.set_size(content.len() as u64);
+    header.set_mtime(mtime);
     header.set_cksum();
     builder
         .append_data(&mut header, entry_name, io::Cursor::new(content))
@@ -1150,7 +1169,7 @@ pub async fn oci_container_write_file(
     let destination_dir = Path::new(file_path)
         .parent()
         .ok_or_else(|| Error::message(format!("'{file_path}' has no parent directory")))?;
-    let tar_bytes = build_single_file_tar(file_path, content)?;
+    let tar_bytes = build_single_file_tar(file_path, content, OffsetDateTime::now_utc())?;
 
     let mut child = tokio::process::Command::new(cli)
         .args([
@@ -1332,6 +1351,13 @@ mod tests {
         }
     }
 
+    fn test_mtime() -> OffsetDateTime {
+        OffsetDateTime::from_unix_timestamp(1_700_000_000)
+            .unwrap()
+            .replace_nanosecond(123_456_789)
+            .unwrap()
+    }
+
     #[tokio::test]
     async fn read_file_decodes_base64() {
         let encoded = BASE64.encode(b"hello sandbox");
@@ -1434,7 +1460,8 @@ mod tests {
 
     #[test]
     fn build_single_file_tar_round_trips() {
-        let tar_bytes = build_single_file_tar("/tmp/example.txt", b"hello tar").unwrap();
+        let tar_bytes =
+            build_single_file_tar("/tmp/example.txt", b"hello tar", test_mtime()).unwrap();
         let result = extract_single_file_from_tar(&tar_bytes, "/tmp/example.txt", 1024).unwrap();
         match result {
             SandboxReadResult::Ok(bytes) => assert_eq!(bytes, b"hello tar"),
@@ -1443,15 +1470,38 @@ mod tests {
     }
 
     #[test]
+    fn build_single_file_tar_preserves_precise_mtime() {
+        let tar_bytes =
+            build_single_file_tar("/tmp/example.txt", b"hello tar", test_mtime()).unwrap();
+        let mut archive = Archive::new(io::Cursor::new(tar_bytes));
+        let mut entries = archive.entries().unwrap();
+        let mut entry = entries.next().unwrap().unwrap();
+
+        assert_eq!(entry.header().mtime().unwrap(), 1_700_000_000);
+        let precise_mtime = entry
+            .pax_extensions()
+            .unwrap()
+            .unwrap()
+            .find_map(|extension| {
+                let extension = extension.unwrap();
+                (extension.key_bytes() == b"mtime").then(|| extension.value().unwrap().to_string())
+            })
+            .unwrap();
+        assert_eq!(precise_mtime, "1700000000.123456789");
+    }
+
+    #[test]
     fn extract_single_file_from_tar_rejects_large_entry() {
-        let tar_bytes = build_single_file_tar("/tmp/example.txt", b"hello tar").unwrap();
+        let tar_bytes =
+            build_single_file_tar("/tmp/example.txt", b"hello tar", test_mtime()).unwrap();
         let result = extract_single_file_from_tar(&tar_bytes, "/tmp/example.txt", 4).unwrap();
         assert!(matches!(result, SandboxReadResult::TooLarge(9)));
     }
 
     #[test]
     fn extract_single_file_from_tar_drains_transport_to_eof() {
-        let tar_bytes = build_single_file_tar("/tmp/example.txt", b"hello tar").unwrap();
+        let tar_bytes =
+            build_single_file_tar("/tmp/example.txt", b"hello tar", test_mtime()).unwrap();
         let reached_eof = Arc::new(AtomicBool::new(false));
         let reader = EofTrackingReader {
             inner: io::Cursor::new(tar_bytes),
@@ -1469,7 +1519,8 @@ mod tests {
 
     #[test]
     fn extract_oversized_file_from_tar_drains_transport_to_eof() {
-        let tar_bytes = build_single_file_tar("/tmp/example.txt", b"hello tar").unwrap();
+        let tar_bytes =
+            build_single_file_tar("/tmp/example.txt", b"hello tar", test_mtime()).unwrap();
         let reached_eof = Arc::new(AtomicBool::new(false));
         let reader = EofTrackingReader {
             inner: io::Cursor::new(tar_bytes),
