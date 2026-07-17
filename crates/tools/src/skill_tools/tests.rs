@@ -10,7 +10,7 @@ use {
     chelix_skills::discover::SkillDiscoverer, serde_json::json,
 };
 
-use {super::*, crate::checkpoints::CheckpointManager};
+use super::*;
 
 /// Re-export for the read test that checks the constant matches the skills crate.
 const SIDECAR_SUBDIRS: &[&str] = chelix_skills::SIDECAR_SUBDIRS;

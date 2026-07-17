@@ -1619,7 +1619,6 @@ mod tests {
             Ok(chelix_agents::memory_writer::MemoryWriteResult {
                 location: String::new(),
                 bytes_written: 0,
-                checkpoint_id: None,
             })
         }
     }

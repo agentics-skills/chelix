@@ -62,7 +62,6 @@ These events run hooks in parallel for performance. They cannot modify or block.
 | Event           | Description                  |
 | --------------- | ---------------------------- |
 | `AfterToolCall` | After a tool completes       |
-| `AgentEnd`      | When agent loop completes    |
 | `MessageSent`   | After response is delivered  |
 | `SessionStart`  | When a new session begins    |
 | `SessionEnd`    | When a session ends          |

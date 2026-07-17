@@ -21,7 +21,7 @@ use {
         tool_registry::{AgentTool, ToolRegistry},
     },
     chelix_config::{AgentMemoryWriteMode, MemoryStyle, ToolMode},
-    chelix_memory::writer::remove_exact_text,
+    chelix_memory::writer::{ensure_memory_target_not_symlink, remove_exact_text},
     chelix_providers::ProviderRegistry,
     chelix_sessions::metadata::SqliteSessionMetadata,
 };
@@ -466,7 +466,6 @@ pub struct AgentScopedMemoryWriter {
     manager: chelix_memory::runtime::DynMemoryRuntime,
     agent_id: String,
     write_mode: AgentMemoryWriteMode,
-    checkpoints: chelix_tools::checkpoints::CheckpointManager,
 }
 
 impl AgentScopedMemoryWriter {
@@ -479,24 +478,7 @@ impl AgentScopedMemoryWriter {
             manager,
             agent_id,
             write_mode,
-            checkpoints: chelix_tools::checkpoints::CheckpointManager::new(
-                chelix_config::data_dir(),
-            ),
         }
-    }
-
-    async fn checkpoint_memory_path(
-        &self,
-        file: &str,
-        reason: &str,
-    ) -> anyhow::Result<(
-        std::path::PathBuf,
-        chelix_tools::checkpoints::CheckpointRecord,
-    )> {
-        validate_agent_memory_target_for_mode(self.write_mode, file)?;
-        let path = resolve_agent_memory_target_path(&self.agent_id, file)?;
-        let checkpoint = self.checkpoints.checkpoint_path(&path, reason).await?;
-        Ok((path, checkpoint))
     }
 
     async fn delete_memory(
@@ -511,7 +493,9 @@ impl AgentScopedMemoryWriter {
             anyhow::bail!("provide either 'text' or delete_file=true");
         }
 
-        let (path, checkpoint) = self.checkpoint_memory_path(file, "memory_delete").await?;
+        validate_agent_memory_target_for_mode(self.write_mode, file)?;
+        let path = resolve_agent_memory_target_path(&self.agent_id, file)?;
+        ensure_memory_target_not_symlink(&path).await?;
 
         if delete_file {
             let file_existed = tokio::fs::try_exists(&path).await?;
@@ -525,7 +509,6 @@ impl AgentScopedMemoryWriter {
                 matches_removed: 0,
                 bytes_written: 0,
                 index_removed,
-                checkpoint_id: checkpoint.id,
             });
         }
 
@@ -554,7 +537,6 @@ impl AgentScopedMemoryWriter {
                 removal.content.len()
             },
             index_removed,
-            checkpoint_id: checkpoint.id,
         })
     }
 }
@@ -565,7 +547,6 @@ struct AgentScopedMemoryDeleteResult {
     matches_removed: usize,
     bytes_written: usize,
     index_removed: bool,
-    checkpoint_id: String,
 }
 
 #[async_trait]
@@ -586,14 +567,11 @@ impl chelix_agents::memory_writer::MemoryWriter for AgentScopedMemoryWriter {
 
         validate_agent_memory_target_for_mode(self.write_mode, file)?;
         let path = resolve_agent_memory_target_path(&self.agent_id, file)?;
+        ensure_memory_target_not_symlink(&path).await?;
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
 
-        let checkpoint = self
-            .checkpoints
-            .checkpoint_path(&path, "memory_write")
-            .await?;
         let final_content = if append && tokio::fs::try_exists(&path).await? {
             let existing = tokio::fs::read_to_string(&path).await?;
             format!("{existing}\n\n{content}")
@@ -610,7 +588,6 @@ impl chelix_agents::memory_writer::MemoryWriter for AgentScopedMemoryWriter {
         Ok(chelix_agents::memory_writer::MemoryWriteResult {
             location: path.to_string_lossy().into_owned(),
             bytes_written,
-            checkpoint_id: Some(checkpoint.id),
         })
     }
 }
@@ -840,7 +817,6 @@ impl AgentTool for AgentScopedMemorySaveTool {
             "saved": true,
             "path": file,
             "bytes_written": result.bytes_written,
-            "checkpointId": result.checkpoint_id,
         }))
     }
 }
@@ -935,7 +911,6 @@ impl AgentTool for AgentScopedMemoryDeleteTool {
             "matches_removed": result.matches_removed,
             "bytes_written": result.bytes_written,
             "index_removed": result.index_removed,
-            "checkpointId": result.checkpoint_id,
         }))
     }
 }
@@ -999,7 +974,6 @@ impl AgentTool for AgentScopedMemoryForgetTool {
                 "planned_matches": [],
                 "issues": [],
                 "results": [],
-                "checkpointIds": [],
             }));
         }
 
@@ -1021,12 +995,10 @@ impl AgentTool for AgentScopedMemoryForgetTool {
                 "planned_matches": planned_matches,
                 "issues": issues,
                 "results": [],
-                "checkpointIds": [],
             }));
         }
 
         let mut results = Vec::new();
-        let mut checkpoint_ids = Vec::new();
         for action in validated_actions {
             let result = self
                 .writer
@@ -1038,7 +1010,6 @@ impl AgentTool for AgentScopedMemoryForgetTool {
                     true,
                 )
                 .await?;
-            checkpoint_ids.push(result.checkpoint_id.clone());
             results.push(json!({
                 "chunk_id": action.candidate.chunk_id,
                 "reason": action.reason,
@@ -1048,7 +1019,6 @@ impl AgentTool for AgentScopedMemoryForgetTool {
                 "matches_removed": result.matches_removed,
                 "bytes_written": result.bytes_written,
                 "index_removed": result.index_removed,
-                "checkpointId": result.checkpoint_id,
             }));
         }
 
@@ -1061,7 +1031,6 @@ impl AgentTool for AgentScopedMemoryForgetTool {
             "planned_matches": planned_matches,
             "issues": issues,
             "results": results,
-            "checkpointIds": checkpoint_ids,
         }))
     }
 }
@@ -1151,7 +1120,6 @@ impl AgentTool for MemoryForgetTool {
                 "planned_matches": [],
                 "issues": [],
                 "results": [],
-                "checkpointIds": [],
             }));
         }
 
@@ -1173,13 +1141,11 @@ impl AgentTool for MemoryForgetTool {
                 "planned_matches": planned_matches,
                 "issues": issues,
                 "results": [],
-                "checkpointIds": [],
             }));
         }
 
         let delete_tool = chelix_memory::tools::MemoryDeleteTool::new(Arc::clone(&self.manager));
         let mut results = Vec::new();
-        let mut checkpoint_ids = Vec::new();
         for action in validated_actions {
             let result = delete_tool
                 .execute(json!({
@@ -1188,9 +1154,6 @@ impl AgentTool for MemoryForgetTool {
                     "delete_if_empty": true,
                 }))
                 .await?;
-            if let Some(checkpoint_id) = result.get("checkpointId").and_then(Value::as_str) {
-                checkpoint_ids.push(checkpoint_id.to_string());
-            }
             results.push(json!({
                 "chunk_id": action.candidate.chunk_id,
                 "reason": action.reason,
@@ -1207,7 +1170,6 @@ impl AgentTool for MemoryForgetTool {
             "planned_matches": planned_matches,
             "issues": issues,
             "results": results,
-            "checkpointIds": checkpoint_ids,
         }))
     }
 }

@@ -50,6 +50,18 @@ pub fn validate_memory_path(data_dir: &Path, file: &str) -> crate::error::Result
     Ok(data_dir.join(MEMORY_DIR_PREFIX).join(name))
 }
 
+/// Reject an existing memory target that is a symbolic link.
+pub async fn ensure_memory_target_not_symlink(path: &Path) -> crate::error::Result<()> {
+    match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(crate::error::Error::Validation(
+            format!("memory target '{}' must not be a symlink", path.display()),
+        )),
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct TextRemovalResult {
     pub content: String,

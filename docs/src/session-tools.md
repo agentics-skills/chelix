@@ -106,7 +106,7 @@ session is excluded when `_session_key` is available in tool context.
 
 ```json
 {
-  "query": "checkpoint rollback",
+  "query": "API design decisions",
   "limit": 5,
   "exclude_current": true
 }

@@ -29,7 +29,6 @@ use {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum HookEvent {
     BeforeAgentStart,
-    AgentEnd,
     BeforeLLMCall,
     AfterLLMCall,
     MessageReceived,
@@ -57,7 +56,6 @@ impl FromStr for HookEvent {
     fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
         match value {
             "BeforeAgentStart" => Ok(Self::BeforeAgentStart),
-            "AgentEnd" => Ok(Self::AgentEnd),
             "BeforeLLMCall" => Ok(Self::BeforeLLMCall),
             "AfterLLMCall" => Ok(Self::AfterLLMCall),
             "MessageReceived" => Ok(Self::MessageReceived),
@@ -80,7 +78,6 @@ impl HookEvent {
     /// All variants, for iteration.
     pub const ALL: &'static [HookEvent] = &[
         Self::BeforeAgentStart,
-        Self::AgentEnd,
         Self::BeforeLLMCall,
         Self::AfterLLMCall,
         Self::MessageReceived,
@@ -106,8 +103,7 @@ impl HookEvent {
     pub fn is_read_only(&self) -> bool {
         matches!(
             self,
-            Self::AgentEnd
-                | Self::AfterToolCall
+            Self::AfterToolCall
                 | Self::MessageSent
                 | Self::SessionStart
                 | Self::SessionEnd
@@ -159,12 +155,6 @@ pub enum HookPayload {
     BeforeAgentStart {
         session_key: String,
         model: String,
-    },
-    AgentEnd {
-        session_key: String,
-        text: String,
-        iterations: usize,
-        tool_calls: usize,
     },
     BeforeLLMCall {
         session_key: String,
@@ -245,7 +235,6 @@ impl HookPayload {
     pub fn event(&self) -> HookEvent {
         match self {
             Self::BeforeAgentStart { .. } => HookEvent::BeforeAgentStart,
-            Self::AgentEnd { .. } => HookEvent::AgentEnd,
             Self::BeforeLLMCall { .. } => HookEvent::BeforeLLMCall,
             Self::AfterLLMCall { .. } => HookEvent::AfterLLMCall,
             Self::MessageReceived { .. } => HookEvent::MessageReceived,
@@ -999,7 +988,6 @@ mod tests {
 
     #[test]
     fn read_only_classification() {
-        assert!(HookEvent::AgentEnd.is_read_only());
         assert!(HookEvent::SessionStart.is_read_only());
         assert!(HookEvent::GatewayStart.is_read_only());
         assert!(HookEvent::Command.is_read_only());
@@ -1046,7 +1034,6 @@ mod tests {
     fn all_events_array_includes_llm_hooks() {
         assert_eq!(HookEvent::ALL, &[
             HookEvent::BeforeAgentStart,
-            HookEvent::AgentEnd,
             HookEvent::BeforeLLMCall,
             HookEvent::AfterLLMCall,
             HookEvent::MessageReceived,

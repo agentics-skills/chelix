@@ -24,10 +24,6 @@ Skills created this way are personal and stored in the configured data
 directory's `skills/` folder. They become available on the next message
 automatically thanks to the skill watcher.
 
-Before any built-in skill mutation runs, Chelix creates an automatic checkpoint.
-Tool results include a `checkpointId` you can later restore with
-`checkpoint_restore`.
-
 ## Skill Watcher
 
 The skill watcher (`crates/skills/src/watcher.rs`) monitors skill directories
@@ -125,6 +121,3 @@ returns an error and no changes are written.
 
 This removes the entire `<data_dir>/skills/summarize-pr/` directory, including
 any supplementary files written alongside `SKILL.md`.
-
-Deleted skills can be restored from the returned `checkpointId` with
-`checkpoint_restore`, as long as the checkpoint still exists.

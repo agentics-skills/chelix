@@ -66,8 +66,7 @@ follow symlinks.
 }
 ```
 
-Returns `{ file_path, bytes_written, checkpoint_id }`. `checkpoint_id` is `null`
-unless `[tools.fs].checkpoint_before_mutation` is enabled.
+Returns `{ file_path, bytes_written }`.
 
 ### `Edit`
 
@@ -84,8 +83,7 @@ correctness win over shell `sed`.
 }
 ```
 
-Returns
-`{ file_path, replacements, replace_all, recovered_via_crlf, checkpoint_id }`.
+Returns `{ file_path, replacements, replace_all, recovered_via_crlf }`.
 `recovered_via_crlf` is `true` when the tool fell back to CRLF matching for an
 LF-only `old_string` against a CRLF file.
 
@@ -180,12 +178,6 @@ binary_policy = "reject"
 # Whether Glob/Grep respect .gitignore / .ignore / .git/info/exclude.
 respect_gitignore = true
 
-# When true, Write/Edit/MultiEdit snapshot the target file via the
-# existing CheckpointManager before mutating, so the pre-edit state can
-# be restored via the `checkpoint_restore` tool. Off by default because
-# checkpoints grow with agent activity.
-checkpoint_before_mutation = false
-
 # Adaptive read sizing: when set, Read caps per-call output so a single
 # call can't consume more than ~20% of the model's working set.
 # Clamped to [50 KB, 512 KB]. When unset, Read uses a fixed 256 KB cap.
@@ -238,8 +230,6 @@ second big win (alongside model-quality improvements) that motivated
 
 ## Related
 
-- [Checkpoints](checkpoints.md) — pairs with `checkpoint_before_mutation` for
-  opt-in pre-edit snapshots.
 - [Hooks](hooks.md) — `BeforeToolCall` and `ToolResultPersist` receive
   structured payloads for each fs tool call, so policy hooks can inspect typed
   parameters instead of parsing shell strings.

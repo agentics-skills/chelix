@@ -46,7 +46,6 @@
 - [Slash Commands](commands.md)
 - [Modes](modes.md)
 - [Session Branching](session-branching.md)
-- [Checkpoints](checkpoints.md)
 - [Compaction](compaction.md)
 - [Filesystem Tools](tools-fs.md)
 - [Scheduling (Cron Jobs)](scheduling.md)

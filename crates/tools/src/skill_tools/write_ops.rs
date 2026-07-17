@@ -16,11 +16,11 @@ use {
     super::{
         MAX_SIDECAR_FILES_PER_CALL,
         helpers::{
-            audit_sidecar_file_write, split_frontmatter_body, update_frontmatter_description,
-            validate_sidecar_files, write_sidecar_files,
+            audit_sidecar_file_write, ensure_not_symlink, split_frontmatter_body,
+            update_frontmatter_description, validate_sidecar_files, write_sidecar_files,
         },
     },
-    crate::{checkpoints::CheckpointManager, error::Error},
+    crate::error::Error,
 };
 
 // ── WriteSkillFilesTool ─────────────────────────────────────
@@ -28,16 +28,11 @@ use {
 /// Tool that writes supplementary text files inside an existing personal skill.
 pub struct WriteSkillFilesTool {
     data_dir: PathBuf,
-    checkpoints: CheckpointManager,
 }
 
 impl WriteSkillFilesTool {
     pub fn new(data_dir: PathBuf) -> Self {
-        let checkpoints = CheckpointManager::new(data_dir.clone());
-        Self {
-            data_dir,
-            checkpoints,
-        }
+        Self { data_dir }
     }
 
     fn skills_dir(&self) -> PathBuf {
@@ -116,17 +111,12 @@ impl AgentTool for WriteSkillFilesTool {
             .into());
         }
 
-        let checkpoint = self
-            .checkpoints
-            .checkpoint_path(&skill_dir, "write_skill_files")
-            .await?;
         write_sidecar_files(&skill_dir, &validated).await?;
         audit_sidecar_file_write(&self.data_dir, name, &validated);
 
         Ok(json!({
             "written": true,
             "path": skill_dir.display().to_string(),
-            "checkpointId": checkpoint.id,
             "files_written": validated.len(),
             "files": validated.iter().map(|file| file.relative_path.display().to_string()).collect::<Vec<_>>(),
         }))
@@ -145,16 +135,13 @@ const MAX_PATCHES_PER_CALL: usize = 10;
 /// hallucination risk and token cost.
 pub struct PatchSkillTool {
     data_dir: PathBuf,
-    checkpoints: CheckpointManager,
     usage_store: Option<SkillUsageStore>,
 }
 
 impl PatchSkillTool {
     pub fn new(data_dir: PathBuf) -> Self {
-        let checkpoints = CheckpointManager::new(data_dir.clone());
         Self {
             data_dir,
-            checkpoints,
             usage_store: None,
         }
     }
@@ -265,22 +252,10 @@ impl AgentTool for PatchSkillTool {
         if !canonical_target.starts_with(&canonical_base) {
             return Err(Error::message("can only patch personal skills").into());
         }
-        match tokio::fs::symlink_metadata(&skill_dir).await {
-            Ok(meta) if meta.file_type().is_symlink() => {
-                return Err(Error::message(format!(
-                    "skill '{name}' directory must not be a symlink"
-                ))
-                .into());
-            },
-            Ok(_) => {},
-            Err(e) => {
-                return Err(
-                    Error::message(format!("skill '{name}' path not accessible: {e}")).into(),
-                );
-            },
-        }
+        ensure_not_symlink(&skill_dir, "skill directory").await?;
 
         let skill_md_path = skill_dir.join("SKILL.md");
+        ensure_not_symlink(&skill_md_path, "SKILL.md").await?;
         let raw = tokio::fs::read_to_string(&skill_md_path)
             .await
             .map_err(|e| Error::message(format!("failed to read skill '{name}': {e}")))?;
@@ -326,11 +301,6 @@ impl AgentTool for PatchSkillTool {
             format!("{final_content}\n")
         };
 
-        let checkpoint = self
-            .checkpoints
-            .checkpoint_path(&skill_dir, "patch_skill")
-            .await?;
-
         tokio::fs::write(&skill_md_path, &final_content).await?;
 
         let hits = chelix_skills::safety::scan_skill_body(name, &patched_body);
@@ -358,7 +328,6 @@ impl AgentTool for PatchSkillTool {
         let mut response = json!({
             "patched": true,
             "patches_applied": applied,
-            "checkpointId": checkpoint.id,
         });
         if let Some(warn_msg) = warning
             && let Some(m) = response.as_object_mut()

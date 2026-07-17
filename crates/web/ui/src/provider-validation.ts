@@ -202,11 +202,7 @@ export function buildSaveKeyPayload(
  * Persist provider credentials via the `providers.save_key` RPC.
  * Returns the RPC response (check `.ok` for success).
  */
-export function saveProviderKey(
-	providerName: string,
-	apiKey: string,
-	baseUrl: string | null,
-): Promise<RpcResponse> {
+export function saveProviderKey(providerName: string, apiKey: string, baseUrl: string | null): Promise<RpcResponse> {
 	const payload = buildSaveKeyPayload(providerName, apiKey, baseUrl);
 	return sendRpc("providers.save_key", payload);
 }

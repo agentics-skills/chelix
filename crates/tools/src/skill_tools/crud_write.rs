@@ -15,7 +15,6 @@ async fn test_create_skill() {
         .await
         .unwrap();
     assert!(result["created"].as_bool().unwrap());
-    assert!(result["checkpointId"].as_str().is_some());
 
     let skill_md = tmp.path().join("skills/my-skill/SKILL.md");
     assert!(skill_md.exists());
@@ -104,7 +103,7 @@ async fn test_update_skill() {
         }))
         .await
         .unwrap();
-    assert!(result["checkpointId"].as_str().is_some());
+    assert!(result["updated"].as_bool().unwrap());
 
     let content = std::fs::read_to_string(tmp.path().join("skills/my-skill/SKILL.md")).unwrap();
     assert!(content.contains("description: updated"));
@@ -126,6 +125,43 @@ async fn test_update_nonexistent_fails() {
     assert!(result.is_err());
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn test_skill_file_mutations_reject_symlink_target() {
+    use std::os::unix::fs::symlink;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let skill_dir = tmp.path().join("skills/my-skill");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    let outside_file = outside.path().join("SKILL.md");
+    std::fs::write(&outside_file, "outside content\n").unwrap();
+    symlink(&outside_file, skill_dir.join("SKILL.md")).unwrap();
+
+    let update = UpdateSkillTool::new(tmp.path().to_path_buf());
+    let update_result = update
+        .execute(json!({
+            "name": "my-skill",
+            "description": "updated",
+            "body": "new body"
+        }))
+        .await;
+    assert!(update_result.is_err());
+
+    let patch = PatchSkillTool::new(tmp.path().to_path_buf());
+    let patch_result = patch
+        .execute(json!({
+            "name": "my-skill",
+            "patches": [{ "find": "outside", "replace": "changed" }]
+        }))
+        .await;
+    assert!(patch_result.is_err());
+    assert_eq!(
+        std::fs::read_to_string(outside_file).unwrap(),
+        "outside content\n"
+    );
+}
+
 #[tokio::test]
 async fn test_delete_skill() {
     let tmp = tempfile::tempdir().unwrap();
@@ -143,7 +179,6 @@ async fn test_delete_skill() {
 
     let result = delete.execute(json!({ "name": "my-skill" })).await.unwrap();
     assert!(result["deleted"].as_bool().unwrap());
-    assert!(result["checkpointId"].as_str().is_some());
     assert!(!tmp.path().join("skills/my-skill").exists());
 }
 
@@ -154,6 +189,27 @@ async fn test_delete_nonexistent_fails() {
 
     let result = tool.execute(json!({ "name": "nope" })).await;
     assert!(result.is_err());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn test_delete_skill_rejects_symlinked_skill_directory() {
+    use std::os::unix::fs::symlink;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_dir = tmp.path().join("skills");
+    let real_dir = skills_dir.join("real-skill");
+    std::fs::create_dir_all(&real_dir).unwrap();
+    std::fs::write(real_dir.join("SKILL.md"), "real content\n").unwrap();
+    let alias_dir = skills_dir.join("alias-skill");
+    symlink(&real_dir, &alias_dir).unwrap();
+
+    let tool = DeleteSkillTool::new(tmp.path().to_path_buf());
+    let result = tool.execute(json!({ "name": "alias-skill" })).await;
+
+    assert!(result.is_err());
+    assert!(alias_dir.exists());
+    assert!(real_dir.exists());
 }
 
 #[tokio::test]
@@ -184,7 +240,6 @@ async fn test_write_skill_files_writes_sidecars_and_audits() {
         .unwrap();
 
     assert!(result["written"].as_bool().unwrap());
-    assert!(result["checkpointId"].as_str().is_some());
     assert_eq!(result["files_written"].as_u64().unwrap(), 3);
     assert_eq!(
         std::fs::read_to_string(tmp.path().join("skills/my-skill/script.sh")).unwrap(),
@@ -372,63 +427,6 @@ async fn test_delete_skill_removes_sidecar_files() {
 
     delete.execute(json!({ "name": "my-skill" })).await.unwrap();
     assert!(!tmp.path().join("skills/my-skill").exists());
-}
-
-#[tokio::test]
-async fn test_update_skill_checkpoint_can_restore_previous_state() {
-    let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf());
-    let update = UpdateSkillTool::new(tmp.path().to_path_buf());
-    let checkpoints = CheckpointManager::new(tmp.path().to_path_buf());
-
-    create
-        .execute(json!({
-            "name": "my-skill",
-            "description": "original",
-            "body": "original body"
-        }))
-        .await
-        .unwrap();
-
-    let result = update
-        .execute(json!({
-            "name": "my-skill",
-            "description": "updated",
-            "body": "new body"
-        }))
-        .await
-        .unwrap();
-    let checkpoint_id = result["checkpointId"].as_str().unwrap();
-
-    checkpoints.restore(checkpoint_id).await.unwrap();
-
-    let content = std::fs::read_to_string(tmp.path().join("skills/my-skill/SKILL.md")).unwrap();
-    assert!(content.contains("description: original"));
-    assert!(content.contains("original body"));
-}
-
-#[tokio::test]
-async fn test_delete_skill_checkpoint_can_restore_deleted_skill() {
-    let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf());
-    let delete = DeleteSkillTool::new(tmp.path().to_path_buf());
-    let checkpoints = CheckpointManager::new(tmp.path().to_path_buf());
-
-    create
-        .execute(json!({
-            "name": "my-skill",
-            "description": "test",
-            "body": "body"
-        }))
-        .await
-        .unwrap();
-
-    let result = delete.execute(json!({ "name": "my-skill" })).await.unwrap();
-    let checkpoint_id = result["checkpointId"].as_str().unwrap();
-
-    checkpoints.restore(checkpoint_id).await.unwrap();
-
-    assert!(tmp.path().join("skills/my-skill/SKILL.md").exists());
 }
 
 #[cfg(unix)]
@@ -677,40 +675,6 @@ async fn test_patch_skill_updates_description() {
         "patched description should be YAML-quoted: {content}"
     );
     assert!(content.contains("Goodbye world"));
-}
-
-#[tokio::test]
-async fn test_patch_skill_creates_checkpoint() {
-    let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf());
-    let patch = PatchSkillTool::new(tmp.path().to_path_buf());
-    let checkpoints = CheckpointManager::new(tmp.path().to_path_buf());
-
-    create
-        .execute(json!({
-            "name": "my-skill",
-            "description": "test",
-            "body": "AAA BBB"
-        }))
-        .await
-        .unwrap();
-
-    let result = patch
-        .execute(json!({
-            "name": "my-skill",
-            "patches": [{ "find": "AAA", "replace": "XXX" }]
-        }))
-        .await
-        .unwrap();
-
-    let checkpoint_id = result["checkpointId"].as_str().unwrap();
-    checkpoints.restore(checkpoint_id).await.unwrap();
-
-    let content = std::fs::read_to_string(tmp.path().join("skills/my-skill/SKILL.md")).unwrap();
-    assert!(
-        content.contains("AAA BBB"),
-        "checkpoint should restore original"
-    );
 }
 
 #[tokio::test]

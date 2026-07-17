@@ -20,7 +20,6 @@ type SlashCommandName =
 	| "mode"
 	| "new"
 	| "reset"
-	| "rollback"
 	| "sh";
 
 export interface SlashCommand {
@@ -84,7 +83,6 @@ export const slashCommands: SlashCommand[] = [
 	{ name: "mode", description: "Switch session mode (/mode none to clear)" },
 	{ name: "new", description: "Start a new session" },
 	{ name: "reset", description: "Clear conversation history" },
-	{ name: "rollback", description: "List or restore file checkpoints" },
 	{ name: "sh", description: "Enter command mode (/sh off or Esc to exit)" },
 ];
 
@@ -482,14 +480,6 @@ const slashHandlers: Record<SlashCommandName, SlashHandler> = {
 				fetchSessions();
 			} else chatAddMsg("error", res.error?.message || "Fork failed");
 		});
-	},
-
-	rollback: () => {
-		chatAddMsg(
-			"system",
-			renderMarkdown("Rollback is available via the `/rollback` channel command (Telegram, Discord, etc.) or the CLI."),
-			true,
-		);
 	},
 };
 

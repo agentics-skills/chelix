@@ -18,7 +18,7 @@ use crate::{
     schema::{ChunkRow, FileRow},
     search::{self, SearchResult},
     store::{CacheEntry, MemoryStore},
-    writer::validate_memory_path,
+    writer::{ensure_memory_target_not_symlink, validate_memory_path},
 };
 
 pub struct MemoryManager {
@@ -446,6 +446,7 @@ impl MemoryWriter for MemoryManager {
         }
 
         let path = validate_memory_path(data_dir, file)?;
+        ensure_memory_target_not_symlink(&path).await?;
 
         // Create parent directories if needed.
         if let Some(parent) = path.parent() {
@@ -472,7 +473,6 @@ impl MemoryWriter for MemoryManager {
         Ok(MemoryWriteResult {
             location: path.to_string_lossy().into_owned(),
             bytes_written,
-            checkpoint_id: None,
         })
     }
 }

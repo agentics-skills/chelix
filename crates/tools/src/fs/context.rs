@@ -3,7 +3,6 @@
 use {
     crate::{
         approval::{ApprovalBroadcaster, ApprovalManager},
-        checkpoints::CheckpointManager,
         sandbox::SandboxRouter,
     },
     chelix_agents::tool_registry::ToolRegistry,
@@ -35,9 +34,6 @@ pub struct FsToolsContext {
     /// Whether `Glob`/`Grep` honor `.gitignore` while walking. Default
     /// `true`.
     pub respect_gitignore: bool,
-    /// When set, `Write`/`Edit`/`MultiEdit` call `checkpoint_path` on
-    /// this manager before mutating. `None` disables checkpoints.
-    pub checkpoint_manager: Option<Arc<CheckpointManager>>,
     /// Shared [`SandboxRouter`]. When set, fs tools dispatch through
     /// the [`sandbox_bridge`] for sessions the router marks as
     /// sandboxed; unsandboxed sessions still run on the host.
@@ -69,7 +65,6 @@ impl Default for FsToolsContext {
             // Follow the upstream default: WalkBuilder respects .gitignore
             // unless explicitly disabled.
             respect_gitignore: true,
-            checkpoint_manager: None,
             sandbox_router: None,
             approval_manager: None,
             broadcaster: None,
@@ -98,7 +93,6 @@ pub fn register_fs_tools(registry: &mut ToolRegistry, context: FsToolsContext) {
         path_policy,
         binary_policy,
         respect_gitignore,
-        checkpoint_manager,
         sandbox_router,
         approval_manager,
         broadcaster,
@@ -131,9 +125,6 @@ pub fn register_fs_tools(registry: &mut ToolRegistry, context: FsToolsContext) {
     if let Some(ref p) = path_policy {
         write = write.with_path_policy(p.clone());
     }
-    if let Some(ref m) = checkpoint_manager {
-        write = write.with_checkpoint_manager(m.clone());
-    }
     if let Some(ref r) = sandbox_router {
         write = write.with_sandbox_router(r.clone());
     }
@@ -149,9 +140,6 @@ pub fn register_fs_tools(registry: &mut ToolRegistry, context: FsToolsContext) {
     if let Some(ref p) = path_policy {
         edit = edit.with_path_policy(p.clone());
     }
-    if let Some(ref m) = checkpoint_manager {
-        edit = edit.with_checkpoint_manager(m.clone());
-    }
     if let Some(ref r) = sandbox_router {
         edit = edit.with_sandbox_router(r.clone());
     }
@@ -166,9 +154,6 @@ pub fn register_fs_tools(registry: &mut ToolRegistry, context: FsToolsContext) {
     }
     if let Some(ref p) = path_policy {
         multi_edit = multi_edit.with_path_policy(p.clone());
-    }
-    if let Some(ref m) = checkpoint_manager {
-        multi_edit = multi_edit.with_checkpoint_manager(m.clone());
     }
     if let Some(ref r) = sandbox_router {
         multi_edit = multi_edit.with_sandbox_router(r.clone());

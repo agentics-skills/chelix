@@ -86,9 +86,23 @@ pub(super) fn build_skill_md(
 
 // ── Skill I/O ───────────────────────────────────────────────
 
+pub(super) async fn ensure_not_symlink(path: &Path, target: &str) -> crate::Result<()> {
+    match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            Err(Error::message(format!("{target} must not be a symlink")))
+        },
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
 pub(super) async fn write_skill(skill_dir: &Path, content: &str) -> crate::Result<()> {
+    ensure_not_symlink(skill_dir, "skill directory").await?;
     tokio::fs::create_dir_all(skill_dir).await?;
-    tokio::fs::write(skill_dir.join("SKILL.md"), content).await?;
+    let skill_file = skill_dir.join("SKILL.md");
+    ensure_not_symlink(&skill_file, "SKILL.md").await?;
+    tokio::fs::write(skill_file, content).await?;
     Ok(())
 }
 
@@ -215,10 +229,7 @@ pub(super) async fn write_sidecar_files(
         .ok_or_else(|| Error::message("invalid skill directory"))?;
     let canonical_skills_root = tokio::fs::canonicalize(skills_root).await?;
 
-    let skill_meta = tokio::fs::symlink_metadata(skill_dir).await?;
-    if skill_meta.file_type().is_symlink() {
-        return Err(Error::message("skill directory must not be a symlink"));
-    }
+    ensure_not_symlink(skill_dir, "skill directory").await?;
 
     let canonical_base = tokio::fs::canonicalize(skill_dir).await?;
     if !canonical_base.starts_with(&canonical_skills_root) {

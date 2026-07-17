@@ -60,7 +60,6 @@ echo "$(date -Iseconds) tool=$tool" >> /tmp/chelix-hook.log
 - `ToolResultPersist` — before persisting a tool result
 
 **Read-only (parallel dispatch, Block/Modify ignored):**
-- `AgentEnd` — after an agent run completes
 - `AfterToolCall` — after a tool finishes (observe result)
 - `MessageSent` — after a message is sent
 - `SessionStart` / `SessionEnd` — session lifecycle

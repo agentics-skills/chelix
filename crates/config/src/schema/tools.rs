@@ -135,14 +135,6 @@ pub struct FsToolsConfig {
     #[serde(default = "default_fs_respect_gitignore")]
     pub respect_gitignore: bool,
 
-    /// When true, Write/Edit/MultiEdit call the existing
-    /// `CheckpointManager` to create a per-file backup before mutating,
-    /// so the LLM can restore the pre-edit state via
-    /// `checkpoint_restore`. Default `false` to avoid unbounded disk
-    /// growth on repos with large files.
-    #[serde(default)]
-    pub checkpoint_before_mutation: bool,
-
     /// Model context window in tokens. When set, `Read`'s per-call
     /// byte cap scales adaptively so a single Read call can't consume
     /// more than ~20% of the model's working set. Clamped to
@@ -166,7 +158,6 @@ impl Default for FsToolsConfig {
             max_read_bytes: default_fs_max_read_bytes(),
             binary_policy: FsBinaryPolicy::default(),
             respect_gitignore: default_fs_respect_gitignore(),
-            checkpoint_before_mutation: false,
             context_window_tokens: None,
         }
     }

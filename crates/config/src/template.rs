@@ -407,7 +407,6 @@ port = {port}                           # Port number (auto-generated for this i
 # max_read_bytes = 10485760         # Max bytes per Read (10 MB)
 # binary_policy = "reject"          # "reject" or "base64"
 # respect_gitignore = true          # Skip .gitignored files in Glob/Grep
-# checkpoint_before_mutation = false # Snapshot files before Write/Edit
 
 # ── Command Execution ─────────────────────────────────────────────────────────
 

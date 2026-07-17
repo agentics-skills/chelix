@@ -54,7 +54,11 @@ export function selectModel(m: ModelInfo): void {
 	modelStore.select(m.id);
 	updateModelComboLabel(m);
 	localStorage.setItem("chelix-model", m.id);
-	setSessionModel(S.activeSessionKey, m.id, m.reasoning.supported_efforts.length > 0 ? modelStore.reasoningEffort.value : "");
+	setSessionModel(
+		S.activeSessionKey,
+		m.id,
+		m.reasoning.supported_efforts.length > 0 ? modelStore.reasoningEffort.value : "",
+	);
 	closeModelDropdown();
 	// Show notice if model doesn't support tools
 	showModelNotice(m);

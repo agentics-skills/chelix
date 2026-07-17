@@ -317,9 +317,6 @@ path even when memory files are visible through a read-only sandbox mount.
 }
 ```
 
-Successful writes also return a `checkpointId`, so the change can be rolled back
-with `checkpoint_restore`.
-
 **Parameters:**
 
 | Parameter | Type    | Default      | Description                                                  |
@@ -363,9 +360,6 @@ If the request is ambiguous, stale, or the exact text is not uniquely removable,
 `memory_forget` returns a preview with `needs_confirmation = true` instead of
 mutating files.
 
-Successful mutations return `checkpointIds`, because forgetting multiple chunks
-may touch more than one file.
-
 **Parameters:**
 
 | Parameter | Type    | Default      | Description                                                  |
@@ -397,9 +391,6 @@ To delete an entire memory note instead:
   "delete_file": true
 }
 ```
-
-Successful deletes also return a `checkpointId`, so the previous file state can
-be restored with `checkpoint_restore`.
 
 **Parameters:**
 
