@@ -38,9 +38,8 @@ pub struct TypeMismatch {
 impl ToolArgError {
     /// Format a directive error message targeted at the LLM.
     ///
-    /// The message is intentionally terse, names the exact failure, echoes
-    /// what the model sent, and explicitly tells the model not to retry with
-    /// identical arguments (see issue #658 for the design rationale).
+    /// The message is intentionally terse, names the exact failure, and
+    /// explicitly tells the model how to retrieve the schema before retrying.
     #[must_use]
     pub fn to_llm_error_message(&self, tool_name: &str) -> String {
         self.to_llm_error_message_with_argument_diagnostic(tool_name, None)
@@ -65,17 +64,16 @@ impl ToolArgError {
             ));
         }
 
-        let received_str = serde_json::to_string(&self.received)
-            .unwrap_or_else(|_| "<unserializable>".to_string());
-        msg.push_str(&format!("You sent: {received_str}\n"));
         if let Some(diagnostic) = argument_diagnostic {
             msg.push_str(&diagnostic.llm_detail());
             msg.push('\n');
         }
-        msg.push_str(
-            "Do not retry with the same arguments. If you do not know what arguments to use, \
-             respond in plain text and ask the user for clarification.",
-        );
+        let get_tool_args = serde_json::json!({ "name": tool_name });
+        msg.push_str(&format!(
+            "Do not retry with the same arguments. You MUST call \
+               `get_tool {get_tool_args}` next to retrieve the exact parameter schema before \
+               retrying `{tool_name}`."
+        ));
         msg
     }
 
@@ -437,15 +435,32 @@ mod tests {
     fn llm_error_message_is_directive() {
         let schema = json!({
             "type": "object",
-            "properties": { "command": { "type": "string" } },
-            "required": ["command"]
+            "properties": {
+                "file_path": { "type": "string" },
+                "offset": { "type": "integer" }
+            },
+            "required": ["file_path"]
         });
-        let err = validate_tool_args(&schema, &json!({})).unwrap_err();
-        let msg = err.to_llm_error_message("execute_command");
-        assert!(msg.contains("execute_command"));
-        assert!(msg.contains("command"));
-        assert!(msg.contains("Do not retry"));
-        assert!(msg.contains("respond in plain text"));
+        let err = validate_tool_args(
+            &schema,
+            &json!({
+                "file_path": "/home/sandbox/private.rs",
+                "offset": "483",
+                "_session_key": "session:secret"
+            }),
+        )
+        .unwrap_err();
+        let msg = err.to_llm_error_message("Read");
+        assert_eq!(
+            msg,
+            "Tool call rejected before execution by `Read`.\n\
+             Field `offset` has wrong type: expected `integer`, got `string`.\n\
+             Do not retry with the same arguments. You MUST call \
+             `get_tool {\"name\":\"Read\"}` next to retrieve the exact parameter schema before \
+             retrying `Read`."
+        );
+        assert!(!msg.contains("private.rs"));
+        assert!(!msg.contains("session:secret"));
     }
 
     #[test]
