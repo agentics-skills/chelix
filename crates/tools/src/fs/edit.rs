@@ -478,11 +478,7 @@ impl AgentTool for EditTool {
     }
 
     fn description(&self) -> &str {
-        "Exact-match string replacement in a file. Refuses to edit if \
-         `old_string` is not unique in the file unless `replace_all=true`. \
-         This uniqueness requirement prevents the most common class of \
-         edit mistakes. Supply enough context in `old_string` to make the \
-         match unique."
+        "Replace exact text in a file with safeguards against unintended edits."
     }
 
     fn parameters_schema(&self) -> Value {

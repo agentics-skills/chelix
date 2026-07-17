@@ -402,8 +402,7 @@ impl AgentTool for TaskListTool {
     }
 
     fn description(&self) -> &str {
-        "Manage a shared task list for coordinated multi-agent execution. \
-         Actions: create, list, list_lists, get, update, claim."
+        "Coordinate multi-agent work through shared task lists."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {

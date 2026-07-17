@@ -560,11 +560,7 @@ impl AgentTool for GrepTool {
     }
 
     fn description(&self) -> &str {
-        "Search file contents with a regular expression. Three output modes: \
-         'files_with_matches' (default, lists matching file paths), 'content' \
-         (lines that matched, with optional context), 'count' (match count \
-         per file). Supports glob and file-type filters, case-insensitive \
-         matching, line numbers, and context lines."
+        "Search file contents with regular expressions across files and directories."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -591,7 +587,8 @@ impl AgentTool for GrepTool {
                 "output_mode": {
                     "type": "string",
                     "enum": ["content", "files_with_matches", "count"],
-                    "default": "files_with_matches"
+                    "default": "files_with_matches",
+                    "description": "Result format: matching file paths, matching content, or per-file match counts."
                 },
                 "-i": {
                     "type": "boolean",

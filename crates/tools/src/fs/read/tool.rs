@@ -675,11 +675,7 @@ impl AgentTool for ReadTool {
     }
 
     fn description(&self) -> &str {
-        "Read a file from the local filesystem with line-numbered output. \
-         Supports `offset` (1-indexed line to start at) and `limit` (max lines \
-         to return) for paginating large files. Returns structured JSON with \
-         the file's content, total line count, and truncation flag. Binary \
-         files return a typed marker instead of garbage."
+        "Read file contents from the local filesystem."
     }
 
     fn parameters_schema(&self) -> Value {

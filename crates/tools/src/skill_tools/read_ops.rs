@@ -92,16 +92,7 @@ impl AgentTool for ReadSkillTool {
     }
 
     fn description(&self) -> &str {
-        "Load a skill's full content or access its linked files (references, \
-         templates, assets, scripts). The primary call (with just 'name') \
-         returns the SKILL.md body plus a list of available sidecar files \
-         under references/, templates/, assets/, and scripts/. To read those, \
-         call again with the file_path argument \
-         (e.g. file_path=\"references/api.md\"). Nested file_paths such as \
-         \"references/subdir/deep.md\" are supported even if the listing only \
-         shows the first level. Binary files return a structured response \
-         with { is_binary: true, bytes }. Use the skill names listed in the \
-         <available_skills> system-prompt block."
+        "Load a skill's instructions and linked resources."
     }
 
     fn result_persistence(&self, _params: &Value) -> ToolResultPersistence {
@@ -119,7 +110,7 @@ impl AgentTool for ReadSkillTool {
                 },
                 "file_path": {
                     "type": "string",
-                    "description": "Optional: relative path to a sidecar file inside the skill directory (e.g. 'references/api.md'). Omit to read the main SKILL.md body."
+                    "description": "Optional relative path to a linked file within the skill, including nested paths (for example, 'references/api.md'). Omit to read the main SKILL.md body."
                 }
             }
         })
