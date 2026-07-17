@@ -522,7 +522,47 @@ impl LogsService for LiveLogsService {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, std::io::Result as IoResult};
+
+    #[derive(Clone, Default)]
+    struct CapturedLogWriter {
+        bytes: Arc<Mutex<Vec<u8>>>,
+    }
+
+    struct CapturedLogGuard {
+        bytes: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl CapturedLogWriter {
+        fn contents(&self) -> String {
+            let bytes = self.bytes.lock().unwrap_or_else(|error| error.into_inner());
+            String::from_utf8_lossy(&bytes).into_owned()
+        }
+    }
+
+    impl Write for CapturedLogGuard {
+        fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
+            self.bytes
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> IoResult<()> {
+            Ok(())
+        }
+    }
+
+    impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for CapturedLogWriter {
+        type Writer = CapturedLogGuard;
+
+        fn make_writer(&'writer self) -> Self::Writer {
+            CapturedLogGuard {
+                bytes: Arc::clone(&self.bytes),
+            }
+        }
+    }
 
     fn make_entry_ts(level: &str, target: &str, message: &str, ts: u64) -> LogEntry {
         LogEntry {
@@ -677,6 +717,77 @@ mod tests {
         buf.push(make_entry("INFO", "test", "hello"));
         let entry = rx.try_recv().unwrap();
         assert_eq!(entry.message, "hello");
+    }
+
+    #[tokio::test]
+    async fn sensitive_commands_are_redacted_before_log_fan_out() {
+        use {
+            base64::Engine,
+            chelix_tools::command::{CommandLogPolicy, CommandOptions, run_shell_command},
+            tracing::instrument::WithSubscriber,
+            tracing_subscriber::layer::SubscriberExt,
+        };
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("logs.jsonl");
+        let buffer = LogBuffer::default();
+        buffer.enable_persistence(path.clone());
+        let console = CapturedLogWriter::default();
+        let subscriber = tracing_subscriber::registry()
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .json()
+                    .with_ansi(false)
+                    .with_writer(console.clone()),
+            )
+            .with(LogBroadcastLayer::new(buffer));
+
+        let secret = "sensitive-token+/";
+        let base64_standard = base64::engine::general_purpose::STANDARD.encode(secret.as_bytes());
+        let base64_url = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(secret.as_bytes());
+        let hex = secret
+            .as_bytes()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        let sensitive_command_marker = "sensitive-command-remains-visible";
+        let sensitive_command = format!(
+            "printf sensitive-output # {sensitive_command_marker} {secret} {base64_standard} {base64_url} {hex}"
+        );
+        let visible_marker = "visible-command-marker";
+        let visible_command = format!("printf visible-output # {visible_marker}");
+
+        async {
+            let sensitive_result = run_shell_command(&sensitive_command, &CommandOptions {
+                log_policy: CommandLogPolicy::redact_secrets([secrecy::Secret::new(
+                    secret.to_string(),
+                )]),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+            assert_eq!(sensitive_result.stdout, "sensitive-output");
+
+            let visible_result = run_shell_command(&visible_command, &CommandOptions::default())
+                .await
+                .unwrap();
+            assert_eq!(visible_result.stdout, "visible-output");
+        }
+        .with_subscriber(subscriber)
+        .await;
+
+        let console_output = console.contents();
+        let persisted_output = std::fs::read_to_string(path).unwrap();
+        for needle in [secret, &base64_standard, &base64_url, &hex] {
+            assert!(!console_output.contains(needle));
+            assert!(!persisted_output.contains(needle));
+        }
+        assert!(console_output.contains("[REDACTED]"));
+        assert!(persisted_output.contains("[REDACTED]"));
+        assert!(console_output.contains(sensitive_command_marker));
+        assert!(persisted_output.contains(sensitive_command_marker));
+        assert!(console_output.contains(visible_marker));
+        assert!(persisted_output.contains(visible_marker));
     }
 
     #[test]

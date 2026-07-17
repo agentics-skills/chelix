@@ -20,8 +20,9 @@ use crate::{
     Result,
     approval::{ApprovalAction, ApprovalDecision, ApprovalManager},
     command::{
-        CommandCompletionEvent, CommandCompletionFn, CommandNodeProvider, CommandOptions,
-        CommandOutput, EnvVarProvider, InjectedEnvVar, redact_command_output, run_shell_command,
+        CommandCompletionEvent, CommandCompletionFn, CommandLogPolicy, CommandNodeProvider,
+        CommandOptions, CommandOutput, EnvVarProvider, InjectedEnvVar, redact_command_output,
+        run_shell_command,
     },
     error::Error,
     params::without_null_params,
@@ -133,6 +134,7 @@ struct ManagedRun {
 #[derive(Default)]
 struct CommandEnvironment {
     values: Vec<(String, String)>,
+    values_for_log: Vec<(String, String)>,
     secrets: Vec<(String, String)>,
 }
 
@@ -140,16 +142,41 @@ impl From<Vec<InjectedEnvVar>> for CommandEnvironment {
     fn from(vars: Vec<InjectedEnvVar>) -> Self {
         let mut environment = Self {
             values: Vec::with_capacity(vars.len()),
+            values_for_log: Vec::with_capacity(vars.len()),
             secrets: Vec::new(),
         };
         for var in vars {
             let value = var.value.expose_secret().clone();
             if var.secret {
                 environment.secrets.push((var.key.clone(), value.clone()));
+                environment
+                    .values_for_log
+                    .push((var.key.clone(), "[REDACTED]".to_string()));
+            } else {
+                environment
+                    .values_for_log
+                    .push((var.key.clone(), value.clone()));
             }
             environment.values.push((var.key, value));
         }
+        let log_policy = environment.command_log_policy();
         environment
+            .values_for_log
+            .iter_mut()
+            .for_each(|(_, value)| {
+                *value = log_policy.for_log(value).into_owned();
+            });
+        environment
+    }
+}
+
+impl CommandEnvironment {
+    fn command_log_policy(&self) -> CommandLogPolicy {
+        CommandLogPolicy::redact_secrets(
+            self.secrets
+                .iter()
+                .map(|(_, value)| secrecy::Secret::new(value.clone())),
+        )
     }
 }
 
@@ -254,8 +281,23 @@ impl TmuxTerminalManager {
             marker_enabled,
             &env.values,
         );
+        let log_policy = env.command_log_policy();
+        let command_for_log = log_policy.for_log(command);
+        let cwd_for_log = params
+            .custom_cwd
+            .as_deref()
+            .map(|cwd| log_policy.for_log(cwd).into_owned());
+        let paste_text_for_log = build_paste_payload(
+            &command_for_log,
+            cwd_for_log.as_deref(),
+            &run_id,
+            marker_enabled,
+            &env.values_for_log,
+        );
+        let paste_text_for_log = log_policy.for_log(&paste_text_for_log);
 
-        self.paste_text(&terminal, &paste_text).await?;
+        self.paste_text(&terminal, &paste_text, &paste_text_for_log)
+            .await?;
 
         let mut updated = terminal.clone();
         updated.last_run = Some(ManagedRun {
@@ -702,11 +744,25 @@ impl TmuxTerminalManager {
         Ok(output.stdout)
     }
 
-    async fn paste_text(&self, terminal: &ManagedTerminal, text: &str) -> Result<()> {
+    async fn paste_text(
+        &self,
+        terminal: &ManagedTerminal,
+        text: &str,
+        text_for_log: &str,
+    ) -> Result<()> {
         let buffer_name = tmux_paste_buffer_name(&terminal.id);
         let set_args = set_paste_buffer_args(&buffer_name, text);
+        let command_for_log = shell_words::join(
+            std::iter::once("tmux".to_string())
+                .chain(set_paste_buffer_args(&buffer_name, text_for_log)),
+        );
         let set_output = self
-            .run_tmux(&terminal.session_key, &set_args, Duration::from_secs(10))
+            .run_tmux_with_log_policy(
+                &terminal.session_key,
+                &set_args,
+                Duration::from_secs(10),
+                CommandLogPolicy::replacement(command_for_log),
+            )
             .await?;
         if set_output.exit_code != 0 {
             return Err(Error::message(format!(
@@ -756,6 +812,17 @@ impl TmuxTerminalManager {
         tmux_args: &[String],
         timeout: Duration,
     ) -> Result<CommandOutput> {
+        self.run_tmux_with_log_policy(session_key, tmux_args, timeout, CommandLogPolicy::Visible)
+            .await
+    }
+
+    async fn run_tmux_with_log_policy(
+        &self,
+        session_key: &str,
+        tmux_args: &[String],
+        timeout: Duration,
+        log_policy: CommandLogPolicy,
+    ) -> Result<CommandOutput> {
         let ExecEnv::Sandbox { backend, .. } = self.sandbox_router.resolve_env(session_key).await?
         else {
             return Err(Error::message(
@@ -772,8 +839,13 @@ impl TmuxTerminalManager {
             max_output_bytes: self.max_output_bytes,
             working_dir: Some(backend.workspace_dir().into()),
             env: Vec::new(),
+            log_policy,
         };
-        debug!(session = session_key, command, "sandbox tmux command");
+        debug!(
+            session = session_key,
+            command = %opts.log_policy.for_log(&command),
+            "sandbox tmux command"
+        );
         run_sandbox_command_with_recovery(&self.sandbox_router, session_key, &command, &opts).await
     }
 
@@ -825,7 +897,7 @@ async fn run_sandbox_command_with_recovery(
         tracing::warn!(
             session = session_key,
             sandbox_id = %id,
-            command,
+            command = %opts.log_policy.for_log(command),
             retry_idx,
             max_retries = MAX_SANDBOX_RECOVERY_RETRIES,
             "sandbox command failed because container is unavailable, reinitializing and retrying"
@@ -1087,14 +1159,20 @@ impl ExecuteCommandTool {
     ) -> Result<CommandOutput> {
         self.approval_check(command, session_key).await?;
         let env = self.command_env().await?;
+        let log_policy = env.command_log_policy();
         let opts = CommandOptions {
             timeout: Duration::from_millis(timeout_millis),
             max_output_bytes: self.manager.max_output_bytes,
             working_dir: self.direct_working_dir(params.custom_cwd.as_deref()).await,
             env: env.values,
+            log_policy,
         };
 
-        debug!(session = session_key, command, "running command on host");
+        debug!(
+            session = session_key,
+            command = %opts.log_policy.for_log(command),
+            "running command on host"
+        );
         let mut result = run_shell_command(command, &opts).await?;
         redact_command_output(&mut result, &env.secrets);
         self.fire_completion(command, &result);
@@ -1654,12 +1732,12 @@ mod tests {
         let environment = CommandEnvironment::from(vec![
             InjectedEnvVar {
                 key: "SECRET_TOKEN".to_string(),
-                value: secrecy::Secret::new("hidden-value".to_string()),
+                value: secrecy::Secret::new("hidden'value $dollar".to_string()),
                 secret: true,
             },
             InjectedEnvVar {
                 key: "PUBLIC_MODE".to_string(),
-                value: secrecy::Secret::new("visible-value".to_string()),
+                value: secrecy::Secret::new("visible-value hidden'value $dollar".to_string()),
                 secret: false,
             },
         ]);
@@ -1667,15 +1745,57 @@ mod tests {
         assert_eq!(environment.values.len(), 2);
         assert_eq!(environment.secrets, vec![(
             "SECRET_TOKEN".to_string(),
-            "hidden-value".to_string()
+            "hidden'value $dollar".to_string()
         )]);
         let mut output = CommandOutput {
-            stdout: "hidden-value visible-value".to_string(),
+            stdout: "hidden'value $dollar visible-value".to_string(),
             stderr: String::new(),
             exit_code: 0,
         };
         redact_command_output(&mut output, &environment.secrets);
         assert_eq!(output.stdout, "[REDACTED] visible-value");
+
+        let command = "printf command-remains-visible \"hidden'value $dollar\"";
+        let cwd = "/tmp/hidden'value $dollar/workspace";
+        let payload = build_paste_payload(command, Some(cwd), "abc", true, &environment.values);
+        let log_policy = environment.command_log_policy();
+        let command_for_log = log_policy.for_log(command);
+        let cwd_for_log = log_policy.for_log(cwd);
+        let payload_for_log = build_paste_payload(
+            &command_for_log,
+            Some(&cwd_for_log),
+            "abc",
+            true,
+            &environment.values_for_log,
+        );
+        let payload_for_log = log_policy.for_log(&payload_for_log);
+        let tmux_payload = shell_words::join(
+            std::iter::once("tmux".to_string())
+                .chain(set_paste_buffer_args("chelix-paste-test", &payload)),
+        );
+        let tmux_payload_for_log = shell_words::join(
+            std::iter::once("tmux".to_string())
+                .chain(set_paste_buffer_args("chelix-paste-test", &payload_for_log)),
+        );
+        let policy = CommandLogPolicy::replacement(tmux_payload_for_log);
+        let logged_payload = policy.for_log(&tmux_payload);
+        assert!(!logged_payload.contains("hidden'value $dollar"));
+        assert!(!logged_payload.contains("hidden"));
+        assert!(logged_payload.contains("[REDACTED]"));
+        assert!(logged_payload.contains("visible-value"));
+        assert!(logged_payload.contains("command-remains-visible"));
+
+        let public_environment = CommandEnvironment::from(vec![InjectedEnvVar {
+            key: "PUBLIC_MODE".to_string(),
+            value: secrecy::Secret::new("visible-value".to_string()),
+            secret: false,
+        }]);
+        assert_eq!(
+            public_environment
+                .command_log_policy()
+                .for_log("printf visible-value"),
+            "printf visible-value"
+        );
     }
 
     #[test]

@@ -1,7 +1,8 @@
-use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
+use std::{borrow::Cow, collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 
 use {
     async_trait::async_trait,
+    secrecy::{ExposeSecret, Secret},
     serde::{Deserialize, Serialize},
     tokio::process::Command,
     tracing::{debug, warn},
@@ -26,7 +27,7 @@ pub type CommandCompletionFn = Arc<dyn Fn(CommandCompletionEvent) + Send + Sync>
 #[derive(Debug, Clone)]
 pub struct InjectedEnvVar {
     pub key: String,
-    pub value: secrecy::Secret<String>,
+    pub value: Secret<String>,
     pub secret: bool,
 }
 
@@ -62,6 +63,50 @@ pub struct CommandOutput {
     pub exit_code: i32,
 }
 
+/// Controls whether command text may be emitted to diagnostic logs.
+#[derive(Debug, Clone, Default)]
+pub enum CommandLogPolicy {
+    #[default]
+    Visible,
+    RedactSecrets(Vec<Secret<String>>),
+    Replacement(String),
+}
+
+impl CommandLogPolicy {
+    #[must_use]
+    pub fn redact_secrets(values: impl IntoIterator<Item = Secret<String>>) -> Self {
+        let values = values
+            .into_iter()
+            .filter(|value| !value.expose_secret().is_empty())
+            .collect::<Vec<_>>();
+        if values.is_empty() {
+            Self::Visible
+        } else {
+            Self::RedactSecrets(values)
+        }
+    }
+
+    #[must_use]
+    pub fn replacement(command: impl Into<String>) -> Self {
+        Self::Replacement(command.into())
+    }
+
+    #[must_use]
+    pub fn for_log<'command>(&self, command: &'command str) -> Cow<'command, str> {
+        match self {
+            Self::Visible => Cow::Borrowed(command),
+            Self::RedactSecrets(values) => {
+                Cow::Owned(values.iter().fold(command.to_string(), |redacted, value| {
+                    redaction_needles(value.expose_secret())
+                        .into_iter()
+                        .fold(redacted, |text, needle| text.replace(&needle, "[REDACTED]"))
+                }))
+            },
+            Self::Replacement(command) => Cow::Owned(command.clone()),
+        }
+    }
+}
+
 /// Options controlling command execution behavior.
 #[derive(Debug, Clone)]
 pub struct CommandOptions {
@@ -69,6 +114,7 @@ pub struct CommandOptions {
     pub max_output_bytes: usize,
     pub working_dir: Option<PathBuf>,
     pub env: Vec<(String, String)>,
+    pub log_policy: CommandLogPolicy,
 }
 
 impl Default for CommandOptions {
@@ -78,6 +124,7 @@ impl Default for CommandOptions {
             max_output_bytes: 200 * 1024,
             working_dir: None,
             env: Vec::new(),
+            log_policy: CommandLogPolicy::default(),
         }
     }
 }
@@ -130,10 +177,16 @@ fn redaction_needles(value: &str) -> Vec<String> {
 }
 
 /// Execute a shell command with timeout and output limits.
-#[tracing::instrument(skip(opts), fields(timeout_secs = opts.timeout.as_secs()))]
+#[tracing::instrument(
+    skip(command, opts),
+    fields(
+        command = %opts.log_policy.for_log(command),
+        timeout_secs = opts.timeout.as_secs()
+    )
+)]
 pub async fn run_shell_command(command: &str, opts: &CommandOptions) -> Result<CommandOutput> {
     debug!(
-        command,
+        command = %opts.log_policy.for_log(command),
         timeout_secs = opts.timeout.as_secs(),
         "run_shell_command"
     );
@@ -191,7 +244,10 @@ pub async fn run_shell_command(command: &str, opts: &CommandOptions) -> Result<C
         },
         Ok(Err(error)) => Err(Error::message(format!("failed to run command: {error}"))),
         Err(_) => {
-            warn!(command, "command timeout");
+            warn!(
+                command = %opts.log_policy.for_log(command),
+                "command timeout"
+            );
             Err(Error::message(format!(
                 "command timed out after {}s",
                 opts.timeout.as_secs()
@@ -255,6 +311,19 @@ mod tests {
         };
         let err = run_shell_command("echo hello", &opts).await.unwrap_err();
         assert!(err.to_string().contains("working directory"));
+    }
+
+    #[test]
+    fn command_log_policy_redacts_only_secret_values() {
+        let command = "printf command-remains-visible super-secret-value";
+        let policy =
+            CommandLogPolicy::redact_secrets([Secret::new("super-secret-value".to_string())]);
+
+        assert_eq!(
+            policy.for_log(command),
+            "printf command-remains-visible [REDACTED]"
+        );
+        assert_eq!(CommandLogPolicy::Visible.for_log(command), command);
     }
 
     #[test]

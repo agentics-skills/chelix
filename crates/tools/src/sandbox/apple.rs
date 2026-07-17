@@ -943,7 +943,11 @@ impl Sandbox for AppleContainerSandbox {
         opts: &CommandOptions,
     ) -> Result<CommandOutput> {
         let name = self.container_name(id).await;
-        info!(name, command, "apple container exec");
+        info!(
+            name,
+            command = %opts.log_policy.for_log(command),
+            "apple container exec"
+        );
 
         // Apple Container CLI doesn't support -e flags, so prepend export
         // statements to inject env vars into the shell.

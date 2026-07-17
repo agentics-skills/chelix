@@ -52,6 +52,7 @@ fn default_opts() -> CommandOptions {
         max_output_bytes: DEFAULT_SANDBOX_OUTPUT_BYTES,
         working_dir: Some(PathBuf::from("/home/sandbox")),
         env: Vec::new(),
+        log_policy: Default::default(),
     }
 }
 
