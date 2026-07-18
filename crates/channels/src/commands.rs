@@ -201,16 +201,6 @@ pub fn all_commands() -> &'static [CommandDef] {
                 required: false,
             }),
         },
-        CommandDef {
-            name: "rollback",
-            description: "List or restore file checkpoints",
-            arg: Some(CommandArg {
-                name: "id",
-                description: "Checkpoint ID to restore",
-                choices: &[],
-                required: false,
-            }),
-        },
         // Quick actions
         CommandDef {
             name: "btw",
@@ -379,7 +369,6 @@ mod tests {
             "stop",
             "peek",
             "update",
-            "rollback",
             "btw",
             "fast",
             "insights",

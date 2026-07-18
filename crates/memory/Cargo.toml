@@ -37,7 +37,6 @@ chelix-common         = { workspace = true }
 chelix-metrics        = { optional = true, workspace = true }
 chelix-protocol       = { optional = true, workspace = true }
 chelix-splitter       = { workspace = true }
-chelix-tools          = { workspace = true }
 chrono                = { features = ["serde"], workspace = true }
 directories.workspace = true
 futures               = { workspace = true }

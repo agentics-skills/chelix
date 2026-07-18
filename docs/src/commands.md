@@ -53,7 +53,6 @@ Available in web UI, all channels, and via the `sessions.fork` RPC. See
 | `/insights [days]`        | Show usage analytics (tokens, providers)      |
 | `/steer <text>`           | Inject guidance into the current agent run    |
 | `/queue <message>`        | Queue a message for the next agent turn       |
-| `/rollback [N\|diff N]`   | List or restore file checkpoints              |
 
 ### /btw
 
@@ -119,25 +118,6 @@ When the active run finishes, the queued message is automatically submitted.
 ```
 
 If no run is active, the message is sent immediately.
-
-### /rollback
-
-List and restore file checkpoints created by the automatic checkpointing system.
-Before every `Write`, `Edit`, or `MultiEdit` tool call, the original file is
-snapshotted.
-
-```
-/rollback           # list recent turns with file changes
-/rollback 1         # restore all files from turn 1
-/rollback diff 1    # preview which files were changed in turn 1
-```
-
-Checkpoints are grouped by **turn** (one user message = one turn). Restoring a
-turn reverts all files that were modified during that turn to their pre-turn
-state.
-
-See [Checkpoints](checkpoints.md) for details on the automatic checkpointing
-system.
 
 ## Approval Management
 

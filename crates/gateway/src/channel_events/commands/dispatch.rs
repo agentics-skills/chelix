@@ -119,8 +119,6 @@ pub(in crate::channel_events) async fn dispatch_command(
         "tts" => control_handlers::handle_tts(state, &session_key, args).await,
         "update" => control_handlers::handle_update(state, &reply_to, sender_id, args).await,
 
-        "rollback" => quick_actions::handle_rollback(state, &session_key, args).await,
-
         // Quick actions
         "btw" => quick_actions::handle_btw(state, &session_key, args).await,
         "fast" => quick_actions::handle_fast(state, session_metadata, &session_key, args).await,
@@ -168,7 +166,6 @@ mod tests {
             "stop",
             "peek",
             "update",
-            "rollback",
             "btw",
             "fast",
             "insights",

@@ -227,10 +227,6 @@ async fn memory_forget_deletes_selected_scoped_chunk() {
             .map(|items| items.len()),
         Some(1)
     );
-    assert_eq!(
-        result["checkpointIds"].as_array().map(|items| items.len()),
-        Some(1)
-    );
     assert!(result["planned_matches"][0].get("path").is_none());
 
     let updated = std::fs::read_to_string(memory_path).unwrap();
@@ -274,6 +270,34 @@ async fn memory_forget_refuses_ambiguous_exact_text() {
 
     let updated = std::fs::read_to_string(memory_path).unwrap();
     assert_eq!(updated, "duplicate memory line\nduplicate memory line\n");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn agent_scoped_memory_mutations_reject_symlink_target() {
+    use {chelix_agents::memory_writer::MemoryWriter, std::os::unix::fs::symlink};
+
+    let _lock = DATA_DIR_TEST_LOCK.lock().await;
+    let _guard = DataDirGuard;
+    let (manager, _tmp, memory_path) = setup_agent_memory("writer", "original memory\n", 4).await;
+    std::fs::remove_file(&memory_path).unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let outside_file = outside.path().join("memory.md");
+    std::fs::write(&outside_file, "outside content\n").unwrap();
+    symlink(&outside_file, &memory_path).unwrap();
+
+    let writer =
+        AgentScopedMemoryWriter::new(manager, "writer".to_string(), AgentMemoryWriteMode::Hybrid);
+    let write_result = writer.write_memory("MEMORY.md", "replacement", false).await;
+    assert!(write_result.is_err());
+    let delete_result = writer
+        .delete_memory("MEMORY.md", None, true, false, true)
+        .await;
+    assert!(delete_result.is_err());
+    assert_eq!(
+        std::fs::read_to_string(outside_file).unwrap(),
+        "outside content\n"
+    );
 }
 
 #[test]

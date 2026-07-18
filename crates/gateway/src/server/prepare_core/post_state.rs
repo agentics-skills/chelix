@@ -592,13 +592,6 @@ pub(super) async fn complete_startup(
                 FsBinaryPolicy::Reject => chelix_tools::fs::BinaryPolicy::Reject,
                 FsBinaryPolicy::Base64 => chelix_tools::fs::BinaryPolicy::Base64,
             };
-            let checkpoint_manager = if fs_cfg.checkpoint_before_mutation {
-                Some(Arc::new(chelix_tools::checkpoints::CheckpointManager::new(
-                    chelix_config::data_dir(),
-                )))
-            } else {
-                None
-            };
             let shared_fs_state = if fs_cfg.track_reads {
                 Some(chelix_tools::fs::new_fs_state(
                     fs_cfg.must_read_before_write,
@@ -612,7 +605,6 @@ pub(super) async fn complete_startup(
                 path_policy,
                 binary_policy,
                 respect_gitignore: fs_cfg.respect_gitignore,
-                checkpoint_manager,
                 sandbox_router: Some(Arc::clone(&sandbox_router)),
                 approval_manager: fs_cfg
                     .require_approval
@@ -856,12 +848,6 @@ pub(super) async fn complete_startup(
             &session_store,
             &session_metadata,
         );
-        tool_registry.register(Box::new(
-            chelix_tools::checkpoints::CheckpointsListTool::new(data_dir.clone()),
-        ));
-        tool_registry.register(Box::new(
-            chelix_tools::checkpoints::CheckpointRestoreTool::new(data_dir.clone()),
-        ));
 
         tool_registry.register(Box::new(chelix_tools::task_list::TaskListTool::new(
             &data_dir,

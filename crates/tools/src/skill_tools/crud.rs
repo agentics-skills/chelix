@@ -13,8 +13,8 @@ use {
 use chelix_metrics::{counter, labels, skills as skills_metrics};
 
 use {
-    super::helpers::{build_skill_md, write_skill},
-    crate::{checkpoints::CheckpointManager, error::Error},
+    super::helpers::{build_skill_md, ensure_not_symlink, write_skill},
+    crate::error::Error,
 };
 
 // ── CreateSkillTool ─────────────────────────────────────────
@@ -22,16 +22,13 @@ use {
 /// Tool that creates a new personal skill in `<data_dir>/skills/`.
 pub struct CreateSkillTool {
     data_dir: PathBuf,
-    checkpoints: CheckpointManager,
     usage_store: Option<SkillUsageStore>,
 }
 
 impl CreateSkillTool {
     pub fn new(data_dir: PathBuf) -> Self {
-        let checkpoints = CheckpointManager::new(data_dir.clone());
         Self {
             data_dir,
-            checkpoints,
             usage_store: None,
         }
     }
@@ -123,10 +120,6 @@ impl AgentTool for CreateSkillTool {
             .into());
         }
 
-        let checkpoint = self
-            .checkpoints
-            .checkpoint_path(&skill_dir, "create_skill")
-            .await?;
         let content = build_skill_md(name, description, body, &allowed_tools);
         write_skill(&skill_dir, &content).await?;
 
@@ -140,7 +133,6 @@ impl AgentTool for CreateSkillTool {
         Ok(json!({
             "created": true,
             "path": skill_dir.display().to_string(),
-            "checkpointId": checkpoint.id,
         }))
     }
 }
@@ -150,16 +142,13 @@ impl AgentTool for CreateSkillTool {
 /// Tool that updates an existing personal skill in `<data_dir>/skills/`.
 pub struct UpdateSkillTool {
     data_dir: PathBuf,
-    checkpoints: CheckpointManager,
     usage_store: Option<SkillUsageStore>,
 }
 
 impl UpdateSkillTool {
     pub fn new(data_dir: PathBuf) -> Self {
-        let checkpoints = CheckpointManager::new(data_dir.clone());
         Self {
             data_dir,
-            checkpoints,
             usage_store: None,
         }
     }
@@ -249,10 +238,6 @@ impl AgentTool for UpdateSkillTool {
             .into());
         }
 
-        let checkpoint = self
-            .checkpoints
-            .checkpoint_path(&skill_dir, "update_skill")
-            .await?;
         let content = build_skill_md(name, description, body, &allowed_tools);
         write_skill(&skill_dir, &content).await?;
 
@@ -266,7 +251,6 @@ impl AgentTool for UpdateSkillTool {
         Ok(json!({
             "updated": true,
             "path": skill_dir.display().to_string(),
-            "checkpointId": checkpoint.id,
         }))
     }
 }
@@ -276,16 +260,13 @@ impl AgentTool for UpdateSkillTool {
 /// Tool that deletes a personal skill from `<data_dir>/skills/`.
 pub struct DeleteSkillTool {
     data_dir: PathBuf,
-    checkpoints: CheckpointManager,
     usage_store: Option<SkillUsageStore>,
 }
 
 impl DeleteSkillTool {
     pub fn new(data_dir: PathBuf) -> Self {
-        let checkpoints = CheckpointManager::new(data_dir.clone());
         Self {
             data_dir,
-            checkpoints,
             usage_store: None,
         }
     }
@@ -335,6 +316,7 @@ impl AgentTool for DeleteSkillTool {
         }
 
         let skill_dir = self.skills_dir().join(name);
+        ensure_not_symlink(&skill_dir, "skill directory").await?;
 
         // Only allow deleting from the personal skills directory.
         let canonical_base = self
@@ -352,19 +334,12 @@ impl AgentTool for DeleteSkillTool {
             return Err(Error::message(format!("skill '{name}' not found")).into());
         }
 
-        let checkpoint = self
-            .checkpoints
-            .checkpoint_path(&skill_dir, "delete_skill")
-            .await?;
         tokio::fs::remove_dir_all(&skill_dir).await?;
 
         if let Some(ref store) = self.usage_store {
             store.remove(name).await;
         }
 
-        Ok(json!({
-            "deleted": true,
-            "checkpointId": checkpoint.id,
-        }))
+        Ok(json!({ "deleted": true }))
     }
 }

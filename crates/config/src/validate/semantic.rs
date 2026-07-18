@@ -824,7 +824,6 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
     // Unknown hook event names
     let valid_hook_events = [
         "BeforeAgentStart",
-        "AgentEnd",
         "BeforeLLMCall",
         "AfterLLMCall",
         "MessageReceived",

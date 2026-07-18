@@ -41,12 +41,7 @@ function pluralizeToolsCount(count: number, noun: string): string {
 export function toolsOverviewCategory(name: string | undefined): string {
 	if (typeof name !== "string" || !name) return "Core";
 	if (name.startsWith("mcp__")) return "MCP";
-	if (
-		name === "execute_command" ||
-		name.startsWith("node") ||
-		name.startsWith("sandbox") ||
-		name.includes("checkpoint")
-	) {
+	if (name === "execute_command" || name.startsWith("node") || name.startsWith("sandbox")) {
 		return "Execution";
 	}
 	if (name.startsWith("session") || name.startsWith("sessions_")) return "Sessions";

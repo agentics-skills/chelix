@@ -2236,7 +2236,6 @@ dependencies = [
  "chelix-metrics",
  "chelix-protocol",
  "chelix-splitter",
- "chelix-tools",
  "chrono",
  "directories",
  "futures",

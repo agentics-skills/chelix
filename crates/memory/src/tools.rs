@@ -5,7 +5,7 @@ use {async_trait::async_trait, chelix_agents::tool_registry::AgentTool, serde_js
 
 use crate::{
     runtime::MemoryRuntime,
-    writer::{remove_exact_text, validate_memory_path},
+    writer::{ensure_memory_target_not_symlink, remove_exact_text, validate_memory_path},
 };
 
 /// Tool: search memory with a natural language query.
@@ -192,9 +192,6 @@ impl AgentTool for MemorySaveTool {
             .ok_or_else(|| anyhow::anyhow!("missing 'content' parameter"))?;
         let file = params["file"].as_str().unwrap_or("MEMORY.md");
         let append = params["append"].as_bool().unwrap_or(true);
-        let checkpoint_id = checkpoint_memory_path(self.manager.as_ref(), file, "memory_save")
-            .await?
-            .id;
 
         let result = self.manager.write_memory(file, content, append).await?;
 
@@ -202,7 +199,6 @@ impl AgentTool for MemorySaveTool {
             "saved": true,
             "path": file,
             "bytes_written": result.bytes_written,
-            "checkpointId": result.checkpoint_id.or(Some(checkpoint_id)),
         }))
     }
 }
@@ -274,9 +270,7 @@ impl AgentTool for MemoryDeleteTool {
         }
 
         let path = resolve_memory_tool_path(self.manager.as_ref(), file)?;
-        let checkpoint_id = checkpoint_memory_path(self.manager.as_ref(), file, "memory_delete")
-            .await?
-            .id;
+        ensure_memory_target_not_symlink(&path).await?;
 
         if delete_file {
             let file_existed = tokio::fs::try_exists(&path).await?;
@@ -291,7 +285,6 @@ impl AgentTool for MemoryDeleteTool {
                 "file_existed": file_existed,
                 "index_removed": index_removed,
                 "bytes_written": 0,
-                "checkpointId": checkpoint_id,
             }));
         }
 
@@ -315,7 +308,6 @@ impl AgentTool for MemoryDeleteTool {
             "file_deleted": file_deleted,
             "matches_removed": removal.matches_removed,
             "bytes_written": if file_deleted { 0 } else { removal.content.len() },
-            "checkpointId": checkpoint_id,
         }))
     }
 }
@@ -325,22 +317,6 @@ fn resolve_memory_tool_path(manager: &dyn MemoryRuntime, file: &str) -> anyhow::
         .data_dir()
         .ok_or_else(|| anyhow::anyhow!("memory writes are disabled (no data_dir configured)"))?;
     Ok(validate_memory_path(data_dir, file)?)
-}
-
-async fn checkpoint_memory_path(
-    manager: &dyn MemoryRuntime,
-    file: &str,
-    reason: &str,
-) -> anyhow::Result<chelix_tools::checkpoints::CheckpointRecord> {
-    let path = resolve_memory_tool_path(manager, file)?;
-    let data_dir = manager
-        .data_dir()
-        .ok_or_else(|| anyhow::anyhow!("memory writes are disabled (no data_dir configured)"))?;
-    let checkpoints = chelix_tools::checkpoints::CheckpointManager::new(data_dir.to_path_buf());
-    checkpoints
-        .checkpoint_path(&path, reason)
-        .await
-        .map_err(anyhow::Error::from)
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -649,14 +625,12 @@ mod tests {
             .unwrap();
         assert_eq!(r1["saved"], json!(true));
         assert_eq!(r1["path"], json!("MEMORY.md"));
-        assert!(r1["checkpointId"].is_string());
 
         let r2 = tool
             .execute(json!({ "content": "Second memory about database." }))
             .await
             .unwrap();
         assert_eq!(r2["saved"], json!(true));
-        assert!(r2["checkpointId"].is_string());
 
         let content = std::fs::read_to_string(data_dir.join("MEMORY.md")).unwrap();
         assert!(content.contains("First memory"), "should have first write");
@@ -793,6 +767,35 @@ mod tests {
         assert!(result.is_err(), "should reject absolute paths");
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_memory_mutations_reject_symlink_target() {
+        use std::os::unix::fs::symlink;
+
+        let (manager, tmp) = setup_manager().await;
+        let outside = tempfile::tempdir().unwrap();
+        let outside_file = outside.path().join("memory.md");
+        std::fs::write(&outside_file, "outside content\n").unwrap();
+        let memory_path = tmp.path().join("MEMORY.md");
+        symlink(&outside_file, &memory_path).unwrap();
+
+        let save_tool = MemorySaveTool::new(manager.clone());
+        let save_result = save_tool
+            .execute(json!({ "content": "replacement", "append": false }))
+            .await;
+        assert!(save_result.is_err());
+
+        let delete_tool = MemoryDeleteTool::new(manager);
+        let delete_result = delete_tool
+            .execute(json!({ "file": "MEMORY.md", "delete_file": true }))
+            .await;
+        assert!(delete_result.is_err());
+        assert_eq!(
+            std::fs::read_to_string(outside_file).unwrap(),
+            "outside content\n"
+        );
+    }
+
     /// Invalid file names are rejected.
     #[tokio::test]
     async fn test_memory_save_rejects_invalid_names() {
@@ -901,7 +904,6 @@ mod tests {
         assert_eq!(result["deleted"], json!(true));
         assert_eq!(result["matches_removed"], json!(1));
         assert_eq!(result["file_deleted"], json!(false));
-        assert!(result["checkpointId"].is_string());
 
         let updated = std::fs::read_to_string(data_dir.join("MEMORY.md")).unwrap();
         assert!(!updated.contains("spicy food"));
@@ -939,7 +941,6 @@ mod tests {
 
         assert_eq!(result["deleted"], json!(true));
         assert_eq!(result["file_deleted"], json!(true));
-        assert!(result["checkpointId"].is_string());
         assert!(!data_dir.join("memory").join("notes.md").exists());
         let search = manager.search("temporary note", 5).await.unwrap();
         assert!(

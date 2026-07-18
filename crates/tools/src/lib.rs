@@ -7,11 +7,9 @@
 //! per-group, per-sender, sandbox).
 
 pub mod approval;
-pub mod auto_checkpoint;
 pub mod branch_session;
 pub mod browser;
 pub mod calc;
-pub mod checkpoints;
 mod client;
 pub mod command;
 #[cfg(test)]

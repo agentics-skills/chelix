@@ -377,7 +377,7 @@ fn test_docker_mount_args_include_data_dir_rw() {
 fn test_data_mount_exposes_agent_state_paths_in_sandbox_namespace() {
     let temp_dir = tempfile::tempdir().unwrap();
     let host_data_dir = temp_dir.path().join("chelix-data");
-    for relative in ["memory", "logs", "skills", "sessions", "checkpoints"] {
+    for relative in ["memory", "logs", "skills", "sessions"] {
         std::fs::create_dir_all(host_data_dir.join(relative)).unwrap();
     }
     for relative in ["AGENTS.md", "SOUL.md", "IDENTITY.md"] {
@@ -397,7 +397,6 @@ fn test_data_mount_exposes_agent_state_paths_in_sandbox_namespace() {
         "logs",
         "skills",
         "sessions",
-        "checkpoints",
         "AGENTS.md",
         "SOUL.md",
         "IDENTITY.md",

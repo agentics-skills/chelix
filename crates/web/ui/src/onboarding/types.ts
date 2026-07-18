@@ -30,4 +30,3 @@ export interface KeyHelp {
 export interface ProbeResult {
 	error?: string;
 }
-

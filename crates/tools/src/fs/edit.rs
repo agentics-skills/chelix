@@ -19,7 +19,6 @@ use chelix_metrics::{counter, labels, tools as tools_metrics};
 use crate::{
     Result,
     approval::{ApprovalBroadcaster, ApprovalManager},
-    checkpoints::CheckpointManager,
     error::Error,
     fs::{
         sandbox_bridge::SandboxReadResult,
@@ -230,7 +229,6 @@ fn finish_edit(
 pub struct EditTool {
     fs_state: Option<FsState>,
     path_policy: Option<FsPathPolicy>,
-    checkpoint_manager: Option<Arc<CheckpointManager>>,
     sandbox_router: Option<Arc<SandboxRouter>>,
     approval_manager: Option<Arc<ApprovalManager>>,
     broadcaster: Option<Arc<dyn ApprovalBroadcaster>>,
@@ -253,14 +251,6 @@ impl EditTool {
     #[must_use]
     pub fn with_path_policy(mut self, policy: FsPathPolicy) -> Self {
         self.path_policy = Some(policy);
-        self
-    }
-
-    /// Attach a [`CheckpointManager`] so Edit backs up the target file
-    /// before mutating.
-    #[must_use]
-    pub fn with_checkpoint_manager(mut self, manager: Arc<CheckpointManager>) -> Self {
-        self.checkpoint_manager = Some(manager);
         self
     }
 
@@ -357,7 +347,6 @@ impl EditTool {
                             "replacements": outcome.replacements,
                             "replace_all": replace_all,
                             "recovered_via_crlf": outcome.recovered_via_crlf,
-                            "checkpoint_id": Value::Null,
                         }))
                     },
                 )
@@ -411,13 +400,6 @@ impl EditTool {
             )
             .await?;
 
-            // Optional checkpoint before the mutation lands.
-            let checkpoint_id = if let Some(ref manager) = self.checkpoint_manager {
-                Some(manager.checkpoint_path(&canonical, "Edit").await?.id)
-            } else {
-                None
-            };
-
             persist_atomic(&canonical, &outcome.content).await?;
 
             note_fs_mutation(self.fs_state.as_ref(), session_key, &canonical_str);
@@ -435,7 +417,6 @@ impl EditTool {
                 "replacements": outcome.replacements,
                 "replace_all": replace_all,
                 "recovered_via_crlf": outcome.recovered_via_crlf,
-                "checkpoint_id": checkpoint_id,
             }))
         })
         .await

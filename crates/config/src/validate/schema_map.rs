@@ -248,7 +248,6 @@ pub(super) fn build_schema_map() -> KnownKeys {
                     ("max_read_bytes", Leaf),
                     ("binary_policy", Leaf),
                     ("respect_gitignore", Leaf),
-                    ("checkpoint_before_mutation", Leaf),
                     ("context_window_tokens", Leaf),
                 ])),
             ),

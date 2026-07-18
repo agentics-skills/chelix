@@ -532,8 +532,19 @@ test.describe("Chat input and slash commands", () => {
 				timeout: 10_000,
 			})
 			.toBeGreaterThan(0);
-		await expect(slashMenu).toContainText("/sh");
-		await expect(slashMenu).toContainText("/mode");
+		await expect(items.locator(".slash-name")).toHaveText([
+			"/btw",
+			"/clear",
+			"/compact",
+			"/context",
+			"/fast",
+			"/fork",
+			"/insights",
+			"/mode",
+			"/new",
+			"/reset",
+			"/sh",
+		]);
 	});
 
 	test("slash menu filters as user types", async ({ page }) => {

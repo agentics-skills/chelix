@@ -123,10 +123,7 @@ function handleModelsUpdatedEvent(payload: unknown): void {
 function fetchProviders(): Promise<void> {
 	loading.value = true;
 	testResult.value = null;
-	return Promise.all([
-		sendRpc<ModelInfo[]>("models.list_all", {}),
-		sendRpc<ProviderInfo[]>("providers.available", {}),
-	])
+	return Promise.all([sendRpc<ModelInfo[]>("models.list_all", {}), sendRpc<ProviderInfo[]>("providers.available", {})])
 		.then(([modelsRes, providersRes]) => {
 			loading.value = false;
 			const providerMeta = new Map<string, ProviderInfo>();
@@ -138,10 +135,7 @@ function fetchProviders(): Promise<void> {
 			providerMetaSig.value = providerMeta;
 
 			configuredModels.value = modelsRes?.ok ? modelsRes.payload || [] : [];
-			const providerNames = new Set([
-				...providerMeta.keys(),
-				...configuredModels.value.map((model) => model.provider),
-			]);
+			const providerNames = new Set([...providerMeta.keys(), ...configuredModels.value.map((model) => model.provider)]);
 			updateNavCount("providers", providerNames.size);
 		})
 		.catch(() => {
@@ -420,9 +414,7 @@ function ProviderSection({ group }: { group: ProviderGroup }): VNode {
 						<div key={model.id} className="flex items-start justify-between gap-3 py-1">
 							<div className="min-w-0 flex-1">
 								<div className="flex items-center gap-2 min-w-0">
-									<div className="text-sm font-medium text-[var(--text-strong)] truncate">
-										{model.display_name}
-									</div>
+									<div className="text-sm font-medium text-[var(--text-strong)] truncate">{model.display_name}</div>
 									{model.preferred ? <span className="recommended-badge">{t("providers:preferred")}</span> : null}
 									{model.unsupported ? (
 										<span

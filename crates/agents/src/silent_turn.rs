@@ -91,7 +91,6 @@ impl AgentTool for MemoryWriteFileTool {
         let MemoryWriteResult {
             location,
             bytes_written,
-            checkpoint_id,
         } = self.writer.write_memory(&path_str, content, append).await?;
 
         self.written_paths
@@ -103,7 +102,6 @@ impl AgentTool for MemoryWriteFileTool {
         Ok(serde_json::json!({
             "ok": true,
             "path": location,
-            "checkpointId": checkpoint_id,
         }))
     }
 }
@@ -449,7 +447,6 @@ mod tests {
             Ok(MemoryWriteResult {
                 location: path.to_string_lossy().into_owned(),
                 bytes_written: bytes,
-                checkpoint_id: None,
             })
         }
     }

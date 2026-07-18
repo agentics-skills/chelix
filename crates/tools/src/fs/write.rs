@@ -19,7 +19,6 @@ use std::sync::Arc;
 use crate::{
     Result,
     approval::{ApprovalBroadcaster, ApprovalManager},
-    checkpoints::CheckpointManager,
     error::Error,
     fs::shared::{
         FsPathPolicy, FsState, canonicalize_for_create, enforce_must_read_before_write,
@@ -35,7 +34,6 @@ use crate::{
 pub struct WriteTool {
     fs_state: Option<FsState>,
     path_policy: Option<FsPathPolicy>,
-    checkpoint_manager: Option<Arc<CheckpointManager>>,
     sandbox_router: Option<Arc<SandboxRouter>>,
     approval_manager: Option<Arc<ApprovalManager>>,
     broadcaster: Option<Arc<dyn ApprovalBroadcaster>>,
@@ -58,14 +56,6 @@ impl WriteTool {
     #[must_use]
     pub fn with_path_policy(mut self, policy: FsPathPolicy) -> Self {
         self.path_policy = Some(policy);
-        self
-    }
-
-    /// Attach a [`CheckpointManager`] so Write backs up the target
-    /// file before overwriting. Does nothing for new files.
-    #[must_use]
-    pub fn with_checkpoint_manager(mut self, manager: Arc<CheckpointManager>) -> Self {
-        self.checkpoint_manager = Some(manager);
         self
     }
 
@@ -136,7 +126,6 @@ impl WriteTool {
                         Ok(json!({
                             "file_path": file_path,
                             "bytes_written": content.len(),
-                            "checkpoint_id": Value::Null,
                         }))
                     },
                 )
@@ -161,7 +150,6 @@ impl WriteTool {
 
         with_fs_mutation_lock(host_fs_operation_lock_key(&canonical), async {
             let target_exists = tokio::fs::try_exists(&canonical).await.unwrap_or(false);
-            let mut checkpoint_id: Option<String> = None;
 
             if target_exists {
                 // Reject symlinks so we don't unknowingly write through to
@@ -186,12 +174,6 @@ impl WriteTool {
                 &approval_request,
             )
             .await?;
-
-            // Optional checkpoint backup before the mutation lands.
-            if target_exists && let Some(ref manager) = self.checkpoint_manager {
-                let record = manager.checkpoint_path(&canonical, "Write").await?;
-                checkpoint_id = Some(record.id);
-            }
 
             let parent = canonical
                 .parent()
@@ -238,7 +220,6 @@ impl WriteTool {
             Ok(json!({
                 "file_path": canonical.to_string_lossy(),
                 "bytes_written": content.len(),
-                "checkpoint_id": checkpoint_id,
             }))
         })
         .await
