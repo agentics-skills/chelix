@@ -356,6 +356,24 @@ default sandbox persistence paths. The guest path remains the agent's absolute
 for Docker-in-Docker deployments where mount auto-detection is unavailable or
 ambiguous.
 
+## Managed tools service
+
+Filesystem tools that require native executables run through the managed
+`chelix-tools-service` process. The service is the long-running workload in
+Docker, Podman, and Apple Container sandboxes; `ripgrep` is installed in the
+sandbox image and executed there for sandbox-routed sessions.
+
+Chelix also starts a host-side service for sessions routed to the host. Seeing
+that host process while sandboxing is enabled is expected and does not change a
+sandboxed session's route.
+
+Docker and Podman endpoint readiness is checked from Chelix's own network
+namespace. Chelix tries the random host-loopback publication and inspect-derived
+container addresses, then retains the first endpoint that passes authenticated
+protocol health. If no endpoint becomes ready, Chelix removes the failed
+container. See [Managed Tools Service](tools-service.md) for the protocol,
+process lifecycle, deterministic image identity, and troubleshooting commands.
+
 ## Container network
 
 Docker and Podman sandboxes use the configured container network directly. The
@@ -392,6 +410,12 @@ pids_max = 256
 ```
 
 How resource limits are applied depends on the backend:
+
+Chelix prepares the current deterministic sandbox image during gateway startup
+and waits for every available image-building backend. The image identity
+includes the generated Dockerfile and the exact Linux `chelix-tools-service`
+bytes copied into it. A missing artifact or failed image build aborts startup;
+there is no lazy first-call rebuild.
 
 Docker and Podman sandboxes use one CPU by default. Set `cpu_quota` to override
 that launch limit.

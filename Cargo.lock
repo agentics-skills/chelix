@@ -2775,6 +2775,7 @@ dependencies = [
  "chelix-cron",
  "chelix-media",
  "chelix-metrics",
+ "chelix-protocol",
  "chelix-providers",
  "chelix-service-traits",
  "chelix-sessions",
@@ -2812,6 +2813,24 @@ dependencies = [
  "wasmtime",
  "wasmtime-wasi",
  "which 8.0.2",
+]
+
+[[package]]
+name = "chelix-tools-service"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "base64 0.22.1",
+ "chelix-protocol",
+ "clap",
+ "reqwest 0.13.2",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

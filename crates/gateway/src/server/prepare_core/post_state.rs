@@ -79,6 +79,7 @@ pub(super) struct PostStateInputs {
     pub session_state_store: Arc<chelix_sessions::state_store::SessionStateStore>,
     pub agent_persona_store: Arc<crate::agent_persona::AgentPersonaStore>,
     pub sandbox_router: Arc<chelix_tools::sandbox::SandboxRouter>,
+    pub tools_service: Arc<dyn chelix_tools::tools_service::ToolsService>,
     pub cron_service: Arc<chelix_cron::service::CronService>,
     pub deferred_state: Arc<tokio::sync::OnceCell<Arc<GatewayState>>>,
     pub startup_mem_probe: StartupMemProbe,
@@ -246,6 +247,7 @@ pub(super) async fn complete_startup(
         session_state_store,
         agent_persona_store: _agent_persona_store,
         sandbox_router,
+        tools_service,
         cron_service,
         deferred_state,
         mut startup_mem_probe,
@@ -567,7 +569,9 @@ pub(super) async fn complete_startup(
             )),
         ));
         tool_registry.register(Box::new(chelix_tools::calc::CalcTool::new()));
-        tool_registry.register(Box::new(chelix_tools::ripgrep::RipgrepTool::new()));
+        tool_registry.register(Box::new(chelix_tools::ripgrep::RipgrepTool::new(
+            Arc::clone(&tools_service),
+        )));
         #[cfg(feature = "fs-tools")]
         {
             use chelix_config::schema::FsBinaryPolicy;

@@ -1,7 +1,21 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-use std::{env, sync::atomic::Ordering};
+use std::env;
 
-use super::*;
+use chelix_protocol::{TOOLS_SERVICE_HEALTH_PATH, TOOLS_SERVICE_PROTOCOL_VERSION};
+
+use {
+    super::*,
+    crate::sandbox::docker::{
+        force_remove_container, parse_container_addresses, select_reachable_tools_service_endpoint,
+        tools_service_endpoint_candidates, tools_service_inspect_template,
+    },
+};
+
+const TEST_TOOLS_SERVICE_BYTES: &[u8] = b"test-tools-service";
+
+fn test_sandbox_image_tag(repo: &str, base: &str, packages: &[String]) -> String {
+    sandbox_image_tag(repo, base, packages, TEST_TOOLS_SERVICE_BYTES)
+}
 
 #[test]
 fn test_create_sandbox_off_uses_no_sandbox() {
@@ -460,25 +474,6 @@ async fn test_resolve_image_config_override() {
 }
 
 #[tokio::test]
-async fn test_resolve_image_nowait_ignores_active_build() {
-    let config = SandboxConfig {
-        image: Some("my-org/image:v1".into()),
-        ..Default::default()
-    };
-    let router = SandboxRouter::new(config);
-    router.building_flag.store(true, Ordering::Relaxed);
-
-    let img = tokio::time::timeout(
-        std::time::Duration::from_millis(50),
-        router.resolve_image_nowait("main", None),
-    )
-    .await
-    .expect("resolve_image_nowait must not wait for background image builds");
-
-    assert_eq!(img, "my-org/image:v1");
-}
-
-#[tokio::test]
 async fn test_remove_image_override() {
     let config = SandboxConfig::default();
     let router = SandboxRouter::new(config);
@@ -491,10 +486,271 @@ async fn test_remove_image_override() {
 }
 
 #[test]
+fn test_tools_service_inspect_template_matches_backend_schema() {
+    assert_eq!(
+        tools_service_inspect_template(BackendKind::Docker),
+        "{{range .NetworkSettings.Networks}}{{println .IPAddress}}{{end}}"
+    );
+    assert_eq!(
+        tools_service_inspect_template(BackendKind::Podman),
+        "{{println .NetworkSettings.IPAddress}}"
+    );
+}
+
+#[test]
+fn test_tools_service_endpoint_candidates_include_host_and_container_transports() {
+    let candidates =
+        tools_service_endpoint_candidates("127.0.0.1:32769\n", "10.222.1.11\n", "test-token");
+
+    assert_eq!(
+        candidates
+            .iter()
+            .map(|endpoint| endpoint.base_url.as_str())
+            .collect::<Vec<_>>(),
+        vec!["http://127.0.0.1:32769", "http://10.222.1.11:43271"]
+    );
+    assert!(
+        candidates
+            .iter()
+            .all(|endpoint| endpoint.token == "test-token")
+    );
+}
+
+#[test]
+fn test_parse_container_addresses_ignores_empty_invalid_and_unspecified_values() {
+    assert_eq!(
+        parse_container_addresses("\nnot-an-address\n0.0.0.0\n::\n172.20.0.4\n"),
+        vec!["172.20.0.4".parse::<std::net::IpAddr>().unwrap()]
+    );
+}
+
+#[tokio::test]
+async fn test_select_reachable_tools_service_endpoint_skips_unreachable_candidate() {
+    let mut server = mockito::Server::new_async().await;
+    let health = server
+        .mock("GET", TOOLS_SERVICE_HEALTH_PATH)
+        .match_header("authorization", "Bearer test-token")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(format!(
+            "{{\"protocolVersion\":{TOOLS_SERVICE_PROTOCOL_VERSION}}}"
+        ))
+        .create_async()
+        .await;
+    let unreachable = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let unreachable_address = unreachable.local_addr().unwrap();
+    drop(unreachable);
+    let candidates = vec![
+        ToolsServiceEndpoint {
+            base_url: format!("http://{unreachable_address}"),
+            token: "test-token".into(),
+        },
+        ToolsServiceEndpoint {
+            base_url: server.url(),
+            token: "test-token".into(),
+        },
+    ];
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(1))
+        .build()
+        .unwrap();
+
+    let selected = select_reachable_tools_service_endpoint(&client, &candidates)
+        .await
+        .unwrap();
+
+    assert_eq!(selected.base_url, server.url());
+    health.assert_async().await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn test_discover_tools_service_endpoint_runs_oci_discovery_once() {
+    use {
+        std::os::unix::fs::PermissionsExt,
+        tokio::io::{AsyncReadExt, AsyncWriteExt},
+    };
+
+    let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .await
+        .unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let health_requests = Arc::new(AtomicUsize::new(0));
+    let health_requests_task = Arc::clone(&health_requests);
+    let server = tokio::spawn(async move {
+        loop {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0_u8; 2048];
+            let _ = socket.read(&mut request).await.unwrap();
+            let attempt = health_requests_task.fetch_add(1, Ordering::SeqCst) + 1;
+            let (status, body) = if attempt < 3 {
+                ("503 Service Unavailable", "{\"error\":\"starting\"}")
+            } else {
+                ("200 OK", "{\"protocolVersion\":1}")
+            };
+            let response = format!(
+                "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+            if attempt >= 3 {
+                break;
+            }
+        }
+    });
+
+    let directory = tempfile::tempdir().unwrap();
+    let cli = directory.path().join("container-cli");
+    let calls = directory.path().join("container-cli.calls");
+    std::fs::write(
+        &cli,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"${{0}}.calls\"\ncase \"$1\" in\n  port) printf '127.0.0.1:{port}\\n' ;;\n  inspect) printf '\\n' ;;\n  *) exit 64 ;;\nesac\n"
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let cli: &'static str = Box::leak(cli.to_string_lossy().into_owned().into_boxed_str());
+    let sandbox = DockerSandbox::with_cli(SandboxConfig::default(), cli);
+
+    let endpoint = sandbox
+        .discover_tools_service_endpoint("sandbox-name", "test-token".into())
+        .await
+        .unwrap();
+
+    assert_eq!(endpoint.base_url, format!("http://127.0.0.1:{port}"));
+    assert_eq!(health_requests.load(Ordering::SeqCst), 3);
+    assert_eq!(std::fs::read_to_string(calls).unwrap(), "port\ninspect\n");
+    server.await.unwrap();
+}
+
+#[cfg(unix)]
+async fn spawn_single_health_server() -> (u16, tokio::task::JoinHandle<()>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .await
+        .unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let task = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = [0_u8; 2048];
+        let _ = socket.read(&mut request).await.unwrap();
+        let body = format!("{{\"protocolVersion\":{TOOLS_SERVICE_PROTOCOL_VERSION}}}");
+        let response = format!(
+            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        socket.write_all(response.as_bytes()).await.unwrap();
+    });
+    (port, task)
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn test_ensure_ready_recreates_stopped_container_with_fresh_endpoint() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let (first_port, first_health) = spawn_single_health_server().await;
+    let (second_port, second_health) = spawn_single_health_server().await;
+    let directory = tempfile::tempdir().unwrap();
+    let cli = directory.path().join("container-cli");
+    let state = directory.path().join("container-cli.state");
+    let generation = directory.path().join("container-cli.generation");
+    let removals = directory.path().join("container-cli.removals");
+    std::fs::write(&state, "missing\n").unwrap();
+    std::fs::write(&generation, "0\n").unwrap();
+    std::fs::write(&removals, "0\n").unwrap();
+    std::fs::write(
+        &cli,
+        format!(
+            "#!/bin/sh\nstate_file=\"${{0}}.state\"\ngeneration_file=\"${{0}}.generation\"\nremovals_file=\"${{0}}.removals\"\ncase \"$1\" in\n  image) exit 0 ;;\n  inspect)\n    if [ \"$3\" = '{{{{.State.Running}}}}' ]; then\n      if [ \"$(cat \"$state_file\")\" = running ]; then printf 'true\\n'; else printf 'false\\n'; fi\n    else\n      printf '\\n'\n    fi\n    ;;\n  run)\n    if [ \"$(cat \"$state_file\")\" != missing ]; then\n      printf 'Error response from daemon: the container name is already in use\\n' >&2\n      exit 125\n    fi\n    next=$(( $(cat \"$generation_file\") + 1 ))\n    printf '%s\\n' \"$next\" > \"$generation_file\"\n    printf 'running\\n' > \"$state_file\"\n    ;;\n  port)\n    if [ \"$(cat \"$generation_file\")\" = 1 ]; then printf '127.0.0.1:{first_port}\\n'; else printf '127.0.0.1:{second_port}\\n'; fi\n    ;;\n  rm)\n    next=$(( $(cat \"$removals_file\") + 1 ))\n    printf '%s\\n' \"$next\" > \"$removals_file\"\n    printf 'missing\\n' > \"$state_file\"\n    ;;\n  *) exit 64 ;;\nesac\n"
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let cli: &'static str = Box::leak(cli.to_string_lossy().into_owned().into_boxed_str());
+    let sandbox = DockerSandbox::with_cli(
+        SandboxConfig {
+            home_persistence: HomePersistence::Off,
+            host_data_dir: Some(directory.path().join("data")),
+            image: Some("test-image:latest".into()),
+            ..Default::default()
+        },
+        cli,
+    );
+    let id = SandboxId {
+        scope: SandboxScope::Session,
+        key: "oom-recovery".into(),
+    };
+
+    sandbox.ensure_ready(&id, None).await.unwrap();
+    let first_endpoint = sandbox.tools_service_endpoint(&id).await.unwrap();
+    std::fs::write(&state, "stopped\n").unwrap();
+
+    sandbox.ensure_ready(&id, None).await.unwrap();
+    let second_endpoint = sandbox.tools_service_endpoint(&id).await.unwrap();
+
+    assert_eq!(
+        first_endpoint.base_url,
+        format!("http://127.0.0.1:{first_port}")
+    );
+    assert_eq!(
+        second_endpoint.base_url,
+        format!("http://127.0.0.1:{second_port}")
+    );
+    assert_ne!(first_endpoint.token, second_endpoint.token);
+    assert_eq!(std::fs::read_to_string(generation).unwrap(), "2\n");
+    assert_eq!(std::fs::read_to_string(removals).unwrap(), "1\n");
+    first_health.await.unwrap();
+    second_health.await.unwrap();
+    sandbox.cleanup(&id).await.unwrap();
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn test_force_remove_container_uses_rm_force_arguments() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let directory = tempfile::tempdir().unwrap();
+    let cli = directory.path().join("container-cli");
+    let arguments = directory.path().join("container-cli.args");
+    std::fs::write(&cli, "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"${0}.args\"\n").unwrap();
+    std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    force_remove_container(cli.to_str().unwrap(), "sandbox-name")
+        .await
+        .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(arguments).unwrap(),
+        "rm\n-f\nsandbox-name\n"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn test_force_remove_container_reports_nonzero_status() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let directory = tempfile::tempdir().unwrap();
+    let cli = directory.path().join("container-cli");
+    std::fs::write(&cli, "#!/bin/sh\nprintf 'cleanup denied\\n' >&2\nexit 23\n").unwrap();
+    std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let error = force_remove_container(cli.to_str().unwrap(), "sandbox-name")
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("cleanup denied"));
+    assert!(error.to_string().contains("sandbox-name"));
+}
+
+#[test]
 fn test_docker_image_tag_deterministic() {
     let packages = vec!["curl".into(), "git".into(), "wget".into()];
-    let tag1 = sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &packages);
-    let tag2 = sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &packages);
+    let tag1 = test_sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &packages);
+    let tag2 = test_sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &packages);
     assert_eq!(tag1, tag2);
     assert!(tag1.starts_with("chelix-main-sandbox:"));
 }
@@ -504,8 +760,8 @@ fn test_docker_image_tag_order_independent() {
     let p1 = vec!["curl".into(), "git".into()];
     let p2 = vec!["git".into(), "curl".into()];
     assert_eq!(
-        sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p1),
-        sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p2),
+        test_sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p1),
+        test_sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p2),
     );
 }
 
@@ -514,8 +770,8 @@ fn test_docker_image_tag_normalizes_whitespace_and_duplicates() {
     let p1 = vec!["curl".into(), "git".into(), "curl".into()];
     let p2 = vec![" git ".into(), "curl".into()];
     assert_eq!(
-        sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p1),
-        sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p2),
+        test_sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p1),
+        test_sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p2),
     );
 }
 
@@ -523,7 +779,7 @@ fn test_docker_image_tag_normalizes_whitespace_and_duplicates() {
 fn test_sandbox_image_dockerfile_creates_home_in_install_layer() {
     let dockerfile = sandbox_image_dockerfile("ubuntu:26.04", &["curl".into()]);
     assert!(dockerfile.contains(
-        "RUN apt-get update -qq && apt-get install -y -qq curl && mkdir -p /home/sandbox && sed -i 's#^\\(root:[^:]*:[^:]*:[^:]*:[^:]*:\\)[^:]*:#\\1/home/sandbox:#' /etc/passwd"
+        "RUN apt-get update -qq && apt-get install -y -qq curl ripgrep && mkdir -p /home/sandbox && sed -i 's#^\\(root:[^:]*:[^:]*:[^:]*:[^:]*:\\)[^:]*:#\\1/home/sandbox:#' /etc/passwd"
     ));
     assert!(!dockerfile.contains("RUN mkdir -p /home/sandbox\n"));
 }
@@ -601,8 +857,8 @@ fn test_sandbox_image_dockerfile_no_gh_repo_without_gh() {
 #[test]
 fn test_docker_image_tag_changes_with_base() {
     let packages = vec!["curl".into()];
-    let t1 = sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &packages);
-    let t2 = sandbox_image_tag("chelix-main-sandbox", "ubuntu:24.04", &packages);
+    let t1 = test_sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &packages);
+    let t2 = test_sandbox_image_tag("chelix-main-sandbox", "ubuntu:24.04", &packages);
     assert_ne!(t1, t2);
 }
 
@@ -610,48 +866,27 @@ fn test_docker_image_tag_changes_with_base() {
 fn test_docker_image_tag_changes_with_packages() {
     let p1 = vec!["curl".into()];
     let p2 = vec!["curl".into(), "git".into()];
-    let t1 = sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p1);
-    let t2 = sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p2);
+    let t1 = test_sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p1);
+    let t2 = test_sandbox_image_tag("chelix-main-sandbox", "ubuntu:26.04", &p2);
     assert_ne!(t1, t2);
 }
 
 #[test]
-fn test_rebuildable_sandbox_image_tag_requires_packages() {
-    let tag = rebuildable_sandbox_image_tag(
-        "chelix-main-sandbox:deadbeef",
-        "chelix-main-sandbox",
-        "ubuntu:26.04",
-        &[],
-    );
-    assert!(tag.is_none());
-}
-
-#[test]
-fn test_rebuildable_sandbox_image_tag_requires_local_repo_prefix() {
-    let tag =
-        rebuildable_sandbox_image_tag("ubuntu:26.04", "chelix-main-sandbox", "ubuntu:26.04", &[
-            "curl".into(),
-        ]);
-    assert!(tag.is_none());
-}
-
-#[test]
-fn test_rebuildable_sandbox_image_tag_returns_deterministic_tag() {
-    let packages = vec!["curl".into(), "git".into()];
-    let tag = rebuildable_sandbox_image_tag(
-        "chelix-main-sandbox:oldtag",
+fn test_docker_image_tag_changes_with_tools_service_bytes() {
+    let packages = vec!["curl".into()];
+    let first = sandbox_image_tag(
         "chelix-main-sandbox",
         "ubuntu:26.04",
         &packages,
+        b"first-tools-service",
     );
-    assert_eq!(
-        tag,
-        Some(sandbox_image_tag(
-            "chelix-main-sandbox",
-            "ubuntu:26.04",
-            &packages
-        ))
+    let second = sandbox_image_tag(
+        "chelix-main-sandbox",
+        "ubuntu:26.04",
+        &packages,
+        b"second-tools-service",
     );
+    assert_ne!(first, second);
 }
 
 #[tokio::test]
@@ -748,13 +983,13 @@ async fn test_sandbox_router_backend_image_override_is_scoped() {
 
     assert_eq!(
         router
-            .resolve_image_for_backend_nowait("session:abc", None, "docker")
+            .resolve_image_for_backend("session:abc", None, "docker")
             .await,
         "docker:built"
     );
     assert_eq!(
         router
-            .resolve_image_for_backend_nowait("session:abc", None, "restricted-host")
+            .resolve_image_for_backend("session:abc", None, "restricted-host")
             .await,
         "restricted:built"
     );
@@ -764,13 +999,13 @@ async fn test_sandbox_router_backend_image_override_is_scoped() {
         .await;
     assert_eq!(
         router
-            .resolve_image_for_backend_nowait("session:abc", None, "restricted-host")
+            .resolve_image_for_backend("session:abc", None, "restricted-host")
             .await,
         "session:built"
     );
     assert_eq!(
         router
-            .resolve_image_for_backend_nowait("session:abc", Some("skill:built"), "docker")
+            .resolve_image_for_backend("session:abc", Some("skill:built"), "docker")
             .await,
         "skill:built"
     );
@@ -951,7 +1186,7 @@ async fn test_podman_build_image_exists_in_store() {
 
     let sandbox = DockerSandbox::podman(SandboxConfig::default());
     let packages = vec!["curl".into()];
-    let tag = sandbox_image_tag(sandbox.image_repo(), "ubuntu:26.04", &packages);
+    let tag = test_sandbox_image_tag(sandbox.image_repo(), "ubuntu:26.04", &packages);
 
     // Remove any pre-existing image so we exercise the full build path.
     let _ = tokio::process::Command::new("podman")

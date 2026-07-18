@@ -480,7 +480,7 @@ pub(in crate::channel_events) async fn handle_sandbox(
                 Some(img) if !img.is_empty() => img,
                 _ => {
                     if let Some(ref router) = state.sandbox_router {
-                        router.resolve_default_image_nowait().await
+                        router.default_image().await
                     } else {
                         chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string()
                     }

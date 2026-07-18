@@ -5,14 +5,16 @@ Running an AI assistant on your own machine or server is still new territory. Tr
 ```
 
 <div style="text-align: center; margin: 2em 0;">
-<strong style="font-size: 1.2em;">A secure persistent personal agent server written in Rust.<br>One binary, no runtime, no npm.</strong>
+<strong style="font-size: 1.2em;">A secure persistent personal agent server written in Rust.<br>Native gateway and managed services, no Node.js or npm runtime.</strong>
 </div>
 
 > Chelix is a fork of [Chelix](https://github.com/agentics-skills/chelix).
 
-Chelix compiles your entire AI gateway — web UI, LLM providers, tools, and all
-assets — into a single self-contained executable. There's no Node.js to babysit,
-no `node_modules` to sync, no V8 garbage collector introducing latency spikes.
+Chelix compiles the AI gateway and web assets into native Rust executables. The
+gateway manages a required `chelix-tools-service` sidecar for native filesystem
+tools, and local embeddings use a separate optional managed service. There is no
+Node.js process to babysit, no `node_modules` to sync, and no V8 garbage collector
+introducing latency spikes.
 
 ```bash
 # Quick install (macOS / Linux)
@@ -23,19 +25,19 @@ curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/insta
 
 | Feature             | Chelix                   | Other Solutions        |
 | ------------------- | ------------------------ | ---------------------- |
-| **Deployment**      | Single binary            | Node.js + dependencies |
+| **Deployment**      | Native gateway + managed services | Node.js + dependencies |
 | **Memory Safety**   | Rust ownership           | Garbage collection     |
 | **Secret Handling** | Zeroed on drop           | "Eventually collected" |
 | **Sandbox**         | Docker + Apple Container | Docker only            |
-| **Startup**         | Milliseconds             | Seconds                |
+| **Startup**         | Awaited service and sandbox readiness | Deferred setup          |
 
 ## Key Features
 
 - **Multiple LLM Providers** — Anthropic, OpenAI, Google Gemini, xAI,
   OpenRouter, Moonshot, Z.AI, and more
 - **Streaming-First** — Responses appear as tokens arrive, not after completion
-- **Sandboxed Execution** — Commands run in isolated containers (Docker or Apple
-  Container)
+- **Session-Aware Tool Routing** — Tools use the selected host or sandbox
+  execution environment
 - **MCP Support** — Connect to Model Context Protocol servers for extended
   capabilities
 - **Multi-Channel** — Web UI, Telegram, Discord, API access with synchronized
@@ -97,12 +99,17 @@ Authentication is only required when accessing Chelix from a non-localhost addre
         │   │  Provider Registry  │     │
         │   │ Anthropic·OpenAI·Gemini… │   │
         │   └─────────────────────┘     │
-        └───────────────────────────────┘
-                        │
-                ┌───────▼───────┐
-                │    Sandbox    │
-                │ Docker/Apple  │
-                └───────────────┘
+        └───────────┬───────────────────┘
+                    │
+        ┌───────────▼───────────────────┐
+        │ Managed Tools Service         │
+        │ Host or sandbox endpoint      │
+        └───────────┬───────────────────┘
+                    │
+            ┌───────▼───────┐
+            │    Sandbox    │
+            │ Docker/Apple  │
+            └───────────────┘
 ```
 
 ## Documentation
@@ -128,6 +135,8 @@ Authentication is only required when accessing Chelix from a non-localhost addre
 ### Architecture
 
 - **[Streaming](streaming.md)** — How real-time streaming works
+- **[Managed Tools Service](tools-service.md)** — Native tool process, routing,
+  authentication, and sandbox lifecycle
 - **[Metrics & Tracing](metrics-and-tracing.md)** — Observability
 
 ## Security
@@ -138,7 +147,8 @@ Chelix applies defense in depth:
   access
 - **SSRF Protection** — Blocks requests to internal networks
 - **Secret Handling** — `secrecy::Secret` zeroes memory on drop
-- **Sandboxed Execution** — Commands never run on the host
+- **Sandboxed Execution** — Enabled sessions use Docker or Apple Container;
+  per-session policy can select host execution
 - **Origin Validation** — Prevents Cross-Site WebSocket Hijacking
 - **No Unsafe Code** — `unsafe` is denied workspace-wide
 

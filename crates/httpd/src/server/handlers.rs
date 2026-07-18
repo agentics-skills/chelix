@@ -2,14 +2,6 @@ use super::*;
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
-#[cfg(test)]
-fn should_prebuild_sandbox_image(
-    mode: &chelix_tools::sandbox::SandboxMode,
-    packages: &[String],
-) -> bool {
-    !matches!(mode, chelix_tools::sandbox::SandboxMode::Off) && !packages.is_empty()
-}
-
 pub(super) async fn health_handler(State(state): State<AppState>) -> impl IntoResponse {
     let count = state.gateway.client_count().await;
     Json(serde_json::json!({
@@ -483,27 +475,6 @@ mod tests {
             websocket_origin_host(&headers, false).as_deref(),
             Some("gateway.example.com:8443")
         );
-    }
-
-    #[test]
-    fn prebuild_runs_only_when_mode_enabled_and_packages_present() {
-        let packages = vec!["curl".to_string()];
-        assert!(should_prebuild_sandbox_image(
-            &chelix_tools::sandbox::SandboxMode::All,
-            &packages
-        ));
-        assert!(should_prebuild_sandbox_image(
-            &chelix_tools::sandbox::SandboxMode::NonMain,
-            &packages
-        ));
-        assert!(!should_prebuild_sandbox_image(
-            &chelix_tools::sandbox::SandboxMode::Off,
-            &packages
-        ));
-        assert!(!should_prebuild_sandbox_image(
-            &chelix_tools::sandbox::SandboxMode::All,
-            &[]
-        ));
     }
 
     #[test]

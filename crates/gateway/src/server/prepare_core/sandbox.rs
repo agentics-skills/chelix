@@ -1,16 +1,15 @@
-//! Sandbox initialization helpers: router construction, background image build,
-//! host provisioning, and startup container garbage collection.
+//! Sandbox initialization helpers: router construction, deterministic image
+//! preparation, host provisioning, and startup container garbage collection.
 
-use std::sync::{Arc, atomic::Ordering};
+use std::sync::Arc;
 
 use {
-    chelix_tools::sandbox::SandboxConfig,
+    chelix_tools::sandbox::{SandboxConfig, SandboxMode},
     tracing::{debug, info, warn},
 };
 
 use crate::{
     broadcast::{BroadcastOpts, broadcast},
-    server::helpers::should_prebuild_sandbox_image,
     state::GatewayState,
 };
 
@@ -30,169 +29,86 @@ pub(super) fn build_sandbox_router(
     chelix_tools::sandbox::SandboxRouter::new(config)
 }
 
-/// Spawn background sandbox tasks: image pre-build, host provisioning, and
-/// startup container GC.
+/// Build and register the current deterministic sandbox image before startup continues.
+pub(super) async fn prepare_sandbox_images(
+    sandbox_router: &Arc<chelix_tools::sandbox::SandboxRouter>,
+) -> anyhow::Result<()> {
+    if !should_prepare_sandbox_images(sandbox_router.mode()) {
+        debug!("sandbox image preparation skipped because sandbox mode is off");
+        return Ok(());
+    }
+
+    let backends = sandbox_router.available_backend_instances();
+    let default_backend_name = sandbox_router.backend_name().to_string();
+    let packages = sandbox_router.config().packages.clone();
+    let base_image = sandbox_router
+        .config()
+        .image
+        .clone()
+        .unwrap_or_else(|| chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string());
+    let mut default_tag = None;
+
+    for backend in backends {
+        let backend_name = backend.backend_name();
+        let result = backend
+            .build_image(&base_image, &packages)
+            .await
+            .map_err(|error| {
+                anyhow::anyhow!(
+                    "failed to prepare current sandbox image for backend {backend_name}: {error}"
+                )
+            })?;
+        let Some(result) = result else {
+            debug!(
+                backend = backend_name,
+                "sandbox backend does not build OCI images"
+            );
+            continue;
+        };
+
+        if result.built {
+            info!(
+                backend = backend_name,
+                tag = %result.tag,
+                "current sandbox image build complete"
+            );
+        } else {
+            debug!(
+                backend = backend_name,
+                tag = %result.tag,
+                "current sandbox image already exists"
+            );
+        }
+
+        sandbox_router
+            .set_backend_image(backend_name, result.tag.clone())
+            .await
+            .map_err(|error| {
+                anyhow::anyhow!(
+                    "failed to register current sandbox image for backend {backend_name}: {error}"
+                )
+            })?;
+        if backend_name == default_backend_name {
+            default_tag = Some(result.tag);
+        }
+    }
+
+    if let Some(tag) = default_tag {
+        sandbox_router.set_global_image(Some(tag)).await;
+    }
+
+    Ok(())
+}
+
+fn should_prepare_sandbox_images(mode: &SandboxMode) -> bool {
+    !matches!(mode, SandboxMode::Off)
+}
+
+/// Spawn non-critical sandbox background tasks: host provisioning and startup GC.
 pub(super) fn spawn_sandbox_background_tasks(
     sandbox_router: &Arc<chelix_tools::sandbox::SandboxRouter>,
     deferred_state: &Arc<DeferredState>,
 ) {
-    // Background image pre-build.
-    {
-        let router = Arc::clone(sandbox_router);
-        let backends = router.available_backend_instances();
-        let default_backend_name = router.backend_name().to_string();
-        let packages = router.config().packages.clone();
-        let base_image = router
-            .config()
-            .image
-            .clone()
-            .unwrap_or_else(|| chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string());
-
-        if should_prebuild_sandbox_image(router.mode(), &packages) {
-            let deferred_for_build = Arc::clone(deferred_state);
-            sandbox_router.building_flag.store(true, Ordering::Relaxed);
-            let build_router = Arc::clone(sandbox_router);
-            tokio::spawn(async move {
-                if let Some(state) = deferred_for_build.get() {
-                    broadcast(
-                        state,
-                        "sandbox.image.build",
-                        serde_json::json!({
-                            "phase": "start",
-                            "package_count": packages.len(),
-                        }),
-                        BroadcastOpts {
-                            drop_if_slow: true,
-                            ..Default::default()
-                        },
-                    )
-                    .await;
-                }
-
-                let mut built_any = false;
-                let mut images = Vec::new();
-                let mut errors = Vec::new();
-                let mut default_result = None;
-
-                for backend in backends {
-                    let backend_name = backend.backend_name();
-                    match backend.build_image(&base_image, &packages).await {
-                        Ok(Some(result)) => {
-                            if result.built {
-                                info!(
-                                    backend = backend_name,
-                                    tag = %result.tag,
-                                    "sandbox image pre-build complete"
-                                );
-                            } else {
-                                debug!(
-                                    backend = backend_name,
-                                    tag = %result.tag,
-                                    "sandbox image pre-build skipped: image already exists"
-                                );
-                            }
-                            built_any |= result.built;
-                            if let Err(error) = router
-                                .set_backend_image(backend_name, result.tag.clone())
-                                .await
-                            {
-                                warn!(
-                                    backend = backend_name,
-                                    %error,
-                                    "sandbox image pre-build result could not be registered"
-                                );
-                                errors.push(serde_json::json!({
-                                    "backend": backend_name,
-                                    "error": error.to_string(),
-                                }));
-                                continue;
-                            }
-                            if backend_name == default_backend_name {
-                                router.set_global_image(Some(result.tag.clone())).await;
-                                default_result = Some(result.clone());
-                            }
-                            images.push(serde_json::json!({
-                                "backend": backend_name,
-                                "tag": result.tag,
-                                "built": result.built,
-                            }));
-                        },
-                        Ok(None) => {
-                            debug!(
-                                backend = backend_name,
-                                "sandbox image pre-build: no-op (no packages or unsupported backend)"
-                            );
-                        },
-                        Err(error) => {
-                            debug!(
-                                backend = backend_name,
-                                error = %error,
-                                "sandbox image pre-build failed"
-                            );
-                            warn!(
-                                backend = backend_name,
-                                summary = %concise_error_summary(&error),
-                                "sandbox image pre-build failed"
-                            );
-                            errors.push(serde_json::json!({
-                                "backend": backend_name,
-                                "error": error.to_string(),
-                            }));
-                        },
-                    }
-                }
-
-                build_router.building_flag.store(false, Ordering::Relaxed);
-                build_router.build_complete.notify_waiters();
-
-                if images.is_empty() && errors.is_empty() {
-                    debug!("sandbox image pre-build: no-op (no packages or unsupported backends)");
-                }
-
-                if let Some(state) = deferred_for_build.get() {
-                    if !images.is_empty() {
-                        let mut payload = serde_json::json!({
-                            "phase": "done",
-                            "built": built_any,
-                            "images": images,
-                            "errors": errors,
-                        });
-                        if let Some(result) = default_result
-                            && let Some(payload) = payload.as_object_mut()
-                        {
-                            payload.insert("tag".to_string(), serde_json::json!(result.tag));
-                        }
-
-                        broadcast(state, "sandbox.image.build", payload, BroadcastOpts {
-                            drop_if_slow: true,
-                            ..Default::default()
-                        })
-                        .await;
-                    } else if errors.is_empty() {
-                        debug!(
-                            "sandbox image pre-build: no-op (no packages or unsupported backend)"
-                        );
-                    } else {
-                        broadcast(
-                            state,
-                            "sandbox.image.build",
-                            serde_json::json!({
-                                "phase": "error",
-                                "error": "sandbox image pre-build failed",
-                                "errors": errors,
-                            }),
-                            BroadcastOpts {
-                                drop_if_slow: true,
-                                ..Default::default()
-                            },
-                        )
-                        .await;
-                    }
-                }
-            });
-        }
-    }
-
     // Host package provisioning when no container runtime is available.
     {
         let packages = sandbox_router.config().packages.clone();
@@ -288,41 +204,87 @@ pub(super) fn spawn_sandbox_background_tasks(
     }
 }
 
-fn concise_error_summary(error: &chelix_tools::error::Error) -> String {
-    const MAX_SUMMARY_CHARS: usize = 160;
-
-    let mut summary = error
-        .to_string()
-        .lines()
-        .next()
-        .unwrap_or("unknown error")
-        .trim()
-        .to_string();
-    if summary.chars().count() > MAX_SUMMARY_CHARS {
-        summary = summary.chars().take(MAX_SUMMARY_CHARS).collect::<String>();
-        summary.push_str("...");
-    }
-    summary
-}
-
 #[cfg(test)]
 mod tests {
-    use super::concise_error_summary;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    #[test]
-    fn concise_error_summary_uses_first_line() {
-        let error = chelix_tools::error::Error::message("exit code 1\n#1 DONE 0.0s");
+    use {
+        async_trait::async_trait,
+        chelix_tools::{
+            command::{CommandOptions, CommandOutput},
+            sandbox::{Sandbox, SandboxId, SandboxRouter},
+        },
+    };
 
-        assert_eq!(concise_error_summary(&error), "exit code 1");
+    use super::*;
+
+    struct RecordingBuildSandbox {
+        build_calls: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl Sandbox for RecordingBuildSandbox {
+        fn backend_name(&self) -> &'static str {
+            "recording"
+        }
+
+        async fn ensure_ready(
+            &self,
+            _id: &SandboxId,
+            _image_override: Option<&str>,
+        ) -> chelix_tools::error::Result<()> {
+            Ok(())
+        }
+
+        async fn run_command(
+            &self,
+            _id: &SandboxId,
+            _command: &str,
+            _opts: &CommandOptions,
+        ) -> chelix_tools::error::Result<CommandOutput> {
+            Err(chelix_tools::error::Error::message(
+                "run_command is not used by this test",
+            ))
+        }
+
+        async fn cleanup(&self, _id: &SandboxId) -> chelix_tools::error::Result<()> {
+            Ok(())
+        }
+
+        async fn build_image(
+            &self,
+            _base: &str,
+            _packages: &[String],
+        ) -> chelix_tools::error::Result<Option<chelix_tools::sandbox::BuildImageResult>> {
+            self.build_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(None)
+        }
     }
 
     #[test]
-    fn concise_error_summary_truncates_long_single_line_errors() {
-        let error = chelix_tools::error::Error::message("x".repeat(200));
+    fn sandbox_image_preparation_follows_global_mode() {
+        assert!(!should_prepare_sandbox_images(&SandboxMode::Off));
+        assert!(should_prepare_sandbox_images(&SandboxMode::NonMain));
+        assert!(should_prepare_sandbox_images(&SandboxMode::All));
+    }
 
-        assert_eq!(
-            concise_error_summary(&error),
-            format!("{}...", "x".repeat(160))
-        );
+    #[tokio::test]
+    async fn sandbox_mode_off_skips_backend_image_build() {
+        let backend = Arc::new(RecordingBuildSandbox {
+            build_calls: AtomicUsize::new(0),
+        });
+        let sandbox_backend: Arc<dyn Sandbox> = backend.clone();
+        let router = Arc::new(SandboxRouter::with_backend(
+            SandboxConfig {
+                mode: SandboxMode::Off,
+                ..Default::default()
+            },
+            sandbox_backend,
+        ));
+
+        let result = prepare_sandbox_images(&router).await;
+
+        assert!(result.is_ok(), "mode=off must skip image preparation");
+        assert_eq!(backend.build_calls.load(Ordering::SeqCst), 0);
     }
 }

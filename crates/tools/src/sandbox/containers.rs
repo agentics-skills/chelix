@@ -1,8 +1,9 @@
 //! Container image and container lifecycle management.
 
-use std::collections::HashSet;
+use std::{collections::HashSet, io::Read, path::PathBuf};
 
 use {
+    chelix_protocol::TOOLS_SERVICE_LINUX_BINARY_ENV,
     serde::Serialize,
     sha2::{Digest, Sha256},
     tracing::warn,
@@ -21,13 +22,19 @@ use {
 /// Packages superseded by NodeSource's `nodejs` (which bundles npm).
 /// Only filtered when `nodejs` is in the package list.
 const NODESOURCE_SUPERSEDED_PACKAGES: &[&str] = &["npm"];
+const TOOLS_SERVICE_IMAGE_BINARY: &str = "chelix-tools-service";
+const TOOLS_SERVICE_INSTALL_PATH: &str = "/usr/local/bin/chelix-tools-service";
 
 /// Packages installed from third-party repos that must be excluded from the
 /// main `apt-get install` (they are installed by their own repo setup block).
 const THIRD_PARTY_REPO_PACKAGES: &[&str] = &["gh"];
 
 pub(crate) fn sandbox_image_dockerfile(base: &str, packages: &[String]) -> String {
-    let canonical = canonical_sandbox_packages(packages);
+    let mut canonical = canonical_sandbox_packages(packages);
+    if !canonical.iter().any(|package| package == "ripgrep") {
+        canonical.push("ripgrep".to_string());
+        canonical.sort();
+    }
     let has_nodejs = canonical.iter().any(|p| p == "nodejs");
     let has_gh = canonical.iter().any(|p| p == "gh");
     let pkg_list: Vec<&str> = canonical
@@ -95,23 +102,14 @@ RUN curl -fsSL https://mise.jdx.dev/install.sh | sh \
     && echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> /etc/profile.d/mise.sh\n\
 ENV HOME={SANDBOX_HOME_DIR}\n\
 ENV PATH={SANDBOX_HOME_DIR}/.local/bin:/root/.local/bin:$PATH\n\
+COPY --chmod=0755 {TOOLS_SERVICE_IMAGE_BINARY} {TOOLS_SERVICE_INSTALL_PATH}\n\
 WORKDIR {SANDBOX_HOME_DIR}\n"
     )
 }
 
-#[cfg(target_os = "macos")]
-const APPLE_CONTAINER_FALLBACK_SLEEP_SECONDS: u64 = 2_147_483_647;
-
 #[cfg(any(target_os = "macos", test))]
 fn apple_container_wrap_shell_command(shell_command: String) -> String {
     format!("mkdir -p {SANDBOX_HOME_DIR} && {shell_command}")
-}
-
-#[cfg(target_os = "macos")]
-pub(crate) fn apple_container_bootstrap_command() -> String {
-    apple_container_wrap_shell_command(format!(
-        "if command -v gnusleep >/dev/null 2>&1; then exec gnusleep infinity; else exec sleep {APPLE_CONTAINER_FALLBACK_SLEEP_SECONDS}; fi"
-    ))
 }
 
 #[cfg(target_os = "macos")]
@@ -120,6 +118,8 @@ pub(crate) fn apple_container_run_args(
     image: &str,
     tz: Option<&str>,
     mounts: &[String],
+    tools_token: &str,
+    host_port: u16,
 ) -> Vec<String> {
     let mut args = vec![
         "run".to_string(),
@@ -133,15 +133,24 @@ pub(crate) fn apple_container_run_args(
     if let Some(tz) = tz {
         args.extend(["-e".to_string(), format!("TZ={tz}")]);
     }
+    args.extend([
+        "-e".to_string(),
+        format!("{}={tools_token}", chelix_protocol::TOOLS_SERVICE_TOKEN_ENV),
+        "-p".to_string(),
+        format!(
+            "127.0.0.1:{host_port}:{}",
+            chelix_protocol::TOOLS_SERVICE_CONTAINER_PORT
+        ),
+    ]);
     for mount in mounts {
         args.extend(["--mount".to_string(), mount.clone()]);
     }
 
     args.push(image.to_string());
     args.extend([
-        "bash".to_string(),
-        "-c".to_string(),
-        apple_container_bootstrap_command(),
+        "chelix-tools-service".to_string(),
+        "--listen".to_string(),
+        format!("0.0.0.0:{}", chelix_protocol::TOOLS_SERVICE_CONTAINER_PORT),
     ]);
     args
 }
@@ -183,10 +192,133 @@ pub(crate) fn container_exec_shell_args(
 
 /// Compute the content-hash tag for a pre-built sandbox image.
 /// Pure function — independent of any specific container CLI.
-pub fn sandbox_image_tag(repo: &str, base: &str, packages: &[String]) -> String {
+pub fn sandbox_image_tag(
+    repo: &str,
+    base: &str,
+    packages: &[String],
+    tools_service_bytes: &[u8],
+) -> String {
     let dockerfile = sandbox_image_dockerfile(base, packages);
-    let digest = Sha256::digest(dockerfile.as_bytes());
+    let mut hasher = Sha256::new();
+    hasher.update(dockerfile.as_bytes());
+    hasher.update([0]);
+    hasher.update(tools_service_bytes);
+    let digest = hasher.finalize();
     format!("{repo}:{digest:x}")
+}
+
+pub(crate) fn sandbox_tools_service_artifact() -> Result<PathBuf> {
+    if let Some(path) = std::env::var_os(TOOLS_SERVICE_LINUX_BINARY_ENV)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+    {
+        return require_tools_service_artifact(path, TOOLS_SERVICE_LINUX_BINARY_ENV);
+    }
+
+    let current_exe = std::env::current_exe().map_err(|error| {
+        Error::message(format!(
+            "failed to resolve current executable while locating Linux tools service: {error}"
+        ))
+    })?;
+    let directory = current_exe.parent().ok_or_else(|| {
+        Error::message("current executable has no parent directory for tools service lookup")
+    })?;
+    let architecture = match std::env::consts::ARCH {
+        "aarch64" => "aarch64",
+        "x86_64" => "x86_64",
+        architecture => {
+            return Err(Error::message(format!(
+                "unsupported sandbox tools service architecture: {architecture}"
+            )));
+        },
+    };
+    let sibling_name = if cfg!(target_os = "linux") {
+        "chelix-tools-service".to_string()
+    } else {
+        format!("chelix-tools-service-linux-{architecture}")
+    };
+    let sibling = directory.join(&sibling_name);
+    if sibling.is_file() {
+        return require_tools_service_artifact(sibling, "auto-discovered sibling");
+    }
+    if directory.file_name().is_some_and(|name| name == "deps")
+        && let Some(profile_dir) = directory.parent()
+    {
+        let development_sibling = profile_dir.join(&sibling_name);
+        if development_sibling.is_file() {
+            return require_tools_service_artifact(
+                development_sibling,
+                "auto-discovered development sibling",
+            );
+        }
+    }
+
+    Err(Error::message(format!(
+        "Linux tools service artifact {sibling_name:?} not found next to chelix; set {TOOLS_SERVICE_LINUX_BINARY_ENV} to the target Linux binary"
+    )))
+}
+
+pub(crate) fn sandbox_tools_service_bytes() -> Result<Vec<u8>> {
+    let path = sandbox_tools_service_artifact()?;
+    std::fs::read(&path).map_err(|error| {
+        Error::message(format!(
+            "failed to read Linux tools service artifact {}: {error}",
+            path.display()
+        ))
+    })
+}
+
+pub(crate) fn install_tools_service_in_build_context(context_dir: &std::path::Path) -> Result<()> {
+    let source = sandbox_tools_service_artifact()?;
+    let destination = context_dir.join(TOOLS_SERVICE_IMAGE_BINARY);
+    std::fs::copy(&source, &destination).map_err(|error| {
+        Error::message(format!(
+            "failed to copy Linux tools service artifact {} into sandbox build context: {error}",
+            source.display()
+        ))
+    })?;
+    Ok(())
+}
+
+fn require_tools_service_artifact(path: PathBuf, source: &str) -> Result<PathBuf> {
+    if !path.is_file() {
+        return Err(Error::message(format!(
+            "{source} points to a missing Linux tools service artifact: {}",
+            path.display()
+        )));
+    }
+
+    let mut file = std::fs::File::open(&path).map_err(|error| {
+        Error::message(format!(
+            "failed to open Linux tools service artifact {}: {error}",
+            path.display()
+        ))
+    })?;
+    let mut magic = [0_u8; 4];
+    file.read_exact(&mut magic).map_err(|error| {
+        Error::message(format!(
+            "failed to read Linux tools service artifact header {}: {error}",
+            path.display()
+        ))
+    })?;
+    if magic != [0x7f, b'E', b'L', b'F'] {
+        return Err(Error::message(format!(
+            "{source} does not point to a Linux ELF tools service artifact: {}",
+            path.display()
+        )));
+    }
+
+    Ok(path)
+}
+
+pub fn current_sandbox_image_tag(repo: &str, base: &str, packages: &[String]) -> Result<String> {
+    let tools_service_bytes = sandbox_tools_service_bytes()?;
+    Ok(sandbox_image_tag(
+        repo,
+        base,
+        packages,
+        &tools_service_bytes,
+    ))
 }
 
 pub(crate) fn is_sandbox_image_tag(tag: &str) -> bool {
@@ -194,26 +326,6 @@ pub(crate) fn is_sandbox_image_tag(tag: &str) -> bool {
         return false;
     };
     repo.ends_with("-sandbox")
-}
-
-/// Return the deterministic image tag for the current sandbox config when the
-/// requested image points to a local pre-built sandbox repository.
-///
-/// This allows recover-on-demand behavior when users delete local pre-built
-/// images from the UI while Chelix is still running.
-pub(crate) fn rebuildable_sandbox_image_tag(
-    requested_image: &str,
-    image_repo: &str,
-    base_image: &str,
-    packages: &[String],
-) -> Option<String> {
-    if packages.is_empty() {
-        return None;
-    }
-    if !requested_image.starts_with(&format!("{image_repo}:")) {
-        return None;
-    }
-    Some(sandbox_image_tag(image_repo, base_image, packages))
 }
 
 /// OCI-compatible CLI binaries that use Docker-format commands

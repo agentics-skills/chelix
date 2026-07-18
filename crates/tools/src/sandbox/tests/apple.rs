@@ -124,58 +124,16 @@ fn test_is_apple_container_exists_error() {
     assert!(!is_apple_container_exists_error("Error: no such container"));
 }
 
-#[cfg(target_os = "macos")]
 #[test]
-fn test_is_apple_container_unavailable_error() {
-    assert!(is_apple_container_unavailable_error(
-        "cannot exec: container is not running"
-    ));
-    assert!(is_apple_container_unavailable_error(
-        "invalidState: \"container xyz is not running\""
-    ));
-    assert!(is_apple_container_unavailable_error(
-        "invalidState: \"no sandbox client exists: container is stopped\""
-    ));
-    // notFound errors from get/inspect failures
-    assert!(is_apple_container_unavailable_error(
-        "Error: notFound: \"get failed: container chelix-sandbox-main not found\""
-    ));
-    assert!(is_apple_container_unavailable_error(
-        "container not found: chelix-sandbox-session-abc"
-    ));
-    assert!(!is_apple_container_unavailable_error("permission denied"));
-}
-
-#[cfg(target_os = "macos")]
-#[test]
-fn test_should_restart_after_readiness_error() {
-    assert!(should_restart_after_readiness_error(
-        "cannot exec: container is not running",
-        ContainerState::Stopped
-    ));
-    assert!(!should_restart_after_readiness_error(
-        "cannot exec: container is not running",
-        ContainerState::Running
-    ));
-    assert!(!should_restart_after_readiness_error(
-        "permission denied",
-        ContainerState::Stopped
-    ));
-}
-
-#[test]
-fn test_apple_container_bootstrap_command_uses_portable_sleep() {
-    let command = apple_container_bootstrap_command();
-    assert!(command.contains("mkdir -p /home/sandbox"));
-    assert!(command.contains("command -v gnusleep >/dev/null 2>&1"));
-    assert!(command.contains("exec gnusleep infinity"));
-    assert!(command.contains("exec sleep 2147483647"));
-    assert!(!command.contains("exec sleep infinity"));
-}
-
-#[test]
-fn test_apple_container_run_args_pin_workdir_and_bootstrap_home() {
-    let args = apple_container_run_args("chelix-sandbox-test", "ubuntu:26.04", Some("UTC"), &[]);
+fn test_apple_container_run_args_launch_tools_service() {
+    let args = apple_container_run_args(
+        "chelix-sandbox-test",
+        "ubuntu:26.04",
+        Some("UTC"),
+        &[],
+        "test-token",
+        43123,
+    );
     let expected = vec![
         "run",
         "-d",
@@ -185,10 +143,14 @@ fn test_apple_container_run_args_pin_workdir_and_bootstrap_home() {
         "/tmp",
         "-e",
         "TZ=UTC",
+        "-e",
+        "CHELIX_TOOLS_SERVICE_TOKEN=test-token",
+        "-p",
+        "127.0.0.1:43123:43271",
         "ubuntu:26.04",
-        "bash",
-        "-c",
-        "mkdir -p /home/sandbox && if command -v gnusleep >/dev/null 2>&1; then exec gnusleep infinity; else exec sleep 2147483647; fi",
+        "chelix-tools-service",
+        "--listen",
+        "0.0.0.0:43271",
     ]
     .into_iter()
     .map(str::to_string)
@@ -198,10 +160,17 @@ fn test_apple_container_run_args_pin_workdir_and_bootstrap_home() {
 
 #[test]
 fn test_apple_container_run_args_with_declarative_mounts() {
-    let args = apple_container_run_args("chelix-sandbox-test", "ubuntu:26.04", Some("UTC"), &[
-        "source=/tmp/data,target=/tmp/data".to_string(),
-        "source=/tmp/home,target=/home/sandbox,readonly".to_string(),
-    ]);
+    let args = apple_container_run_args(
+        "chelix-sandbox-test",
+        "ubuntu:26.04",
+        Some("UTC"),
+        &[
+            "source=/tmp/data,target=/tmp/data".to_string(),
+            "source=/tmp/home,target=/home/sandbox,readonly".to_string(),
+        ],
+        "test-token",
+        43123,
+    );
     let expected = vec![
         "run",
         "-d",
@@ -211,14 +180,18 @@ fn test_apple_container_run_args_with_declarative_mounts() {
         "/tmp",
         "-e",
         "TZ=UTC",
+        "-e",
+        "CHELIX_TOOLS_SERVICE_TOKEN=test-token",
+        "-p",
+        "127.0.0.1:43123:43271",
         "--mount",
         "source=/tmp/data,target=/tmp/data",
         "--mount",
         "source=/tmp/home,target=/home/sandbox,readonly",
         "ubuntu:26.04",
-        "bash",
-        "-c",
-        "mkdir -p /home/sandbox && if command -v gnusleep >/dev/null 2>&1; then exec gnusleep infinity; else exec sleep 2147483647; fi",
+        "chelix-tools-service",
+        "--listen",
+        "0.0.0.0:43271",
     ]
     .into_iter()
     .map(str::to_string)
