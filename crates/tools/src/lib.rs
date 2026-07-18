@@ -32,6 +32,7 @@ pub mod nodes;
 pub mod params;
 pub mod policy;
 pub mod process;
+pub mod ripgrep;
 pub mod sandbox;
 pub mod sandbox_packages;
 pub mod send_document;
