@@ -567,6 +567,7 @@ pub(super) async fn complete_startup(
             )),
         ));
         tool_registry.register(Box::new(chelix_tools::calc::CalcTool::new()));
+        tool_registry.register(Box::new(chelix_tools::ripgrep::RipgrepTool::new()));
         #[cfg(feature = "fs-tools")]
         {
             use chelix_config::schema::FsBinaryPolicy;

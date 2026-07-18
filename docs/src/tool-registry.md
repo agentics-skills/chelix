@@ -82,6 +82,30 @@ When a sandbox has no tmux server yet, `execute_command` creates a tmux session
 and returns the generated `terminalId`, tmux session/window/pane IDs, output,
 completion state, and exit code when available.
 
+## Ripgrep tool
+
+The `ripgrep` tool searches files by shelling out to the system `rg` binary
+with `--json` output and returns structured results. The binary is assumed to
+be installed — a spawn failure surfaces as a tool error.
+
+Parameters (camelCase): `pattern` (required), `paths`, `cwd`, `fixedStrings`,
+`caseMode` (`sensitive`/`ignore`/`smart`), `detail` (`summary`, `files`,
+`lines` — default, `lines+submatches`), `glob`, `type`, `typeNot`,
+`contextLines`, `maxMatches` (2000), `maxFiles` (200), `maxOutputChars`
+(200000), `timeoutMs` (10000), `includeHidden` (default `true`),
+`unrestricted` (0–3, default 3, maps to `-u`/`-uu`/`-uuu`), `followSymlinks`.
+
+Common extension-like `type` values (`tsx`, `jsx`, `mjs`, …) are normalized to
+rg type names; unknown extension-like values become glob filters; anything
+else is passed to rg verbatim so rg itself rejects unknown types.
+
+Exceeding a match/file/output limit or the timeout stops the search early,
+kills the rg process, and marks the result `truncated` with a
+`truncatedReason` (`maxMatches`, `maxFiles`, `maxOutputChars`, `timeout`).
+The result mirrors the limits, a summary (`filesWithMatches`, `matchCount`,
+`elapsed`, `stats`), rows per detail mode, captured `stderr`, and the rg
+`exitCode`. Exit code 2 (for example an invalid regex) is a tool error.
+
 ## Catalog vs API schemas
 
 The registry exposes two independent surfaces:
