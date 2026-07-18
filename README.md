@@ -2,7 +2,7 @@
 
 # Chelix — A secure persistent personal agent server in Rust
 
-One core binary — sandboxed, secure, yours. Native local embeddings run in an optional managed sidecar.
+Native Rust gateway with a required managed tools sidecar — sandboxed, secure, yours. Local embeddings use an optional managed sidecar.
 
 [![codecov](https://codecov.io/gh/agentics-skills/chelix/graph/badge.svg)](https://codecov.io/gh/agentics-skills/chelix)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -18,9 +18,9 @@ One core binary — sandboxed, secure, yours. Native local embeddings run in an 
 
 Please [open an issue](https://github.com/agentics-skills/chelix/issues) for any friction at all. I'm focused on making Chelix excellent.
 
-**Secure by design** — Your keys never leave your machine. Every command runs in a sandboxed container, never on your host.
+**Secure by design** — Your keys stay under your control. Tool execution follows explicit per-session routing: enabled sessions use isolated container sandboxes, while host execution remains available when policy disables sandboxing.
 
-**Your hardware** — Runs on a Mac Mini, a Raspberry Pi, or any server you own. The Rust gateway has no Node.js or npm runtime; optional native local embeddings are isolated in a separately built managed sidecar.
+**Your hardware** — Runs on a Mac Mini, a Raspberry Pi, or any server you own. The Rust gateway has no Node.js or npm runtime; native filesystem tools run in the required `chelix-tools-service` managed sidecar, and local embeddings use a separate optional sidecar.
 
 **Full-featured** — Voice, memory, cross-session recall, scheduling, Telegram, Signal, Discord, browser automation, MCP servers, SSH or node-backed remote command execution, managed deploy keys with host pinning in the web UI, a live Settings → Tools inventory, Cursor-compatible project context, and context-file threat scanning — all built-in. No plugin marketplace to get supply-chain attacked through.
 
@@ -52,6 +52,7 @@ Current Rust workspace: ~270K LoC across 59 crates. The table below groups the m
 | `chelix-config` | 10.3K | Configuration, validation |
 | `chelix-httpd` | 9.9K | HTTP server primitives and middleware |
 | `chelix` (CLI) | 4.7K | Entry point, CLI commands |
+| `chelix-tools-service` | — | Required managed native filesystem-tools service |
 | `chelix-embedding-service` | — | Optional managed local-GGUF embedding sidecar |
 | `chelix-sessions` | 3.5K | Session persistence |
 | `chelix-common` | 1.5K | Shared utilities |
@@ -101,9 +102,11 @@ Verify releases with `gh attestation verify <artifact> -R agentics-skills/chelix
 
 ## How It Works
 
-Chelix is a **local-first persistent agent server** — a single Rust binary that
-sits between you and multiple LLM providers, keeps durable session state, and
-can meet you across channels without handing your data to a cloud relay.
+Chelix is a **local-first persistent agent server**. A native Rust gateway sits
+between you and multiple LLM providers, keeps durable session state, and can meet
+you across channels without handing your data to a cloud relay. The gateway
+supervises a required native tools service and routes each tool call to its host
+or sandbox endpoint.
 
 ```
 ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
@@ -131,16 +134,24 @@ can meet you across channels without handing your data to a cloud relay.
         ├─────────────────────────────────┤
         │  Sessions  │ Memory  │  Hooks   │
         │  (JSONL)   │ (SQLite)│ (events) │
-        └─────────────────────────────────┘
-                       │
-               ┌───────▼───────┐
-               │    Sandbox    │
-               │ Docker/Apple  │
-               │  Container    │
-               └───────────────┘
+        └───────────────┬─────────────────┘
+                        │
+                ┌───────▼───────────────┐
+                │ Managed Tools Service │
+                │ Host/Sandbox endpoint │
+                └───────┬───────────────┘
+                        │
+                ┌───────▼───────┐
+                │    Sandbox    │
+                │ Docker/Apple  │
+                │  Container    │
+                └───────────────┘
 ```
 
-See [Quickstart](docs/src/quickstart.md) for gateway startup, message flow, sessions, and memory details.
+See [Quickstart](docs/src/quickstart.md) for gateway startup, message flow,
+sessions, and memory details. See
+[Managed Tools Service](docs/src/tools-service.md) for native tool routing,
+authentication, sandbox lifecycle, and container networking.
 
 ## Getting Started
 
@@ -152,7 +163,7 @@ Requires [just](https://github.com/casey/just) (command runner) and Node.js (for
 git clone https://github.com/agentics-skills/chelix.git
 cd chelix
 just build-css                  # Build Tailwind CSS for the web UI
-just build-release              # Build gateway, then local-embedding sidecar separately
+just build-release              # Build gateway + required tools sidecar (+ optional embedding sidecar)
 cargo run --release --bin chelix
 ```
 

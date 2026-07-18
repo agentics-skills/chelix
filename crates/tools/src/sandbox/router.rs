@@ -27,7 +27,8 @@ use {
         file_system::{SandboxGrepOptions, SandboxListFilesResult, SandboxReadResult},
         platform::RestrictedHostSandbox,
         types::{
-            BuildImageResult, DEFAULT_SANDBOX_IMAGE, Sandbox, SandboxConfig, SandboxId, SandboxMode,
+            BuildImageResult, DEFAULT_SANDBOX_IMAGE, Sandbox, SandboxConfig, SandboxId,
+            SandboxMode, ToolsServiceEndpoint,
         },
     },
     crate::{
@@ -187,6 +188,14 @@ impl Sandbox for FailoverSandbox {
         }
     }
 
+    async fn tools_service_endpoint(&self, id: &SandboxId) -> Result<ToolsServiceEndpoint> {
+        if self.fallback_enabled().await {
+            self.fallback.tools_service_endpoint(id).await
+        } else {
+            self.primary.tools_service_endpoint(id).await
+        }
+    }
+
     async fn run_command(
         &self,
         id: &SandboxId,
@@ -291,16 +300,33 @@ impl Sandbox for FailoverSandbox {
             return self.fallback.build_image(base, packages).await;
         }
 
-        match self.primary.build_image(base, packages).await {
-            Ok(result) => Ok(result),
+        let primary_result = match self.primary.build_image(base, packages).await {
+            Ok(result) => result,
             Err(primary_error) => {
                 if !self.should_failover(&primary_error) {
                     return Err(primary_error);
                 }
 
                 self.switch_to_fallback(&primary_error).await;
-                self.fallback.build_image(base, packages).await
+                return self.fallback.build_image(base, packages).await;
             },
+        };
+
+        let fallback_result = self.fallback.build_image(base, packages).await?;
+        match (primary_result, fallback_result) {
+            (Some(mut primary), Some(fallback)) => {
+                if primary.tag != fallback.tag {
+                    return Err(Error::message(format!(
+                        "sandbox failover backends produced different deterministic image tags: primary={} fallback={}",
+                        primary.tag, fallback.tag
+                    )));
+                }
+                primary.built |= fallback.built;
+                Ok(Some(primary))
+            },
+            (Some(primary), None) => Ok(Some(primary)),
+            (None, Some(fallback)) => Ok(Some(fallback)),
+            (None, None) => Ok(None),
         }
     }
 }
@@ -566,13 +592,6 @@ pub struct SandboxRouter {
     /// Per-session first-run failures that should unblock waiters without
     /// allowing them to run against an incomplete sandbox workspace.
     sync_failures: RwLock<HashMap<String, String>>,
-    /// Whether a sandbox image pre-build is currently in progress.
-    /// Used by the gateway to show a banner in the UI.
-    pub building_flag: std::sync::atomic::AtomicBool,
-    /// Notified when the background image build finishes (success or failure).
-    /// Callers that arrive while `building_flag` is true can await this to
-    /// avoid launching containers from the bare base image.
-    pub build_complete: tokio::sync::Notify,
 }
 
 impl SandboxRouter {
@@ -600,8 +619,6 @@ impl SandboxRouter {
             prepared_sessions: RwLock::new(HashSet::new()),
             synced_sessions: RwLock::new(HashSet::new()),
             sync_failures: RwLock::new(HashMap::new()),
-            building_flag: std::sync::atomic::AtomicBool::new(false),
-            build_complete: tokio::sync::Notify::new(),
         }
     }
 
@@ -624,8 +641,6 @@ impl SandboxRouter {
             prepared_sessions: RwLock::new(HashSet::new()),
             synced_sessions: RwLock::new(HashSet::new()),
             sync_failures: RwLock::new(HashMap::new()),
-            building_flag: std::sync::atomic::AtomicBool::new(false),
-            build_complete: tokio::sync::Notify::new(),
         }
     }
 
@@ -851,7 +866,7 @@ impl SandboxRouter {
         let id = self.sandbox_id_for(session_key);
         let backend = self.resolve_backend(session_key).await;
         let image = self
-            .resolve_image_for_backend_nowait(session_key, None, backend.backend_name())
+            .resolve_image_for_backend(session_key, None, backend.backend_name())
             .await;
 
         info!(
@@ -1084,21 +1099,6 @@ impl SandboxRouter {
         Ok(())
     }
 
-    /// If a background image build is in progress, wait for it to finish
-    /// (with a generous timeout) so that callers get the pre-built image
-    /// instead of the bare base image.
-    async fn wait_for_build_if_needed(&self) {
-        use std::sync::atomic::Ordering;
-        if !self.building_flag.load(Ordering::Relaxed) {
-            return;
-        }
-        debug!("sandbox image build in progress, waiting before resolving image");
-        // 10 minutes should be plenty for a first-time image build; if it takes
-        // longer the caller falls through to the base image (same as before).
-        let _ =
-            tokio::time::timeout(Duration::from_secs(600), self.build_complete.notified()).await;
-    }
-
     async fn config_default_image(&self) -> String {
         self.config
             .image
@@ -1106,9 +1106,8 @@ impl SandboxRouter {
             .unwrap_or_else(|| DEFAULT_SANDBOX_IMAGE.to_string())
     }
 
-    /// Get the current effective default image for a backend WITHOUT waiting
-    /// for a build to finish.
-    pub async fn resolve_default_image_for_backend_nowait(&self, backend_name: &str) -> String {
+    /// Get the current effective default image for a backend.
+    pub async fn default_image_for_backend(&self, backend_name: &str) -> String {
         if let Some(img) = self.backend_image_overrides.read().await.get(backend_name) {
             return img.clone();
         }
@@ -1116,61 +1115,6 @@ impl SandboxRouter {
             return img.clone();
         }
         self.config_default_image().await
-    }
-
-    /// Get the current effective default image WITHOUT waiting for a build
-    /// to finish. Used by request paths that must not block on the initial
-    /// sandbox image build.
-    pub async fn resolve_default_image_nowait(&self) -> String {
-        self.resolve_default_image_for_backend_nowait(self.backend_name())
-            .await
-    }
-
-    /// Resolve the container image without waiting for any background image
-    /// build. This must stay cheap: callers use it from RPC and tool paths
-    /// where blocking on sandbox provisioning would stall user-visible work.
-    pub async fn resolve_image_nowait(
-        &self,
-        session_key: &str,
-        skill_image: Option<&str>,
-    ) -> String {
-        let backend = self.resolve_backend(session_key).await;
-        self.resolve_image_for_backend_nowait(session_key, skill_image, backend.backend_name())
-            .await
-    }
-
-    /// Resolve the container image for a session/backend without waiting for
-    /// a background image build.
-    pub async fn resolve_image_for_backend_nowait(
-        &self,
-        session_key: &str,
-        skill_image: Option<&str>,
-        backend_name: &str,
-    ) -> String {
-        if let Some(img) = skill_image {
-            return img.to_string();
-        }
-        if let Some(img) = self.image_overrides.read().await.get(session_key) {
-            return img.clone();
-        }
-        if self
-            .building_flag
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
-            info!(
-                session = %session_key,
-                "sandbox image build in progress, resolving image without waiting"
-            );
-        }
-        self.resolve_default_image_for_backend_nowait(backend_name)
-            .await
-    }
-
-    /// Get the current effective default image for a backend.
-    pub async fn default_image_for_backend(&self, backend_name: &str) -> String {
-        self.wait_for_build_if_needed().await;
-        self.resolve_default_image_for_backend_nowait(backend_name)
-            .await
     }
 
     /// Get the current effective default image (runtime override > config > hardcoded).

@@ -1,0 +1,8 @@
+mod api;
+mod app;
+mod ripgrep;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    app::run().await
+}

@@ -98,15 +98,6 @@ pub(crate) fn build_qmd_collections(
     collections
 }
 
-// ── Sandbox helpers ──────────────────────────────────────────────────────────
-
-pub(crate) fn should_prebuild_sandbox_image(
-    mode: &chelix_tools::sandbox::SandboxMode,
-    packages: &[String],
-) -> bool {
-    !matches!(mode, chelix_tools::sandbox::SandboxMode::Off) && !packages.is_empty()
-}
-
 pub(crate) fn instance_slug(config: &chelix_config::ChelixConfig) -> String {
     let mut raw_name = config.identity.name.clone();
     if let Some(file_identity) = chelix_config::load_identity_for_agent("main")

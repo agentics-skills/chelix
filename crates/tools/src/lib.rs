@@ -47,6 +47,7 @@ pub mod spawn_agent_tasks;
 pub mod ssrf;
 pub mod task_list;
 pub mod tmux_command;
+pub mod tools_service;
 #[cfg(feature = "wasm")]
 pub mod wasm_component;
 #[cfg(feature = "wasm")]

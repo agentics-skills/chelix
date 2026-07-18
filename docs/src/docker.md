@@ -133,6 +133,52 @@ the Chelix container but without filesystem or network isolation.
 For full container-level isolation (filesystem boundaries, network policies),
 mount the Docker socket.
 
+### Managed tools service connectivity
+
+Each Docker/Podman sandbox runs `chelix-tools-service` as its long-running
+workload on container port `43271`. Chelix publishes that port to a random port
+bound to the Docker host's `127.0.0.1`, and also inspects the sandbox's container
+addresses. It selects the first candidate that passes the authenticated
+`/v1/health` protocol check.
+
+The two candidates serve different gateway topologies:
+
+- Chelix running directly on the Docker host reaches the random loopback
+  publication.
+- Chelix running in a container can reach a sandbox's direct address when both
+  containers are attached to a network that permits container-to-container
+  communication.
+
+`127.0.0.1` inside the Chelix container is the Chelix container's own loopback,
+not the Docker host's loopback. For a containerized gateway, create a shared
+user-defined bridge network, attach Chelix to it, and configure new sandboxes to
+use it:
+
+```bash
+docker network create chelix-sandbox-net
+
+docker run -d \
+  --name chelix \
+  --network=chelix-sandbox-net \
+  -p 13131:13131 \
+  -p 13132:13132 \
+  -p 1455:1455 \
+  -v chelix-config:/home/chelix/.config/chelix \
+  -v chelix-data:/home/chelix/.chelix \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  ghcr.io/agentics-skills/chelix:latest
+```
+
+```toml
+[sandbox]
+network = "chelix-sandbox-net"
+```
+
+If no candidate passes authenticated readiness, Chelix removes the unready
+sandbox container and returns the startup error. See
+[Managed Tools Service](tools-service.md) for the complete process and protocol
+architecture.
+
 If Chelix is itself running in Docker and your `data_dir()` mount is backed by a
 different host path than `/home/chelix/.chelix`, Chelix tries to discover that
 host path automatically from `docker inspect`/`podman inspect`. It first checks
@@ -394,6 +440,29 @@ OrbStack on macOS works identically to Docker — use the same socket path
 isolation with lower resource usage than Docker Desktop.
 
 ## Troubleshooting
+
+### Sandbox tools service does not become ready
+
+Inspect the sandbox process, published port, addresses, and networks without
+printing its authentication token:
+
+```bash
+docker ps --filter 'name=chelix-' --format '{{.Names}}\t{{.Ports}}\t{{.Status}}'
+docker top <sandbox-container>
+docker port <sandbox-container> 43271/tcp
+docker inspect --format '{{range .NetworkSettings.Networks}}{{println .IPAddress}}{{end}}' <sandbox-container>
+docker inspect --format '{{json .NetworkSettings.Networks}}' chelix
+docker inspect --format '{{json .NetworkSettings.Networks}}' <sandbox-container>
+```
+
+The sandbox's main process should be `chelix-tools-service --listen
+0.0.0.0:43271`. If Chelix runs in Docker, the Chelix and sandbox containers need
+a network path between them; use the shared user-defined bridge configuration in
+[Managed tools service connectivity](#managed-tools-service-connectivity).
+
+A separate host-side `chelix-tools-service --shutdown-on-stdin-eof` process
+inside the Chelix container is normal. It serves host-routed sessions and does
+not mean sandbox routing is disabled.
 
 ### "Cannot connect to Docker daemon"
 

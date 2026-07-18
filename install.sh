@@ -12,6 +12,7 @@ set -e
 
 GITHUB_REPO="agentics-skills/chelix"
 BINARY_NAME="chelix"
+TOOLS_SERVICE_NAME="chelix-tools-service"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 # Default options
@@ -278,9 +279,31 @@ install_binary() {
     # Extract and install
     tar -xzf "$tmpdir/$tarball" -C "$tmpdir"
 
+    # Validate the complete required payload before replacing any installed binary.
+    if [ ! -f "$tmpdir/$BINARY_NAME" ]; then
+        error "Release archive is missing required $BINARY_NAME binary"
+    fi
+    if [ ! -f "$tmpdir/$TOOLS_SERVICE_NAME" ]; then
+        error "Release archive is missing required $TOOLS_SERVICE_NAME binary"
+    fi
+    linux_tools_service=""
+    if [ "$os" = "macos" ]; then
+        linux_tools_service="$TOOLS_SERVICE_NAME-linux-$arch"
+        if [ ! -f "$tmpdir/$linux_tools_service" ]; then
+            error "Release archive is missing required Linux sandbox artifact $linux_tools_service"
+        fi
+    fi
+
     ensure_install_dir
     mv "$tmpdir/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
     chmod +x "$INSTALL_DIR/$BINARY_NAME"
+    mv "$tmpdir/$TOOLS_SERVICE_NAME" "$INSTALL_DIR/$TOOLS_SERVICE_NAME"
+    chmod +x "$INSTALL_DIR/$TOOLS_SERVICE_NAME"
+
+    if [ -n "$linux_tools_service" ]; then
+        mv "$tmpdir/$linux_tools_service" "$INSTALL_DIR/$linux_tools_service"
+        chmod +x "$INSTALL_DIR/$linux_tools_service"
+    fi
 
     if [ -f "$tmpdir/chelix-embedding-service" ]; then
         mv "$tmpdir/chelix-embedding-service" "$INSTALL_DIR/chelix-embedding-service"

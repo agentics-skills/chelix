@@ -54,6 +54,7 @@ default-members = [
   "crates/telephony",
   "crates/tls",
   "crates/tools",
+  "crates/tools-service",
   "crates/vault",
   "crates/voice",
   "crates/wasm-precompile",
@@ -120,6 +121,7 @@ members = [
   "crates/telephony",
   "crates/tls",
   "crates/tools",
+  "crates/tools-service",
   "crates/vault",
   "crates/voice",
   "crates/wasm-precompile",
@@ -396,6 +398,7 @@ chelix-telegram          = { path = "crates/telegram" }
 chelix-telephony         = { path = "crates/telephony" }
 chelix-tls               = { path = "crates/tls" }
 chelix-tools             = { path = "crates/tools" }
+chelix-tools-service     = { path = "crates/tools-service" }
 chelix-vault             = { path = "crates/vault" }
 chelix-voice             = { path = "crates/voice" }
 chelix-web               = { default-features = false, path = "crates/web" }

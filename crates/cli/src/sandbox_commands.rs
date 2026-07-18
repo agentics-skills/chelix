@@ -104,12 +104,6 @@ async fn build() -> Result<()> {
     }
 
     let packages = sandbox_config.packages.clone();
-    if packages.is_empty() {
-        println!("No packages configured — nothing to build.");
-        println!("Add packages to [sandbox] in your config file.");
-        return Ok(());
-    }
-
     let base = sandbox_config
         .image
         .clone()
@@ -118,7 +112,7 @@ async fn build() -> Result<()> {
         .container_prefix
         .clone()
         .unwrap_or_else(|| "chelix-sandbox".to_string());
-    let tag = sandbox::sandbox_image_tag(&repo, &base, &packages);
+    let tag = sandbox::current_sandbox_image_tag(&repo, &base, &packages)?;
     println!("Base:     {base}");
     println!("Packages: {}", packages.join(", "));
     println!("Tag:      {tag}");

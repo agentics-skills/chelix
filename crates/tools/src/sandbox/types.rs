@@ -315,6 +315,23 @@ impl std::fmt::Display for SandboxId {
     }
 }
 
+/// Runtime endpoint for one managed tools service instance.
+#[derive(Clone)]
+pub struct ToolsServiceEndpoint {
+    pub base_url: String,
+    pub token: String,
+}
+
+impl std::fmt::Debug for ToolsServiceEndpoint {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ToolsServiceEndpoint")
+            .field("base_url", &self.base_url)
+            .field("token", &"[redacted]")
+            .finish()
+    }
+}
+
 /// Result of a `build_image` call.
 #[derive(Debug, Clone)]
 pub struct BuildImageResult {
@@ -333,6 +350,14 @@ pub trait Sandbox: Send + Sync {
     /// Ensure the sandbox environment is ready (e.g., container started).
     /// If `image_override` is provided, use that image instead of the configured default.
     async fn ensure_ready(&self, id: &SandboxId, image_override: Option<&str>) -> Result<()>;
+
+    /// Return the authenticated tools service endpoint for a prepared sandbox.
+    async fn tools_service_endpoint(&self, _id: &SandboxId) -> Result<ToolsServiceEndpoint> {
+        Err(crate::error::Error::message(format!(
+            "sandbox backend {:?} does not expose the managed tools service",
+            self.backend_name()
+        )))
+    }
 
     /// Run a command inside the sandbox.
     async fn run_command(

@@ -470,14 +470,8 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> GonData {
         SandboxGonInfo {
             backend: SandboxBackendId::from_name(router.backend_name()),
             os: std::env::consts::OS,
-            // Use resolve_default_image_nowait() to avoid blocking on a
-            // sandbox image build — default_image() waits up to 10 minutes
-            // for build_complete, which hangs every page request during the
-            // initial image build on CI.
-            default_image: router.resolve_default_image_nowait().await,
-            image_building: router
-                .building_flag
-                .load(std::sync::atomic::Ordering::Relaxed),
+            default_image: router.default_image().await,
+            image_building: false,
             available_backends: router
                 .available_backends()
                 .into_iter()

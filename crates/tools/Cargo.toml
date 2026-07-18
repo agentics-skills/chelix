@@ -36,6 +36,7 @@ chelix-cron           = { workspace = true }
 chelix-media          = { workspace = true }
 chelix-metrics        = { optional = true, workspace = true }
 chelix-providers      = { workspace = true }
+chelix-protocol       = { workspace = true }
 chelix-service-traits = { workspace = true }
 chelix-sessions       = { workspace = true }
 chelix-skills         = { workspace = true }

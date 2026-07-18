@@ -899,7 +899,16 @@ pub async fn prepare_gateway_core(
 
     chelix_tools::init_shared_http_client(upstream_proxy);
 
-    // Spawn background sandbox tasks (image pre-build, host provisioning, container GC).
+    // Build the exact sandbox image before any sandbox can be launched.
+    sandbox::prepare_sandbox_images(&sandbox_router).await?;
+
+    // Start the managed host service before tools are registered.
+    let tools_service: Arc<dyn chelix_tools::tools_service::ToolsService> =
+        chelix_tools::tools_service::ManagedToolsService::start(Arc::clone(&sandbox_router))
+            .await
+            .map_err(|error| anyhow::anyhow!("failed to start managed tools service: {error}"))?;
+
+    // Spawn non-critical sandbox tasks (host provisioning and container GC).
     sandbox::spawn_sandbox_background_tasks(&sandbox_router, &deferred_state);
 
     // Periodic cron session retention pruning.
@@ -1168,6 +1177,7 @@ pub async fn prepare_gateway_core(
         session_state_store,
         agent_persona_store,
         sandbox_router,
+        tools_service,
         cron_service,
         deferred_state,
         startup_mem_probe,

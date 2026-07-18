@@ -8,5 +8,6 @@
 //! - `EventFrame`    — gateway → client server-push
 
 mod embedding;
+mod tools;
 mod types;
-pub use {embedding::*, types::*};
+pub use {embedding::*, tools::*, types::*};

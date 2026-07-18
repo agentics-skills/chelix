@@ -1,7 +1,9 @@
 # Installation
 
-Chelix is distributed as a single self-contained binary. Choose the installation
-method that works best for your setup.
+Chelix is distributed as a native gateway plus the required managed
+`chelix-tools-service` binary. Release packages install both executables together;
+local embeddings may add an optional managed embedding service. Choose the
+installation method that works best for your setup.
 
 ## Quick Install (Recommended)
 
@@ -11,8 +13,10 @@ The fastest way to get started on macOS or Linux:
 curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/install.sh | sh
 ```
 
-This downloads the latest release for your platform and installs it to
-`~/.local/bin`.
+This downloads the latest release for your platform and installs `chelix` and
+`chelix-tools-service` to `~/.local/bin`. On macOS, the release also installs the
+matching Linux `chelix-tools-service-linux-<arch>` artifact used to construct
+sandbox images.
 
 ## Docker
 
@@ -53,7 +57,11 @@ Authentication is only required when accessing Chelix from a non-localhost addre
 
 ```bash
 chelix --version
+chelix-tools-service --help
 ```
+
+The tools service is normally started and supervised by Chelix; the second
+command only verifies that the required sibling executable is installed.
 
 ## Uninstalling
 

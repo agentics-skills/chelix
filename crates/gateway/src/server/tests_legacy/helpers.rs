@@ -73,27 +73,6 @@ fn approval_manager_falls_back_for_invalid_values() {
 }
 
 #[test]
-fn prebuild_runs_only_when_mode_enabled_and_packages_present() {
-    let packages = vec!["curl".to_string()];
-    assert!(crate::server::helpers::should_prebuild_sandbox_image(
-        &chelix_tools::sandbox::SandboxMode::All,
-        &packages
-    ));
-    assert!(crate::server::helpers::should_prebuild_sandbox_image(
-        &chelix_tools::sandbox::SandboxMode::NonMain,
-        &packages
-    ));
-    assert!(!crate::server::helpers::should_prebuild_sandbox_image(
-        &chelix_tools::sandbox::SandboxMode::Off,
-        &packages
-    ));
-    assert!(!crate::server::helpers::should_prebuild_sandbox_image(
-        &chelix_tools::sandbox::SandboxMode::All,
-        &[]
-    ));
-}
-
-#[test]
 fn proxy_tls_validation_rejects_common_misconfiguration() {
     let err = crate::server::helpers::validate_proxy_tls_configuration(true, true, false)
         .expect_err("behind proxy with TLS should fail without explicit override");

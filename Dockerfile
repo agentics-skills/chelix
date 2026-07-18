@@ -74,6 +74,7 @@ RUN apt-get update -qq && \
         curl \
         gnupg \
         libgomp1 \
+        ripgrep \
         sudo \
         tmux \
         vim-tiny && \
@@ -109,8 +110,9 @@ RUN groupadd -f docker && \
     usermod -aG docker chelix && \
     echo "chelix ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/chelix
 
-# Copy the core binary and its managed local-embedding sidecar from builder
+# Copy the core binary and its managed sidecars from builder
 COPY --from=builder /build/target/release/chelix /usr/local/bin/chelix
+COPY --from=builder /build/target/release/chelix-tools-service /usr/local/bin/chelix-tools-service
 COPY --from=builder /build/target/release/chelix-embedding-service /usr/local/bin/chelix-embedding-service
 COPY --from=builder /build/crates/web/src/assets /usr/share/chelix/web
 COPY --from=builder /build/target/wasm32-wasip2/release/chelix_wasm_calc.wasm /usr/share/chelix/wasm/
