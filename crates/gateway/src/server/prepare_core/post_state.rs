@@ -568,6 +568,9 @@ pub(super) async fn complete_startup(
             )),
         ));
         tool_registry.register(Box::new(chelix_tools::calc::CalcTool::new()));
+        tool_registry.register(Box::new(
+            chelix_tools::list_directory::ListDirectoryTool::new(Arc::clone(&tools_service)),
+        ));
         tool_registry.register(Box::new(chelix_tools::ripgrep::RipgrepTool::new(
             Arc::clone(&tools_service),
         )));

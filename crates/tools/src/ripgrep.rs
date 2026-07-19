@@ -196,6 +196,10 @@ mod tests {
 
     #[async_trait]
     impl ToolsService for FakeToolsService {
+        async fn list_directory(&self, _session_key: &str, _path: String) -> Result<String> {
+            Err(Error::message("list_directory is not used by this test"))
+        }
+
         async fn ripgrep(&self, session_key: &str, params: Value) -> Result<Value> {
             self.calls
                 .lock()

@@ -48,28 +48,11 @@ pub struct SendDocumentTool {
 
 impl SendDocumentTool {
     #[must_use]
-    #[cfg(not(test))]
     pub fn new(sandbox_router: Arc<SandboxRouter>) -> Self {
         Self {
             sandbox_router,
             session_store: None,
         }
-    }
-
-    #[must_use]
-    #[cfg(test)]
-    pub fn new() -> Self {
-        Self {
-            sandbox_router: Arc::new(SandboxRouter::disabled()),
-            session_store: None,
-        }
-    }
-
-    #[must_use]
-    #[cfg(test)]
-    pub fn with_sandbox_router(mut self, sandbox_router: Arc<SandboxRouter>) -> Self {
-        self.sandbox_router = sandbox_router;
-        self
     }
 
     /// Attach a session store so files are saved to the media directory
@@ -257,6 +240,10 @@ mod tests {
 
     struct StubSandbox;
 
+    fn host_tool() -> SendDocumentTool {
+        SendDocumentTool::new(Arc::new(SandboxRouter::disabled()))
+    }
+
     #[async_trait]
     impl Sandbox for StubSandbox {
         fn backend_id(&self) -> crate::sandbox::SandboxBackendId {
@@ -299,14 +286,14 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_missing_path_parameter() {
-        let tool = SendDocumentTool::new();
+        let tool = host_tool();
         let err = tool.execute(json!({})).await.unwrap_err();
         assert!(err.to_string().contains("missing 'path'"));
     }
 
     #[tokio::test]
     async fn rejects_blocked_extension_exe() {
-        let tool = SendDocumentTool::new();
+        let tool = host_tool();
         let err = tool
             .execute(json!({ "path": "/tmp/malware.exe" }))
             .await
@@ -316,7 +303,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_blocked_extension_sh() {
-        let tool = SendDocumentTool::new();
+        let tool = host_tool();
         let err = tool
             .execute(json!({ "path": "/tmp/script.sh" }))
             .await
@@ -326,7 +313,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_blocked_extension_bat() {
-        let tool = SendDocumentTool::new();
+        let tool = host_tool();
         let err = tool
             .execute(json!({ "path": "/tmp/run.bat" }))
             .await
@@ -336,7 +323,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_blocked_extension_dll() {
-        let tool = SendDocumentTool::new();
+        let tool = host_tool();
         let err = tool
             .execute(json!({ "path": "/tmp/lib.dll" }))
             .await
@@ -346,7 +333,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_unsupported_extension() {
-        let tool = SendDocumentTool::new();
+        let tool = host_tool();
         let err = tool
             .execute(json!({ "path": "/tmp/data.qqqq" }))
             .await
@@ -356,7 +343,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_image_extension() {
-        let tool = SendDocumentTool::new();
+        let tool = host_tool();
         let err = tool
             .execute(json!({ "path": "/tmp/photo.png" }))
             .await
@@ -366,7 +353,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_file_without_extension() {
-        let tool = SendDocumentTool::new();
+        let tool = host_tool();
         let err = tool
             .execute(json!({ "path": "/tmp/noext" }))
             .await
@@ -376,7 +363,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_nonexistent_file() {
-        let tool = SendDocumentTool::new();
+        let tool = host_tool();
         let err = tool
             .execute(json!({ "path": "/tmp/does-not-exist-99999.pdf" }))
             .await
@@ -390,7 +377,7 @@ mod tests {
         let pdf_dir = dir.path().parent().unwrap().join("test-dir.pdf");
         std::fs::create_dir_all(&pdf_dir).unwrap();
 
-        let tool = SendDocumentTool::new();
+        let tool = host_tool();
         let err = tool
             .execute(json!({ "path": pdf_dir.to_str().unwrap() }))
             .await
@@ -407,7 +394,7 @@ mod tests {
         let f = std::fs::File::create(&path).unwrap();
         f.set_len(file_io::MAX_FILE_SIZE + 1).unwrap();
 
-        let tool = SendDocumentTool::new();
+        let tool = host_tool();
         let err = tool
             .execute(json!({ "path": path.to_str().unwrap() }))
             .await
@@ -420,7 +407,7 @@ mod tests {
         let mut tmp = tempfile::NamedTempFile::with_suffix(".pdf").unwrap();
         tmp.write_all(b"%PDF-1.4").unwrap();
 
-        let tool = SendDocumentTool::new();
+        let tool = host_tool();
         let result = tool
             .execute(json!({ "path": tmp.path().to_str().unwrap() }))
             .await
@@ -438,7 +425,7 @@ mod tests {
         let mut tmp = tempfile::NamedTempFile::with_suffix(".csv").unwrap();
         tmp.write_all(b"a,b,c\n1,2,3\n").unwrap();
 
-        let tool = SendDocumentTool::new();
+        let tool = host_tool();
         let result = tool
             .execute(json!({ "path": tmp.path().to_str().unwrap() }))
             .await
@@ -454,7 +441,7 @@ mod tests {
         let mut tmp = tempfile::NamedTempFile::with_suffix(".json").unwrap();
         tmp.write_all(b"{}").unwrap();
 
-        let tool = SendDocumentTool::new();
+        let tool = host_tool();
         let result = tool
             .execute(json!({
                 "path": tmp.path().to_str().unwrap(),
@@ -475,7 +462,7 @@ mod tests {
             backend,
         ));
 
-        let tool = SendDocumentTool::new().with_sandbox_router(router);
+        let tool = SendDocumentTool::new(router);
         let result = tool
             .execute(json!({
                 "_session_key": "session:abc",
@@ -497,7 +484,7 @@ mod tests {
             backend,
         ));
 
-        let tool = SendDocumentTool::new().with_sandbox_router(router);
+        let tool = SendDocumentTool::new(router);
         let err = tool
             .execute(json!({
                 "_session_key": "session:abc",
@@ -519,7 +506,7 @@ mod tests {
         let mut tmp = tempfile::NamedTempFile::with_suffix(".pdf").unwrap();
         tmp.write_all(b"%PDF-1.4").unwrap();
 
-        let tool = SendDocumentTool::new().with_session_store(Arc::clone(&store));
+        let tool = host_tool().with_session_store(Arc::clone(&store));
         let result = tool
             .execute(json!({ "path": tmp.path().to_str().unwrap() }))
             .await
@@ -554,7 +541,7 @@ mod tests {
         let mut tmp = tempfile::NamedTempFile::with_suffix(".csv").unwrap();
         tmp.write_all(b"a,b\n1,2\n").unwrap();
 
-        let tool = SendDocumentTool::new().with_session_store(store);
+        let tool = host_tool().with_session_store(store);
         let result = tool
             .execute(json!({ "path": tmp.path().to_str().unwrap() }))
             .await
@@ -583,7 +570,7 @@ mod tests {
         let mut tmp = tempfile::NamedTempFile::with_suffix(".json").unwrap();
         tmp.write_all(b"{}").unwrap();
 
-        let tool = SendDocumentTool::new().with_session_store(store);
+        let tool = host_tool().with_session_store(store);
         let result = tool
             .execute(json!({
                 "path": tmp.path().to_str().unwrap(),
@@ -605,7 +592,7 @@ mod tests {
         tmp.write_all(b"%PDF-1.4").unwrap();
         let path = tmp.path().to_str().unwrap().to_string();
 
-        let tool = SendDocumentTool::new().with_session_store(Arc::clone(&store));
+        let tool = host_tool().with_session_store(Arc::clone(&store));
         let r1 = tool.execute(json!({ "path": &path })).await.unwrap();
         let r2 = tool.execute(json!({ "path": &path })).await.unwrap();
 
@@ -620,7 +607,7 @@ mod tests {
         let mut tmp = tempfile::NamedTempFile::with_suffix(".pdf").unwrap();
         tmp.write_all(b"%PDF-1.4").unwrap();
 
-        let tool = SendDocumentTool::new();
+        let tool = host_tool();
         let result = tool
             .execute(json!({ "path": tmp.path().to_str().unwrap() }))
             .await

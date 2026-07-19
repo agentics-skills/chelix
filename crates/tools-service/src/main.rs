@@ -1,5 +1,6 @@
 mod api;
 mod app;
+mod list_directory;
 mod ripgrep;
 
 #[tokio::main]

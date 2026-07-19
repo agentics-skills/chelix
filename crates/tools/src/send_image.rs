@@ -24,24 +24,8 @@ pub struct SendImageTool {
 
 impl SendImageTool {
     #[must_use]
-    #[cfg(not(test))]
     pub fn new(sandbox_router: Arc<SandboxRouter>) -> Self {
         Self { sandbox_router }
-    }
-
-    #[must_use]
-    #[cfg(test)]
-    pub fn new() -> Self {
-        Self {
-            sandbox_router: Arc::new(SandboxRouter::disabled()),
-        }
-    }
-
-    #[must_use]
-    #[cfg(test)]
-    pub fn with_sandbox_router(mut self, sandbox_router: Arc<SandboxRouter>) -> Self {
-        self.sandbox_router = sandbox_router;
-        self
     }
 }
 
@@ -156,6 +140,10 @@ mod tests {
 
     struct StubSandbox;
 
+    fn host_tool() -> SendImageTool {
+        SendImageTool::new(Arc::new(SandboxRouter::disabled()))
+    }
+
     #[async_trait]
     impl Sandbox for StubSandbox {
         fn backend_id(&self) -> crate::sandbox::SandboxBackendId {
@@ -212,14 +200,14 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_missing_path_parameter() {
-        let tool = SendImageTool::new();
+        let tool = host_tool();
         let err = tool.execute(json!({})).await.unwrap_err();
         assert!(err.to_string().contains("missing 'path'"));
     }
 
     #[tokio::test]
     async fn rejects_unsupported_extension() {
-        let tool = SendImageTool::new();
+        let tool = host_tool();
         let err = tool
             .execute(json!({ "path": "/tmp/image.qqqq" }))
             .await
@@ -230,7 +218,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_file_without_extension() {
         let tmp = tempfile::NamedTempFile::new().unwrap();
-        let tool = SendImageTool::new();
+        let tool = host_tool();
         let err = tool
             .execute(json!({ "path": tmp.path().to_str().unwrap() }))
             .await
@@ -240,7 +228,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_nonexistent_file() {
-        let tool = SendImageTool::new();
+        let tool = host_tool();
         let err = tool
             .execute(json!({ "path": "/tmp/does-not-exist-12345.png" }))
             .await
@@ -255,7 +243,7 @@ mod tests {
         let png_dir = dir.path().parent().unwrap().join("test-dir.png");
         std::fs::create_dir_all(&png_dir).unwrap();
 
-        let tool = SendImageTool::new();
+        let tool = host_tool();
         let err = tool
             .execute(json!({ "path": png_dir.to_str().unwrap() }))
             .await
@@ -270,7 +258,7 @@ mod tests {
         let mut tmp = tempfile::NamedTempFile::with_suffix(".png").unwrap();
         tmp.write_all(&[0x89, b'P', b'N', b'G']).unwrap();
 
-        let tool = SendImageTool::new();
+        let tool = host_tool();
         let result = tool
             .execute(json!({ "path": tmp.path().to_str().unwrap() }))
             .await
@@ -287,7 +275,7 @@ mod tests {
         let mut tmp = tempfile::NamedTempFile::with_suffix(".jpg").unwrap();
         tmp.write_all(&[0xFF, 0xD8, 0xFF]).unwrap();
 
-        let tool = SendImageTool::new();
+        let tool = host_tool();
         let result = tool
             .execute(json!({ "path": tmp.path().to_str().unwrap(), "caption": "Hello" }))
             .await
@@ -307,7 +295,7 @@ mod tests {
         let mut tmp = tempfile::NamedTempFile::with_suffix(".ppm").unwrap();
         tmp.write_all(b"P3\n1 1\n255\n255 0 0\n").unwrap();
 
-        let tool = SendImageTool::new();
+        let tool = host_tool();
         let result = tool
             .execute(json!({ "path": tmp.path().to_str().unwrap() }))
             .await
@@ -326,7 +314,7 @@ mod tests {
         let file = std::fs::File::create(&path).unwrap();
         file.set_len(file_io::MAX_FILE_SIZE + 1).unwrap();
 
-        let tool = SendImageTool::new();
+        let tool = host_tool();
         let err = tool
             .execute(json!({ "path": path.to_str().unwrap() }))
             .await
@@ -342,7 +330,7 @@ mod tests {
             backend,
         ));
 
-        let tool = SendImageTool::new().with_sandbox_router(router);
+        let tool = SendImageTool::new(router);
         let result = tool
             .execute(json!({
                 "_session_key": "session:abc",
@@ -363,7 +351,7 @@ mod tests {
             backend,
         ));
 
-        let tool = SendImageTool::new().with_sandbox_router(router);
+        let tool = SendImageTool::new(router);
         let err = tool
             .execute(json!({
                 "_session_key": "session:abc",

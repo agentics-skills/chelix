@@ -441,9 +441,15 @@ async fn test_discover_tools_service_endpoint_runs_oci_discovery_once() {
             let _ = socket.read(&mut request).await.unwrap();
             let attempt = health_requests_task.fetch_add(1, Ordering::SeqCst) + 1;
             let (status, body) = if attempt < 3 {
-                ("503 Service Unavailable", "{\"error\":\"starting\"}")
+                (
+                    "503 Service Unavailable",
+                    "{\"error\":\"starting\"}".to_string(),
+                )
             } else {
-                ("200 OK", "{\"protocolVersion\":1}")
+                (
+                    "200 OK",
+                    format!("{{\"protocolVersion\":{TOOLS_SERVICE_PROTOCOL_VERSION}}}"),
+                )
             };
             let response = format!(
                 "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
