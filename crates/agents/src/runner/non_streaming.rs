@@ -95,6 +95,21 @@ pub async fn run_agent_loop_with_context(
     .await
 }
 
+pub(super) fn resolve_agent_loop_max_iterations(
+    config: &chelix_config::ChelixConfig,
+    max_iterations_override: Option<usize>,
+) -> usize {
+    let configured_max_iterations =
+        max_iterations_override.unwrap_or(config.tools.agent_max_iterations);
+    let base_max_iterations = resolve_agent_max_iterations(configured_max_iterations);
+    // Lazy mode needs extra iterations for get_tool discovery round-trips.
+    if config.tools.registry_mode == chelix_config::ToolRegistryMode::Lazy {
+        base_max_iterations * 3
+    } else {
+        base_max_iterations
+    }
+}
+
 pub async fn run_agent_loop_with_context_and_limits(
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
@@ -114,16 +129,7 @@ pub async fn run_agent_loop_with_context_and_limits(
         .unwrap_or(config.tools.max_tool_result_bytes);
     let max_auto_continues = config.tools.agent_max_auto_continues;
     let auto_continue_min_tool_calls = config.tools.agent_auto_continue_min_tool_calls;
-    let configured_max_iterations = limits
-        .max_iterations
-        .unwrap_or(config.tools.agent_max_iterations);
-    let base_max_iterations = resolve_agent_max_iterations(configured_max_iterations);
-    // Lazy mode needs extra iterations for get_tool discovery round-trips.
-    let max_iterations = if config.tools.registry_mode == chelix_config::ToolRegistryMode::Lazy {
-        base_max_iterations * 3
-    } else {
-        base_max_iterations
-    };
+    let max_iterations = resolve_agent_loop_max_iterations(&config, limits.max_iterations);
 
     let is_multimodal = matches!(user_content, UserContent::Multimodal(_));
     info!(

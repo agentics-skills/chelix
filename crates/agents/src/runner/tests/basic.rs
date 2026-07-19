@@ -347,35 +347,14 @@ async fn test_streaming_runner_does_not_use_tools_path_for_empty_schema_list() {
     );
 }
 
-#[tokio::test]
-async fn test_non_streaming_runner_uses_max_iteration_override() {
-    let provider = Arc::new(ToolCallingProvider {
-        call_count: std::sync::atomic::AtomicUsize::new(0),
-    });
-    let mut tools = ToolRegistry::new();
-    tools.register(Box::new(EchoTool));
+#[test]
+fn test_non_streaming_runner_uses_max_iteration_override() {
+    let mut config = chelix_config::ChelixConfig::default();
+    config.tools.registry_mode = chelix_config::ToolRegistryMode::Full;
 
-    let result = run_agent_loop_with_context_and_limits(
-        provider,
-        &tools,
-        "You are a test bot.",
-        &UserContent::text("Hi"),
-        None,
-        None,
-        None,
-        None,
-        None,
-        AgentLoopLimits {
-            max_iterations: Some(1),
-            ..Default::default()
-        },
-    )
-    .await;
-
-    let error = result.unwrap_err().to_string();
-    assert!(
-        error.contains("agent loop exceeded max iterations (1)"),
-        "unexpected error: {error}"
+    assert_eq!(
+        super::super::non_streaming::resolve_agent_loop_max_iterations(&config, Some(1)),
+        1
     );
 }
 

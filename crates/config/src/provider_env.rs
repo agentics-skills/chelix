@@ -39,18 +39,21 @@ pub fn env_value_with_overrides(
     env_value_from_source(env_overrides, key, |env_key| std::env::var(env_key).ok())
 }
 
-/// Resolve the generic provider selector and API key from environment variables.
-///
-/// `CHELIX_*` keys win over the bare aliases, but provider and API key are resolved
-/// independently so mixed pairs such as `CHELIX_PROVIDER` + `API_KEY` are accepted.
-/// The concrete variable names used are returned for diagnostics and UI source labels.
-pub fn generic_provider_env(env_overrides: &HashMap<String, String>) -> Option<GenericProviderEnv> {
-    let (provider_var, provider_raw) = PROVIDER_ENV_CANDIDATES
-        .iter()
-        .find_map(|key| env_value_with_overrides(env_overrides, key).map(|value| (*key, value)))?;
-    let (api_key_var, api_key) = API_KEY_ENV_CANDIDATES
-        .iter()
-        .find_map(|key| env_value_with_overrides(env_overrides, key).map(|value| (*key, value)))?;
+fn generic_provider_env_from_source<F>(
+    env_overrides: &HashMap<String, String>,
+    env_lookup: F,
+) -> Option<GenericProviderEnv>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let (provider_var, provider_raw) = PROVIDER_ENV_CANDIDATES.iter().find_map(|key| {
+        env_value_from_source(env_overrides, key, |env_key| env_lookup(env_key))
+            .map(|value| (*key, value))
+    })?;
+    let (api_key_var, api_key) = API_KEY_ENV_CANDIDATES.iter().find_map(|key| {
+        env_value_from_source(env_overrides, key, |env_key| env_lookup(env_key))
+            .map(|value| (*key, value))
+    })?;
 
     Some(GenericProviderEnv {
         provider: normalize_provider_name(&provider_raw)?,
@@ -60,23 +63,56 @@ pub fn generic_provider_env(env_overrides: &HashMap<String, String>) -> Option<G
     })
 }
 
+/// Resolve the generic provider selector and API key from environment variables.
+///
+/// `CHELIX_*` keys win over the bare aliases, but provider and API key are resolved
+/// independently so mixed pairs such as `CHELIX_PROVIDER` + `API_KEY` are accepted.
+/// The concrete variable names used are returned for diagnostics and UI source labels.
+pub fn generic_provider_env(env_overrides: &HashMap<String, String>) -> Option<GenericProviderEnv> {
+    generic_provider_env_from_source(env_overrides, |key| std::env::var(key).ok())
+}
+
+fn generic_provider_api_key_from_source<F>(
+    provider: &str,
+    env_overrides: &HashMap<String, String>,
+    env_lookup: F,
+) -> Option<Secret<String>>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let normalized_provider = normalize_provider_name(provider)?;
+    let generic = generic_provider_env_from_source(env_overrides, env_lookup)?;
+    (generic.provider == normalized_provider).then_some(generic.api_key)
+}
+
 pub fn generic_provider_api_key_from_env(
     provider: &str,
     env_overrides: &HashMap<String, String>,
 ) -> Option<Secret<String>> {
+    generic_provider_api_key_from_source(provider, env_overrides, |key| std::env::var(key).ok())
+}
+
+fn generic_provider_env_source_for_provider_from_source<F>(
+    provider: &str,
+    env_overrides: &HashMap<String, String>,
+    env_lookup: F,
+) -> Option<String>
+where
+    F: Fn(&str) -> Option<String>,
+{
     let normalized_provider = normalize_provider_name(provider)?;
-    let generic = generic_provider_env(env_overrides)?;
-    (generic.provider == normalized_provider).then_some(generic.api_key)
+    let generic = generic_provider_env_from_source(env_overrides, env_lookup)?;
+    (generic.provider == normalized_provider)
+        .then(|| format!("env:{}+{}", generic.provider_var, generic.api_key_var))
 }
 
 pub fn generic_provider_env_source_for_provider(
     provider: &str,
     env_overrides: &HashMap<String, String>,
 ) -> Option<String> {
-    let normalized_provider = normalize_provider_name(provider)?;
-    let generic = generic_provider_env(env_overrides)?;
-    (generic.provider == normalized_provider)
-        .then(|| format!("env:{}+{}", generic.provider_var, generic.api_key_var))
+    generic_provider_env_source_for_provider_from_source(provider, env_overrides, |key| {
+        std::env::var(key).ok()
+    })
 }
 
 pub fn normalize_provider_name(value: &str) -> Option<String> {
@@ -125,7 +161,7 @@ mod tests {
             ("CHELIX_API_KEY".to_string(), "primary-key".to_string()),
         ]);
 
-        let Some(resolved) = generic_provider_env(&env_overrides) else {
+        let Some(resolved) = generic_provider_env_from_source(&env_overrides, |_| None) else {
             panic!("generic provider env should resolve");
         };
         assert_eq!(resolved.provider, "openai");
@@ -141,7 +177,7 @@ mod tests {
             ("API_KEY".to_string(), "test-key".to_string()),
         ]);
 
-        let Some(resolved) = generic_provider_env(&env_overrides) else {
+        let Some(resolved) = generic_provider_env_from_source(&env_overrides, |_| None) else {
             panic!("generic provider env should resolve");
         };
         assert_eq!(resolved.provider, "gemini");
@@ -185,7 +221,7 @@ mod tests {
             ("API_KEY".to_string(), "test-key".to_string()),
         ]);
 
-        let Some(resolved) = generic_provider_env(&env_overrides) else {
+        let Some(resolved) = generic_provider_env_from_source(&env_overrides, |_| None) else {
             panic!("generic provider env should resolve");
         };
         assert_eq!(resolved.provider, "openai");
@@ -202,13 +238,15 @@ mod tests {
         ]);
 
         assert_eq!(
-            generic_provider_api_key_from_env("openai", &env_overrides)
+            generic_provider_api_key_from_source("openai", &env_overrides, |_| None)
                 .as_ref()
                 .map(ExposeSecret::expose_secret)
                 .map(|value| value.as_str()),
             Some("sk-test")
         );
-        assert!(generic_provider_api_key_from_env("anthropic", &env_overrides).is_none());
+        assert!(
+            generic_provider_api_key_from_source("anthropic", &env_overrides, |_| None).is_none()
+        );
     }
 
     #[test]
@@ -219,7 +257,12 @@ mod tests {
         ]);
 
         assert_eq!(
-            generic_provider_env_source_for_provider("anthropic", &env_overrides).as_deref(),
+            generic_provider_env_source_for_provider_from_source(
+                "anthropic",
+                &env_overrides,
+                |_| None,
+            )
+            .as_deref(),
             Some("env:PROVIDER+API_KEY")
         );
     }

@@ -485,13 +485,17 @@ mod tests {
             &ProvidersConfig::default(),
             None,
             &HashMap::from([
-                ("PROVIDER".to_string(), "openai".to_string()),
-                ("API_KEY".to_string(), "sk-test-openai-generic".to_string()),
+                ("CHELIX_PROVIDER".to_string(), "openai".to_string()),
+                (
+                    "CHELIX_API_KEY".to_string(),
+                    "sk-test-openai-generic".to_string(),
+                ),
             ]),
         );
 
         assert!(detected.iter().any(|source| {
-            source.provider == "openai" && source.source == "env:PROVIDER+API_KEY"
+            source.provider == "openai"
+                && source.source == "env:CHELIX_PROVIDER+CHELIX_API_KEY"
         }));
     }
 }
