@@ -20,13 +20,13 @@ use std::{collections::HashMap, path::Path};
 use tracing::{debug, warn};
 
 use crate::schema::{
-    AgentIdentity, AgentPreset, McpServerId, PresetMcpPolicy, PresetSandboxMode, PresetToolPolicy,
-    ReasoningEffort, is_default_agent_preset,
+    AgentIdentity, AgentPreset, McpServerId, PresetMcpPolicy, PresetToolPolicy, ReasoningEffort,
+    is_default_agent_preset,
 };
 
 /// Frontmatter fields parsed from the YAML block.
 #[derive(Debug, Default, serde::Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 struct AgentFrontmatter {
     name: Option<String>,
     display_name: Option<String>,
@@ -42,7 +42,6 @@ struct AgentFrontmatter {
     reasoning_effort: Option<String>,
     mcp_allow_servers: Option<String>,
     mcp_deny_servers: Option<String>,
-    sandbox_mode: Option<String>,
     skills_allow: Option<String>,
     skills_deny: Option<String>,
 }
@@ -76,8 +75,6 @@ struct AgentFrontmatterOut {
     mcp_allow_servers: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     mcp_deny_servers: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    sandbox_mode: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     skills_allow: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -126,13 +123,6 @@ pub fn parse_agent_md(content: &str) -> anyhow::Result<(String, AgentPreset)> {
         timeout_secs: fm.timeout_secs,
         reasoning_effort: fm.reasoning_effort.map(ReasoningEffort::from),
         mcp: parse_mcp_policy(fm.mcp_allow_servers, fm.mcp_deny_servers)?,
-        sandbox: crate::schema::PresetSandboxPolicy {
-            mode: fm
-                .sandbox_mode
-                .as_deref()
-                .map(|value| value.try_into().map_err(anyhow::Error::msg))
-                .transpose()?,
-        },
         skills: crate::schema::PresetSkillPolicy {
             allow: fm.skills_allow.map(csv_list),
             deny: fm.skills_deny.map(csv_list),
@@ -169,11 +159,6 @@ pub fn render_agent_md(name: &str, preset: &AgentPreset) -> anyhow::Result<Strin
             .map(|effort| effort.as_str().to_string()),
         mcp_allow_servers,
         mcp_deny_servers,
-        sandbox_mode: preset.sandbox.mode.map(|mode| match mode {
-            PresetSandboxMode::Off => "off".to_string(),
-            PresetSandboxMode::All => "all".to_string(),
-            PresetSandboxMode::NonMain => "non-main".to_string(),
-        }),
         skills_allow: preset.skills.allow.as_ref().map(|values| values.join(", ")),
         skills_deny: preset
             .skills
@@ -593,10 +578,7 @@ Search thoroughly.
 
     #[test]
     fn test_render_round_trips_advanced_fields() {
-        use crate::schema::{
-            McpServerId, PresetMcpPolicy, PresetSandboxMode, PresetSandboxPolicy,
-            PresetSkillPolicy, ReasoningEffort,
-        };
+        use crate::schema::{McpServerId, PresetMcpPolicy, PresetSkillPolicy, ReasoningEffort};
 
         let preset = AgentPreset {
             identity: AgentIdentity {
@@ -605,9 +587,6 @@ Search thoroughly.
             },
             reasoning_effort: Some(ReasoningEffort::from("ultra")),
             mcp: PresetMcpPolicy::Allow(vec![McpServerId::new("github"), McpServerId::new("jira")]),
-            sandbox: PresetSandboxPolicy {
-                mode: Some(PresetSandboxMode::All),
-            },
             skills: PresetSkillPolicy {
                 allow: Some(vec!["code-review".into(), "testing".into()]),
                 deny: Some(vec!["deploy".into()]),
@@ -628,7 +607,6 @@ Search thoroughly.
             assert_eq!(servers[0].as_str(), "github");
             assert_eq!(servers[1].as_str(), "jira");
         }
-        assert_eq!(parsed.sandbox.mode, Some(PresetSandboxMode::All));
         assert_eq!(
             parsed.skills.allow.as_deref(),
             Some(["code-review".to_string(), "testing".to_string()].as_slice())
@@ -659,27 +637,6 @@ Search thoroughly.
         if let PresetMcpPolicy::Deny(servers) = &parsed.mcp {
             assert_eq!(servers[0].as_str(), "risky-server");
         }
-    }
-
-    #[test]
-    fn test_render_round_trips_sandbox_non_main() {
-        use crate::schema::{PresetSandboxMode, PresetSandboxPolicy};
-
-        let preset = AgentPreset {
-            identity: AgentIdentity {
-                name: Some("Sandboxed".into()),
-                ..Default::default()
-            },
-            sandbox: PresetSandboxPolicy {
-                mode: Some(PresetSandboxMode::NonMain),
-            },
-            ..Default::default()
-        };
-
-        let rendered = render_agent_md("sandboxed", &preset).unwrap();
-        let (_, parsed) = parse_agent_md(&rendered).unwrap();
-
-        assert_eq!(parsed.sandbox.mode, Some(PresetSandboxMode::NonMain));
     }
 
     #[test]

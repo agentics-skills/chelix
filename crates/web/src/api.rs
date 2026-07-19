@@ -21,7 +21,6 @@ const MCP_LIST_FAILED: &str = "MCP_LIST_FAILED";
 const IMAGE_CACHE_DELETE_FAILED: &str = "IMAGE_CACHE_DELETE_FAILED";
 const IMAGE_CACHE_PRUNE_FAILED: &str = "IMAGE_CACHE_PRUNE_FAILED";
 const SANDBOX_CHECK_PACKAGES_FAILED: &str = "SANDBOX_CHECK_PACKAGES_FAILED";
-const SANDBOX_BACKEND_UNAVAILABLE: &str = "SANDBOX_BACKEND_UNAVAILABLE";
 const SANDBOX_IMAGE_NAME_REQUIRED: &str = "SANDBOX_IMAGE_NAME_REQUIRED";
 const SANDBOX_IMAGE_PACKAGES_REQUIRED: &str = "SANDBOX_IMAGE_PACKAGES_REQUIRED";
 const SANDBOX_IMAGE_NAME_INVALID: &str = "SANDBOX_IMAGE_NAME_INVALID";
@@ -64,7 +63,7 @@ pub struct SandboxSharedHomeUpdateRequest {
 
 #[derive(serde::Deserialize)]
 pub struct SandboxDefaultBackendUpdateRequest {
-    backend: String,
+    backend: chelix_config::schema::SandboxBackend,
 }
 
 fn shared_home_config_payload(config: &chelix_config::ChelixConfig) -> serde_json::Value {
@@ -462,20 +461,12 @@ async fn api_bootstrap_with_query(
         onboarding_completed(gw),
     );
 
-    let sandbox = if let Some(ref router) = gw.sandbox_router {
-        let default_image = router.default_image().await;
-        serde_json::json!({
-            "backend": router.backend_name(),
-            "os": std::env::consts::OS,
-            "default_image": default_image,
-        })
-    } else {
-        serde_json::json!({
-            "backend": "none",
-            "os": std::env::consts::OS,
-            "default_image": chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE,
-        })
-    };
+    let default_image = gw.sandbox_router.default_image().await;
+    let sandbox = serde_json::json!({
+        "backend": gw.sandbox_router.backend_id(),
+        "os": std::env::consts::OS,
+        "default_image": default_image,
+    });
     Json(serde_json::json!({
         "channels": channels,
         "sessions": sessions,
@@ -671,7 +662,7 @@ pub async fn api_skills_search_handler(
 pub async fn api_cached_images_handler() -> impl IntoResponse {
     let config = chelix_config::discover_and_load();
     let builder =
-        chelix_tools::image_cache::DockerImageBuilder::for_backend(&config.sandbox.backend);
+        chelix_tools::image_cache::DockerImageBuilder::for_backend(config.sandbox.backend);
     let (cached, sandbox) = tokio::join!(
         builder.list_cached(),
         chelix_tools::sandbox::list_sandbox_images(),
@@ -720,7 +711,7 @@ pub async fn api_delete_cached_image_handler(Path(tag): Path<String>) -> impl In
     } else {
         let cfg = chelix_config::discover_and_load();
         let builder =
-            chelix_tools::image_cache::DockerImageBuilder::for_backend(&cfg.sandbox.backend);
+            chelix_tools::image_cache::DockerImageBuilder::for_backend(cfg.sandbox.backend);
         let full_tag = if tag.starts_with("chelix-cache/") {
             tag
         } else {
@@ -741,7 +732,7 @@ pub async fn api_delete_cached_image_handler(Path(tag): Path<String>) -> impl In
 pub async fn api_prune_cached_images_handler() -> impl IntoResponse {
     let config = chelix_config::discover_and_load();
     let builder =
-        chelix_tools::image_cache::DockerImageBuilder::for_backend(&config.sandbox.backend);
+        chelix_tools::image_cache::DockerImageBuilder::for_backend(config.sandbox.backend);
     let (tool_result, sandbox_result) = tokio::join!(
         builder.prune_all(),
         chelix_tools::sandbox::clean_sandbox_images(),
@@ -798,7 +789,7 @@ pub async fn api_check_packages_handler(Json(body): Json<serde_json::Value>) -> 
     let script = checks.join("\n");
 
     let config = chelix_config::discover_and_load();
-    let cli = chelix_tools::image_cache::DockerImageBuilder::for_backend(&config.sandbox.backend)
+    let cli = chelix_tools::image_cache::DockerImageBuilder::for_backend(config.sandbox.backend)
         .cli_name();
     let output = tokio::process::Command::new(cli)
         .args(["run", "--rm", "--entrypoint", "sh", &base, "-c", &script])
@@ -826,32 +817,8 @@ pub async fn api_check_packages_handler(Json(body): Json<serde_json::Value>) -> 
 }
 
 pub async fn api_get_default_image_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let image = if let Some(ref router) = state.gateway.sandbox_router {
-        router.default_image().await
-    } else {
-        chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string()
-    };
+    let image = state.gateway.sandbox_router.default_image().await;
     Json(serde_json::json!({ "image": image }))
-}
-
-pub async fn api_set_default_image_handler(
-    State(state): State<AppState>,
-    Json(body): Json<serde_json::Value>,
-) -> impl IntoResponse {
-    let image = body.get("image").and_then(|v| v.as_str()).map(|s| s.trim());
-
-    if let Some(ref router) = state.gateway.sandbox_router {
-        let value = image.filter(|s| !s.is_empty()).map(String::from);
-        router.set_global_image(value.clone()).await;
-        let effective = router.default_image().await;
-        Json(serde_json::json!({ "image": effective })).into_response()
-    } else {
-        api_error_response(
-            StatusCode::BAD_REQUEST,
-            SANDBOX_BACKEND_UNAVAILABLE,
-            "no sandbox backend available",
-        )
-    }
 }
 
 pub async fn api_get_shared_home_handler() -> impl IntoResponse {
@@ -904,7 +871,7 @@ pub async fn api_set_shared_home_handler(
 
 #[derive(Clone, Copy)]
 struct AvailableSandboxBackend {
-    id: &'static str,
+    id: chelix_config::schema::SandboxBackend,
     label: &'static str,
     kind: &'static str,
 }
@@ -914,14 +881,14 @@ fn available_sandbox_backends() -> Vec<AvailableSandboxBackend> {
 
     if chelix_tools::sandbox::is_cli_available("docker") {
         backends.push(AvailableSandboxBackend {
-            id: "docker",
+            id: chelix_config::schema::SandboxBackend::Docker,
             label: "Docker",
             kind: "local",
         });
     }
     if chelix_tools::sandbox::is_cli_available("podman") {
         backends.push(AvailableSandboxBackend {
-            id: "podman",
+            id: chelix_config::schema::SandboxBackend::Podman,
             label: "Podman",
             kind: "local",
         });
@@ -929,22 +896,26 @@ fn available_sandbox_backends() -> Vec<AvailableSandboxBackend> {
     #[cfg(target_os = "macos")]
     if chelix_tools::sandbox::is_cli_available("container") {
         backends.push(AvailableSandboxBackend {
-            id: "apple-container",
+            id: chelix_config::schema::SandboxBackend::AppleContainer,
             label: "Apple Container (VM)",
             kind: "local",
         });
     }
 
-    backends.push(AvailableSandboxBackend {
-        id: "restricted-host",
-        label: "Restricted Host (no isolation)",
-        kind: "local",
-    });
+    if chelix_tools::sandbox::is_wasm_sandbox_available() {
+        backends.push(AvailableSandboxBackend {
+            id: chelix_config::schema::SandboxBackend::Wasm,
+            label: "WASM",
+            kind: "local",
+        });
+    }
 
     backends
 }
 
-fn available_backends_payload(default_backend: &str) -> serde_json::Value {
+fn available_backends_payload(
+    default_backend: chelix_config::schema::SandboxBackend,
+) -> serde_json::Value {
     let backends: Vec<serde_json::Value> = available_sandbox_backends()
         .into_iter()
         .map(|backend| {
@@ -967,19 +938,19 @@ fn available_backends_payload(default_backend: &str) -> serde_json::Value {
 /// Used by the UI to populate backend selectors.
 pub async fn api_available_backends_handler() -> impl IntoResponse {
     let config = chelix_config::discover_and_load();
-    Json(available_backends_payload(&config.sandbox.backend))
+    Json(available_backends_payload(config.sandbox.backend))
 }
 
 pub async fn api_set_default_backend_handler(
     Json(body): Json<SandboxDefaultBackendUpdateRequest>,
 ) -> impl IntoResponse {
-    let backend = body.backend.trim();
-    let valid = backend == "auto"
+    let backend = body.backend;
+    let valid = backend == chelix_config::schema::SandboxBackend::Auto
         || available_sandbox_backends()
             .iter()
             .any(|candidate| candidate.id == backend);
 
-    if backend.is_empty() || !valid {
+    if !valid {
         return api_error_response(
             StatusCode::BAD_REQUEST,
             SANDBOX_BACKEND_INVALID,
@@ -988,7 +959,7 @@ pub async fn api_set_default_backend_handler(
     }
 
     let update_result = chelix_config::update_config(|cfg| {
-        cfg.sandbox.backend = backend.to_string();
+        cfg.sandbox.backend = backend;
     });
 
     match update_result {
@@ -1085,7 +1056,7 @@ WORKDIR /home/sandbox\n"
 
     let config = chelix_config::discover_and_load();
     let builder =
-        chelix_tools::image_cache::DockerImageBuilder::for_backend(&config.sandbox.backend);
+        chelix_tools::image_cache::DockerImageBuilder::for_backend(config.sandbox.backend);
     tracing::debug!(
         name,
         cli = builder.cli_name(),
@@ -1128,13 +1099,9 @@ pub async fn api_list_containers_handler(State(state): State<AppState>) -> impl 
     let prefix = state
         .gateway
         .sandbox_router
-        .as_ref()
-        .map(|r| {
-            r.config()
-                .container_prefix
-                .clone()
-                .unwrap_or_else(|| "chelix-sandbox".to_string())
-        })
+        .config()
+        .container_prefix
+        .clone()
         .unwrap_or_else(|| "chelix-sandbox".to_string());
     match chelix_tools::sandbox::list_running_containers(&prefix).await {
         Ok(containers) => Json(serde_json::json!({ "containers": containers })).into_response(),
@@ -1153,13 +1120,9 @@ pub async fn api_stop_container_handler(
     let prefix = state
         .gateway
         .sandbox_router
-        .as_ref()
-        .map(|r| {
-            r.config()
-                .container_prefix
-                .clone()
-                .unwrap_or_else(|| "chelix-sandbox".to_string())
-        })
+        .config()
+        .container_prefix
+        .clone()
         .unwrap_or_else(|| "chelix-sandbox".to_string());
     if !name.starts_with(&prefix) {
         return api_error_response(
@@ -1185,13 +1148,9 @@ pub async fn api_remove_container_handler(
     let prefix = state
         .gateway
         .sandbox_router
-        .as_ref()
-        .map(|r| {
-            r.config()
-                .container_prefix
-                .clone()
-                .unwrap_or_else(|| "chelix-sandbox".to_string())
-        })
+        .config()
+        .container_prefix
+        .clone()
         .unwrap_or_else(|| "chelix-sandbox".to_string());
     if !name.starts_with(&prefix) {
         return api_error_response(
@@ -1214,13 +1173,9 @@ pub async fn api_clean_all_containers_handler(State(state): State<AppState>) -> 
     let prefix = state
         .gateway
         .sandbox_router
-        .as_ref()
-        .map(|r| {
-            r.config()
-                .container_prefix
-                .clone()
-                .unwrap_or_else(|| "chelix-sandbox".to_string())
-        })
+        .config()
+        .container_prefix
+        .clone()
         .unwrap_or_else(|| "chelix-sandbox".to_string());
     match chelix_tools::sandbox::clean_all_containers(&prefix).await {
         Ok(removed) => Json(serde_json::json!({ "ok": true, "removed": removed })).into_response(),

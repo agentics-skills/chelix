@@ -3,7 +3,7 @@
 //! Used by `send_image` and `send_document` to read files consistently,
 //! with sandbox routing and size validation.
 
-use {std::sync::Arc, tracing::warn};
+use tracing::warn;
 
 use crate::{
     Result,
@@ -99,17 +99,13 @@ pub async fn read_sandbox_file(
     Ok(bytes)
 }
 
-/// Read a file for a session, routing through sandbox if the session is sandboxed.
+/// Read a file according to the immutable global sandbox mode.
 pub async fn read_file_for_session(
-    sandbox_router: Option<&Arc<SandboxRouter>>,
+    router: &SandboxRouter,
     session_key: &str,
     path: &str,
     tool_name: &str,
 ) -> Result<Vec<u8>> {
-    let Some(router) = sandbox_router else {
-        return read_host_file(path).await;
-    };
-
     match router.resolve_env(session_key).await? {
         ExecEnv::Sandbox { .. } => match read_sandbox_file(router, session_key, path).await {
             Ok(bytes) => Ok(bytes),

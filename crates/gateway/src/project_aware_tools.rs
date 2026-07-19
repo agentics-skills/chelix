@@ -109,7 +109,6 @@ mod tests {
             setup_command: None,
             teardown_command: None,
             branch_prefix: None,
-            sandbox_image: None,
             detected: false,
             code_index_enabled,
             created_at: 1000,

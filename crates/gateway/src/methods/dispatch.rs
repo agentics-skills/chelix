@@ -30,7 +30,7 @@ pub type HandlerFn =
 
 // ── Scope authorization ──────────────────────────────────────────────────────
 
-const NODE_METHODS: &[&str] = &["node.invoke.result", "node.event", "skills.bins"];
+const NODE_METHODS: &[&str] = &["node.invoke.result", "node.event"];
 
 const READ_METHODS: &[&str] = &[
     "health",
@@ -219,7 +219,6 @@ const WRITE_METHODS: &[&str] = &[
     "skills.skill.trust",
     "skills.skill.enable",
     "skills.skill.disable",
-    "skills.install_dep",
     "skills.skill.save",
     "skills.bundled.toggle_category",
     "mcp.add",

@@ -4,7 +4,6 @@ use {
     chelix_channels::{ChannelReplyTarget, Error as ChannelError, Result as ChannelResult},
     chelix_config::ModePreset,
     chelix_sessions::metadata::SqliteSessionMetadata,
-    chelix_tools::image_cache::ImageBuilder,
 };
 
 use crate::{
@@ -461,168 +460,21 @@ pub(in crate::channel_events) async fn handle_model(
 
 pub(in crate::channel_events) async fn handle_sandbox(
     state: &Arc<GatewayState>,
-    session_metadata: &SqliteSessionMetadata,
-    session_key: &str,
     args: &str,
 ) -> ChannelResult<String> {
-    let is_enabled = if let Some(ref router) = state.sandbox_router {
-        router.is_sandboxed(session_key).await
-    } else {
-        false
-    };
-
-    if args.is_empty() {
-        // Show current status and image list.
-        let current_image = {
-            let entry = session_metadata.get(session_key).await;
-            let session_img = entry.and_then(|e| e.sandbox_image.clone());
-            match session_img {
-                Some(img) if !img.is_empty() => img,
-                _ => {
-                    if let Some(ref router) = state.sandbox_router {
-                        router.default_image().await
-                    } else {
-                        chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string()
-                    }
-                },
-            }
-        };
-
-        let status = if is_enabled {
-            "on"
-        } else {
-            "off"
-        };
-
-        // List available images.
-        let cfg = chelix_config::discover_and_load();
-        let builder =
-            chelix_tools::image_cache::DockerImageBuilder::for_backend(&cfg.sandbox.backend);
-        let cached = builder.list_cached().await.unwrap_or_default();
-
-        let default_img = chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string();
-        let mut images: Vec<(String, Option<String>)> = vec![(default_img.clone(), None)];
-        for img in &cached {
-            images.push((
-                img.tag.clone(),
-                Some(format!("{} ({})", img.skill_name, img.size)),
-            ));
-        }
-
-        let mut lines = vec![format!("status:{status}")];
-        for (i, (tag, subtitle)) in images.iter().enumerate() {
-            let marker = if *tag == current_image {
-                " *"
-            } else {
-                ""
-            };
-            let label = if let Some(sub) = subtitle {
-                format!("{}. {} \u{2014} {}{}", i + 1, tag, sub, marker)
-            } else {
-                format!("{}. {}{}", i + 1, tag, marker)
-            };
-            lines.push(label);
-        }
-        Ok(lines.join("\n"))
-    } else if args == "on" || args == "off" {
-        let new_val = args == "on";
-        let patch_res = state
-            .services
-            .session
-            .patch(serde_json::json!({
-                "key": session_key,
-                "sandbox_enabled": new_val,
-            }))
-            .await
-            .map_err(ChannelError::unavailable)?;
-        let version = patch_res
-            .get("version")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        broadcast(
-            state,
-            "session",
-            serde_json::json!({
-                "kind": "patched",
-                "sessionKey": session_key,
-                "version": version,
-            }),
-            BroadcastOpts {
-                drop_if_slow: true,
-                ..Default::default()
-            },
-        )
-        .await;
-        let label = if new_val {
-            "enabled"
-        } else {
-            "disabled"
-        };
-        Ok(format!("Sandbox {label}."))
-    } else if let Some(rest) = args.strip_prefix("image ") {
-        let n: usize = rest
-            .parse()
-            .map_err(|_| ChannelError::invalid_input("usage: /sandbox image [number]"))?;
-
-        let default_img = chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string();
-        let cfg = chelix_config::discover_and_load();
-        let builder =
-            chelix_tools::image_cache::DockerImageBuilder::for_backend(&cfg.sandbox.backend);
-        let cached = builder.list_cached().await.unwrap_or_default();
-        let mut images: Vec<String> = vec![default_img];
-        for img in &cached {
-            images.push(img.tag.clone());
-        }
-
-        if n == 0 || n > images.len() {
-            return Err(ChannelError::invalid_input(format!(
-                "invalid image number. Use 1\u{2013}{}.",
-                images.len()
-            )));
-        }
-        let chosen = &images[n - 1];
-
-        // If choosing the default image, clear the session override.
-        let patch_value = if n == 1 {
-            ""
-        } else {
-            chosen.as_str()
-        };
-        let patch_res = state
-            .services
-            .session
-            .patch(serde_json::json!({
-                "key": session_key,
-                "sandbox_image": patch_value,
-            }))
-            .await
-            .map_err(ChannelError::unavailable)?;
-        let version = patch_res
-            .get("version")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-
-        broadcast(
-            state,
-            "session",
-            serde_json::json!({
-                "kind": "patched",
-                "sessionKey": session_key,
-                "version": version,
-            }),
-            BroadcastOpts {
-                drop_if_slow: true,
-                ..Default::default()
-            },
-        )
-        .await;
-
-        Ok(format!("Image set to: {chosen}"))
-    } else {
-        Err(ChannelError::invalid_input(
-            "usage: /sandbox [on|off|image N]",
-        ))
+    if !args.is_empty() {
+        return Err(ChannelError::invalid_input("usage: /sandbox"));
     }
+
+    let enabled = state.sandbox_router.enabled();
+    Ok(format!(
+        "Sandbox {}",
+        if enabled {
+            "On"
+        } else {
+            "Off"
+        }
+    ))
 }
 
 pub(in crate::channel_events) async fn handle_sh(
@@ -630,12 +482,8 @@ pub(in crate::channel_events) async fn handle_sh(
     session_key: &str,
     args: &str,
 ) -> ChannelResult<String> {
-    let route = if let Some(ref router) = state.sandbox_router {
-        if router.is_sandboxed(session_key).await {
-            "sandboxed"
-        } else {
-            "host"
-        }
+    let route = if state.sandbox_router.enabled() {
+        "sandboxed"
     } else {
         "host"
     };

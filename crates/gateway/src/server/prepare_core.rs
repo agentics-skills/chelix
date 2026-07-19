@@ -696,15 +696,6 @@ pub async fn prepare_gateway_core(
                     .await;
             }
 
-            if let Some(ref router) = state.sandbox_router {
-                router.set_override(&session_key, req.sandbox.enabled).await;
-                if let Some(ref image) = req.sandbox.image {
-                    router.set_image_override(&session_key, image.clone()).await;
-                } else {
-                    router.remove_image_override(&session_key).await;
-                }
-            }
-
             let prompt_text = if is_heartbeat_turn {
                 let events = eq.drain().await;
                 if events.is_empty() {
@@ -750,22 +741,17 @@ pub async fn prepare_gateway_core(
                 .map_err(|e| chelix_cron::Error::message(e.to_string()));
 
             let auto_prune = req
-                .sandbox
                 .auto_prune_container
                 .unwrap_or(global_auto_prune_containers);
-            if req.sandbox.enabled && auto_prune {
-                if let Some(ref router) = state.sandbox_router
-                    && let Err(e) = router.cleanup_session(&session_key).await
-                {
-                    tracing::debug!(
-                        session_key = %session_key,
-                        error = %e,
-                        "cron sandbox container cleanup failed"
-                    );
-                }
-            } else if let Some(ref router) = state.sandbox_router {
-                router.remove_override(&session_key).await;
-                router.remove_image_override(&session_key).await;
+            if auto_prune
+                && state.sandbox_router.enabled()
+                && let Err(e) = state.sandbox_router.cleanup_session(&session_key).await
+            {
+                tracing::debug!(
+                    session_key = %session_key,
+                    error = %e,
+                    "cron sandbox container cleanup failed"
+                );
             }
 
             let val = result?;
@@ -883,7 +869,7 @@ pub async fn prepare_gateway_core(
         &sandbox_config,
         &sandbox_container_prefix,
         config.user.timezone.as_ref().map(|tz| tz.name()),
-    ));
+    )?);
 
     // ── Upstream proxy (user-configured) ─────────────────────────────────
     let upstream_proxy = config
@@ -902,14 +888,14 @@ pub async fn prepare_gateway_core(
     // Build the exact sandbox image before any sandbox can be launched.
     sandbox::prepare_sandbox_images(&sandbox_router).await?;
 
-    // Start the managed host service before tools are registered.
+    // Initialize the global managed tools runtime before tools are registered.
     let tools_service: Arc<dyn chelix_tools::tools_service::ToolsService> =
         chelix_tools::tools_service::ManagedToolsService::start(Arc::clone(&sandbox_router))
             .await
             .map_err(|error| anyhow::anyhow!("failed to start managed tools service: {error}"))?;
 
-    // Spawn non-critical sandbox tasks (host provisioning and container GC).
-    sandbox::spawn_sandbox_background_tasks(&sandbox_router, &deferred_state);
+    // Spawn non-critical startup container garbage collection.
+    sandbox::spawn_sandbox_background_tasks(&sandbox_router);
 
     // Periodic cron session retention pruning.
     if let Some(retention_days) = config.cron.session_retention_days
@@ -978,7 +964,7 @@ pub async fn prepare_gateway_core(
             sandbox_router.config().mode,
             chelix_tools::sandbox::SandboxMode::Off
         )
-        && sandbox_router.backend_name() != "none"
+        && sandbox_router.backend_id() != chelix_tools::sandbox::SandboxBackendId::None
     {
         let sandbox_image = config.tools.browser.sandbox_image.clone();
         let deferred_for_browser = Arc::clone(&deferred_state);
@@ -1040,12 +1026,6 @@ pub async fn prepare_gateway_core(
             }
         });
     }
-
-    LiveSessionService::restore_sandbox_router_overrides_from_metadata(
-        &session_metadata,
-        &sandbox_router,
-    )
-    .await;
 
     // ── Channel initialization ───────────────────────────────────────────
     let channel_result = init_channels::init_channels(
@@ -1122,16 +1102,18 @@ pub async fn prepare_gateway_core(
 
     // Wire live session service.
     {
-        let mut session_svc =
-            LiveSessionService::new(Arc::clone(&session_store), Arc::clone(&session_metadata))
-                .with_tts_service(Arc::clone(&services.tts))
-                .with_share_store(Arc::clone(&session_share_store))
-                .with_sandbox_router(Arc::clone(&sandbox_router))
-                .with_agent_persona_store(Arc::clone(&agent_persona_store))
-                .with_voice_persona_store(Arc::clone(&voice_persona_store))
-                .with_project_store(Arc::clone(&project_store))
-                .with_state_store(Arc::clone(&session_state_store))
-                .with_browser_service(Arc::clone(&services.browser));
+        let mut session_svc = LiveSessionService::from_router(
+            Arc::clone(&session_store),
+            Arc::clone(&session_metadata),
+            Arc::clone(&sandbox_router),
+        )
+        .with_tts_service(Arc::clone(&services.tts))
+        .with_share_store(Arc::clone(&session_share_store))
+        .with_agent_persona_store(Arc::clone(&agent_persona_store))
+        .with_voice_persona_store(Arc::clone(&voice_persona_store))
+        .with_project_store(Arc::clone(&project_store))
+        .with_state_store(Arc::clone(&session_state_store))
+        .with_browser_service(Arc::clone(&services.browser));
         if let Some(ref manager) = memory_manager {
             session_svc = session_svc.with_memory_manager(Arc::clone(manager));
         }

@@ -12,46 +12,44 @@ API. Routing changes the service endpoint, not the tool protocol.
 At gateway startup, Chelix:
 
 1. prepares the current deterministic sandbox image;
-2. starts a managed host `chelix-tools-service` process;
-3. verifies its authenticated health endpoint;
+2. selects one managed runtime from the global `sandbox.mode`;
+3. initializes that runtime;
 4. registers tools that call the service.
 
-The host service binds to `127.0.0.1:0`, so the operating system selects an
-available loopback port. It writes one JSON readiness record to its stdout pipe.
-That record contains the protocol version, selected port, and generated token.
-The gateway starts the child with `--shutdown-on-stdin-eof` and configures
-kill-on-drop for the managed process.
+- `sandbox.mode = "On"`: only the container tools-service runtime is available.
+  Chelix does not start a local `chelix-tools-service` process.
+- `sandbox.mode = "Off"`: Chelix starts only the managed host tools-service
+  runtime. Tool calls use its authenticated loopback endpoint.
 
-```admonish note title="A host tools process is expected with sandboxing enabled"
-Chelix starts the host-side tools service even when the default session uses a
-sandbox. Sessions can disable sandboxing or use per-session overrides at
-runtime, so the host endpoint remains available for host-routed sessions.
+In global `Off` mode, the host service binds to `127.0.0.1:0`, so the operating
+system selects an available loopback port. It writes one JSON readiness record
+to its stdout pipe. That record contains the protocol version, selected port,
+and generated token. The gateway starts the child with
+`--shutdown-on-stdin-eof` and configures kill-on-drop for the managed process.
 
-A host-side `chelix-tools-service` process does not mean that a sandboxed tool
-call is running on the host. The session router selects the endpoint for every
-call.
-```
+## Global routing
 
-## Session routing
+The global `sandbox.mode` selects the only available tools-service runtime:
 
-`ripgrep` includes the internal session key in its service call. The managed
-client asks `SandboxRouter` for that session's execution environment:
+- **`On`** — request the authenticated endpoint from the selected sandbox
+  backend.
+- **`Off`** — use the managed loopback host endpoint.
 
-- **Host environment** — use the managed loopback host endpoint.
-- **Sandbox environment** — request the authenticated endpoint from the selected
-  sandbox backend.
+`ripgrep` includes an internal session key only to select the container
+lifecycle instance when the configured sandbox scope requires one. It cannot
+change the global routing policy.
 
-The sandbox path is fail-closed. If the selected backend does not expose a
-managed tools-service endpoint, the tool call returns an error instead of
-falling back to host-side `rg` execution.
+The `On` path is fail-closed. If the selected backend does not expose a managed
+tools-service endpoint, the tool call returns an error instead of falling back
+to host-side `rg` execution.
 
 ```text
 ripgrep tool
     │
-    ├── session routes to host ───────► host tools service
+    ├── global Off ───────────────────► host tools service
     │                                  127.0.0.1:<random>
     │
-    └── session routes to sandbox ────► sandbox tools service
+    └── global On ────────────────────► sandbox tools service
                                        backend-selected endpoint
 ```
 
@@ -127,13 +125,13 @@ If no candidate passes the authenticated readiness check, startup of that
 sandbox fails and Chelix runs `docker rm -f` or `podman rm -f` for the container
 instead of retaining an unready sandbox.
 
-Before each sandbox-routed tools-service call, the router prepares the session
-again. Docker and Podman verify both that the container is running and that the
-cached endpoint still passes authenticated health. A stopped, removed, or
-OOM-killed container is recreated with a new token, published port, and
-container address. If the container is still running but its network endpoint
-changed, Chelix performs fresh endpoint discovery before deciding to recreate
-it.
+Before each tools-service call in global `On` mode, the router prepares the
+container lifecycle instance again. Docker and Podman verify both that the
+container is running and that the cached endpoint still passes authenticated
+health. A stopped, removed, or OOM-killed container is recreated with a new
+token, published port, and container address. If the container is still running
+but its network endpoint changed, Chelix performs fresh endpoint discovery
+before deciding to recreate it.
 
 A container can also disappear after this preflight check and before or during
 the HTTP request. For that race, an availability, authentication, or protocol
@@ -159,13 +157,13 @@ The current sandbox image tag is a SHA-256 digest over:
 Changing the service binary therefore changes the sandbox image tag even when
 the configured base image and package list are unchanged.
 
-Gateway startup awaits image preparation before starting the managed host
-service or registering tools. An image preparation error aborts startup; image
-creation is not deferred to the first tool call.
+Gateway startup awaits image preparation before initializing the selected
+managed runtime or registering tools. An image preparation error aborts startup;
+image creation is not deferred to the first tool call.
 
 ## Binary discovery and packaging
 
-The host service binary is resolved in this order:
+In global `Off` mode, the host service binary is resolved in this order:
 
 1. `CHELIX_TOOLS_SERVICE_BINARY`;
 2. a `chelix-tools-service` sibling next to the running Chelix executable;
@@ -187,7 +185,9 @@ Linux sandbox artifact.
 
 ## Troubleshooting
 
-### Inspect the host-side process
+### Inspect the selected runtime
+
+In global `Off` mode, inspect the host-side process with:
 
 ```bash
 ps -ax -o pid=,command= | grep '[c]helix-tools-service'
@@ -200,7 +200,8 @@ container:
 docker top chelix
 ```
 
-Seeing this process is expected even when sessions use container sandboxes.
+In global `On` mode, no local `chelix-tools-service` process should be running.
+Inspect the sandbox workload instead.
 
 ### Inspect the sandbox workload and transport
 

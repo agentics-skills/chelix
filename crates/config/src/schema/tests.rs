@@ -576,6 +576,7 @@ fn channels_all_channel_configs_includes_slack() {
 #[test]
 fn sandbox_defaults_include_go_runtime() {
     let sandbox = SandboxConfig::default();
+    assert_eq!(sandbox.mode, SandboxMode::On);
     assert!(sandbox.packages.iter().any(|pkg| pkg == "golang-go"));
     assert_eq!(sandbox.home_persistence, HomePersistenceConfig::Shared);
     assert!(sandbox.host_data_dir.is_none());
@@ -589,15 +590,15 @@ fn chelix_config_parses_top_level_sandbox() {
     let config: ChelixConfig = toml::from_str(
         r#"
 [sandbox]
-mode = "off"
+mode = "Off"
 backend = "podman"
 host_data_dir = "/host/chelix-data"
 "#,
     )
     .unwrap();
 
-    assert_eq!(config.sandbox.mode, "off");
-    assert_eq!(config.sandbox.backend, "podman");
+    assert_eq!(config.sandbox.mode, SandboxMode::Off);
+    assert_eq!(config.sandbox.backend, SandboxBackend::Podman);
     assert_eq!(
         config.sandbox.host_data_dir.as_deref(),
         Some("/host/chelix-data")
@@ -647,7 +648,7 @@ fn wasm_tool_limits_config_defaults() {
 fn sandbox_wasm_tool_limits_deserialize() {
     let config: SandboxConfig = toml::from_str(
         r#"
-mode = "all"
+mode = "On"
 scope = "session"
 workspace_sysmount = "rw"
 host_data_dir = "/host/chelix-data"
@@ -699,6 +700,12 @@ browserless_api_version = "V2"
         parsed.is_err(),
         "uppercase value should fail serde enum deserialization"
     );
+}
+
+#[test]
+fn browser_config_rejects_sandbox_override() {
+    let parsed: Result<BrowserConfig, _> = toml::from_str("sandbox = false");
+    assert!(parsed.is_err());
 }
 
 #[test]
@@ -1108,22 +1115,28 @@ fn mcp_policy_roundtrip_all() {
 }
 
 #[test]
-fn preset_sandbox_mode_parses_typed_values() {
-    let toml_str = r#"
-[agents.presets.test.sandbox]
-mode = "non-main"
-"#;
-    let config: ChelixConfig = toml::from_str(toml_str).unwrap();
-    let preset = config.agents.presets.get("test").unwrap();
-    assert_eq!(preset.sandbox.mode, Some(PresetSandboxMode::NonMain));
+fn sandbox_mode_accepts_only_exact_binary_values() {
+    for (raw, expected) in [("On", SandboxMode::On), ("Off", SandboxMode::Off)] {
+        let config: SandboxConfig = toml::from_str(&format!("mode = \"{raw}\"")).unwrap();
+        assert_eq!(config.mode, expected);
+    }
+
+    for raw in ["on", "off", "all", "non-main", "nonmain", "ON", "OFF"] {
+        let result: Result<SandboxConfig, _> = toml::from_str(&format!("mode = \"{raw}\""));
+        assert!(
+            result.is_err(),
+            "legacy sandbox mode {raw:?} must be rejected"
+        );
+    }
 }
 
 #[test]
-fn preset_sandbox_mode_rejects_unknown_values() {
-    let toml_str = r#"
-[agents.presets.test.sandbox]
-mode = "sometimes"
-"#;
-    let result: Result<ChelixConfig, _> = toml::from_str(toml_str);
+fn agent_preset_rejects_removed_sandbox_policy() {
+    let result: Result<AgentPreset, _> = toml::from_str(
+        r#"
+[sandbox]
+mode = "On"
+"#,
+    );
     assert!(result.is_err());
 }

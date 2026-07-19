@@ -86,8 +86,8 @@ pub trait ChatRuntime: Send + Sync {
     /// Server hostname.
     fn hostname(&self) -> &str;
 
-    /// Per-session sandbox router, if configured.
-    fn sandbox_router(&self) -> Option<&Arc<SandboxRouter>>;
+    /// Global sandbox router. Its mode is the single execution-policy source.
+    fn sandbox_router(&self) -> &Arc<SandboxRouter>;
 
     /// Memory runtime for long-term memory search.
     fn memory_manager(&self) -> Option<&chelix_memory::runtime::DynMemoryRuntime>;

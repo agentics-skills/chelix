@@ -21,7 +21,6 @@ pub struct PolicyContext {
     pub channel_account_id: Option<String>,
     pub group_id: Option<String>,
     pub sender_id: Option<String>,
-    pub sandboxed: bool,
 }
 
 /// Predefined tool profiles.
@@ -123,7 +122,7 @@ fn policy_from_config(cfg: &chelix_config::schema::ToolPolicyConfig) -> ToolPoli
 /// 3. Per-agent preset — `[agents.presets.<agent_id>.tools]`
 /// 4. Per-channel-group — `[channels.<type>.<account>.tools.groups.<chat_type>]`
 /// 5. Per-sender in group — `[channels.<type>.<account>.tools.groups.<chat_type>.by_sender.<id>]`
-/// 6. Sandbox overrides — `[sandbox.tools_policy]` (only when `context.sandboxed`)
+/// 6. Sandbox policy — `[sandbox.tools_policy]` (only when global mode is `On`)
 pub fn resolve_effective_policy(
     config: &chelix_config::ChelixConfig,
     context: &PolicyContext,
@@ -216,8 +215,8 @@ pub fn resolve_effective_policy(
         }
     }
 
-    // Layer 6: Sandbox overrides — [sandbox.tools_policy]
-    if context.sandboxed
+    // Layer 6: Sandbox policy — [sandbox.tools_policy]
+    if config.sandbox.mode == chelix_config::schema::SandboxMode::On
         && let Some(ref sandbox_policy) = config.sandbox.tools_policy
     {
         let p = policy_from_config(sandbox_policy);
@@ -494,7 +493,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_sandbox_layer_overrides() {
+    fn test_resolve_sandbox_layer_follows_global_mode() {
         let mut cfg = chelix_config::ChelixConfig::default();
         cfg.tools.policy.allow = vec!["*".into()];
 
@@ -505,23 +504,17 @@ mod tests {
             profile: None,
         });
 
-        // Without sandboxed flag — layer 6 is skipped.
+        cfg.sandbox.mode = chelix_config::schema::SandboxMode::Off;
         let ctx = PolicyContext {
             agent_id: "main".into(),
-            sandboxed: false,
             ..Default::default()
         };
         let policy = resolve_effective_policy(&cfg, &ctx);
         assert!(policy.is_allowed("execute_command"));
         assert!(policy.is_allowed("browser")); // Not denied — sandbox layer skipped.
 
-        // With sandboxed flag — layer 6 applies.
-        let ctx_sandboxed = PolicyContext {
-            agent_id: "main".into(),
-            sandboxed: true,
-            ..Default::default()
-        };
-        let policy_sandboxed = resolve_effective_policy(&cfg, &ctx_sandboxed);
+        cfg.sandbox.mode = chelix_config::schema::SandboxMode::On;
+        let policy_sandboxed = resolve_effective_policy(&cfg, &ctx);
         assert!(policy_sandboxed.is_allowed("execute_command"));
         assert!(!policy_sandboxed.is_allowed("browser")); // Denied by sandbox layer.
         assert!(!policy_sandboxed.is_allowed("web_search")); // Not in sandbox allow list.

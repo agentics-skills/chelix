@@ -9,9 +9,10 @@ async function openSandboxContainersTab(page) {
 }
 
 test.describe("Sandboxes page – Available backends", () => {
-	test("shows only local sandbox tabs and saves default backend selection", async ({ page }) => {
+	test("shows a read-only mode indicator and saves an isolated backend selection", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		let savedBody = null;
+		await mockSandboxAvailable(page);
 
 		await page.route("**/api/sandbox/available-backends", (route, request) => {
 			if (request.method() === "GET") {
@@ -22,7 +23,7 @@ test.describe("Sandboxes page – Available backends", () => {
 						backends: [
 							{ id: "docker", label: "Docker", kind: "local", available: true },
 							{ id: "podman", label: "Podman", kind: "local", available: true },
-							{ id: "restricted-host", label: "Restricted Host (no isolation)", kind: "local", available: true },
+							{ id: "wasm", label: "WASM", kind: "local", available: true },
 						],
 						default: "auto",
 					}),
@@ -41,7 +42,7 @@ test.describe("Sandboxes page – Available backends", () => {
 							backends: [
 								{ id: "docker", label: "Docker", kind: "local", available: true },
 								{ id: "podman", label: "Podman", kind: "local", available: true },
-								{ id: "restricted-host", label: "Restricted Host (no isolation)", kind: "local", available: true },
+								{ id: "wasm", label: "WASM", kind: "local", available: true },
 							],
 							default: "docker",
 						},
@@ -58,8 +59,34 @@ test.describe("Sandboxes page – Available backends", () => {
 		await expect(page.getByRole("tab", { name: "General", exact: true })).toBeVisible();
 		await expect(page.getByRole("tab", { name: "Containers & Images", exact: true })).toBeVisible();
 
+		const modeIndicator = page.getByRole("status", { name: "Sandbox mode", exact: true });
+		await expect(modeIndicator).toHaveText(/On/);
+		await expect(modeIndicator.locator("button, input")).toHaveCount(0);
+		await expect(page.getByText("Restricted Host", { exact: true })).toHaveCount(0);
+		await expect(page.getByText("cgroup", { exact: true })).toHaveCount(0);
+
 		await page.getByRole("button", { name: /Docker/ }).click();
 		await expect.poll(() => savedBody?.backend ?? null, { timeout: 10_000 }).toBe("docker");
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("shows explicit Off as direct host execution without a missing-runtime warning", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await mockSandboxState(page, { mode: "Off", backend: "none" });
+
+		await navigateAndWait(page, "/settings/sandboxes");
+
+		const modeIndicator = page.getByRole("status", { name: "Sandbox mode", exact: true });
+		await expect(modeIndicator).toHaveText("Off");
+		await expect(modeIndicator.locator("button, input")).toHaveCount(0);
+		await expect(
+			page.getByText(
+				'Sandbox mode is Off. Commands execute directly on the host. Set sandbox.mode = "On" and restart Chelix to use isolated execution.',
+				{ exact: true },
+			),
+		).toBeVisible();
+		await expect(page.getByText(/No .*runtime detected/)).toHaveCount(0);
 
 		expect(pageErrors).toEqual([]);
 	});
@@ -182,26 +209,30 @@ test.describe("Sandboxes page – Shared home settings", () => {
  *   2. `/api/gon` responses — via route interception
  *   3. `/api/bootstrap` responses — via route interception
  */
-async function mockSandboxAvailable(page) {
-	await page.addInitScript(() => {
+async function mockSandboxState(page, sandboxState) {
+	await page.addInitScript((state) => {
 		var m = window.__CHELIX__ || {};
-		m.sandbox = Object.assign(m.sandbox || {}, { backend: "docker" });
+		m.sandbox = Object.assign(m.sandbox || {}, state);
 		window.__CHELIX__ = m;
-	});
+	}, sandboxState);
 
 	await page.route("**/api/gon*", async (route) => {
 		var response = await route.fetch();
 		var json = await response.json();
-		json.sandbox = Object.assign(json.sandbox || {}, { backend: "docker" });
+		json.sandbox = Object.assign(json.sandbox || {}, sandboxState);
 		return route.fulfill({ response, json });
 	});
 
 	await page.route("**/api/bootstrap*", async (route) => {
 		var response = await route.fetch();
 		var json = await response.json();
-		json.sandbox = Object.assign(json.sandbox || {}, { backend: "docker" });
+		json.sandbox = Object.assign(json.sandbox || {}, sandboxState);
 		return route.fulfill({ response, json });
 	});
+}
+
+async function mockSandboxAvailable(page) {
+	await mockSandboxState(page, { mode: "On", backend: "docker" });
 }
 
 test.describe("Sandboxes page – Running Containers", () => {

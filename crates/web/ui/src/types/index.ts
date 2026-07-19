@@ -17,7 +17,6 @@ export type {
 	CronJobState,
 	CronPayload,
 	CronRunRecord,
-	CronSandboxConfig,
 	CronSchedule,
 	CronStatus,
 	CronWakeMode,

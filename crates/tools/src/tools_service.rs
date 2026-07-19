@@ -45,8 +45,13 @@ pub trait ToolsService: Send + Sync {
 
 pub struct ManagedToolsService {
     router: Arc<SandboxRouter>,
-    host: HostToolsService,
+    runtime: ManagedToolsRuntime,
     client: reqwest::Client,
+}
+
+enum ManagedToolsRuntime {
+    Host(Box<HostToolsService>),
+    Sandbox,
 }
 
 impl ManagedToolsService {
@@ -55,19 +60,32 @@ impl ManagedToolsService {
             .connect_timeout(Duration::from_secs(2))
             .timeout(REQUEST_TIMEOUT)
             .build()?;
-        let host = HostToolsService::start(&client).await?;
+        let runtime = if router.enabled() {
+            info!(
+                backend = %router.backend_id(),
+                "managed tools service will run only inside sandbox containers"
+            );
+            ManagedToolsRuntime::Sandbox
+        } else {
+            ManagedToolsRuntime::Host(Box::new(HostToolsService::start(&client).await?))
+        };
         Ok(Arc::new(Self {
             router,
-            host,
+            runtime,
             client,
         }))
     }
 
     async fn endpoint_for(&self, session_key: &str) -> Result<(ToolsServiceEndpoint, bool)> {
-        match self.router.resolve_env(session_key).await? {
-            ExecEnv::Host => Ok((self.host.endpoint(), false)),
-            ExecEnv::Sandbox { backend, id } => {
-                Ok((backend.tools_service_endpoint(&id).await?, true))
+        match &self.runtime {
+            ManagedToolsRuntime::Host(host) => Ok((host.endpoint(), false)),
+            ManagedToolsRuntime::Sandbox => match self.router.resolve_env(session_key).await? {
+                ExecEnv::Sandbox { backend, id } => {
+                    Ok((backend.tools_service_endpoint(&id).await?, true))
+                },
+                ExecEnv::Host => Err(Error::message(
+                    "sandbox tools service unexpectedly resolved to the host environment",
+                )),
             },
         }
     }
@@ -305,15 +323,15 @@ mod tests {
 
     #[async_trait]
     impl Sandbox for RecoveringSandbox {
-        fn backend_name(&self) -> &'static str {
-            "recovering-test"
+        fn backend_id(&self) -> crate::sandbox::SandboxBackendId {
+            crate::sandbox::SandboxBackendId::Docker
         }
 
         fn provides_fs_isolation(&self) -> bool {
             true
         }
 
-        async fn ensure_ready(&self, _id: &SandboxId, _image_override: Option<&str>) -> Result<()> {
+        async fn ensure_ready(&self, _id: &SandboxId) -> Result<()> {
             self.ensure_ready_calls.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
@@ -359,24 +377,42 @@ mod tests {
             .timeout(Duration::from_secs(5))
             .build()
             .unwrap_or_else(|error| panic!("test HTTP client failed: {error}"));
-        let child = Command::new("true")
-            .spawn()
-            .unwrap_or_else(|error| panic!("test child failed: {error}"));
-        let host = HostToolsService {
-            endpoint: ToolsServiceEndpoint {
-                base_url: "http://127.0.0.1:1".into(),
-                token: "unused-host-token".into(),
-            },
-            _child: Mutex::new(child),
-        };
         (
             ManagedToolsService {
                 router,
-                host,
+                runtime: ManagedToolsRuntime::Sandbox,
                 client,
             },
             backend,
         )
+    }
+
+    #[tokio::test]
+    async fn sandbox_mode_contains_no_host_service() {
+        let backend = Arc::new(RecoveringSandbox {
+            endpoints: [
+                ToolsServiceEndpoint {
+                    base_url: "http://127.0.0.1:1".into(),
+                    token: "first".into(),
+                },
+                ToolsServiceEndpoint {
+                    base_url: "http://127.0.0.1:2".into(),
+                    token: "second".into(),
+                },
+            ],
+            ensure_ready_calls: AtomicUsize::new(0),
+        });
+        let routed_backend: Arc<dyn Sandbox> = backend;
+        let router = Arc::new(SandboxRouter::with_backend(
+            SandboxConfig::default(),
+            routed_backend,
+        ));
+
+        let service = ManagedToolsService::start(router)
+            .await
+            .unwrap_or_else(|error| panic!("sandbox-only service startup failed: {error}"));
+
+        assert!(matches!(service.runtime, ManagedToolsRuntime::Sandbox));
     }
 
     #[cfg(unix)]

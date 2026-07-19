@@ -19,10 +19,6 @@ pub(in crate::channel_events) async fn dispatch_interaction(
         format!("agent {n}")
     } else if let Some(n) = callback_data.strip_prefix("model_switch:") {
         format!("model {n}")
-    } else if let Some(val) = callback_data.strip_prefix("sandbox_toggle:") {
-        format!("sandbox {val}")
-    } else if let Some(n) = callback_data.strip_prefix("sandbox_image:") {
-        format!("sandbox image {n}")
     } else if let Some(provider) = callback_data.strip_prefix("model_provider:") {
         format!("model provider:{provider}")
     } else {
@@ -110,9 +106,7 @@ pub(in crate::channel_events) async fn dispatch_command(
         "model" => {
             control_handlers::handle_model(state, session_metadata, &session_key, args).await
         },
-        "sandbox" => {
-            control_handlers::handle_sandbox(state, session_metadata, &session_key, args).await
-        },
+        "sandbox" => control_handlers::handle_sandbox(state, args).await,
         "sh" => control_handlers::handle_sh(state, &session_key, args).await,
         "stop" => control_handlers::handle_stop(state, &session_key).await,
         "peek" => control_handlers::handle_peek(state, &session_key).await,

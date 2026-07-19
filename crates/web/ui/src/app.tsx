@@ -26,7 +26,8 @@ import { initPWA } from "./pwa";
 import { initInstallBanner } from "./pwa-install";
 import { mount, navigate, registerPage, sessionPath } from "./router";
 import { routes } from "./routes";
-import { updateSandboxImageUI, updateSandboxUI } from "./sandbox";
+import * as _sandbox from "./sandbox";
+import { updateSandboxUI } from "./sandbox";
 import * as _sessions from "./sessions";
 import {
 	fetchSessions,
@@ -47,7 +48,7 @@ import * as _sessionStoreModule from "./stores/session-store";
 import { insertSessionInOrder, sessionStore } from "./stores/session-store";
 import { initTheme, injectMarkdownStyles } from "./theme";
 import type { ModelInfo, SessionMeta } from "./types";
-import type { VaultStatus } from "./types/gon";
+import type { SandboxGonInfo, VaultStatus } from "./types/gon";
 import { GlobalDialogs, Toasts } from "./ui";
 import { connect } from "./websocket";
 import * as _wsConnect from "./ws-connect";
@@ -61,6 +62,7 @@ window.__chelix_modules = {
 	helpers: _helpers,
 	events: _events,
 	"chat-ui": _chatUi,
+	sandbox: _sandbox,
 	sessions: _sessions,
 	gon,
 	"code-highlight": _codeHighlight,
@@ -117,7 +119,7 @@ interface BootstrapData {
 	sessions?: unknown[];
 	models?: ModelInfo[];
 	projects?: ProjectEntry[];
-	sandbox?: unknown;
+	sandbox?: SandboxGonInfo;
 	counts?: Record<string, number>;
 }
 
@@ -634,10 +636,7 @@ function fetchBootstrap(): void {
 				}
 			}
 			S.setSandboxInfo(boot.sandbox || null);
-			// Re-apply sandbox UI now that we know the backend status.
-			// This fixes the race where the chat page renders before bootstrap completes.
-			updateSandboxUI(S.sessionSandboxEnabled);
-			updateSandboxImageUI(S.sessionSandboxImage);
+			updateSandboxUI();
 			if (boot.counts) updateNavCounts(boot.counts);
 		})
 		.catch(() => {

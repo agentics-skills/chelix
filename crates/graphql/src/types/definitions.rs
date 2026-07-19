@@ -107,10 +107,6 @@ pub struct SessionEntry {
     #[serde(default)]
     pub worktree_branch: Option<String>,
     #[serde(default)]
-    pub sandbox_enabled: Option<bool>,
-    #[serde(default)]
-    pub sandbox_image: Option<String>,
-    #[serde(default)]
     pub channel_binding: Option<String>,
     #[serde(default)]
     pub parent_session_key: Option<String>,
@@ -287,10 +283,6 @@ pub struct HeartbeatConfig {
     pub channel: Option<String>,
     #[serde(default)]
     pub to: Option<String>,
-    #[serde(default)]
-    pub sandbox_enabled: Option<bool>,
-    #[serde(default)]
-    pub sandbox_image: Option<String>,
 }
 
 #[derive(Debug, SimpleObject, Deserialize)]
@@ -324,8 +316,6 @@ pub struct Project {
     pub teardown_command: Option<String>,
     #[serde(default)]
     pub branch_prefix: Option<String>,
-    #[serde(default)]
-    pub sandbox_image: Option<String>,
     #[serde(default)]
     pub detected: Option<bool>,
     #[serde(default)]
@@ -515,10 +505,6 @@ pub struct SkillInfo {
     pub source: Option<Json>,
     #[serde(default)]
     pub protected: Option<bool>,
-    #[serde(default)]
-    pub eligible: Option<bool>,
-    #[serde(default)]
-    pub missing_bins: Option<Vec<String>>,
 }
 
 #[derive(Debug, SimpleObject, Deserialize)]

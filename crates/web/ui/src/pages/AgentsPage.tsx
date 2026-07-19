@@ -145,10 +145,6 @@ deny = ["execute_command"]
 # allow_servers = ["github", "memory"]
 # deny_servers = ["home-assistant"]
 
-# Sandbox mode override
-# [sandbox]
-# mode = "all"        # "off" | "all" | "non-main"
-
 # Skill access control
 # [skills]
 # deny = ["gaming", "social-media"]`;
@@ -164,7 +160,6 @@ interface McpServer {
 interface PresetFields {
 	model?: string | null;
 	mcp?: { mode: string; servers?: string[] };
-	sandbox?: { mode?: string | null };
 	skills?: { allow?: string[] | null; deny?: string[] | null };
 }
 
@@ -177,7 +172,7 @@ function parseCsvList(value: string): string[] {
 }
 
 /**
- * Remove named TOML sections (e.g. [mcp], [sandbox], [skills]) and their
+ * Remove named TOML sections (e.g. [mcp], [skills]) and their
  * key-value lines from a TOML string.  A section runs from its `[name]`
  * header to the next `[…]` header or end-of-string.
  */
@@ -220,12 +215,6 @@ function buildCapabilitiesToml(fields: PresetFields): string {
 		const key = fields.mcp.mode === "allow" ? "allow_servers" : "deny_servers";
 		lines.push(`${key} = ${tomlArray(fields.mcp.servers || [])}`);
 	}
-	// Sandbox — only mode is enforced at runtime via SandboxRouter override.
-	if (fields.sandbox?.mode) {
-		lines.push("");
-		lines.push("[sandbox]");
-		lines.push(`mode = "${tomlEscape(fields.sandbox.mode)}"`);
-	}
 	// Skills — emit allow/deny when present (including empty allow = [] which
 	// means "deny all skills", matching the MCP allow_servers = [] semantics).
 	const sk = fields.skills;
@@ -253,7 +242,6 @@ function AgentForm({ agent, onSave, onCancel }: AgentFormProps): VNode {
 	const [mcpMode, setMcpMode] = useState<"all" | "allow" | "deny">("all");
 	const [mcpServers, setMcpServers] = useState<string[]>([]);
 	const [availableMcpServers, setAvailableMcpServers] = useState<McpServer[]>([]);
-	const [sandboxMode, setSandboxMode] = useState("");
 	const [skillsAllow, setSkillsAllow] = useState("");
 	const [skillsAllowSet, setSkillsAllowSet] = useState(false);
 	const [skillsDeny, setSkillsDeny] = useState("");
@@ -313,10 +301,6 @@ function AgentForm({ agent, onSave, onCancel }: AgentFormProps): VNode {
 					setMcpServers(f.mcp.servers || []);
 					if (f.mcp.mode !== "all") setCapabilitiesOpen(true);
 				}
-				if (f.sandbox) {
-					setSandboxMode(f.sandbox.mode || "");
-					if (f.sandbox.mode) setCapabilitiesOpen(true);
-				}
 				if (f.skills) {
 					if (Array.isArray(f.skills.allow)) {
 						setSkillsAllow(f.skills.allow.join(", "));
@@ -356,28 +340,27 @@ function AgentForm({ agent, onSave, onCancel }: AgentFormProps): VNode {
 		}
 		// Build TOML: merge structured capability fields with any raw TOML.
 		// The raw TOML textarea always preserves user content (tools, model,
-		// timeouts, etc.). Structured fields generate [mcp], [sandbox], [skills]
+		// timeouts, etc.). Structured fields generate [mcp] and [skills]
 		// sections that are prepended. Apply structured fields whenever they
 		// contain non-default values, even if the user collapsed the panel before
 		// saving.
 		const capabilitiesConfigured =
-			mcpMode !== "all" || mcpServers.length > 0 || sandboxMode !== "" || skillsAllowSet || skillsDeny.trim() !== "";
+			mcpMode !== "all" || mcpServers.length > 0 || skillsAllowSet || skillsDeny.trim() !== "";
 		let tomlToSave = presetToml.trim();
 		if (capabilitiesOpen || capabilitiesConfigured) {
 			const generated = buildCapabilitiesToml({
 				mcp: { mode: mcpMode, servers: mcpServers },
-				sandbox: { mode: sandboxMode || null },
 				skills: {
 					allow: skillsAllowSet ? parseCsvList(skillsAllow) : null,
 					deny: parseCsvList(skillsDeny),
 				},
 			});
-			// Merge: strip [mcp], [sandbox], [skills] sections from the raw TOML
+			// Merge: strip [mcp] and [skills] sections from the raw TOML
 			// to avoid duplicates. Put raw top-level keys FIRST so they stay at
 			// the TOML document root, then APPEND generated sections — this
 			// prevents model/timeout_secs/etc. from being misassigned to the
 			// last generated section header.
-			const rawWithoutStructured = stripTomlSections(tomlToSave, ["mcp", "sandbox", "skills"]).trim();
+			const rawWithoutStructured = stripTomlSections(tomlToSave, ["mcp", "skills"]).trim();
 			tomlToSave = rawWithoutStructured ? `${rawWithoutStructured}\n\n${generated}` : generated;
 		}
 		// Always save when capabilities are active — an empty TOML string
@@ -560,25 +543,6 @@ function AgentForm({ agent, onSave, onCancel }: AgentFormProps): VNode {
 							{mcpMode !== "all" && availableMcpServers.length === 0 && (
 								<span className="text-xs text-[var(--muted)]">No MCP servers configured</span>
 							)}
-						</fieldset>
-
-						{/* Sandbox Mode */}
-						<fieldset className="flex flex-col gap-2 border border-[var(--border)] rounded p-2">
-							<legend className="text-xs font-medium text-[var(--text-strong)] px-1">Sandbox</legend>
-							<label className="flex flex-col gap-1 text-xs">
-								<span className="text-[var(--muted)]">Mode</span>
-								<select
-									className="provider-key-input"
-									value={sandboxMode}
-									onChange={(e) => setSandboxMode(targetValue(e))}
-									style={{ fontSize: "0.75rem", padding: "3px 6px" }}
-								>
-									<option value="">Inherit global</option>
-									<option value="all">Always sandbox</option>
-									<option value="off">No sandbox</option>
-									<option value="non-main">Non-main only</option>
-								</select>
-							</label>
 						</fieldset>
 
 						{/* Skills */}

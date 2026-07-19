@@ -19,29 +19,6 @@ use super::tmux::{
 
 // ── Command builder ──────────────────────────────────────────────────────────
 
-/// Build a command that opens a shell in the specified container via docker/podman exec.
-fn container_terminal_command_builder(container_name: &str) -> CommandBuilder {
-    let config = chelix_config::discover_and_load();
-    let cli: &str = match config.sandbox.backend.as_str() {
-        "apple-container" => "container",
-        "docker" => "docker",
-        "podman" => "podman",
-        _ => {
-            // Auto-detect: prefer `container` on macOS, then docker, then podman.
-            if cfg!(target_os = "macos") && chelix_tools::sandbox::is_cli_available("container") {
-                "container"
-            } else if chelix_tools::sandbox::is_cli_available("docker") {
-                "docker"
-            } else {
-                "podman"
-            }
-        },
-    };
-    let mut cmd = CommandBuilder::new(cli);
-    cmd.args(["exec", "-it", container_name, "bash"]);
-    cmd
-}
-
 fn host_terminal_command_builder(use_tmux_persistence: bool) -> CommandBuilder {
     if use_tmux_persistence {
         let mut cmd = CommandBuilder::new("tmux");
@@ -87,12 +64,8 @@ pub(crate) fn spawn_host_terminal_runtime(
     rows: u16,
     use_tmux_persistence: bool,
     tmux_window_target: Option<&str>,
-    container_target: Option<&str>,
 ) -> TerminalResult<HostTerminalPtyRuntime> {
-    // If targeting a container, skip tmux and spawn docker/container exec directly.
-    let effective_tmux = use_tmux_persistence && container_target.is_none();
-
-    if effective_tmux {
+    if use_tmux_persistence {
         host_terminal_ensure_tmux_session()?;
         if let Some(target) = tmux_window_target {
             host_terminal_tmux_select_window(target)?;
@@ -110,17 +83,13 @@ pub(crate) fn spawn_host_terminal_runtime(
         .map_err(|err| format!("failed to allocate host PTY: {err}"))?;
 
     let portable_pty::PtyPair { master, slave } = pair;
-    let cmd = if let Some(container) = container_target {
-        container_terminal_command_builder(container)
-    } else {
-        host_terminal_command_builder(effective_tmux)
-    };
+    let cmd = host_terminal_command_builder(use_tmux_persistence);
     let child = slave
         .spawn_command(cmd)
         .map_err(|err| format!("failed to spawn terminal: {err}"))?;
     drop(slave);
 
-    if effective_tmux {
+    if use_tmux_persistence {
         host_terminal_apply_tmux_profile();
     }
 

@@ -84,19 +84,15 @@ impl ConcurrentCommandProbeSandbox {
 
 #[async_trait]
 impl Sandbox for ConcurrentCommandProbeSandbox {
-    fn backend_name(&self) -> &'static str {
-        "probe"
+    fn backend_id(&self) -> crate::sandbox::SandboxBackendId {
+        crate::sandbox::SandboxBackendId::Docker
     }
 
     fn provides_fs_isolation(&self) -> bool {
         true
     }
 
-    async fn ensure_ready(
-        &self,
-        _id: &SandboxId,
-        _image_override: Option<&str>,
-    ) -> crate::Result<()> {
+    async fn ensure_ready(&self, _id: &SandboxId) -> crate::Result<()> {
         Ok(())
     }
 
@@ -558,11 +554,10 @@ async fn sandbox_read_via_registry_round_trips_through_bridge() {
         SandboxConfig::default(),
         backend,
     ));
-    router.set_override("sandboxed", true).await;
 
     let mut registry = ToolRegistry::new();
     register_fs_tools(&mut registry, FsToolsContext {
-        sandbox_router: Some(router),
+        sandbox_router: router,
         ..FsToolsContext::default()
     });
 
@@ -594,7 +589,7 @@ async fn sandbox_read_routes_to_host_when_session_not_sandboxed() {
         std::sync::Arc,
     };
 
-    // Mode = Off and no override → not sandboxed; mock never called.
+    // Global mode Off routes every session to the host; mock is never called.
     let mock = MockSandbox::new(vec![]);
     let backend: Arc<dyn Sandbox> = mock.clone();
     let cfg = SandboxConfig {
@@ -609,7 +604,7 @@ async fn sandbox_read_routes_to_host_when_session_not_sandboxed() {
 
     let mut registry = ToolRegistry::new();
     register_fs_tools(&mut registry, FsToolsContext {
-        sandbox_router: Some(router),
+        sandbox_router: router,
         ..FsToolsContext::default()
     });
 
@@ -700,11 +695,10 @@ async fn sandbox_grep_via_registry_dispatches_through_bridge() {
         SandboxConfig::default(),
         backend,
     ));
-    router.set_override("sandboxed", true).await;
 
     let mut registry = ToolRegistry::new();
     register_fs_tools(&mut registry, FsToolsContext {
-        sandbox_router: Some(router),
+        sandbox_router: router,
         ..FsToolsContext::default()
     });
 
@@ -751,11 +745,10 @@ async fn sandbox_grep_type_filter_expands_multi_extension_languages() {
         SandboxConfig::default(),
         backend,
     ));
-    router.set_override("sandboxed", true).await;
 
     let mut registry = ToolRegistry::new();
     register_fs_tools(&mut registry, FsToolsContext {
-        sandbox_router: Some(router),
+        sandbox_router: router,
         ..FsToolsContext::default()
     });
 
@@ -798,11 +791,10 @@ async fn sandbox_write_via_registry_sends_base64_to_bridge() {
         SandboxConfig::default(),
         backend,
     ));
-    router.set_override("sandboxed-write", true).await;
 
     let mut registry = ToolRegistry::new();
     register_fs_tools(&mut registry, FsToolsContext {
-        sandbox_router: Some(router),
+        sandbox_router: router,
         ..FsToolsContext::default()
     });
 
@@ -830,11 +822,10 @@ async fn sandbox_write_serializes_same_file_mutations_via_registry() {
         SandboxConfig::default(),
         backend,
     ));
-    router.set_override("sandboxed-serial", true).await;
 
     let mut registry = ToolRegistry::new();
     register_fs_tools(&mut registry, FsToolsContext {
-        sandbox_router: Some(router),
+        sandbox_router: router,
         ..FsToolsContext::default()
     });
 
@@ -903,12 +894,11 @@ async fn sandbox_read_denied_by_path_policy_before_bridge() {
         SandboxConfig::default(),
         backend,
     ));
-    router.set_override("sandboxed", true).await;
 
     let mut registry = ToolRegistry::new();
     register_fs_tools(&mut registry, FsToolsContext {
         path_policy: Some(policy),
-        sandbox_router: Some(router),
+        sandbox_router: router,
         ..FsToolsContext::default()
     });
 
@@ -947,12 +937,11 @@ async fn sandbox_write_denied_by_path_policy_before_bridge() {
         SandboxConfig::default(),
         backend,
     ));
-    router.set_override("sandboxed", true).await;
 
     let mut registry = ToolRegistry::new();
     register_fs_tools(&mut registry, FsToolsContext {
         path_policy: Some(policy),
-        sandbox_router: Some(router),
+        sandbox_router: router,
         ..FsToolsContext::default()
     });
 
@@ -992,7 +981,6 @@ async fn sandbox_write_requires_approval_before_bridge() {
         SandboxConfig::default(),
         backend,
     ));
-    router.set_override("sandboxed-approval", true).await;
 
     let approval_manager = Arc::new(ApprovalManager::default());
     let broadcaster = Arc::new(TestBroadcaster::new());
@@ -1000,7 +988,7 @@ async fn sandbox_write_requires_approval_before_bridge() {
 
     let mut registry = ToolRegistry::new();
     register_fs_tools(&mut registry, FsToolsContext {
-        sandbox_router: Some(router),
+        sandbox_router: router,
         approval_manager: Some(approval_manager.clone()),
         broadcaster: Some(broadcaster_dyn),
         ..FsToolsContext::default()

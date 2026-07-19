@@ -541,6 +541,23 @@ pub enum ContainerBackend {
     Podman,
 }
 
+impl ContainerBackend {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::AppleContainer => "apple-container",
+            Self::Docker => "docker",
+            Self::Podman => "podman",
+        }
+    }
+}
+
+impl std::fmt::Display for ContainerBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// A container managed by chelix (running, stopped, or exited).
 #[derive(Debug, Clone, Serialize)]
 pub struct RunningContainer {
@@ -1053,14 +1070,17 @@ pub(crate) fn apple_container_status_from_inspect(stdout: &str) -> Option<&'stat
     None
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn is_apple_container_service_error(stderr: &str) -> bool {
     stderr.contains("XPC connection error") || stderr.contains("Connection invalid")
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn is_apple_container_exists_error(stderr: &str) -> bool {
     stderr.contains("already exists") || stderr.contains("exists: \"container with id")
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn is_apple_container_daemon_stale_error(text: &str) -> bool {
     // Both patterns are required — `NSPOSIXErrorDomain` alone can appear in
     // benign log-fetching errors (Code=2 "No such file or directory") when a
@@ -1069,6 +1089,7 @@ pub(crate) fn is_apple_container_daemon_stale_error(text: &str) -> bool {
     text.contains("NSPOSIXErrorDomain") && text.contains("Invalid argument")
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn is_apple_container_corruption_error(stderr: &str) -> bool {
     let lower = stderr.to_ascii_lowercase();
     is_apple_container_service_error(stderr)

@@ -231,63 +231,6 @@ pub(super) async fn send_model_keyboard(bot: &Bot, to: &str, text: &str) {
     let _ = req.await;
 }
 
-pub(super) async fn send_sandbox_keyboard(bot: &Bot, to: &str, text: &str) {
-    let (chat, thread_id) = parse_chat_target_lossy(to);
-
-    let mut is_on = false;
-    let mut image_buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
-
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if let Some(status) = trimmed.strip_prefix("status:") {
-            is_on = status == "on";
-            continue;
-        }
-        if let Some(dot_pos) = trimmed.find(". ")
-            && let Ok(n) = trimmed[..dot_pos].parse::<usize>()
-        {
-            let label_part = &trimmed[dot_pos + 2..];
-            let is_active = label_part.ends_with('*');
-            let clean = label_part.trim_end_matches('*').trim();
-            let display = if is_active {
-                format!("● {clean}")
-            } else {
-                format!("○ {clean}")
-            };
-            image_buttons.push(vec![InlineKeyboardButton::callback(
-                display,
-                format!("sandbox_image:{n}"),
-            )]);
-        }
-    }
-
-    let toggle_label = if is_on {
-        "🟢 Sandbox ON — tap to disable"
-    } else {
-        "⚫ Sandbox OFF — tap to enable"
-    };
-    let toggle_action = if is_on {
-        "sandbox_toggle:off"
-    } else {
-        "sandbox_toggle:on"
-    };
-
-    let mut buttons = vec![vec![InlineKeyboardButton::callback(
-        toggle_label.to_string(),
-        toggle_action.to_string(),
-    )]];
-    buttons.extend(image_buttons);
-
-    let keyboard = InlineKeyboardMarkup::new(buttons);
-    let mut req = bot
-        .send_message(chat, "⚙️ Sandbox settings:")
-        .reply_markup(keyboard);
-    if let Some(tid) = thread_id {
-        req = req.message_thread_id(tid);
-    }
-    let _ = req.await;
-}
-
 /// Render a command's fixed choices as an inline keyboard.
 ///
 /// Used for commands like `/sh` and `/fast` that have a small set of known
@@ -349,10 +292,6 @@ pub(super) async fn handle_callback_query(
         Some(format!("agent {n_str}"))
     } else if let Some(n_str) = data.strip_prefix("model_switch:") {
         Some(format!("model {n_str}"))
-    } else if let Some(val) = data.strip_prefix("sandbox_toggle:") {
-        Some(format!("sandbox {val}"))
-    } else if let Some(n_str) = data.strip_prefix("sandbox_image:") {
-        Some(format!("sandbox image {n_str}"))
     } else if data.starts_with("model_provider:") {
         None
     } else {

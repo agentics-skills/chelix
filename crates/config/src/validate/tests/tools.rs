@@ -4,7 +4,7 @@ use super::*;
 fn sandbox_mode_off_warned() {
     let toml = r#"
 [sandbox]
-mode = "off"
+mode = "Off"
 "#;
     let result = validate_toml_str(toml);
     let warning = result.diagnostics.iter().find(|d| d.path == "sandbox.mode");
@@ -26,20 +26,26 @@ port = 0
 }
 
 #[test]
-fn unknown_sandbox_backend_warned() {
-    let toml = r#"
+fn unknown_and_removed_sandbox_backends_are_rejected() {
+    for backend in ["lxc", "restricted-host", "cgroup"] {
+        let toml = format!(
+            r#"
 [sandbox]
-backend = "lxc"
-"#;
-    let result = validate_toml_str(toml);
-    let warning = result
-        .diagnostics
-        .iter()
-        .find(|d| d.path == "sandbox.backend");
-    assert!(
-        warning.is_some(),
-        "expected warning for unknown sandbox backend"
-    );
+backend = "{backend}"
+"#
+        );
+        let result = validate_toml_str(&toml);
+        let error = result.diagnostics.iter().find(|diagnostic| {
+            diagnostic.severity == Severity::Error
+                && diagnostic.category == "type-error"
+                && diagnostic.message.contains(backend)
+        });
+        assert!(
+            error.is_some(),
+            "sandbox backend {backend:?} must be rejected, got: {:?}",
+            result.diagnostics
+        );
+    }
 }
 
 #[test]
@@ -171,7 +177,7 @@ mode = "rw"
 fn sandbox_data_mount_cannot_source_config_dir() {
     let toml = r#"
 [sandbox]
-mode = "off"
+mode = "Off"
 host_data_dir = "/"
 "#;
     let result = validate_toml_str(toml);
@@ -288,6 +294,23 @@ lightpanda_path = "/usr/local/bin/lightpanda"
     assert!(
         unknown.is_none(),
         "lightpanda_path should be accepted as a browser config field, got: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn browser_sandbox_override_rejected() {
+    let toml = r#"
+[tools.browser]
+sandbox = false
+"#;
+    let result = validate_toml_str(toml);
+    let unknown = result.diagnostics.iter().find(|diagnostic| {
+        diagnostic.category == "unknown-field" && diagnostic.path == "tools.browser.sandbox"
+    });
+    assert!(
+        unknown.is_some(),
+        "browser sandbox override must be rejected, got: {:?}",
         result.diagnostics
     );
 }

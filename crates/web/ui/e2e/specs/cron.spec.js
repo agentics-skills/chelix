@@ -38,18 +38,16 @@ test.describe("Cron jobs page", () => {
 		await expect(content).not.toBeEmpty();
 	});
 
-	test("cron modal exposes model and execution controls", async ({ page }) => {
+	test("cron modal exposes model without routing overrides", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await navigateAndWait(page, "/settings/crons");
 
 		await page.getByRole("button", { name: "+ Add Job", exact: true }).click();
 
 		await expect(page.getByText("Model (Agent Turn)", { exact: true })).toBeVisible();
-		await expect(page.getByText("Execution Target", { exact: true })).toBeVisible();
-		await expect(page.getByText("Sandbox Image", { exact: true })).toBeVisible();
-
-		await page.locator('[data-field="executionTarget"]').selectOption("host");
-		await expect(page.locator('[data-field="executionTarget"]')).toHaveValue("host");
+		await expect(page.getByText("Execution Target", { exact: true })).toHaveCount(0);
+		await expect(page.getByText("Sandbox Image", { exact: true })).toHaveCount(0);
+		await expect(page.locator('[data-field="executionTarget"]')).toHaveCount(0);
 		expect(pageErrors).toEqual([]);
 	});
 
@@ -203,7 +201,6 @@ test.describe("Cron jobs page", () => {
 			payload: { kind: "systemEvent", text: "hello from e2e" },
 			sessionTarget: "main",
 			enabled: false,
-			sandbox: { enabled: true },
 		});
 		const jobId = addRes.payload?.id;
 
@@ -240,7 +237,6 @@ test.describe("Cron jobs page", () => {
 			payload: { kind: "agentTurn", message: "agent prompt text" },
 			sessionTarget: "isolated",
 			enabled: true,
-			sandbox: { enabled: false },
 		});
 		const jobId = addRes.payload?.id;
 
@@ -256,7 +252,6 @@ test.describe("Cron jobs page", () => {
 		await expect(page.locator('[data-field="payloadKind"]')).toHaveValue("agentTurn");
 		await expect(page.locator('[data-field="target"]')).toHaveValue("isolated");
 		await expect(page.locator('[data-field="message"]')).toHaveValue("agent prompt text");
-		await expect(page.locator('[data-field="executionTarget"]')).toHaveValue("host");
 
 		// Clean up
 		if (jobId) await sendRpcFromPage(page, "cron.remove", { id: jobId });
@@ -275,7 +270,6 @@ test.describe("Cron jobs page", () => {
 			payload: { kind: "agentTurn", message: "custom prompt" },
 			sessionTarget: "isolated",
 			enabled: false,
-			sandbox: { enabled: false },
 		});
 		const jobId = addRes.payload?.id;
 
@@ -356,7 +350,7 @@ test.describe("Cron jobs page", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
-	test("cron expression persists when model changes", async ({ page }) => {
+	test("cron expression persists when payload kind changes", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await navigateAndWait(page, "/settings/crons");
 
@@ -366,8 +360,8 @@ test.describe("Cron jobs page", () => {
 		await page.locator('[data-field="cron"]').fill("*/5 * * * *");
 		await expect(page.locator('[data-field="cron"]')).toHaveValue("*/5 * * * *");
 
-		// Change execution target to trigger re-render
-		await page.locator('[data-field="executionTarget"]').selectOption("host");
+		// Change another supported field to trigger re-render
+		await page.locator('[data-field="payloadKind"]').selectOption("agentTurn");
 
 		// Expression must survive the re-render
 		await expect(page.locator('[data-field="cron"]')).toHaveValue("*/5 * * * *");

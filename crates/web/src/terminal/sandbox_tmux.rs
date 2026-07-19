@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use portable_pty::CommandBuilder;
 
-use {chelix_httpd::AppState, tokio::process::Command};
+use {chelix_httpd::AppState, chelix_tools::sandbox::ContainerBackend, tokio::process::Command};
 
 use super::types::{
     SandboxTerminalTarget, SandboxTmuxPaneInfo, SandboxTmuxSessionInfo, SandboxTmuxTree,
@@ -46,14 +46,9 @@ pub(crate) async fn sandbox_terminal_targets(
     let prefix = state
         .gateway
         .sandbox_router
-        .as_ref()
-        .map(|router| {
-            router
-                .config()
-                .container_prefix
-                .clone()
-                .unwrap_or_else(|| "chelix-sandbox".to_string())
-        })
+        .config()
+        .container_prefix
+        .clone()
         .unwrap_or_else(|| "chelix-sandbox".to_string());
     let containers = chelix_tools::sandbox::list_running_containers(&prefix)
         .await
@@ -67,10 +62,11 @@ pub(crate) async fn sandbox_terminal_targets(
             )
         })
         .map(|container| {
-            let backend = container_backend_name(container.backend).to_string();
+            let backend = container.backend;
+            let backend_name = backend.as_str();
             let state = container_state_name(container.state).to_string();
-            let id = format!("{backend}:{}", container.name);
-            let label = format!("{} ({backend})", container.name);
+            let id = format!("{backend_name}:{}", container.name);
+            let label = format!("{} ({backend_name})", container.name);
             SandboxTerminalTarget {
                 id,
                 label,
@@ -283,9 +279,9 @@ pub(crate) fn sandbox_terminal_tmux_attach_command_builder(
     target: &SandboxTerminalTarget,
     session_id: &str,
 ) -> CommandBuilder {
-    let cli = backend_cli(&target.backend);
+    let cli = backend_cli(target.backend);
     let mut cmd = CommandBuilder::new(cli);
-    if target.backend == "apple-container" {
+    if target.backend == ContainerBackend::AppleContainer {
         cmd.args([
             "exec",
             "--workdir",
@@ -316,8 +312,8 @@ async fn run_sandbox_tmux(
     target: &SandboxTerminalTarget,
     tmux_args: &[&str],
 ) -> TerminalResult<SandboxCommandOutput> {
-    let cli = backend_cli(&target.backend);
-    let output = if target.backend == "apple-container" {
+    let cli = backend_cli(target.backend);
+    let output = if target.backend == ContainerBackend::AppleContainer {
         let mut command = Command::new(cli);
         command.args([
             "exec",
@@ -349,19 +345,11 @@ async fn run_sandbox_tmux(
     })
 }
 
-fn backend_cli(backend: &str) -> &str {
+fn backend_cli(backend: ContainerBackend) -> &'static str {
     match backend {
-        "apple-container" => "container",
-        "podman" => "podman",
-        _ => "docker",
-    }
-}
-
-fn container_backend_name(backend: chelix_tools::sandbox::ContainerBackend) -> &'static str {
-    match backend {
-        chelix_tools::sandbox::ContainerBackend::AppleContainer => "apple-container",
-        chelix_tools::sandbox::ContainerBackend::Docker => "docker",
-        chelix_tools::sandbox::ContainerBackend::Podman => "podman",
+        ContainerBackend::AppleContainer => "container",
+        ContainerBackend::Docker => "docker",
+        ContainerBackend::Podman => "podman",
     }
 }
 

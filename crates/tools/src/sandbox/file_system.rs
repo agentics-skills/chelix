@@ -191,12 +191,7 @@ pub async fn sandbox_file_system_for_session(
     router: &SandboxRouter,
     session_key: &str,
 ) -> Result<Arc<dyn SandboxFileSystem>> {
-    let id = router.sandbox_id_for(session_key);
-    let backend = router.resolve_backend(session_key).await;
-    let image = router
-        .resolve_image_for_backend(session_key, None, backend.backend_name())
-        .await;
-    backend.ensure_ready(&id, Some(&image)).await?;
+    let (backend, id) = router.prepare_command_session(session_key).await?;
     Ok(Arc::new(CommandSandboxFileSystem::new(backend, id)))
 }
 
@@ -1272,8 +1267,8 @@ pub(crate) mod test_helpers {
 
     #[async_trait]
     impl Sandbox for MockSandbox {
-        fn backend_name(&self) -> &'static str {
-            "mock"
+        fn backend_id(&self) -> crate::sandbox::SandboxBackendId {
+            crate::sandbox::SandboxBackendId::Docker
         }
 
         fn is_real(&self) -> bool {
@@ -1284,7 +1279,7 @@ pub(crate) mod test_helpers {
             true
         }
 
-        async fn ensure_ready(&self, _id: &SandboxId, _image_override: Option<&str>) -> Result<()> {
+        async fn ensure_ready(&self, _id: &SandboxId) -> Result<()> {
             Ok(())
         }
 

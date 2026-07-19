@@ -294,7 +294,7 @@ port = {port}                           # Port number (auto-generated for this i
 # # name = "classify_destination"
 #
 # ── Per-agent capability boundaries ──────────────────────────────────────────
-# Each agent can be scoped to specific MCP servers, sandbox policies, and skills.
+# Each agent can be scoped to specific MCP servers and skills.
 # Assign agents to channels via `agent_id` in the channel account config.
 #
 # Example: restricted agent for kids (no MCP, no network, limited skills):
@@ -302,8 +302,6 @@ port = {port}                           # Port number (auto-generated for this i
 # model = "anthropic/claude-haiku-4-5-20251001"
 # [agents.presets.kids.mcp]
 # allow_servers = []                # No MCP tools at all
-# [agents.presets.kids.sandbox]
-# mode = "all"                      # Always sandbox this agent (omit to inherit [sandbox])
 # [agents.presets.kids.skills]
 # deny = ["gaming", "social-media"] # Block specific skill categories
 #
@@ -311,18 +309,15 @@ port = {port}                           # Port number (auto-generated for this i
 # [agents.presets.admin]
 # [agents.presets.admin.mcp]
 # allow_servers = ["github", "home-assistant", "memory"]
-# [agents.presets.admin.sandbox]
-# mode = "all"                      # Always sandbox this agent (omit to inherit [sandbox])
-
 # ══════════════════════════════════════════════════════════════════════════════
 # SANDBOX
 # ══════════════════════════════════════════════════════════════════════════════
 # Agent sessions and command execution can run inside isolated containers for security.
 
 # [sandbox]
-# mode = "all"                      # "off" | "non-main" | "all" (recommended)
+# mode = "On"                       # "On" | "Off"; global for every session
 # scope = "session"                 # "session" | "agent" | "shared"
-# backend = "auto"                  # "auto" | "docker" | "podman" | "apple-container" | "restricted-host" | "wasm"
+# backend = "auto"                  # "auto" | "docker" | "podman" | "apple-container" | "wasm"
 # image = "custom-image:tag"        # Custom container image (default: auto-built)
 # network = "bridge"                # Docker/Podman network passed as --network=<name>
 # workspace_sysmount = "ro"         # "ro" | "rw" (rootfs + cap-drop/no-new-privileges hardening)
@@ -544,7 +539,6 @@ port = {port}                           # Port number (auto-generated for this i
 # every = "30m"                     # Interval (e.g., "30m", "1h", "6h")
 # ack_max_chars = 300               # Max characters for acknowledgment reply
 # deliver = false                   # Deliver heartbeat replies to a channel
-# sandbox_enabled = true            # Run heartbeat commands in sandbox
 # wake_cooldown = "5m"              # Min duration between command-triggered heartbeat wakes (0 to disable)
 
 # [heartbeat.active_hours]

@@ -38,11 +38,6 @@ interface DiskUsageInfo {
 	images_size_bytes: number;
 }
 
-interface SandboxInfoValue extends SandboxGonInfo {
-	shared_home_enabled?: boolean;
-	shared_home_dir?: string;
-}
-
 interface SharedHomeConfig {
 	enabled?: boolean;
 	mode?: string;
@@ -52,8 +47,6 @@ interface SharedHomeConfig {
 
 // ── Signals ──────────────────────────────────────────────────
 
-const defaultImage = signal("");
-const savingDefault = signal(false);
 const images = signal<CachedImage[]>([]);
 const loading = signal(false);
 const buildName = signal("");
@@ -82,11 +75,11 @@ const SANDBOX_TABS = [
 	{ id: "general", label: "General" },
 	{ id: "containers", label: "Containers & Images" },
 ];
-const SANDBOX_DISABLED_HINT =
-	"No local container runtime detected. Install Docker, Podman, or Apple Container to enable sandboxes.";
+const SANDBOX_OFF_HINT =
+	'Sandbox mode is Off. Commands execute directly on the host. Set sandbox.mode = "On" and restart Chelix to use isolated execution.';
 
 function sandboxRuntimeAvailable(): boolean {
-	return ((sandboxInfo.value as SandboxInfoValue | null)?.backend || "none") !== "none";
+	return sandboxInfo.value?.mode === "On";
 }
 
 async function responseErrorMessage(response: Response, fallback: string): Promise<string> {
@@ -358,13 +351,6 @@ function saveSharedHomeConfig(): void {
 		.then((data) => {
 			applySharedHomeConfig(data?.config || {});
 			sharedHomeMsg.value = "Saved. Restart Chelix to apply shared folder changes.";
-			if (sandboxInfo.value) {
-				sandboxInfo.value = {
-					...(sandboxInfo.value as SandboxInfoValue),
-					shared_home_enabled: sharedHomeEnabled.value,
-					shared_home_dir: sharedHomePath.value,
-				};
-			}
 		})
 		.catch((e: Error) => {
 			sharedHomeErr.value = e.message;
@@ -473,7 +459,7 @@ function ContainerRow({
 							className="text-xs px-2 py-0.5 rounded border border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--border-strong)] transition-colors cursor-pointer"
 							onClick={() => stopContainer(c.name)}
 							disabled={!sandboxAvailable}
-							title={sandboxAvailable ? "Stop container" : SANDBOX_DISABLED_HINT}
+							title={sandboxAvailable ? "Stop container" : SANDBOX_OFF_HINT}
 						>
 							Stop
 						</button>
@@ -482,7 +468,7 @@ function ContainerRow({
 						className="text-xs text-white border border-[var(--error)] px-2 py-0.5 rounded bg-[var(--error)] hover:opacity-80 transition-colors cursor-pointer"
 						onClick={() => removeContainer(c.name)}
 						disabled={!sandboxAvailable}
-						title={sandboxAvailable ? "Delete container" : SANDBOX_DISABLED_HINT}
+						title={sandboxAvailable ? "Delete container" : SANDBOX_OFF_HINT}
 					>
 						Delete
 					</button>
@@ -523,7 +509,7 @@ function RunningContainersSection(): VNode {
 					className="text-xs text-[var(--muted)] border border-[var(--border)] px-2 py-0.5 rounded-md hover:text-[var(--text)] hover:border-[var(--border-strong)] transition-colors cursor-pointer bg-transparent"
 					onClick={restartDaemon}
 					disabled={restarting.value || !sandboxAvailable}
-					title={sandboxAvailable ? "Restart container daemon" : SANDBOX_DISABLED_HINT}
+					title={sandboxAvailable ? "Restart container daemon" : SANDBOX_OFF_HINT}
 				>
 					{restarting.value ? "Restarting\u2026" : "Restart"}
 				</button>
@@ -534,7 +520,7 @@ function RunningContainersSection(): VNode {
 						fetchDiskUsage();
 					}}
 					disabled={loadingContainers.value || !sandboxAvailable}
-					title={sandboxAvailable ? "Refresh" : SANDBOX_DISABLED_HINT}
+					title={sandboxAvailable ? "Refresh" : SANDBOX_OFF_HINT}
 				>
 					{loadingContainers.value ? "Loading\u2026" : "Refresh"}
 				</button>
@@ -543,7 +529,7 @@ function RunningContainersSection(): VNode {
 						className="text-xs text-white border border-[var(--error)] px-2 py-0.5 rounded-md bg-[var(--error)] hover:opacity-80 transition-colors cursor-pointer"
 						onClick={cleanAllContainers}
 						disabled={cleaningAll.value || !sandboxAvailable}
-						title={sandboxAvailable ? "Stop and remove all containers" : SANDBOX_DISABLED_HINT}
+						title={sandboxAvailable ? "Stop and remove all containers" : SANDBOX_OFF_HINT}
 					>
 						{cleaningAll.value ? "Cleaning\u2026" : "Clean All"}
 					</button>
@@ -566,26 +552,13 @@ function RunningContainersSection(): VNode {
 	);
 }
 
-function backendRecommendation(info: SandboxInfoValue | null): { level: string; text: string; link?: string } | null {
+function backendRecommendation(info: SandboxGonInfo | null): { level: string; text: string; link?: string } | null {
 	if (!info) return null;
 	const os = info.os;
 	const backend = info.backend;
 
-	if (backend === "none") {
-		if (os === "macos") {
-			return {
-				level: "warn",
-				text: "No container runtime detected. Install Apple Container (macOS 26+) for VM-isolated sandboxing, or install Docker as an alternative.",
-				link: "https://developer.apple.com/documentation/virtualization",
-			};
-		}
-		if (os === "linux") {
-			return {
-				level: "warn",
-				text: "No container runtime detected. Install Docker for sandboxed execution, or ensure systemd is available for cgroup isolation.",
-			};
-		}
-		return { level: "warn", text: "No container runtime detected. Install Docker for sandboxed execution." };
+	if (info.mode === "Off") {
+		return { level: "warn", text: SANDBOX_OFF_HINT };
 	}
 
 	if (os === "macos" && backend === "docker") {
@@ -597,13 +570,7 @@ function backendRecommendation(info: SandboxInfoValue | null): { level: string; 
 	if (os === "linux" && backend === "docker") {
 		return {
 			level: "info",
-			text: "Docker is a good choice on Linux. For lighter-weight isolation without Docker overhead, systemd cgroup sandboxing is also supported.",
-		};
-	}
-	if (backend === "restricted-host") {
-		return {
-			level: "info",
-			text: "Using restricted host execution (env clearing, rlimits). For stronger isolation, install Docker or Apple Container.",
+			text: "Docker provides filesystem-isolated execution. Podman and the WASM backend are also supported.",
 		};
 	}
 	if (backend === "wasm") {
@@ -637,7 +604,7 @@ function fetchAvailableBackends(): void {
 }
 
 function SandboxBanner(): VNode | null {
-	const info = sandboxInfo.value as SandboxInfoValue | null;
+	const info = sandboxInfo.value;
 	if (!info) return null;
 
 	const backends = availableBackendsList.value;
@@ -649,11 +616,27 @@ function SandboxBanner(): VNode | null {
 
 	return (
 		<div className="max-w-form">
+			<div className="mb-4">
+				<h3 className="mb-2 text-sm font-medium text-[var(--text-strong)]">Sandbox mode</h3>
+				<output
+					aria-label="Sandbox mode"
+					className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] px-3 py-1.5 text-xs"
+				>
+					<span
+						aria-hidden="true"
+						className={`h-2 w-2 rounded-full ${info.mode === "On" ? "bg-[var(--accent)]" : "bg-[var(--muted)]"}`}
+					/>
+					<span className="font-mono font-semibold text-[var(--text-strong)]">{info.mode}</span>
+				</output>
+				<p className="mt-2 text-xs leading-relaxed text-[var(--muted)]">
+					Read-only global status from <code>chelix.toml</code>.
+				</p>
+			</div>
 			<h3 className="text-sm font-medium text-[var(--text-strong)]" style={{ marginBottom: "8px" }}>
 				Available backends
 			</h3>
 			<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: "0 0 10px" }}>
-				Backends available for sandbox execution. Select one per session in the chat panel, or set a default below.
+				Backends available for sandbox execution. Select the global backend below.
 			</p>
 
 			{backends.length > 0 ? (
@@ -702,65 +685,17 @@ function SandboxBanner(): VNode | null {
 }
 
 function DefaultImageSelector(): VNode {
-	const info = sandboxInfo.value as SandboxInfoValue | null;
-	const current = defaultImage.value || info?.default_image || "";
-	const sandboxAvailable = sandboxRuntimeAvailable();
-
-	function onSave(): void {
-		const val = defaultImage.value.trim();
-		savingDefault.value = true;
-		fetch("/api/images/default", {
-			method: "PUT",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ image: val || null }),
-		})
-			.then((r) => (r.ok ? r.json() : null))
-			.then((data) => {
-				if (data) defaultImage.value = data.image;
-			})
-			.catch(() => {
-				/* ignore */
-			})
-			.finally(() => {
-				savingDefault.value = false;
-			});
-	}
+	const current = sandboxInfo.value?.default_image || "";
 
 	return (
-		<div className="max-w-form">
+		<div className="max-w-form" style={{ borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
 			<h3 className="text-sm font-medium text-[var(--text-strong)]" style={{ marginBottom: "8px" }}>
 				Default image
 			</h3>
 			<p className="text-xs text-[var(--muted)]" style={{ margin: "0 0 8px" }}>
-				Base image used for new sessions and projects unless overridden. Leave empty to use the built-in default
-				(ubuntu:26.04).
+				Effective global image configured for sandbox execution.
 			</p>
-			<div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-				<input
-					type="text"
-					className="provider-key-input"
-					list="default-image-list"
-					placeholder="ubuntu:26.04"
-					style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: ".8rem" }}
-					value={current}
-					onInput={(e) => {
-						defaultImage.value = (e.target as HTMLInputElement).value;
-					}}
-				/>
-				<button
-					className="provider-btn"
-					onClick={onSave}
-					disabled={savingDefault.value || !sandboxAvailable}
-					title={sandboxAvailable ? undefined : SANDBOX_DISABLED_HINT}
-				>
-					{savingDefault.value ? "Saving\u2026" : "Save"}
-				</button>
-			</div>
-			<datalist id="default-image-list">
-				{images.value.map((img) => (
-					<option key={img.tag} value={img.tag} />
-				))}
-			</datalist>
+			<code className="block text-xs text-[var(--text)] break-all">{current || "Unavailable"}</code>
 		</div>
 	);
 }
@@ -870,7 +805,7 @@ function ImageRow({ image: img, sandboxAvailable }: { image: CachedImage; sandbo
 			</div>
 			<button
 				className="session-action-btn session-delete"
-				title={sandboxAvailable ? "Delete image" : SANDBOX_DISABLED_HINT}
+				title={sandboxAvailable ? "Delete image" : SANDBOX_OFF_HINT}
 				disabled={!sandboxAvailable}
 				onClick={() => deleteImage(img.tag)}
 			>
@@ -898,7 +833,7 @@ function ImagesPage(): VNode {
 				{!sandboxRuntimeAvailable() && (
 					<div className="alert-warning-text max-w-form" style={{ marginBottom: "8px" }}>
 						<span className="alert-label-warn">Warning: </span>
-						{SANDBOX_DISABLED_HINT}
+						{SANDBOX_OFF_HINT}
 					</div>
 				)}
 			</div>
@@ -929,7 +864,7 @@ function GeneralTabContent(): VNode {
 }
 
 function ContainersTabContent(): VNode {
-	const sbInfo = sandboxInfo.value as SandboxInfoValue | null;
+	const sbInfo = sandboxInfo.value;
 
 	return (
 		<>
@@ -938,7 +873,7 @@ function ContainersTabContent(): VNode {
 					className="provider-btn-secondary provider-btn-sm"
 					onClick={pruneAll}
 					disabled={pruning.value || !sandboxRuntimeAvailable()}
-					title={sandboxRuntimeAvailable() ? "Prune all" : SANDBOX_DISABLED_HINT}
+					title={sandboxRuntimeAvailable() ? "Prune all" : SANDBOX_OFF_HINT}
 				>
 					{pruning.value ? "Pruning\u2026" : "Prune all"}
 				</button>
@@ -1028,7 +963,7 @@ function ContainersTabContent(): VNode {
 					disabled={
 						building.value || !buildName.value.trim() || !buildPackages.value.trim() || !sandboxRuntimeAvailable()
 					}
-					title={sandboxRuntimeAvailable() ? "Build" : SANDBOX_DISABLED_HINT}
+					title={sandboxRuntimeAvailable() ? "Build" : SANDBOX_OFF_HINT}
 				>
 					{building.value ? "Building\u2026" : "Build"}
 				</button>
@@ -1061,7 +996,6 @@ export function initImages(container: HTMLElement): void {
 	images.value = [];
 	containers.value = [];
 	diskUsage.value = null;
-	defaultImage.value = (sandboxInfo.value as SandboxInfoValue | null)?.default_image || "";
 	buildStatus.value = "";
 	buildWarning.value = "";
 	containerError.value = "";

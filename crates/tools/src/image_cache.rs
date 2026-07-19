@@ -75,17 +75,13 @@ impl DockerImageBuilder {
     }
 
     /// Create for a specific sandbox backend configuration value.
-    ///
-    /// Maps backend names to the correct build CLI:
-    /// - `apple-container` → `docker` (Apple Container delegates builds to Docker)
-    /// - `docker` → `docker`
-    /// - `podman` → `podman`
-    /// - `auto` / others → auto-detected via `container_cli()`
-    pub fn for_backend(backend: &str) -> Self {
+    pub fn for_backend(backend: chelix_config::schema::SandboxBackend) -> Self {
+        use chelix_config::schema::SandboxBackend;
+
         let cli = match backend {
-            "apple-container" | "docker" => "docker",
-            "podman" => "podman",
-            _ => crate::sandbox::container_cli(),
+            SandboxBackend::AppleContainer | SandboxBackend::Docker => "docker",
+            SandboxBackend::Podman => "podman",
+            SandboxBackend::Auto | SandboxBackend::Wasm => crate::sandbox::container_cli(),
         };
         Self { cli }
     }

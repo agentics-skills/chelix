@@ -16,14 +16,16 @@
 //!
 //! ```ignore
 //! use chelix_browser::{BrowserManager, BrowserConfig, BrowserRequest, BrowserAction};
+//! use chelix_config::schema::SandboxMode;
 //!
 //! let config = BrowserConfig { enabled: true, ..Default::default() };
-//! let manager = BrowserManager::new(config);
+//! let manager = BrowserManager::new(config, SandboxMode::On);
 //!
 //! let request = BrowserRequest {
 //!     session_id: None,
 //!     action: BrowserAction::Navigate { url: "https://example.com".into() },
 //!     timeout_ms: 30000,
+//!     browser: None,
 //! };
 //!
 //! let response = manager.handle_request(request).await;

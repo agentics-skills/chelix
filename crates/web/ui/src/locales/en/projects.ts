@@ -48,8 +48,6 @@ export default {
 		teardownCommandPlaceholder: "e.g. docker compose down",
 		branchPrefix: "Branch prefix",
 		branchPrefixPlaceholder: "default: chelix",
-		sandboxImage: "Sandbox image",
-		sandboxImagePlaceholder: "Default (ubuntu:26.04)",
 		autoWorktree: "Auto-create git worktree per session",
 		codeIndex: "Enable code indexing (semantic search)",
 	},

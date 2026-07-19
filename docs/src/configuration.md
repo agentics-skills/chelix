@@ -168,7 +168,7 @@ Commands run inside isolated containers for security:
 
 ```toml
 [sandbox]
-mode = "all"                    # "off", "non-main", or "all"
+mode = "On"                     # Global policy: exactly "On" or "Off"
 scope = "session"               # "session", "agent", or "shared"
 workspace_sysmount = "ro"       # "ro" keeps rootfs/cap-drop hardening, "rw" relaxes both
 # host_data_dir = "/host/path/data"  # Optional override if auto-detection cannot resolve the host path
@@ -510,7 +510,7 @@ agent_max_iterations = 25
 offered = ["anthropic", "openai", "gemini"]
 
 [sandbox]
-mode = "all"
+mode = "On"
 scope = "session"
 workspace_sysmount = "ro"
 home_persistence = "session"

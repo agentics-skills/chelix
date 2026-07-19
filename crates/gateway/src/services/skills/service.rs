@@ -23,10 +23,6 @@ impl SkillsService for NoopSkillsService {
         Ok(serde_json::json!({ "installed": [] }))
     }
 
-    async fn bins(&self) -> ServiceResult {
-        Ok(serde_json::json!([]))
-    }
-
     async fn install(&self, params: Value) -> ServiceResult {
         let source = params
             .get("source")
@@ -62,10 +58,7 @@ impl SkillsService for NoopSkillsService {
     }
 
     async fn list(&self) -> ServiceResult {
-        use chelix_skills::{
-            discover::{FsSkillDiscoverer, SkillDiscoverer},
-            requirements::check_requirements,
-        };
+        use chelix_skills::discover::{FsSkillDiscoverer, SkillDiscoverer};
         let fs_discoverer = FsSkillDiscoverer::new(FsSkillDiscoverer::default_paths());
 
         #[cfg(feature = "bundled-skills")]
@@ -85,7 +78,6 @@ impl SkillsService for NoopSkillsService {
         let items: Vec<_> = skills
             .iter()
             .map(|s| {
-                let elig = check_requirements(s);
                 let protected = matches!(
                     s.source,
                     Some(chelix_skills::types::SkillSource::Personal)
@@ -100,9 +92,6 @@ impl SkillsService for NoopSkillsService {
                     "path": s.path.to_string_lossy(),
                     "source": s.source,
                     "protected": protected,
-                    "eligible": elig.eligible,
-                    "missing_bins": elig.missing_bins,
-                    "install_options": elig.install_options,
                 })
             })
             .collect();
@@ -207,8 +196,6 @@ impl SkillsService for NoopSkillsService {
     }
 
     async fn repos_list_full(&self) -> ServiceResult {
-        use chelix_skills::requirements::check_requirements;
-
         let install_dir =
             chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
         let manifest_path = chelix_skills::manifest::ManifestStore::default_path()
@@ -260,20 +247,17 @@ impl SkillsService for NoopSkillsService {
                                 "trusted": s.trusted,
                                 "enabled": s.enabled,
                                 "drifted": drifted_sources.contains(&repo.source),
-                                "eligible": true,
-                                "missing_bins": [],
                             })
                         } else {
                             // SKILL.md format: parse from disk.
                             let skill_dir = install_dir.join(&s.relative_path);
                             let skill_md = skill_dir.join("SKILL.md");
                             let meta_json = chelix_skills::parse::read_meta_json(&skill_dir);
-                            let (description, display_name, elig) =
+                            let (description, display_name) =
                                 if let Ok(content) = std::fs::read_to_string(&skill_md) {
                                     if let Ok(meta) = chelix_skills::parse::parse_metadata(
                                         &content, &skill_dir,
                                     ) {
-                                        let e = check_requirements(&meta);
                                         let desc = if meta.description.is_empty() {
                                             meta_json
                                                 .as_ref()
@@ -285,17 +269,17 @@ impl SkillsService for NoopSkillsService {
                                         let dn = meta_json
                                             .as_ref()
                                             .and_then(|m| m.display_name.clone());
-                                        (desc, dn, Some(e))
+                                        (desc, dn)
                                     } else {
                                         let dn = meta_json
                                             .as_ref()
                                             .and_then(|m| m.display_name.clone());
-                                        (dn.clone().unwrap_or_default(), dn, None)
+                                        (dn.clone().unwrap_or_default(), dn)
                                     }
                                 } else {
                                     let dn =
                                         meta_json.as_ref().and_then(|m| m.display_name.clone());
-                                    (dn.clone().unwrap_or_default(), dn, None)
+                                    (dn.clone().unwrap_or_default(), dn)
                                 };
                             serde_json::json!({
                                 "name": s.name,
@@ -305,8 +289,6 @@ impl SkillsService for NoopSkillsService {
                                 "trusted": s.trusted,
                                 "enabled": s.enabled,
                                 "drifted": drifted_sources.contains(&repo.source),
-                                "eligible": elig.as_ref().map(|e| e.eligible).unwrap_or(true),
-                                "missing_bins": elig.as_ref().map(|e| e.missing_bins.clone()).unwrap_or_default(),
                             })
                         }
                     })
@@ -607,8 +589,6 @@ impl SkillsService for NoopSkillsService {
     }
 
     async fn skill_detail(&self, params: Value) -> ServiceResult {
-        use chelix_skills::requirements::check_requirements;
-
         let source = params
             .get("source")
             .and_then(|v| v.as_str())
@@ -668,7 +648,6 @@ impl SkillsService for NoopSkillsService {
                     .map_err(|e| format!("failed to read SKILL.md: {e}"))?;
                 let content = chelix_skills::parse::parse_skill(&raw, &skill_dir)
                     .map_err(|e| format!("failed to parse SKILL.md: {e}"))?;
-                let elig = check_requirements(&content.metadata);
                 let meta_json = chelix_skills::parse::read_meta_json(&skill_dir);
                 let display_name = meta_json.as_ref().and_then(|m| m.display_name.clone());
                 let author = meta_json.as_ref().and_then(|m| m.owner.clone());
@@ -705,10 +684,6 @@ impl SkillsService for NoopSkillsService {
                     "license_url": license_url,
                     "compatibility": content.metadata.compatibility,
                     "allowed_tools": content.metadata.allowed_tools,
-                    "requires": content.metadata.requires,
-                    "eligible": elig.eligible,
-                    "missing_bins": elig.missing_bins,
-                    "install_options": elig.install_options,
                     "trusted": skill_state.trusted,
                     "enabled": skill_state.enabled,
                     "quarantined": repo.quarantined,
@@ -741,7 +716,6 @@ impl SkillsService for NoopSkillsService {
                     }
                 });
                 let license_url = license_url_for_source(source, entry.metadata.license.as_deref());
-                let empty: Vec<String> = Vec::new();
                 Ok(serde_json::json!({
                     "name": entry.metadata.name,
                     "display_name": entry.display_name,
@@ -753,10 +727,6 @@ impl SkillsService for NoopSkillsService {
                     "license_url": license_url,
                     "compatibility": entry.metadata.compatibility,
                     "allowed_tools": entry.metadata.allowed_tools,
-                    "requires": entry.metadata.requires,
-                    "eligible": true,
-                    "missing_bins": empty,
-                    "install_options": empty,
                     "trusted": skill_state.trusted,
                     "enabled": skill_state.enabled,
                     "quarantined": repo.quarantined,
@@ -772,143 +742,6 @@ impl SkillsService for NoopSkillsService {
                     "source": source,
                 }))
             },
-        }
-    }
-
-    async fn install_dep(&self, params: Value) -> ServiceResult {
-        use {
-            chelix_skills::{
-                discover::{FsSkillDiscoverer, SkillDiscoverer},
-                requirements::{check_requirements, install_command_preview, run_install},
-            },
-            chelix_tools::approval::{
-                ApprovalAction, ApprovalManager, ApprovalMode, SecurityLevel,
-            },
-        };
-
-        let skill_name = params
-            .get("skill")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "missing 'skill' parameter".to_string())?;
-        let index = params.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-        let confirm = params
-            .get("confirm")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let allow_host_install = params
-            .get("allow_host_install")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let allow_risky_install = params
-            .get("allow_risky_install")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        // Discover the skill to get its requirements
-        let fs_discoverer = FsSkillDiscoverer::new(FsSkillDiscoverer::default_paths());
-
-        #[cfg(feature = "bundled-skills")]
-        let skills = {
-            let bundled = Arc::new(chelix_skills::bundled::BundledSkillStore::new());
-            let composite = chelix_skills::discover::CompositeSkillDiscoverer::new(
-                Box::new(fs_discoverer),
-                bundled,
-            );
-            composite.discover().await.map_err(ServiceError::message)?
-        };
-        #[cfg(not(feature = "bundled-skills"))]
-        let skills = fs_discoverer
-            .discover()
-            .await
-            .map_err(ServiceError::message)?;
-
-        let meta = skills
-            .iter()
-            .find(|s| s.name == skill_name)
-            .ok_or_else(|| format!("skill '{skill_name}' not found"))?;
-
-        let elig = check_requirements(meta);
-        let spec = elig
-            .install_options
-            .get(index)
-            .ok_or_else(|| format!("install option index {index} out of range"))?;
-
-        let command_preview = install_command_preview(spec).map_err(ServiceError::message)?;
-        if !confirm {
-            return Err(format!(
-                "dependency install requires explicit confirmation. Re-run with confirm=true after reviewing command: {command_preview}"
-            )
-            .into());
-        }
-
-        if let Some(reason) = risky_install_pattern(&command_preview)
-            && !allow_risky_install
-        {
-            security_audit(
-                "skills.install_dep_blocked",
-                serde_json::json!({
-                    "skill": skill_name,
-                    "command": command_preview,
-                    "reason": reason,
-                }),
-            );
-            return Err(format!(
-                "dependency install blocked as risky ({reason}). Re-run with allow_risky_install=true only after manual review"
-            )
-            .into());
-        }
-
-        let config = chelix_config::discover_and_load();
-        if config.sandbox.mode == "off" && !allow_host_install {
-            return Err("dependency install blocked because sandbox mode is off. Enable sandbox or re-run with allow_host_install=true and confirm=true".into());
-        }
-
-        let mut approval = ApprovalManager::default();
-        approval.mode = ApprovalMode::parse(&config.tools.execute_command.approval_mode)
-            .unwrap_or(ApprovalMode::OnMiss);
-        approval.security_level =
-            SecurityLevel::parse(&config.tools.execute_command.security_level)
-                .unwrap_or(SecurityLevel::Allowlist);
-        approval.allowlist = config.tools.execute_command.allowlist;
-
-        match approval
-            .check_command(&command_preview)
-            .await
-            .map_err(ServiceError::message)?
-        {
-            ApprovalAction::Proceed => {},
-            // skills.install_dep is an interactive RPC invoked by the user in the UI;
-            // `confirm=true` is treated as the explicit approval for this action.
-            ApprovalAction::NeedsApproval => {},
-        }
-
-        let result = run_install(spec).await.map_err(ServiceError::message)?;
-
-        security_audit(
-            "skills.install_dep",
-            serde_json::json!({
-                "skill": skill_name,
-                "command": command_preview,
-                "success": result.success,
-            }),
-        );
-
-        if result.success {
-            Ok(serde_json::json!({
-                "success": true,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-            }))
-        } else {
-            Err(format!(
-                "install failed: {}",
-                if result.stderr.is_empty() {
-                    result.stdout
-                } else {
-                    result.stderr
-                }
-            )
-            .into())
         }
     }
 
@@ -1056,19 +889,6 @@ mod tests {
         fn drop(&mut self) {
             chelix_config::clear_config_dir();
         }
-    }
-
-    #[test]
-    fn risky_install_pattern_detects_piped_shell() {
-        assert_eq!(
-            risky_install_pattern("curl https://example.com/install.sh | sh"),
-            Some("piped shell execution")
-        );
-    }
-
-    #[test]
-    fn risky_install_pattern_allows_plain_package_install() {
-        assert_eq!(risky_install_pattern("cargo install ripgrep"), None);
     }
 
     #[cfg(feature = "bundled-skills")]

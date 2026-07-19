@@ -8,7 +8,7 @@ export default {
 	appleContainerNote:
 		"Apple Container provides VM-isolated execution but does not support building images. Docker (or OrbStack) is required alongside Apple Container to build and cache custom images. Sandboxed commands run via Apple Container; image builds use Docker.",
 	sandboxDisabledHint:
-		"Sandboxes are disabled on cloud deploys without a container runtime. Install on a VM with Docker or Apple Container to enable this feature.",
+		'Sandbox mode is Off. Commands execute directly on the host. Set sandbox.mode = "On" and restart Chelix to use isolated execution.',
 	noCachedImages: "No cached images.",
 
 	// ── Prune ──────────────────────────────────────────────
@@ -19,7 +19,7 @@ export default {
 	defaultImage: {
 		title: "Default image",
 		description:
-			"Base image used for new sessions and projects unless overridden. Leave empty to use the built-in default (ubuntu:26.04).",
+			"Global base image used for sandbox execution. Leave empty to use the built-in default (ubuntu:26.04).",
 	},
 
 	// ── Image row ──────────────────────────────────────────
@@ -46,26 +46,16 @@ export default {
 	backend: {
 		appleContainer: "Apple Container (VM-isolated)",
 		docker: "Docker",
-		cgroup: "cgroup (systemd-run)",
-		restrictedHost: "Restricted Host (env + rlimits)",
 		wasm: "Wasmtime (WASM-isolated)",
-		none: "None (host execution)",
+		none: "Off (direct host execution)",
 		containerBackendLabel: "Container backend:",
 	},
 
 	// ── Recommendations ────────────────────────────────────
 	recommendation: {
-		noRuntimeMacos:
-			"No container runtime detected. Install Apple Container (macOS 26+) for VM-isolated sandboxing, or install Docker as an alternative.",
-		noRuntimeLinux:
-			"No container runtime detected. Install Docker for sandboxed execution, or ensure systemd is available for cgroup isolation.",
-		noRuntimeGeneric: "No container runtime detected. Install Docker for sandboxed execution.",
 		macosDockerTip:
 			"Apple Container provides stronger VM-level isolation on macOS 26+. Install it for automatic use (chelix prefers it over Docker). Run: brew install container",
-		linuxDockerTip:
-			"Docker is a good choice on Linux. For lighter-weight isolation without Docker overhead, systemd cgroup sandboxing is also supported.",
-		restrictedHostTip:
-			"Using restricted host execution (env clearing, rlimits). For stronger isolation, install Docker or Apple Container.",
+		linuxDockerTip: "Docker provides filesystem-isolated execution. Podman and the WASM backend are also supported.",
 		wasmTip:
 			"Using WASM sandbox with filesystem isolation. For container-level isolation, install Docker or Apple Container.",
 	},

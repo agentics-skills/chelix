@@ -316,26 +316,26 @@ fn extra_packages(sandbox_pkgs: &[String], config_pkgs: &[String]) -> Vec<String
 
 /// LLM-callable tool that lists sandbox packages grouped by category.
 pub struct SandboxPackagesTool {
-    sandbox_router: Option<Arc<SandboxRouter>>,
+    sandbox_router: Arc<SandboxRouter>,
 }
 
 impl SandboxPackagesTool {
+    #[cfg(not(test))]
+    pub fn new(sandbox_router: Arc<SandboxRouter>) -> Self {
+        Self { sandbox_router }
+    }
+
+    #[cfg(test)]
     pub fn new() -> Self {
         Self {
-            sandbox_router: None,
+            sandbox_router: Arc::new(SandboxRouter::disabled()),
         }
     }
 
-    /// Attach a sandbox router to read the configured packages.
-    pub fn with_sandbox_router(mut self, router: Arc<SandboxRouter>) -> Self {
-        self.sandbox_router = Some(router);
+    #[cfg(test)]
+    pub fn with_sandbox_router(mut self, sandbox_router: Arc<SandboxRouter>) -> Self {
+        self.sandbox_router = sandbox_router;
         self
-    }
-}
-
-impl Default for SandboxPackagesTool {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -365,14 +365,10 @@ impl AgentTool for SandboxPackagesTool {
         #[cfg(feature = "metrics")]
         let start = std::time::Instant::now();
 
-        let router = match &self.sandbox_router {
-            Some(r) => r,
-            None => {
-                return Ok(json!({
-                    "error": "Sandbox is not enabled"
-                }));
-            },
-        };
+        let router = &self.sandbox_router;
+        if !router.enabled() {
+            return Ok(json!({ "error": "Sandbox mode is Off" }));
+        }
 
         let packages = &router.config().packages;
 
@@ -418,7 +414,7 @@ impl AgentTool for SandboxPackagesTool {
             .and_then(|v| v.as_str())
             .unwrap_or("main");
 
-        if router.is_sandboxed(session_key).await
+        if router.enabled()
             && let Some(sandbox_pkgs) = query_sandbox_packages(router, session_key).await
         {
             let extras = extra_packages(&sandbox_pkgs, packages);
@@ -455,7 +451,10 @@ mod tests {
             packages,
             ..Default::default()
         };
-        let router = Arc::new(SandboxRouter::new(config));
+        let router = Arc::new(SandboxRouter::with_backend(
+            config,
+            Arc::new(crate::sandbox::NoSandbox),
+        ));
         SandboxPackagesTool::new().with_sandbox_router(router)
     }
 
@@ -530,10 +529,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_no_sandbox_returns_error() {
+    async fn test_off_mode_returns_error() {
         let tool = SandboxPackagesTool::new();
         let result = tool.execute(json!({})).await.unwrap();
-        assert_eq!(result["error"], "Sandbox is not enabled");
+        assert_eq!(result["error"], "Sandbox mode is Off");
     }
 
     #[tokio::test]

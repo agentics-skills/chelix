@@ -1,11 +1,13 @@
 //! Core types, enums, traits, and constants for the sandbox subsystem.
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use {
     async_trait::async_trait,
     serde::{Deserialize, Serialize},
 };
+
+pub use chelix_config::schema::{SandboxBackend, SandboxMode};
 
 use crate::{
     command::{CommandOptions, CommandOutput},
@@ -41,56 +43,37 @@ pub(crate) fn tail_lines(text: &str, n: usize) -> String {
 /// Default container image used when none is configured.
 pub const DEFAULT_SANDBOX_IMAGE: &str = "ubuntu:26.04";
 
-/// Sandbox mode controlling when sandboxing is applied.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-#[derive(Default)]
-pub enum SandboxMode {
-    Off,
-    NonMain,
-    #[default]
-    All,
-}
+pub(crate) type SharedSandboxImage = Arc<tokio::sync::RwLock<String>>;
 
-impl std::fmt::Display for SandboxMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Off => f.write_str("off"),
-            Self::NonMain => f.write_str("non-main"),
-            Self::All => f.write_str("all"),
-        }
-    }
-}
-
-/// Known sandbox backend identifiers.
+/// Effective sandbox runtime identity.
 ///
-/// Used in the API/gon layer for type-safe backend references. The config
-/// schema uses a plain `String` for flexibility (TOML compatibility), but
-/// this enum ensures wire-format consistency.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// `None` is used only for explicit global host execution (`mode = "Off"`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SandboxBackendId {
     Docker,
     Podman,
     AppleContainer,
-    Cgroup,
-    RestrictedHost,
     Wasm,
     None,
 }
 
 impl SandboxBackendId {
-    /// Parse from backend_name() output.
-    pub fn from_name(name: &str) -> Self {
-        match name {
-            "docker" => Self::Docker,
-            "podman" => Self::Podman,
-            "apple-container" => Self::AppleContainer,
-            "cgroup" => Self::Cgroup,
-            "restricted-host" => Self::RestrictedHost,
-            "wasm" => Self::Wasm,
-            _ => Self::None,
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Docker => "docker",
+            Self::Podman => "podman",
+            Self::AppleContainer => "apple-container",
+            Self::Wasm => "wasm",
+            Self::None => "none",
         }
+    }
+}
+
+impl std::fmt::Display for SandboxBackendId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -198,10 +181,8 @@ pub struct SandboxConfig {
     pub container_prefix: Option<String>,
     /// Docker/Podman network name passed to `--network=<name>`.
     pub network: String,
-    /// Backend: `"auto"` (default), `"docker"`, `"podman"`, `"apple-container"`,
-    /// `"restricted-host"`, or `"wasm"`.
-    /// `"auto"` prefers Apple Container on macOS, then Podman, then Docker, then restricted-host.
-    pub backend: String,
+    /// Isolated backend selected by the global sandbox policy.
+    pub backend: SandboxBackend,
     pub resource_limits: ResourceLimits,
     /// GPU device passthrough for Docker/Podman backends (e.g. "all", "device=0").
     pub gpus: Option<String>,
@@ -231,7 +212,7 @@ impl Default for SandboxConfig {
             image: None,
             container_prefix: None,
             network: "bridge".into(),
-            backend: "auto".into(),
+            backend: SandboxBackend::Auto,
             resource_limits: ResourceLimits::default(),
             gpus: None,
             packages: Vec::new(),
@@ -243,14 +224,19 @@ impl Default for SandboxConfig {
     }
 }
 
+pub(crate) fn shared_sandbox_image(config: &SandboxConfig) -> SharedSandboxImage {
+    Arc::new(tokio::sync::RwLock::new(
+        config
+            .image
+            .clone()
+            .unwrap_or_else(|| DEFAULT_SANDBOX_IMAGE.to_string()),
+    ))
+}
+
 impl From<&chelix_config::schema::SandboxConfig> for SandboxConfig {
     fn from(cfg: &chelix_config::schema::SandboxConfig) -> Self {
         Self {
-            mode: match cfg.mode.as_str() {
-                "all" => SandboxMode::All,
-                "non-main" | "nonmain" => SandboxMode::NonMain,
-                _ => SandboxMode::Off,
-            },
+            mode: cfg.mode,
             scope: match cfg.scope.as_str() {
                 "agent" => SandboxScope::Agent,
                 "shared" => SandboxScope::Shared,
@@ -277,7 +263,7 @@ impl From<&chelix_config::schema::SandboxConfig> for SandboxConfig {
             image: cfg.image.clone(),
             container_prefix: cfg.container_prefix.clone(),
             network: normalize_container_network(&cfg.network),
-            backend: cfg.backend.clone(),
+            backend: cfg.backend,
             resource_limits: ResourceLimits {
                 memory_limit: cfg.resource_limits.memory_limit.clone(),
                 cpu_quota: cfg.resource_limits.cpu_quota,
@@ -341,21 +327,20 @@ pub struct BuildImageResult {
     pub built: bool,
 }
 
-/// Trait for sandbox implementations (Docker, cgroups, Apple Container, etc.).
+/// Trait for sandbox implementations.
 #[async_trait]
 pub trait Sandbox: Send + Sync {
-    /// Human-readable backend name (e.g. "docker", "podman", "apple-container", "cgroup", "none").
-    fn backend_name(&self) -> &'static str;
+    /// Effective runtime identity.
+    fn backend_id(&self) -> SandboxBackendId;
 
-    /// Ensure the sandbox environment is ready (e.g., container started).
-    /// If `image_override` is provided, use that image instead of the configured default.
-    async fn ensure_ready(&self, id: &SandboxId, image_override: Option<&str>) -> Result<()>;
+    /// Ensure the sandbox environment is ready.
+    async fn ensure_ready(&self, id: &SandboxId) -> Result<()>;
 
     /// Return the authenticated tools service endpoint for a prepared sandbox.
     async fn tools_service_endpoint(&self, _id: &SandboxId) -> Result<ToolsServiceEndpoint> {
         Err(crate::error::Error::message(format!(
-            "sandbox backend {:?} does not expose the managed tools service",
-            self.backend_name()
+            "sandbox backend {} does not expose the managed tools service",
+            self.backend_id()
         )))
     }
 
@@ -409,10 +394,8 @@ pub trait Sandbox: Send + Sync {
     /// Whether this backend provides filesystem isolation from the host.
     ///
     /// Defaults to `false` (fail-safe): new backends must explicitly opt in
-    /// by returning `true`.  Container-based backends (Docker, Podman, Apple
-    /// Container, WASM) override this to `true`.  Backends that only provide
-    /// resource limits (restricted-host, cgroup) or no isolation (none) keep
-    /// the default.
+    /// by returning `true`. Container-based backends and WASM override this
+    /// to `true`; direct host execution keeps the default.
     ///
     /// Used by command execution to enforce approval gating and file-path
     /// restrictions when true filesystem isolation is unavailable.
@@ -509,9 +492,6 @@ pub(crate) const GOGCLI_VERSION: &str = "latest";
 
 /// Additional Go-based CLI tools installed via `go install` in the sandbox image.
 /// Each entry is `(module_path, version, binary_name)`.
-///
-/// Only tools that work inside a Linux container belong here. macOS-only tools
-/// (e.g. wacrawl) are host-only and install via their skill's `requires.install`.
 pub(crate) const GO_TOOL_INSTALLS: &[(&str, &str, &str)] = &[];
 #[cfg(any(target_os = "macos", test))]
 pub(crate) const APPLE_CONTAINER_SAFE_WORKDIR: &str = "/tmp";

@@ -45,13 +45,6 @@ export default {
 		endLabel: "End",
 		timezoneLabel: "Timezone",
 		timezoneLocal: "Local ({{tz}})",
-		// Sandbox
-		sandboxTitle: "Sandbox",
-		sandboxDescription: "Run heartbeat commands in an isolated container.",
-		enableSandbox: "Enable sandbox",
-		sandboxImageLabel: "Sandbox Image",
-		sandboxImagePlaceholder: "Default image",
-		sandboxSearchPlaceholder: "Search images\u2026",
 		// Recent Runs
 		recentRunsTitle: "Recent Runs",
 		noRunsYet: "No runs yet.",

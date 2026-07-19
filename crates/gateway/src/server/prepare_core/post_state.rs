@@ -349,7 +349,7 @@ pub(super) async fn complete_startup(
         resolved_auth,
         services,
         config.clone(),
-        Some(Arc::clone(&sandbox_router)),
+        Arc::clone(&sandbox_router),
         Some(Arc::clone(&credential_store)),
         Some(pairing_store),
         is_localhost,
@@ -527,11 +527,10 @@ pub(super) async fn complete_startup(
         let cron_tool = chelix_tools::cron_tool::CronTool::new(Arc::clone(&cron_service));
 
         let mut tool_registry = chelix_agents::tool_registry::ToolRegistry::new();
-        let process_tool = chelix_tools::process::ProcessTool::new()
-            .with_sandbox_router(Arc::clone(&sandbox_router));
+        let process_tool = chelix_tools::process::ProcessTool::new(Arc::clone(&sandbox_router));
 
-        let sandbox_packages_tool = chelix_tools::sandbox_packages::SandboxPackagesTool::new()
-            .with_sandbox_router(Arc::clone(&sandbox_router));
+        let sandbox_packages_tool =
+            chelix_tools::sandbox_packages::SandboxPackagesTool::new(Arc::clone(&sandbox_router));
 
         let tmux_terminal_manager = Arc::new(chelix_tools::tmux_command::TmuxTerminalManager::new(
             Arc::clone(&sandbox_router),
@@ -610,7 +609,7 @@ pub(super) async fn complete_startup(
                 path_policy,
                 binary_policy,
                 respect_gitignore: fs_cfg.respect_gitignore,
-                sandbox_router: Some(Arc::clone(&sandbox_router)),
+                sandbox_router: Arc::clone(&sandbox_router),
                 approval_manager: fs_cfg
                     .require_approval
                     .then(|| Arc::clone(&approval_manager)),
@@ -712,10 +711,9 @@ pub(super) async fn complete_startup(
                 state.services.channel_store.clone(),
             ),
         ));
-        tool_registry.register(Box::new(
-            chelix_tools::send_image::SendImageTool::new()
-                .with_sandbox_router(Arc::clone(&sandbox_router)),
-        ));
+        tool_registry.register(Box::new(chelix_tools::send_image::SendImageTool::new(
+            Arc::clone(&sandbox_router),
+        )));
         #[cfg(feature = "provider-openai-codex")]
         if chelix_providers::openai_codex::has_stored_tokens() {
             tool_registry.register(Box::new(
@@ -723,8 +721,7 @@ pub(super) async fn complete_startup(
             ));
         }
         tool_registry.register(Box::new(
-            chelix_tools::send_document::SendDocumentTool::new()
-                .with_sandbox_router(Arc::clone(&sandbox_router))
+            chelix_tools::send_document::SendDocumentTool::new(Arc::clone(&sandbox_router))
                 .with_session_store(Arc::clone(&session_store)),
         ));
         if let Some(t) = chelix_tools::web_search::WebSearchTool::from_config_with_env_overrides(
@@ -747,15 +744,9 @@ pub(super) async fn complete_startup(
         {
             tool_registry.register(Box::new(t));
         }
-        if let Some(t) = chelix_tools::browser::BrowserTool::from_config_with_sandbox(
-            &config.tools.browser,
-            &config.sandbox,
-        ) {
-            let t = if sandbox_router.backend_name() != "none" {
-                t.with_sandbox_router(Arc::clone(&sandbox_router))
-            } else {
-                t
-            };
+        if let Some(t) =
+            chelix_tools::browser::BrowserTool::from_config(&config.tools.browser, &config.sandbox)
+        {
             tool_registry.register(Box::new(t));
         }
 

@@ -7,10 +7,12 @@ use std::{
 };
 
 use {
-    async_trait::async_trait,
     tokio::sync::RwLock,
-    tracing::{debug, info, warn},
+    tracing::{info, warn},
 };
+
+#[cfg(any(target_os = "macos", test))]
+use {async_trait::async_trait, tracing::debug};
 
 #[cfg(target_os = "macos")]
 use super::apple::{AppleContainerSandbox, ensure_apple_container_service};
@@ -18,23 +20,25 @@ use super::apple::{AppleContainerSandbox, ensure_apple_container_service};
 use super::wasm::WasmSandbox;
 use {
     super::{
-        containers::{
-            is_apple_container_corruption_error, is_cli_available, is_docker_daemon_available,
-            should_use_docker_backend,
-        },
+        containers::{is_cli_available, is_docker_daemon_available, should_use_docker_backend},
         docker::{DockerSandbox, NoSandbox},
         env::ExecEnv,
-        file_system::{SandboxGrepOptions, SandboxListFilesResult, SandboxReadResult},
-        platform::RestrictedHostSandbox,
         types::{
-            BuildImageResult, DEFAULT_SANDBOX_IMAGE, Sandbox, SandboxConfig, SandboxId,
-            SandboxMode, ToolsServiceEndpoint,
+            DEFAULT_SANDBOX_IMAGE, Sandbox, SandboxBackend, SandboxBackendId, SandboxConfig,
+            SandboxId, SandboxMode, SharedSandboxImage, shared_sandbox_image,
         },
     },
-    crate::{
-        command::{CommandOptions, CommandOutput},
-        error::{Error, Result},
+    crate::error::{Error, Result},
+};
+
+#[cfg(any(target_os = "macos", test))]
+use {
+    super::{
+        containers::is_apple_container_corruption_error,
+        file_system::{SandboxGrepOptions, SandboxListFilesResult, SandboxReadResult},
+        types::{BuildImageResult, ToolsServiceEndpoint},
     },
+    crate::command::{CommandOptions, CommandOutput},
 };
 
 /// Wrapper sandbox that can fail over from a primary backend to a fallback backend.
@@ -42,25 +46,32 @@ use {
 /// This is used on macOS to fail over from Apple Container to Docker when the
 /// Apple runtime enters a corrupted state (stale metadata, missing config.json,
 /// service errors, etc.).
-pub struct FailoverSandbox {
+#[cfg(any(target_os = "macos", test))]
+pub(crate) struct FailoverSandbox {
     primary: Arc<dyn Sandbox>,
     fallback: Arc<dyn Sandbox>,
-    primary_name: &'static str,
-    fallback_name: &'static str,
+    primary_backend: SandboxBackendId,
+    fallback_backend: SandboxBackendId,
     use_fallback: RwLock<bool>,
 }
 
+#[cfg(any(target_os = "macos", test))]
 impl FailoverSandbox {
-    pub fn new(primary: Arc<dyn Sandbox>, fallback: Arc<dyn Sandbox>) -> Self {
-        let primary_name = primary.backend_name();
-        let fallback_name = fallback.backend_name();
-        Self {
+    pub(crate) fn new(primary: Arc<dyn Sandbox>, fallback: Arc<dyn Sandbox>) -> Result<Self> {
+        if !primary.provides_fs_isolation() || !fallback.provides_fs_isolation() {
+            return Err(Error::message(
+                "sandbox failover requires filesystem-isolated primary and fallback backends",
+            ));
+        }
+        let primary_backend = primary.backend_id();
+        let fallback_backend = fallback.backend_id();
+        Ok(Self {
             primary,
             fallback,
-            primary_name,
-            fallback_name,
+            primary_backend,
+            fallback_backend,
             use_fallback: RwLock::new(false),
-        }
+        })
     }
 
     async fn fallback_enabled(&self) -> bool {
@@ -71,8 +82,8 @@ impl FailoverSandbox {
         let mut use_fallback = self.use_fallback.write().await;
         if !*use_fallback {
             warn!(
-                primary = self.primary_name,
-                fallback = self.fallback_name,
+                primary = %self.primary_backend,
+                fallback = %self.fallback_backend,
                 %error,
                 "sandbox primary backend failed, switching to fallback backend"
             );
@@ -82,18 +93,19 @@ impl FailoverSandbox {
 
     fn should_failover(&self, error: &Error) -> bool {
         let message = format!("{error:#}");
-        match self.primary_name {
-            "apple-container" => is_apple_container_corruption_error(&message),
-            "docker" => is_docker_failover_error(&message),
-            "podman" => is_podman_failover_error(&message),
-            _ => false,
+        match self.primary_backend {
+            SandboxBackendId::AppleContainer => is_apple_container_corruption_error(&message),
+            SandboxBackendId::Docker => is_docker_failover_error(&message),
+            SandboxBackendId::Podman => is_podman_failover_error(&message),
+            SandboxBackendId::Wasm | SandboxBackendId::None => false,
         }
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[async_trait]
 impl Sandbox for FailoverSandbox {
-    fn backend_name(&self) -> &'static str {
+    fn backend_id(&self) -> SandboxBackendId {
         // Report the active backend so callers know the true isolation level.
         // On lock contention (write lock held during failover switch),
         // conservatively assume fallback is active — the safer default.
@@ -103,9 +115,9 @@ impl Sandbox for FailoverSandbox {
             .map(|guard| *guard)
             .unwrap_or(true)
         {
-            self.fallback_name
+            self.fallback_backend
         } else {
-            self.primary_name
+            self.primary_backend
         }
     }
 
@@ -158,12 +170,12 @@ impl Sandbox for FailoverSandbox {
         }
     }
 
-    async fn ensure_ready(&self, id: &SandboxId, image_override: Option<&str>) -> Result<()> {
+    async fn ensure_ready(&self, id: &SandboxId) -> Result<()> {
         if self.fallback_enabled().await {
-            return self.fallback.ensure_ready(id, image_override).await;
+            return self.fallback.ensure_ready(id).await;
         }
 
-        match self.primary.ensure_ready(id, image_override).await {
+        match self.primary.ensure_ready(id).await {
             Ok(()) => Ok(()),
             Err(primary_error) => {
                 if !self.should_failover(&primary_error) {
@@ -173,14 +185,14 @@ impl Sandbox for FailoverSandbox {
                 self.switch_to_fallback(&primary_error).await;
                 let primary_message = format!("{primary_error:#}");
                 self.fallback
-                    .ensure_ready(id, image_override)
+                    .ensure_ready(id)
                     .await
                     .map_err(|fallback_error| {
                         Error::message(format!(
                             "primary sandbox backend ({}) failed: {}; fallback backend ({}) also failed: {}",
-                            self.primary_name,
+                            self.primary_backend,
                             primary_message,
-                            self.fallback_name,
+                            self.fallback_backend,
                             fallback_error
                         ))
                     })
@@ -216,14 +228,14 @@ impl Sandbox for FailoverSandbox {
                 self.switch_to_fallback(&primary_error).await;
                 let primary_message = format!("{primary_error:#}");
                 self.fallback
-                    .ensure_ready(id, None)
+                    .ensure_ready(id)
                     .await
                     .map_err(|fallback_error| {
                         Error::message(format!(
                             "primary sandbox backend ({}) failed during command execution: {}; fallback backend ({}) failed to initialize: {}",
-                            self.primary_name,
+                            self.primary_backend,
                             primary_message,
-                            self.fallback_name,
+                            self.fallback_backend,
                             fallback_error
                         ))
                     })?;
@@ -237,7 +249,7 @@ impl Sandbox for FailoverSandbox {
             let result = self.fallback.cleanup(id).await;
             if let Err(error) = self.primary.cleanup(id).await {
                 debug!(
-                    backend = self.primary_name,
+                    backend = %self.primary_backend,
                     %error,
                     "primary sandbox cleanup failed after failover"
                 );
@@ -248,10 +260,7 @@ impl Sandbox for FailoverSandbox {
         self.primary.cleanup(id).await
     }
 
-    // Delegate file operations to the active backend's own implementations
-    // so that path-level restrictions (e.g. RestrictedHostSandbox's allowlist)
-    // are enforced. Without these overrides the default trait impls route
-    // through self.run_command(), bypassing the fallback backend's read_file/etc.
+    // Delegate file operations to the active backend's own implementations.
 
     async fn read_file(
         &self,
@@ -332,31 +341,20 @@ impl Sandbox for FailoverSandbox {
 }
 
 /// Create the appropriate sandbox backend based on config and platform.
-pub fn create_sandbox(config: SandboxConfig) -> Arc<dyn Sandbox> {
+pub fn create_sandbox(config: SandboxConfig) -> Result<Arc<dyn Sandbox>> {
+    let effective_image = shared_sandbox_image(&config);
+    create_sandbox_with_global_image(config, effective_image)
+}
+
+fn create_sandbox_with_global_image(
+    config: SandboxConfig,
+    effective_image: SharedSandboxImage,
+) -> Result<Arc<dyn Sandbox>> {
     if config.mode == SandboxMode::Off {
-        return Arc::new(NoSandbox);
+        return Ok(Arc::new(NoSandbox));
     }
 
-    select_backend(config)
-}
-
-/// Create a real sandbox backend regardless of mode (for use by SandboxRouter,
-/// which may need a real backend even when global mode is Off because per-session
-/// overrides can enable sandboxing dynamically).
-pub(crate) fn create_sandbox_backend(config: SandboxConfig) -> Arc<dyn Sandbox> {
-    select_backend(config)
-}
-
-/// Create a backend by explicit name, using the given config.
-///
-/// Used by the gateway to register additional backends into the multi-backend
-/// router at startup. If the backend cannot be created (missing credentials,
-/// wrong platform), falls back to `RestrictedHostSandbox`.
-pub fn select_backend_by_name(name: &str, config: &SandboxConfig) -> Arc<dyn Sandbox> {
-    select_backend(SandboxConfig {
-        backend: name.to_string(),
-        ..config.clone()
-    })
+    select_backend_with_global_image(config, effective_image)
 }
 
 /// Select the sandbox backend based on config and platform availability.
@@ -365,104 +363,143 @@ pub fn select_backend_by_name(name: &str, config: &SandboxConfig) -> Arc<dyn San
 /// - On macOS, prefer Apple Container if the `container` CLI is installed
 ///   (each sandbox runs in a lightweight VM — stronger isolation than Docker).
 /// - Prefer Podman (daemonless, rootless) over Docker when available.
-/// - Fall back to Docker, then restricted-host otherwise.
-pub(crate) fn select_backend(config: SandboxConfig) -> Arc<dyn Sandbox> {
-    match config.backend.as_str() {
-        "docker" => Arc::new(DockerSandbox::new(config)),
-        "podman" => Arc::new(DockerSandbox::podman(config)),
-        #[cfg(target_os = "macos")]
-        "apple-container" => {
-            if !ensure_apple_container_service() {
-                tracing::warn!(
-                    "apple container service could not be started; \
-                     run `container system start` manually, then restart chelix"
-                );
+/// - Fall back to Docker, then fail closed when no isolated runtime is available.
+#[cfg(test)]
+pub(crate) fn select_backend(config: SandboxConfig) -> Result<Arc<dyn Sandbox>> {
+    let effective_image = shared_sandbox_image(&config);
+    select_backend_with_global_image(config, effective_image)
+}
+
+fn select_backend_with_global_image(
+    config: SandboxConfig,
+    effective_image: SharedSandboxImage,
+) -> Result<Arc<dyn Sandbox>> {
+    match config.backend {
+        SandboxBackend::Auto => auto_detect_backend_with_global_image(config, effective_image),
+        SandboxBackend::Docker => {
+            if !should_use_docker_backend(is_cli_available("docker"), is_docker_daemon_available())
+            {
+                return Err(Error::message(
+                    "Docker sandbox requested but the Docker daemon is unavailable",
+                ));
             }
-            let apple_backend: Arc<dyn Sandbox> =
-                Arc::new(AppleContainerSandbox::new(config.clone()));
-            maybe_wrap_with_failover(apple_backend, &config)
+            Ok(Arc::new(DockerSandbox::new_with_global_image(
+                config,
+                effective_image,
+            )))
         },
-        "restricted-host" => {
-            tracing::info!("sandbox backend: restricted-host (env clearing, rlimits)");
-            Arc::new(RestrictedHostSandbox::new(config))
+        SandboxBackend::Podman => {
+            if !is_cli_available("podman") {
+                return Err(Error::message(
+                    "Podman sandbox requested but the podman CLI is unavailable",
+                ));
+            }
+            Ok(Arc::new(DockerSandbox::podman_with_global_image(
+                config,
+                effective_image,
+            )))
         },
-        "wasm" | "wasmtime" => create_wasm_backend(config),
-        _ => auto_detect_backend(config),
+        SandboxBackend::AppleContainer => create_apple_backend(config, effective_image),
+        SandboxBackend::Wasm => create_wasm_backend(config),
     }
 }
 
-/// Create a WASM sandbox backend, falling back to `RestrictedHostSandbox` if
-/// the feature is disabled or initialisation fails.
-fn create_wasm_backend(config: SandboxConfig) -> Arc<dyn Sandbox> {
+#[cfg(target_os = "macos")]
+fn create_apple_backend(
+    config: SandboxConfig,
+    effective_image: SharedSandboxImage,
+) -> Result<Arc<dyn Sandbox>> {
+    if !is_cli_available("container") || !ensure_apple_container_service() {
+        return Err(Error::message(
+            "Apple Container sandbox requested but the container runtime is unavailable",
+        ));
+    }
+    Ok(Arc::new(AppleContainerSandbox::new_with_global_image(
+        config,
+        effective_image,
+    )))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn create_apple_backend(
+    _config: SandboxConfig,
+    _effective_image: SharedSandboxImage,
+) -> Result<Arc<dyn Sandbox>> {
+    Err(Error::message(
+        "Apple Container sandbox is only available on macOS",
+    ))
+}
+
+/// Create a WASM sandbox backend and fail closed when unavailable.
+fn create_wasm_backend(config: SandboxConfig) -> Result<Arc<dyn Sandbox>> {
     #[cfg(feature = "wasm")]
     {
-        match WasmSandbox::new(config.clone()) {
-            Ok(sandbox) => {
-                tracing::info!("sandbox backend: wasm (WASI-isolated execution)");
-                Arc::new(sandbox)
-            },
-            Err(e) => {
-                tracing::warn!(%e, "failed to initialize wasmtime engine, falling back to restricted-host");
-                Arc::new(RestrictedHostSandbox::new(config))
-            },
-        }
+        let sandbox = WasmSandbox::new(config).map_err(|error| {
+            Error::message(format!("failed to initialize WASM sandbox: {error}"))
+        })?;
+        tracing::info!("sandbox backend: wasm (WASI-isolated execution)");
+        Ok(Arc::new(sandbox))
     }
     #[cfg(not(feature = "wasm"))]
     {
-        tracing::warn!("wasm sandbox requested but feature not compiled in; using restricted-host");
-        Arc::new(RestrictedHostSandbox::new(config))
+        let _ = config;
+        Err(Error::message(
+            "WASM sandbox requested but the wasm feature is not compiled in",
+        ))
     }
 }
 
 /// Wrap a primary sandbox backend with a failover chain.
 ///
-/// Tries Podman, then Docker as fallback, then restricted-host, returning the
-/// primary unwrapped if no fallback runtime is available.
+/// Tries Podman, then Docker as isolated fallbacks, returning the primary
+/// unwrapped if no fallback runtime is available.
 #[cfg(target_os = "macos")]
-fn maybe_wrap_with_failover(primary: Arc<dyn Sandbox>, config: &SandboxConfig) -> Arc<dyn Sandbox> {
-    let primary_name = primary.backend_name();
+fn maybe_wrap_with_failover(
+    primary: Arc<dyn Sandbox>,
+    config: &SandboxConfig,
+    effective_image: SharedSandboxImage,
+) -> Result<Arc<dyn Sandbox>> {
+    let primary_backend = primary.backend_id();
 
     // Try Podman as fallback (skip if primary is already Podman).
-    if primary_name != "podman" && is_cli_available("podman") {
+    if primary_backend != SandboxBackendId::Podman && is_cli_available("podman") {
         tracing::info!(
-            primary = primary_name,
+            primary = %primary_backend,
             fallback = "podman",
             "sandbox backend failover enabled"
         );
-        return Arc::new(FailoverSandbox::new(
+        return Ok(Arc::new(FailoverSandbox::new(
             primary,
-            Arc::new(DockerSandbox::podman(config.clone())),
-        ));
+            Arc::new(DockerSandbox::podman_with_global_image(
+                config.clone(),
+                effective_image,
+            )),
+        )?));
     }
 
     // Try Docker as fallback (skip if primary is already Docker).
-    if primary_name != "docker"
+    if primary_backend != SandboxBackendId::Docker
         && should_use_docker_backend(is_cli_available("docker"), is_docker_daemon_available())
     {
         tracing::info!(
-            primary = primary_name,
+            primary = %primary_backend,
             fallback = "docker",
             "sandbox backend failover enabled"
         );
-        return Arc::new(FailoverSandbox::new(
+        return Ok(Arc::new(FailoverSandbox::new(
             primary,
-            Arc::new(DockerSandbox::new(config.clone())),
-        ));
+            Arc::new(DockerSandbox::new_with_global_image(
+                config.clone(),
+                effective_image,
+            )),
+        )?));
     }
 
-    // Use restricted-host as fallback if no OCI runtime is available.
-    tracing::info!(
-        primary = primary_name,
-        fallback = "restricted-host",
-        "sandbox backend failover enabled (restricted-host)"
-    );
-    Arc::new(FailoverSandbox::new(
-        primary,
-        Arc::new(RestrictedHostSandbox::new(config.clone())),
-    ))
+    Ok(primary)
 }
 
 /// Check whether an error message indicates a Docker daemon connectivity issue.
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn is_docker_failover_error(message: &str) -> bool {
     let lower = message.to_ascii_lowercase();
     lower.contains("cannot connect to the docker daemon")
@@ -474,6 +511,7 @@ pub(crate) fn is_docker_failover_error(message: &str) -> bool {
 /// Check whether an error message indicates a Podman runtime issue that warrants
 /// failover. Podman is daemonless so most Docker-daemon errors don't apply, but
 /// socket/service errors or missing runtimes do.
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn is_podman_failover_error(message: &str) -> bool {
     let lower = message.to_ascii_lowercase();
     lower.contains("cannot connect to podman")
@@ -482,15 +520,26 @@ pub(crate) fn is_podman_failover_error(message: &str) -> bool {
         || lower.contains("runtime") && lower.contains("not found")
 }
 
-pub fn auto_detect_backend(config: SandboxConfig) -> Arc<dyn Sandbox> {
+pub fn auto_detect_backend(config: SandboxConfig) -> Result<Arc<dyn Sandbox>> {
+    let effective_image = shared_sandbox_image(&config);
+    auto_detect_backend_with_global_image(config, effective_image)
+}
+
+fn auto_detect_backend_with_global_image(
+    config: SandboxConfig,
+    effective_image: SharedSandboxImage,
+) -> Result<Arc<dyn Sandbox>> {
     #[cfg(target_os = "macos")]
     {
         if is_cli_available("container") {
             if ensure_apple_container_service() {
                 tracing::info!("sandbox backend: apple-container (VM-isolated, preferred)");
                 let apple_backend: Arc<dyn Sandbox> =
-                    Arc::new(AppleContainerSandbox::new(config.clone()));
-                return maybe_wrap_with_failover(apple_backend, &config);
+                    Arc::new(AppleContainerSandbox::new_with_global_image(
+                        config.clone(),
+                        Arc::clone(&effective_image),
+                    ));
+                return maybe_wrap_with_failover(apple_backend, &config, effective_image);
             }
             tracing::warn!(
                 "apple container CLI found but service could not be started; \
@@ -502,26 +551,27 @@ pub fn auto_detect_backend(config: SandboxConfig) -> Arc<dyn Sandbox> {
     // Prefer Podman (daemonless, rootless by default) over Docker.
     if is_cli_available("podman") {
         tracing::info!("sandbox backend: podman (daemonless, preferred over docker)");
-        return Arc::new(DockerSandbox::podman(config));
+        return Ok(Arc::new(DockerSandbox::podman_with_global_image(
+            config,
+            effective_image,
+        )));
     }
 
     if should_use_docker_backend(is_cli_available("docker"), is_docker_daemon_available()) {
         tracing::info!("sandbox backend: docker");
-        return Arc::new(DockerSandbox::new(config));
+        return Ok(Arc::new(DockerSandbox::new_with_global_image(
+            config,
+            effective_image,
+        )));
     }
 
     if is_cli_available("docker") {
-        tracing::warn!(
-            "docker CLI detected but daemon is not accessible; \
-             falling back to restricted-host sandbox"
-        );
+        tracing::warn!("docker CLI detected but daemon is not accessible");
     }
 
-    // Use restricted-host sandbox as last resort.
-    tracing::info!(
-        "sandbox backend: restricted-host (env clearing, rlimits; no container runtime available)"
-    );
-    Arc::new(RestrictedHostSandbox::new(config))
+    Err(Error::message(
+        "sandbox mode is On, but no isolated runtime is available; install or start Apple Container, Podman, or Docker, or configure the WASM backend",
+    ))
 }
 
 /// Events emitted by the sandbox subsystem for UI feedback.
@@ -530,19 +580,19 @@ pub enum SandboxEvent {
     /// First-run container/image setup is about to begin for a session.
     Preparing {
         session_key: String,
-        backend: String,
+        backend: SandboxBackendId,
         image: String,
     },
     /// First-run container/image setup completed for a session.
     Prepared {
         session_key: String,
-        backend: String,
+        backend: SandboxBackendId,
         image: String,
     },
     /// First-run container/image setup failed for a session.
     PrepareFailed {
         session_key: String,
-        backend: String,
+        backend: SandboxBackendId,
         image: String,
         error: String,
     },
@@ -557,30 +607,12 @@ pub enum SandboxEvent {
     ProvisionFailed { container: String, error: String },
 }
 
-/// Routes sandbox decisions per-session, with per-session overrides on top of `[sandbox]`.
-///
-/// Supports multiple named backends simultaneously. Each session can be routed
-/// to a different backend via per-session overrides, while the default backend
-/// serves sessions without an explicit override.
+/// Routes every session according to the single global `[sandbox]` policy.
 pub struct SandboxRouter {
     config: SandboxConfig,
-    /// Default backend, stored separately for lock-free access.
-    default_backend: Arc<dyn Sandbox>,
-    /// All available backends, keyed by backend name.
-    /// The default backend is also present in this map.
-    backends: HashMap<String, Arc<dyn Sandbox>>,
-    /// Explicit per-session overrides: true = sandboxed, false = direct execution.
-    overrides: RwLock<HashMap<String, bool>>,
-    /// Agent preset overrides. Explicit per-session overrides take precedence.
-    agent_overrides: RwLock<HashMap<String, bool>>,
-    /// Per-session backend override: session_key -> backend_name.
-    backend_overrides: RwLock<HashMap<String, String>>,
-    /// Per-session image overrides.
-    image_overrides: RwLock<HashMap<String, String>>,
-    /// Runtime image overrides scoped to a backend.
-    backend_image_overrides: RwLock<HashMap<String, String>>,
-    /// Runtime override for the global default image (set via API, persisted externally).
-    global_image_override: RwLock<Option<String>>,
+    backend: Arc<dyn Sandbox>,
+    /// Single effective image shared by the router and every OCI failover backend.
+    effective_image: SharedSandboxImage,
     /// Event channel for sandbox lifecycle events (prepare/provision/build feedback).
     event_tx: tokio::sync::broadcast::Sender<SandboxEvent>,
     /// Session keys that have already completed sandbox initialization.
@@ -595,48 +627,42 @@ pub struct SandboxRouter {
 }
 
 impl SandboxRouter {
-    pub fn new(config: SandboxConfig) -> Self {
-        // Always create a real sandbox backend, even when global mode is Off,
-        // because per-session overrides can enable sandboxing dynamically.
-        let default_backend = create_sandbox_backend(config.clone());
-        let mut backends = HashMap::new();
-        backends.insert(
-            default_backend.backend_name().to_string(),
-            Arc::clone(&default_backend),
-        );
+    pub fn new(config: SandboxConfig) -> Result<Self> {
+        let effective_image = shared_sandbox_image(&config);
+        let backend =
+            create_sandbox_with_global_image(config.clone(), Arc::clone(&effective_image))?;
         let (event_tx, _) = tokio::sync::broadcast::channel(32);
-        Self {
+        Ok(Self {
             config,
-            default_backend,
-            backends,
-            overrides: RwLock::new(HashMap::new()),
-            agent_overrides: RwLock::new(HashMap::new()),
-            backend_overrides: RwLock::new(HashMap::new()),
-            image_overrides: RwLock::new(HashMap::new()),
-            backend_image_overrides: RwLock::new(HashMap::new()),
-            global_image_override: RwLock::new(None),
+            backend,
+            effective_image,
             event_tx,
             prepared_sessions: RwLock::new(HashSet::new()),
             synced_sessions: RwLock::new(HashSet::new()),
             sync_failures: RwLock::new(HashMap::new()),
-        }
+        })
+    }
+
+    /// Create the canonical router for explicit global host execution.
+    #[must_use]
+    pub fn disabled() -> Self {
+        Self::with_backend(
+            SandboxConfig {
+                mode: SandboxMode::Off,
+                ..SandboxConfig::default()
+            },
+            Arc::new(NoSandbox),
+        )
     }
 
     /// Create a router with a custom sandbox backend (useful for testing).
     pub fn with_backend(config: SandboxConfig, backend: Arc<dyn Sandbox>) -> Self {
-        let mut backends = HashMap::new();
-        backends.insert(backend.backend_name().to_string(), Arc::clone(&backend));
+        let effective_image = shared_sandbox_image(&config);
         let (event_tx, _) = tokio::sync::broadcast::channel(32);
         Self {
             config,
-            default_backend: backend,
-            backends,
-            overrides: RwLock::new(HashMap::new()),
-            agent_overrides: RwLock::new(HashMap::new()),
-            backend_overrides: RwLock::new(HashMap::new()),
-            image_overrides: RwLock::new(HashMap::new()),
-            backend_image_overrides: RwLock::new(HashMap::new()),
-            global_image_override: RwLock::new(None),
+            backend,
+            effective_image,
             event_tx,
             prepared_sessions: RwLock::new(HashSet::new()),
             synced_sessions: RwLock::new(HashSet::new()),
@@ -710,54 +736,28 @@ impl SandboxRouter {
         self.sync_failures.write().await.remove(session_key);
     }
 
-    /// Clear runtime initialization markers for a session.
-    ///
-    /// Backend and image changes invalidate the prepared/synced state. The
-    /// next command must run `ensure_ready` and, for isolated backends, sync the
-    /// workspace for the newly selected runtime.
+    /// Clear per-session lifecycle markers after its global-backend runtime is removed.
     pub async fn clear_runtime_state(&self, session_key: &str) {
         self.clear_prepared_session(session_key).await;
         self.clear_synced_session(session_key).await;
     }
 
-    /// Resolve whether sandboxing is enabled by policy for a session.
-    ///
-    /// Explicit per-session policy takes priority over the agent policy, which
-    /// takes priority over the global mode.
-    async fn sandbox_enabled(&self, session_key: &str) -> bool {
-        if let Some(&override_val) = self.overrides.read().await.get(session_key) {
-            return override_val;
-        }
-        if let Some(&override_val) = self.agent_overrides.read().await.get(session_key) {
-            return override_val;
-        }
-        match self.config.mode {
-            SandboxMode::Off => false,
-            SandboxMode::All => true,
-            SandboxMode::NonMain => session_key != "main",
-        }
-    }
-
-    /// Check whether a session currently has a usable sandbox backend.
-    ///
-    /// This existing query remains available until tools migrate to [`Self::resolve_env`].
-    pub async fn is_sandboxed(&self, session_key: &str) -> bool {
-        let backend = self.resolve_backend(session_key).await;
-        backend.is_real() && self.sandbox_enabled(session_key).await
+    /// Return whether the global sandbox policy is enabled.
+    pub fn enabled(&self) -> bool {
+        self.config.mode == SandboxMode::On
     }
 
     /// Resolve and prepare the sole execution environment for a session.
     ///
-    /// Host execution is returned only when sandboxing is explicitly disabled
-    /// by the effective session policy. Enabled sessions fail closed unless the
+    /// Host execution is returned only when sandboxing is globally disabled.
+    /// Enabled sessions fail closed unless the
     /// selected backend provides filesystem isolation and prepares successfully.
     pub async fn resolve_env(&self, session_key: &str) -> Result<ExecEnv> {
-        if !self.sandbox_enabled(session_key).await {
+        if !self.enabled() {
             return Ok(ExecEnv::Host);
         }
 
-        let backend = self.resolve_backend(session_key).await;
-        Self::require_fs_isolation(session_key, &*backend)?;
+        Self::require_fs_isolation(session_key, &*self.backend)?;
 
         let (backend, id) = self.prepare_command_session(session_key).await?;
 
@@ -773,35 +773,9 @@ impl SandboxRouter {
         }
 
         Err(Error::message(format!(
-            "sandbox is enabled for session {session_key:?}, but backend {:?} does not provide filesystem isolation",
-            backend.backend_name()
+            "sandbox is enabled for session {session_key:?}, but backend {} does not provide filesystem isolation",
+            backend.backend_id()
         )))
-    }
-
-    /// Set a per-session sandbox override.
-    pub async fn set_override(&self, session_key: &str, enabled: bool) {
-        self.overrides
-            .write()
-            .await
-            .insert(session_key.to_string(), enabled);
-    }
-
-    /// Remove a per-session override (revert to global mode).
-    pub async fn remove_override(&self, session_key: &str) {
-        self.overrides.write().await.remove(session_key);
-    }
-
-    /// Set a sandbox override from an agent preset.
-    pub async fn set_agent_override(&self, session_key: &str, enabled: bool) {
-        self.agent_overrides
-            .write()
-            .await
-            .insert(session_key.to_string(), enabled);
-    }
-
-    /// Remove an agent preset override without clearing explicit session policy.
-    pub async fn remove_agent_override(&self, session_key: &str) {
-        self.agent_overrides.write().await.remove(session_key);
     }
 
     /// Derive a SandboxId for a given session key.
@@ -829,7 +803,7 @@ impl SandboxRouter {
     /// before destroying the sandbox.
     pub async fn cleanup_session(&self, session_key: &str) -> Result<()> {
         let id = self.sandbox_id_for(session_key);
-        let backend = self.resolve_backend(session_key).await;
+        let backend = Arc::clone(&self.backend);
 
         // Sync workspace changes back to host for isolated backends.
         if backend.is_isolated()
@@ -849,10 +823,6 @@ impl SandboxRouter {
         }
 
         backend.cleanup(&id).await?;
-        self.remove_override(session_key).await;
-        self.remove_agent_override(session_key).await;
-        self.remove_backend_override(session_key).await;
-        self.remove_image_override(session_key).await;
         self.clear_prepared_session(session_key).await;
         self.clear_synced_session(session_key).await;
         Ok(())
@@ -864,15 +834,13 @@ impl SandboxRouter {
         session_key: &str,
     ) -> Result<(Arc<dyn Sandbox>, SandboxId)> {
         let id = self.sandbox_id_for(session_key);
-        let backend = self.resolve_backend(session_key).await;
-        let image = self
-            .resolve_image_for_backend(session_key, None, backend.backend_name())
-            .await;
+        let backend = Arc::clone(&self.backend);
+        let image = self.default_image().await;
 
         info!(
             session = session_key,
             sandbox_id = %id,
-            backend = backend.backend_name(),
+            backend = %backend.backend_id(),
             image,
             "sandbox ensure_ready"
         );
@@ -880,12 +848,12 @@ impl SandboxRouter {
         if announce_prepare {
             self.emit_event(SandboxEvent::Preparing {
                 session_key: session_key.to_string(),
-                backend: backend.backend_name().to_string(),
+                backend: backend.backend_id(),
                 image: image.clone(),
             });
         }
 
-        if let Err(error) = backend.ensure_ready(&id, Some(&image)).await {
+        if let Err(error) = backend.ensure_ready(&id).await {
             if announce_prepare {
                 self.clear_prepared_session(session_key).await;
                 if backend.is_isolated() {
@@ -893,7 +861,7 @@ impl SandboxRouter {
                 }
                 self.emit_event(SandboxEvent::PrepareFailed {
                     session_key: session_key.to_string(),
-                    backend: backend.backend_name().to_string(),
+                    backend: backend.backend_id(),
                     image: image.clone(),
                     error: error.to_string(),
                 });
@@ -904,7 +872,7 @@ impl SandboxRouter {
         if announce_prepare {
             self.emit_event(SandboxEvent::Prepared {
                 session_key: session_key.to_string(),
-                backend: backend.backend_name().to_string(),
+                backend: backend.backend_id(),
                 image: image.clone(),
             });
 
@@ -977,72 +945,9 @@ impl SandboxRouter {
         Ok((backend, id))
     }
 
-    /// Access the default sandbox backend.
+    /// Access the global sandbox backend.
     pub fn backend(&self) -> &Arc<dyn Sandbox> {
-        &self.default_backend
-    }
-
-    /// Resolve the sandbox backend for a session.
-    ///
-    /// Priority (highest to lowest):
-    /// 1. Per-session backend override (`backend_overrides[session_key]`)
-    /// 2. Default backend
-    pub async fn resolve_backend(&self, session_key: &str) -> Arc<dyn Sandbox> {
-        if let Some(name) = self.backend_overrides.read().await.get(session_key) {
-            if let Some(backend) = self.backends.get(name.as_str()) {
-                return Arc::clone(backend);
-            }
-            warn!(
-                session = session_key,
-                backend = name.as_str(),
-                "per-session backend override references unknown backend, using default"
-            );
-        }
-        Arc::clone(&self.default_backend)
-    }
-
-    /// Register an additional sandbox backend.
-    ///
-    /// The backend is keyed by its `backend_name()`. If a backend with the
-    /// same name already exists it is replaced.
-    pub fn register_backend(&mut self, backend: Arc<dyn Sandbox>) {
-        let name = backend.backend_name().to_string();
-        debug!(backend = name.as_str(), "registered sandbox backend");
-        self.backends.insert(name, backend);
-    }
-
-    /// List the names of all available backends.
-    pub fn available_backends(&self) -> Vec<&str> {
-        self.backends.keys().map(String::as_str).collect()
-    }
-
-    /// List all available backend instances.
-    pub fn available_backend_instances(&self) -> Vec<Arc<dyn Sandbox>> {
-        self.backends.values().cloned().collect()
-    }
-
-    /// Set a per-session backend override.
-    ///
-    /// Returns `Err` if `backend_name` is not registered.
-    pub async fn set_backend_override(&self, session_key: &str, backend_name: &str) -> Result<()> {
-        if !self.backends.contains_key(backend_name) {
-            return Err(Error::message(format!(
-                "unknown sandbox backend: {backend_name:?} (available: {:?})",
-                self.available_backends()
-            )));
-        }
-        self.backend_overrides
-            .write()
-            .await
-            .insert(session_key.to_string(), backend_name.to_string());
-        self.clear_runtime_state(session_key).await;
-        Ok(())
-    }
-
-    /// Remove a per-session backend override (revert to default).
-    pub async fn remove_backend_override(&self, session_key: &str) {
-        self.backend_overrides.write().await.remove(session_key);
-        self.clear_runtime_state(session_key).await;
+        &self.backend
     }
 
     /// Access the global sandbox mode.
@@ -1055,101 +960,18 @@ impl SandboxRouter {
         &self.config
     }
 
-    /// Human-readable name of the default sandbox backend (e.g. "docker", "apple-container").
-    pub fn backend_name(&self) -> &'static str {
-        self.default_backend.backend_name()
+    /// Effective global sandbox runtime identity.
+    pub fn backend_id(&self) -> SandboxBackendId {
+        self.backend.backend_id()
     }
 
-    /// Set a per-session image override.
-    pub async fn set_image_override(&self, session_key: &str, image: String) {
-        self.image_overrides
-            .write()
-            .await
-            .insert(session_key.to_string(), image);
-        self.clear_runtime_state(session_key).await;
+    /// Store the deterministic image produced from the global config.
+    pub async fn set_prepared_image(&self, image: String) {
+        *self.effective_image.write().await = image;
     }
 
-    /// Remove a per-session image override.
-    pub async fn remove_image_override(&self, session_key: &str) {
-        self.image_overrides.write().await.remove(session_key);
-        self.clear_runtime_state(session_key).await;
-    }
-
-    /// Set a runtime override for the global default image.
-    /// Pass `None` to revert to the config/hardcoded default.
-    pub async fn set_global_image(&self, image: Option<String>) {
-        *self.global_image_override.write().await = image;
-    }
-
-    /// Set a runtime image override for a specific backend.
-    ///
-    /// Background pre-builds are backend-specific, so keep the outputs scoped
-    /// to the backend that produced them.
-    pub async fn set_backend_image(&self, backend_name: &str, image: String) -> Result<()> {
-        if !self.backends.contains_key(backend_name) {
-            return Err(Error::message(format!(
-                "unknown sandbox backend: {backend_name:?} (available: {:?})",
-                self.available_backends()
-            )));
-        }
-        self.backend_image_overrides
-            .write()
-            .await
-            .insert(backend_name.to_string(), image);
-        Ok(())
-    }
-
-    async fn config_default_image(&self) -> String {
-        self.config
-            .image
-            .clone()
-            .unwrap_or_else(|| DEFAULT_SANDBOX_IMAGE.to_string())
-    }
-
-    /// Get the current effective default image for a backend.
-    pub async fn default_image_for_backend(&self, backend_name: &str) -> String {
-        if let Some(img) = self.backend_image_overrides.read().await.get(backend_name) {
-            return img.clone();
-        }
-        if let Some(ref img) = *self.global_image_override.read().await {
-            return img.clone();
-        }
-        self.config_default_image().await
-    }
-
-    /// Get the current effective default image (runtime override > config > hardcoded).
+    /// Get the single effective image for every sandboxed session.
     pub async fn default_image(&self) -> String {
-        self.default_image_for_backend(self.backend_name()).await
-    }
-
-    /// Resolve the container image for a session.
-    ///
-    /// Priority (highest to lowest):
-    /// 1. `skill_image` — from a skill's Dockerfile cache
-    /// 2. Per-session override (`session.sandbox_image`)
-    /// 3. Runtime backend override (`set_backend_image`)
-    /// 4. Runtime global override (`set_global_image`)
-    /// 5. Global config (`config.sandbox.image`)
-    /// 6. Default constant (`DEFAULT_SANDBOX_IMAGE`)
-    pub async fn resolve_image(&self, session_key: &str, skill_image: Option<&str>) -> String {
-        let backend = self.resolve_backend(session_key).await;
-        self.resolve_image_for_backend(session_key, skill_image, backend.backend_name())
-            .await
-    }
-
-    /// Resolve the container image for a session/backend.
-    pub async fn resolve_image_for_backend(
-        &self,
-        session_key: &str,
-        skill_image: Option<&str>,
-        backend_name: &str,
-    ) -> String {
-        if let Some(img) = skill_image {
-            return img.to_string();
-        }
-        if let Some(img) = self.image_overrides.read().await.get(session_key) {
-            return img.clone();
-        }
-        self.default_image_for_backend(backend_name).await
+        self.effective_image.read().await.clone()
     }
 }

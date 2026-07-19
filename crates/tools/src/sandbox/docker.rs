@@ -21,11 +21,12 @@ use {
             current_sandbox_image_tag, install_tools_service_in_build_context,
             sandbox_image_dockerfile, sandbox_image_exists,
         },
-        host::provision_packages,
         paths::resolved_sandbox_mount_plan,
+        provision::provision_packages,
         types::{
-            BuildImageResult, DEFAULT_SANDBOX_IMAGE, Sandbox, SandboxConfig, SandboxId,
-            ToolsServiceEndpoint, WorkspaceSysmount, canonical_sandbox_packages, tail_lines,
+            BuildImageResult, Sandbox, SandboxBackendId, SandboxConfig, SandboxId,
+            SharedSandboxImage, ToolsServiceEndpoint, WorkspaceSysmount,
+            canonical_sandbox_packages, shared_sandbox_image, tail_lines,
             truncate_output_for_display,
         },
     },
@@ -59,9 +60,9 @@ const TOOLS_SERVICE_HEALTH_TIMEOUT: std::time::Duration = std::time::Duration::f
 /// behaviour branching without string comparisons.
 pub struct DockerSandbox {
     pub config: SandboxConfig,
+    effective_image: SharedSandboxImage,
     pub(crate) kind: BackendKind,
     cli: &'static str,
-    backend_label: &'static str,
     /// Container names that have already been provisioned in this process.
     /// Prevents repeated `apt-get install` runs on the same container.
     pub(crate) provisioned: Mutex<HashSet<String>>,
@@ -74,11 +75,19 @@ pub struct DockerSandbox {
 
 impl DockerSandbox {
     pub fn new(config: SandboxConfig) -> Self {
+        let effective_image = shared_sandbox_image(&config);
+        Self::new_with_global_image(config, effective_image)
+    }
+
+    pub(crate) fn new_with_global_image(
+        config: SandboxConfig,
+        effective_image: SharedSandboxImage,
+    ) -> Self {
         Self {
             config,
+            effective_image,
             kind: BackendKind::Docker,
             cli: "docker",
-            backend_label: "docker",
             provisioned: Mutex::new(HashSet::new()),
             startup_gates: Mutex::new(HashMap::new()),
             tools_endpoints: Mutex::new(HashMap::new()),
@@ -87,11 +96,19 @@ impl DockerSandbox {
     }
 
     pub fn podman(config: SandboxConfig) -> Self {
+        let effective_image = shared_sandbox_image(&config);
+        Self::podman_with_global_image(config, effective_image)
+    }
+
+    pub(crate) fn podman_with_global_image(
+        config: SandboxConfig,
+        effective_image: SharedSandboxImage,
+    ) -> Self {
         Self {
             config,
+            effective_image,
             kind: BackendKind::Podman,
             cli: "podman",
-            backend_label: "podman",
             provisioned: Mutex::new(HashSet::new()),
             startup_gates: Mutex::new(HashMap::new()),
             tools_endpoints: Mutex::new(HashMap::new()),
@@ -101,23 +118,17 @@ impl DockerSandbox {
 
     #[cfg(test)]
     pub(crate) fn with_cli(config: SandboxConfig, cli: &'static str) -> Self {
+        let effective_image = shared_sandbox_image(&config);
         Self {
             config,
+            effective_image,
             kind: BackendKind::Docker,
             cli,
-            backend_label: "test-oci",
             provisioned: Mutex::new(HashSet::new()),
             startup_gates: Mutex::new(HashMap::new()),
             tools_endpoints: Mutex::new(HashMap::new()),
             tools_http_client: reqwest::Client::new(),
         }
-    }
-
-    fn image(&self) -> &str {
-        self.config
-            .image
-            .as_deref()
-            .unwrap_or(DEFAULT_SANDBOX_IMAGE)
     }
 
     fn container_prefix(&self) -> &str {
@@ -350,11 +361,7 @@ impl DockerSandbox {
         Ok(())
     }
 
-    async fn ensure_ready_locked(
-        &self,
-        id: &SandboxId,
-        image_override: Option<&str>,
-    ) -> Result<()> {
+    async fn ensure_ready_locked(&self, id: &SandboxId) -> Result<()> {
         let name = self.container_name(id);
 
         if self.is_container_running(&name).await {
@@ -404,8 +411,8 @@ impl DockerSandbox {
         self.tools_endpoints.lock().await.remove(&name);
 
         // Resolve image first so we know whether it's prebuilt (affects hardening).
-        let requested_image = image_override.unwrap_or_else(|| self.image());
-        let image = self.resolve_local_image(requested_image).await?;
+        let effective_image = self.effective_image.read().await.clone();
+        let image = self.resolve_local_image(&effective_image).await?;
         let is_prebuilt = image.starts_with(&format!("{}:", self.image_repo()));
         debug!(container = %name, %image, is_prebuilt, "resolved sandbox image");
 
@@ -731,22 +738,25 @@ async fn probe_tools_health(
 
 #[async_trait]
 impl Sandbox for DockerSandbox {
-    fn backend_name(&self) -> &'static str {
-        self.backend_label
+    fn backend_id(&self) -> SandboxBackendId {
+        match self.kind {
+            BackendKind::Docker => SandboxBackendId::Docker,
+            BackendKind::Podman => SandboxBackendId::Podman,
+        }
     }
 
     fn provides_fs_isolation(&self) -> bool {
         true
     }
 
-    async fn ensure_ready(&self, id: &SandboxId, image_override: Option<&str>) -> Result<()> {
+    async fn ensure_ready(&self, id: &SandboxId) -> Result<()> {
         let name = self.container_name(id);
         let gate = self.startup_gate_for_inner(&name).await;
         let _permit = gate
             .acquire()
             .await
             .map_err(|_| Error::message("sandbox startup gate closed"))?;
-        let result = self.ensure_ready_locked(id, image_override).await;
+        let result = self.ensure_ready_locked(id).await;
         if result.is_err() {
             self.remove_startup_gate_if_unshared(&name, &gate).await;
         }
@@ -962,8 +972,8 @@ pub struct NoSandbox;
 
 #[async_trait]
 impl Sandbox for NoSandbox {
-    fn backend_name(&self) -> &'static str {
-        "none"
+    fn backend_id(&self) -> SandboxBackendId {
+        SandboxBackendId::None
     }
 
     fn is_real(&self) -> bool {
@@ -974,7 +984,7 @@ impl Sandbox for NoSandbox {
         false
     }
 
-    async fn ensure_ready(&self, _id: &SandboxId, _image_override: Option<&str>) -> Result<()> {
+    async fn ensure_ready(&self, _id: &SandboxId) -> Result<()> {
         Ok(())
     }
 

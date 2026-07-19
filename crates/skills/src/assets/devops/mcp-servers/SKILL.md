@@ -11,6 +11,8 @@ origin:
 
 Manage MCP (Model Context Protocol) servers that provide external tools to the agent.
 MCP servers extend the agent's capabilities by exposing tools over stdio, SSE, or streamable-HTTP transports.
+This skill only manages MCP configuration. It never downloads, installs, or initializes server software.
+For stdio transport, point `command` to a pre-existing executable. Otherwise, use a remote transport.
 
 ## Agent Tools
 
@@ -44,8 +46,8 @@ Returns all configured servers with their connection status, transport type, and
 // RPC: mcp.add
 {
   "name": "filesystem",
-  "command": "npx",
-  "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/documents"]
+  "command": "/path/to/filesystem-mcp-server",
+  "args": ["/home/user/documents"]
 }
 ```
 
@@ -77,8 +79,7 @@ Returns all configured servers with their connection status, transport type, and
 // RPC: mcp.add
 {
   "name": "github",
-  "command": "npx",
-  "args": ["-y", "@modelcontextprotocol/server-github"],
+  "command": "/path/to/github-mcp-server",
   "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_..." }
 }
 ```
@@ -88,10 +89,10 @@ Returns all configured servers with their connection status, transport type, and
 ```json
 // RPC: mcp.add
 {
-  "name": "gbrain",
-  "command": "gbrain",
+  "name": "knowledge-base",
+  "command": "/path/to/knowledge-base-mcp-server",
   "args": ["serve", "--mcp"],
-  "display_name": "GBrain Knowledge Base"
+  "display_name": "Knowledge Base"
 }
 ```
 
@@ -193,19 +194,17 @@ For MCP servers that require OAuth authentication:
 
 ## Common Patterns
 
-### GBrain knowledge base
+### Pre-existing local knowledge-base server
 
 ```json
 // RPC: mcp.add
 {
-  "name": "gbrain",
-  "command": "gbrain",
+  "name": "knowledge-base",
+  "command": "/path/to/knowledge-base-mcp-server",
   "args": ["serve", "--mcp"],
-  "display_name": "GBrain Knowledge Base"
+  "display_name": "Knowledge Base"
 }
 ```
-
-Requires: `bun install -g gbrain && gbrain init`
 
 ### GitHub tools
 
@@ -213,8 +212,7 @@ Requires: `bun install -g gbrain && gbrain init`
 // RPC: mcp.add
 {
   "name": "github",
-  "command": "npx",
-  "args": ["-y", "@modelcontextprotocol/server-github"],
+  "command": "/path/to/github-mcp-server",
   "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_..." }
 }
 ```
@@ -225,8 +223,8 @@ Requires: `bun install -g gbrain && gbrain init`
 // RPC: mcp.add
 {
   "name": "filesystem",
-  "command": "npx",
-  "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/directory"]
+  "command": "/path/to/filesystem-mcp-server",
+  "args": ["/path/to/allowed/directory"]
 }
 ```
 
@@ -236,14 +234,13 @@ Requires: `bun install -g gbrain && gbrain init`
 // RPC: mcp.add
 {
   "name": "memory",
-  "command": "npx",
-  "args": ["-y", "@modelcontextprotocol/server-memory"]
+  "command": "/path/to/memory-mcp-server"
 }
 ```
 
 ## Troubleshooting
 
-1. **Server won't connect?** Check `mcp.status` for error details. For stdio servers, verify the command is in PATH.
+1. **Server won't connect?** Check `mcp.status` for error details. For stdio servers, verify the configured executable already exists and is executable.
 2. **Tools not appearing?** Use `mcp.tools` to see what the server exposes. Try `mcp.restart` to force reconnection.
 3. **Timeout errors?** Increase `request_timeout_secs` via `mcp.config.update` or per-server via `mcp.update`.
 4. **OAuth errors?** Run `mcp.reauth` to restart the OAuth flow.

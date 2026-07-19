@@ -142,21 +142,12 @@ impl AgentTool for ReadSkillTool {
             ))
         })?;
 
-        // Check requirements and provide install instructions if missing.
-        let install_note = if file_path.is_none() {
-            auto_install_requirements(meta).await
-        } else {
-            None
-        };
-
         // Bundled skills are served from the embedded store, not the filesystem.
         #[cfg(feature = "bundled-skills")]
         if meta.source.as_ref() == Some(&SkillSource::Bundled)
             && let Some(ref store) = self.bundled_store
         {
-            let mut result = read_bundled(name, meta, store, file_path)?;
-            inject_install_note(&mut result, &install_note);
-            return Ok(result);
+            return read_bundled(name, meta, store, file_path);
         }
 
         if let Some(rel) = file_path {
@@ -175,8 +166,7 @@ impl AgentTool for ReadSkillTool {
             return read_sidecar(name, &meta.path, rel).await;
         }
 
-        let mut result = read_primary(name, meta).await?;
-        inject_install_note(&mut result, &install_note);
+        let result = read_primary(name, meta).await?;
 
         // Record activation (primary reads only, not sidecar reads).
         if let Some(ref store) = self.usage_store {
@@ -665,46 +655,4 @@ pub(super) fn build_bundled_primary_response(
     response.insert("linked_files".into(), json!(linked));
 
     Value::Object(response)
-}
-
-// ── Install requirements ───────────────────────────────────────────────────
-
-/// Check skill requirements and return install instructions if binaries are
-/// missing. Does NOT run the install — the agent should run the commands via
-/// `execute_command` so they execute in the correct environment (sandbox or host).
-async fn auto_install_requirements(meta: &chelix_skills::types::SkillMetadata) -> Option<String> {
-    use chelix_skills::requirements::{check_requirements, install_command_preview};
-
-    let elig = check_requirements(meta);
-    if elig.eligible || elig.install_options.is_empty() {
-        return None;
-    }
-
-    let commands: Vec<String> = elig
-        .install_options
-        .iter()
-        .filter_map(|spec| install_command_preview(spec).ok())
-        .collect();
-
-    if commands.is_empty() {
-        return Some(format!(
-            "Missing binaries: {}. No install instructions available.",
-            elig.missing_bins.join(", ")
-        ));
-    }
-
-    Some(format!(
-        "Missing binaries: {}. Install with: {}",
-        elig.missing_bins.join(", "),
-        commands.join(" OR ")
-    ))
-}
-
-/// Inject an install note into a skill read response.
-fn inject_install_note(result: &mut Value, note: &Option<String>) {
-    if let Some(msg) = note
-        && let Some(obj) = result.as_object_mut()
-    {
-        obj.insert("install_note".into(), json!(msg));
-    }
 }

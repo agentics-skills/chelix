@@ -2,7 +2,9 @@ use {
     super::*,
     crate::{
         container_mounts::sandbox_mount_validation,
-        schema::{ChelixConfig, KNOWN_PROVIDER_NAMES, PartialModelMetadata, ToolChoice},
+        schema::{
+            ChelixConfig, KNOWN_PROVIDER_NAMES, PartialModelMetadata, SandboxMode, ToolChoice,
+        },
     },
     secrecy::ExposeSecret,
     std::path::Path,
@@ -207,27 +209,12 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
     }
 
     // Sandbox mode off
-    if config.sandbox.mode == "off" {
+    if config.sandbox.mode == SandboxMode::Off {
         diagnostics.push(Diagnostic {
             severity: Severity::Warning,
             category: "security",
             path: "sandbox.mode".into(),
             message: "sandbox mode is disabled — commands run without isolation".into(),
-        });
-    }
-
-    // Unknown sandbox string enum values.
-    let valid_sandbox_modes = ["off", "non-main", "nonmain", "all"];
-    if !valid_sandbox_modes.contains(&config.sandbox.mode.as_str()) {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "unknown-field",
-            path: "sandbox.mode".into(),
-            message: format!(
-                "unknown sandbox mode \"{}\"; expected one of: {}",
-                config.sandbox.mode,
-                valid_sandbox_modes.join(", ")
-            ),
         });
     }
 
@@ -628,28 +615,6 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
                 ),
             });
         }
-    }
-
-    // Unknown sandbox backend
-    let valid_sandbox_backends = [
-        "auto",
-        "docker",
-        "podman",
-        "apple-container",
-        "restricted-host",
-        "wasm",
-    ];
-    if !valid_sandbox_backends.contains(&config.sandbox.backend.as_str()) {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "unknown-field",
-            path: "sandbox.backend".into(),
-            message: format!(
-                "unknown sandbox backend \"{}\"; expected one of: {}",
-                config.sandbox.backend,
-                valid_sandbox_backends.join(", ")
-            ),
-        });
     }
 
     // Sandbox GPU passthrough validation

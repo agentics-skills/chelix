@@ -115,7 +115,7 @@ pub struct AgentTurnRequest {
     pub channel: Option<String>,
     pub to: Option<String>,
     pub session_target: SessionTarget,
-    pub sandbox: CronSandboxConfig,
+    pub auto_prune_container: Option<bool>,
 }
 
 /// The cron scheduler.
@@ -352,7 +352,7 @@ impl CronService {
             payload: create.payload,
             session_target: create.session_target,
             state: CronJobState::default(),
-            sandbox: create.sandbox,
+            auto_prune_container: create.auto_prune_container,
             wake_mode: create.wake_mode,
             system: create.system,
             created_at_ms: now,
@@ -407,8 +407,8 @@ impl CronService {
         if let Some(delete_after) = patch.delete_after_run {
             job.delete_after_run = delete_after;
         }
-        if let Some(sandbox) = patch.sandbox {
-            job.sandbox = sandbox;
+        if let Some(auto_prune_container) = patch.auto_prune_container {
+            job.auto_prune_container = auto_prune_container;
         }
         if let Some(wake_mode) = patch.wake_mode {
             job.wake_mode = wake_mode;
@@ -621,7 +621,7 @@ impl CronService {
                     channel: channel.clone(),
                     to: to.clone(),
                     session_target: job.session_target.clone(),
-                    sandbox: job.sandbox.clone(),
+                    auto_prune_container: job.auto_prune_container,
                 };
                 (self.on_agent_turn)(req).await
             },

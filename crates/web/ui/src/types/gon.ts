@@ -46,14 +46,14 @@ export interface MemSnapshot {
 // ── Sandbox gon info ────────────────────────────────────────
 
 /** Known sandbox backend identifiers. */
-export type SandboxBackendId = "docker" | "podman" | "apple-container" | "cgroup" | "restricted-host" | "wasm" | "none";
+export type SandboxBackendId = "docker" | "podman" | "apple-container" | "wasm" | "none";
 
 export interface SandboxGonInfo {
+	mode: "On" | "Off";
 	backend: SandboxBackendId;
 	os: string;
 	default_image: string;
 	image_building: boolean;
-	available_backends: SandboxBackendId[];
 }
 
 export type VaultStatus = "disabled" | "error" | "sealed" | "uninitialized" | "unsealed";
@@ -100,8 +100,6 @@ export interface HeartbeatConfig {
 	deliver: boolean;
 	channel?: string;
 	to?: string;
-	sandbox_enabled: boolean;
-	sandbox_image?: string;
 }
 
 // ── Cron types ──────────────────────────────────────────────
@@ -138,13 +136,6 @@ export type RunStatus = "ok" | "error" | "skipped";
 /** Whether to wake the heartbeat after a cron job completes. */
 export type CronWakeMode = "now" | "nextHeartbeat";
 
-/** Sandbox configuration for a cron job. */
-export interface CronSandboxConfig {
-	enabled: boolean;
-	image?: string;
-	autoPruneContainer?: boolean;
-}
-
 /** Mutable runtime state of a cron job. */
 export interface CronJobState {
 	nextRunAtMs?: number;
@@ -165,7 +156,7 @@ export interface CronJob {
 	payload: CronPayload;
 	sessionTarget: SessionTarget;
 	state: CronJobState;
-	sandbox: CronSandboxConfig;
+	autoPruneContainer?: boolean;
 	wakeMode: CronWakeMode;
 	system: boolean;
 	createdAtMs: number;

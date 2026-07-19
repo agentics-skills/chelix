@@ -380,10 +380,6 @@ impl chelix_service_traits::SkillsService for MockSkills {
         self.0.call("skills.status", json!({}))
     }
 
-    async fn bins(&self) -> ServiceResult {
-        self.0.call("skills.bins", json!({}))
-    }
-
     async fn install(&self, p: Value) -> ServiceResult {
         self.0.call("skills.install", p)
     }
@@ -442,10 +438,6 @@ impl chelix_service_traits::SkillsService for MockSkills {
 
     async fn skill_detail(&self, p: Value) -> ServiceResult {
         self.0.call("skills.skill.detail", p)
-    }
-
-    async fn install_dep(&self, p: Value) -> ServiceResult {
-        self.0.call("skills.install_dep", p)
     }
 
     async fn security_status(&self) -> ServiceResult {

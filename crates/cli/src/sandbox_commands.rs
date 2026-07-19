@@ -65,13 +65,11 @@ pub async fn handle_sandbox(action: SandboxAction) -> Result<()> {
     }
 }
 
-fn image_build_not_supported_notice(backend: &str) -> Option<(&'static str, &'static str)> {
+fn image_build_not_supported_notice(
+    backend: sandbox::SandboxBackend,
+) -> Option<(&'static str, &'static str)> {
     match backend {
-        "restricted-host" => Some((
-            "Restricted-host sandbox does not use container images — nothing to build.",
-            "This backend provides env clearing + rlimit isolation without containers.",
-        )),
-        "wasm" | "wasmtime" => Some((
+        sandbox::SandboxBackend::Wasm => Some((
             "WASM sandbox does not use container images — nothing to build.",
             "The WASM backend uses Wasmtime + WASI for sandboxed execution.",
         )),
@@ -97,7 +95,7 @@ async fn build() -> Result<()> {
     let mut sandbox_config = sandbox::SandboxConfig::from(&config.sandbox);
     sandbox_config.container_prefix = Some(instance_sandbox_prefix(&config));
 
-    if let Some((line_one, line_two)) = image_build_not_supported_notice(&sandbox_config.backend) {
+    if let Some((line_one, line_two)) = image_build_not_supported_notice(sandbox_config.backend) {
         println!("{line_one}");
         println!("{line_two}");
         return Ok(());
@@ -118,12 +116,12 @@ async fn build() -> Result<()> {
     println!("Tag:      {tag}");
     println!();
 
-    // Force mode to All so create_sandbox returns a real backend.
+    // Force mode on so create_sandbox returns the configured backend.
     let sandbox_config = sandbox::SandboxConfig {
-        mode: sandbox::SandboxMode::All,
+        mode: sandbox::SandboxMode::On,
         ..sandbox_config
     };
-    let backend = sandbox::create_sandbox(sandbox_config);
+    let backend = sandbox::create_sandbox(sandbox_config)?;
     match backend.build_image(&base, &packages).await? {
         Some(result) => {
             if result.built {
@@ -135,7 +133,7 @@ async fn build() -> Result<()> {
         None => {
             println!(
                 "Backend '{}' does not support image building.",
-                backend.backend_name()
+                backend.backend_id()
             );
         },
     }
@@ -167,31 +165,27 @@ async fn clean() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{image_build_not_supported_notice, sanitize_instance_slug};
+    use {
+        super::{image_build_not_supported_notice, sanitize_instance_slug},
+        chelix_tools::sandbox::SandboxBackend,
+    };
 
     #[test]
-    fn wasm_backends_skip_image_build() {
-        let notice = image_build_not_supported_notice("wasm");
+    fn wasm_backend_skips_image_build() {
+        let notice = image_build_not_supported_notice(SandboxBackend::Wasm);
         assert!(notice.is_some());
-
-        let notice_alias = image_build_not_supported_notice("wasmtime");
-        assert_eq!(notice, notice_alias);
-    }
-
-    #[test]
-    fn restricted_host_skips_image_build() {
-        let notice = image_build_not_supported_notice("restricted-host");
-        assert!(notice.is_some());
-        if let Some((line_one, line_two)) = notice {
-            assert!(line_one.contains("does not use container images"));
-            assert!(line_two.contains("rlimit isolation"));
-        }
     }
 
     #[test]
     fn container_backends_require_image_build() {
-        assert_eq!(image_build_not_supported_notice("docker"), None);
-        assert_eq!(image_build_not_supported_notice("apple-container"), None);
+        assert_eq!(
+            image_build_not_supported_notice(SandboxBackend::Docker),
+            None
+        );
+        assert_eq!(
+            image_build_not_supported_notice(SandboxBackend::AppleContainer),
+            None
+        );
     }
 
     #[test]

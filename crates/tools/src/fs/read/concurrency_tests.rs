@@ -110,15 +110,15 @@ impl CoordinatedSandbox {
 
 #[async_trait]
 impl Sandbox for CoordinatedSandbox {
-    fn backend_name(&self) -> &'static str {
-        "coordinated-test"
+    fn backend_id(&self) -> crate::sandbox::SandboxBackendId {
+        crate::sandbox::SandboxBackendId::Docker
     }
 
     fn provides_fs_isolation(&self) -> bool {
         true
     }
 
-    async fn ensure_ready(&self, _id: &SandboxId, _image_override: Option<&str>) -> Result<()> {
+    async fn ensure_ready(&self, _id: &SandboxId) -> Result<()> {
         self.preparation_calls.fetch_add(1, Ordering::SeqCst);
         self.preparation_changed.notify_waiters();
 
@@ -199,7 +199,7 @@ fn sandbox_router(backend: Arc<CoordinatedSandbox>) -> Arc<SandboxRouter> {
     let backend: Arc<dyn Sandbox> = backend;
     Arc::new(SandboxRouter::with_backend(
         SandboxConfig {
-            mode: SandboxMode::All,
+            mode: SandboxMode::On,
             ..Default::default()
         },
         backend,

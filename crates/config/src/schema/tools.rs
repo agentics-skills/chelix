@@ -394,7 +394,7 @@ impl Default for FirecrawlConfig {
 
 /// Browser automation configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct BrowserConfig {
     /// Whether browser support is enabled.
     pub enabled: bool,
@@ -431,7 +431,7 @@ pub struct BrowserConfig {
     pub chrome_args: Vec<String>,
     /// Docker image to use for sandboxed browser.
     /// Default: "browserless/chrome" - a purpose-built headless Chrome container.
-    /// Sandbox mode is controlled per-session via the request, not globally.
+    /// Browser isolation is controlled by the global sandbox policy.
     #[serde(default = "default_sandbox_image")]
     pub sandbox_image: String,
     /// Allowed domains for navigation. Empty list means all domains allowed.
@@ -631,11 +631,62 @@ pub enum HomePersistenceConfig {
     Shared,
 }
 
+/// Global sandbox policy.
+///
+/// The serialized representation is intentionally strict and case-sensitive:
+/// only `"On"` and `"Off"` are accepted.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SandboxMode {
+    #[default]
+    On,
+    Off,
+}
+
+impl std::fmt::Display for SandboxMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::On => f.write_str("On"),
+            Self::Off => f.write_str("Off"),
+        }
+    }
+}
+
+/// Isolated runtime selected by the global sandbox policy.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SandboxBackend {
+    #[default]
+    Auto,
+    Docker,
+    Podman,
+    AppleContainer,
+    Wasm,
+}
+
+impl SandboxBackend {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Docker => "docker",
+            Self::Podman => "podman",
+            Self::AppleContainer => "apple-container",
+            Self::Wasm => "wasm",
+        }
+    }
+}
+
+impl std::fmt::Display for SandboxBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Sandbox configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct SandboxConfig {
-    pub mode: String,
+    pub mode: SandboxMode,
     pub scope: String,
     /// Root filesystem and privilege-hardening mode for sandbox containers:
     /// `"ro"` keeps Docker/Podman rootfs read-only for prebuilt images and
@@ -658,12 +709,9 @@ pub struct SandboxConfig {
     /// Docker/Podman network name passed to `--network=<name>`.
     #[serde(default)]
     pub network: String,
-    /// Backend: "auto" (default), "docker", "podman", "apple-container",
-    /// "restricted-host", or "wasm".
-    /// "auto" prefers Apple Container on macOS, then Podman, then Docker,
-    /// then restricted-host. "wasm" uses Wasmtime + WASI for real sandboxed
-    /// execution.
-    pub backend: String,
+    /// Isolated backend. `auto` selects an available container runtime and
+    /// fails closed when none is available.
+    pub backend: SandboxBackend,
     pub resource_limits: ResourceLimitsConfig,
     /// GPU device passthrough for Docker/Podman backends.
     /// Examples: "all", "device=0", "device=0,1".
@@ -680,7 +728,7 @@ pub struct SandboxConfig {
     pub wasm_epoch_interval_ms: Option<u64>,
     /// Optional per-tool WASM limits (fuel + memory).
     pub wasm_tool_limits: Option<WasmToolLimitsConfig>,
-    /// Optional tool policy overrides applied when running inside this sandbox.
+    /// Optional tool policy applied when global sandbox mode is `On`.
     /// Acts as layer 6 in the policy resolution chain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tools_policy: Option<ToolPolicyConfig>,
@@ -864,7 +912,7 @@ fn default_sandbox_packages() -> Vec<String> {
 impl Default for SandboxConfig {
     fn default() -> Self {
         Self {
-            mode: "all".into(),
+            mode: SandboxMode::On,
             scope: "session".into(),
             workspace_sysmount: "ro".into(),
             host_data_dir: None,
@@ -874,7 +922,7 @@ impl Default for SandboxConfig {
             image: None,
             container_prefix: None,
             network: "bridge".into(),
-            backend: "auto".into(),
+            backend: SandboxBackend::Auto,
             resource_limits: ResourceLimitsConfig::default(),
             gpus: None,
             packages: default_sandbox_packages(),

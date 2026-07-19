@@ -98,19 +98,26 @@ impl ProcessResult {
 /// The LLM can start long-running or interactive programs (htop, vim, etc.)
 /// in named tmux sessions, poll their output, send keystrokes, paste text,
 /// and kill them.
-#[derive(Default)]
 pub struct ProcessTool {
-    sandbox_router: Option<Arc<SandboxRouter>>,
+    sandbox_router: Arc<SandboxRouter>,
 }
 
 impl ProcessTool {
-    pub fn new() -> Self {
-        Self::default()
+    #[cfg(not(test))]
+    pub fn new(sandbox_router: Arc<SandboxRouter>) -> Self {
+        Self { sandbox_router }
     }
 
-    /// Attach a sandbox router for per-session dynamic sandbox resolution.
-    pub fn with_sandbox_router(mut self, router: Arc<SandboxRouter>) -> Self {
-        self.sandbox_router = Some(router);
+    #[cfg(test)]
+    pub fn new() -> Self {
+        Self {
+            sandbox_router: Arc::new(SandboxRouter::disabled()),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn with_sandbox_router(mut self, sandbox_router: Arc<SandboxRouter>) -> Self {
+        self.sandbox_router = sandbox_router;
         self
     }
 
@@ -122,10 +129,7 @@ impl ProcessTool {
         timeout_secs: u64,
     ) -> anyhow::Result<CommandOutput> {
         let command = format!("tmux {tmux_args}");
-        let env = match self.sandbox_router.as_deref() {
-            Some(router) => router.resolve_env(session_key).await?,
-            None => ExecEnv::Host,
-        };
+        let env = self.sandbox_router.resolve_env(session_key).await?;
 
         match env {
             ExecEnv::Sandbox { backend, id } => {

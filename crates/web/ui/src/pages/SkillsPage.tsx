@@ -37,7 +37,6 @@ interface SkillSummary {
 	quarantined?: boolean;
 	trusted?: boolean;
 	drifted?: boolean;
-	eligible?: boolean;
 }
 interface SkillDetail extends SkillSummary {
 	body?: string;
@@ -53,9 +52,6 @@ interface SkillDetail extends SkillSummary {
 	allowed_tools?: string[];
 	license?: string;
 	license_url?: string;
-	missing_bins?: string[];
-	install_options?: { label?: string; kind?: string }[];
-	requires?: { bins?: string[]; any_bins?: string[] };
 	provenance?: { original_source?: string; original_commit_sha?: string; imported_from?: string };
 	quarantine_reason?: string;
 }

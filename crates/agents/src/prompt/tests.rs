@@ -374,15 +374,12 @@ fn test_runtime_context_injected_when_provided() {
             location: None,
         },
         sandbox: Some(PromptSandboxRuntimeContext {
-            command_sandboxed: true,
-            mode: Some("all".into()),
             backend: Some("docker".into()),
             scope: Some("session".into()),
             image: Some("chelix-sandbox:abc123".into()),
             home: Some("/home/sandbox".into()),
             workspace_path: Some("/home/chelix/.chelix".into()),
             network: Some("bridge".into()),
-            session_override: Some(true),
         }),
         nodes: None,
         mode: None,
@@ -420,7 +417,7 @@ fn test_runtime_context_injected_when_provided() {
     assert!(prompt.contains("timezone=Europe/Paris"));
     assert!(prompt.contains("accept_language=en-US,fr;q=0.9"));
     assert!(prompt.contains("remote_ip=203.0.113.42"));
-    assert!(prompt.contains("Sandbox(execute_command): enabled=true"));
+    assert!(prompt.contains("Sandbox(execute_command): mode=On"));
     assert!(prompt.contains("backend=docker"));
     assert!(prompt.contains("home=/home/sandbox"));
     assert!(prompt.contains("workspace_path=/home/chelix/.chelix"));
@@ -429,7 +426,7 @@ fn test_runtime_context_injected_when_provided() {
     assert!(prompt.contains("Execution routing:"));
     assert!(prompt.contains("`~` and relative paths resolve under"));
     assert!(prompt.contains("same path is always mounted read-write"));
-    assert!(prompt.contains("Sandbox/host routing changes are expected runtime behavior"));
+    assert!(prompt.contains("Sandbox/host routing follows the immutable global mode"));
     assert!(prompt.contains("sudo_non_interactive=true` means non-interactive sudo"));
 }
 
@@ -442,8 +439,6 @@ fn test_runtime_context_sandbox_without_sudo_omits_sudo_hint() {
             ..Default::default()
         },
         sandbox: Some(PromptSandboxRuntimeContext {
-            command_sandboxed: true,
-            mode: Some("all".into()),
             backend: Some("docker".into()),
             home: Some("/home/sandbox".into()),
             ..Default::default()
@@ -468,10 +463,10 @@ fn test_runtime_context_sandbox_without_sudo_omits_sudo_hint() {
         None,
     );
 
-    assert!(prompt.contains("Sandbox(execute_command): enabled=true"));
+    assert!(prompt.contains("Sandbox(execute_command): mode=On"));
     assert!(prompt.contains("Execution routing:"));
-    assert!(prompt.contains("runs inside sandbox"));
-    assert!(prompt.contains("Sandbox/host routing changes are expected runtime behavior"));
+    assert!(prompt.contains("runs inside the sandbox"));
+    assert!(prompt.contains("Sandbox/host routing follows the immutable global mode"));
     assert!(!prompt.contains("sudo_non_interactive=true` means non-interactive sudo"));
 }
 

@@ -14,9 +14,9 @@ mod wasm_tests {
     }
 
     #[test]
-    fn test_wasm_sandbox_backend_name() {
+    fn test_wasm_sandbox_backend_id() {
         let sandbox = WasmSandbox::new(test_config()).unwrap();
-        assert_eq!(sandbox.backend_name(), "wasm");
+        assert_eq!(sandbox.backend_id(), SandboxBackendId::Wasm);
     }
 
     #[test]
@@ -52,7 +52,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-ready".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
         assert!(sandbox.home_dir(&id).unwrap().exists());
         assert!(sandbox.tmp_dir(&id).exists());
         // Cleanup.
@@ -66,7 +66,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-cleanup".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
         let root = sandbox.sandbox_root(&id);
         assert!(root.exists());
         sandbox.cleanup(&id).await.unwrap();
@@ -80,7 +80,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-echo".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
         let result = sandbox
             .run_command(&id, "echo hello world", &CommandOptions::default())
             .await
@@ -97,7 +97,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-echo-n".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
         let result = sandbox
             .run_command(&id, "echo -n hello", &CommandOptions::default())
             .await
@@ -114,7 +114,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-pwd".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
         let result = sandbox
             .run_command(&id, "pwd", &CommandOptions::default())
             .await
@@ -131,7 +131,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-tf".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
 
         let result = sandbox
             .run_command(&id, "true", &CommandOptions::default())
@@ -154,7 +154,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-mkdir-ls".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
 
         let result = sandbox
             .run_command(
@@ -182,7 +182,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-touch-cat".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
 
         // Write a file using echo with redirect.
         let result = sandbox
@@ -216,7 +216,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-rm".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
 
         sandbox
             .run_command(
@@ -256,7 +256,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-unknown".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
         let result = sandbox
             .run_command(&id, "nonexistent_cmd", &CommandOptions::default())
             .await
@@ -273,7 +273,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-escape".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
 
         // Try to cat a file outside sandbox.
         let result = sandbox
@@ -292,7 +292,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-and".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
         let result = sandbox
             .run_command(&id, "true && echo yes", &CommandOptions::default())
             .await
@@ -316,7 +316,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-or".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
         let result = sandbox
             .run_command(&id, "false || echo fallback", &CommandOptions::default())
             .await
@@ -333,7 +333,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-testcmd".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
 
         sandbox
             .run_command(
@@ -373,7 +373,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-pathops".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
 
         let result = sandbox
             .run_command(
@@ -404,7 +404,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-which".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
 
         let result = sandbox
             .run_command(&id, "which echo", &CommandOptions::default())
@@ -491,7 +491,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-ro-mount".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
 
         let read = sandbox
             .run_command(
@@ -534,7 +534,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-rw-mount".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
 
         let write = sandbox
             .run_command(
@@ -573,7 +573,7 @@ mod wasm_tests {
             scope: SandboxScope::Session,
             key: "test-wasm-symlink-escape".into(),
         };
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
 
         let read = sandbox
             .run_command(

@@ -99,8 +99,8 @@ impl ChatRuntime for GatewayChatRuntime {
         &self.state.hostname
     }
 
-    fn sandbox_router(&self) -> Option<&Arc<SandboxRouter>> {
-        self.state.sandbox_router.as_ref()
+    fn sandbox_router(&self) -> &Arc<SandboxRouter> {
+        &self.state.sandbox_router
     }
 
     fn memory_manager(&self) -> Option<&chelix_memory::runtime::DynMemoryRuntime> {

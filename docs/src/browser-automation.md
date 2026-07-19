@@ -66,8 +66,8 @@ navigation_timeout_ms = 30000  # Page load timeout
 # user_agent = "Custom UA"         # Custom user agent
 # chrome_args = ["--disable-extensions"]  # Extra args
 
-# Sandbox image (browser sandbox mode follows session sandbox mode)
-sandbox_image = "docker.io/browserless/chrome"  # Container image for sandboxed sessions
+# Browser container image (used when global sandbox mode is "On")
+sandbox_image = "docker.io/browserless/chrome"
 # allowed_domains = ["example.com", "*.trusted.org"]  # Restrict navigation
 
 # Container connectivity (for Chelix-in-Docker setups)
@@ -288,20 +288,19 @@ When the `metrics` feature is enabled, the browser module records:
 
 ## Sandbox Mode
 
-Browser sandbox mode **automatically follows the session's sandbox mode**. When
-a chat session uses sandbox mode (controlled by `[sandbox]`), the browser tool
-will also run in a sandboxed container. When the session is not sandboxed, the
-browser runs directly on the host.
+Browser isolation follows the global `[sandbox]` mode. With `mode = "On"`, the
+browser tool runs in a sandboxed container. With `mode = "Off"`, it runs
+directly on the host.
 
 ### Host Mode
 
-When the session is not sandboxed (or sandbox mode is "off"), Chrome runs
-directly on the host machine. This is faster but the browser has full access to
-the host network and filesystem.
+When global sandbox mode is `"Off"`, Chrome runs directly on the host machine.
+This is faster but the browser has full access to the host network and
+filesystem.
 
 ### Sandbox Mode
 
-When the session is sandboxed, Chrome runs inside a Docker container with:
+When global sandbox mode is `"On"`, Chrome runs inside a container with:
 
 - **Network isolation**: Browser can access the internet but not local services
 - **Filesystem isolation**: No access to host filesystem
@@ -310,14 +309,14 @@ When the session is sandboxed, Chrome runs inside a Docker container with:
 
 ```toml
 [tools.browser]
-sandbox_image = "docker.io/browserless/chrome"  # Container image for sandboxed sessions
+sandbox_image = "docker.io/browserless/chrome"  # Browser container image
 ```
 
 Requirements:
 
 - Docker or Apple Container must be installed and running
 - The container image is pulled automatically on first use
-- Session sandbox mode must be enabled (`[sandbox] mode = "all"`)
+- Global sandbox mode must be enabled (`[sandbox] mode = "On"`)
 
 ### Chelix Inside Docker (Sibling Containers)
 
@@ -370,16 +369,15 @@ malicious sites could attempt to inject instructions.
 2. **Review returned content**: The snapshot action returns element text which
    could contain injected prompts. Be cautious with untrusted sites.
 
-3. **Sandbox mode**: Use sandboxed sessions to run the browser in an isolated
-   Docker container for additional security. Browser sandbox follows session
-   sandbox mode automatically.
+3. **Sandbox mode**: Set global `sandbox.mode = "On"` to run the browser in an
+  isolated container for additional security.
 
 ### Other Security Considerations
 
-1. **Host vs Sandbox mode**: Browser sandbox mode follows the session's sandbox
-   mode. For sandboxed sessions, the browser runs in a Docker container with
-   network/filesystem isolation. For non-sandboxed sessions, the browser runs on
-   the host with `--no-sandbox` for container compatibility.
+1. **Host vs Sandbox mode**: Browser isolation follows the global sandbox mode.
+  With `"On"`, the browser runs in a container with network/filesystem
+  isolation. With `"Off"`, it runs on the host with `--no-sandbox` for
+  container compatibility.
 
 2. **Resource limits**: Browser instances are limited by memory usage (default:
    block when > 90% used). Set `max_instances > 0` for a hard limit.

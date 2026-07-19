@@ -180,12 +180,6 @@ pub struct SkillMetadata {
         deserialize_with = "deserialize_string_or_seq"
     )]
     pub allowed_tools: Vec<String>,
-    /// Optional Dockerfile (relative to skill directory) for sandbox environment.
-    #[serde(default)]
-    pub dockerfile: Option<String>,
-    /// Binary/tool requirements for this skill.
-    #[serde(default)]
-    pub requires: SkillRequirements,
     /// Provenance of a bundled or imported skill (upstream repo, commit, date).
     #[serde(default)]
     pub origin: Option<SkillOrigin>,
@@ -215,65 +209,6 @@ pub struct SkillOrigin {
     /// Commit SHA or version tag at which the skill was copied.
     #[serde(default)]
     pub version: Option<String>,
-}
-
-// ── Skill requirements ──────────────────────────────────────────────────────
-
-/// Binary and tool requirements declared in SKILL.md frontmatter.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct SkillRequirements {
-    /// All of these binaries must be found in PATH.
-    #[serde(default)]
-    pub bins: Vec<String>,
-    /// At least one of these binaries must be found.
-    #[serde(default)]
-    pub any_bins: Vec<String>,
-    /// Install instructions for missing binaries.
-    #[serde(default)]
-    pub install: Vec<InstallSpec>,
-}
-
-/// How to install a missing binary dependency.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InstallSpec {
-    pub kind: InstallKind,
-    #[serde(default)]
-    pub formula: Option<String>,
-    #[serde(default)]
-    pub package: Option<String>,
-    #[serde(default)]
-    pub module: Option<String>,
-    #[serde(default)]
-    pub url: Option<String>,
-    /// Which binaries this install step provides.
-    #[serde(default)]
-    pub bins: Vec<String>,
-    /// Platform filter (e.g. `["darwin"]`, `["linux"]`). Empty = all platforms.
-    #[serde(default)]
-    pub os: Vec<String>,
-    #[serde(default)]
-    pub label: Option<String>,
-}
-
-/// Install method kind.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum InstallKind {
-    Brew,
-    Npm,
-    Go,
-    Cargo,
-    Uv,
-    Download,
-}
-
-/// Result of checking whether a skill's requirements are met.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkillEligibility {
-    pub eligible: bool,
-    pub missing_bins: Vec<String>,
-    /// Install options filtered to the current OS.
-    pub install_options: Vec<InstallSpec>,
 }
 
 /// Deserialize a value that can be either a YAML sequence of strings or a

@@ -8,10 +8,10 @@
 //! - JavaScript evaluation
 
 use {
-    crate::sandbox::SandboxRouter,
     async_trait::async_trait,
     chelix_agents::tool_registry::AgentTool,
     chelix_browser::{BrowserManager, BrowserRequest},
+    chelix_config::schema::SandboxMode,
     std::{borrow::Cow, collections::HashMap, sync::Arc},
     tokio::sync::{OnceCell, RwLock},
     tracing::debug,
@@ -32,8 +32,8 @@ use crate::error::Error;
 /// across unrelated chats.
 pub struct BrowserTool {
     config: chelix_browser::BrowserConfig,
+    sandbox_mode: SandboxMode,
     manager: OnceCell<Arc<BrowserManager>>,
-    sandbox_router: Option<Arc<SandboxRouter>>,
     /// Track the most recent browser session ID per chat/session context.
     /// This prevents pool exhaustion when the LLM forgets to pass session_id,
     /// without reusing a stale browser across different chats.
@@ -49,34 +49,17 @@ impl BrowserTool {
     /// evicted to prevent unbounded memory growth from abandoned chats.
     const MAX_TRACKED_SESSIONS: usize = 128;
 
-    /// Create a new browser tool from browser configuration.
-    pub fn new(config: chelix_browser::BrowserConfig) -> Self {
+    fn new(config: chelix_browser::BrowserConfig, sandbox_mode: SandboxMode) -> Self {
         Self {
             config,
+            sandbox_mode,
             manager: OnceCell::new(),
-            sandbox_router: None,
             session_ids: RwLock::new(HashMap::new()),
         }
     }
 
-    /// Attach a sandbox router for per-session sandbox mode resolution.
-    pub fn with_sandbox_router(mut self, router: Arc<SandboxRouter>) -> Self {
-        self.sandbox_router = Some(router);
-        self
-    }
-
-    /// Create from config; returns `None` if browser is disabled.
-    pub fn from_config(config: &chelix_config::schema::BrowserConfig) -> Option<Self> {
-        if !config.enabled {
-            return None;
-        }
-        let browser_config = chelix_browser::BrowserConfig::from(config);
-        Some(Self::new(browser_config))
-    }
-
-    /// Create from browser and sandbox config so browser sandbox containers can
-    /// share sandbox host path resolution.
-    pub fn from_config_with_sandbox(
+    /// Create from browser configuration and the canonical global sandbox policy.
+    pub fn from_config(
         browser: &chelix_config::schema::BrowserConfig,
         sandbox: &chelix_config::schema::SandboxConfig,
     ) -> Option<Self> {
@@ -85,7 +68,7 @@ impl BrowserTool {
         }
         let mut browser_config = chelix_browser::BrowserConfig::from(browser);
         browser_config.host_data_dir = sandbox.host_data_dir.as_ref().map(std::path::PathBuf::from);
-        Some(Self::new(browser_config))
+        Some(Self::new(browser_config, sandbox.mode))
     }
 
     fn cache_key(session_key: Option<&str>) -> Cow<'static, str> {
@@ -131,10 +114,11 @@ impl BrowserTool {
             self.manager
                 .get_or_init(|| async {
                     let config = self.config.clone();
+                    let sandbox_mode = self.sandbox_mode;
                     match tokio::task::spawn_blocking(move || {
                         // Browser detection/container cleanup can block.
                         chelix_browser::detect::check_and_warn(config.chrome_path.as_deref());
-                        Arc::new(BrowserManager::new(config))
+                        Arc::new(BrowserManager::new(config, sandbox_mode))
                     })
                     .await
                     {
@@ -146,7 +130,7 @@ impl BrowserTool {
                             );
                             let config = self.config.clone();
                             chelix_browser::detect::check_and_warn(config.chrome_path.as_deref());
-                            Arc::new(BrowserManager::new(config))
+                            Arc::new(BrowserManager::new(config, self.sandbox_mode))
                         },
                     }
                 })
@@ -244,20 +228,11 @@ impl AgentTool for BrowserTool {
     async fn execute(&self, params: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let mut params = params;
 
-        // Browser sandbox mode follows the session sandbox mode from the shared router.
         let session_key = Self::cache_key(params.get("_session_key").and_then(|v| v.as_str()));
-        let sandbox_mode = if let Some(ref router) = self.sandbox_router {
-            router.is_sandboxed(&session_key).await
-        } else {
-            debug!(
-                session_key = %session_key,
-                "browser running in host mode (no container backend)"
-            );
-            false
-        };
 
         // Inject saved session_id if LLM didn't provide one (or provided empty string)
         if let Some(obj) = params.as_object_mut() {
+            obj.remove("_session_key");
             let needs_session = match obj.get("session_id") {
                 None => true,
                 Some(serde_json::Value::String(s)) if s.is_empty() => true,
@@ -273,9 +248,6 @@ impl AgentTool for BrowserTool {
                 );
                 obj.insert("session_id".to_string(), serde_json::json!(saved_sid));
             }
-
-            // Inject sandbox mode from session context
-            obj.insert("sandbox".to_string(), serde_json::json!(sandbox_mode));
         }
 
         // Check if this is a "close" action - we'll clear saved session after
@@ -345,7 +317,9 @@ mod tests {
             enabled: true,
             ..Default::default()
         };
-        let tool = BrowserTool::from_config(&config).unwrap();
+        let tool =
+            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
+                .unwrap();
         assert_eq!(tool.name(), "browser");
     }
 
@@ -355,11 +329,14 @@ mod tests {
             enabled: false,
             ..Default::default()
         };
-        assert!(BrowserTool::from_config(&config).is_none());
+        assert!(
+            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default(),)
+                .is_none()
+        );
     }
 
     #[test]
-    fn from_config_with_sandbox_carries_host_data_dir() {
+    fn from_config_carries_global_sandbox_settings() {
         let browser = chelix_config::schema::BrowserConfig {
             enabled: true,
             ..Default::default()
@@ -369,12 +346,13 @@ mod tests {
             ..Default::default()
         };
 
-        let tool = BrowserTool::from_config_with_sandbox(&browser, &sandbox).unwrap();
+        let tool = BrowserTool::from_config(&browser, &sandbox).unwrap();
 
         assert_eq!(
             tool.config.host_data_dir.as_deref(),
             Some(std::path::Path::new("/host/chelix-data"))
         );
+        assert_eq!(tool.sandbox_mode, SandboxMode::On);
     }
 
     #[test]
@@ -383,7 +361,9 @@ mod tests {
             enabled: true,
             ..Default::default()
         };
-        let tool = BrowserTool::from_config(&config).unwrap();
+        let tool =
+            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
+                .unwrap();
         let schema = tool.parameters_schema();
         let required = schema["required"].as_array().unwrap();
         assert!(
@@ -403,7 +383,9 @@ mod tests {
             enabled: true,
             ..Default::default()
         };
-        let tool = BrowserTool::from_config(&config).unwrap();
+        let tool =
+            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
+                .unwrap();
 
         tool.save_session("web:session:one", "browser-session-one")
             .await;
@@ -427,7 +409,9 @@ mod tests {
             enabled: true,
             ..Default::default()
         };
-        let tool = BrowserTool::from_config(&config).unwrap();
+        let tool =
+            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
+                .unwrap();
         tool.save_session("web:session:one", "").await;
         assert_eq!(tool.get_saved_session("web:session:one").await, None);
     }
@@ -438,7 +422,9 @@ mod tests {
             enabled: true,
             ..Default::default()
         };
-        let tool = BrowserTool::from_config(&config).unwrap();
+        let tool =
+            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
+                .unwrap();
 
         // Fill the cache to capacity
         for i in 0..BrowserTool::MAX_TRACKED_SESSIONS {
@@ -463,7 +449,9 @@ mod tests {
             enabled: true,
             ..Default::default()
         };
-        let tool = BrowserTool::from_config(&config).unwrap();
+        let tool =
+            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
+                .unwrap();
 
         tool.save_session("web:session:one", "browser-session-one")
             .await;

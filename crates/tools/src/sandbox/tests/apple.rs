@@ -3,20 +3,25 @@ use super::*;
 
 #[cfg(target_os = "macos")]
 #[test]
-fn test_backend_name_apple_container() {
+fn test_backend_id_apple_container() {
     let sandbox = AppleContainerSandbox::new(SandboxConfig::default());
-    assert_eq!(sandbox.backend_name(), "apple-container");
+    assert_eq!(sandbox.backend_id(), SandboxBackendId::AppleContainer);
 }
 
 #[cfg(target_os = "macos")]
 #[test]
 fn test_sandbox_router_explicit_apple_container_backend() {
     let config = SandboxConfig {
-        backend: "apple-container".into(),
+        backend: SandboxBackend::AppleContainer,
         ..Default::default()
     };
-    let router = SandboxRouter::new(config);
-    assert_eq!(router.backend_name(), "apple-container");
+    let backend: Arc<dyn Sandbox> = Arc::new(TestSandbox::new(
+        SandboxBackendId::AppleContainer,
+        None,
+        None,
+    ));
+    let router = SandboxRouter::with_backend(config, backend);
+    assert_eq!(router.backend_id(), SandboxBackendId::AppleContainer);
 }
 
 #[cfg(target_os = "macos")]
@@ -43,34 +48,34 @@ async fn test_apple_container_name_generation_rotation() {
 #[test]
 fn test_select_backend_explicit_choices() {
     // Docker backend
-    if is_cli_available("docker") {
+    if should_use_docker_backend(is_cli_available("docker"), is_docker_daemon_available()) {
         let config = SandboxConfig {
-            backend: "docker".into(),
+            backend: SandboxBackend::Docker,
             ..Default::default()
         };
-        let backend = select_backend(config);
-        assert_eq!(backend.backend_name(), "docker");
+        let backend = select_backend(config).unwrap();
+        assert_eq!(backend.backend_id(), SandboxBackendId::Docker);
     }
 
     // Podman backend
     if is_cli_available("podman") {
         let config = SandboxConfig {
-            backend: "podman".into(),
+            backend: SandboxBackend::Podman,
             ..Default::default()
         };
-        let backend = select_backend(config);
-        assert_eq!(backend.backend_name(), "podman");
+        let backend = select_backend(config).unwrap();
+        assert_eq!(backend.backend_id(), SandboxBackendId::Podman);
     }
 
     // Apple Container backend (macOS only)
     #[cfg(target_os = "macos")]
-    if is_cli_available("container") {
+    if is_cli_available("container") && ensure_apple_container_service() {
         let config = SandboxConfig {
-            backend: "apple-container".into(),
+            backend: SandboxBackend::AppleContainer,
             ..Default::default()
         };
-        let backend = select_backend(config);
-        assert_eq!(backend.backend_name(), "apple-container");
+        let backend = select_backend(config).unwrap();
+        assert_eq!(backend.backend_id(), SandboxBackendId::AppleContainer);
     }
 }
 
@@ -391,19 +396,19 @@ fn test_is_apple_container_corruption_error() {
 #[tokio::test]
 async fn test_failover_sandbox_switches_from_apple_to_docker() {
     let primary = Arc::new(TestSandbox::new(
-        "apple-container",
+        SandboxBackendId::AppleContainer,
         Some("failed to bootstrap container: config.json missing"),
         None,
     ));
-    let fallback = Arc::new(TestSandbox::new("docker", None, None));
-    let sandbox = FailoverSandbox::new(primary.clone(), fallback.clone());
+    let fallback = Arc::new(TestSandbox::new(SandboxBackendId::Docker, None, None));
+    let sandbox = FailoverSandbox::new(primary.clone(), fallback.clone()).unwrap();
     let id = SandboxId {
         scope: SandboxScope::Session,
         key: "session-abc".into(),
     };
 
-    sandbox.ensure_ready(&id, None).await.unwrap();
-    sandbox.ensure_ready(&id, None).await.unwrap();
+    sandbox.ensure_ready(&id).await.unwrap();
+    sandbox.ensure_ready(&id).await.unwrap();
 
     assert_eq!(primary.ensure_ready_calls(), 1);
     assert_eq!(fallback.ensure_ready_calls(), 2);
@@ -412,18 +417,18 @@ async fn test_failover_sandbox_switches_from_apple_to_docker() {
 #[tokio::test]
 async fn test_failover_sandbox_switches_on_boot_failure() {
     let primary = Arc::new(TestSandbox::new(
-        "apple-container",
+        SandboxBackendId::AppleContainer,
         Some("apple container test did not become exec-ready (VM never booted): timeout"),
         None,
     ));
-    let fallback = Arc::new(TestSandbox::new("docker", None, None));
-    let sandbox = FailoverSandbox::new(primary.clone(), fallback.clone());
+    let fallback = Arc::new(TestSandbox::new(SandboxBackendId::Docker, None, None));
+    let sandbox = FailoverSandbox::new(primary.clone(), fallback.clone()).unwrap();
     let id = SandboxId {
         scope: SandboxScope::Session,
         key: "session-boot".into(),
     };
 
-    sandbox.ensure_ready(&id, None).await.unwrap();
+    sandbox.ensure_ready(&id).await.unwrap();
 
     assert_eq!(primary.ensure_ready_calls(), 1);
     assert_eq!(fallback.ensure_ready_calls(), 1);
@@ -432,18 +437,18 @@ async fn test_failover_sandbox_switches_on_boot_failure() {
 #[tokio::test]
 async fn test_failover_sandbox_does_not_switch_on_unrelated_error() {
     let primary = Arc::new(TestSandbox::new(
-        "apple-container",
+        SandboxBackendId::AppleContainer,
         Some("permission denied"),
         None,
     ));
-    let fallback = Arc::new(TestSandbox::new("docker", None, None));
-    let sandbox = FailoverSandbox::new(primary.clone(), fallback.clone());
+    let fallback = Arc::new(TestSandbox::new(SandboxBackendId::Docker, None, None));
+    let sandbox = FailoverSandbox::new(primary.clone(), fallback.clone()).unwrap();
     let id = SandboxId {
         scope: SandboxScope::Session,
         key: "session-abc".into(),
     };
 
-    let error = sandbox.ensure_ready(&id, None).await.unwrap_err();
+    let error = sandbox.ensure_ready(&id).await.unwrap_err();
     assert!(format!("{error:#}").contains("permission denied"));
     assert_eq!(primary.ensure_ready_calls(), 1);
     assert_eq!(fallback.ensure_ready_calls(), 0);
@@ -452,12 +457,12 @@ async fn test_failover_sandbox_does_not_switch_on_unrelated_error() {
 #[tokio::test]
 async fn test_failover_sandbox_switches_command_path() {
     let primary = Arc::new(TestSandbox::new(
-        "apple-container",
+        SandboxBackendId::AppleContainer,
         None,
         Some("failed to bootstrap container: config.json missing"),
     ));
-    let fallback = Arc::new(TestSandbox::new("docker", None, None));
-    let sandbox = FailoverSandbox::new(primary.clone(), fallback.clone());
+    let fallback = Arc::new(TestSandbox::new(SandboxBackendId::Docker, None, None));
+    let sandbox = FailoverSandbox::new(primary.clone(), fallback.clone()).unwrap();
     let id = SandboxId {
         scope: SandboxScope::Session,
         key: "session-abc".into(),
@@ -476,21 +481,21 @@ async fn test_failover_sandbox_switches_command_path() {
 #[tokio::test]
 async fn test_failover_sandbox_switches_on_daemon_stale_error() {
     let primary = Arc::new(TestSandbox::new(
-        "apple-container",
+        SandboxBackendId::AppleContainer,
         Some(
             "Error: internalError: \" Error Domain=NSPOSIXErrorDomain Code=22 \"Invalid argument\"\"",
         ),
         None,
     ));
-    let fallback = Arc::new(TestSandbox::new("docker", None, None));
-    let sandbox = FailoverSandbox::new(primary.clone(), fallback.clone());
+    let fallback = Arc::new(TestSandbox::new(SandboxBackendId::Docker, None, None));
+    let sandbox = FailoverSandbox::new(primary.clone(), fallback.clone()).unwrap();
     let id = SandboxId {
         scope: SandboxScope::Session,
         key: "session-abc".into(),
     };
 
-    sandbox.ensure_ready(&id, None).await.unwrap();
-    sandbox.ensure_ready(&id, None).await.unwrap();
+    sandbox.ensure_ready(&id).await.unwrap();
+    sandbox.ensure_ready(&id).await.unwrap();
 
     assert_eq!(primary.ensure_ready_calls(), 1);
     assert_eq!(fallback.ensure_ready_calls(), 2);
@@ -499,18 +504,18 @@ async fn test_failover_sandbox_switches_on_daemon_stale_error() {
 #[tokio::test]
 async fn test_failover_sandbox_docker_to_wasm() {
     let primary = Arc::new(TestSandbox::new(
-        "docker",
+        SandboxBackendId::Docker,
         Some("cannot connect to the docker daemon"),
         None,
     ));
-    let fallback = Arc::new(TestSandbox::new("wasm", None, None));
-    let sandbox = FailoverSandbox::new(primary.clone(), fallback.clone());
+    let fallback = Arc::new(TestSandbox::new(SandboxBackendId::Wasm, None, None));
+    let sandbox = FailoverSandbox::new(primary.clone(), fallback.clone()).unwrap();
     let id = SandboxId {
         scope: SandboxScope::Session,
         key: "session-docker-wasm".into(),
     };
 
-    sandbox.ensure_ready(&id, None).await.unwrap();
+    sandbox.ensure_ready(&id).await.unwrap();
 
     assert_eq!(primary.ensure_ready_calls(), 1);
     assert_eq!(fallback.ensure_ready_calls(), 1);
@@ -518,15 +523,19 @@ async fn test_failover_sandbox_docker_to_wasm() {
 
 #[tokio::test]
 async fn test_failover_docker_does_not_switch_on_unrelated_error() {
-    let primary = Arc::new(TestSandbox::new("docker", Some("image not found"), None));
-    let fallback = Arc::new(TestSandbox::new("wasm", None, None));
-    let sandbox = FailoverSandbox::new(primary.clone(), fallback.clone());
+    let primary = Arc::new(TestSandbox::new(
+        SandboxBackendId::Docker,
+        Some("image not found"),
+        None,
+    ));
+    let fallback = Arc::new(TestSandbox::new(SandboxBackendId::Wasm, None, None));
+    let sandbox = FailoverSandbox::new(primary.clone(), fallback.clone()).unwrap();
     let id = SandboxId {
         scope: SandboxScope::Session,
         key: "session-docker-no-failover".into(),
     };
 
-    let error = sandbox.ensure_ready(&id, None).await.unwrap_err();
+    let error = sandbox.ensure_ready(&id).await.unwrap_err();
     assert!(format!("{error:#}").contains("image not found"));
     assert_eq!(primary.ensure_ready_calls(), 1);
     assert_eq!(fallback.ensure_ready_calls(), 0);

@@ -803,8 +803,7 @@ impl LiveChatService {
         // `[skills] enabled` — see #655).
         let discovered_skills = discover_skills_if_enabled(&self.config).await;
 
-        // Check if MCP tools are disabled for this session and capture
-        // per-session sandbox override details for prompt runtime context.
+        // Load session metadata for MCP, agent, and prompt runtime context.
         let session_entry = self.session_metadata.get(&session_key).await;
         let session_agent_id = resolve_prompt_agent_id(session_entry.as_ref());
 

@@ -68,7 +68,6 @@ Per preset (`[agents.presets.<name>]`):
 - `model`
 - `tools.allow`, `tools.deny`, `tools.preload`
 - `mcp` — MCP server access: `allow_servers` or `deny_servers`
-- `sandbox.*` — per-agent sandbox overrides
 - `skills.allow`, `skills.deny`
 - `system_prompt_suffix`
 - `max_iterations`, `timeout_secs` (override `[tools]` runtime limits for
@@ -141,18 +140,6 @@ deny_servers = ["home-assistant"]
 When `allow_servers` is set, every configured MCP server not in the list is
 denied. An empty `allow_servers = []` blocks all MCP tools.
 
-## Per-Agent Sandbox Mode
-
-Override the global sandbox mode per agent.
-
-```toml
-[agents.presets.kids.sandbox]
-mode = "all"                 # Always sandbox this agent
-```
-
-Available values: `"off"`, `"all"`, `"non-main"`. The override is applied as a
-per-session setting on the sandbox router.
-
 ## Per-Agent Skill Policy
 
 Filter which skills are visible to an agent by name or category.
@@ -221,5 +208,4 @@ You are a code reviewer. Focus on correctness and security.
 Frontmatter fields: `name` (required), `tools`, `deny_tools`, `preload_tools`,
 `model`, `emoji`, `theme`, `delegate_only`, `max_iterations`, `timeout_secs`,
 `display_name`, `reasoning_effort`, `mcp_allow_servers`, `mcp_deny_servers`,
-`sandbox_mode`, `skills_allow`, and `skills_deny`. The markdown body becomes
-`system_prompt_suffix`.
+`skills_allow`, and `skills_deny`. The markdown body becomes `system_prompt_suffix`.

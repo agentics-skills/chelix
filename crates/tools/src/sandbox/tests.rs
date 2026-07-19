@@ -17,7 +17,7 @@ use crate::sandbox::file_system::{
 #[cfg(target_os = "macos")]
 use std::env;
 use {
-    super::{containers::*, docker::*, host::*, platform::*, router::*, types::*},
+    super::{containers::*, docker::*, router::*, types::*},
     crate::{
         command::{CommandOptions, CommandOutput},
         error::{Error, Result},
@@ -158,7 +158,7 @@ async fn assert_runtime_oci_file_transfers(cli: &str) -> Result<()> {
 }
 
 struct TestSandbox {
-    name: &'static str,
+    backend: SandboxBackendId,
     ensure_ready_error: Option<String>,
     command_error: Option<String>,
     ensure_ready_calls: AtomicUsize,
@@ -168,12 +168,12 @@ struct TestSandbox {
 
 impl TestSandbox {
     fn new(
-        name: &'static str,
+        backend: SandboxBackendId,
         ensure_ready_error: Option<&str>,
         command_error: Option<&str>,
     ) -> Self {
         Self {
-            name,
+            backend,
             ensure_ready_error: ensure_ready_error.map(ToOwned::to_owned),
             command_error: command_error.map(ToOwned::to_owned),
             ensure_ready_calls: AtomicUsize::new(0),
@@ -203,15 +203,15 @@ fn truncate_output_for_display_handles_multibyte_boundary() {
 
 #[async_trait::async_trait]
 impl Sandbox for TestSandbox {
-    fn backend_name(&self) -> &'static str {
-        self.name
+    fn backend_id(&self) -> SandboxBackendId {
+        self.backend
     }
 
     fn provides_fs_isolation(&self) -> bool {
         true
     }
 
-    async fn ensure_ready(&self, _id: &SandboxId, _image_override: Option<&str>) -> Result<()> {
+    async fn ensure_ready(&self, _id: &SandboxId) -> Result<()> {
         self.ensure_ready_calls.fetch_add(1, Ordering::SeqCst);
         if let Some(ref msg) = self.ensure_ready_error {
             return Err(Error::message(msg));
@@ -246,12 +246,9 @@ impl Sandbox for TestSandbox {
 mod apple;
 mod core;
 mod docker_router;
-#[cfg(target_os = "linux")]
-mod linux;
 mod network;
-mod platform;
 mod resolve_env;
-mod restricted_host;
+mod selection;
 mod skills;
 #[cfg(feature = "wasm")]
 mod wasm;

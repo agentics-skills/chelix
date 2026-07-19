@@ -20,7 +20,6 @@ import { handleChatEvent } from "./ws/chat-handlers";
 import { handleOperationProgress } from "./ws/operation-progress";
 import {
 	handleBrowserImagePull,
-	handleSandboxHostProvision,
 	handleSandboxImageBuild,
 	handleSandboxImageProvision,
 	handleSandboxPrepare,
@@ -60,7 +59,6 @@ const eventHandlers: Record<string, (payload: Record<string, unknown>, streamMet
 	"sandbox.prepare": handleSandboxPrepare as (payload: Record<string, unknown>) => void,
 	"sandbox.image.build": handleSandboxImageBuild as (payload: Record<string, unknown>) => void,
 	"sandbox.image.provision": handleSandboxImageProvision as (payload: Record<string, unknown>) => void,
-	"sandbox.host.provision": handleSandboxHostProvision as (payload: Record<string, unknown>) => void,
 	"browser.image.pull": handleBrowserImagePull as (payload: Record<string, unknown>) => void,
 	"models.updated": handleModelsUpdated as (payload: Record<string, unknown>) => void,
 	"location.request": handleLocationRequest as (payload: Record<string, unknown>) => void,

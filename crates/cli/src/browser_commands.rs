@@ -48,7 +48,7 @@ fn status() -> Result<()> {
     }
 
     println!("  sandbox_image:  {}", browser.sandbox_image);
-    println!("  (sandbox mode follows session sandbox mode, controlled by sandbox.mode)");
+    println!("  sandbox_mode:   {}", config.sandbox.mode);
 
     if !browser.allowed_domains.is_empty() {
         println!("  allowed_domains: {:?}", browser.allowed_domains);

@@ -28,6 +28,18 @@ use {
     chelix_httpd::server::{build_gateway_base, finalize_gateway_app},
 };
 
+fn sandbox_off_runtime() -> (
+    chelix_config::ChelixConfig,
+    Arc<chelix_tools::sandbox::SandboxRouter>,
+) {
+    let mut config = chelix_config::ChelixConfig::default();
+    config.sandbox.mode = chelix_config::schema::SandboxMode::Off;
+    (
+        config,
+        Arc::new(chelix_tools::sandbox::SandboxRouter::disabled()),
+    )
+}
+
 fn next_test_secret_id() -> u64 {
     static NEXT_TEST_SECRET_ID: AtomicU64 = AtomicU64::new(1);
     NEXT_TEST_SECRET_ID.fetch_add(1, Ordering::Relaxed)
@@ -133,11 +145,12 @@ async fn start_auth_server_impl_with_webauthn(
 
     let resolved_auth = auth::resolve_auth(None, None);
     let services = GatewayServices::noop();
+    let (config, sandbox_router) = sandbox_off_runtime();
     let state = GatewayState::with_options(
         resolved_auth,
         services,
-        chelix_config::ChelixConfig::default(),
-        None,
+        config,
+        sandbox_router,
         Some(Arc::clone(&cred_store)),
         None, // pairing_store
         localhost_only,
@@ -217,11 +230,12 @@ async fn start_localhost_server_with_vault() -> (
 
     let resolved_auth = auth::resolve_auth(None, None);
     let services = GatewayServices::noop();
+    let (config, sandbox_router) = sandbox_off_runtime();
     let state = GatewayState::with_options(
         resolved_auth,
         services,
-        chelix_config::ChelixConfig::default(),
-        None,
+        config,
+        sandbox_router,
         Some(Arc::clone(&cred_store)),
         None, // pairing_store
         true,
@@ -294,11 +308,12 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
 
     let resolved_auth = auth::resolve_auth(None, None);
     let services = GatewayServices::noop().with_session_store(Arc::clone(&session_store));
+    let (config, sandbox_router) = sandbox_off_runtime();
     let state = GatewayState::with_options(
         resolved_auth,
         services,
-        chelix_config::ChelixConfig::default(),
-        None,
+        config,
+        sandbox_router,
         Some(Arc::clone(&cred_store)),
         None, // pairing_store
         true,

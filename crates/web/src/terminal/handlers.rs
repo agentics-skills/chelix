@@ -320,11 +320,8 @@ pub async fn api_terminal_ws_upgrade_handler(
     }
 
     let requested_window = query.window;
-    let container_target = query.container;
-    ws.on_upgrade(move |socket| {
-        handle_terminal_ws_connection(socket, addr, requested_window, container_target)
-    })
-    .into_response()
+    ws.on_upgrade(move |socket| handle_terminal_ws_connection(socket, addr, requested_window))
+        .into_response()
 }
 
 /// Dedicated sandbox tmux WebSocket stream (`Settings > Terminal`).

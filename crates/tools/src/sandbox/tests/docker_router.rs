@@ -23,8 +23,8 @@ fn test_create_sandbox_off_uses_no_sandbox() {
         mode: SandboxMode::Off,
         ..Default::default()
     };
-    let sandbox = create_sandbox(config);
-    assert_eq!(sandbox.backend_name(), "none");
+    let sandbox = create_sandbox(config).unwrap();
+    assert_eq!(sandbox.backend_id(), SandboxBackendId::None);
     assert!(!sandbox.is_real());
     let id = SandboxId {
         scope: SandboxScope::Session,
@@ -32,7 +32,7 @@ fn test_create_sandbox_off_uses_no_sandbox() {
     };
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
-        sandbox.ensure_ready(&id, None).await.unwrap();
+        sandbox.ensure_ready(&id).await.unwrap();
         sandbox.cleanup(&id).await.unwrap();
     });
 }
@@ -205,203 +205,96 @@ fn test_container_name_conflict_detection() {
 /// Helper: build a `SandboxRouter` with a deterministic backend so tests
 /// don't depend on the host having Docker / Apple Container installed.
 fn router_with_real_backend(config: SandboxConfig) -> SandboxRouter {
-    let backend: Arc<dyn Sandbox> = Arc::new(TestSandbox::new("docker", None, None));
+    let backend: Arc<dyn Sandbox> =
+        Arc::new(TestSandbox::new(SandboxBackendId::Docker, None, None));
     SandboxRouter::with_backend(config, backend)
 }
 
-#[tokio::test]
-async fn test_sandbox_router_default_all() {
-    let config = SandboxConfig::default(); // mode = All
+#[test]
+fn test_sandbox_router_default_on() {
+    let config = SandboxConfig::default();
     let router = router_with_real_backend(config);
-    assert!(router.is_sandboxed("main").await);
-    assert!(router.is_sandboxed("session:abc").await);
+    assert!(router.enabled());
 }
 
-#[tokio::test]
-async fn test_sandbox_router_mode_off() {
+#[test]
+fn test_sandbox_router_mode_off() {
     let config = SandboxConfig {
         mode: SandboxMode::Off,
         ..Default::default()
     };
     let router = router_with_real_backend(config);
-    assert!(!router.is_sandboxed("main").await);
-    assert!(!router.is_sandboxed("session:abc").await);
+    assert!(!router.enabled());
 }
 
-#[tokio::test]
-async fn test_sandbox_router_mode_all() {
+#[test]
+fn test_sandbox_router_mode_on_is_global() {
     let config = SandboxConfig {
-        mode: SandboxMode::All,
+        mode: SandboxMode::On,
         ..Default::default()
     };
     let router = router_with_real_backend(config);
-    assert!(router.is_sandboxed("main").await);
-    assert!(router.is_sandboxed("session:abc").await);
+    assert!(router.enabled());
 }
 
 #[tokio::test]
-async fn test_sandbox_router_mode_non_main() {
-    let config = SandboxConfig {
-        mode: SandboxMode::NonMain,
-        ..Default::default()
-    };
-    let router = router_with_real_backend(config);
-    assert!(!router.is_sandboxed("main").await);
-    assert!(router.is_sandboxed("session:abc").await);
-}
-
-#[tokio::test]
-async fn test_sandbox_router_override() {
-    let config = SandboxConfig {
-        mode: SandboxMode::Off,
-        ..Default::default()
-    };
-    let router = router_with_real_backend(config);
-    assert!(!router.is_sandboxed("session:abc").await);
-
-    router.set_override("session:abc", true).await;
-    assert!(router.is_sandboxed("session:abc").await);
-
-    router.set_override("session:abc", false).await;
-    assert!(!router.is_sandboxed("session:abc").await);
-
-    router.remove_override("session:abc").await;
-    assert!(!router.is_sandboxed("session:abc").await);
-}
-
-#[tokio::test]
-async fn test_sandbox_router_override_overrides_mode() {
-    let config = SandboxConfig {
-        mode: SandboxMode::All,
-        ..Default::default()
-    };
-    let router = router_with_real_backend(config);
-    assert!(router.is_sandboxed("main").await);
-
-    // Override to disable sandbox for main
-    router.set_override("main", false).await;
-    assert!(!router.is_sandboxed("main").await);
-}
-
-#[tokio::test]
-async fn test_sandbox_router_explicit_override_overrides_agent_override() {
-    let config = SandboxConfig {
-        mode: SandboxMode::NonMain,
-        ..Default::default()
-    };
-    let router = router_with_real_backend(config);
-    assert!(router.is_sandboxed("cron:test").await);
-
-    router.set_override("cron:test", false).await;
-    router.set_agent_override("cron:test", true).await;
-    assert!(!router.is_sandboxed("cron:test").await);
-
-    router.remove_agent_override("cron:test").await;
-    assert!(!router.is_sandboxed("cron:test").await);
-}
-
-#[tokio::test]
-async fn test_sandbox_router_agent_override_falls_back_to_mode() {
-    let config = SandboxConfig {
-        mode: SandboxMode::NonMain,
-        ..Default::default()
-    };
-    let router = router_with_real_backend(config);
-
-    router.set_agent_override("cron:test", false).await;
-    assert!(!router.is_sandboxed("cron:test").await);
-
-    router.remove_agent_override("cron:test").await;
-    assert!(router.is_sandboxed("cron:test").await);
-}
-
-#[tokio::test]
-async fn test_sandbox_router_agent_override_beats_global_off() {
-    let config = SandboxConfig {
-        mode: SandboxMode::Off,
-        ..Default::default()
-    };
-    let router = router_with_real_backend(config);
-    assert!(!router.is_sandboxed("main").await);
-
-    router.set_agent_override("main", true).await;
-    assert!(router.is_sandboxed("main").await);
-
-    router.remove_agent_override("main").await;
-    assert!(!router.is_sandboxed("main").await);
-}
-
-#[tokio::test]
-async fn test_sandbox_router_no_runtime_returns_false() {
+async fn test_sandbox_router_on_with_nonisolating_backend_fails_closed() {
     let backend: Arc<dyn Sandbox> = Arc::new(NoSandbox);
     let config = SandboxConfig {
-        mode: SandboxMode::All,
+        mode: SandboxMode::On,
         ..Default::default()
     };
     let router = SandboxRouter::with_backend(config, backend);
 
-    // Even with mode=All, no runtime means not sandboxed
-    assert!(!router.is_sandboxed("main").await);
-    assert!(!router.is_sandboxed("session:abc").await);
-
-    // Overrides are also ignored when there's no runtime
-    router.set_override("main", true).await;
-    assert!(!router.is_sandboxed("main").await);
+    assert!(router.enabled());
+    assert!(router.resolve_env("main").await.is_err());
 }
 
 #[test]
-fn test_backend_name_docker() {
+fn test_backend_id_docker() {
     let sandbox = DockerSandbox::new(SandboxConfig::default());
-    assert_eq!(sandbox.backend_name(), "docker");
+    assert_eq!(sandbox.backend_id(), SandboxBackendId::Docker);
 }
 
 #[test]
-fn test_backend_name_podman() {
+fn test_backend_id_podman() {
     let sandbox = DockerSandbox::podman(SandboxConfig::default());
-    assert_eq!(sandbox.backend_name(), "podman");
+    assert_eq!(sandbox.backend_id(), SandboxBackendId::Podman);
 }
 
 #[test]
-fn test_backend_name_none() {
+fn test_backend_id_none() {
     let sandbox = NoSandbox;
-    assert_eq!(sandbox.backend_name(), "none");
+    assert_eq!(sandbox.backend_id(), SandboxBackendId::None);
 }
 
 #[test]
-fn test_sandbox_router_backend_name() {
-    // With "auto", the backend depends on what's available on the host.
-    let config = SandboxConfig::default();
-    let router = SandboxRouter::new(config);
-    let name = router.backend_name();
-    assert!(
-        name == "docker"
-            || name == "podman"
-            || name == "apple-container"
-            || name == "restricted-host",
-        "unexpected backend: {name}"
-    );
+fn test_sandbox_router_backend_id() {
+    let router = router_with_real_backend(SandboxConfig::default());
+    assert_eq!(router.backend_id(), SandboxBackendId::Docker);
 }
 
 #[test]
 fn test_sandbox_router_explicit_docker_backend() {
     let config = SandboxConfig {
-        backend: "docker".into(),
+        backend: SandboxBackend::Docker,
         ..Default::default()
     };
-    let router = SandboxRouter::new(config);
-    assert_eq!(router.backend_name(), "docker");
+    let router = router_with_real_backend(config);
+    assert_eq!(router.backend_id(), SandboxBackendId::Docker);
+    assert_eq!(router.config().backend, SandboxBackend::Docker);
 }
 
 #[test]
 fn test_sandbox_router_config_accessor() {
     let config = SandboxConfig {
-        mode: SandboxMode::NonMain,
+        mode: SandboxMode::On,
         scope: SandboxScope::Agent,
         image: Some("alpine:latest".into()),
         ..Default::default()
     };
-    let router = SandboxRouter::new(config);
-    assert_eq!(*router.mode(), SandboxMode::NonMain);
+    let router = router_with_real_backend(config);
+    assert_eq!(*router.mode(), SandboxMode::On);
     assert_eq!(router.config().scope, SandboxScope::Agent);
     assert_eq!(router.config().image.as_deref(), Some("alpine:latest"));
 }
@@ -412,7 +305,7 @@ fn test_sandbox_router_sandbox_id_for() {
         scope: SandboxScope::Session,
         ..Default::default()
     };
-    let router = SandboxRouter::new(config);
+    let router = router_with_real_backend(config);
     let id = router.sandbox_id_for("session:abc");
     assert_eq!(id.key, "session-abc");
     // Plain alphanumeric keys pass through unchanged.
@@ -423,43 +316,19 @@ fn test_sandbox_router_sandbox_id_for() {
 #[tokio::test]
 async fn test_resolve_image_default() {
     let config = SandboxConfig::default();
-    let router = SandboxRouter::new(config);
-    let img = router.resolve_image("main", None).await;
+    let router = router_with_real_backend(config);
+    let img = router.default_image().await;
     assert_eq!(img, DEFAULT_SANDBOX_IMAGE);
 }
 
 #[tokio::test]
-async fn test_resolve_image_skill_override() {
+async fn test_prepared_image_is_global() {
     let config = SandboxConfig::default();
-    let router = SandboxRouter::new(config);
-    let img = router
-        .resolve_image("main", Some("chelix-cache/my-skill:abc123"))
-        .await;
-    assert_eq!(img, "chelix-cache/my-skill:abc123");
-}
-
-#[tokio::test]
-async fn test_resolve_image_session_override() {
-    let config = SandboxConfig::default();
-    let router = SandboxRouter::new(config);
+    let router = router_with_real_backend(config);
     router
-        .set_image_override("sess1", "custom:latest".into())
+        .set_prepared_image("chelix-sandbox:deterministic".into())
         .await;
-    let img = router.resolve_image("sess1", None).await;
-    assert_eq!(img, "custom:latest");
-}
-
-#[tokio::test]
-async fn test_resolve_image_skill_beats_session() {
-    let config = SandboxConfig::default();
-    let router = SandboxRouter::new(config);
-    router
-        .set_image_override("sess1", "custom:latest".into())
-        .await;
-    let img = router
-        .resolve_image("sess1", Some("chelix-cache/skill:hash"))
-        .await;
-    assert_eq!(img, "chelix-cache/skill:hash");
+    assert_eq!(router.default_image().await, "chelix-sandbox:deterministic");
 }
 
 #[tokio::test]
@@ -468,21 +337,9 @@ async fn test_resolve_image_config_override() {
         image: Some("my-org/image:v1".into()),
         ..Default::default()
     };
-    let router = SandboxRouter::new(config);
-    let img = router.resolve_image("main", None).await;
+    let router = router_with_real_backend(config);
+    let img = router.default_image().await;
     assert_eq!(img, "my-org/image:v1");
-}
-
-#[tokio::test]
-async fn test_remove_image_override() {
-    let config = SandboxConfig::default();
-    let router = SandboxRouter::new(config);
-    router
-        .set_image_override("sess1", "custom:latest".into())
-        .await;
-    router.remove_image_override("sess1").await;
-    let img = router.resolve_image("sess1", None).await;
-    assert_eq!(img, DEFAULT_SANDBOX_IMAGE);
 }
 
 #[test]
@@ -684,11 +541,11 @@ async fn test_ensure_ready_recreates_stopped_container_with_fresh_endpoint() {
         key: "oom-recovery".into(),
     };
 
-    sandbox.ensure_ready(&id, None).await.unwrap();
+    sandbox.ensure_ready(&id).await.unwrap();
     let first_endpoint = sandbox.tools_service_endpoint(&id).await.unwrap();
     std::fs::write(&state, "stopped\n").unwrap();
 
-    sandbox.ensure_ready(&id, None).await.unwrap();
+    sandbox.ensure_ready(&id).await.unwrap();
     let second_endpoint = sandbox.tools_service_endpoint(&id).await.unwrap();
 
     assert_eq!(
@@ -902,7 +759,7 @@ async fn test_no_sandbox_build_image_is_noop() {
 #[tokio::test]
 async fn test_sandbox_router_events() {
     let config = SandboxConfig::default();
-    let router = SandboxRouter::new(config);
+    let router = router_with_real_backend(config);
     let mut rx = router.subscribe_events();
 
     router.emit_event(SandboxEvent::Provisioning {
@@ -928,89 +785,6 @@ async fn test_sandbox_router_events() {
     assert!(router.mark_preparing_once("main").await);
 }
 
-#[tokio::test]
-async fn test_sandbox_router_global_image_override() {
-    let config = SandboxConfig::default();
-    let router = SandboxRouter::new(config);
-
-    // Default
-    let img = router.default_image().await;
-    assert_eq!(img, DEFAULT_SANDBOX_IMAGE);
-
-    // Set global override
-    router
-        .set_global_image(Some("chelix-sandbox:abc123".into()))
-        .await;
-    let img = router.default_image().await;
-    assert_eq!(img, "chelix-sandbox:abc123");
-
-    // Global override flows through resolve_image
-    let img = router.resolve_image("main", None).await;
-    assert_eq!(img, "chelix-sandbox:abc123");
-
-    // Session override still wins
-    router.set_image_override("main", "custom:v1".into()).await;
-    let img = router.resolve_image("main", None).await;
-    assert_eq!(img, "custom:v1");
-
-    // Clear and revert
-    router.set_global_image(None).await;
-    router.remove_image_override("main").await;
-    let img = router.default_image().await;
-    assert_eq!(img, DEFAULT_SANDBOX_IMAGE);
-}
-
-#[tokio::test]
-async fn test_sandbox_router_backend_image_override_is_scoped() {
-    let config = SandboxConfig {
-        backend: "docker".into(),
-        ..Default::default()
-    };
-    let mut router = SandboxRouter::new(config);
-    router.register_backend(Arc::new(RestrictedHostSandbox::new(
-        SandboxConfig::default(),
-    )));
-
-    router.set_global_image(Some("global:built".into())).await;
-    router
-        .set_backend_image("docker", "docker:built".into())
-        .await
-        .unwrap();
-    router
-        .set_backend_image("restricted-host", "restricted:built".into())
-        .await
-        .unwrap();
-
-    assert_eq!(
-        router
-            .resolve_image_for_backend("session:abc", None, "docker")
-            .await,
-        "docker:built"
-    );
-    assert_eq!(
-        router
-            .resolve_image_for_backend("session:abc", None, "restricted-host")
-            .await,
-        "restricted:built"
-    );
-
-    router
-        .set_image_override("session:abc", "session:built".into())
-        .await;
-    assert_eq!(
-        router
-            .resolve_image_for_backend("session:abc", None, "restricted-host")
-            .await,
-        "session:built"
-    );
-    assert_eq!(
-        router
-            .resolve_image_for_backend("session:abc", Some("skill:built"), "docker")
-            .await,
-        "skill:built"
-    );
-}
-
 // ── Sandbox escape regression tests (issue #923) ───────────────────────────
 
 #[test]
@@ -1032,141 +806,25 @@ fn test_podman_sandbox_provides_fs_isolation() {
 }
 
 #[tokio::test]
-async fn test_failover_sandbox_reports_active_backend_name() {
-    // Primary: a "docker" backend that always fails.
+async fn test_failover_sandbox_reports_isolated_fallback() {
     let primary = Arc::new(TestSandbox::new(
-        "docker",
+        SandboxBackendId::Docker,
         Some("cannot connect to the docker daemon"),
         None,
     ));
-    // Fallback: restricted-host.
-    let fallback: Arc<dyn Sandbox> = Arc::new(RestrictedHostSandbox::new(SandboxConfig::default()));
+    let fallback = Arc::new(TestSandbox::new(SandboxBackendId::Wasm, None, None));
+    let failover = FailoverSandbox::new(primary, fallback).unwrap();
 
-    let failover = FailoverSandbox::new(primary, fallback);
-
-    // Before failover: reports primary name.
-    assert_eq!(failover.backend_name(), "docker");
-    assert!(failover.provides_fs_isolation());
-
-    // Trigger failover via ensure_ready.
     let id = SandboxId {
         scope: SandboxScope::Session,
         key: "test-failover".into(),
     };
-    failover.ensure_ready(&id, None).await.unwrap();
 
-    // After failover: reports fallback name and isolation level.
-    assert_eq!(failover.backend_name(), "restricted-host");
-    assert!(
-        !failover.provides_fs_isolation(),
-        "after failing over to restricted-host, FS isolation must be false"
-    );
-}
-
-#[tokio::test]
-async fn test_failover_sandbox_to_restricted_host_does_not_claim_fs_isolation() {
-    // Simulate macOS failover: apple-container → restricted-host
-    let primary = Arc::new(TestSandbox::new(
-        "apple-container",
-        Some("XPC connection error"),
-        None,
-    ));
-    let fallback: Arc<dyn Sandbox> = Arc::new(RestrictedHostSandbox::new(SandboxConfig::default()));
-    let failover = FailoverSandbox::new(primary, fallback);
-
-    let id = SandboxId {
-        scope: SandboxScope::Session,
-        key: "test-apple-failover".into(),
-    };
-
-    // Trigger failover.
-    failover.ensure_ready(&id, None).await.unwrap();
-
-    // The critical assertion: code must NOT see "apple-container" anymore.
-    assert_ne!(
-        failover.backend_name(),
-        "apple-container",
-        "backend_name must not mask failover to restricted-host"
-    );
-    assert!(!failover.provides_fs_isolation());
-}
-
-#[tokio::test]
-async fn test_failover_sandbox_read_file_enforces_path_allowlist() {
-    // After failover to RestrictedHostSandbox, file operations must go through
-    // the fallback's read_file (which checks the path allowlist), not through
-    // the default trait impl that calls self.run_command() and bypasses the check.
-    let primary = Arc::new(TestSandbox::new(
-        "docker",
-        Some("cannot connect to the docker daemon"),
-        None,
-    ));
-    let fallback: Arc<dyn Sandbox> = Arc::new(RestrictedHostSandbox::new(SandboxConfig::default()));
-    let failover = FailoverSandbox::new(primary, fallback);
-
-    let id = SandboxId {
-        scope: SandboxScope::Session,
-        key: "test-failover-read".into(),
-    };
-
-    // Trigger failover.
-    failover.ensure_ready(&id, None).await.unwrap();
-    assert_eq!(failover.backend_name(), "restricted-host");
-
-    // read_file on a blocked path must be rejected by the allowlist.
-    let result = failover.read_file(&id, "/etc/passwd", 4096).await;
-    assert!(
-        result.is_err(),
-        "FailoverSandbox.read_file must enforce path allowlist after failover to restricted-host"
-    );
-}
-
-#[tokio::test]
-async fn test_failover_sandbox_write_file_enforces_path_allowlist() {
-    let primary = Arc::new(TestSandbox::new(
-        "docker",
-        Some("cannot connect to the docker daemon"),
-        None,
-    ));
-    let fallback: Arc<dyn Sandbox> = Arc::new(RestrictedHostSandbox::new(SandboxConfig::default()));
-    let failover = FailoverSandbox::new(primary, fallback);
-
-    let id = SandboxId {
-        scope: SandboxScope::Session,
-        key: "test-failover-write".into(),
-    };
-
-    failover.ensure_ready(&id, None).await.unwrap();
-
-    let result = failover.write_file(&id, "/var/log/evil.txt", b"nope").await;
-    assert!(
-        result.is_err(),
-        "FailoverSandbox.write_file must enforce path allowlist after failover"
-    );
-}
-
-#[tokio::test]
-async fn test_failover_sandbox_list_files_enforces_path_allowlist() {
-    let primary = Arc::new(TestSandbox::new(
-        "docker",
-        Some("cannot connect to the docker daemon"),
-        None,
-    ));
-    let fallback: Arc<dyn Sandbox> = Arc::new(RestrictedHostSandbox::new(SandboxConfig::default()));
-    let failover = FailoverSandbox::new(primary, fallback);
-
-    let id = SandboxId {
-        scope: SandboxScope::Session,
-        key: "test-failover-list".into(),
-    };
-
-    failover.ensure_ready(&id, None).await.unwrap();
-
-    let result = failover.list_files(&id, "/etc").await;
-    assert!(
-        result.is_err(),
-        "FailoverSandbox.list_files must enforce path allowlist after failover"
-    );
+    assert_eq!(failover.backend_id(), SandboxBackendId::Docker);
+    assert!(failover.provides_fs_isolation());
+    failover.ensure_ready(&id).await.unwrap();
+    assert_eq!(failover.backend_id(), SandboxBackendId::Wasm);
+    assert!(failover.provides_fs_isolation());
 }
 
 /// E2E regression test for #796: Podman+BuildKit may leave images in
@@ -1212,165 +870,4 @@ async fn test_podman_build_image_exists_in_store() {
         .args(["rmi", "-f", &tag])
         .output()
         .await;
-}
-
-// ── Multi-backend router tests ──────────────────────────────────────
-
-#[test]
-fn test_router_available_backends_contains_default() {
-    let config = SandboxConfig {
-        backend: "docker".into(),
-        ..Default::default()
-    };
-    let router = SandboxRouter::new(config);
-    let backends = router.available_backends();
-    assert!(
-        backends.contains(&"docker"),
-        "default backend must be listed"
-    );
-}
-
-#[test]
-fn test_router_register_backend_adds_to_available() {
-    let config = SandboxConfig {
-        backend: "docker".into(),
-        ..Default::default()
-    };
-    let mut router = SandboxRouter::new(config);
-    assert!(!router.available_backends().contains(&"restricted-host"));
-
-    router.register_backend(Arc::new(RestrictedHostSandbox::new(
-        SandboxConfig::default(),
-    )));
-    let backends = router.available_backends();
-    assert!(backends.contains(&"docker"));
-    assert!(backends.contains(&"restricted-host"));
-}
-
-#[tokio::test]
-async fn test_resolve_backend_returns_default_without_override() {
-    let config = SandboxConfig {
-        backend: "docker".into(),
-        ..Default::default()
-    };
-    let router = SandboxRouter::new(config);
-    let backend = router.resolve_backend("session:abc").await;
-    assert_eq!(backend.backend_name(), "docker");
-}
-
-#[tokio::test]
-async fn test_resolve_backend_returns_overridden_backend() {
-    let config = SandboxConfig {
-        backend: "docker".into(),
-        ..Default::default()
-    };
-    let mut router = SandboxRouter::new(config);
-    router.register_backend(Arc::new(RestrictedHostSandbox::new(
-        SandboxConfig::default(),
-    )));
-
-    router
-        .set_backend_override("session:abc", "restricted-host")
-        .await
-        .unwrap();
-
-    let backend = router.resolve_backend("session:abc").await;
-    assert_eq!(backend.backend_name(), "restricted-host");
-
-    // Other sessions still get the default.
-    let default_backend = router.resolve_backend("session:other").await;
-    assert_eq!(default_backend.backend_name(), "docker");
-}
-
-#[tokio::test]
-async fn test_set_backend_override_clears_runtime_state() {
-    let config = SandboxConfig {
-        backend: "docker".into(),
-        ..Default::default()
-    };
-    let mut router = SandboxRouter::new(config);
-    router.register_backend(Arc::new(RestrictedHostSandbox::new(
-        SandboxConfig::default(),
-    )));
-
-    assert!(router.mark_preparing_once("session:abc").await);
-    router.mark_synced("session:abc").await;
-    assert!(!router.mark_preparing_once("session:abc").await);
-    assert!(router.is_synced("session:abc").await);
-
-    router
-        .set_backend_override("session:abc", "restricted-host")
-        .await
-        .unwrap();
-
-    assert!(router.mark_preparing_once("session:abc").await);
-    assert!(!router.is_synced("session:abc").await);
-}
-
-#[tokio::test]
-async fn test_set_backend_override_rejects_unknown_backend() {
-    let config = SandboxConfig {
-        backend: "docker".into(),
-        ..Default::default()
-    };
-    let router = SandboxRouter::new(config);
-    let result = router
-        .set_backend_override("session:abc", "nonexistent")
-        .await;
-    assert!(result.is_err());
-}
-
-#[tokio::test]
-async fn test_remove_backend_override_reverts_to_default() {
-    let config = SandboxConfig {
-        backend: "docker".into(),
-        ..Default::default()
-    };
-    let mut router = SandboxRouter::new(config);
-    router.register_backend(Arc::new(RestrictedHostSandbox::new(
-        SandboxConfig::default(),
-    )));
-
-    router
-        .set_backend_override("session:abc", "restricted-host")
-        .await
-        .unwrap();
-    assert_eq!(
-        router.resolve_backend("session:abc").await.backend_name(),
-        "restricted-host"
-    );
-
-    router.remove_backend_override("session:abc").await;
-    assert_eq!(
-        router.resolve_backend("session:abc").await.backend_name(),
-        "docker"
-    );
-}
-
-#[tokio::test]
-async fn test_cleanup_session_clears_backend_override() {
-    let config = SandboxConfig {
-        backend: "docker".into(),
-        ..Default::default()
-    };
-    let mut router = SandboxRouter::new(config);
-    router.register_backend(Arc::new(RestrictedHostSandbox::new(
-        SandboxConfig::default(),
-    )));
-
-    router
-        .set_backend_override("session:abc", "restricted-host")
-        .await
-        .unwrap();
-
-    // cleanup_session should clear the backend override (along with other overrides).
-    // Note: this will call cleanup on docker (the resolved backend at call time),
-    // which is a no-op for containers that don't exist — that's fine for testing.
-    let _ = router.cleanup_session("session:abc").await;
-
-    // After cleanup, should revert to default.
-    assert_eq!(
-        router.resolve_backend("session:abc").await.backend_name(),
-        "docker"
-    );
 }

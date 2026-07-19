@@ -94,26 +94,37 @@ pub struct GrepTool {
     path_policy: Option<FsPathPolicy>,
     /// Whether to respect `.gitignore` while walking. Default `true`.
     respect_gitignore: bool,
-    /// When set and the session is sandboxed, dispatch through the
-    /// bridge's `sandbox_grep` helper instead of walking the host.
-    sandbox_router: Option<Arc<SandboxRouter>>,
-}
-
-impl Default for GrepTool {
-    fn default() -> Self {
-        Self {
-            workspace_root: None,
-            path_policy: None,
-            respect_gitignore: true,
-            sandbox_router: None,
-        }
-    }
+    /// Global router that selects sandbox or host execution from startup policy.
+    sandbox_router: Arc<SandboxRouter>,
 }
 
 impl GrepTool {
     #[must_use]
+    #[cfg(not(test))]
+    pub fn new(sandbox_router: Arc<SandboxRouter>) -> Self {
+        Self::from_router(sandbox_router)
+    }
+
+    #[must_use]
+    #[cfg(test)]
     pub fn new() -> Self {
-        Self::default()
+        Self::from_router(Arc::new(SandboxRouter::disabled()))
+    }
+
+    pub(crate) fn from_router(sandbox_router: Arc<SandboxRouter>) -> Self {
+        Self {
+            workspace_root: None,
+            path_policy: None,
+            respect_gitignore: true,
+            sandbox_router,
+        }
+    }
+
+    #[must_use]
+    #[cfg(test)]
+    pub fn with_sandbox_router(mut self, sandbox_router: Arc<SandboxRouter>) -> Self {
+        self.sandbox_router = sandbox_router;
+        self
     }
 
     /// Set the default search root for calls that omit `path`.
@@ -134,14 +145,6 @@ impl GrepTool {
     #[must_use]
     pub fn with_respect_gitignore(mut self, respect: bool) -> Self {
         self.respect_gitignore = respect;
-        self
-    }
-
-    /// Attach a shared [`SandboxRouter`]. Sandboxed sessions dispatch
-    /// through the bridge's `sandbox_grep` helper.
-    #[must_use]
-    pub fn with_sandbox_router(mut self, router: Arc<SandboxRouter>) -> Self {
-        self.sandbox_router = Some(router);
         self
     }
 
@@ -705,20 +708,14 @@ impl AgentTool for GrepTool {
             .unwrap_or(0);
 
         let session_key = session_key_from(&params).to_string();
-        let router = self.sandbox_router.as_deref();
-        let env = match router {
-            Some(router) => router.resolve_env(&session_key).await?,
-            None => ExecEnv::Host,
-        };
+        let router = self.sandbox_router.as_ref();
+        let env = router.resolve_env(&session_key).await?;
 
         // Sandbox dispatch: shell grep into the container, then apply
         // the same paging and truncation rules on the host side so the
         // LLM-facing payload stays consistent across routing modes.
         match env {
             ExecEnv::Sandbox { .. } => {
-                let router = router.ok_or_else(|| {
-                    Error::message("sandbox environment resolved without a sandbox router")
-                })?;
                 if let Some(ref policy) = self.path_policy
                     && let Some(payload) = enforce_path_policy_deny_only(policy, &path)
                 {

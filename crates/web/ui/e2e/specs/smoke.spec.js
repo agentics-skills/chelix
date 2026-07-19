@@ -17,6 +17,40 @@ test("app shell loads chat route instead of onboarding", async ({ page }) => {
 	expect(pageErrors).toEqual([]);
 });
 
+test("chat shows exact read-only global sandbox status", async ({ page }) => {
+	const pageErrors = watchPageErrors(page);
+	await page.goto("/");
+	await expect(page).toHaveURL(/\/chats\/main$/);
+	await expectPageContentMounted(page);
+
+	const indicator = page.getByRole("status");
+	await expect(indicator).toHaveText("Sandbox On");
+	await expect(indicator).not.toHaveJSProperty("tagName", "BUTTON");
+	await expect(page.locator("#sandboxToggle, #sandboxImageBtn, #sandboxImageDropdown")).toHaveCount(0);
+
+	await page.evaluate(() => {
+		const state = window.__chelix_state;
+		const sandbox = window.__chelix_modules?.sandbox;
+		const current = state?.sandboxInfo;
+		if (!(state && sandbox && current)) throw new Error("sandbox E2E bridge unavailable");
+		state.setSandboxInfo({ ...current, mode: "Off" });
+		sandbox.updateSandboxUI();
+	});
+	await expect(indicator).toHaveText("Sandbox Off");
+	await expect(indicator).not.toHaveAttribute("role", "button");
+
+	await page.evaluate(() => {
+		const state = window.__chelix_state;
+		const sandbox = window.__chelix_modules?.sandbox;
+		const current = state?.sandboxInfo;
+		if (!(state && sandbox && current)) throw new Error("sandbox E2E bridge unavailable");
+		state.setSandboxInfo({ ...current, mode: "On" });
+		sandbox.updateSandboxUI();
+	});
+	await expect(indicator).toHaveText("Sandbox On");
+	expect(pageErrors).toEqual([]);
+});
+
 test("desktop top bars stay compact and chat toolbar scrolls horizontally", async ({ page }) => {
 	const pageErrors = watchPageErrors(page);
 	await page.setViewportSize({ width: 900, height: 720 });
@@ -59,7 +93,7 @@ test("mobile chat toolbar exposes the same controls as desktop", async ({ page }
 	await expectPageContentMounted(page);
 
 	for (const selector of [
-		"#sandboxImageBtn",
+		"#sandboxIndicator",
 		"#mcpToggleBtn",
 		"#debugPanelBtn",
 		"#fullContextBtn",

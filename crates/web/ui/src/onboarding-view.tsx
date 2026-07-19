@@ -22,6 +22,7 @@ import { ProviderStep } from "./onboarding/steps/ProviderStep";
 import { SkillsStep } from "./onboarding/steps/SkillsStep";
 import { VoiceStep } from "./onboarding/steps/VoiceStep";
 import type { IdentityInfo } from "./onboarding/types";
+import type { SandboxGonInfo } from "./types/gon";
 import { fetchVoiceProviders } from "./voice-utils";
 
 // ── Step indicator ──────────────────────────────────────────
@@ -151,7 +152,7 @@ interface SummaryData {
 	providers: SummaryProvider[];
 	channels: SummaryChannel[];
 	voice: SummaryVoice | null;
-	sandbox: { backend?: string } | null;
+	sandbox: SandboxGonInfo | null;
 	skills: SummarySkills | null;
 }
 
@@ -205,7 +206,7 @@ function SummaryStep({ onBack, onFinish }: { onBack: () => void; onFinish: () =>
 					.then((r) =>
 						r.ok
 							? (r.json() as Promise<{
-									sandbox?: { backend?: string };
+									sandbox?: SandboxGonInfo;
 								}>)
 							: null,
 					)
@@ -378,16 +379,13 @@ function SummaryStep({ onBack, onFinish }: { onBack: () => void; onFinish: () =>
 				</SummaryRow>
 
 				{/* Sandbox */}
-				<SummaryRow
-					icon={data.sandbox?.backend && data.sandbox.backend !== "none" ? <CheckIcon /> : <InfoIcon />}
-					label="Sandbox"
-				>
-					{data.sandbox?.backend && data.sandbox.backend !== "none" ? (
+				<SummaryRow icon={data.sandbox?.mode === "On" ? <CheckIcon /> : <InfoIcon />} label="Sandbox">
+					{data.sandbox?.mode === "On" ? (
 						<>
 							Backend: <span className="font-medium text-[var(--text)]">{data.sandbox.backend}</span>
 						</>
 					) : (
-						<>No container runtime detected</>
+						<>Mode: Off — commands execute directly on the host</>
 					)}
 				</SummaryRow>
 

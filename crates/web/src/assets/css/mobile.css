@@ -728,7 +728,7 @@ html {
 /* ── Compact chat toolbar controls on mobile ── */
 
 @media (max-width: 767px) {
-  .chat-toolbar .sandbox-toggle,
+  .chat-toolbar #sandboxIndicator,
   .chat-toolbar button.chat-badge-desktop-only,
   .chat-toolbar .chat-badge-desktop-only > button,
   .chat-toolbar #sessionHeaderToolbarMount button,
@@ -740,7 +740,7 @@ html {
     line-height: 1.2 !important;
   }
 
-  .chat-toolbar .sandbox-toggle .icon,
+  .chat-toolbar #sandboxIndicator .icon,
   .chat-toolbar #sessionActionsMount .icon {
     width: 12px !important;
     height: 12px !important;

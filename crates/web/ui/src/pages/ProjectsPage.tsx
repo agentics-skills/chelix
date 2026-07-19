@@ -22,15 +22,10 @@ interface Project extends ProjectInfo {
 	teardown_command?: string | null;
 	branch_prefix?: string | null;
 	auto_worktree?: boolean;
-	sandbox_image?: string | null;
 	detected?: boolean;
 	code_index_enabled?: boolean;
 	created_at?: number;
 	updated_at?: number;
-}
-
-interface CachedImage {
-	tag: string;
 }
 
 interface PathInputProps {
@@ -120,19 +115,6 @@ function PathInput(props: PathInputProps): VNode {
 	);
 }
 
-const cachedImages = signal<CachedImage[]>([]);
-
-function fetchCachedImages(): void {
-	fetch("/api/images/cached")
-		.then((r) => (r.ok ? r.json() : { images: [] }))
-		.then((data: { images?: CachedImage[] }) => {
-			cachedImages.value = data.images || [];
-		})
-		.catch(() => {
-			cachedImages.value = [];
-		});
-}
-
 function ProjectEditForm(props: ProjectEditFormProps): VNode {
 	const p = props.project;
 	const labelRef = useRef<HTMLInputElement>(null);
@@ -142,12 +124,7 @@ function ProjectEditForm(props: ProjectEditFormProps): VNode {
 	const teardownRef = useRef<HTMLInputElement>(null);
 	const prefixRef = useRef<HTMLInputElement>(null);
 	const wtRef = useRef<HTMLInputElement>(null);
-	const imageRef = useRef<HTMLInputElement>(null);
 	const indexRef = useRef<HTMLInputElement>(null);
-
-	useEffect(() => {
-		fetchCachedImages();
-	}, []);
 
 	function onSave(): void {
 		const updated: Project = JSON.parse(JSON.stringify(p));
@@ -159,7 +136,6 @@ function ProjectEditForm(props: ProjectEditFormProps): VNode {
 		updated.branch_prefix = prefixRef.current?.value.trim() || null;
 		updated.auto_worktree = wtRef.current?.checked;
 		updated.code_index_enabled = indexRef.current?.checked;
-		updated.sandbox_image = imageRef.current?.value.trim() || null;
 		updated.updated_at = Date.now();
 		sendRpc("projects.upsert", updated).then(() => {
 			editingProject.value = null;
@@ -225,23 +201,6 @@ function ProjectEditForm(props: ProjectEditFormProps): VNode {
 				t("projects:editForm.branchPrefixPlaceholder"),
 				true,
 			)}
-			<div className="project-edit-group">
-				<div className="text-xs text-[var(--muted)] project-edit-label">{t("projects:editForm.sandboxImage")}</div>
-				<input
-					ref={imageRef}
-					type="text"
-					className="provider-key-input"
-					list="project-image-list"
-					value={p.sandbox_image || ""}
-					placeholder={t("projects:editForm.sandboxImagePlaceholder")}
-					style={{ width: "100%", fontFamily: "var(--font-mono)", fontSize: ".8rem" }}
-				/>
-				<datalist id="project-image-list">
-					{cachedImages.value.map((img) => (
-						<option key={img.tag} value={img.tag} />
-					))}
-				</datalist>
-			</div>
 			<label style={{ marginBottom: "10px", display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
 				<input ref={wtRef} type="checkbox" defaultChecked={p.auto_worktree} />
 				<span className="text-xs text-[var(--text)]">{t("projects:editForm.autoWorktree")}</span>
@@ -284,11 +243,6 @@ function ProjectCard(props: ProjectCardProps): VNode {
 					{p.setup_command && <span className="provider-item-badge api-key">{t("projects:badges.setup")}</span>}
 					{p.teardown_command && <span className="provider-item-badge api-key">{t("projects:badges.teardown")}</span>}
 					{p.branch_prefix && <span className="provider-item-badge oauth">{p.branch_prefix}/*</span>}
-					{p.sandbox_image && (
-						<span className="provider-item-badge api-key" title={p.sandbox_image}>
-							{t("projects:badges.image")}
-						</span>
-					)}
 					{p.code_index_enabled !== false && (
 						<span className="provider-item-badge oauth">{t("projects:badges.indexed")}</span>
 					)}

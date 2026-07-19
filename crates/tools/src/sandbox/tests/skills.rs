@@ -161,7 +161,7 @@ async fn skill_script_executes_in_sandbox_when_enabled() {
     let backend = MockSandbox::new(Vec::new());
     let routed_backend: Arc<dyn Sandbox> = backend.clone();
     let config = SandboxConfig {
-        mode: SandboxMode::All,
+        mode: SandboxMode::On,
         ..Default::default()
     };
     let router = SandboxRouter::with_backend(config, routed_backend.clone());
