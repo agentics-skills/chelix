@@ -362,6 +362,7 @@ mod tests {
                 tools: chelix_config::schema::PresetToolPolicy {
                     allow: vec!["web_search".into(), "web_fetch".into()],
                     deny: Vec::new(),
+                    preload: Vec::new(),
                 },
                 ..Default::default()
             });

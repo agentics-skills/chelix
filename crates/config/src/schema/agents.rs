@@ -391,12 +391,14 @@ impl<'de> Deserialize<'de> for PresetMcpPolicy {
     }
 }
 
-/// Tool policy for an agent preset (allow/deny specific tools).
+/// Tool policy and lazy schema visibility for an agent preset.
 ///
 /// Applied as Layer 3 in the 6-layer policy resolution for all sessions
 /// belonging to this agent. When both `allow` and `deny` are specified,
 /// `allow` acts as a whitelist and `deny` further removes from that list.
 /// Glob patterns are supported (e.g. `"mcp__*"` to deny all MCP tools).
+/// In lazy registry mode, `preload` names parameter schemas to expose from the
+/// already-filtered registry at the start of a run.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PresetToolPolicy {
@@ -406,6 +408,12 @@ pub struct PresetToolPolicy {
     /// Tools to deny (blacklist). Applied after `allow`.
     #[serde(default)]
     pub deny: Vec<String>,
+    /// Tool schemas exposed immediately in lazy registry mode.
+    ///
+    /// Names are resolved against the effective registry after all allow/deny
+    /// policy layers, so this list cannot make a filtered tool visible.
+    #[serde(default)]
+    pub preload: Vec<String>,
 }
 
 /// Scope for per-agent persistent memory.
@@ -572,7 +580,7 @@ pub struct AgentPreset {
     pub identity: AgentIdentity,
     /// Optional model override for this preset.
     pub model: Option<String>,
-    /// Tool policy for this preset (allow/deny specific tools).
+    /// Tool policy and lazy schema visibility for this preset.
     pub tools: PresetToolPolicy,
     /// Restrict sub-agent to delegation/session/task tools only.
     #[serde(default)]

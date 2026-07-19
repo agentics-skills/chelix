@@ -32,6 +32,7 @@ struct AgentFrontmatter {
     display_name: Option<String>,
     tools: Option<String>,
     deny_tools: Option<String>,
+    preload_tools: Option<String>,
     model: Option<String>,
     emoji: Option<String>,
     theme: Option<String>,
@@ -55,6 +56,8 @@ struct AgentFrontmatterOut {
     tools: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     deny_tools: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    preload_tools: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -96,6 +99,8 @@ pub fn parse_agent_md(content: &str) -> anyhow::Result<(String, AgentPreset)> {
 
     let deny = fm.deny_tools.map(csv_list).unwrap_or_default();
 
+    let preload = fm.preload_tools.map(csv_list).unwrap_or_default();
+
     let body_trimmed = body.trim();
     let system_prompt_suffix = if body_trimmed.is_empty() {
         None
@@ -110,7 +115,11 @@ pub fn parse_agent_md(content: &str) -> anyhow::Result<(String, AgentPreset)> {
             theme: fm.theme,
         },
         model: fm.model,
-        tools: PresetToolPolicy { allow, deny },
+        tools: PresetToolPolicy {
+            allow,
+            deny,
+            preload,
+        },
         system_prompt_suffix,
         delegate_only: fm.delegate_only,
         max_iterations: fm.max_iterations,
@@ -147,6 +156,7 @@ pub fn render_agent_md(name: &str, preset: &AgentPreset) -> anyhow::Result<Strin
         display_name,
         tools: non_empty_join(&preset.tools.allow),
         deny_tools: non_empty_join(&preset.tools.deny),
+        preload_tools: non_empty_join(&preset.tools.preload),
         model: preset.model.clone(),
         emoji: preset.identity.emoji.clone(),
         theme: preset.identity.theme.clone(),
@@ -359,6 +369,7 @@ You are a code reviewer. Focus on correctness.
 name: scout
 tools: Read, Grep, Glob
 deny_tools: execute_command
+preload_tools: Read, Grep
 model: haiku
 emoji: 🦉
 theme: focused and efficient
@@ -373,6 +384,7 @@ Search thoroughly.
         assert_eq!(name, "scout");
         assert_eq!(preset.tools.allow, vec!["Read", "Grep", "Glob"]);
         assert_eq!(preset.tools.deny, vec!["execute_command"]);
+        assert_eq!(preset.tools.preload, vec!["Read", "Grep"]);
         assert_eq!(preset.identity.emoji.as_deref(), Some("🦉"));
         assert_eq!(
             preset.identity.theme.as_deref(),
@@ -553,6 +565,7 @@ Search thoroughly.
             tools: PresetToolPolicy {
                 allow: vec!["Read".into(), "Grep".into()],
                 deny: vec!["execute_command".into()],
+                preload: vec!["Read".into()],
             },
             system_prompt_suffix: Some("Review for correctness.".into()),
             delegate_only: true,
@@ -569,6 +582,7 @@ Search thoroughly.
         assert_eq!(parsed.model.as_deref(), Some("haiku"));
         assert_eq!(parsed.tools.allow, vec!["Read", "Grep"]);
         assert_eq!(parsed.tools.deny, vec!["execute_command"]);
+        assert_eq!(parsed.tools.preload, vec!["Read"]);
         assert!(parsed.delegate_only);
         assert_eq!(parsed.timeout_secs, Some(45));
         assert_eq!(

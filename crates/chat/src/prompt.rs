@@ -589,8 +589,9 @@ pub(crate) fn apply_runtime_tool_filters(
 /// The steps mirror the live loop exactly so every surface sees the same tools:
 /// 1. apply allow/deny/runtime filters (or a bare clone when tools are off);
 /// 2. swap in agent-scoped memory tools when a memory manager is available;
-/// 3. in lazy mode, wrap the registry so only `get_tool` and schemas revealed by
-///    session history are visible, while the full catalog stays advertised.
+/// 3. in lazy mode, wrap the registry so `get_tool`, preset-preloaded schemas,
+///    and schemas revealed by session history are visible, while the full
+///    catalog stays advertised.
 ///
 /// Fails only when lazy wrapping hits the reserved-`get_tool` name collision.
 #[allow(clippy::too_many_arguments)]
@@ -631,7 +632,10 @@ pub(crate) fn prepare_run_registry(
             chelix_config::ToolRegistryMode::Lazy
         )
     {
-        let visible = chelix_agents::lazy_tools::visible_tool_names_from_history(history_raw);
+        let mut visible = chelix_agents::lazy_tools::visible_tool_names_from_history(history_raw);
+        if let Some(preset) = config.agents.get_preset(&policy_context.agent_id) {
+            visible.extend(preset.tools.preload.iter().cloned());
+        }
         registry = chelix_agents::lazy_tools::wrap_registry_lazy_with_visible(registry, visible)?;
     }
 
@@ -761,6 +765,64 @@ mod tests {
         assert!(filtered.get("execute_command").is_some());
         assert!(filtered.get("mcp__github__search").is_some());
         assert!(filtered.get("mcp__memory__store").is_none());
+    }
+
+    #[test]
+    fn lazy_registry_preloads_only_tools_allowed_by_effective_policy() {
+        let mut config = chelix_config::ChelixConfig::default();
+        config.tools.registry_mode = chelix_config::ToolRegistryMode::Lazy;
+        config
+            .agents
+            .presets
+            .insert("preloaded".into(), chelix_config::schema::AgentPreset {
+                tools: chelix_config::schema::PresetToolPolicy {
+                    allow: vec![
+                        "execute_command".into(),
+                        "mcp__github__builtin_named_like_mcp".into(),
+                        "mcp__github__search".into(),
+                    ],
+                    deny: vec!["mcp__github__search".into()],
+                    preload: vec![
+                        "execute_command".into(),
+                        "mcp__github__search".into(),
+                        "mcp__memory__store".into(),
+                        "unknown_tool".into(),
+                    ],
+                },
+                ..Default::default()
+            });
+        let history = [serde_json::json!({
+            "role": "assistant",
+            "tool_calls": [{
+                "id": "call-1",
+                "type": "function",
+                "function": {
+                    "name": "mcp__github__builtin_named_like_mcp",
+                    "arguments": "{}"
+                }
+            }]
+        })];
+
+        let registry = prepare_run_registry(
+            &registry_with_mcp_tools(),
+            &config,
+            &[],
+            false,
+            &unrestricted_policy_context("preloaded"),
+            true,
+            "preloaded",
+            None,
+            &history,
+        )
+        .unwrap();
+
+        assert_eq!(registry.list_names(), vec![
+            "execute_command".to_string(),
+            "get_tool".to_string(),
+            "mcp__github__builtin_named_like_mcp".to_string(),
+        ]);
+        assert!(registry.get("mcp__github__search").is_none());
+        assert!(registry.get("mcp__memory__store").is_none());
     }
 
     #[test]
