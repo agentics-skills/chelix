@@ -119,7 +119,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let sandbox_toggled = ctx.params.get("sandboxEnabled").is_some();
                 let result = ctx
                     .state
                     .services
@@ -139,29 +138,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     BroadcastOpts::default(),
                 )
                 .await;
-                if sandbox_toggled {
-                    let enabled = result
-                        .get("sandbox_enabled")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-                    let message = if enabled {
-                        "Sandbox enabled — commands now run in container."
-                    } else {
-                        "Sandbox disabled — commands now run on host."
-                    };
-                    broadcast(
-                        &ctx.state,
-                        "chat",
-                        serde_json::json!({
-                            "sessionKey": key,
-                            "state": "notice",
-                            "title": "Sandbox",
-                            "message": message,
-                        }),
-                        BroadcastOpts::default(),
-                    )
-                    .await;
-                }
                 Ok(result)
             })
         }),

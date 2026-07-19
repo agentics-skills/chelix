@@ -1643,7 +1643,7 @@ fn truncate_output_for_display(output: &mut String, max_output_bytes: usize) {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::sandbox::SandboxConfig};
+    use super::*;
 
     #[test]
     fn tmux_paste_buffer_name_is_unique_and_tmux_safe() {
@@ -1661,7 +1661,7 @@ mod tests {
 
     #[test]
     fn terminal_tools_persist_line_oriented_output_as_text() {
-        let router = Arc::new(SandboxRouter::new(SandboxConfig::default()));
+        let router = Arc::new(SandboxRouter::disabled());
         let manager = Arc::new(TmuxTerminalManager::new(router, 4096));
         let execute = ExecuteCommandTool::new(Arc::clone(&manager));
         let read = ReadTerminalOutputTool::new(manager);
@@ -1899,7 +1899,7 @@ mod tests {
     }
 
     async fn test_manager_with_terminal(terminal: ManagedTerminal) -> TmuxTerminalManager {
-        let router = Arc::new(SandboxRouter::new(SandboxConfig::default()));
+        let router = Arc::new(SandboxRouter::disabled());
         let manager = TmuxTerminalManager::new(router, 4096);
         manager.store_terminal(terminal).await;
         manager

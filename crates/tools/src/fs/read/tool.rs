@@ -119,12 +119,11 @@ fn maybe_add_loop_warning(
 }
 
 /// Native `Read` tool implementation.
-#[derive(Default)]
 pub struct ReadTool {
     fs_state: Option<FsState>,
     path_policy: Option<FsPathPolicy>,
     binary_policy: BinaryPolicy,
-    sandbox_router: Option<Arc<SandboxRouter>>,
+    sandbox_router: Arc<SandboxRouter>,
     /// Override for the file-size gate. `None` → `DEFAULT_MAX_READ_BYTES`.
     max_read_bytes: Option<u64>,
     /// Optional context window in tokens. When set, Read's byte cap
@@ -135,8 +134,33 @@ pub struct ReadTool {
 
 impl ReadTool {
     #[must_use]
+    #[cfg(not(test))]
+    pub fn new(sandbox_router: Arc<SandboxRouter>) -> Self {
+        Self::from_router(sandbox_router)
+    }
+
+    #[must_use]
+    #[cfg(test)]
     pub fn new() -> Self {
-        Self::default()
+        Self::from_router(Arc::new(SandboxRouter::disabled()))
+    }
+
+    pub(crate) fn from_router(sandbox_router: Arc<SandboxRouter>) -> Self {
+        Self {
+            fs_state: None,
+            path_policy: None,
+            binary_policy: BinaryPolicy::default(),
+            sandbox_router,
+            max_read_bytes: None,
+            context_window_tokens: None,
+        }
+    }
+
+    #[must_use]
+    #[cfg(test)]
+    pub fn with_sandbox_router(mut self, sandbox_router: Arc<SandboxRouter>) -> Self {
+        self.sandbox_router = sandbox_router;
+        self
     }
 
     /// Attach a shared [`FsState`] for per-session read tracking and
@@ -160,15 +184,6 @@ impl ReadTool {
     #[must_use]
     pub fn with_binary_policy(mut self, policy: BinaryPolicy) -> Self {
         self.binary_policy = policy;
-        self
-    }
-
-    /// Attach a shared [`SandboxRouter`]. When the router marks a
-    /// session as sandboxed, Read dispatches through the bridge
-    /// instead of touching the host filesystem.
-    #[must_use]
-    pub fn with_sandbox_router(mut self, router: Arc<SandboxRouter>) -> Self {
-        self.sandbox_router = Some(router);
         self
     }
 
@@ -202,10 +217,7 @@ impl ReadTool {
     }
 
     async fn resolve_env(&self, session_key: &str) -> Result<ExecEnv> {
-        match self.sandbox_router.as_deref() {
-            Some(router) => router.resolve_env(session_key).await,
-            None => Ok(ExecEnv::Host),
-        }
+        self.sandbox_router.resolve_env(session_key).await
     }
 
     async fn operation_lock_key(file_path: &str, session_key: &str, env: &ExecEnv) -> String {

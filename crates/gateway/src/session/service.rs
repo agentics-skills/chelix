@@ -52,7 +52,7 @@ pub struct LiveSessionService {
     pub(super) voice_persona_store: Option<Arc<crate::voice_persona::VoicePersonaStore>>,
     pub(super) tts_service: Option<Arc<dyn TtsService>>,
     pub(super) share_store: Option<Arc<ShareStore>>,
-    pub(super) sandbox_router: Option<Arc<SandboxRouter>>,
+    pub(super) sandbox_router: Arc<SandboxRouter>,
     pub(super) project_store: Option<Arc<dyn ProjectStore>>,
     pub(super) hook_registry: Option<Arc<HookRegistry>>,
     pub(super) state_store: Option<Arc<SessionStateStore>>,
@@ -63,7 +63,11 @@ pub struct LiveSessionService {
 }
 
 impl LiveSessionService {
-    pub fn new(store: Arc<SessionStore>, metadata: Arc<SqliteSessionMetadata>) -> Self {
+    pub(crate) fn from_router(
+        store: Arc<SessionStore>,
+        metadata: Arc<SqliteSessionMetadata>,
+        sandbox_router: Arc<SandboxRouter>,
+    ) -> Self {
         Self {
             store,
             metadata,
@@ -71,7 +75,7 @@ impl LiveSessionService {
             voice_persona_store: None,
             tts_service: None,
             share_store: None,
-            sandbox_router: None,
+            sandbox_router,
             project_store: None,
             hook_registry: None,
             state_store: None,
@@ -82,41 +86,18 @@ impl LiveSessionService {
         }
     }
 
-    pub fn with_sandbox_router(mut self, router: Arc<SandboxRouter>) -> Self {
-        self.sandbox_router = Some(router);
-        self
+    #[cfg(not(test))]
+    pub fn new(
+        store: Arc<SessionStore>,
+        metadata: Arc<SqliteSessionMetadata>,
+        sandbox_router: Arc<SandboxRouter>,
+    ) -> Self {
+        Self::from_router(store, metadata, sandbox_router)
     }
 
-    pub async fn restore_sandbox_router_overrides(&self) {
-        let Some(router) = self.sandbox_router.as_ref() else {
-            return;
-        };
-
-        Self::restore_sandbox_router_overrides_from_metadata(&self.metadata, router).await;
-    }
-
-    pub async fn restore_sandbox_router_overrides_from_metadata(
-        metadata: &SqliteSessionMetadata,
-        router: &SandboxRouter,
-    ) {
-        for entry in metadata.list().await {
-            if let Some(enabled) = entry.sandbox_enabled {
-                router.set_override(&entry.key, enabled).await;
-            }
-            if let Some(ref image) = entry.sandbox_image {
-                router.set_image_override(&entry.key, image.clone()).await;
-            }
-            if let Some(ref backend) = entry.sandbox_backend
-                && let Err(e) = router.set_backend_override(&entry.key, backend).await
-            {
-                tracing::debug!(
-                    session = entry.key,
-                    backend = backend.as_str(),
-                    error = %e,
-                    "skipping persisted sandbox backend override (backend not available)"
-                );
-            }
-        }
+    #[cfg(test)]
+    pub fn new(store: Arc<SessionStore>, metadata: Arc<SqliteSessionMetadata>) -> Self {
+        Self::from_router(store, metadata, Arc::new(SandboxRouter::disabled()))
     }
 
     pub fn with_agent_persona_store(mut self, store: Arc<AgentPersonaStore>) -> Self {
@@ -402,8 +383,6 @@ impl SessionService for LiveSessionService {
                 "messageCount": e.message_count,
                 "lastSeenMessageCount": e.last_seen_message_count,
                 "projectId": e.project_id,
-                "sandbox_enabled": e.sandbox_enabled,
-                "sandbox_image": e.sandbox_image,
                 "worktree_branch": e.worktree_branch,
                 "channelBinding": e.channel_binding,
                 "activeChannel": active_channel,
@@ -489,8 +468,6 @@ impl SessionService for LiveSessionService {
                     "messageCount": entry.message_count,
                     "projectId": entry.project_id,
                     "archived": entry.archived,
-                    "sandbox_enabled": entry.sandbox_enabled,
-                    "sandbox_image": entry.sandbox_image,
                     "worktree_branch": entry.worktree_branch,
                     "mcpDisabled": entry.mcp_disabled,
                     "parentSessionKey": entry.parent_session_key,
@@ -550,8 +527,6 @@ impl SessionService for LiveSessionService {
                 "messageCount": entry.message_count,
                 "projectId": entry.project_id,
                 "archived": entry.archived,
-                "sandbox_enabled": entry.sandbox_enabled,
-                "sandbox_image": entry.sandbox_image,
                 "worktree_branch": entry.worktree_branch,
                 "mcpDisabled": entry.mcp_disabled,
                 "parentSessionKey": entry.parent_session_key,
@@ -614,69 +589,8 @@ impl SessionService for LiveSessionService {
                 .await
                 .map_err(|e| ServiceError::message(e.to_string()))?;
         }
-        if let Some(sandbox_image_opt) = p.sandbox_image {
-            let sandbox_image = sandbox_image_opt.filter(|s| !s.is_empty());
-            self.metadata
-                .set_sandbox_image(key, sandbox_image.clone())
-                .await;
-            if let Some(ref router) = self.sandbox_router {
-                if let Some(ref img) = sandbox_image {
-                    router.set_image_override(key, img.clone()).await;
-                } else {
-                    router.remove_image_override(key).await;
-                }
-            }
-        }
         if let Some(mcp_disabled) = p.mcp_disabled {
             self.metadata.set_mcp_disabled(key, mcp_disabled).await;
-        }
-        if let Some(sandbox_enabled_opt) = p.sandbox_enabled {
-            let old_sandbox = entry.sandbox_enabled;
-            self.metadata
-                .set_sandbox_enabled(key, sandbox_enabled_opt)
-                .await;
-            if let Some(ref router) = self.sandbox_router {
-                if let Some(enabled) = sandbox_enabled_opt {
-                    router.set_override(key, enabled).await;
-                } else {
-                    router.remove_override(key).await;
-                }
-            }
-            // Notify the LLM when sandbox state actually changes.
-            if old_sandbox != sandbox_enabled_opt {
-                let notification = if sandbox_enabled_opt == Some(false) {
-                    "Sandbox has been disabled for this session. The `execute_command` tool now runs \
-                     commands directly on the host machine. Previous command outputs in this \
-                     conversation may have come from a sandboxed Linux container with a \
-                     different OS, filesystem, and environment."
-                } else if sandbox_enabled_opt == Some(true) {
-                    "Sandbox has been enabled for this session. The `execute_command` tool will now run \
-                     commands inside a sandboxed container. The container has a different \
-                     filesystem and environment than the host machine."
-                } else {
-                    "Sandbox override has been cleared for this session. The `execute_command` tool will \
-                     use the global sandbox setting."
-                };
-                let msg = PersistedMessage::system(notification);
-                if let Err(e) = self.store.append_typed(key, &msg).await {
-                    warn!(session = key, error = %e, "failed to append sandbox state notification");
-                }
-            }
-        }
-        if let Some(sandbox_backend_opt) = p.sandbox_backend {
-            let sandbox_backend = sandbox_backend_opt.filter(|s| !s.is_empty());
-            self.metadata
-                .set_sandbox_backend(key, sandbox_backend.clone())
-                .await;
-            if let Some(ref router) = self.sandbox_router {
-                if let Some(ref name) = sandbox_backend {
-                    if let Err(e) = router.set_backend_override(key, name).await {
-                        warn!(session = key, error = %e, "failed to set sandbox backend override");
-                    }
-                } else {
-                    router.remove_backend_override(key).await;
-                }
-            }
         }
         if let Some(parent_opt) = p.parent_session_key {
             let parent = parent_opt.filter(|s| !s.is_empty());
@@ -700,9 +614,6 @@ impl SessionService for LiveSessionService {
             "model": entry.model,
             "reasoningEffort": entry.reasoning_effort,
             "archived": entry.archived,
-            "sandbox_enabled": entry.sandbox_enabled,
-            "sandbox_image": entry.sandbox_image,
-            "sandbox_backend": entry.sandbox_backend,
             "worktree_branch": entry.worktree_branch,
             "mcpDisabled": entry.mcp_disabled,
             "parentSessionKey": entry.parent_session_key,

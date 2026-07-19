@@ -8,6 +8,7 @@ use std::{
 };
 
 use {
+    chelix_config::schema::SandboxMode,
     chromiumoxide::{
         Browser, BrowserConfig as CdpBrowserConfig, Page,
         cdp::browser_protocol::emulation::SetDeviceMetricsOverrideParams, handler::HandlerConfig,
@@ -114,32 +115,35 @@ struct BrowserInstance {
 /// Pool of browser instances for reuse.
 pub struct BrowserPool {
     config: BrowserConfig,
+    sandbox_mode: SandboxMode,
     instances: RwLock<HashMap<String, Arc<Mutex<BrowserInstance>>>>,
     #[cfg(feature = "metrics")]
     active_count: std::sync::atomic::AtomicUsize,
 }
 
 impl BrowserPool {
-    /// Create a new browser pool with the given configuration.
-    pub fn new(config: BrowserConfig) -> Self {
+    /// Create a new browser pool with the global sandbox mode fixed for its lifetime.
+    pub fn new(config: BrowserConfig, sandbox_mode: SandboxMode) -> Self {
         Self {
             config,
+            sandbox_mode,
             instances: RwLock::new(HashMap::new()),
             #[cfg(feature = "metrics")]
             active_count: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 
+    /// Whether this pool is permanently bound to global sandbox mode `On`.
+    #[must_use]
+    pub(crate) fn sandboxed(&self) -> bool {
+        self.sandbox_mode == SandboxMode::On
+    }
+
     /// Get or create a browser instance for the given session ID.
     /// Returns the session ID for the browser instance.
-    ///
-    /// The `sandbox` parameter determines whether to run the browser in a
-    /// Docker container (true) or on the host (false). This is set when
-    /// creating a new session and cannot be changed for existing sessions.
     pub async fn get_or_create(
         &self,
         session_id: Option<&str>,
-        sandbox: bool,
         browser: Option<BrowserPreference>,
     ) -> Result<String, Error> {
         // Treat empty string as None (generate new session ID)
@@ -194,7 +198,7 @@ impl BrowserPool {
             .map(String::from)
             .unwrap_or_else(generate_session_id);
 
-        let instance = self.launch_browser(&sid, sandbox, browser).await?;
+        let instance = self.launch_browser(&sid, browser).await?;
         let instance = Arc::new(Mutex::new(instance));
 
         {
@@ -211,7 +215,7 @@ impl BrowserPool {
             chelix_metrics::counter!(chelix_metrics::browser::INSTANCES_CREATED_TOTAL).increment(1);
         }
 
-        let mode = if sandbox {
+        let mode = if self.sandboxed() {
             "sandboxed"
         } else {
             "host"
@@ -373,18 +377,24 @@ impl BrowserPool {
     async fn launch_browser(
         &self,
         session_id: &str,
-        sandbox: bool,
         browser: Option<BrowserPreference>,
     ) -> Result<BrowserInstance, Error> {
+        if self.sandboxed() {
+            if let Some(preference) =
+                browser.filter(|preference| sidecar_browser_spec(*preference).is_some())
+            {
+                return Err(Error::LaunchFailed(format!(
+                    "browser preference '{preference}' requires a host sidecar and is unavailable while global sandbox mode is On"
+                )));
+            }
+            return self.launch_sandboxed_browser(session_id).await;
+        }
+
         if let Some(spec) = browser.and_then(sidecar_browser_spec) {
             return self.launch_sidecar_browser(session_id, spec).await;
         }
 
-        if sandbox {
-            self.launch_sandboxed_browser(session_id).await
-        } else {
-            self.launch_host_browser(session_id, browser).await
-        }
+        self.launch_host_browser(session_id, browser).await
     }
 
     /// Launch a browser inside a container (sandboxed mode).
@@ -1167,7 +1177,7 @@ mod tests {
 
     #[tokio::test]
     async fn cleanup_idle_empty_pool_returns_early() {
-        let pool = BrowserPool::new(test_config());
+        let pool = BrowserPool::new(test_config(), SandboxMode::Off);
         // Should not panic — hits the early-return guard.
         pool.cleanup_idle().await;
         assert_eq!(pool.active_count().await, 0);
@@ -1175,20 +1185,20 @@ mod tests {
 
     #[tokio::test]
     async fn shutdown_empty_pool_is_noop() {
-        let pool = BrowserPool::new(test_config());
+        let pool = BrowserPool::new(test_config(), SandboxMode::Off);
         pool.shutdown().await;
         assert_eq!(pool.active_count().await, 0);
     }
 
     #[tokio::test]
     async fn active_count_starts_at_zero() {
-        let pool = BrowserPool::new(test_config());
+        let pool = BrowserPool::new(test_config(), SandboxMode::Off);
         assert_eq!(pool.active_count().await, 0);
     }
 
     #[tokio::test]
     async fn close_session_missing_is_ok() {
-        let pool = BrowserPool::new(test_config());
+        let pool = BrowserPool::new(test_config(), SandboxMode::Off);
         // Closing a non-existent session should succeed (no-op).
         let result = pool.close_session("nonexistent").await;
         assert!(result.is_ok());
@@ -1196,7 +1206,7 @@ mod tests {
 
     #[test]
     fn drop_empty_pool_does_not_panic() {
-        let pool = BrowserPool::new(test_config());
+        let pool = BrowserPool::new(test_config(), SandboxMode::Off);
         drop(pool);
     }
 
@@ -1218,6 +1228,21 @@ mod tests {
     #[test]
     fn low_memory_args_disabled_when_threshold_zero() {
         assert!(low_memory_chrome_args(512, 0).is_empty());
+    }
+
+    #[tokio::test]
+    async fn global_sandbox_mode_rejects_host_sidecar_browsers() {
+        let pool = BrowserPool::new(test_config(), SandboxMode::On);
+
+        for preference in [BrowserPreference::Obscura, BrowserPreference::Lightpanda] {
+            let result = pool.launch_browser("browser-test", Some(preference)).await;
+            assert!(matches!(
+                result,
+                Err(Error::LaunchFailed(ref message))
+                    if message.contains("requires a host sidecar")
+                        && message.contains("global sandbox mode is On")
+            ));
+        }
     }
 
     #[test]

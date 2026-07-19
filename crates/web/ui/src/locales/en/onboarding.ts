@@ -200,7 +200,7 @@ export default {
 		memoryUnavailable: "Memory info unavailable",
 		sandboxLabel: "Sandbox",
 		sandboxBackend: "Backend: {{backend}}",
-		noContainerRuntime: "No container runtime detected",
+		sandboxOff: "Mode: Off — commands execute directly on the host",
 		versionLabel: "Version",
 		updateAvailable: "Update available: {{version}}",
 		latestVersion: "You are running the latest version.",

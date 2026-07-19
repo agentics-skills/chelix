@@ -884,43 +884,29 @@ impl ChatService for LiveChatService {
         };
 
         // Sandbox info
-        let sandbox_info = if let Some(router) = self.state.sandbox_router() {
-            let is_sandboxed = router.is_sandboxed(&session_key).await;
-            let config = router.config();
-            let session_image = session_entry.as_ref().and_then(|e| e.sandbox_image.clone());
-            let effective_image = match session_image {
-                Some(img) if !img.is_empty() => img,
-                _ => router.default_image().await,
-            };
-            let container_name = {
-                let id = router.sandbox_id_for(&session_key);
-                format!(
-                    "{}-{}",
-                    config
-                        .container_prefix
-                        .as_deref()
-                        .unwrap_or("chelix-sandbox"),
-                    id.key
-                )
-            };
-            serde_json::json!({
-                "enabled": is_sandboxed,
-                "backend": router.backend_name(),
-                "mode": config.mode,
-                "scope": config.scope,
-                "image": effective_image,
-                "containerName": container_name,
-            })
-        } else {
-            serde_json::json!({
-                "enabled": false,
-                "backend": null,
-            })
+        let router = self.state.sandbox_router();
+        let sandbox_enabled = router.enabled();
+        let sandbox_config = router.config();
+        let effective_image = router.default_image().await;
+        let container_name = {
+            let id = router.sandbox_id_for(&session_key);
+            format!(
+                "{}-{}",
+                sandbox_config
+                    .container_prefix
+                    .as_deref()
+                    .unwrap_or("chelix-sandbox"),
+                id.key
+            )
         };
-        let sandbox_enabled = sandbox_info
-            .get("enabled")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
+        let sandbox_info = serde_json::json!({
+            "enabled": sandbox_enabled,
+            "backend": router.backend_id(),
+            "mode": sandbox_config.mode,
+            "scope": sandbox_config.scope,
+            "image": effective_image,
+            "containerName": container_name,
+        });
         let host_is_root = detect_host_root_user().await;
         // Sandbox containers currently run as root by default.
         let command_is_root = if sandbox_enabled {
@@ -1444,8 +1430,6 @@ mod tests {
             project_id: None,
             archived: false,
             worktree_branch: None,
-            sandbox_enabled: None,
-            sandbox_image: None,
             channel_binding: None,
             parent_session_key: None,
             fork_point: None,
@@ -1456,7 +1440,6 @@ mod tests {
             agent_id: None,
             node_id: None,
             mode_id: None,
-            sandbox_backend: None,
             external_agent_kind: None,
             external_session_id: None,
             reasoning_effort: None,

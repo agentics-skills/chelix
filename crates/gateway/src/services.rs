@@ -151,25 +151,6 @@ fn commit_age_days(commit_ts_ms: Option<u64>) -> Option<u64> {
     Some(now_ms.saturating_sub(ts) / 86_400_000)
 }
 
-fn risky_install_pattern(command: &str) -> Option<&'static str> {
-    let c = command.to_ascii_lowercase();
-    if (c.contains("curl") || c.contains("wget")) && (c.contains("| sh") || c.contains("|bash")) {
-        return Some("piped shell execution");
-    }
-
-    let patterns = [
-        ("base64", "obfuscated payload decoding"),
-        ("xattr -d com.apple.quarantine", "quarantine bypass"),
-        ("bash -c", "inline shell execution"),
-        ("sh -c", "inline shell execution"),
-        ("python -c", "inline code execution"),
-        ("node -e", "inline code execution"),
-    ];
-    patterns
-        .into_iter()
-        .find_map(|(needle, reason)| c.contains(needle).then_some(reason))
-}
-
 /// Convert markdown to sanitized HTML using pulldown-cmark.
 pub(crate) fn markdown_to_html(md: &str) -> String {
     use pulldown_cmark::{Options, Parser, html};

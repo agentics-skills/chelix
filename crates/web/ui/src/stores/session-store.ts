@@ -23,8 +23,6 @@ export class Session {
 	updatedAt: number;
 	createdAt: number;
 	worktree_branch: string;
-	sandbox_enabled: boolean | undefined;
-	sandbox_image: string | null;
 	channelBinding: ChannelBinding | null;
 	parentSessionKey: string;
 	forkPoint: number | null;
@@ -66,8 +64,6 @@ export class Session {
 		this.updatedAt = serverData.updatedAt || 0;
 		this.createdAt = serverData.createdAt || 0;
 		this.worktree_branch = serverData.worktree_branch || "";
-		this.sandbox_enabled = serverData.sandbox_enabled;
-		this.sandbox_image = serverData.sandbox_image || null;
 		this.channelBinding = serverData.channelBinding || null;
 		this.parentSessionKey = serverData.parentSessionKey || "";
 		this.forkPoint = serverData.forkPoint != null ? serverData.forkPoint : null;
@@ -126,8 +122,6 @@ export class Session {
 		}
 		this.createdAt = serverData.createdAt || 0;
 		this.worktree_branch = serverData.worktree_branch || "";
-		this.sandbox_enabled = serverData.sandbox_enabled;
-		this.sandbox_image = serverData.sandbox_image || null;
 		this.channelBinding = serverData.channelBinding || null;
 		this.parentSessionKey = serverData.parentSessionKey || "";
 		this.forkPoint = serverData.forkPoint != null ? serverData.forkPoint : null;
@@ -182,8 +176,6 @@ export class Session {
 			messageCount: this.messageCount,
 			lastSeenMessageCount: this.lastSeenMessageCount,
 			projectId: this.projectId,
-			sandbox_enabled: this.sandbox_enabled,
-			sandbox_image: this.sandbox_image,
 			worktree_branch: this.worktree_branch,
 			channelBinding: this.channelBinding,
 			activeChannel: this.activeChannel,

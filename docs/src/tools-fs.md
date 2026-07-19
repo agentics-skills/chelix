@@ -233,8 +233,7 @@ second big win (alongside model-quality improvements) that motivated
 - [Hooks](hooks.md) — `BeforeToolCall` and `ToolResultPersist` receive
   structured payloads for each fs tool call, so policy hooks can inspect typed
   parameters instead of parsing shell strings.
-- [Sandbox](sandbox.md) — fs tools route through the sandbox when the session is
-  sandboxed. Sandboxed sessions fail closed: if no backend with filesystem
+- [Sandbox](sandbox.md) — fs tools route through the sandbox when global
+  `sandbox.mode = "On"`. This path fails closed: if no backend with filesystem
   isolation is available, fs tools return an error instead of falling back to
-  the gateway host. Host access requires the sandbox to be explicitly disabled
-  for the session.
+  the gateway host. Host access requires global `sandbox.mode = "Off"`.

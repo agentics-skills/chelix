@@ -122,10 +122,8 @@ impl LiveSessionService {
 
         self.store.clear(key).await.map_err(ServiceError::message)?;
 
-        // Clean up sandbox resources for this session.
-        if let Some(ref router) = self.sandbox_router
-            && let Err(e) = router.cleanup_session(key).await
-        {
+        // Clean up lifecycle resources for this session when global mode is On.
+        if let Err(e) = self.sandbox_router.cleanup_session(key).await {
             tracing::warn!("sandbox cleanup for session {key}: {e}");
         }
 

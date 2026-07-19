@@ -25,14 +25,16 @@ use crate::prompt::types::WorkspaceFilePromptStatus;
 const MEMORY_BOOTSTRAP_MAX_CHARS: usize = 8_000;
 const PROJECT_CONTEXT_MAX_CHARS: usize = 8_000;
 const COMMAND_ROUTING_GUIDANCE_SANDBOX: &str = "Execution routing:\n\
-- `execute_command` runs inside sandbox when `Sandbox(execute_command): enabled=true`.\n\
-- When sandbox is disabled, `execute_command` runs on the host and may require approval.\n\
+- Global sandbox mode is `On`; `execute_command` runs inside the sandbox.\n\
+- This mode is immutable for the process and cannot be overridden by an agent, session, or request.\n\
 - In sandbox mode, `~` and relative paths resolve under `Sandbox(execute_command): home=...` (usually `/home/sandbox`).\n\
 - Persistent agent files live under `Host: data_dir=...`; the same path is always mounted read-write and appears as `Sandbox(execute_command): workspace_path=...`.\n\
 - For durable long-term memory mutations, prefer `memory_save`, `memory_forget`, or `memory_delete` over shell writes to `MEMORY.md` or `memory/*.md`.\n";
-const COMMAND_ROUTING_SANDBOX_CLOSING: &str = "- Sandbox/host routing changes are expected runtime behavior. Do not frame them as surprising or anomalous.\n";
+const COMMAND_ROUTING_SANDBOX_CLOSING: &str =
+    "- Sandbox/host routing follows the immutable global mode.\n";
 const COMMAND_ROUTING_GUIDANCE_HOST_ONLY: &str = "Execution routing:\n\
-- `execute_command` runs on the host and may require approval.\n";
+- Global sandbox mode is `Off`; `execute_command` runs on the host and may require approval.\n\
+- This mode is immutable for the process and cannot be overridden by an agent, session, or request.\n";
 const COMMAND_ROUTING_SUDO_HINT: &str =
     "- `Host: sudo_non_interactive=true` means non-interactive sudo is available.\n";
 const TOOL_GUIDELINES: &str = concat!(

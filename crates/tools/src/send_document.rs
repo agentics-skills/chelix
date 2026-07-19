@@ -41,21 +41,34 @@ const BLOCKED_EXTENSIONS: &[&str] = &[
 ];
 
 /// Document-sending tool.
-#[derive(Default)]
 pub struct SendDocumentTool {
-    sandbox_router: Option<Arc<SandboxRouter>>,
+    sandbox_router: Arc<SandboxRouter>,
     session_store: Option<Arc<SessionStore>>,
 }
 
 impl SendDocumentTool {
     #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+    #[cfg(not(test))]
+    pub fn new(sandbox_router: Arc<SandboxRouter>) -> Self {
+        Self {
+            sandbox_router,
+            session_store: None,
+        }
     }
 
-    /// Attach a sandbox router for per-session dynamic sandbox resolution.
-    pub fn with_sandbox_router(mut self, router: Arc<SandboxRouter>) -> Self {
-        self.sandbox_router = Some(router);
+    #[must_use]
+    #[cfg(test)]
+    pub fn new() -> Self {
+        Self {
+            sandbox_router: Arc::new(SandboxRouter::disabled()),
+            session_store: None,
+        }
+    }
+
+    #[must_use]
+    #[cfg(test)]
+    pub fn with_sandbox_router(mut self, sandbox_router: Arc<SandboxRouter>) -> Self {
+        self.sandbox_router = sandbox_router;
         self
     }
 
@@ -75,8 +88,8 @@ impl AgentTool for SendDocumentTool {
 
     fn description(&self) -> &str {
         "Send a local file (PDF, CSV, DOCX, TXT, JSON, ZIP, etc.) to the current \
-         conversation's channel. In sandboxed sessions, the path is resolved inside \
-         the sandbox. Use send_image for image files. Maximum size: 20 MB."
+         conversation's channel. With global sandbox mode On, the path is resolved \
+         inside the sandbox. Use send_image for image files. Maximum size: 20 MB."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -246,15 +259,15 @@ mod tests {
 
     #[async_trait]
     impl Sandbox for StubSandbox {
-        fn backend_name(&self) -> &'static str {
-            "stub"
+        fn backend_id(&self) -> crate::sandbox::SandboxBackendId {
+            crate::sandbox::SandboxBackendId::Docker
         }
 
         fn provides_fs_isolation(&self) -> bool {
             true
         }
 
-        async fn ensure_ready(&self, _id: &SandboxId, _image_override: Option<&str>) -> Result<()> {
+        async fn ensure_ready(&self, _id: &SandboxId) -> Result<()> {
             Ok(())
         }
 

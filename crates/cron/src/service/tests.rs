@@ -73,7 +73,7 @@ async fn test_add_and_list() {
             delete_after_run: false,
             enabled: true,
             system: false,
-            sandbox: CronSandboxConfig::default(),
+            auto_prune_container: None,
             wake_mode: CronWakeMode::default(),
         })
         .await
@@ -112,7 +112,7 @@ async fn test_add_validates_session_target() {
             delete_after_run: false,
             enabled: true,
             system: false,
-            sandbox: CronSandboxConfig::default(),
+            auto_prune_container: None,
             wake_mode: CronWakeMode::default(),
         })
         .await;
@@ -147,7 +147,7 @@ async fn test_update_job() {
             delete_after_run: false,
             enabled: true,
             system: false,
-            sandbox: CronSandboxConfig::default(),
+            auto_prune_container: None,
             wake_mode: CronWakeMode::default(),
         })
         .await
@@ -191,7 +191,7 @@ async fn test_remove_job() {
             delete_after_run: false,
             enabled: true,
             system: false,
-            sandbox: CronSandboxConfig::default(),
+            auto_prune_container: None,
             wake_mode: CronWakeMode::default(),
         })
         .await
@@ -243,7 +243,7 @@ async fn test_force_run() {
             delete_after_run: false,
             enabled: true,
             system: false,
-            sandbox: CronSandboxConfig::default(),
+            auto_prune_container: None,
             wake_mode: CronWakeMode::default(),
         })
         .await
@@ -282,7 +282,7 @@ async fn test_run_disabled_fails_without_force() {
             delete_after_run: false,
             enabled: false,
             system: false,
-            sandbox: CronSandboxConfig::default(),
+            auto_prune_container: None,
             wake_mode: CronWakeMode::default(),
         })
         .await
@@ -317,7 +317,7 @@ async fn test_system_event_execution() {
             delete_after_run: false,
             enabled: true,
             system: false,
-            sandbox: CronSandboxConfig::default(),
+            auto_prune_container: None,
             wake_mode: CronWakeMode::default(),
         })
         .await
@@ -367,7 +367,7 @@ async fn test_one_shot_disabled_after_run() {
             delete_after_run: false,
             enabled: true,
             system: false,
-            sandbox: CronSandboxConfig::default(),
+            auto_prune_container: None,
             wake_mode: CronWakeMode::default(),
         })
         .await
@@ -419,7 +419,7 @@ async fn test_rate_limiting() {
         delete_after_run: false,
         enabled: true,
         system: false,
-        sandbox: CronSandboxConfig::default(),
+        auto_prune_container: None,
         wake_mode: CronWakeMode::default(),
     };
 
@@ -469,7 +469,7 @@ async fn test_rate_limiting_skips_system_jobs() {
         delete_after_run: false,
         enabled: true,
         system: true, // This is a system job
-        sandbox: CronSandboxConfig::default(),
+        auto_prune_container: None,
         wake_mode: CronWakeMode::default(),
     };
 
@@ -514,7 +514,7 @@ async fn test_start_executes_due_jobs_and_records_runs() {
             delete_after_run: false,
             enabled: true,
             system: false,
-            sandbox: CronSandboxConfig::default(),
+            auto_prune_container: None,
             wake_mode: CronWakeMode::default(),
         })
         .await
@@ -566,7 +566,7 @@ async fn test_clear_stuck_jobs_handles_future_running_at_without_overflow() {
             delete_after_run: false,
             enabled: true,
             system: false,
-            sandbox: CronSandboxConfig::default(),
+            auto_prune_container: None,
             wake_mode: CronWakeMode::default(),
         })
         .await
@@ -616,7 +616,7 @@ async fn test_wake_sets_next_run_at_now() {
         delete_after_run: false,
         enabled: true,
         system: true,
-        sandbox: CronSandboxConfig::default(),
+        auto_prune_container: None,
         wake_mode: CronWakeMode::default(),
     })
     .await
@@ -659,7 +659,7 @@ async fn test_wake_noop_when_running() {
         delete_after_run: false,
         enabled: true,
         system: true,
-        sandbox: CronSandboxConfig::default(),
+        auto_prune_container: None,
         wake_mode: CronWakeMode::default(),
     })
     .await
@@ -708,7 +708,7 @@ async fn test_wake_noop_when_disabled() {
         delete_after_run: false,
         enabled: false,
         system: true,
-        sandbox: CronSandboxConfig::default(),
+        auto_prune_container: None,
         wake_mode: CronWakeMode::default(),
     })
     .await
@@ -764,7 +764,7 @@ async fn test_deliver_requires_channel_and_to() {
             delete_after_run: false,
             enabled: true,
             system: false,
-            sandbox: CronSandboxConfig::default(),
+            auto_prune_container: None,
             wake_mode: CronWakeMode::default(),
         })
         .await;
@@ -803,7 +803,7 @@ async fn test_deliver_with_both_fields_succeeds() {
             delete_after_run: false,
             enabled: true,
             system: false,
-            sandbox: CronSandboxConfig::default(),
+            auto_prune_container: None,
             wake_mode: CronWakeMode::default(),
         })
         .await;
@@ -837,7 +837,7 @@ async fn test_deliver_false_allows_missing_channel() {
             delete_after_run: false,
             enabled: true,
             system: false,
-            sandbox: CronSandboxConfig::default(),
+            auto_prune_container: None,
             wake_mode: CronWakeMode::default(),
         })
         .await;
@@ -871,7 +871,7 @@ async fn test_deliver_empty_string_channel_fails() {
             delete_after_run: false,
             enabled: true,
             system: false,
-            sandbox: CronSandboxConfig::default(),
+            auto_prune_container: None,
             wake_mode: CronWakeMode::default(),
         })
         .await;
@@ -991,7 +991,7 @@ async fn make_heartbeat_svc_with_cooldown(cooldown_ms: u64) -> Arc<CronService> 
         delete_after_run: false,
         enabled: true,
         system: true,
-        sandbox: CronSandboxConfig::default(),
+        auto_prune_container: None,
         wake_mode: CronWakeMode::default(),
     })
     .await

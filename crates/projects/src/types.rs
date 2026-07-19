@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// A project represents a codebase directory that chelix can work with.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Project {
     pub id: String,
     pub label: String,
@@ -18,8 +19,6 @@ pub struct Project {
     pub teardown_command: Option<String>,
     #[serde(default)]
     pub branch_prefix: Option<String>,
-    #[serde(default)]
-    pub sandbox_image: Option<String>,
     #[serde(default)]
     pub detected: bool,
     #[serde(default = "default_true")]
@@ -148,7 +147,6 @@ mod tests {
             setup_command: None,
             teardown_command: None,
             branch_prefix: None,
-            sandbox_image: None,
             detected: false,
             code_index_enabled: true,
             created_at: 0,

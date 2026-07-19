@@ -597,7 +597,6 @@ impl McpService for NoopMcpService {
 #[async_trait]
 pub trait SkillsService: Send + Sync {
     async fn status(&self) -> ServiceResult;
-    async fn bins(&self) -> ServiceResult;
     async fn install(&self, params: Value) -> ServiceResult;
     async fn update(&self, params: Value) -> ServiceResult;
     async fn list(&self) -> ServiceResult;
@@ -613,7 +612,6 @@ pub trait SkillsService: Send + Sync {
     async fn skill_disable(&self, params: Value) -> ServiceResult;
     async fn skill_trust(&self, params: Value) -> ServiceResult;
     async fn skill_detail(&self, params: Value) -> ServiceResult;
-    async fn install_dep(&self, params: Value) -> ServiceResult;
     async fn security_status(&self) -> ServiceResult;
     async fn security_scan(&self) -> ServiceResult;
     async fn skill_save(&self, params: Value) -> ServiceResult;
@@ -628,10 +626,6 @@ pub struct NoopSkillsStub;
 impl SkillsService for NoopSkillsStub {
     async fn status(&self) -> ServiceResult {
         Ok(serde_json::json!({ "installed": [] }))
-    }
-
-    async fn bins(&self) -> ServiceResult {
-        Ok(serde_json::json!([]))
     }
 
     async fn install(&self, _params: Value) -> ServiceResult {
@@ -691,10 +685,6 @@ impl SkillsService for NoopSkillsStub {
     }
 
     async fn skill_detail(&self, _params: Value) -> ServiceResult {
-        Err("skills service not configured".into())
-    }
-
-    async fn install_dep(&self, _params: Value) -> ServiceResult {
         Err("skills service not configured".into())
     }
 

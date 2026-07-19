@@ -44,26 +44,37 @@ pub struct GlobTool {
     /// Whether to respect `.gitignore` / `.ignore` / `.git/info/exclude`
     /// while walking. Default `true`.
     respect_gitignore: bool,
-    /// When set and the session is sandboxed, `find` the sandbox's
-    /// filesystem instead of the host.
-    sandbox_router: Option<Arc<SandboxRouter>>,
-}
-
-impl Default for GlobTool {
-    fn default() -> Self {
-        Self {
-            workspace_root: None,
-            path_policy: None,
-            respect_gitignore: true,
-            sandbox_router: None,
-        }
-    }
+    /// Global router that selects sandbox or host execution from startup policy.
+    sandbox_router: Arc<SandboxRouter>,
 }
 
 impl GlobTool {
     #[must_use]
+    #[cfg(not(test))]
+    pub fn new(sandbox_router: Arc<SandboxRouter>) -> Self {
+        Self::from_router(sandbox_router)
+    }
+
+    #[must_use]
+    #[cfg(test)]
     pub fn new() -> Self {
-        Self::default()
+        Self::from_router(Arc::new(SandboxRouter::disabled()))
+    }
+
+    pub(crate) fn from_router(sandbox_router: Arc<SandboxRouter>) -> Self {
+        Self {
+            workspace_root: None,
+            path_policy: None,
+            respect_gitignore: true,
+            sandbox_router,
+        }
+    }
+
+    #[must_use]
+    #[cfg(test)]
+    pub fn with_sandbox_router(mut self, sandbox_router: Arc<SandboxRouter>) -> Self {
+        self.sandbox_router = sandbox_router;
+        self
     }
 
     /// Set the default search root for calls that omit `path`.
@@ -87,16 +98,6 @@ impl GlobTool {
     #[must_use]
     pub fn with_respect_gitignore(mut self, respect: bool) -> Self {
         self.respect_gitignore = respect;
-        self
-    }
-
-    /// Attach a shared [`SandboxRouter`]. When the session is sandboxed
-    /// Glob lists files via the bridge's `find` helper and applies the
-    /// glob matcher on the host side; `.gitignore` semantics are lost
-    /// in the sandbox walk (the container `find` doesn't parse them).
-    #[must_use]
-    pub fn with_sandbox_router(mut self, router: Arc<SandboxRouter>) -> Self {
-        self.sandbox_router = Some(router);
         self
     }
 
@@ -252,11 +253,8 @@ impl AgentTool for GlobTool {
             .map(PathBuf::from);
         let session_key = session_key_from(&params).to_string();
 
-        let router = self.sandbox_router.as_deref();
-        let env = match router {
-            Some(router) => router.resolve_env(&session_key).await?,
-            None => ExecEnv::Host,
-        };
+        let router = self.sandbox_router.as_ref();
+        let env = router.resolve_env(&session_key).await?;
 
         // Sandbox dispatch: shell `find ROOT -type f` into the container
         // and apply the glob matcher + path policy on the host side.
@@ -264,9 +262,6 @@ impl AgentTool for GlobTool {
         // can be a follow-up.
         match env {
             ExecEnv::Sandbox { .. } => {
-                let router = router.ok_or_else(|| {
-                    Error::message("sandbox environment resolved without a sandbox router")
-                })?;
                 let root = match path.as_ref() {
                     Some(p) => p.clone(),
                     None => self.workspace_root.clone().ok_or_else(|| {
@@ -609,7 +604,7 @@ mod tests {
         }]);
         let router = Arc::new(SandboxRouter::with_backend(
             SandboxConfig {
-                mode: SandboxMode::All,
+                mode: SandboxMode::On,
                 ..Default::default()
             },
             mock,

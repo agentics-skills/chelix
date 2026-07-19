@@ -309,28 +309,6 @@ fn test_archived() {
 }
 
 #[test]
-fn test_sandbox_enabled() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("meta.json");
-    let mut meta = SessionMetadata::load(path.clone()).unwrap();
-
-    meta.upsert("main", None);
-    assert!(meta.get("main").unwrap().sandbox_enabled.is_none());
-
-    meta.set_sandbox_enabled("main", Some(true));
-    assert_eq!(meta.get("main").unwrap().sandbox_enabled, Some(true));
-
-    meta.set_sandbox_enabled("main", None);
-    assert!(meta.get("main").unwrap().sandbox_enabled.is_none());
-
-    // Verify it round-trips through save/load.
-    meta.set_sandbox_enabled("main", Some(false));
-    meta.save().unwrap();
-    let reloaded = SessionMetadata::load(path).unwrap();
-    assert_eq!(reloaded.get("main").unwrap().sandbox_enabled, Some(false));
-}
-
-#[test]
 fn test_worktree_branch() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("meta.json");
@@ -390,67 +368,6 @@ async fn test_sqlite_archived() {
 
     meta.set_archived("main", false).await;
     assert!(!meta.get("main").await.unwrap().archived);
-}
-
-#[test]
-fn test_sandbox_image() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("meta.json");
-    let mut meta = SessionMetadata::load(path.clone()).unwrap();
-
-    meta.upsert("main", None);
-    assert!(meta.get("main").unwrap().sandbox_image.is_none());
-
-    meta.set_sandbox_image("main", Some("custom:latest".to_string()));
-    assert_eq!(
-        meta.get("main").unwrap().sandbox_image.as_deref(),
-        Some("custom:latest")
-    );
-
-    meta.set_sandbox_image("main", None);
-    assert!(meta.get("main").unwrap().sandbox_image.is_none());
-
-    // Round-trip through save/load.
-    meta.set_sandbox_image("main", Some("alpine:3.20".to_string()));
-    meta.save().unwrap();
-    let reloaded = SessionMetadata::load(path).unwrap();
-    assert_eq!(
-        reloaded.get("main").unwrap().sandbox_image.as_deref(),
-        Some("alpine:3.20")
-    );
-}
-
-#[tokio::test]
-async fn test_sqlite_sandbox_image() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    meta.upsert("main", None).await.unwrap();
-    assert!(meta.get("main").await.unwrap().sandbox_image.is_none());
-
-    meta.set_sandbox_image("main", Some("custom:latest".to_string()))
-        .await;
-    assert_eq!(
-        meta.get("main").await.unwrap().sandbox_image.as_deref(),
-        Some("custom:latest")
-    );
-
-    meta.set_sandbox_image("main", None).await;
-    assert!(meta.get("main").await.unwrap().sandbox_image.is_none());
-}
-
-#[test]
-fn test_sandbox_enabled_serde_compat() {
-    // Existing metadata without sandbox_enabled should deserialize fine.
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("meta.json");
-    fs::write(
-        &path,
-        r#"{"main":{"id":"1","key":"main","label":null,"created_at":0,"updated_at":0,"message_count":0}}"#,
-    )
-    .unwrap();
-    let meta = SessionMetadata::load(path).unwrap();
-    assert!(meta.get("main").unwrap().sandbox_enabled.is_none());
 }
 
 #[test]
@@ -719,36 +636,29 @@ async fn test_version_increments_on_mutation() {
     meta.set_archived("main", true).await;
     assert_eq!(meta.get("main").await.unwrap().version, 4);
 
-    meta.set_sandbox_enabled("main", Some(true)).await;
-    assert_eq!(meta.get("main").await.unwrap().version, 5);
-
-    meta.set_sandbox_image("main", Some("img:1".to_string()))
-        .await;
-    assert_eq!(meta.get("main").await.unwrap().version, 6);
-
     meta.set_worktree_branch("main", Some("branch".to_string()))
         .await;
-    assert_eq!(meta.get("main").await.unwrap().version, 7);
+    assert_eq!(meta.get("main").await.unwrap().version, 5);
 
     meta.set_mcp_disabled("main", Some(true)).await;
-    assert_eq!(meta.get("main").await.unwrap().version, 8);
+    assert_eq!(meta.get("main").await.unwrap().version, 6);
 
     meta.set_channel_binding("main", Some("{}".to_string()))
         .await;
-    assert_eq!(meta.get("main").await.unwrap().version, 9);
+    assert_eq!(meta.get("main").await.unwrap().version, 7);
 
     meta.set_parent("main", Some("parent".to_string()), Some(0))
         .await;
-    assert_eq!(meta.get("main").await.unwrap().version, 10);
+    assert_eq!(meta.get("main").await.unwrap().version, 8);
 
     meta.mark_seen("main").await;
-    assert_eq!(meta.get("main").await.unwrap().version, 11);
+    assert_eq!(meta.get("main").await.unwrap().version, 9);
 
     meta.set_preview("main", Some("hello")).await;
-    assert_eq!(meta.get("main").await.unwrap().version, 12);
+    assert_eq!(meta.get("main").await.unwrap().version, 10);
 
     meta.set_agent_id("main", Some("agent-1")).await.unwrap();
-    assert_eq!(meta.get("main").await.unwrap().version, 13);
+    assert_eq!(meta.get("main").await.unwrap().version, 11);
 }
 
 #[tokio::test]

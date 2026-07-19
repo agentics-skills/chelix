@@ -247,7 +247,7 @@ header .cmd-palette-header-kbd {
 }
 
 .chat-toolbar .model-combo-btn,
-.chat-toolbar .sandbox-toggle,
+.chat-toolbar #sandboxIndicator,
 .chat-toolbar button.chat-badge-desktop-only,
 .chat-toolbar .chat-badge-desktop-only > button,
 .chat-toolbar #sessionHeaderToolbarMount button,

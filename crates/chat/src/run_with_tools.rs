@@ -62,9 +62,9 @@ use crate::{
 #[cfg(feature = "push-notifications")]
 use crate::channels::send_chat_push_notification;
 
-fn tool_execution_mode(tool_name: &str, session_is_sandboxed: bool) -> Option<String> {
+fn tool_execution_mode(tool_name: &str, sandbox_enabled: bool) -> Option<String> {
     (tool_name == "browser").then(|| {
-        if session_is_sandboxed {
+        if sandbox_enabled {
             "sandbox".to_string()
         } else {
             "host".to_string()
@@ -311,34 +311,8 @@ pub(crate) async fn run_with_tools(
     // Layer 1: instruct the LLM to write speech-friendly output when voice is active.
     let system_prompt = apply_voice_reply_suffix(system_prompt, desired_reply_medium);
 
-    // Apply per-agent sandbox mode override, then determine sandbox mode.
-    let session_is_sandboxed = if let Some(router) = state.sandbox_router() {
-        // If the agent preset has a sandbox mode override, apply it as an
-        // agent-scoped override so explicit session/cron policy still wins.
-        // - "all"      → force sandbox on
-        // - "off"      → force sandbox off
-        // - "non-main" → remove override, let the router's global NonMain
-        //                 logic decide (sandboxes non-main sessions only)
-        // - absent     → remove any stale override from a previous agent
-        if let Some(preset) = persona.config.agents.get_preset(agent_id) {
-            match preset.sandbox.mode {
-                Some(chelix_config::schema::PresetSandboxMode::All) => {
-                    router.set_agent_override(session_key, true).await
-                },
-                Some(chelix_config::schema::PresetSandboxMode::Off) => {
-                    router.set_agent_override(session_key, false).await
-                },
-                _ => router.remove_agent_override(session_key).await,
-            }
-        } else {
-            // No preset for this agent — clear only stale agent policy. Explicit
-            // session/cron overrides still control this session.
-            router.remove_agent_override(session_key).await;
-        }
-        router.is_sandboxed(session_key).await
-    } else {
-        false
-    };
+    // Sandbox policy is global and cannot be changed by an agent or session.
+    let sandbox_enabled = state.sandbox_router().enabled();
 
     // Broadcast tool events to the UI in the order emitted by the runner.
     let state_for_events = Arc::clone(state);
@@ -435,7 +409,7 @@ pub(crate) async fn run_with_tools(
                                 arguments: tool_call.arguments.clone(),
                                 execution_mode: tool_execution_mode(
                                     &tool_call.name,
-                                    session_is_sandboxed,
+                                    sandbox_enabled,
                                 ),
                                 started_at: now_ms(),
                             });
@@ -480,8 +454,7 @@ pub(crate) async fn run_with_tools(
                         }
                     }
                     if is_browser
-                        && let Some(execution_mode) =
-                            tool_execution_mode(&name, session_is_sandboxed)
+                        && let Some(execution_mode) = tool_execution_mode(&name, sandbox_enabled)
                     {
                         payload["executionMode"] = serde_json::json!(execution_mode);
                     }

@@ -235,10 +235,9 @@ pub(crate) fn format_nodes_runtime_section(
 }
 
 pub(crate) fn format_sandbox_runtime_line(sandbox: &PromptSandboxRuntimeContext) -> String {
-    let mut parts = vec![format!("enabled={}", sandbox.command_sandboxed)];
+    let mut parts = vec!["mode=On".to_string()];
 
     for (key, value) in [
-        ("mode", sandbox.mode.as_deref()),
         ("backend", sandbox.backend.as_deref()),
         ("scope", sandbox.scope.as_deref()),
         ("image", sandbox.image.as_deref()),
@@ -247,9 +246,6 @@ pub(crate) fn format_sandbox_runtime_line(sandbox: &PromptSandboxRuntimeContext)
         ("network", sandbox.network.as_deref()),
     ] {
         push_non_empty_runtime_field(&mut parts, key, value);
-    }
-    if let Some(session_override) = sandbox.session_override {
-        parts.push(format!("session_override={session_override}"));
     }
 
     format!("Sandbox(execute_command): {}", parts.join(" | "))

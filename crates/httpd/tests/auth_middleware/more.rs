@@ -731,11 +731,12 @@ pub(super) async fn start_server_with_onboarding(
 
     let resolved_auth = auth::resolve_auth(None, None);
     let services = GatewayServices::noop().with_onboarding(mock_onboarding);
+    let (config, sandbox_router) = sandbox_off_runtime();
     let state = GatewayState::with_options(
         resolved_auth,
         services,
-        chelix_config::ChelixConfig::default(),
-        None,
+        config,
+        sandbox_router,
         Some(Arc::clone(&cred_store)),
         None, // pairing_store
         false,

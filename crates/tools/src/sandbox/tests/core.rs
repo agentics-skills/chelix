@@ -9,9 +9,8 @@ use {
 
 #[test]
 fn test_sandbox_mode_display() {
-    assert_eq!(SandboxMode::Off.to_string(), "off");
-    assert_eq!(SandboxMode::NonMain.to_string(), "non-main");
-    assert_eq!(SandboxMode::All.to_string(), "all");
+    assert_eq!(SandboxMode::Off.to_string(), "Off");
+    assert_eq!(SandboxMode::On.to_string(), "On");
 }
 
 #[test]
@@ -296,14 +295,14 @@ fn test_resource_limits_serde() {
 #[test]
 fn test_sandbox_config_serde() {
     let json = r#"{
-        "mode": "all",
+        "mode": "On",
         "scope": "session",
         "workspace_sysmount": "rw",
         "network": "custom-net",
         "resource_limits": {"memory_limit": "1G"}
     }"#;
     let config: SandboxConfig = serde_json::from_str(json).unwrap();
-    assert_eq!(config.mode, SandboxMode::All);
+    assert_eq!(config.mode, SandboxMode::On);
     assert_eq!(config.workspace_sysmount, WorkspaceSysmount::Rw);
     assert_eq!(config.network, "custom-net");
     assert_eq!(config.resource_limits.memory_limit.as_deref(), Some("1G"));
@@ -701,7 +700,7 @@ fn test_podman_build_verifies_image_in_store() {
     // post-build verification branch in `build_image` activates.
     let sandbox = DockerSandbox::podman(SandboxConfig::default());
     assert_eq!(sandbox.kind, BackendKind::Podman);
-    assert_eq!(sandbox.backend_name(), "podman");
+    assert_eq!(sandbox.backend_id(), SandboxBackendId::Podman);
 
     // Docker constructor must NOT be Podman.
     let docker = DockerSandbox::new(SandboxConfig::default());

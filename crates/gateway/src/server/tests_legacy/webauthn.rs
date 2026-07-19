@@ -9,6 +9,8 @@ use {
 async fn sync_runtime_webauthn_host_registers_new_origin() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
     let credential_store = Arc::new(CredentialStore::new(pool).await.unwrap());
+    let mut config = chelix_config::ChelixConfig::default();
+    config.sandbox.mode = chelix_config::schema::SandboxMode::Off;
     let gateway = crate::state::GatewayState::with_options(
         ResolvedAuth {
             mode: AuthMode::Token,
@@ -16,8 +18,8 @@ async fn sync_runtime_webauthn_host_registers_new_origin() {
             password: None,
         },
         crate::services::GatewayServices::noop(),
-        chelix_config::ChelixConfig::default(),
-        None,
+        config,
+        Arc::new(chelix_tools::sandbox::SandboxRouter::disabled()),
         Some(Arc::clone(&credential_store)),
         None,
         false,

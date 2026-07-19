@@ -158,13 +158,8 @@ pub fn all_commands() -> &'static [CommandDef] {
         },
         CommandDef {
             name: "sandbox",
-            description: "Toggle sandbox and choose image",
-            arg: Some(CommandArg {
-                name: "action",
-                description: "Sandbox action",
-                choices: &[("Toggle", "toggle"), ("On", "on"), ("Off", "off")],
-                required: false,
-            }),
+            description: "Show global sandbox status",
+            arg: None,
         },
         CommandDef {
             name: "sh",

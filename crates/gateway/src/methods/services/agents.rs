@@ -651,9 +651,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         serde_json::json!({
                             "model": p.model,
                             "mcp": mcp,
-                            "sandbox": {
-                                "mode": p.sandbox.mode,
-                            },
                             "skills": {
                                 "allow": p.skills.allow,
                                 "deny": p.skills.deny,
@@ -903,6 +900,13 @@ fn preset_from_rpc_params(
     params: &serde_json::Value,
     base: Option<&chelix_config::AgentPreset>,
 ) -> Result<chelix_config::AgentPreset, ErrorShape> {
+    if params.get("sandbox_mode").is_some() || params.get("sandbox").is_some() {
+        return Err(ErrorShape::new(
+            error_codes::INVALID_REQUEST,
+            "sandbox policy is global and cannot be configured per agent",
+        ));
+    }
+
     if let Some(toml_str) = params.get("toml").and_then(|value| value.as_str())
         && !toml_str.trim().is_empty()
     {
@@ -957,9 +961,6 @@ fn preset_from_rpc_params(
     }
     if params.get("mcp_mode").is_some() || params.get("mcp_servers").is_some() {
         preset.mcp = parse_mcp_policy_param(params);
-    }
-    if let Some(mode) = optional_string(params, "sandbox_mode") {
-        preset.sandbox.mode = Some(mode.as_str().try_into().map_err(parse_preset_param_error)?);
     }
     if params.get("skills_allow").is_some() {
         preset.skills.allow = Some(string_list_param(params, "skills_allow"));
@@ -1023,11 +1024,6 @@ fn string_list_param(params: &serde_json::Value, key: &str) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
-}
-
-#[cfg(feature = "agent")]
-fn parse_preset_param_error(message: String) -> ErrorShape {
-    ErrorShape::new(error_codes::INVALID_REQUEST, message)
 }
 
 #[cfg(feature = "agent")]

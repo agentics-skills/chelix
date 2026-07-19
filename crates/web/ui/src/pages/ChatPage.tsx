@@ -26,7 +26,7 @@ import { fetchProjects } from "../projects";
 import { bindReasoningToggle, unbindReasoningToggle } from "../reasoning-toggle";
 import { registerPrefix, sessionPath } from "../router";
 import { routes } from "../routes";
-import { bindSandboxImageEvents, bindSandboxToggleEvents, updateSandboxImageUI, updateSandboxUI } from "../sandbox";
+import { updateSandboxUI } from "../sandbox";
 import { switchSession } from "../sessions";
 import * as S from "../state";
 import { modelStore } from "../stores/model-store";
@@ -663,15 +663,8 @@ function initializeChatControls(): void {
 	S.setProjectDropdownList(S.$("projectDropdownList"));
 	bindProjectComboEvents();
 	fetchProjects();
-	S.setSandboxToggleBtn(S.$("sandboxToggle"));
 	S.setSandboxLabel(S.$("sandboxLabel"));
-	bindSandboxToggleEvents();
-	updateSandboxUI(true);
-	S.setSandboxImageBtn(S.$("sandboxImageBtn"));
-	S.setSandboxImageLabel(S.$("sandboxImageLabel"));
-	S.setSandboxImageDropdown(S.$("sandboxImageDropdown"));
-	bindSandboxImageEvents();
-	updateSandboxImageUI(null);
+	updateSandboxUI();
 }
 
 function bindContextModals(): {
@@ -758,8 +751,7 @@ const chatPageHTML =
 	'<div id="projectCombo" class="model-combo hidden"><button id="projectComboBtn" class="model-combo-btn" type="button"><span class="icon icon-sm icon-folder" style="flex-shrink:0;"></span><span id="projectComboLabel">No project</span><span class="icon icon-sm icon-chevron-down model-combo-chevron"></span></button><div id="projectDropdown" class="model-dropdown hidden"><div id="projectDropdownList" class="model-dropdown-list"></div></div></div>' +
 	'<div id="sessionNameMount" class="ml-auto flex items-center min-w-0"></div>' +
 	'<div id="sessionHeaderToolbarMount" class="flex items-center gap-1.5"></div>' +
-	'<button id="sandboxToggle" class="sandbox-toggle text-xs border border-[var(--border)] px-2 py-1 rounded-md transition-colors cursor-pointer bg-transparent font-[var(--font-body)] inline-flex items-center gap-1" title="Toggle sandbox mode"><span class="icon icon-md icon-lock shrink-0"></span><span id="sandboxLabel">sandboxed</span></button>' +
-	'<div class="chat-badge-desktop-only"><button id="sandboxImageBtn" class="text-xs border border-[var(--border)] px-2 py-1 rounded-md transition-colors cursor-pointer bg-transparent font-[var(--font-body)] inline-flex items-center gap-1 text-[var(--muted)]" title="Sandbox image"><span class="icon icon-md icon-cube shrink-0"></span><span id="sandboxImageLabel" class="max-w-[120px] truncate"></span></button><div id="sandboxImageDropdown" class="model-dropdown floating-dropdown hidden"></div></div>' +
+	'<span id="sandboxIndicator" class="text-xs border border-[var(--border)] px-2 py-1 rounded-md bg-transparent font-[var(--font-body)] inline-flex items-center gap-1 text-[var(--muted)]" role="status" aria-live="polite"><span class="icon icon-md icon-lock shrink-0"></span><span id="sandboxLabel">Sandbox</span></span>' +
 	'<button id="mcpToggleBtn" class="chat-badge-desktop-only text-xs border border-[var(--border)] px-2 py-1 rounded-md transition-colors cursor-pointer bg-transparent font-[var(--font-body)] inline-flex items-center gap-1" title="Toggle MCP tools for this session"><span class="icon icon-md icon-link shrink-0"></span><span id="mcpToggleLabel">MCP</span></button>' +
 	'<button id="debugPanelBtn" class="chat-badge-desktop-only text-xs border border-[var(--border)] px-2 py-1 rounded-md transition-colors cursor-pointer bg-transparent font-[var(--font-body)] inline-flex items-center gap-1 text-[var(--muted)]" title="Show context debug info"><span class="icon icon-md icon-wrench shrink-0"></span><span id="debugPanelLabel">Debug</span></button>' +
 	'<button id="fullContextBtn" class="chat-badge-desktop-only text-xs border border-[var(--border)] px-2 py-1 rounded-md transition-colors cursor-pointer bg-transparent font-[var(--font-body)] inline-flex items-center gap-1 text-[var(--muted)]" title="Show full LLM context (system prompt + history)"><span class="icon icon-md icon-document shrink-0"></span><span id="fullContextLabel">Context</span></button>' +
@@ -862,7 +854,6 @@ registerPrefix(
 		S.setNodeComboLabel(null);
 		S.setNodeDropdown(null);
 		S.setNodeDropdownList(null);
-		S.setSandboxToggleBtn(null);
 		S.setSandboxLabel(null);
 		S.setProjectCombo(null);
 		S.setProjectComboBtn(null);

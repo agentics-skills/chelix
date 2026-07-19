@@ -5,12 +5,14 @@ use super::*;
 /// Real browser service using BrowserManager.
 pub struct RealBrowserService {
     config: chelix_browser::BrowserConfig,
+    sandbox_mode: chelix_config::schema::SandboxMode,
     manager: tokio::sync::OnceCell<Arc<chelix_browser::BrowserManager>>,
 }
 
 impl RealBrowserService {
     pub fn new(
         config: &chelix_config::schema::BrowserConfig,
+        sandbox_mode: chelix_config::schema::SandboxMode,
         container_prefix: String,
         host_data_dir: Option<std::path::PathBuf>,
     ) -> Self {
@@ -19,6 +21,7 @@ impl RealBrowserService {
         browser_config.host_data_dir = host_data_dir;
         Self {
             config: browser_config,
+            sandbox_mode,
             manager: tokio::sync::OnceCell::new(),
         }
     }
@@ -32,6 +35,7 @@ impl RealBrowserService {
         }
         Some(Self::new(
             &config.tools.browser,
+            config.sandbox.mode,
             container_prefix,
             config
                 .sandbox
@@ -46,11 +50,12 @@ impl RealBrowserService {
             self.manager
                 .get_or_init(|| async {
                     let config = self.config.clone();
+                    let sandbox_mode = self.sandbox_mode;
                     match tokio::task::spawn_blocking(move || {
                         // Browser detection and stale-container cleanup can block;
                         // run these off the async runtime worker threads.
                         chelix_browser::detect::check_and_warn(config.chrome_path.as_deref());
-                        Arc::new(chelix_browser::BrowserManager::new(config))
+                        Arc::new(chelix_browser::BrowserManager::new(config, sandbox_mode))
                     })
                     .await
                     {
@@ -62,7 +67,10 @@ impl RealBrowserService {
                             );
                             let config = self.config.clone();
                             chelix_browser::detect::check_and_warn(config.chrome_path.as_deref());
-                            Arc::new(chelix_browser::BrowserManager::new(config))
+                            Arc::new(chelix_browser::BrowserManager::new(
+                                config,
+                                self.sandbox_mode,
+                            ))
                         },
                     }
                 })

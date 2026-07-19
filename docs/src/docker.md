@@ -124,14 +124,10 @@ container runtime to create these sandbox containers.
 -v /var/run/docker.sock:/var/run/docker.sock
 ```
 
-**Without the socket mount**, Chelix automatically falls back to the
-[restricted-host sandbox](sandbox.md#restricted-host-sandbox), which provides
-lightweight isolation by clearing environment variables, restricting `PATH`, and
-applying resource limits via `ulimit`. Commands will execute successfully inside
-the Chelix container but without filesystem or network isolation.
-
-For full container-level isolation (filesystem boundaries, network policies),
-mount the Docker socket.
+**Without an accessible container socket**, gateway startup fails while
+`sandbox.mode = "On"`; Chelix does not fall back to execution inside the gateway
+container. Mount an accessible Docker or Podman socket, or explicitly set
+`sandbox.mode = "Off"` to choose direct execution in the gateway container.
 
 ### Managed tools service connectivity
 

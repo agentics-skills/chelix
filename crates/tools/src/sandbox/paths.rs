@@ -12,7 +12,8 @@ use {
     super::{
         containers::{is_cli_available, is_docker_daemon_available, should_use_docker_backend},
         types::{
-            HomePersistence, SANDBOX_HOME_DIR, SandboxConfig, SandboxId, sanitize_path_component,
+            HomePersistence, SANDBOX_HOME_DIR, SandboxBackend, SandboxConfig, SandboxId,
+            sanitize_path_component,
         },
     },
     crate::error::Result,
@@ -64,10 +65,10 @@ pub(crate) fn detect_host_data_dir(cli: &str, guest_data_dir: &FsPath) -> Option
 }
 
 pub(crate) fn detected_container_cli(config: &SandboxConfig) -> Option<&'static str> {
-    match config.backend.as_str() {
-        "docker" => Some("docker"),
-        "podman" => Some("podman"),
-        "auto" => {
+    match config.backend {
+        SandboxBackend::Docker => Some("docker"),
+        SandboxBackend::Podman => Some("podman"),
+        SandboxBackend::Auto => {
             if is_cli_available("podman") {
                 Some("podman")
             } else if should_use_docker_backend(
@@ -80,7 +81,7 @@ pub(crate) fn detected_container_cli(config: &SandboxConfig) -> Option<&'static 
                 None
             }
         },
-        _ => None,
+        SandboxBackend::AppleContainer | SandboxBackend::Wasm => None,
     }
 }
 

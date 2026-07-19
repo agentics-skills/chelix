@@ -439,12 +439,7 @@ fn find_skill_dir_embedded_recursive(
 mod tests {
     use super::*;
 
-    const EXPECTED_BUNDLED_SKILLS: &[(&str, &str)] = &[
-        ("birdclaw", "social-media"),
-        ("data-sync", "research"),
-        ("mcp-servers", "devops"),
-        ("wacrawl", "messaging"),
-    ];
+    const EXPECTED_BUNDLED_SKILLS: &[(&str, &str)] = &[("mcp-servers", "devops")];
 
     fn store() -> BundledSkillStore {
         BundledSkillStore::new()
@@ -572,10 +567,7 @@ mod tests {
         let skills = store().discover();
         let cats: std::collections::HashSet<String> =
             skills.iter().filter_map(|s| s.category.clone()).collect();
-        let expected = ["devops", "messaging", "research", "social-media"]
-            .into_iter()
-            .map(String::from)
-            .collect();
+        let expected = ["devops"].into_iter().map(String::from).collect();
         assert_eq!(cats, expected);
     }
 
@@ -718,49 +710,5 @@ mod tests {
         let body = s.read_skill("mcp-servers").expect("body should exist");
         assert!(body.contains("`mcp_add`"));
         assert!(!body.contains("mcporter"));
-    }
-
-    #[test]
-    fn wacrawl_install_metadata_matches_remaining_asset() {
-        let skills = store().discover();
-        let wacrawl = skills
-            .iter()
-            .find(|skill| skill.name == "wacrawl")
-            .expect("wacrawl should be bundled");
-        assert_eq!(wacrawl.category.as_deref(), Some("messaging"));
-        assert!(wacrawl.requires.bins.contains(&"wacrawl".to_string()));
-        assert!(
-            wacrawl
-                .requires
-                .install
-                .iter()
-                .any(|install| install.formula.as_deref() == Some("steipete/tap/wacrawl"))
-        );
-    }
-
-    #[test]
-    fn birdclaw_install_metadata_matches_remaining_asset() {
-        let skills = store().discover();
-        let birdclaw = skills
-            .iter()
-            .find(|skill| skill.name == "birdclaw")
-            .expect("birdclaw should be bundled");
-        assert_eq!(birdclaw.category.as_deref(), Some("social-media"));
-        assert!(birdclaw.requires.any_bins.contains(&"birdclaw".to_string()));
-        assert!(
-            birdclaw
-                .requires
-                .install
-                .iter()
-                .any(|install| install.formula.as_deref() == Some("steipete/tap/birdclaw"))
-        );
-    }
-
-    #[test]
-    fn data_sync_uses_memory_digest_workflow() {
-        let s = store();
-        let body = s.read_skill("data-sync").expect("body should exist");
-        assert!(body.contains("memory/<source>/YYYY-MM-DD.md"));
-        assert!(body.contains("No secrets in memory"));
     }
 }

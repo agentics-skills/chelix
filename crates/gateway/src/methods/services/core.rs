@@ -434,11 +434,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                                 to: patch.to.clone(),
                             }),
                             enabled: Some(effective_enabled),
-                            sandbox: Some(chelix_cron::types::CronSandboxConfig {
-                                enabled: patch.sandbox_enabled,
-                                image: patch.sandbox_image.clone(),
-                                auto_prune_container: None,
-                            }),
                             ..Default::default()
                         };
                         ctx.state
@@ -473,11 +468,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             delete_after_run: false,
                             enabled: effective_enabled,
                             system: true,
-                            sandbox: chelix_cron::types::CronSandboxConfig {
-                                enabled: patch.sandbox_enabled,
-                                image: patch.sandbox_image.clone(),
-                                auto_prune_container: None,
-                            },
+                            auto_prune_container: None,
                             wake_mode: chelix_cron::types::CronWakeMode::default(),
                         };
                         let create_json = serde_json::to_value(create)

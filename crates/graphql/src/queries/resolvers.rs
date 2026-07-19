@@ -554,13 +554,6 @@ impl SkillsQuery {
         from_service(s.skills.status().await)
     }
 
-    /// Get skills binaries.
-    async fn bins(&self, ctx: &Context<'_>) -> Result<Json> {
-        let s = services!(ctx);
-        // Binary dependency info varies by platform.
-        from_service_json(s.skills.bins().await)
-    }
-
     /// List skill repositories.
     async fn repos(&self, ctx: &Context<'_>) -> Result<Vec<SkillRepo>> {
         let s = services!(ctx);

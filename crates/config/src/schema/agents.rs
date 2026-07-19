@@ -479,58 +479,6 @@ impl Default for SessionAccessPolicyConfig {
     }
 }
 
-/// Per-agent sandbox mode override.
-///
-/// Only `mode` is enforced at runtime (applied as a per-session override
-/// on the `SandboxRouter`). Per-session network/workspace/resource
-/// overrides require deeper `SandboxRouter` changes and will be added
-/// when the router gains per-session config overlays.
-///
-/// ```toml
-/// [agents.presets.kids.sandbox]
-/// mode = "all"
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum PresetSandboxMode {
-    /// Disable sandboxing for this agent.
-    Off,
-    /// Sandbox every session for this agent.
-    All,
-    /// Inherit the global non-main session sandbox behavior.
-    NonMain,
-}
-
-impl TryFrom<&str> for PresetSandboxMode {
-    type Error = String;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "off" => Ok(Self::Off),
-            "all" => Ok(Self::All),
-            "non-main" => Ok(Self::NonMain),
-            other => Err(format!("unknown sandbox mode: {other}")),
-        }
-    }
-}
-
-/// Per-agent sandbox policy override.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct PresetSandboxPolicy {
-    /// Sandbox mode override: "off", "all", "non-main".
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mode: Option<PresetSandboxMode>,
-}
-
-impl PresetSandboxPolicy {
-    /// Returns `true` when no overrides are configured.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.mode.is_none()
-    }
-}
-
 /// Per-agent skill access control.
 ///
 /// ```toml
@@ -574,7 +522,7 @@ impl PresetSkillPolicy {
 /// tool policy (Layer 3) narrows further. MCP tools can be filtered using
 /// `tools.deny = ["mcp__<server>__*"]` patterns.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct AgentPreset {
     /// Agent identity overrides.
     pub identity: AgentIdentity,
@@ -615,12 +563,6 @@ pub struct AgentPreset {
     /// - `Deny(servers)` — all servers visible except listed ones.
     #[serde(default, skip_serializing_if = "PresetMcpPolicy::is_all")]
     pub mcp: PresetMcpPolicy,
-    /// Per-agent sandbox policy overrides.
-    ///
-    /// Each set field overrides the global `[sandbox]` value.
-    /// Unset fields inherit the global config.
-    #[serde(default, skip_serializing_if = "PresetSandboxPolicy::is_empty")]
-    pub sandbox: PresetSandboxPolicy,
     /// Per-agent skill access control.
     ///
     /// Controls which skills are visible to this agent. When `allow` is

@@ -98,11 +98,11 @@ pub(crate) struct GonData {
 
 #[derive(serde::Serialize)]
 struct SandboxGonInfo {
+    mode: chelix_config::schema::SandboxMode,
     backend: chelix_tools::sandbox::SandboxBackendId,
     os: &'static str,
     default_image: String,
     image_building: bool,
-    available_backends: Vec<chelix_tools::sandbox::SandboxBackendId>,
 }
 
 /// Memory snapshot included in gon data and tick broadcasts.
@@ -246,8 +246,6 @@ async fn build_recent_sessions_snapshot(gw: &GatewayState, limit: usize) -> Vec<
             "messageCount": entry.message_count,
             "lastSeenMessageCount": entry.last_seen_message_count,
             "projectId": entry.project_id,
-            "sandbox_enabled": entry.sandbox_enabled,
-            "sandbox_image": entry.sandbox_image,
             "worktree_branch": entry.worktree_branch,
             "channelBinding": entry.channel_binding,
             "activeChannel": active_channel,
@@ -465,28 +463,12 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> GonData {
         "gon: heartbeat_runs"
     );
 
-    let sandbox = if let Some(ref router) = gw.sandbox_router {
-        use chelix_tools::sandbox::SandboxBackendId;
-        SandboxGonInfo {
-            backend: SandboxBackendId::from_name(router.backend_name()),
-            os: std::env::consts::OS,
-            default_image: router.default_image().await,
-            image_building: false,
-            available_backends: router
-                .available_backends()
-                .into_iter()
-                .map(SandboxBackendId::from_name)
-                .collect(),
-        }
-    } else {
-        use chelix_tools::sandbox::SandboxBackendId;
-        SandboxGonInfo {
-            backend: SandboxBackendId::None,
-            os: std::env::consts::OS,
-            default_image: chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_owned(),
-            image_building: false,
-            available_backends: vec![SandboxBackendId::None],
-        }
+    let sandbox = SandboxGonInfo {
+        mode: *gw.sandbox_router.mode(),
+        backend: gw.sandbox_router.backend_id(),
+        os: std::env::consts::OS,
+        default_image: gw.sandbox_router.default_image().await,
+        image_building: false,
     };
 
     tracing::warn!(elapsed_ms = gon_start.elapsed().as_millis(), "gon: sandbox");

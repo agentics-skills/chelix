@@ -68,15 +68,12 @@ pub struct PromptHostRuntimeContext {
 /// Runtime context for sandbox execution routing used by the `execute_command` tool.
 #[derive(Debug, Clone, Default)]
 pub struct PromptSandboxRuntimeContext {
-    pub command_sandboxed: bool,
-    pub mode: Option<String>,
     pub backend: Option<String>,
     pub scope: Option<String>,
     pub image: Option<String>,
     pub home: Option<String>,
     pub workspace_path: Option<String>,
     pub network: Option<String>,
-    pub session_override: Option<bool>,
 }
 
 /// Info about a single connected remote node, injected into the system prompt.

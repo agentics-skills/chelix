@@ -16,7 +16,7 @@ This power requires multiple layers of protection:
 5. **Scope-based access control** for API authorization
 
 For marketplace-style skill/plugin hardening (trust gating, provenance pinning,
-drift re-trust, dependency install guards, kill switch, audit log), see
+drift re-trust, self-contained skill requirements, kill switch, audit log), see
 [Third-Party Skills Security](skills-security.md).
 
 ## Command Execution Approval
@@ -81,8 +81,13 @@ dcg complements (does not replace) sandbox isolation and the approval system.
 
 ## Sandbox Isolation
 
-Commands execute inside isolated containers (Docker or Apple Container) by
-default. This protects your host system from:
+The global `sandbox.mode` controls every command execution path. With `"On"`,
+Chelix starts only when it can select a filesystem-isolated Apple Container,
+Podman, Docker, or WASM runtime. With `"Off"`, commands execute directly on the
+host. There are no agent, session, heartbeat, project, chat, cron, skill, or
+browser sandbox overrides.
+
+Filesystem isolation protects your host system from:
 
 - Accidental file deletion or modification
 - Malicious code execution
@@ -167,16 +172,18 @@ When cron jobs are created, updated, or removed, Chelix broadcasts events:
 
 Monitor these events to detect suspicious automated job creation.
 
-### Sandbox for Cron Jobs
+### Sandbox Policy for Cron Jobs
 
-Cron job execution uses sandbox isolation by default:
+Cron jobs use the same global sandbox policy as every other command execution
+path. A cron job cannot override the mode, backend, or image:
 
 ```toml
-# Per-job configuration
-[cron.job.sandbox]
-enabled = true              # run in sandbox (default)
-# image = "custom:latest"   # optional custom image
+[sandbox]
+mode = "On"
 ```
+
+With `"On"`, cron command execution uses the selected filesystem-isolated
+runtime. With `"Off"`, it executes directly on the host.
 
 ## Identity Protection
 
@@ -588,7 +595,7 @@ Always run with sandbox enabled in production:
 
 ```toml
 [sandbox]
-mode = "all"
+mode = "On"
 backend = "auto"  # uses strongest available
 ```
 

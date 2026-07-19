@@ -30,19 +30,42 @@ use crate::{
 };
 
 /// Native `Write` tool implementation.
-#[derive(Default)]
 pub struct WriteTool {
     fs_state: Option<FsState>,
     path_policy: Option<FsPathPolicy>,
-    sandbox_router: Option<Arc<SandboxRouter>>,
+    sandbox_router: Arc<SandboxRouter>,
     approval_manager: Option<Arc<ApprovalManager>>,
     broadcaster: Option<Arc<dyn ApprovalBroadcaster>>,
 }
 
 impl WriteTool {
     #[must_use]
+    #[cfg(not(test))]
+    pub fn new(sandbox_router: Arc<SandboxRouter>) -> Self {
+        Self::from_router(sandbox_router)
+    }
+
+    #[must_use]
+    #[cfg(test)]
     pub fn new() -> Self {
-        Self::default()
+        Self::from_router(Arc::new(SandboxRouter::disabled()))
+    }
+
+    pub(crate) fn from_router(sandbox_router: Arc<SandboxRouter>) -> Self {
+        Self {
+            fs_state: None,
+            path_policy: None,
+            sandbox_router,
+            approval_manager: None,
+            broadcaster: None,
+        }
+    }
+
+    #[must_use]
+    #[cfg(test)]
+    pub fn with_sandbox_router(mut self, sandbox_router: Arc<SandboxRouter>) -> Self {
+        self.sandbox_router = sandbox_router;
+        self
     }
 
     /// Attach shared [`FsState`] for must-read-before-write enforcement.
@@ -56,14 +79,6 @@ impl WriteTool {
     #[must_use]
     pub fn with_path_policy(mut self, policy: FsPathPolicy) -> Self {
         self.path_policy = Some(policy);
-        self
-    }
-
-    /// Attach a shared [`SandboxRouter`]. Sandboxed sessions dispatch
-    /// through the bridge.
-    #[must_use]
-    pub fn with_sandbox_router(mut self, router: Arc<SandboxRouter>) -> Self {
-        self.sandbox_router = Some(router);
         self
     }
 
@@ -84,17 +99,11 @@ impl WriteTool {
         require_absolute(file_path, "file_path")?;
         let approval_request = format!("Write {file_path}");
 
-        let router = self.sandbox_router.as_deref();
-        let env = match router {
-            Some(router) => router.resolve_env(session_key).await?,
-            None => ExecEnv::Host,
-        };
+        let router = self.sandbox_router.as_ref();
+        let env = router.resolve_env(session_key).await?;
 
         match env {
             ExecEnv::Sandbox { .. } => {
-                let router = router.ok_or_else(|| {
-                    Error::message("sandbox environment resolved without a sandbox router")
-                })?;
                 if let Some(ref policy) = self.path_policy
                     && let Some(payload) =
                         enforce_path_policy(policy, std::path::Path::new(file_path))

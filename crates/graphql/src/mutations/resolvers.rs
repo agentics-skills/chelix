@@ -671,11 +671,6 @@ impl SkillsMutation {
                 .await,
         )
     }
-
-    async fn install_dep(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
-        let s = services!(ctx);
-        from_service(s.skills.install_dep(input.0).await)
-    }
 }
 
 // ── Models ──────────────────────────────────────────────────────────────────

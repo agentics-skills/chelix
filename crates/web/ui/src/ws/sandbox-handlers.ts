@@ -6,14 +6,8 @@ import * as S from "../state";
 import type { SandboxPhasePayload } from "../types/ws-events";
 import { clearChatEmptyState } from "./shared";
 
-/** Subset of SandboxInfo relevant to the building flag. */
-interface SandboxInfoState {
-	image_building?: boolean;
-	[key: string]: unknown;
-}
-
 function updateSandboxBuildingFlag(building: boolean): void {
-	const info = S.sandboxInfo as SandboxInfoState | null;
+	const info = S.sandboxInfo;
 	if (info) S.setSandboxInfo({ ...info, image_building: building });
 }
 
@@ -137,25 +131,6 @@ export function handleSandboxImageProvision(payload: SandboxPhasePayload): void 
 	} else if (payload.phase === "error") {
 		if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
 		chatAddMsg("error", `Sandbox provisioning failed: ${payload.error || "unknown"}`);
-	}
-}
-
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Provisioning UI with multiple phases
-export function handleSandboxHostProvision(payload: SandboxPhasePayload): void {
-	const isChatPage = currentPrefix === "/chats";
-	if (!isChatPage) return;
-	if (payload.phase === "start") {
-		const msg = `Installing ${payload.count || ""} package${payload.count === 1 ? "" : "s"} on host\u2026`;
-		chatAddMsg("system", msg);
-	} else if (payload.phase === "done") {
-		if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
-		const parts: string[] = [];
-		if ((payload.installed || 0) > 0) parts.push(`${payload.installed} installed`);
-		if ((payload.skipped || 0) > 0) parts.push(`${payload.skipped} already present`);
-		chatAddMsg("system", `Host packages ready (${parts.join(", ") || "done"})`);
-	} else if (payload.phase === "error") {
-		if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
-		chatAddMsg("error", `Host package install failed: ${payload.error || "unknown"}`);
 	}
 }
 

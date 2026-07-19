@@ -100,8 +100,6 @@ pub(super) fn delete_discovered_skill(source_type: &str, params: &Value) -> Serv
 
 /// Load skill detail for a personal or project skill by name.
 pub(super) fn skill_detail_discovered(source_type: &str, skill_name: &str) -> ServiceResult {
-    use chelix_skills::requirements::check_requirements;
-
     // Build search paths for the requested source type.
     let search_dir = if source_type == "personal" {
         chelix_config::data_dir().join("skills")
@@ -117,8 +115,6 @@ pub(super) fn skill_detail_discovered(source_type: &str, skill_name: &str) -> Se
     let content = chelix_skills::parse::parse_skill(&raw, &skill_dir)
         .map_err(|e| format!("failed to parse SKILL.md: {e}"))?;
 
-    let elig = check_requirements(&content.metadata);
-
     Ok(serde_json::json!({
         "name": content.metadata.name,
         "description": content.metadata.description,
@@ -126,10 +122,6 @@ pub(super) fn skill_detail_discovered(source_type: &str, skill_name: &str) -> Se
         "license_url": license_url_for_source(source_type, content.metadata.license.as_deref()),
         "compatibility": content.metadata.compatibility,
         "allowed_tools": content.metadata.allowed_tools,
-        "requires": content.metadata.requires,
-        "eligible": elig.eligible,
-        "missing_bins": elig.missing_bins,
-        "install_options": elig.install_options,
         "trusted": true,
         "enabled": true,
         "protected": is_protected_discovered_skill(skill_name),
@@ -143,8 +135,6 @@ pub(super) fn skill_detail_discovered(source_type: &str, skill_name: &str) -> Se
 /// Load skill detail for a bundled skill by name.
 #[cfg(feature = "bundled-skills")]
 pub(super) fn skill_detail_bundled(skill_name: &str) -> ServiceResult {
-    use chelix_skills::requirements::check_requirements;
-
     let store = chelix_skills::bundled::BundledSkillStore::new();
     let skills = store.discover();
     let meta = skills
@@ -155,8 +145,6 @@ pub(super) fn skill_detail_bundled(skill_name: &str) -> ServiceResult {
     let body = store
         .read_skill(skill_name)
         .ok_or_else(|| format!("bundled skill '{skill_name}' body not readable"))?;
-
-    let elig = check_requirements(meta);
 
     let config = chelix_config::discover_and_load();
     let enabled = config
@@ -170,11 +158,7 @@ pub(super) fn skill_detail_bundled(skill_name: &str) -> ServiceResult {
         "license": meta.license,
         "compatibility": meta.compatibility,
         "allowed_tools": meta.allowed_tools,
-        "requires": meta.requires,
         "origin": meta.origin,
-        "eligible": elig.eligible,
-        "missing_bins": elig.missing_bins,
-        "install_options": elig.install_options,
         "trusted": true,
         "enabled": enabled,
         "protected": true,

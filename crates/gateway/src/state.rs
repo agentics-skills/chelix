@@ -407,9 +407,9 @@ pub struct GatewayState {
     /// Credential store for authentication (password, passkeys, API keys).
     /// `Arc` because it is shared cross-crate for runtime credential injection.
     pub credential_store: Option<Arc<CredentialStore>>,
-    /// Per-session sandbox router (None if sandbox is not configured).
+    /// Global sandbox router. Its immutable mode selects sandbox or host execution.
     /// `Arc` because it is shared with command/process tools in `chelix-tools`.
-    pub sandbox_router: Option<Arc<SandboxRouter>>,
+    pub sandbox_router: Arc<SandboxRouter>,
     /// SQLite-backed pairing store for device token persistence.
     /// `None` in tests that don't need pairing.
     pub pairing_store: Option<Arc<PairingStore>>,
@@ -504,11 +504,13 @@ pub struct GatewayState {
 
 impl GatewayState {
     pub fn new(auth: ResolvedAuth, services: GatewayServices) -> Arc<Self> {
+        let mut config = chelix_config::ChelixConfig::default();
+        config.sandbox.mode = chelix_config::schema::SandboxMode::Off;
         Self::with_options(
             auth,
             services,
-            chelix_config::ChelixConfig::default(),
-            None,
+            config,
+            Arc::new(SandboxRouter::disabled()),
             None,
             None,
             false,
@@ -537,7 +539,7 @@ impl GatewayState {
         auth: ResolvedAuth,
         services: GatewayServices,
         config: chelix_config::schema::ChelixConfig,
-        sandbox_router: Option<Arc<SandboxRouter>>,
+        sandbox_router: Arc<SandboxRouter>,
         credential_store: Option<Arc<CredentialStore>>,
         pairing_store: Option<Arc<PairingStore>>,
         localhost_only: bool,

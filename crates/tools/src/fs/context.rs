@@ -34,10 +34,8 @@ pub struct FsToolsContext {
     /// Whether `Glob`/`Grep` honor `.gitignore` while walking. Default
     /// `true`.
     pub respect_gitignore: bool,
-    /// Shared [`SandboxRouter`]. When set, fs tools dispatch through
-    /// the [`sandbox_bridge`] for sessions the router marks as
-    /// sandboxed; unsandboxed sessions still run on the host.
-    pub sandbox_router: Option<Arc<SandboxRouter>>,
+    /// Shared global [`SandboxRouter`]. Its immutable mode selects sandbox or host execution.
+    pub sandbox_router: Arc<SandboxRouter>,
     /// Optional approval gate for mutating fs tools. When set,
     /// Write/Edit/MultiEdit pause for explicit approval before
     /// persisting changes.
@@ -55,6 +53,7 @@ pub struct FsToolsContext {
     pub context_window_tokens: Option<u64>,
 }
 
+#[cfg(test)]
 impl Default for FsToolsContext {
     fn default() -> Self {
         Self {
@@ -65,7 +64,7 @@ impl Default for FsToolsContext {
             // Follow the upstream default: WalkBuilder respects .gitignore
             // unless explicitly disabled.
             respect_gitignore: true,
-            sandbox_router: None,
+            sandbox_router: Arc::new(SandboxRouter::disabled()),
             approval_manager: None,
             broadcaster: None,
             max_read_bytes: None,
@@ -76,8 +75,19 @@ impl Default for FsToolsContext {
 
 impl FsToolsContext {
     #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(sandbox_router: Arc<SandboxRouter>) -> Self {
+        Self {
+            workspace_root: None,
+            fs_state: None,
+            path_policy: None,
+            binary_policy: BinaryPolicy::default(),
+            respect_gitignore: true,
+            sandbox_router,
+            approval_manager: None,
+            broadcaster: None,
+            max_read_bytes: None,
+            context_window_tokens: None,
+        }
     }
 }
 
@@ -100,7 +110,8 @@ pub fn register_fs_tools(registry: &mut ToolRegistry, context: FsToolsContext) {
         context_window_tokens,
     } = context;
 
-    let mut read = ReadTool::new().with_binary_policy(binary_policy);
+    let mut read =
+        ReadTool::from_router(Arc::clone(&sandbox_router)).with_binary_policy(binary_policy);
     if let Some(max) = max_read_bytes {
         read = read.with_max_read_bytes(max);
     }
@@ -113,77 +124,60 @@ pub fn register_fs_tools(registry: &mut ToolRegistry, context: FsToolsContext) {
     if let Some(ref p) = path_policy {
         read = read.with_path_policy(p.clone());
     }
-    if let Some(ref r) = sandbox_router {
-        read = read.with_sandbox_router(r.clone());
-    }
     registry.register(Box::new(read));
 
-    let mut write = WriteTool::new();
+    let mut write = WriteTool::from_router(Arc::clone(&sandbox_router));
     if let Some(ref s) = fs_state {
         write = write.with_fs_state(s.clone());
     }
     if let Some(ref p) = path_policy {
         write = write.with_path_policy(p.clone());
     }
-    if let Some(ref r) = sandbox_router {
-        write = write.with_sandbox_router(r.clone());
-    }
     if let (Some(manager), Some(broadcaster)) = (&approval_manager, &broadcaster) {
         write = write.with_approval(manager.clone(), broadcaster.clone());
     }
     registry.register(Box::new(write));
 
-    let mut edit = EditTool::new();
+    let mut edit = EditTool::from_router(Arc::clone(&sandbox_router));
     if let Some(ref s) = fs_state {
         edit = edit.with_fs_state(s.clone());
     }
     if let Some(ref p) = path_policy {
         edit = edit.with_path_policy(p.clone());
     }
-    if let Some(ref r) = sandbox_router {
-        edit = edit.with_sandbox_router(r.clone());
-    }
     if let (Some(manager), Some(broadcaster)) = (&approval_manager, &broadcaster) {
         edit = edit.with_approval(manager.clone(), broadcaster.clone());
     }
     registry.register(Box::new(edit));
 
-    let mut multi_edit = MultiEditTool::new();
+    let mut multi_edit = MultiEditTool::from_router(Arc::clone(&sandbox_router));
     if let Some(ref s) = fs_state {
         multi_edit = multi_edit.with_fs_state(s.clone());
     }
     if let Some(ref p) = path_policy {
         multi_edit = multi_edit.with_path_policy(p.clone());
     }
-    if let Some(ref r) = sandbox_router {
-        multi_edit = multi_edit.with_sandbox_router(r.clone());
-    }
     if let (Some(manager), Some(broadcaster)) = (&approval_manager, &broadcaster) {
         multi_edit = multi_edit.with_approval(manager.clone(), broadcaster.clone());
     }
     registry.register(Box::new(multi_edit));
 
-    let mut glob = GlobTool::new().with_respect_gitignore(respect_gitignore);
+    let mut glob = GlobTool::from_router(Arc::clone(&sandbox_router))
+        .with_respect_gitignore(respect_gitignore);
     if let Some(ref root) = workspace_root {
         glob = glob.with_workspace_root(root.clone());
     }
     if let Some(ref p) = path_policy {
         glob = glob.with_path_policy(p.clone());
     }
-    if let Some(ref r) = sandbox_router {
-        glob = glob.with_sandbox_router(r.clone());
-    }
     registry.register(Box::new(glob));
 
-    let mut grep = GrepTool::new().with_respect_gitignore(respect_gitignore);
+    let mut grep = GrepTool::from_router(sandbox_router).with_respect_gitignore(respect_gitignore);
     if let Some(root) = workspace_root {
         grep = grep.with_workspace_root(root);
     }
     if let Some(p) = path_policy {
         grep = grep.with_path_policy(p);
-    }
-    if let Some(r) = sandbox_router {
-        grep = grep.with_sandbox_router(r);
     }
     registry.register(Box::new(grep));
 }

@@ -9,10 +9,8 @@ use super::paths::{
     sandbox_mount_target_overlaps,
 };
 #[cfg(feature = "wasm")]
-use super::platform::parse_memory_limit;
-#[cfg(feature = "wasm")]
 use super::types::{
-    HomePersistence, Sandbox, SandboxConfig, SandboxId, sanitize_path_component,
+    HomePersistence, Sandbox, SandboxBackendId, SandboxConfig, SandboxId, sanitize_path_component,
     truncate_output_for_display,
 };
 #[cfg(feature = "wasm")]
@@ -25,6 +23,32 @@ use crate::wasm_engine::WasmComponentEngine;
 use async_trait::async_trait;
 #[cfg(feature = "wasm")]
 use chelix_config::container_mounts::{MountMode, SandboxMount};
+
+/// Returns `true` when the WASM sandbox feature is compiled in.
+#[must_use]
+pub const fn is_wasm_sandbox_available() -> bool {
+    cfg!(feature = "wasm")
+}
+
+#[cfg(feature = "wasm")]
+fn parse_memory_limit(value: &str) -> Option<u64> {
+    let value = value.trim();
+    let (number, multiplier) =
+        if let Some(number) = value.strip_suffix('G').or_else(|| value.strip_suffix('g')) {
+            (number, 1024 * 1024 * 1024)
+        } else if let Some(number) = value.strip_suffix('M').or_else(|| value.strip_suffix('m')) {
+            (number, 1024 * 1024)
+        } else if let Some(number) = value.strip_suffix('K').or_else(|| value.strip_suffix('k')) {
+            (number, 1024)
+        } else {
+            (value, 1)
+        };
+    number
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .and_then(|number| number.checked_mul(multiplier))
+}
 
 // ---------------------------------------------------------------------------
 // WASM sandbox (real Wasmtime + WASI isolation)
@@ -275,8 +299,8 @@ impl WasmSandbox {
 #[cfg(feature = "wasm")]
 #[async_trait]
 impl Sandbox for WasmSandbox {
-    fn backend_name(&self) -> &'static str {
-        "wasm"
+    fn backend_id(&self) -> SandboxBackendId {
+        SandboxBackendId::Wasm
     }
 
     fn is_real(&self) -> bool {
@@ -287,7 +311,7 @@ impl Sandbox for WasmSandbox {
         true
     }
 
-    async fn ensure_ready(&self, id: &SandboxId, _image_override: Option<&str>) -> Result<()> {
+    async fn ensure_ready(&self, id: &SandboxId) -> Result<()> {
         let mounts = self.runtime_mounts(id)?;
         for mount in mounts.iter().filter(|mount| {
             mount.guest == std::path::Path::new("/home/sandbox")

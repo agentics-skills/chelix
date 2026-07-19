@@ -512,7 +512,7 @@ endpoint = "http://localhost:5002"
     .expect("write config");
 
     set_config_dir(dir.path().to_path_buf());
-    initialize_config();
+    initialize_config().expect("initialize config");
 
     let saved = std::fs::read_to_string(&config_path).expect("read saved");
     assert!(
@@ -547,7 +547,7 @@ endpoint = "http://localhost:5002"
     .expect("write config");
 
     set_config_dir(dir.path().to_path_buf());
-    initialize_config();
+    initialize_config().expect("initialize config");
 
     let saved = std::fs::read_to_string(&config_path).expect("read saved");
     let saved_config = parse_config(&saved, &config_path).expect("parse saved config");
@@ -565,6 +565,25 @@ endpoint = "http://localhost:5002"
     );
 
     clear_config_dir();
+}
+
+#[test]
+fn initialize_config_rejects_invalid_sandbox_mode() {
+    let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config_path = dir.path().join("chelix.toml");
+
+    std::fs::write(&config_path, "[sandbox]\nmode = \"Of\"\n").expect("write config");
+    set_config_dir(dir.path().to_path_buf());
+
+    let result = initialize_config();
+
+    clear_config_dir();
+    let error = result.expect_err("invalid sandbox mode must fail config initialization");
+    assert!(
+        error.to_string().contains("Of"),
+        "error should identify the invalid sandbox mode: {error}"
+    );
 }
 
 #[test]

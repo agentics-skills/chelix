@@ -49,7 +49,7 @@ pub struct BannerMeta {
     pub provider_summary: String,
     pub mcp_configured_count: usize,
     pub method_count: usize,
-    pub sandbox_backend_name: String,
+    pub sandbox_backend: chelix_tools::sandbox::SandboxBackendId,
     pub data_dir: PathBuf,
     pub setup_code_display: Option<String>,
     pub webauthn_registry: Option<SharedWebAuthnRegistry>,

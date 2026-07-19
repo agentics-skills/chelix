@@ -24,7 +24,7 @@ interface CronJob {
 	sessionTarget?: string;
 	deleteAfterRun?: boolean;
 	state?: { lastStatus?: string; nextRunAtMs?: number };
-	sandbox?: { enabled?: boolean; image?: string };
+	autoPruneContainer?: boolean;
 }
 
 interface CronSchedule {
@@ -62,8 +62,6 @@ interface HeartbeatConfig {
 	channel?: string;
 	to?: string;
 	active_hours?: { start?: string; end?: string; timezone?: string };
-	sandbox_enabled?: boolean;
-	sandbox_image?: string;
 }
 
 interface HeartbeatStatusInfo {
@@ -84,10 +82,6 @@ interface RunsHistory {
 	jobId: string;
 	jobName: string;
 	runs: CronRun[] | null;
-}
-
-interface SandboxImage {
-	tag: string;
 }
 
 interface ChannelAccount {
@@ -114,21 +108,8 @@ const heartbeatRuns = signal<CronRun[] | null>((gon.get("heartbeat_runs") as Cro
 const heartbeatSaving = signal(false);
 const heartbeatRunning = signal(false);
 const heartbeatConfig = signal<HeartbeatConfig>((gon.get("heartbeat_config") as HeartbeatConfig | null) || {});
-const sandboxImages = signal<SandboxImage[]>([]);
 const channelAccounts = signal<ChannelAccount[]>([]);
 const heartbeatModel = signal((gon.get("heartbeat_config") as HeartbeatConfig | null)?.model || "");
-const heartbeatSandboxImage = signal((gon.get("heartbeat_config") as HeartbeatConfig | null)?.sandbox_image || "");
-
-function loadSandboxImages(): void {
-	fetch("/api/images/cached")
-		.then((r) => r.json())
-		.then((d) => {
-			sandboxImages.value = d?.images || [];
-		})
-		.catch(() => {
-			/* optional */
-		});
-}
 function loadChannelAccounts(): void {
 	fetchChannelStatus().then((res: unknown) => {
 		const r = res as { ok?: boolean; payload?: { channels?: ChannelAccount[] } } | null;
@@ -281,8 +262,6 @@ function collectHeartbeatForm(form: Element): HeartbeatConfig {
 			end: (form.querySelector("[data-hb=ahEnd]") as HTMLInputElement).value.trim() || "24:00",
 			timezone: (form.querySelector("[data-hb=ahTz]") as HTMLSelectElement).value.trim() || "local",
 		},
-		sandbox_enabled: (form.querySelector("[data-hb=sandboxEnabled]") as HTMLInputElement).checked,
-		sandbox_image: heartbeatSandboxImage.value || undefined,
 	};
 }
 
@@ -302,7 +281,6 @@ function HeartbeatSection(): VNode {
 			if (res?.ok) {
 				heartbeatConfig.value = updated;
 				heartbeatModel.value = updated.model || "";
-				heartbeatSandboxImage.value = updated.sandbox_image || "";
 				refreshGon();
 				loadHeartbeatStatus();
 				loadJobs();
@@ -527,31 +505,6 @@ function HeartbeatSection(): VNode {
 				</div>
 			</div>
 
-			{/* Sandbox */}
-			<div style={{ marginTop: "24px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
-				<h3 className="text-sm font-medium text-[var(--text-strong)] mb-3">Sandbox</h3>
-				<p className="text-xs text-[var(--muted)] mb-3">Run heartbeat commands in an isolated container.</p>
-				<div className="flex items-center gap-3 mb-3">
-					<label className="cron-toggle">
-						<input data-hb="sandboxEnabled" type="checkbox" checked={cfg.sandbox_enabled !== false} />
-						<span className="cron-slider" />
-					</label>
-					<span className="text-sm text-[var(--text)]">Enable sandbox</span>
-				</div>
-				<div>
-					<label className="block text-xs text-[var(--muted)] mb-1">Sandbox Image</label>
-					<ComboSelect
-						options={sandboxImages.value.map((img) => ({ value: img.tag, label: img.tag }))}
-						value={heartbeatSandboxImage.value}
-						onChange={(v: string) => {
-							heartbeatSandboxImage.value = v;
-						}}
-						placeholder="Default image"
-						searchPlaceholder="Search images\u2026"
-					/>
-				</div>
-			</div>
-
 			{/* Recent Runs */}
 			<div style={{ marginTop: "24px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
 				<h3 className="text-sm font-medium text-[var(--text-strong)] mb-3">Recent Runs</h3>
@@ -585,12 +538,6 @@ function StatusBar(): VNode {
 function CronJobRow({ job }: { job: CronJob }): VNode {
 	const modelLabel = job.payload?.kind === "agentTurn" ? job.payload.model || "default" : "\u2014";
 	const deliveryLabel = job.payload?.deliver && job.payload?.channel ? `\u2192 ${job.payload.channel}` : null;
-	const executionLabel =
-		job.sandbox?.enabled === false
-			? "host"
-			: job.sandbox?.image
-				? `sandbox (${job.sandbox.image})`
-				: "sandbox (default)";
 	function onToggle(e: Event): void {
 		sendRpc("cron.update", { id: job.id, patch: { enabled: (e.target as HTMLInputElement).checked } }).then(() => {
 			loadJobs();
@@ -625,7 +572,6 @@ function CronJobRow({ job }: { job: CronJob }): VNode {
 			<td className="cron-mono">{formatSchedule(job.schedule)}</td>
 			<td className="cron-mono">{modelLabel}</td>
 			<td className="cron-mono">{deliveryLabel ? <span className="text-xs">{deliveryLabel}</span> : "\u2014"}</td>
-			<td className="cron-mono">{executionLabel}</td>
 			<td className="cron-mono">
 				{job.state?.nextRunAtMs ? (
 					<time data-epoch-ms={job.state.nextRunAtMs}>{new Date(job.state.nextRunAtMs).toISOString()}</time>
@@ -681,7 +627,6 @@ function CronJobTable(): VNode {
 					<th>Schedule</th>
 					<th>Model</th>
 					<th>Delivery</th>
-					<th>Execution</th>
 					<th>Next Run</th>
 					<th>Last Status</th>
 					<th>Actions</th>
@@ -759,12 +704,10 @@ function CronModal(): VNode {
 	const schedKind = useSignal("cron");
 	const errorField = useSignal<string | null>(null);
 	const jobModel = useSignal("");
-	const jobSandboxImage = useSignal("");
 	const jobName = useSignal("");
 	const payloadKind = useSignal("systemEvent");
 	const sessionTarget = useSignal("main");
 	const messageText = useSignal("");
-	const executionTarget = useSignal("sandbox");
 	const deleteAfterRun = useSignal(false);
 	const jobEnabled = useSignal(true);
 	const deliverToChannel = useSignal(false);
@@ -782,12 +725,10 @@ function CronModal(): VNode {
 			errorField.value = null;
 			schedKind.value = j.schedule.kind;
 			jobModel.value = j.payload.kind === "agentTurn" ? j.payload.model || "" : "";
-			jobSandboxImage.value = j.sandbox?.image || "";
 			jobName.value = j.name;
 			payloadKind.value = j.payload.kind;
 			sessionTarget.value = j.sessionTarget || "main";
 			messageText.value = j.payload.text || j.payload.message || "";
-			executionTarget.value = j.sandbox?.enabled === false ? "host" : "sandbox";
 			deleteAfterRun.value = !!j.deleteAfterRun;
 			jobEnabled.value = j.enabled;
 			deliverToChannel.value = j.payload?.deliver === true;
@@ -802,12 +743,10 @@ function CronModal(): VNode {
 			errorField.value = null;
 			schedKind.value = "cron";
 			jobModel.value = "";
-			jobSandboxImage.value = "";
 			jobName.value = "";
 			payloadKind.value = "systemEvent";
 			sessionTarget.value = "main";
 			messageText.value = "";
-			executionTarget.value = "sandbox";
 			deleteAfterRun.value = false;
 			jobEnabled.value = true;
 			deliverToChannel.value = false;
@@ -854,7 +793,6 @@ function CronModal(): VNode {
 						...(deliverToChannel.value && deliverTo.value.trim() ? { to: deliverTo.value.trim() } : {}),
 					};
 		if (pk === "agentTurn" && jobModel.value) payload.model = jobModel.value;
-		const sandboxEnabled = executionTarget.value === "sandbox";
 		const fields = {
 			name,
 			schedule: parsed.schedule,
@@ -862,7 +800,6 @@ function CronModal(): VNode {
 			sessionTarget: sessionTarget.value,
 			deleteAfterRun: deleteAfterRun.value,
 			enabled: jobEnabled.value,
-			sandbox: { enabled: sandboxEnabled, image: sandboxEnabled ? jobSandboxImage.value || null : null },
 		};
 		saving.value = true;
 		const rpcMethod = isEdit ? "cron.update" : "cron.add";
@@ -1060,31 +997,6 @@ function CronModal(): VNode {
 					<option value="isolated">Isolated</option>
 					<option value="main">Main</option>
 				</select>
-				<label className="text-xs text-[var(--muted)]">Execution Target</label>
-				<select
-					data-field="executionTarget"
-					className="provider-key-input"
-					value={executionTarget.value}
-					onChange={(e) => {
-						executionTarget.value = (e.target as HTMLSelectElement).value;
-					}}
-				>
-					<option value="sandbox">Sandbox</option>
-					<option value="host">Host</option>
-				</select>
-				<div>
-					<label className="text-xs text-[var(--muted)]">Sandbox Image</label>
-					<ComboSelect
-						options={sandboxImages.value.map((img) => ({ value: img.tag, label: img.tag }))}
-						value={jobSandboxImage.value}
-						onChange={(v: string) => {
-							jobSandboxImage.value = v;
-						}}
-						placeholder="Default image"
-						searchPlaceholder="Search images\u2026"
-					/>
-					<p className="text-xs text-[var(--muted)] mt-1">Used only when execution target is Sandbox.</p>
-				</div>
 				<label className="text-xs text-[var(--muted)] flex items-center gap-2">
 					<input
 						data-field="deleteAfter"
@@ -1131,7 +1043,6 @@ function CronModal(): VNode {
 function HeartbeatPanel(): VNode {
 	useEffect(() => {
 		loadHeartbeatStatus();
-		loadSandboxImages();
 		loadHeartbeatRuns();
 	}, []);
 	return (
@@ -1145,7 +1056,6 @@ function CronJobsPanel(): VNode {
 	useEffect(() => {
 		loadStatus();
 		loadJobs();
-		loadSandboxImages();
 		loadChannelAccounts();
 	}, []);
 	return (
@@ -1193,10 +1103,8 @@ export function initCrons(container: HTMLElement, param?: string | null): void {
 	editingJob.value = null;
 	heartbeatStatus.value = null;
 	heartbeatRuns.value = (gon.get("heartbeat_runs") as CronRun[] | null) || [];
-	sandboxImages.value = [];
 	channelAccounts.value = [];
 	heartbeatModel.value = (gon.get("heartbeat_config") as HeartbeatConfig | null)?.model || "";
-	heartbeatSandboxImage.value = (gon.get("heartbeat_config") as HeartbeatConfig | null)?.sandbox_image || "";
 	activeSection.value = param === "heartbeat" ? "heartbeat" : "jobs";
 	loadHeartbeatRuns();
 	loadHeartbeatStatus();

@@ -126,7 +126,7 @@ auto_generate = true
 default_timeout_secs = 30
 
 [sandbox]
-mode = "all"
+mode = "On"
 backend = "auto"
 
 [memory]

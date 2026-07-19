@@ -1,7 +1,9 @@
 # Sandbox Backends
 
-Chelix runs LLM-generated commands inside containers to protect your host
-system. The sandbox backend controls which container technology is used.
+Chelix has one global sandbox policy for command, filesystem, browser, cron,
+skill, and managed-tools execution. Enabled sandboxing always uses a
+filesystem-isolated runtime; direct host execution is available only when the
+global policy is explicitly `"Off"`.
 
 ## Environment Variables
 
@@ -21,27 +23,34 @@ Configure in `chelix.toml`:
 
 ```toml
 [sandbox]
+mode = "On"
 backend = "auto"          # default — picks the best available
 # backend = "podman"      # force Podman (daemonless, rootless)
 # backend = "docker"      # force Docker
 # backend = "apple-container"  # force Apple Container (macOS only)
 # backend = "wasm"        # force WASM sandbox (Wasmtime + WASI)
-# backend = "restricted-host"  # env clearing + rlimits only
 ```
 
-With `"auto"` (the default), Chelix picks the strongest available backend:
+Only `"auto"`, `"docker"`, `"podman"`, `"apple-container"`, and `"wasm"`
+are accepted. Legacy values such as `"restricted-host"` and `"cgroup"` are
+configuration errors.
 
-| Priority | Backend         | Platform | Isolation                                       |
-| -------- | --------------- | -------- | ----------------------------------------------- |
-| 1        | Apple Container | macOS    | VM (Virtualization.framework)                   |
-| 2        | Podman          | any      | Linux namespaces / cgroups (daemonless)         |
-| 3        | Docker          | any      | Linux namespaces / cgroups                      |
-| 4        | Restricted Host | any      | env clearing, rlimits (no filesystem isolation) |
-| 5        | none (host)     | any      | no isolation                                    |
+With `"auto"` (the default), Chelix selects the first available isolated
+container runtime:
+
+| Priority | Backend         | Platform | Isolation                               |
+| -------- | --------------- | -------- | --------------------------------------- |
+| 1        | Apple Container | macOS    | VM (Virtualization.framework)           |
+| 2        | Podman          | any      | Linux namespaces / cgroups (daemonless) |
+| 3        | Docker          | any      | Linux namespaces / cgroups              |
 
 The WASM backend (`backend = "wasm"`) is not in the auto-detect chain because it
 cannot execute arbitrary shell commands — use it explicitly when you want
 WASI-isolated execution.
+
+When `mode = "On"`, an unavailable explicit backend or an `"auto"` selection
+with no available isolated runtime aborts gateway startup. Chelix never falls
+back to host execution. `mode = "Off"` is the only direct host execution path.
 
 ## Apple Container (recommended on macOS)
 
@@ -253,71 +262,58 @@ cargo build --release --no-default-features --features lightweight
 ```
 
 When the feature is disabled and the config requests `backend = "wasm"`, Chelix
-falls back to `restricted-host` with a warning.
-
-## Restricted Host Sandbox
-
-The restricted-host sandbox provides lightweight isolation by running commands
-on the host via `bash -c` with environment clearing and `ulimit` resource
-wrappers. This is the fallback when no container runtime is available.
-
-### How It Works
-
-When the restricted-host sandbox runs a command, it:
-
-1. **Clears the environment** — all inherited environment variables are removed
-2. **Sets a restricted PATH** — only `/usr/local/bin:/usr/bin:/bin`
-3. **Sets HOME to `/tmp`** — prevents access to the user's home directory
-4. **Applies resource limits** via shell `ulimit`:
-   - `ulimit -u` (max processes) from `pids_max` config (default: 256)
-   - `ulimit -n 1024` (max open files)
-   - `ulimit -t` (CPU seconds) from `cpu_quota` config (default: 300s)
-   - `ulimit -v` (virtual memory) from `memory_limit` config (default: 512M)
-5. **Enforces a timeout** via `tokio::time::timeout`
-
-User-specified environment variables from `opts.env` are re-applied after the
-environment is cleared, so the LLM tool can still pass required variables.
-
-### Limitations
-
-- No filesystem isolation — commands run on the host filesystem
-- No network isolation — commands can make network requests
-- `ulimit` enforcement is best-effort
-- No image building — `chelix sandbox build` returns immediately
-
-For production use with untrusted workloads, prefer Apple Container or Docker.
-
-## No sandbox
-
-If no runtime is found (and the `wasm` feature is disabled), commands execute
-directly on the host. The startup banner will show a warning. This is **not
-recommended** for untrusted workloads.
+returns a startup error.
 
 ## Failover Chain
 
-Chelix wraps the primary sandbox backend with automatic failover:
-
-- **Apple Container → Docker → Restricted Host**: if Apple Container enters a
-  corrupted state (stale metadata, missing config, VM boot failure), Chelix
-  fails over to Docker. If Docker is unavailable, it uses restricted-host.
-- **Docker → Restricted Host**: if Docker loses its daemon connection during a
-  session, Chelix fails over to the restricted-host sandbox.
+When `backend = "auto"` selects Apple Container on macOS, Chelix can attach one
+isolated fallback: Podman when available, otherwise Docker. A non-isolated
+primary or fallback is rejected when the chain is constructed.
 
 Failover is sticky for the lifetime of the gateway process — once triggered, all
 subsequent commands use the fallback backend. Restart the gateway to retry the
 primary backend.
 
-Failover triggers:
+If no isolated fallback is available, Apple Container remains the sole backend;
+an execution failure is returned rather than routed to the host.
 
-| Primary         | Triggers                                                                                    |
-| --------------- | ------------------------------------------------------------------------------------------- |
-| Apple Container | `config.json missing`, `VM never booted`, `NSPOSIXErrorDomain Code=22`, service errors      |
-| Docker          | `cannot connect to the docker daemon`, `connection refused`, `is the docker daemon running` |
+## Global mode
 
-## Per-session overrides
+Sandbox execution is controlled only by the exact global value in
+`chelix.toml`:
 
-The web UI allows toggling sandboxing per session and selecting a custom
-container image. These overrides persist across gateway restarts.
+```toml
+[sandbox]
+mode = "On" # or "Off"
+```
+
+The values are case-sensitive. Other spellings and legacy values are rejected.
+With `"On"`, gateway startup requires a filesystem-isolated runtime. With
+`"Off"`, execution runs directly on the host and no sandbox runtime is created.
+
+There are no agent, session, heartbeat, project, chat, cron, skill, or browser
+sandbox overrides.
+
+The Sandboxes settings page displays this value as a read-only `On`/`Off`
+indicator. Change the policy in `chelix.toml` and restart Chelix.
+
+## Shared data directory
+
+Every isolated backend mounts Chelix's `data_dir()` read-write at the identical
+absolute guest path. This mandatory mount keeps databases, sessions, memory,
+logs, installed skill folders, and skill-owned scripts or binaries visible to
+both the host process and sandbox runtime.
+
+Additional mounts are declarative:
+
+```toml
+[[sandbox.mounts]]
+host = "/srv/reference"
+guest = "/mnt/reference"
+mode = "ro"
+```
+
+The mandatory data mount cannot be redirected to a different guest path.
 
 ## Home persistence
 
@@ -359,13 +355,14 @@ ambiguous.
 ## Managed tools service
 
 Filesystem tools that require native executables run through the managed
-`chelix-tools-service` process. The service is the long-running workload in
-Docker, Podman, and Apple Container sandboxes; `ripgrep` is installed in the
-sandbox image and executed there for sandbox-routed sessions.
+`chelix-tools-service` runtime. With global `sandbox.mode = "On"`, the service
+is the long-running workload in Docker, Podman, and Apple Container sandboxes;
+`ripgrep` is installed in the sandbox image and executed there. Chelix does not
+start a local `chelix-tools-service` process in this mode.
 
-Chelix also starts a host-side service for sessions routed to the host. Seeing
-that host process while sandboxing is enabled is expected and does not change a
-sandboxed session's route.
+With global `sandbox.mode = "Off"`, Chelix starts the host-side service and does
+not use the container tools-service runtime. The two runtimes are mutually
+exclusive.
 
 Docker and Podman endpoint readiness is checked from Chelix's own network
 namespace. Chelix tries the random host-loopback publication and inspect-derived
@@ -396,9 +393,8 @@ network = "chelix-sandbox-net"
 Runtime-provided values such as `none` or `host` are passed through unchanged;
 Chelix no longer has sandbox-specific network policy modes.
 
-> **Note**: Home persistence applies to Docker, Apple Container, and WASM
-> backends. The restricted-host backend uses `HOME=/tmp` and does not mount
-> persistent storage.
+> **Note**: Home persistence applies to Docker, Podman, Apple Container, and
+> WASM backends.
 
 ## Resource limits
 
@@ -420,22 +416,21 @@ there is no lazy first-call rebuild.
 Docker and Podman sandboxes use one CPU by default. Set `cpu_quota` to override
 that launch limit.
 
-| Limit          | Docker         | Apple Container | WASM                 | Restricted Host       | cgroup (Linux) |
-| -------------- | -------------- | --------------- | -------------------- | --------------------- | -------------- |
-| `memory_limit` | `--memory`     | `--memory`      | Wasmtime reservation | `ulimit -v`           | `MemoryMax=`   |
-| `cpu_quota`    | `--cpus`       | `--cpus`        | epoch timeout        | `ulimit -t` (seconds) | `CPUQuota=`    |
-| `pids_max`     | `--pids-limit` | `--pids-limit`  | n/a                  | `ulimit -u`           | `TasksMax=`    |
+| Limit          | Docker/Podman  | Apple Container | WASM                 |
+| -------------- | -------------- | --------------- | -------------------- |
+| `memory_limit` | `--memory`     | `--memory`      | Wasmtime reservation |
+| `cpu_quota`    | `--cpus`       | `--cpus`        | epoch timeout        |
+| `pids_max`     | `--pids-limit` | `--pids-limit`  | n/a                  |
 
 ## Comparison
 
-| Feature               | Apple Container    | Docker           | WASM              | Restricted Host         | none          |
-| --------------------- | ------------------ | ---------------- | ----------------- | ----------------------- | ------------- |
-| Filesystem isolation  | ✅ VM boundary     | ✅ namespaces    | ✅ sandboxed tree | ❌ host FS              | ❌            |
-| Network isolation     | ✅                 | ✅               | ✅ (no network)   | ❌                      | ❌            |
-| Kernel isolation      | ✅ separate kernel | ❌ shared kernel | ✅ WASM VM        | ❌                      | ❌            |
-| Environment isolation | ✅                 | ✅               | ✅                | ✅ cleared + restricted | ❌            |
-| Resource limits       | ✅                 | ✅               | ✅ fuel + epoch   | ✅ ulimit               | ❌            |
-| Image building        | ✅ (via Docker)    | ✅               | ❌                | ❌                      | ❌            |
-| Shell commands        | ✅ full shell      | ✅ full shell    | ~20 built-ins     | ✅ full shell           | ✅ full shell |
-| Platform              | macOS 26+          | any              | any               | any                     | any           |
-| Overhead              | low                | medium           | minimal           | minimal                 | none          |
+| Feature               | Apple Container    | Docker/Podman    | WASM              | Mode `Off`       |
+| --------------------- | ------------------ | ---------------- | ----------------- | ---------------- |
+| Filesystem isolation  | ✅ VM boundary     | ✅ namespaces    | ✅ sandboxed tree | ❌ host FS       |
+| Network isolation     | ✅                 | ✅               | ✅ (no network)   | ❌               |
+| Kernel isolation      | ✅ separate kernel | ❌ shared kernel | ✅ WASM VM        | ❌               |
+| Environment isolation | ✅                 | ✅               | ✅                | ❌               |
+| Resource limits       | ✅                 | ✅               | ✅ fuel + epoch   | ❌               |
+| Image building        | ✅ (via Docker)    | ✅               | ❌                | ❌               |
+| Shell commands        | ✅ full shell      | ✅ full shell    | ~20 built-ins     | ✅ direct host   |
+| Platform              | macOS 26+          | any              | any               | any              |

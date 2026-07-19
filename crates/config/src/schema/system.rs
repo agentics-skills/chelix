@@ -141,11 +141,6 @@ pub struct HeartbeatConfig {
     pub channel: Option<String>,
     /// Destination chat/recipient id for heartbeat delivery.
     pub to: Option<String>,
-    /// Whether heartbeat runs inside a sandbox. Defaults to true.
-    #[serde(default = "default_true")]
-    pub sandbox_enabled: bool,
-    /// Override sandbox image for heartbeat. If `None`, uses the default image.
-    pub sandbox_image: Option<String>,
     /// Minimum duration between command-triggered heartbeat wakes (e.g. "5m", "0").
     /// Prevents command-completion callbacks from re-waking the heartbeat in a tight loop.
     /// Defaults to "5m". Set to "0" to disable.
@@ -165,8 +160,6 @@ impl Default for HeartbeatConfig {
             deliver: false,
             channel: None,
             to: None,
-            sandbox_enabled: true,
-            sandbox_image: None,
             wake_cooldown: "5m".into(),
         }
     }

@@ -85,7 +85,7 @@ pub fn load_config_value(path: &Path) -> crate::Result<serde_json::Value> {
 /// - Persists a randomly generated port so it stays stable
 ///
 /// After this, use [`discover_and_load`] (read-only) to load config.
-pub fn initialize_config() {
+pub fn initialize_config() -> crate::Result<()> {
     // Refresh Chelix-managed defaults.toml.
     if let Some(dir) = config_dir()
         && let Err(e) = crate::defaults::write_defaults_toml(&dir)
@@ -116,7 +116,7 @@ pub fn initialize_config() {
         }
     }
 
-    let cfg = discover_and_load_readonly();
+    let cfg = try_discover_and_load_readonly_with_options(true, true)?;
 
     // Persist randomly generated port so it stays stable across restarts.
     // discover_and_load_readonly generates an in-memory port when the on-disk
@@ -135,6 +135,8 @@ pub fn initialize_config() {
             warn!(error = %e, "failed to save config with generated port");
         }
     }
+
+    Ok(())
 }
 
 /// Discover and load config from disk (read-only, no side-effects).
@@ -172,24 +174,31 @@ fn discover_and_load_readonly_with_options(
     apply_third_party_aliases: bool,
     include_agent_defs: bool,
 ) -> ChelixConfig {
+    match try_discover_and_load_readonly_with_options(apply_third_party_aliases, include_agent_defs)
+    {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            warn!(error = %e, "failed to reload config, using defaults");
+            apply_env_overrides_with_options(
+                ChelixConfig::default(),
+                std::env::vars(),
+                apply_third_party_aliases,
+            )
+        },
+    }
+}
+
+fn try_discover_and_load_readonly_with_options(
+    apply_third_party_aliases: bool,
+    include_agent_defs: bool,
+) -> crate::Result<ChelixConfig> {
     let mut cfg = if let Some(path) = find_config_file() {
         debug!(path = %path.display(), "loading config (read-only)");
-        match load_layered_config(&path, apply_third_party_aliases) {
-            Ok(mut cfg) => {
-                if cfg.server.port == 0 {
-                    cfg.server.port = generate_random_port();
-                }
-                cfg
-            },
-            Err(e) => {
-                warn!(path = %path.display(), error = %e, "failed to load config, using defaults");
-                apply_env_overrides_with_options(
-                    ChelixConfig::default(),
-                    std::env::vars(),
-                    apply_third_party_aliases,
-                )
-            },
+        let mut cfg = load_layered_config(&path, apply_third_party_aliases)?;
+        if cfg.server.port == 0 {
+            cfg.server.port = generate_random_port();
         }
+        cfg
     } else {
         apply_env_overrides_with_options(
             ChelixConfig::default(),
@@ -206,7 +215,7 @@ fn discover_and_load_readonly_with_options(
         }
     }
 
-    cfg
+    Ok(cfg)
 }
 
 /// Load config with layered merge: defaults.toml + user file + env overrides.

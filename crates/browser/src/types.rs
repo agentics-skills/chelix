@@ -205,30 +205,73 @@ impl fmt::Display for BrowserAction {
 }
 
 /// Request to the browser service.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct BrowserRequest {
     /// Browser session ID (optional - creates new if missing).
-    #[serde(default)]
     pub session_id: Option<String>,
 
     /// The action to perform.
-    #[serde(flatten)]
     pub action: BrowserAction,
 
     /// Global timeout in milliseconds.
-    #[serde(default = "default_timeout_ms")]
     pub timeout_ms: u64,
-
-    /// Whether to run in sandbox mode (Docker container).
-    /// If None, uses host mode (no sandbox).
-    #[serde(default)]
-    pub sandbox: Option<bool>,
 
     /// Optional browser preference for host mode.
     /// - "auto" (default): first detected installed browser
     /// - specific browser ("brave", "chrome", etc): use that browser
-    #[serde(default)]
     pub browser: Option<BrowserPreference>,
+}
+
+#[derive(Deserialize)]
+struct BrowserRequestWire {
+    #[serde(default)]
+    session_id: Option<String>,
+    #[serde(flatten)]
+    action: BrowserAction,
+    #[serde(default = "default_timeout_ms")]
+    timeout_ms: u64,
+    #[serde(default)]
+    browser: Option<BrowserPreference>,
+    #[serde(default, rename = "sandbox")]
+    sandbox_override: ForbiddenSandboxOverride,
+}
+
+#[derive(Default, PartialEq, Eq)]
+enum ForbiddenSandboxOverride {
+    #[default]
+    Absent,
+    Present,
+}
+
+impl<'de> Deserialize<'de> for ForbiddenSandboxOverride {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let _ = serde::de::IgnoredAny::deserialize(deserializer)?;
+        Ok(Self::Present)
+    }
+}
+
+impl<'de> Deserialize<'de> for BrowserRequest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = BrowserRequestWire::deserialize(deserializer)?;
+        if wire.sandbox_override == ForbiddenSandboxOverride::Present {
+            return Err(serde::de::Error::custom(
+                "browser sandbox override is not allowed; isolation follows the global sandbox mode",
+            ));
+        }
+
+        Ok(Self {
+            session_id: wire.session_id,
+            action: wire.action,
+            timeout_ms: wire.timeout_ms,
+            browser: wire.browser,
+        })
+    }
 }
 
 fn default_timeout_ms() -> u64 {
@@ -453,7 +496,7 @@ pub struct BrowserConfig {
     #[serde(default)]
     pub chrome_args: Vec<String>,
     /// Docker image to use for sandboxed browser.
-    /// Sandbox mode is controlled per-session via the request, not globally.
+    /// Browser isolation is controlled by the global sandbox policy.
     #[serde(default = "default_sandbox_image")]
     pub sandbox_image: String,
     /// Container name prefix for sandboxed browser instances.
@@ -672,6 +715,16 @@ mod tests {
             Err(error) => panic!("failed to deserialize browser preference: {error}"),
         };
         assert_eq!(value, BrowserPreference::Brave);
+    }
+
+    #[test]
+    fn browser_request_rejects_sandbox_override() {
+        let result: Result<BrowserRequest, _> = serde_json::from_value(serde_json::json!({
+            "action": "snapshot",
+            "sandbox": false
+        }));
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("sandbox override"));
     }
 
     #[test]

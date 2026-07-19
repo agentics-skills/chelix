@@ -406,7 +406,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize config directory once for all subcommands
     // (write defaults.toml, compact, persist random port).
-    chelix_config::initialize_config();
+    chelix_config::initialize_config()?;
 
     match cli.command {
         // Default: start gateway when no subcommand is provided

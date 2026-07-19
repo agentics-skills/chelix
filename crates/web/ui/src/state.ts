@@ -2,6 +2,7 @@
 
 import * as sig from "./signals";
 import type { RpcResponse, SessionTokens } from "./types";
+import type { SandboxGonInfo } from "./types/gon";
 
 export let ws: WebSocket | null = null;
 export let reqId = 0;
@@ -56,15 +57,8 @@ export let projectComboLabel: HTMLElement | null = null;
 export let projectDropdown: HTMLElement | null = null;
 export let projectDropdownList: HTMLElement | null = null;
 
-// Sandbox toggle
-export let sandboxToggleBtn: HTMLButtonElement | null = null;
+// Sandbox indicator
 export let sandboxLabel: HTMLElement | null = null;
-export let sessionSandboxEnabled = true;
-export let sessionSandboxImage: string | null = null;
-export let sessionSandboxBackend: string | null = null;
-export let sandboxImageBtn: HTMLButtonElement | null = null;
-export let sandboxImageDropdown: HTMLElement | null = null;
-export let sandboxImageLabel: HTMLElement | null = null;
 
 // Chat page DOM refs
 export let chatMsgBox: HTMLElement | null = null;
@@ -96,7 +90,7 @@ export function setCachedChannels(v: unknown | null): void {
 }
 
 // Sandbox
-export let sandboxInfo: unknown | null = null;
+export let sandboxInfo: SandboxGonInfo | null = null;
 
 // Logs
 export let logsEventHandler: ((payload?: unknown) => void) | null = null;
@@ -227,29 +221,8 @@ export function setProjectDropdown(v: HTMLElement | null): void {
 export function setProjectDropdownList(v: HTMLElement | null): void {
 	projectDropdownList = v;
 }
-export function setSandboxToggleBtn(v: HTMLButtonElement | null): void {
-	sandboxToggleBtn = v;
-}
 export function setSandboxLabel(v: HTMLElement | null): void {
 	sandboxLabel = v;
-}
-export function setSessionSandboxEnabled(v: boolean): void {
-	sessionSandboxEnabled = v;
-}
-export function setSessionSandboxImage(v: string | null): void {
-	sessionSandboxImage = v;
-}
-export function setSessionSandboxBackend(v: string | null): void {
-	sessionSandboxBackend = v;
-}
-export function setSandboxImageBtn(v: HTMLButtonElement | null): void {
-	sandboxImageBtn = v;
-}
-export function setSandboxImageDropdown(v: HTMLElement | null): void {
-	sandboxImageDropdown = v;
-}
-export function setSandboxImageLabel(v: HTMLElement | null): void {
-	sandboxImageLabel = v;
 }
 export function setChatMsgBox(v: HTMLElement | null): void {
 	chatMsgBox = v;
@@ -314,7 +287,7 @@ export function setUnseenWarns(v: number): void {
 export function setProjectFilterId(v: string): void {
 	projectFilterId = v;
 }
-export function setSandboxInfo(v: unknown | null): void {
+export function setSandboxInfo(v: SandboxGonInfo | null): void {
 	sandboxInfo = v;
 	sig.sandboxInfo.value = v;
 }

@@ -80,7 +80,7 @@ impl CronService for MockCronService {
             delete_after_run: create.delete_after_run,
             enabled: create.enabled,
             system: create.system,
-            sandbox: create.sandbox.clone(),
+            auto_prune_container: create.auto_prune_container,
             wake_mode: create.wake_mode,
             state: chelix_cron::types::CronJobState::default(),
             created_at_ms: 0,
@@ -126,8 +126,8 @@ impl CronService for MockCronService {
             if let Some(delete_after_run) = patch.delete_after_run {
                 job.delete_after_run = delete_after_run;
             }
-            if let Some(sandbox) = patch.sandbox {
-                job.sandbox = sandbox;
+            if let Some(auto_prune_container) = patch.auto_prune_container {
+                job.auto_prune_container = auto_prune_container;
             }
             if let Some(wake_mode) = patch.wake_mode {
                 job.wake_mode = wake_mode;
@@ -252,9 +252,7 @@ async fn heartbeat_update_creates_cron_job_when_prompt_configured() {
             },
             "deliver": false,
             "channel": null,
-            "to": null,
-            "sandboxEnabled": false,
-            "sandboxImage": null
+            "to": null
         }
     });
     ws.send(tokio_tungstenite::tungstenite::Message::Text(
@@ -342,9 +340,7 @@ async fn heartbeat_update_does_not_create_job_without_prompt() {
             },
             "deliver": false,
             "channel": null,
-            "to": null,
-            "sandboxEnabled": false,
-            "sandboxImage": null
+            "to": null
         }
     });
     ws.send(tokio_tungstenite::tungstenite::Message::Text(
@@ -397,11 +393,7 @@ async fn heartbeat_update_updates_existing_job() {
         delete_after_run: false,
         enabled: true,
         system: true,
-        sandbox: chelix_cron::types::CronSandboxConfig {
-            enabled: false,
-            image: None,
-            auto_prune_container: None,
-        },
+        auto_prune_container: None,
         wake_mode: chelix_cron::types::CronWakeMode::NextHeartbeat,
     };
     let create_json = serde_json::to_value(create).unwrap();
@@ -465,9 +457,7 @@ async fn heartbeat_update_updates_existing_job() {
             },
             "deliver": false,
             "channel": null,
-            "to": null,
-            "sandboxEnabled": false,
-            "sandboxImage": null
+            "to": null
         }
     });
     ws.send(tokio_tungstenite::tungstenite::Message::Text(
@@ -554,9 +544,7 @@ async fn heartbeat_update_disabled_with_prompt_does_not_create_job() {
             },
             "deliver": false,
             "channel": null,
-            "to": null,
-            "sandboxEnabled": false,
-            "sandboxImage": null
+            "to": null
         }
     });
     ws.send(tokio_tungstenite::tungstenite::Message::Text(

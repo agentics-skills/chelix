@@ -409,40 +409,26 @@ pub(crate) async fn build_prompt_runtime_context(
 
     let sudo_fut = detect_host_sudo_access();
     let sandbox_fut = async {
-        if let Some(router) = state.sandbox_router() {
-            let is_sandboxed = router.is_sandboxed(session_key).await;
-            // Only include sandbox context when sandbox is actually enabled for
-            // this session.  When disabled, omitting it prevents the LLM from
-            // hallucinating sandbox usage (see #360).  This intentionally
-            // discards `session_override` — its only consumer is the prompt
-            // line we are omitting, and no other code reads it from
-            // `PromptSandboxRuntimeContext`.
-            if !is_sandboxed {
-                return None;
-            }
-            let config = router.config();
-            let backend_name = router.backend_name();
-            Some(PromptSandboxRuntimeContext {
-                command_sandboxed: true,
-                mode: Some(config.mode.to_string()),
-                backend: Some(backend_name.to_string()),
-                scope: Some(config.scope.to_string()),
-                image: Some(router.resolve_image(session_key, None).await),
-                home: Some("/home/sandbox".to_string()),
-                workspace_path: Some(data_dir_display.clone()),
-                network: Some(config.network.clone()),
-                session_override: session_entry.and_then(|entry| entry.sandbox_enabled),
-            })
-        } else {
-            None
+        let router = state.sandbox_router();
+        // Omit sandbox context when the global policy is Off so the LLM
+        // does not hallucinate sandbox usage (see #360).
+        if !router.enabled() {
+            return None;
         }
+        let config = router.config();
+        Some(PromptSandboxRuntimeContext {
+            backend: Some(router.backend_id().to_string()),
+            scope: Some(config.scope.to_string()),
+            image: Some(router.default_image().await),
+            home: Some("/home/sandbox".to_string()),
+            workspace_path: Some(data_dir_display.clone()),
+            network: Some(config.network.clone()),
+        })
     };
 
     let ((sudo_non_interactive, sudo_status), sandbox_ctx) = tokio::join!(sudo_fut, sandbox_fut);
 
-    let configured_timezone = state
-        .sandbox_router()
-        .and_then(|r| r.config().timezone.clone());
+    let configured_timezone = state.sandbox_router().config().timezone.clone();
     let timezone = Some(server_prompt_timezone(configured_timezone.as_deref()));
 
     let location = state
@@ -665,9 +651,6 @@ pub(crate) fn build_policy_context(
         channel_account_id: host.and_then(|h| h.channel_account_id.clone()),
         group_id: host.and_then(|h| h.channel_chat_type.clone()),
         sender_id,
-        sandboxed: runtime_context
-            .and_then(|rc| rc.sandbox.as_ref())
-            .is_some_and(|s| s.command_sandboxed),
     }
 }
 

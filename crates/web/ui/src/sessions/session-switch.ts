@@ -1,13 +1,12 @@
 // ── Session switching: switch, restore, refresh ─────────────────
 
-import { chatAddMsg, removeThinking, setComposerStopButton, updateCommandInputUI, updateTokenBar } from "../chat-ui";
+import { chatAddMsg, removeThinking, setComposerStopButton, updateTokenBar } from "../chat-ui";
 import { sendRpc } from "../helpers";
 import { modelDisplayLabel, modelTitle } from "../models";
 import { restoreNodeSelection } from "../nodes-selector";
 import { updateSessionProjectSelect } from "../project-combo";
 import { restoreReasoningEffort } from "../reasoning-toggle";
 import { sessionPath } from "../router";
-import { updateSandboxImageUI, updateSandboxUI } from "../sandbox";
 import * as S from "../state";
 import { modelStore } from "../stores/model-store";
 import { projectStore } from "../stores/project-store";
@@ -79,11 +78,6 @@ interface SwitchRpcParams {
 	include_history?: boolean;
 }
 
-/** Sandbox runtime information from gon/server state. */
-interface SandboxInfoPayload {
-	backend?: string;
-}
-
 // ── Module state ─────────────────────────────────────────────
 
 let switchRequestSeq = 0;
@@ -119,14 +113,6 @@ export function restoreSessionState(entry: SessionMeta, projectId?: string): voi
 		}
 	}
 	restoreReasoningEffort(entry.reasoningEffort);
-	updateSandboxUI(entry.sandbox_enabled !== false);
-	updateSandboxImageUI(entry.sandbox_image || null);
-	S.setSessionSandboxBackend(entry.sandbox_backend || null);
-	const sandboxRuntimeAvailable = ((S.sandboxInfo as SandboxInfoPayload | null)?.backend || "none") !== "none";
-	const effectiveSandboxRoute = entry.sandbox_enabled !== false && sandboxRuntimeAvailable;
-	S.setSessionCommandMode(effectiveSandboxRoute ? "sandbox" : "host");
-	S.setSessionCommandPromptSymbol(effectiveSandboxRoute || S.hostCommandIsRoot ? "#" : "$");
-	updateCommandInputUI();
 	restoreMcpToggle(!entry.mcpDisabled);
 	restoreNodeSelection(entry.node_id || null);
 	updateChatSessionHeader();

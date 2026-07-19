@@ -639,34 +639,6 @@ pub async fn handle_message_direct(
                     return Ok(());
                 }
 
-                // For /sandbox without args, send toggle + image keyboard.
-                if cmd == "sandbox" && cmd_text.trim() == "sandbox" {
-                    let list_result = sink
-                        .dispatch_command("sandbox", reply_target.clone(), Some(&peer_id))
-                        .await;
-                    let bot = {
-                        let accts = accounts.read().unwrap_or_else(|e| e.into_inner());
-                        accts.get(account_id).map(|s| s.bot.clone())
-                    };
-                    if let Some(bot) = bot {
-                        match list_result {
-                            Ok(text) => {
-                                send_sandbox_keyboard(&bot, &reply_target.outbound_to(), &text)
-                                    .await;
-                            },
-                            Err(e) => {
-                                let _ = bot
-                                    .send_message(
-                                        ChatId(reply_target.chat_id.parse().unwrap_or(0)),
-                                        format!("Error: {e}"),
-                                    )
-                                    .await;
-                            },
-                        }
-                    }
-                    return Ok(());
-                }
-
                 // For /sessions without args, send an inline keyboard instead of plain text.
                 if cmd == "sessions" && cmd_text.trim() == "sessions" {
                     let list_result = sink
@@ -881,10 +853,6 @@ pub async fn handle_callback_query(
         Some(format!("agent {n_str}"))
     } else if let Some(n_str) = data.strip_prefix("model_switch:") {
         Some(format!("model {n_str}"))
-    } else if let Some(val) = data.strip_prefix("sandbox_toggle:") {
-        Some(format!("sandbox {val}"))
-    } else if let Some(n_str) = data.strip_prefix("sandbox_image:") {
-        Some(format!("sandbox image {n_str}"))
     } else if data.starts_with("model_provider:") {
         // Handled separately below — no simple cmd_text.
         None

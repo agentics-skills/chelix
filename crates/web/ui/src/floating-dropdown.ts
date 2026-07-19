@@ -11,9 +11,8 @@ interface FloatingDropdownOptions {
 /**
  * Position dropdowns outside scroll-clipped toolbar rows.
  *
- * The implementation mirrors the sandbox image selector behavior: dropdowns are
- * fixed to the viewport, clamped horizontally, and can open upward when there is
- * not enough room below the anchor.
+ * Dropdowns are fixed to the viewport, clamped horizontally, and can open
+ * upward when there is not enough room below the anchor.
  */
 export function positionFloatingDropdown(
 	dropdown: HTMLElement,

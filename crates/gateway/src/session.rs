@@ -126,8 +126,6 @@ fn session_entry_value(entry: &chelix_sessions::metadata::SessionEntry) -> Value
         "messageCount": entry.message_count,
         "lastSeenMessageCount": entry.last_seen_message_count,
         "projectId": &entry.project_id,
-        "sandbox_enabled": entry.sandbox_enabled,
-        "sandbox_image": &entry.sandbox_image,
         "worktree_branch": &entry.worktree_branch,
         "channelBinding": &entry.channel_binding,
         "parentSessionKey": &entry.parent_session_key,

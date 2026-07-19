@@ -224,31 +224,28 @@ async fn test_add_accepts_alias_fields_and_duration_strings() {
 }
 
 #[tokio::test]
-async fn test_add_accepts_execution_target_and_image() {
+async fn test_add_rejects_execution_override() {
     let tool = make_tool();
-    let add_result = tool
+    let result = tool
         .execute(json!({
             "action": "add",
             "job": {
-                "name": "sandboxed run",
+                "name": "forbidden execution override",
                 "schedule": { "kind": "every", "every_ms": 60000 },
-                "payload": {
-                    "kind": "agentTurn",
-                    "message": "run diagnostics",
-                    "model": "gpt-5.2"
-                },
+                "payload": { "kind": "agentTurn", "message": "run diagnostics" },
                 "execution": {
                     "target": "sandbox",
                     "image": "ubuntu:26.04"
                 }
             }
         }))
-        .await
-        .unwrap();
+        .await;
 
-    assert_eq!(add_result["payload"]["model"], "gpt-5.2");
-    assert_eq!(add_result["sandbox"]["enabled"], true);
-    assert_eq!(add_result["sandbox"]["image"], "ubuntu:26.04");
+    let error = result.unwrap_err().to_string();
+    assert!(
+        error.contains("unknown field `execution`"),
+        "unexpected error: {error}"
+    );
 }
 
 #[tokio::test]
@@ -280,7 +277,7 @@ async fn test_add_accepts_delivery_fields_for_agent_turn() {
 }
 
 #[tokio::test]
-async fn test_update_accepts_host_execution_string() {
+async fn test_update_rejects_sandbox_override() {
     let tool = make_tool();
     let add_result = tool
         .execute(json!({
@@ -289,24 +286,26 @@ async fn test_update_accepts_host_execution_string() {
                 "name": "switch execution",
                 "schedule": { "kind": "every", "every_ms": 60000 },
                 "payload": { "kind": "agentTurn", "message": "run task" },
-                    "sandbox": { "enabled": true, "image": "ubuntu:26.04" }
+                "sessionTarget": "isolated"
             }
         }))
         .await
         .unwrap();
     let id = add_result["id"].as_str().unwrap();
 
-    let updated = tool
+    let result = tool
         .execute(json!({
             "action": "update",
             "id": id,
-            "patch": { "execution": "host" }
+            "patch": { "sandbox": { "enabled": false } }
         }))
-        .await
-        .unwrap();
+        .await;
 
-    assert_eq!(updated["sandbox"]["enabled"], false);
-    assert!(updated["sandbox"]["image"].is_null());
+    let error = result.unwrap_err().to_string();
+    assert!(
+        error.contains("unknown field `sandbox`"),
+        "unexpected error: {error}"
+    );
 }
 
 #[tokio::test]
@@ -369,6 +368,9 @@ fn test_parameters_schema_has_no_one_of() {
         !contains_one_of(&schema),
         "cron tool schema must avoid oneOf for OpenAI Responses API compatibility"
     );
+    let job_properties = &schema["properties"]["job"]["properties"];
+    assert!(job_properties.get("sandbox").is_none());
+    assert!(job_properties.get("execution").is_none());
 }
 
 #[tokio::test]
@@ -540,7 +542,6 @@ async fn test_add_accepts_stringified_nested_fields() {
                 "name": "stringified nested",
                 "schedule": r#"{"kind":"cron","expr":"0 9 * * 1"}"#,
                 "payload": r#"{"kind":"agentTurn","message":"hello"}"#,
-                "sandbox": r#"{"enabled":false}"#,
                 "sessionTarget": "isolated"
             }
         }))
@@ -552,7 +553,6 @@ async fn test_add_accepts_stringified_nested_fields() {
     assert_eq!(result["schedule"]["expr"], "0 9 * * 1");
     assert_eq!(result["payload"]["kind"], "agentTurn");
     assert_eq!(result["payload"]["message"], "hello");
-    assert_eq!(result["sandbox"]["enabled"], false);
 }
 
 #[tokio::test]

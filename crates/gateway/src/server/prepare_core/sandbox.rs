@@ -1,35 +1,28 @@
 //! Sandbox initialization helpers: router construction, deterministic image
-//! preparation, host provisioning, and startup container garbage collection.
+//! preparation, and startup container garbage collection.
 
 use std::sync::Arc;
 
 use {
-    chelix_tools::sandbox::{SandboxConfig, SandboxMode},
-    tracing::{debug, info, warn},
+    chelix_tools::sandbox::{SandboxBackendId, SandboxConfig, SandboxMode},
+    tracing::{debug, info},
 };
 
-use crate::{
-    broadcast::{BroadcastOpts, broadcast},
-    state::GatewayState,
-};
-
-/// Type alias for the deferred state used in prepare_core.
-type DeferredState = tokio::sync::OnceCell<Arc<GatewayState>>;
-
-/// Build the sandbox router with all configured backends registered.
+/// Build the sandbox router with the selected global backend.
 pub(super) fn build_sandbox_router(
     sandbox_config: &SandboxConfig,
     container_prefix: &str,
     timezone: Option<&str>,
-) -> chelix_tools::sandbox::SandboxRouter {
+) -> anyhow::Result<chelix_tools::sandbox::SandboxRouter> {
     let mut config = sandbox_config.clone();
     config.container_prefix = Some(container_prefix.to_string());
     config.timezone = timezone.map(ToOwned::to_owned);
 
     chelix_tools::sandbox::SandboxRouter::new(config)
+        .map_err(|error| anyhow::anyhow!("failed to initialize sandbox: {error}"))
 }
 
-/// Build and register the current deterministic sandbox image before startup continues.
+/// Build and register the one deterministic global sandbox image before startup continues.
 pub(super) async fn prepare_sandbox_images(
     sandbox_router: &Arc<chelix_tools::sandbox::SandboxRouter>,
 ) -> anyhow::Result<()> {
@@ -38,156 +31,59 @@ pub(super) async fn prepare_sandbox_images(
         return Ok(());
     }
 
-    let backends = sandbox_router.available_backend_instances();
-    let default_backend_name = sandbox_router.backend_name().to_string();
+    let backend = sandbox_router.backend();
+    let backend_id = backend.backend_id();
     let packages = sandbox_router.config().packages.clone();
     let base_image = sandbox_router
         .config()
         .image
         .clone()
         .unwrap_or_else(|| chelix_tools::sandbox::DEFAULT_SANDBOX_IMAGE.to_string());
-    let mut default_tag = None;
+    let result = backend
+        .build_image(&base_image, &packages)
+        .await
+        .map_err(|error| {
+            anyhow::anyhow!(
+                "failed to prepare current sandbox image for backend {backend_id}: {error}"
+            )
+        })?;
+    let Some(result) = result else {
+        debug!(
+            backend = %backend_id,
+            "sandbox backend does not build OCI images"
+        );
+        return Ok(());
+    };
 
-    for backend in backends {
-        let backend_name = backend.backend_name();
-        let result = backend
-            .build_image(&base_image, &packages)
-            .await
-            .map_err(|error| {
-                anyhow::anyhow!(
-                    "failed to prepare current sandbox image for backend {backend_name}: {error}"
-                )
-            })?;
-        let Some(result) = result else {
-            debug!(
-                backend = backend_name,
-                "sandbox backend does not build OCI images"
-            );
-            continue;
-        };
-
-        if result.built {
-            info!(
-                backend = backend_name,
-                tag = %result.tag,
-                "current sandbox image build complete"
-            );
-        } else {
-            debug!(
-                backend = backend_name,
-                tag = %result.tag,
-                "current sandbox image already exists"
-            );
-        }
-
-        sandbox_router
-            .set_backend_image(backend_name, result.tag.clone())
-            .await
-            .map_err(|error| {
-                anyhow::anyhow!(
-                    "failed to register current sandbox image for backend {backend_name}: {error}"
-                )
-            })?;
-        if backend_name == default_backend_name {
-            default_tag = Some(result.tag);
-        }
+    if result.built {
+        info!(
+            backend = %backend_id,
+            tag = %result.tag,
+            "current sandbox image build complete"
+        );
+    } else {
+        debug!(
+            backend = %backend_id,
+            tag = %result.tag,
+            "current sandbox image already exists"
+        );
     }
 
-    if let Some(tag) = default_tag {
-        sandbox_router.set_global_image(Some(tag)).await;
-    }
+    sandbox_router.set_prepared_image(result.tag).await;
 
     Ok(())
 }
 
 fn should_prepare_sandbox_images(mode: &SandboxMode) -> bool {
-    !matches!(mode, SandboxMode::Off)
+    matches!(mode, SandboxMode::On)
 }
 
-/// Spawn non-critical sandbox background tasks: host provisioning and startup GC.
+/// Spawn non-critical startup container garbage collection.
 pub(super) fn spawn_sandbox_background_tasks(
     sandbox_router: &Arc<chelix_tools::sandbox::SandboxRouter>,
-    deferred_state: &Arc<DeferredState>,
 ) {
-    // Host package provisioning when no container runtime is available.
-    {
-        let packages = sandbox_router.config().packages.clone();
-        if sandbox_router.backend_name() == "none"
-            && !packages.is_empty()
-            && chelix_tools::sandbox::is_debian_host()
-        {
-            let deferred_for_host = Arc::clone(deferred_state);
-            let pkg_count = packages.len();
-            tokio::spawn(async move {
-                if let Some(state) = deferred_for_host.get() {
-                    broadcast(
-                        state,
-                        "sandbox.host.provision",
-                        serde_json::json!({
-                            "phase": "start",
-                            "count": pkg_count,
-                        }),
-                        BroadcastOpts {
-                            drop_if_slow: true,
-                            ..Default::default()
-                        },
-                    )
-                    .await;
-                }
-
-                match chelix_tools::sandbox::provision_host_packages(&packages).await {
-                    Ok(Some(result)) => {
-                        info!(
-                            installed = result.installed.len(),
-                            skipped = result.skipped.len(),
-                            sudo = result.used_sudo,
-                            "host package provisioning complete"
-                        );
-                        if let Some(state) = deferred_for_host.get() {
-                            broadcast(
-                                state,
-                                "sandbox.host.provision",
-                                serde_json::json!({
-                                    "phase": "done",
-                                    "installed": result.installed.len(),
-                                    "skipped": result.skipped.len(),
-                                }),
-                                BroadcastOpts {
-                                    drop_if_slow: true,
-                                    ..Default::default()
-                                },
-                            )
-                            .await;
-                        }
-                    },
-                    Ok(None) => {
-                        debug!("host package provisioning: no-op (not debian or empty packages)");
-                    },
-                    Err(e) => {
-                        warn!("host package provisioning failed: {e}");
-                        if let Some(state) = deferred_for_host.get() {
-                            broadcast(
-                                state,
-                                "sandbox.host.provision",
-                                serde_json::json!({
-                                    "phase": "error",
-                                    "error": e.to_string(),
-                                }),
-                                BroadcastOpts {
-                                    drop_if_slow: true,
-                                    ..Default::default()
-                                },
-                            )
-                            .await;
-                        }
-                    },
-                }
-            });
-        }
-    }
-
     // Startup GC: remove orphaned session containers.
-    if sandbox_router.backend_name() != "none" {
+    if sandbox_router.backend_id() != SandboxBackendId::None {
         let prefix = sandbox_router.config().container_prefix.clone();
         tokio::spawn(async move {
             if let Some(prefix) = prefix {
@@ -224,15 +120,11 @@ mod tests {
 
     #[async_trait]
     impl Sandbox for RecordingBuildSandbox {
-        fn backend_name(&self) -> &'static str {
-            "recording"
+        fn backend_id(&self) -> SandboxBackendId {
+            SandboxBackendId::Docker
         }
 
-        async fn ensure_ready(
-            &self,
-            _id: &SandboxId,
-            _image_override: Option<&str>,
-        ) -> chelix_tools::error::Result<()> {
+        async fn ensure_ready(&self, _id: &SandboxId) -> chelix_tools::error::Result<()> {
             Ok(())
         }
 
@@ -264,8 +156,7 @@ mod tests {
     #[test]
     fn sandbox_image_preparation_follows_global_mode() {
         assert!(!should_prepare_sandbox_images(&SandboxMode::Off));
-        assert!(should_prepare_sandbox_images(&SandboxMode::NonMain));
-        assert!(should_prepare_sandbox_images(&SandboxMode::All));
+        assert!(should_prepare_sandbox_images(&SandboxMode::On));
     }
 
     #[tokio::test]

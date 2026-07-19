@@ -1,10 +1,10 @@
 use std::path::Path;
 
-use serde::Deserialize;
+use serde::{Deserialize, de::IgnoredAny};
 
 use crate::error::{Error, Result};
 
-use crate::types::{InstallKind, InstallSpec, SkillContent, SkillMetadata};
+use crate::types::{SkillContent, SkillMetadata};
 
 /// Validate a skill name: lowercase ASCII, hyphens, 1-64 chars.
 pub fn validate_name(name: &str) -> bool {
@@ -72,12 +72,12 @@ fn resolve_name_or_slug(meta: &mut SkillMetadata, skill_dir: &Path) -> Result<()
 /// Parse a SKILL.md file into metadata only (frontmatter).
 pub fn parse_metadata(content: &str, skill_dir: &Path) -> Result<SkillMetadata> {
     let (frontmatter, _body) = split_frontmatter(content)?;
+    reject_environment_metadata(&frontmatter)?;
     let mut meta: SkillMetadata = serde_yaml::from_str(&frontmatter)
         .map_err(|e| Error::Parse(format!("invalid SKILL.md frontmatter: {e}")))?;
 
     resolve_name_or_slug(&mut meta, skill_dir)?;
 
-    merge_openclaw_requires(&frontmatter, &mut meta);
     meta.path = skill_dir.to_path_buf();
     Ok(meta)
 }
@@ -85,12 +85,12 @@ pub fn parse_metadata(content: &str, skill_dir: &Path) -> Result<SkillMetadata> 
 /// Parse a SKILL.md file into full content (metadata + body).
 pub fn parse_skill(content: &str, skill_dir: &Path) -> Result<SkillContent> {
     let (frontmatter, body) = split_frontmatter(content)?;
+    reject_environment_metadata(&frontmatter)?;
     let mut meta: SkillMetadata = serde_yaml::from_str(&frontmatter)
         .map_err(|e| Error::Parse(format!("invalid SKILL.md frontmatter: {e}")))?;
 
     resolve_name_or_slug(&mut meta, skill_dir)?;
 
-    merge_openclaw_requires(&frontmatter, &mut meta);
     meta.path = skill_dir.to_path_buf();
     Ok(SkillContent {
         metadata: meta,
@@ -98,134 +98,55 @@ pub fn parse_skill(content: &str, skill_dir: &Path) -> Result<SkillContent> {
     })
 }
 
-// ── OpenClaw metadata extraction ────────────────────────────────────────────
-
-/// Helper struct to extract `metadata.openclaw.requires` and `metadata.openclaw.install`.
-#[derive(Deserialize, Default)]
-struct OpenClawRoot {
-    #[serde(default)]
-    metadata: Option<OpenClawMetadataWrap>,
-}
+// ── Unsupported environment metadata ───────────────────────────────────────
 
 #[derive(Deserialize, Default)]
-struct OpenClawMetadataWrap {
-    /// Our own namespace.
+struct EnvironmentMetadataRoot {
     #[serde(default)]
-    openclaw: Option<OpenClawMeta>,
-    /// Original openclaw/clawdbot namespace.
+    requires: Option<IgnoredAny>,
     #[serde(default)]
-    clawdbot: Option<OpenClawMeta>,
-    /// Moltbot namespace (some openclaw skills use this).
+    dockerfile: Option<IgnoredAny>,
     #[serde(default)]
-    moltbot: Option<OpenClawMeta>,
+    metadata: Option<NamespacedMetadata>,
 }
 
 #[derive(Deserialize, Default)]
-struct OpenClawMeta {
+struct NamespacedMetadata {
     #[serde(default)]
-    requires: Option<OpenClawRequires>,
+    openclaw: Option<EnvironmentMetadata>,
     #[serde(default)]
-    install: Vec<OpenClawInstallSpec>,
+    clawdbot: Option<EnvironmentMetadata>,
+    #[serde(default)]
+    moltbot: Option<EnvironmentMetadata>,
 }
 
 #[derive(Deserialize, Default)]
-struct OpenClawRequires {
+struct EnvironmentMetadata {
     #[serde(default)]
-    bins: Vec<String>,
-    #[serde(default, rename = "anyBins")]
-    any_bins: Vec<String>,
+    requires: Option<IgnoredAny>,
+    #[serde(default)]
+    install: Option<IgnoredAny>,
 }
 
-#[derive(Deserialize)]
-struct OpenClawInstallSpec {
-    #[serde(default)]
-    kind: String,
-    #[serde(default)]
-    formula: Option<String>,
-    #[serde(default)]
-    package: Option<String>,
-    /// openclaw uses `pkg` for go/cargo installs.
-    #[serde(default)]
-    pkg: Option<String>,
-    #[serde(default, rename = "module")]
-    module_path: Option<String>,
-    #[serde(default)]
-    url: Option<String>,
-    #[serde(default)]
-    bins: Vec<String>,
-    #[serde(default)]
-    os: Vec<String>,
-    #[serde(default)]
-    label: Option<String>,
-}
+fn reject_environment_metadata(frontmatter: &str) -> Result<()> {
+    let root: EnvironmentMetadataRoot = serde_yaml::from_str(frontmatter)
+        .map_err(|e| Error::Parse(format!("invalid SKILL.md frontmatter: {e}")))?;
 
-/// If the top-level `requires` is empty but `metadata.openclaw.requires`/`install` exist,
-/// merge them into `SkillMetadata.requires`.
-fn merge_openclaw_requires(frontmatter: &str, meta: &mut SkillMetadata) {
-    // Only merge if top-level requires is empty
-    if !meta.requires.bins.is_empty()
-        || !meta.requires.any_bins.is_empty()
-        || !meta.requires.install.is_empty()
-    {
-        return;
+    let has_namespaced_metadata = root.metadata.is_some_and(|metadata| {
+        [metadata.openclaw, metadata.clawdbot, metadata.moltbot]
+            .into_iter()
+            .flatten()
+            .any(|namespace| namespace.requires.is_some() || namespace.install.is_some())
+    });
+
+    if root.requires.is_some() || root.dockerfile.is_some() || has_namespaced_metadata {
+        return Err(Error::Validation(
+            "skill environment metadata is not supported; skills must be self-contained folders"
+                .into(),
+        ));
     }
 
-    let root: OpenClawRoot = match serde_yaml::from_str(frontmatter) {
-        Ok(r) => r,
-        Err(_) => return,
-    };
-
-    let oc = match root
-        .metadata
-        .and_then(|m| m.openclaw.or(m.clawdbot).or(m.moltbot))
-    {
-        Some(oc) => oc,
-        None => return,
-    };
-
-    if let Some(req) = oc.requires {
-        meta.requires.bins = req.bins;
-        meta.requires.any_bins = req.any_bins;
-    }
-
-    fn parse_kind(s: &str) -> Option<InstallKind> {
-        match s {
-            "brew" => Some(InstallKind::Brew),
-            "npm" => Some(InstallKind::Npm),
-            "go" => Some(InstallKind::Go),
-            "cargo" => Some(InstallKind::Cargo),
-            "uv" => Some(InstallKind::Uv),
-            "download" => Some(InstallKind::Download),
-            _ => None,
-        }
-    }
-
-    for spec in oc.install {
-        if let Some(kind) = parse_kind(&spec.kind) {
-            meta.requires.install.push(InstallSpec {
-                kind: kind.clone(),
-                formula: spec.formula,
-                package: spec.package.or_else(|| {
-                    if kind == InstallKind::Npm || kind == InstallKind::Cargo {
-                        spec.pkg.clone()
-                    } else {
-                        None
-                    }
-                }),
-                module: spec.module_path.or_else(|| {
-                    if kind == InstallKind::Go {
-                        spec.pkg.clone()
-                    } else {
-                        None
-                    }
-                }),
-                url: spec.url,
-                bins: spec.bins,
-                os: spec.os,
-                label: spec.label,
-            });
-        }
-    }
+    Ok(())
 }
 
 // ── _meta.json support (openclaw) ───────────────────────────────────────────
@@ -515,7 +436,7 @@ Body.
     }
 
     #[test]
-    fn test_top_level_requires() {
+    fn test_top_level_requires_is_rejected() {
         let content = r#"---
 name: songsee
 description: Generate spectrograms
@@ -529,16 +450,12 @@ requires:
 
 Instructions.
 "#;
-        let meta = parse_metadata(content, Path::new("/tmp/songsee")).unwrap();
-        assert_eq!(meta.requires.bins, vec!["songsee"]);
-        assert_eq!(meta.requires.install.len(), 1);
-        assert_eq!(meta.requires.install[0].kind, InstallKind::Brew);
-        assert_eq!(meta.requires.install[0].formula.as_deref(), Some("songsee"));
-        assert_eq!(meta.requires.install[0].os, vec!["darwin"]);
+        let error = parse_metadata(content, Path::new("/tmp/songsee")).unwrap_err();
+        assert!(error.to_string().contains("self-contained folders"));
     }
 
     #[test]
-    fn test_openclaw_metadata_requires() {
+    fn test_openclaw_environment_metadata_is_rejected() {
         let content = r#"---
 name: himalaya
 description: CLI email client
@@ -555,38 +472,26 @@ metadata:
 
 Instructions.
 "#;
-        let meta = parse_metadata(content, Path::new("/tmp/himalaya")).unwrap();
-        assert_eq!(meta.requires.bins, vec!["himalaya"]);
-        assert_eq!(meta.requires.install.len(), 1);
-        assert_eq!(meta.requires.install[0].kind, InstallKind::Brew);
-        assert_eq!(
-            meta.requires.install[0].label.as_deref(),
-            Some("Install Himalaya (brew)")
-        );
+        let error = parse_metadata(content, Path::new("/tmp/himalaya")).unwrap_err();
+        assert!(error.to_string().contains("self-contained folders"));
     }
 
     #[test]
-    fn test_top_level_requires_takes_precedence_over_openclaw() {
+    fn test_dockerfile_is_rejected() {
         let content = r#"---
-name: test-skill
-description: test
-requires:
-  bins: [mytool]
-metadata:
-  openclaw:
-    requires:
-      bins: [othertool]
+name: docker-skill
+description: Needs a custom image
+dockerfile: Dockerfile
 ---
 
 Body.
 "#;
-        let meta = parse_metadata(content, Path::new("/tmp/test")).unwrap();
-        // Top-level requires should be kept, openclaw not merged
-        assert_eq!(meta.requires.bins, vec!["mytool"]);
+        let error = parse_metadata(content, Path::new("/tmp/docker-skill")).unwrap_err();
+        assert!(error.to_string().contains("self-contained folders"));
     }
 
     #[test]
-    fn test_clawdbot_metadata_requires() {
+    fn test_clawdbot_environment_metadata_is_rejected() {
         // Real openclaw format: metadata is single-line JSON with "clawdbot" key
         let content = r#"---
 name: beeper
@@ -596,19 +501,8 @@ metadata: {"clawdbot":{"requires":{"bins":["beeper-cli"]},"install":[{"id":"go",
 
 Instructions.
 "#;
-        let meta = parse_metadata(content, Path::new("/tmp/beeper")).unwrap();
-        assert_eq!(meta.requires.bins, vec!["beeper-cli"]);
-        assert_eq!(meta.requires.install.len(), 1);
-        assert_eq!(meta.requires.install[0].kind, InstallKind::Go);
-        // pkg should be mapped to module for go installs
-        assert_eq!(
-            meta.requires.install[0].module.as_deref(),
-            Some("github.com/krausefx/beeper-cli/cmd/beeper-cli")
-        );
-        assert_eq!(
-            meta.requires.install[0].label.as_deref(),
-            Some("Install beeper-cli (go install)")
-        );
+        let error = parse_metadata(content, Path::new("/tmp/beeper")).unwrap_err();
+        assert!(error.to_string().contains("self-contained folders"));
     }
 
     #[test]
@@ -645,35 +539,5 @@ Body.
             "Bash(git:*)",
             "Bash(p4:*)"
         ]);
-    }
-
-    #[test]
-    fn test_dockerfile_field() {
-        let content = r#"---
-name: docker-skill
-description: Needs a custom image
-dockerfile: Dockerfile
----
-
-Body.
-"#;
-        let meta = parse_metadata(content, Path::new("/tmp/docker-skill")).unwrap();
-        assert_eq!(meta.dockerfile.as_deref(), Some("Dockerfile"));
-    }
-
-    #[test]
-    fn test_dockerfile_field_absent() {
-        let content = "---\nname: simple\ndescription: no docker\n---\nBody.\n";
-        let meta = parse_metadata(content, Path::new("/tmp/simple")).unwrap();
-        assert!(meta.dockerfile.is_none());
-    }
-
-    #[test]
-    fn test_no_requires_is_default() {
-        let content = "---\nname: simple\ndescription: no deps\n---\nBody.\n";
-        let meta = parse_metadata(content, Path::new("/tmp/simple")).unwrap();
-        assert!(meta.requires.bins.is_empty());
-        assert!(meta.requires.any_bins.is_empty());
-        assert!(meta.requires.install.is_empty());
     }
 }

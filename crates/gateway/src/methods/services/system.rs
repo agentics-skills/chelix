@@ -59,19 +59,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
     reg.register(
-        "skills.bins",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .skills
-                    .bins()
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-    reg.register(
         "skills.install",
         Box::new(|ctx| {
             Box::pin(async move {
@@ -322,19 +309,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     .services
                     .skills
                     .skill_detail(ctx.params.clone())
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-    reg.register(
-        "skills.install_dep",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .skills
-                    .install_dep(ctx.params.clone())
                     .await
                     .map_err(ErrorShape::from)
             })

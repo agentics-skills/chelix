@@ -101,7 +101,7 @@ pub struct CronJobState {
 
 /// A scheduled cron job.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CronJob {
     pub id: String,
     pub name: String,
@@ -115,9 +115,10 @@ pub struct CronJob {
     pub session_target: SessionTarget,
     #[serde(default)]
     pub state: CronJobState,
-    /// Sandbox configuration for this job.
-    #[serde(default)]
-    pub sandbox: CronSandboxConfig,
+    /// Whether to remove this job's sandbox container after completion.
+    /// This controls lifecycle only; routing always follows global sandbox mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_prune_container: Option<bool>,
     /// Whether to wake the heartbeat after this job completes.
     #[serde(default)]
     pub wake_mode: CronWakeMode,
@@ -151,35 +152,9 @@ pub struct CronRunRecord {
     pub session_key: Option<String>,
 }
 
-/// Sandbox configuration for a cron job.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct CronSandboxConfig {
-    /// Whether to run the job inside a sandbox. Defaults to true.
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-    /// Override the sandbox image. If `None`, uses the default image.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub image: Option<String>,
-    /// Whether to auto-prune the sandbox container after cron completion.
-    /// When `None`, falls back to the global `auto_prune_cron_containers` config.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auto_prune_container: Option<bool>,
-}
-
-impl Default for CronSandboxConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            image: None,
-            auto_prune_container: None,
-        }
-    }
-}
-
 /// Input for creating a new job.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CronJobCreate {
     /// Optional ID for the job. If not provided, a UUID will be generated.
     /// Use a fixed ID for system jobs to preserve run history across restarts.
@@ -196,8 +171,8 @@ pub struct CronJobCreate {
     pub enabled: bool,
     #[serde(default)]
     pub system: bool,
-    #[serde(default)]
-    pub sandbox: CronSandboxConfig,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_prune_container: Option<bool>,
     #[serde(default)]
     pub wake_mode: CronWakeMode,
 }
@@ -208,7 +183,7 @@ fn default_true() -> bool {
 
 /// Patch for updating an existing job.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CronJobPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -222,10 +197,22 @@ pub struct CronJobPatch {
     pub enabled: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delete_after_run: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sandbox: Option<CronSandboxConfig>,
+    #[serde(
+        default,
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub auto_prune_container: Option<Option<bool>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wake_mode: Option<CronWakeMode>,
+}
+
+fn double_option<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(Option::<T>::deserialize(deserializer)?))
 }
 
 /// Summary status of the cron system.
@@ -336,7 +323,7 @@ mod tests {
             },
             session_target: SessionTarget::Main,
             state: CronJobState::default(),
-            sandbox: CronSandboxConfig::default(),
+            auto_prune_container: None,
             wake_mode: CronWakeMode::default(),
             system: false,
             created_at_ms: 1000,
@@ -439,47 +426,11 @@ mod tests {
         assert!(create.enabled);
         assert!(!create.delete_after_run);
         assert_eq!(create.session_target, SessionTarget::Isolated);
-        assert!(create.sandbox.enabled);
-        assert!(create.sandbox.image.is_none());
+        assert!(create.auto_prune_container.is_none());
     }
 
     #[test]
-    fn test_sandbox_config_default() {
-        let cfg = CronSandboxConfig::default();
-        assert!(cfg.enabled);
-        assert!(cfg.image.is_none());
-        assert!(cfg.auto_prune_container.is_none());
-    }
-
-    #[test]
-    fn test_sandbox_config_roundtrip() {
-        let cfg = CronSandboxConfig {
-            enabled: false,
-            image: Some("custom:latest".into()),
-            auto_prune_container: Some(true),
-        };
-        let json = serde_json::to_string(&cfg).unwrap();
-        let back: CronSandboxConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(cfg, back);
-    }
-
-    #[test]
-    fn test_sandbox_config_deserialize_missing_defaults() {
-        let cfg: CronSandboxConfig = serde_json::from_str("{}").unwrap();
-        assert!(cfg.enabled);
-        assert!(cfg.image.is_none());
-        assert!(cfg.auto_prune_container.is_none());
-    }
-
-    #[test]
-    fn test_sandbox_config_auto_prune_explicit() {
-        let json = r#"{"enabled": true, "autoPruneContainer": false}"#;
-        let cfg: CronSandboxConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(cfg.auto_prune_container, Some(false));
-    }
-
-    #[test]
-    fn test_cronjob_with_sandbox_roundtrip() {
+    fn test_cronjob_with_auto_prune_roundtrip() {
         let job = CronJob {
             id: "abc".into(),
             name: "test".into(),
@@ -501,11 +452,7 @@ mod tests {
             },
             session_target: SessionTarget::Isolated,
             state: CronJobState::default(),
-            sandbox: CronSandboxConfig {
-                enabled: false,
-                image: Some("my-image:v1".into()),
-                auto_prune_container: None,
-            },
+            auto_prune_container: Some(true),
             wake_mode: CronWakeMode::default(),
             system: false,
             created_at_ms: 1000,
@@ -514,8 +461,7 @@ mod tests {
         let json = serde_json::to_string(&job).unwrap();
         let back: CronJob = serde_json::from_str(&json).unwrap();
         assert_eq!(job, back);
-        assert!(!back.sandbox.enabled);
-        assert_eq!(back.sandbox.image.as_deref(), Some("my-image:v1"));
+        assert_eq!(back.auto_prune_container, Some(true));
     }
 
     #[test]
@@ -563,7 +509,6 @@ mod tests {
             "payload": { "kind": "systemEvent", "text": "hi" },
             "sessionTarget": "main",
             "state": {},
-            "sandbox": {},
             "system": false,
             "createdAtMs": 1000,
             "updatedAtMs": 1000

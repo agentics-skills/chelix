@@ -26,8 +26,9 @@ use super::containers::{
 use super::paths::resolved_sandbox_mount_plan;
 #[cfg(target_os = "macos")]
 use super::types::{
-    BuildImageResult, DEFAULT_SANDBOX_IMAGE, Sandbox, SandboxConfig, SandboxId,
-    ToolsServiceEndpoint, canonical_sandbox_packages, tail_lines, truncate_output_for_display,
+    BuildImageResult, Sandbox, SandboxBackendId, SandboxConfig, SandboxId, SharedSandboxImage,
+    ToolsServiceEndpoint, canonical_sandbox_packages, shared_sandbox_image, tail_lines,
+    truncate_output_for_display,
 };
 #[cfg(target_os = "macos")]
 use crate::command::{CommandOptions, CommandOutput};
@@ -43,6 +44,7 @@ use crate::sandbox::file_system::{
 #[cfg(target_os = "macos")]
 pub struct AppleContainerSandbox {
     pub config: SandboxConfig,
+    effective_image: SharedSandboxImage,
     name_generations: RwLock<HashMap<String, u32>>,
     tools_endpoints: RwLock<HashMap<String, ToolsServiceEndpoint>>,
 }
@@ -50,18 +52,20 @@ pub struct AppleContainerSandbox {
 #[cfg(target_os = "macos")]
 impl AppleContainerSandbox {
     pub fn new(config: SandboxConfig) -> Self {
+        let effective_image = shared_sandbox_image(&config);
+        Self::new_with_global_image(config, effective_image)
+    }
+
+    pub(crate) fn new_with_global_image(
+        config: SandboxConfig,
+        effective_image: SharedSandboxImage,
+    ) -> Self {
         Self {
             config,
+            effective_image,
             name_generations: RwLock::new(HashMap::new()),
             tools_endpoints: RwLock::new(HashMap::new()),
         }
-    }
-
-    fn image(&self) -> &str {
-        self.config
-            .image
-            .as_deref()
-            .unwrap_or(DEFAULT_SANDBOX_IMAGE)
     }
 
     fn container_prefix(&self) -> &str {
@@ -632,18 +636,18 @@ pub(crate) fn is_apple_container_boot_failure(logs: Option<&str>) -> bool {
 #[cfg(target_os = "macos")]
 #[async_trait]
 impl Sandbox for AppleContainerSandbox {
-    fn backend_name(&self) -> &'static str {
-        "apple-container"
+    fn backend_id(&self) -> SandboxBackendId {
+        SandboxBackendId::AppleContainer
     }
 
     fn provides_fs_isolation(&self) -> bool {
         true
     }
 
-    async fn ensure_ready(&self, id: &SandboxId, image_override: Option<&str>) -> Result<()> {
+    async fn ensure_ready(&self, id: &SandboxId) -> Result<()> {
         let mut name = self.container_name(id).await;
-        let requested_image = image_override.unwrap_or_else(|| self.image());
-        let image = self.resolve_local_image(requested_image).await?;
+        let effective_image = self.effective_image.read().await.clone();
+        let image = self.resolve_local_image(&effective_image).await?;
         let tz = self.config.timezone.as_deref();
         let mounts = self.mount_specs(id)?;
 

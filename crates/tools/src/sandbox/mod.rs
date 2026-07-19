@@ -8,9 +8,8 @@ pub(crate) mod containers;
 pub(crate) mod docker;
 pub mod env;
 pub(crate) mod file_system;
-pub(crate) mod host;
 pub(crate) mod paths;
-pub(crate) mod platform;
+pub(crate) mod provision;
 pub mod router;
 pub(crate) mod sync;
 pub(crate) mod types;
@@ -23,8 +22,6 @@ mod tests;
 
 #[cfg(target_os = "macos")]
 pub use apple::{AppleContainerSandbox, ensure_apple_container_service};
-#[cfg(target_os = "linux")]
-pub use platform::CgroupSandbox;
 #[cfg(feature = "wasm")]
 pub use wasm::WasmSandbox;
 pub use {
@@ -37,13 +34,12 @@ pub use {
     },
     docker::{DockerSandbox, NoSandbox},
     env::ExecEnv,
-    host::{HostProvisionResult, is_debian_host, provision_host_packages},
     paths::shared_home_dir_path,
-    platform::{RestrictedHostSandbox, is_wasm_sandbox_available},
-    router::{FailoverSandbox, SandboxEvent, SandboxRouter, auto_detect_backend, create_sandbox},
+    router::{SandboxEvent, SandboxRouter, create_sandbox},
     types::{
         BuildImageResult, DEFAULT_SANDBOX_IMAGE, HomePersistence, ResourceLimits, Sandbox,
-        SandboxBackendId, SandboxConfig, SandboxId, SandboxMode, SandboxScope,
+        SandboxBackend, SandboxBackendId, SandboxConfig, SandboxId, SandboxMode, SandboxScope,
         ToolsServiceEndpoint,
     },
+    wasm::is_wasm_sandbox_available,
 };

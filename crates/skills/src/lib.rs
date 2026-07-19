@@ -14,7 +14,6 @@ pub mod portability;
 pub mod prompt_gen;
 pub mod recipes;
 pub mod registry;
-pub mod requirements;
 pub mod safety;
 pub mod types;
 pub mod usage;

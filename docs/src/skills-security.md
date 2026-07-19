@@ -47,17 +47,18 @@ If local repo HEAD changes from the pinned `commit_sha`:
 
 The UI/API mark this state as `source changed`.
 
-## Dependency Install Guardrails
+## Self-Contained Skill Folders
 
-`skills.install_dep` now includes hard gates:
+Chelix does not install system dependencies for skills. Each skill folder must
+contain its own instructions and every script or binary it needs.
 
-- explicit `confirm=true` required
-- host installs blocked when sandbox mode is off (unless explicit override)
-- suspicious command chains are blocked by default (for example `curl ... | sh`,
-  base64 decode chains, quarantine bypass)
+Legacy environment metadata is rejected during parsing, including top-level
+`requires` and `dockerfile` fields and namespaced `requires` or `install`
+metadata. It is not ignored or converted.
 
-For high-risk overrides, require manual review before using
-`allow_risky_install=true`.
+Repository, folder, and portable-bundle installation remain available; these
+flows install the skill folder itself and preserve the trust and provenance
+lifecycle described above.
 
 ## Emergency Kill Switch
 
@@ -73,12 +74,12 @@ Security-sensitive skill/plugin actions are appended to:
 
 `~/.chelix/logs/security-audit.jsonl`
 
-Logged events include installs, removals, trust changes, enable/disable,
-dependency install attempts, and source drift detection.
+Logged events include installs, removals, trust changes, enable/disable, and
+source drift detection.
 
 ## Recommended Production Policy
 
-1. Keep sandbox enabled (`sandbox.mode = "all"`).
+1. Keep sandbox enabled (`sandbox.mode = "On"`).
 2. Keep approval mode at least `on-miss`.
 3. Review SKILL.md and linked scripts before trust.
 4. Prefer pinned, known repos over ad-hoc installs.

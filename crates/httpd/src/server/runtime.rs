@@ -264,8 +264,6 @@ pub(super) async fn finalize_prepared_gateway(
                                 "messageCount": entry.message_count,
                                 "lastSeenMessageCount": entry.last_seen_message_count,
                                 "projectId": entry.project_id,
-                                "sandbox_enabled": entry.sandbox_enabled,
-                                "sandbox_image": entry.sandbox_image,
                                 "worktree_branch": entry.worktree_branch,
                                 "channelBinding": entry.channel_binding,
                                 "activeChannel": active_channel,
@@ -703,11 +701,7 @@ pub(super) async fn finalize_prepared_gateway(
                         to: hb.to.clone(),
                     }),
                     enabled: Some(true),
-                    sandbox: Some(chelix_cron::types::CronSandboxConfig {
-                        enabled: hb.sandbox_enabled,
-                        image: hb.sandbox_image.clone(),
-                        auto_prune_container: None,
-                    }),
+                    auto_prune_container: Some(None),
                     ..Default::default()
                 };
                 match cron_service.update(HEARTBEAT_JOB_ID, patch).await {
@@ -737,11 +731,7 @@ pub(super) async fn finalize_prepared_gateway(
                     delete_after_run: false,
                     enabled: true,
                     system: true,
-                    sandbox: chelix_cron::types::CronSandboxConfig {
-                        enabled: hb.sandbox_enabled,
-                        image: hb.sandbox_image.clone(),
-                        auto_prune_container: None,
-                    },
+                    auto_prune_container: None,
                     wake_mode: chelix_cron::types::CronWakeMode::default(),
                 };
                 match cron_service.add(create).await {
@@ -770,7 +760,7 @@ pub(super) async fn finalize_prepared_gateway(
             provider_summary,
             mcp_configured_count,
             method_count,
-            sandbox_backend_name: sandbox_router.backend_name().to_owned(),
+            sandbox_backend: sandbox_router.backend_id(),
             data_dir,
             setup_code_display,
             webauthn_registry,
@@ -1004,7 +994,7 @@ pub async fn start_gateway(
                 ""
             }
         ),
-        format!("sandbox: {} backend", banner.sandbox_backend_name),
+        format!("sandbox: {} backend", banner.sandbox_backend),
         format!(
             "config: {}",
             chelix_config::find_or_default_config_path().display()
@@ -1013,13 +1003,17 @@ pub async fn start_gateway(
     ];
     lines.extend(startup_passkey_origin_lines(&passkey_origins));
     #[cfg(target_os = "macos")]
-    if banner.sandbox_backend_name == "docker" || banner.sandbox_backend_name == "podman" {
+    if matches!(
+        banner.sandbox_backend,
+        chelix_tools::sandbox::SandboxBackendId::Docker
+            | chelix_tools::sandbox::SandboxBackendId::Podman
+    ) {
         lines.push(
             "hint: install Apple Container for VM-isolated sandboxing (see docs/sandbox.md)".into(),
         );
     }
-    if banner.sandbox_backend_name == "none" {
-        lines.push("⚠ no container runtime found; commands run on host".into());
+    if banner.sandbox_backend == chelix_tools::sandbox::SandboxBackendId::None {
+        lines.push("⚠ sandbox mode is Off; commands run directly on the host".into());
     }
     if !tls_active && !is_localhost {
         lines.push(

@@ -16,10 +16,11 @@ deny entries accumulate across all of them.
 | 3   | Per-agent preset  | `[agents.presets.<id>.tools]`                          | Sub-agents spawned with that preset         |
 | 4   | Per-channel group | `[channels.<type>.<account>.tools.groups.<chat_type>]` | Channel sessions matching that chat type    |
 | 5   | Per-sender        | `...groups.<chat_type>.by_sender.<sender_id>`          | Messages from that sender in that group     |
-| 6   | Sandbox           | `[sandbox.tools_policy]`                               | Commands running inside a sandbox container |
+| 6   | Sandbox           | `[sandbox.tools_policy]`                               | All requests when global sandbox mode is `On` |
 
-**Web UI sessions** see layers 1-3 (no channel context), plus layer 6 if
-sandboxed. **Channel sessions** can see all 6 layers.
+**Web UI sessions** see layers 1-3 (no channel context), plus layer 6 when
+global sandbox mode is `On`. **Channel sessions** can see all 6 layers when the
+global mode is `On`; with global mode `Off`, layer 6 is skipped.
 
 ## Merge Semantics
 
@@ -153,9 +154,9 @@ only narrowed the allow list.
 
 ## Layer 6 — Sandbox
 
-When a session runs inside a sandbox container, this layer applies on top of all
-other layers. It lets you restrict tools for sandboxed execution without
-affecting non-sandboxed sessions.
+When global sandbox mode is `On`, this layer applies on top of all other layers.
+It lets you restrict tools for sandbox execution without affecting global
+`Off` mode.
 
 ```toml
 [sandbox.tools_policy]
@@ -163,7 +164,7 @@ allow = ["execute_command"]         # only execute_command inside sandbox
 deny = ["browser"]       # never allow browser in sandbox
 ```
 
-This layer is skipped entirely when the session is not sandboxed.
+This layer is skipped entirely when global sandbox mode is `Off`.
 
 ## Examples
 

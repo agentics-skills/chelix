@@ -17,7 +17,7 @@ use {crate::services::ServiceError, chelix_sessions::store::UserMessageTarget};
 /// - `Some(None)` → field was explicitly `null` (clear it)
 /// - `Some(Some(v))` → field was set to value `v`
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PatchParams {
     pub key: String,
     #[serde(default)]
@@ -32,16 +32,10 @@ pub struct PatchParams {
     pub project_id: Option<Option<String>>,
     #[serde(default, deserialize_with = "double_option", alias = "worktree_branch")]
     pub worktree_branch: Option<Option<String>>,
-    #[serde(default, deserialize_with = "double_option", alias = "sandbox_image")]
-    pub sandbox_image: Option<Option<String>>,
     #[serde(default, deserialize_with = "double_option", alias = "mode_id")]
     pub mode_id: Option<Option<String>>,
     #[serde(default, deserialize_with = "double_option", alias = "mcp_disabled")]
     pub mcp_disabled: Option<Option<bool>>,
-    #[serde(default, deserialize_with = "double_option", alias = "sandbox_enabled")]
-    pub sandbox_enabled: Option<Option<bool>>,
-    #[serde(default, deserialize_with = "double_option", alias = "sandbox_backend")]
-    pub sandbox_backend: Option<Option<String>>,
     #[serde(
         default,
         deserialize_with = "double_option",
@@ -156,7 +150,6 @@ mod tests {
         assert!(p.reasoning_effort.is_none());
         assert!(p.archived.is_none());
         assert!(p.project_id.is_none());
-        assert!(p.sandbox_enabled.is_none());
     }
 
     #[test]
@@ -167,7 +160,6 @@ mod tests {
             "model": "gpt-4o",
             "reasoningEffort": "high",
             "archived": true,
-            "sandboxEnabled": true,
             "mcpDisabled": false,
         }))
         .unwrap();
@@ -175,28 +167,18 @@ mod tests {
         assert_eq!(p.model.as_deref(), Some("gpt-4o"));
         assert_eq!(p.reasoning_effort.as_deref(), Some("high"));
         assert_eq!(p.archived, Some(true));
-        assert_eq!(p.sandbox_enabled, Some(Some(true)));
         assert_eq!(p.mcp_disabled, Some(Some(false)));
     }
 
     #[test]
-    fn patch_params_sandbox_enabled_false() {
-        let p: PatchParams = serde_json::from_value(json!({
-            "key": "main",
-            "sandboxEnabled": false,
-        }))
-        .unwrap();
-        assert_eq!(p.sandbox_enabled, Some(Some(false)));
-    }
-
-    #[test]
-    fn patch_params_sandbox_enabled_null_clears() {
-        let p: PatchParams = serde_json::from_value(json!({
-            "key": "main",
-            "sandboxEnabled": null,
-        }))
-        .unwrap();
-        assert_eq!(p.sandbox_enabled, Some(None));
+    fn patch_params_rejects_removed_sandbox_fields() {
+        for field in ["sandboxEnabled", "sandboxImage", "sandboxBackend"] {
+            let result: Result<PatchParams, _> = serde_json::from_value(json!({
+                "key": "main",
+                field: true,
+            }));
+            assert!(result.is_err(), "removed field {field} must be rejected");
+        }
     }
 
     #[test]
@@ -206,16 +188,12 @@ mod tests {
             "reasoning_effort": "medium",
             "project_id": "proj-1",
             "worktree_branch": "feature/abc",
-            "sandbox_image": "custom:latest",
-            "sandbox_enabled": false,
             "mcp_disabled": true,
         }))
         .unwrap();
         assert_eq!(p.reasoning_effort.as_deref(), Some("medium"));
         assert_eq!(p.project_id, Some(Some("proj-1".to_string())));
         assert_eq!(p.worktree_branch, Some(Some("feature/abc".to_string())));
-        assert_eq!(p.sandbox_image, Some(Some("custom:latest".to_string())));
-        assert_eq!(p.sandbox_enabled, Some(Some(false)));
         assert_eq!(p.mcp_disabled, Some(Some(true)));
     }
 

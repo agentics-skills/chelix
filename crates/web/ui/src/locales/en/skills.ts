@@ -98,18 +98,18 @@ export default {
 	driftWarning: "Source changed since last trust; review updates before enabling again.",
 
 	// ── Security warning ────────────────────────────────────
-	securityTitle: "\u26a0\ufe0f Skills run code on your machine \u2014 treat every skill as untrusted",
+	securityTitle: "\u26a0\ufe0f Skills can direct command execution \u2014 treat every skill as untrusted",
 	securityIntro:
-		"Skills are community-authored instructions that the AI agent follows <strong>with your full system privileges</strong>. Popularity or download count does not mean a skill is safe. A malicious skill can instruct the agent to:",
-	threat1: "Execute arbitrary shell commands on your machine (install malware, cryptominers, backdoors)",
+		"Skills are community-authored instructions that the AI agent follows under Chelix's global sandbox policy. Popularity or download count does not mean a skill is safe. A malicious skill can instruct the agent to:",
+	threat1: "Execute arbitrary shell commands in the configured runtime (install malware, cryptominers, backdoors)",
 	threat2:
-		"Read and exfiltrate sensitive data \u2014 SSH keys, API tokens, browser cookies, credentials, env variables",
-	threat3: "Modify or delete files across your filesystem, including other projects",
+		"Read and exfiltrate sensitive data exposed to the configured runtime \u2014 API tokens, credentials, env variables, and shared data",
+	threat3: "Modify or delete files available to the configured runtime, including the shared Chelix data folder",
 	threat4: "Send your data to remote servers via curl/wget without your knowledge",
 	securityReview:
 		"Triple-check the source code of every skill before enabling it. Read the full SKILL.md and any scripts it references \u2014 these are the exact instructions the agent will execute on your behalf. Do not trust a skill just because it is popular, highly downloaded, or appears on a leaderboard.",
 	securitySandbox:
-		"With sandbox mode enabled (Docker, Apple Container, or cgroup), command execution is isolated and the damage a malicious skill can do is significantly limited.",
+		'Global sandbox mode "On" runs command execution in a filesystem-isolated runtime. Mode "Off" executes commands directly on the host.',
 	dismiss: "Dismiss",
 	disableAllThirdParty: "Disable all third-party skills",
 
