@@ -320,22 +320,8 @@ pub struct SandboxPackagesTool {
 }
 
 impl SandboxPackagesTool {
-    #[cfg(not(test))]
     pub fn new(sandbox_router: Arc<SandboxRouter>) -> Self {
         Self { sandbox_router }
-    }
-
-    #[cfg(test)]
-    pub fn new() -> Self {
-        Self {
-            sandbox_router: Arc::new(SandboxRouter::disabled()),
-        }
-    }
-
-    #[cfg(test)]
-    pub fn with_sandbox_router(mut self, sandbox_router: Arc<SandboxRouter>) -> Self {
-        self.sandbox_router = sandbox_router;
-        self
     }
 }
 
@@ -455,7 +441,11 @@ mod tests {
             config,
             Arc::new(crate::sandbox::NoSandbox),
         ));
-        SandboxPackagesTool::new().with_sandbox_router(router)
+        SandboxPackagesTool::new(router)
+    }
+
+    fn disabled_tool() -> SandboxPackagesTool {
+        SandboxPackagesTool::new(Arc::new(SandboxRouter::disabled()))
     }
 
     #[tokio::test]
@@ -530,7 +520,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_off_mode_returns_error() {
-        let tool = SandboxPackagesTool::new();
+        let tool = disabled_tool();
         let result = tool.execute(json!({})).await.unwrap();
         assert_eq!(result["error"], "Sandbox mode is Off");
     }
@@ -549,7 +539,7 @@ mod tests {
 
     #[test]
     fn test_tool_metadata() {
-        let tool = SandboxPackagesTool::new();
+        let tool = disabled_tool();
         assert_eq!(tool.name(), "sandbox_packages");
         assert!(tool.description().contains("sandbox"));
         let schema = tool.parameters_schema();

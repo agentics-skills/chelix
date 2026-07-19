@@ -32,8 +32,10 @@ pub async fn output_is_truncated_at_limit() -> crate::Result<()> {
         max_output_bytes: 100,
         ..Default::default()
     };
-    // Generate ~1KB of output.
-    let result = run_shell_command("yes hello | head -200", &opts).await?;
+    // Generate exactly 1 KiB with a finite shell builtin. An unbounded
+    // producer piped through `head` makes this contract test depend on
+    // process scheduling and SIGPIPE delivery under parallel test load.
+    let result = run_shell_command("printf '%1024s' ''", &opts).await?;
     // Output must be truncated.
     assert!(
         result.stdout.len() <= 200, // 100 bytes + truncation marker

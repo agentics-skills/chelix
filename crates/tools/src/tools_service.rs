@@ -3,10 +3,12 @@ use std::{path::PathBuf, process::Stdio, sync::Arc, time::Duration};
 use {
     async_trait::async_trait,
     chelix_protocol::{
-        RipgrepRequest, RipgrepResponse, TOOLS_SERVICE_BINARY_ENV, TOOLS_SERVICE_HEALTH_PATH,
+        ListDirectoryRequest, ListDirectoryResponse, RipgrepRequest, RipgrepResponse,
+        TOOLS_SERVICE_BINARY_ENV, TOOLS_SERVICE_HEALTH_PATH, TOOLS_SERVICE_LIST_DIRECTORY_PATH,
         TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_RIPGREP_PATH, ToolsServiceError,
         ToolsServiceHealth, ToolsServiceReady,
     },
+    serde::{Serialize, de::DeserializeOwned},
     serde_json::Value,
     tokio::{
         io::{AsyncBufReadExt, BufReader},
@@ -40,6 +42,7 @@ impl ToolsServiceCallError {
 
 #[async_trait]
 pub trait ToolsService: Send + Sync {
+    async fn list_directory(&self, session_key: &str, path: String) -> Result<String>;
     async fn ripgrep(&self, session_key: &str, params: Value) -> Result<Value>;
 }
 
@@ -90,21 +93,21 @@ impl ManagedToolsService {
         }
     }
 
-    async fn post_ripgrep(
+    async fn post_tool<Request, Response>(
         &self,
         endpoint: &ToolsServiceEndpoint,
-        params: &Value,
-    ) -> std::result::Result<Value, ToolsServiceCallError> {
+        path: &str,
+        request: &Request,
+    ) -> std::result::Result<Response, ToolsServiceCallError>
+    where
+        Request: Serialize + Sync + ?Sized,
+        Response: DeserializeOwned,
+    {
         let response = self
             .client
-            .post(format!(
-                "{}{}",
-                endpoint.base_url, TOOLS_SERVICE_RIPGREP_PATH
-            ))
+            .post(format!("{}{path}", endpoint.base_url))
             .bearer_auth(&endpoint.token)
-            .json(&RipgrepRequest {
-                params: params.clone(),
-            })
+            .json(request)
             .send()
             .await
             .map_err(Error::from)
@@ -112,9 +115,8 @@ impl ManagedToolsService {
         let status = response.status();
         if status.is_success() {
             return response
-                .json::<RipgrepResponse>()
+                .json::<Response>()
                 .await
-                .map(|body| body.result)
                 .map_err(Error::from)
                 .map_err(ToolsServiceCallError::Unavailable);
         }
@@ -133,13 +135,19 @@ impl ManagedToolsService {
             Err(ToolsServiceCallError::Unavailable(error))
         }
     }
-}
 
-#[async_trait]
-impl ToolsService for ManagedToolsService {
-    async fn ripgrep(&self, session_key: &str, params: Value) -> Result<Value> {
+    async fn call_tool<Request, Response>(
+        &self,
+        session_key: &str,
+        path: &str,
+        request: &Request,
+    ) -> Result<Response>
+    where
+        Request: Serialize + Sync + ?Sized,
+        Response: DeserializeOwned,
+    {
         let (endpoint, sandboxed) = self.endpoint_for(session_key).await?;
-        match self.post_ripgrep(&endpoint, &params).await {
+        match self.post_tool(&endpoint, path, request).await {
             Ok(result) => Ok(result),
             Err(ToolsServiceCallError::Unavailable(error)) if sandboxed => {
                 warn!(
@@ -155,12 +163,35 @@ impl ToolsService for ManagedToolsService {
                         "sandbox tools service recovery for session {session_key:?} resolved to the host environment"
                     )));
                 }
-                self.post_ripgrep(&recovered_endpoint, &params)
+                self.post_tool(&recovered_endpoint, path, request)
                     .await
                     .map_err(ToolsServiceCallError::into_error)
             },
             Err(error) => Err(error.into_error()),
         }
+    }
+}
+
+#[async_trait]
+impl ToolsService for ManagedToolsService {
+    async fn list_directory(&self, session_key: &str, path: String) -> Result<String> {
+        let response: ListDirectoryResponse = self
+            .call_tool(
+                session_key,
+                TOOLS_SERVICE_LIST_DIRECTORY_PATH,
+                &ListDirectoryRequest { path },
+            )
+            .await?;
+        Ok(response.result)
+    }
+
+    async fn ripgrep(&self, session_key: &str, params: Value) -> Result<Value> {
+        let response: RipgrepResponse = self
+            .call_tool(session_key, TOOLS_SERVICE_RIPGREP_PATH, &RipgrepRequest {
+                params,
+            })
+            .await?;
+        Ok(response.result)
     }
 }
 
@@ -494,5 +525,37 @@ mod tests {
         assert!(error.to_string().contains("invalid pattern"));
         assert_eq!(backend.ensure_ready_calls.load(Ordering::SeqCst), 1);
         tool_error.assert_async().await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn list_directory_calls_its_service_endpoint() {
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("POST", TOOLS_SERVICE_LIST_DIRECTORY_PATH)
+            .match_header("authorization", "Bearer list-token")
+            .match_body(mockito::Matcher::Json(serde_json::json!({
+                "path": "/workspace"
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body("{\"result\":\"src/\\nCargo.toml (1 line)\"}")
+            .expect(1)
+            .create_async()
+            .await;
+        let endpoint = ToolsServiceEndpoint {
+            base_url: server.url(),
+            token: "list-token".into(),
+        };
+        let (service, backend) = test_managed_service([endpoint.clone(), endpoint]).await;
+
+        let result = service
+            .list_directory("session:list", "/workspace".into())
+            .await
+            .unwrap_or_else(|error| panic!("list directory call failed: {error}"));
+
+        assert_eq!(result, "src/\nCargo.toml (1 line)");
+        assert_eq!(backend.ensure_ready_calls.load(Ordering::SeqCst), 1);
+        call.assert_async().await;
     }
 }

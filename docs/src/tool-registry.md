@@ -82,6 +82,32 @@ When a sandbox has no tmux server yet, `execute_command` creates a tmux session
 and returns the generated `terminalId`, tmux session/window/pane IDs, output,
 completion state, and exit code when available.
 
+## Managed filesystem tools
+
+The `list_directory` and `ripgrep` tools execute exclusively through the
+managed `chelix-tools-service`. With sandbox mode enabled, the service runs in
+the sandbox container selected for the session. With sandbox mode disabled,
+Chelix starts the service as a host sidecar. Service and filesystem errors are
+returned to the tool caller; neither tool falls back from the sandbox to the
+gateway host.
+
+### `list_directory`
+
+`list_directory` accepts one required absolute `path` and lists only its direct
+children. The plain-text result uses the following format:
+
+- directories end in `/`;
+- text files include their logical line count, for example
+  `notes.txt (2 lines)`;
+- binary files include a binary marker and byte-based size, for example
+  `image.png (binary, 12.4 KB)`;
+- an empty directory returns `Folder is empty`.
+
+A missing, relative, non-directory, or unreadable path is a tool error. The
+tool intentionally does not apply the workspace root or allow/deny rules from
+`[tools.fs]`; access is limited by the filesystem visible to the managed
+service runtime.
+
 ## Ripgrep tool
 
 The `ripgrep` tool searches files by shelling out to the system `rg` binary

@@ -103,22 +103,8 @@ pub struct ProcessTool {
 }
 
 impl ProcessTool {
-    #[cfg(not(test))]
     pub fn new(sandbox_router: Arc<SandboxRouter>) -> Self {
         Self { sandbox_router }
-    }
-
-    #[cfg(test)]
-    pub fn new() -> Self {
-        Self {
-            sandbox_router: Arc::new(SandboxRouter::disabled()),
-        }
-    }
-
-    #[cfg(test)]
-    pub fn with_sandbox_router(mut self, sandbox_router: Arc<SandboxRouter>) -> Self {
-        self.sandbox_router = sandbox_router;
-        self
     }
 
     /// Run a tmux command in the session's resolved environment.
@@ -489,6 +475,10 @@ impl AgentTool for ProcessTool {
 mod tests {
     use super::*;
 
+    fn process_tool() -> ProcessTool {
+        ProcessTool::new(Arc::new(SandboxRouter::disabled()))
+    }
+
     #[test]
     fn test_valid_session_names() {
         assert!(is_valid_session_name("my-session"));
@@ -715,7 +705,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_process_tool_schema() {
-        let tool = ProcessTool::new();
+        let tool = process_tool();
         assert_eq!(tool.name(), "process");
         assert!(!tool.description().is_empty());
 
@@ -730,7 +720,7 @@ mod tests {
 
     #[test]
     fn process_tool_persists_line_oriented_output_as_text() {
-        let tool = ProcessTool::new();
+        let tool = process_tool();
         assert_eq!(
             tool.result_persistence(&serde_json::json!({ "action": "poll" })),
             ToolResultPersistence::TextFields(&["output"])
@@ -739,7 +729,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_process_tool_invalid_params() {
-        let tool = ProcessTool::new();
+        let tool = process_tool();
         let result = tool
             .execute(serde_json::json!({ "action": "bogus" }))
             .await
@@ -755,7 +745,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_process_tool_invalid_session_name_on_poll() {
-        let tool = ProcessTool::new();
+        let tool = process_tool();
         let result = tool
             .execute(serde_json::json!({
                 "action": "poll",
@@ -774,7 +764,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_process_tool_invalid_session_name_on_send_keys() {
-        let tool = ProcessTool::new();
+        let tool = process_tool();
         let result = tool
             .execute(serde_json::json!({
                 "action": "send_keys",
@@ -794,7 +784,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_process_tool_invalid_session_name_on_paste() {
-        let tool = ProcessTool::new();
+        let tool = process_tool();
         let result = tool
             .execute(serde_json::json!({
                 "action": "paste",
@@ -814,7 +804,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_process_tool_invalid_session_name_on_kill() {
-        let tool = ProcessTool::new();
+        let tool = process_tool();
         let result = tool
             .execute(serde_json::json!({
                 "action": "kill",
@@ -836,7 +826,7 @@ mod tests {
         // Without a sandbox router, list runs tmux on the host.
         // This may or may not have tmux installed, so we just check
         // the result is valid JSON with success or error.
-        let tool = ProcessTool::new();
+        let tool = process_tool();
         let result = tool
             .execute(serde_json::json!({ "action": "list" }))
             .await
@@ -847,7 +837,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_process_tool_start_without_command() {
-        let tool = ProcessTool::new();
+        let tool = process_tool();
         let result = tool
             .execute(serde_json::json!({ "action": "start" }))
             .await

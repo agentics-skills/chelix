@@ -599,6 +599,29 @@ mod tests {
         }
     }
 
+    struct ConfigDirGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        _config_dir: tempfile::TempDir,
+    }
+
+    impl ConfigDirGuard {
+        fn new() -> Self {
+            let lock = crate::config_override_test_lock();
+            let config_dir = tempfile::tempdir().unwrap();
+            chelix_config::set_config_dir(config_dir.path().to_path_buf());
+            Self {
+                _lock: lock,
+                _config_dir: config_dir,
+            }
+        }
+    }
+
+    impl Drop for ConfigDirGuard {
+        fn drop(&mut self) {
+            chelix_config::clear_config_dir();
+        }
+    }
+
     fn test_password() -> String {
         format!(
             "test-password-{}",
@@ -687,8 +710,7 @@ mod tests {
     #[serial_test::serial(vault_runtime)]
     async fn disable_vault_decrypts_stored_secrets_before_flipping_config() {
         let _runtime_flag = VaultRuntimeFlagGuard::enabled();
-        let config_dir = tempfile::tempdir().unwrap();
-        chelix_config::set_config_dir(config_dir.path().to_path_buf());
+        let _config_dir = ConfigDirGuard::new();
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
         chelix_vault::run_migrations(&pool).await.unwrap();
         create_disable_test_tables(&pool).await;
@@ -771,8 +793,7 @@ mod tests {
     #[serial_test::serial(vault_runtime)]
     async fn disable_vault_fails_on_unknown_channel_with_encrypted_secret() {
         let _runtime_flag = VaultRuntimeFlagGuard::enabled();
-        let config_dir = tempfile::tempdir().unwrap();
-        chelix_config::set_config_dir(config_dir.path().to_path_buf());
+        let _config_dir = ConfigDirGuard::new();
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
         chelix_vault::run_migrations(&pool).await.unwrap();
         create_disable_test_tables(&pool).await;
