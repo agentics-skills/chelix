@@ -494,8 +494,7 @@ mod tests {
         );
 
         assert!(detected.iter().any(|source| {
-            source.provider == "openai"
-                && source.source == "env:CHELIX_PROVIDER+CHELIX_API_KEY"
+            source.provider == "openai" && source.source == "env:CHELIX_PROVIDER+CHELIX_API_KEY"
         }));
     }
 }

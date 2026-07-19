@@ -329,7 +329,11 @@ pub(super) fn build_schema_map() -> KnownKeys {
             ("model", Leaf),
             (
                 "tools",
-                Struct(HashMap::from([("allow", Leaf), ("deny", Leaf)])),
+                Struct(HashMap::from([
+                    ("allow", Leaf),
+                    ("deny", Leaf),
+                    ("preload", Leaf),
+                ])),
             ),
             ("delegate_only", Leaf),
             (

@@ -282,6 +282,7 @@ port = {port}                           # Port number (auto-generated for this i
 # [agents.presets.research]
 # identity.name = "Researcher"
 # identity.theme = "thorough, skeptical, and evidence-oriented"
+# tools.preload = ["Read", "Glob", "Grep"] # Schemas sent immediately when tools.registry_mode = "lazy"; allow/deny still apply
 # system_prompt_suffix = "..."
 # max_iterations = 16
 # max_tool_result_bytes = 100000   # Per-agent override of tools.max_tool_result_bytes

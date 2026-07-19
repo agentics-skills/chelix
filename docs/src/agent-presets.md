@@ -36,6 +36,7 @@ identity.theme = "thorough and methodical"
 model = "anthropic/claude-haiku-3-5-20241022"
 tools.allow = ["Read", "Glob", "Grep", "web_search", "web_fetch"]
 tools.deny = ["execute_command", "Write"]
+tools.preload = ["Read", "Glob", "Grep"]
 system_prompt_suffix = "Gather facts and report clearly."
 
 [agents.presets.coordinator]
@@ -65,7 +66,7 @@ Per preset (`[agents.presets.<name>]`):
 
 - `identity.name`, `identity.emoji`, `identity.theme`
 - `model`
-- `tools.allow`, `tools.deny`
+- `tools.allow`, `tools.deny`, `tools.preload`
 - `mcp` — MCP server access: `allow_servers` or `deny_servers`
 - `sandbox.*` — per-agent sandbox overrides
 - `skills.allow`, `skills.deny`
@@ -81,6 +82,10 @@ Per preset (`[agents.presets.<name>]`):
 - If `tools.allow` is empty, all tools start as allowed.
 - If `tools.allow` is non-empty, only those tools are allowed.
 - `tools.deny` is applied after allow-list filtering.
+- With global `tools.registry_mode = "lazy"`, `tools.preload` exposes the listed
+  parameter schemas immediately alongside `get_tool`.
+- `tools.preload` does not grant access: only tools remaining after all effective
+  allow/deny filters can be preloaded.
 - For normal sub-agents, `spawn_agent` is always removed to avoid recursive
   runaway spawning.
 - For `delegate_only = true`, the registry is restricted to delegation/session
@@ -202,6 +207,7 @@ Example `~/.chelix/agents/reviewer.md`:
 ---
 name: reviewer
 tools: Read, Grep, Glob
+preload_tools: Read, Grep
 model: sonnet
 emoji: 🔍
 theme: focused and efficient
@@ -212,8 +218,8 @@ timeout_secs: 60
 You are a code reviewer. Focus on correctness and security.
 ```
 
-Frontmatter fields: `name` (required), `tools`, `deny_tools`, `model`, `emoji`,
-`theme`, `delegate_only`, `max_iterations`, `timeout_secs`, `display_name`,
-`reasoning_effort`, `mcp_allow_servers`, `mcp_deny_servers`, `sandbox_mode`,
-`skills_allow`, and `skills_deny`. The markdown body becomes
+Frontmatter fields: `name` (required), `tools`, `deny_tools`, `preload_tools`,
+`model`, `emoji`, `theme`, `delegate_only`, `max_iterations`, `timeout_secs`,
+`display_name`, `reasoning_effort`, `mcp_allow_servers`, `mcp_deny_servers`,
+`sandbox_mode`, `skills_allow`, and `skills_deny`. The markdown body becomes
 `system_prompt_suffix`.

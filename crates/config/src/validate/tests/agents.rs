@@ -169,6 +169,24 @@ max_tool_result_bytes = 100000
 }
 
 #[test]
+fn preset_tools_preload_is_valid_config_key() {
+    let result = validate_toml_str(
+        r#"
+[agents.presets.quick.tools]
+preload = ["Read", "Grep"]
+"#,
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.severity != Severity::Error),
+        "unexpected diagnostics: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn preset_max_iterations_must_be_positive() {
     let result = validate_toml_str(
         r#"
