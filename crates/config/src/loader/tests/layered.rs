@@ -226,7 +226,8 @@ fn defaults_toml_written_and_loaded_from_disk() {
     let path = crate::defaults::write_defaults_toml(dir.path()).expect("write defaults.toml");
     assert!(path.exists());
 
-    let config = crate::defaults::load_defaults(dir.path());
+    let raw = std::fs::read_to_string(path).expect("read defaults.toml");
+    let config: ChelixConfig = toml::from_str(&raw).expect("parse defaults.toml");
     assert_eq!(config.tools.agent_timeout_secs, 600);
     assert!(config.tls.enabled);
 }
@@ -356,7 +357,7 @@ fn layered_load_user_override_wins_over_defaults() {
 
     set_config_dir(dir.path().to_path_buf());
 
-    let config = discover_and_load();
+    let config = discover_and_load().expect("load config");
     // User override wins.
     assert_eq!(config.tools.agent_timeout_secs, 999);
     // Defaults inherited.
@@ -382,7 +383,7 @@ fn upgrade_adds_new_defaults_automatically() {
 
     set_config_dir(dir.path().to_path_buf());
 
-    let config = discover_and_load();
+    let config = discover_and_load().expect("load config");
     // Defaults should be inherited even though user didn't specify them.
     assert_eq!(config.tools.agent_timeout_secs, 600);
     assert_eq!(config.tools.agent_max_iterations, 25);
@@ -407,14 +408,14 @@ fn user_override_survives_defaults_refresh() {
     set_config_dir(dir.path().to_path_buf());
 
     // First load (writes defaults.toml).
-    let config1 = discover_and_load();
+    let config1 = discover_and_load().expect("load config");
     assert_eq!(config1.tools.agent_timeout_secs, 42);
 
     // Simulate upgrade by refreshing defaults.toml again.
     crate::defaults::write_defaults_toml(dir.path()).expect("refresh defaults");
 
     // Reload — user override must survive.
-    let config2 = discover_and_load();
+    let config2 = discover_and_load().expect("reload config");
     assert_eq!(
         config2.tools.agent_timeout_secs, 42,
         "user override must survive defaults refresh"
@@ -575,6 +576,98 @@ fn initialize_config_rejects_invalid_sandbox_mode() {
         error.to_string().contains("Of"),
         "error should identify the invalid sandbox mode: {error}"
     );
+}
+
+#[test]
+fn initialize_config_creates_config_only_when_missing() {
+    let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config_path = dir.path().join("chelix.toml");
+    set_config_dir(dir.path().to_path_buf());
+
+    let initialized = initialize_config().expect("initialize missing config");
+
+    assert!(config_path.exists());
+    assert_ne!(initialized.server.port, 0);
+    discover_and_load().expect("reload initialized config");
+    clear_config_dir();
+}
+
+#[test]
+fn discover_and_load_rejects_missing_config_without_creating_files() {
+    let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
+    let dir = tempfile::tempdir().expect("tempdir");
+    set_config_dir(dir.path().to_path_buf());
+
+    let error = discover_and_load().expect_err("missing config must fail strict reload");
+
+    assert!(error.to_string().contains("no config file found"));
+    assert!(!dir.path().join("chelix.toml").exists());
+    assert!(!dir.path().join("defaults.toml").exists());
+    clear_config_dir();
+}
+
+#[test]
+fn supported_formats_reject_unknown_fields() {
+    let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
+    let cases = [
+        ("toml", "[server]\nremoved_option = true\n"),
+        ("yaml", "server:\n  removed_option: true\n"),
+        ("yml", "server:\n  removed_option: true\n"),
+        ("json", r#"{"server":{"removed_option":true}}"#),
+    ];
+
+    for (extension, contents) in cases {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config_path = dir.path().join(format!("chelix.{extension}"));
+        std::fs::write(&config_path, contents).expect("write config");
+        set_config_dir(dir.path().to_path_buf());
+
+        let error = discover_and_load().expect_err("unknown field must fail config load");
+        assert!(
+            error.to_string().contains("server.removed_option"),
+            "{extension} error should identify the unknown field: {error}"
+        );
+    }
+
+    clear_config_dir();
+}
+
+#[test]
+fn malformed_config_fails_initialization_without_overwrite() {
+    let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config_path = dir.path().join("chelix.toml");
+    let invalid = "[server\nport = 18789\n";
+    std::fs::write(&config_path, invalid).expect("write invalid config");
+    set_config_dir(dir.path().to_path_buf());
+
+    initialize_config().expect_err("malformed config must fail initialization");
+
+    assert_eq!(
+        std::fs::read_to_string(&config_path).expect("read invalid config"),
+        invalid
+    );
+    clear_config_dir();
+}
+
+#[test]
+fn update_config_rejects_invalid_existing_config_without_overwrite() {
+    let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config_path = dir.path().join("chelix.toml");
+    let invalid = "[server]\nremoved_option = true\n";
+    std::fs::write(&config_path, invalid).expect("write invalid config");
+    set_config_dir(dir.path().to_path_buf());
+
+    update_config(|config| config.server.port = 18789)
+        .expect_err("update must reject invalid existing config");
+
+    assert_eq!(
+        std::fs::read_to_string(&config_path).expect("read invalid config"),
+        invalid
+    );
+    clear_config_dir();
 }
 
 #[test]

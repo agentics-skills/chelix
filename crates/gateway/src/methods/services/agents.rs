@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(feature = "agent")]
 use crate::session_reasoning::materialize_agent_preset_session_defaults;
 
 pub(super) fn register(reg: &mut MethodRegistry) {
@@ -35,7 +36,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         Box::new(|ctx| {
             Box::pin(async move {
                 let agent_id = resolve_session_agent_id_for_ctx(&ctx).await;
-                Ok(read_identity_payload_for_agent(&agent_id))
+                read_identity_payload_for_agent(&agent_id)
             })
         }),
     );
@@ -76,7 +77,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 save_user_profile_fields(&ctx.params)?;
                 // Mark onboarding complete when both agent name and user name are present
                 // (mirrors the old onboarding.identity_update behavior).
-                mark_onboarded_if_ready(&identity, &ctx.params);
+                mark_onboarded_if_ready(&identity, &ctx.params)?;
                 // Sync persona DB row if persona store is available.
                 if let Some(ref store) = ctx.state.services.agent_persona_store {
                     let _ = store
@@ -89,7 +90,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         })
                         .await;
                 }
-                Ok(read_identity_payload_for_agent(&agent_id))
+                read_identity_payload_for_agent(&agent_id)
             })
         }),
     );
@@ -394,7 +395,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
             Box::new(|ctx| {
                 Box::pin(async move {
                     let agent_id = resolve_requested_agent_id(&ctx, &ctx.params).await?;
-                    Ok(read_identity_payload_for_agent(&agent_id))
+                    read_identity_payload_for_agent(&agent_id)
                 })
             }),
         );
@@ -434,7 +435,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     // Handle user profile fields.
                     save_user_profile_fields(&ctx.params)?;
                     // Mark onboarding complete when both names are present.
-                    mark_onboarded_if_ready(&identity, &ctx.params);
+                    mark_onboarded_if_ready(&identity, &ctx.params)?;
                     // Sync persona DB row.
                     if let Some(ref store) = ctx.state.services.agent_persona_store {
                         let _ = store
@@ -454,7 +455,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             entry.identity = identity;
                         }
                     }
-                    Ok(read_identity_payload_for_agent(&agent_id))
+                    read_identity_payload_for_agent(&agent_id)
                 })
             }),
         );
@@ -621,7 +622,9 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             "missing 'id' or 'agent_id' parameter",
                         )
                     })?;
-                    let config = chelix_config::discover_and_load_readonly();
+                    let config = chelix_config::discover_and_load().map_err(|error| {
+                        ErrorShape::new(error_codes::INTERNAL, error.to_string())
+                    })?;
                     let toml_str = match config.agents.presets.get(&id) {
                         Some(preset) => toml::to_string_pretty(preset).unwrap_or_default(),
                         None => String::new(),
@@ -679,12 +682,14 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     })?;
                     validate_preset_id(&id)?;
                     reject_toml_backed_preset_update(&id)?;
-                    let config = chelix_config::discover_and_load_readonly();
+                    let config = chelix_config::discover_and_load().map_err(|error| {
+                        ErrorShape::new(error_codes::INTERNAL, error.to_string())
+                    })?;
                     let preset =
                         preset_from_rpc_params(&id, &ctx.params, config.agents.presets.get(&id))?;
                     let path = chelix_config::agent_defs::write_user_agent_def(&id, &preset)
                         .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e.to_string()))?;
-                    refresh_agents_config(&ctx).await;
+                    refresh_agents_config(&ctx).await?;
                     Ok(serde_json::json!({
                         "ok": true,
                         "id": id,
@@ -704,7 +709,9 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         )
                     })?;
                     validate_preset_id(&id)?;
-                    let config = chelix_config::discover_and_load_readonly();
+                    let config = chelix_config::discover_and_load().map_err(|error| {
+                        ErrorShape::new(error_codes::INTERNAL, error.to_string())
+                    })?;
                     if let Some(existing) = config.agents.presets.get(&id)
                         && !chelix_config::schema::is_default_agent_preset(&id, existing)
                     {
@@ -716,7 +723,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     let preset = preset_from_rpc_params(&id, &ctx.params, None)?;
                     let path = chelix_config::agent_defs::write_user_agent_def(&id, &preset)
                         .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e.to_string()))?;
-                    refresh_agents_config(&ctx).await;
+                    refresh_agents_config(&ctx).await?;
                     Ok(serde_json::json!({
                         "ok": true,
                         "id": id,
@@ -738,7 +745,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     validate_preset_id(&id)?;
                     let deleted = chelix_config::agent_defs::delete_user_agent_def(&id)
                         .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e.to_string()))?;
-                    refresh_agents_config(&ctx).await;
+                    refresh_agents_config(&ctx).await?;
                     Ok(serde_json::json!({ "ok": true, "id": id, "deleted": deleted }))
                 })
             }),
@@ -801,7 +808,9 @@ pub(super) fn register(reg: &mut MethodRegistry) {
 
                     // Refresh in-memory agents_config if available
                     if let Some(ref agents_config) = ctx.state.services.agents_config {
-                        let fresh = chelix_config::discover_and_load();
+                        let fresh = chelix_config::discover_and_load().map_err(|error| {
+                            ErrorShape::new(error_codes::INTERNAL, error.to_string())
+                        })?;
                         let mut guard = agents_config.write().await;
                         *guard = fresh.agents;
                     }
@@ -814,9 +823,13 @@ pub(super) fn register(reg: &mut MethodRegistry) {
             "agents.presets_list",
             Box::new(|ctx| {
                 Box::pin(async move {
-                    let config = chelix_config::discover_and_load_readonly();
+                    let config = chelix_config::discover_and_load().map_err(|error| {
+                        ErrorShape::new(error_codes::INTERNAL, error.to_string())
+                    })?;
                     let toml_config =
-                        chelix_config::discover_and_load_readonly_without_agent_defs();
+                        chelix_config::discover_and_load_without_agent_defs().map_err(|error| {
+                            ErrorShape::new(error_codes::INTERNAL, error.to_string())
+                        })?;
                     let persona_ids: std::collections::HashSet<String> =
                         if let Some(ref store) = ctx.state.services.agent_persona_store {
                             store
@@ -978,7 +991,8 @@ fn preset_from_rpc_params(
 
 #[cfg(feature = "agent")]
 fn reject_toml_backed_preset_update(id: &str) -> Result<(), ErrorShape> {
-    let config = chelix_config::discover_and_load_readonly_without_agent_defs();
+    let config = chelix_config::discover_and_load_without_agent_defs()
+        .map_err(|error| ErrorShape::new(error_codes::INTERNAL, error.to_string()))?;
     if let Some(existing) = config.agents.presets.get(id)
         && !chelix_config::schema::is_default_agent_preset(id, existing)
     {
@@ -1045,10 +1059,12 @@ fn parse_mcp_policy_param(params: &serde_json::Value) -> chelix_config::schema::
 }
 
 #[cfg(feature = "agent")]
-async fn refresh_agents_config(ctx: &MethodContext) {
+async fn refresh_agents_config(ctx: &MethodContext) -> Result<(), ErrorShape> {
     if let Some(ref agents_config) = ctx.state.services.agents_config {
-        let fresh = chelix_config::discover_and_load();
+        let fresh = chelix_config::discover_and_load()
+            .map_err(|error| ErrorShape::new(error_codes::INTERNAL, error.to_string()))?;
         let mut guard = agents_config.write().await;
         *guard = fresh.agents;
     }
+    Ok(())
 }

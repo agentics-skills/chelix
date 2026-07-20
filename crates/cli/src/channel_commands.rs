@@ -88,7 +88,7 @@ fn handle_teams(action: TeamsAction) -> Result<()> {
 }
 
 fn run_teams_bootstrap(args: TeamsBootstrapArgs) -> Result<()> {
-    let config = chelix_config::discover_and_load();
+    let config = chelix_config::discover_and_load()?;
     let default_base_url = default_gateway_base_url(&config);
 
     let app_id = required_value(

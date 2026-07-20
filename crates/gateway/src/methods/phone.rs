@@ -317,7 +317,7 @@ pub(super) fn phone_key_store_name(provider: &str) -> String {
 pub(super) async fn reload_running_phone_account(
     state: &crate::state::GatewayState,
 ) -> anyhow::Result<()> {
-    let mut config = chelix_config::discover_and_load();
+    let mut config = chelix_config::discover_and_load()?;
     merge_phone_keys(&mut config);
 
     match phone_channel_account(&config) {
@@ -381,6 +381,8 @@ mod tests {
                 .unwrap_or_else(|error| panic!("data tempdir should be created: {error}"));
             chelix_config::set_config_dir(config_dir.path().to_path_buf());
             chelix_config::set_data_dir(data_dir.path().to_path_buf());
+            chelix_config::initialize_config()
+                .unwrap_or_else(|error| panic!("test config should be initialized: {error}"));
             Self {
                 _lock: lock,
                 _config_dir: config_dir,

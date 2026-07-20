@@ -130,6 +130,7 @@ async fn start_auth_server_impl_with_webauthn(
     // Isolate each test process with its own config/data directory so
     // concurrent nextest processes don't race on shared config files.
     let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("chelix.toml"), "").unwrap();
     chelix_config::set_config_dir(tmp.path().to_path_buf());
     chelix_config::set_data_dir(tmp.path().to_path_buf());
     // Leak the TempDir so it outlives the test (cleaned up on process exit).
@@ -214,6 +215,7 @@ async fn start_localhost_server_with_vault() -> (
     Arc<chelix_vault::Vault>,
 ) {
     let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("chelix.toml"), "").unwrap();
     chelix_config::set_config_dir(tmp.path().to_path_buf());
     chelix_config::set_data_dir(tmp.path().to_path_buf());
     std::mem::forget(tmp);
@@ -290,6 +292,7 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
     Arc<chelix_sessions::store::SessionStore>,
 ) {
     let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("chelix.toml"), "").unwrap();
     chelix_config::set_config_dir(tmp.path().to_path_buf());
     chelix_config::set_data_dir(tmp.path().to_path_buf());
     let sessions_dir = tmp.path().join("sessions");
@@ -361,6 +364,7 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
 /// Start a test server without a credential store (no auth).
 async fn start_noauth_server() -> SocketAddr {
     let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("chelix.toml"), "").unwrap();
     chelix_config::set_config_dir(tmp.path().to_path_buf());
     chelix_config::set_data_dir(tmp.path().to_path_buf());
     std::mem::forget(tmp);

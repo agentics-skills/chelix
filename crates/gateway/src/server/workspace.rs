@@ -31,10 +31,8 @@ pub(crate) fn seed_default_workspace_markdown_files() {
     seed_file_if_missing(data_dir.join("HEARTBEAT.md"), DEFAULT_HEARTBEAT_MD);
 }
 
-pub(crate) fn warn_on_workspace_prompt_file_truncation() {
-    let limit_chars = chelix_config::discover_and_load()
-        .chat
-        .workspace_file_max_chars;
+pub(crate) fn warn_on_workspace_prompt_file_truncation(config: &chelix_config::ChelixConfig) {
+    let limit_chars = config.chat.workspace_file_max_chars;
     let data_dir = chelix_config::data_dir();
     let mut paths = vec![data_dir.join("AGENTS.md"), data_dir.join("TOOLS.md")];
     let agents_dir = data_dir.join("agents");

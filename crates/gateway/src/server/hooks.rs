@@ -213,10 +213,10 @@ fn builtin_hook_metadata() -> Vec<(
 pub(crate) async fn discover_and_build_hooks(
     disabled: &HashSet<String>,
     session_store: Option<&Arc<SessionStore>>,
-) -> (
+) -> anyhow::Result<(
     Option<Arc<chelix_common::hooks::HookRegistry>>,
     Vec<crate::state::DiscoveredHookInfo>,
-) {
+)> {
     use chelix_plugins::{
         bundled::{command_logger::CommandLoggerHook, session_memory::SessionMemoryHook},
         hook_discovery::{FsHookDiscoverer, HookDiscoverer, HookSource},
@@ -224,7 +224,7 @@ pub(crate) async fn discover_and_build_hooks(
         shell_hook::ShellHookHandler,
     };
 
-    let config = chelix_config::discover_and_load();
+    let config = chelix_config::discover_and_load()?;
     let discoverer = FsHookDiscoverer::new(FsHookDiscoverer::default_paths());
     let discovered = discoverer.discover().await.unwrap_or_default();
     let session_export_mode = config.memory.session_export;
@@ -432,5 +432,5 @@ pub(crate) async fn discover_and_build_hooks(
         );
     }
 
-    (Some(Arc::new(registry)), info_list)
+    Ok((Some(Arc::new(registry)), info_list))
 }

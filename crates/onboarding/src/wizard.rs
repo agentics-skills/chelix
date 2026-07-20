@@ -13,9 +13,9 @@ pub async fn run_onboarding() -> Result<()> {
     // Check if already onboarded.
     let mut identity_name: Option<String> = None;
     let mut user_name: Option<String> = None;
-    if config_path.exists()
-        && let Ok(cfg) = chelix_config::loader::load_config(&config_path)
-    {
+    if config_path.exists() {
+        let cfg = chelix_config::loader::load_config(&config_path)
+            .context("failed to load existing onboarding config")?;
         identity_name = cfg.identity.name;
         user_name = cfg.user.name;
     }
@@ -54,7 +54,8 @@ pub async fn run_onboarding() -> Result<()> {
 
     // Merge into existing config or create new one.
     let mut config = if config_path.exists() {
-        chelix_config::loader::load_config(&config_path).unwrap_or_default()
+        chelix_config::loader::load_config(&config_path)
+            .context("failed to load existing onboarding config")?
     } else {
         ChelixConfig::default()
     };

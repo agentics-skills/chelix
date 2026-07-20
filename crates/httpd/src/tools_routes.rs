@@ -13,6 +13,7 @@ use {
 
 const CONFIG_AUTH_REQUIRED: &str = "CONFIG_AUTH_REQUIRED";
 const CONFIG_READ_FAILED: &str = "CONFIG_READ_FAILED";
+const CONFIG_LOAD_FAILED: &str = "CONFIG_LOAD_FAILED";
 const CONFIG_TOML_REQUIRED: &str = "CONFIG_TOML_REQUIRED";
 const CONFIG_INVALID_TOML: &str = "CONFIG_INVALID_TOML";
 const CONFIG_SAVE_FAILED: &str = "CONFIG_SAVE_FAILED";
@@ -112,7 +113,6 @@ pub async fn config_get(State(state): State<crate::server::AppState>) -> impl In
     }
 
     // Read raw file from disk to preserve comments.
-    // Fall back to the documented template if no config file exists yet.
     let path = chelix_config::find_or_default_config_path();
     let toml_str = if path.exists() {
         match std::fs::read_to_string(&path) {
@@ -129,8 +129,11 @@ pub async fn config_get(State(state): State<crate::server::AppState>) -> impl In
             },
         }
     } else {
-        let config = chelix_config::discover_and_load();
-        chelix_config::template::default_config_template(config.server.port)
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(config_error(CONFIG_LOAD_FAILED, "no config file found")),
+        )
+            .into_response();
     };
 
     Json(serde_json::json!({
@@ -193,7 +196,16 @@ pub async fn config_template(State(state): State<crate::server::AppState>) -> im
     }
 
     // Load current config to preserve the port
-    let config = chelix_config::discover_and_load();
+    let config = match chelix_config::discover_and_load() {
+        Ok(config) => config,
+        Err(error) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(config_error(CONFIG_LOAD_FAILED, error.to_string())),
+            )
+                .into_response();
+        },
+    };
     let template = chelix_config::template::default_config_template(config.server.port);
 
     Json(serde_json::json!({
@@ -211,8 +223,16 @@ pub async fn config_provenance(State(state): State<crate::server::AppState>) -> 
         return resp.into_response();
     }
 
-    // Use read-only load to avoid writing defaults.toml on every GET request.
-    let config = chelix_config::discover_and_load_readonly();
+    let config = match chelix_config::discover_and_load() {
+        Ok(config) => config,
+        Err(error) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(config_error(CONFIG_LOAD_FAILED, error.to_string())),
+            )
+                .into_response();
+        },
+    };
 
     // Preset provenance
     let presets = chelix_config::defaults::compute_preset_provenance(&config.agents);

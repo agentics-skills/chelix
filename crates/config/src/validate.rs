@@ -8,7 +8,7 @@ use std::path::Path;
 use crate::schema::ChelixConfig;
 
 #[path = "validate/schema_map.rs"]
-mod schema_map;
+pub(crate) mod schema_map;
 #[path = "validate/semantic.rs"]
 mod semantic;
 
@@ -81,7 +81,7 @@ pub fn validate(path: Option<&Path>) -> ValidationResult {
                 severity: Severity::Info,
                 category: "file-ref",
                 path: String::new(),
-                message: "no config file found; using defaults".into(),
+                message: "no config file found; startup initialization will create one".into(),
             }],
             config_path: None,
         };
@@ -133,7 +133,15 @@ pub fn validate_toml_str(toml_str: &str) -> ValidationResult {
 
     // 2. Unknown fields - walk the TOML tree against KnownKeys
     let schema = schema_map::build_schema_map();
-    schema_map::check_unknown_fields(&toml_value, &schema, "", &mut diagnostics);
+    match serde_json::to_value(&toml_value) {
+        Ok(value) => schema_map::check_unknown_fields(&value, &schema, "", &mut diagnostics),
+        Err(error) => diagnostics.push(Diagnostic {
+            severity: Severity::Error,
+            category: "syntax",
+            path: String::new(),
+            message: format!("failed to inspect TOML structure: {error}"),
+        }),
+    }
 
     // 3. Deprecation warnings on raw TOML keys
     let conflicting_replacements = semantic::check_deprecated_fields(&toml_value, &mut diagnostics);

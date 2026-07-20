@@ -966,11 +966,11 @@ pub(super) async fn complete_startup(
             crate::chat::GatewayChatRuntime::from_state(Arc::clone(&state)),
             Arc::clone(&session_store),
             Arc::clone(&session_metadata),
+            config.clone(),
         )
         .with_session_state_store(Arc::clone(&session_state_store))
         .with_tools(Arc::clone(&shared_tool_registry))
-        .with_session_mutations(Arc::clone(&session_mutations))
-        .with_config(config.clone());
+        .with_session_mutations(Arc::clone(&session_mutations));
 
         if let Some(ref hooks) = state.inner.read().await.hook_registry {
             chat_service = chat_service.with_hooks_arc(Arc::clone(hooks));

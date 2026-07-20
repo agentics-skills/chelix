@@ -10,6 +10,7 @@ use secrecy::{ExposeSecret, Secret};
 use {
     chelix_config::schema::{ModelConfigMap, ProvidersConfig},
     chelix_oauth::TokenStore,
+    chelix_service_traits::{ServiceError, ServiceResult},
 };
 
 use crate::{
@@ -40,14 +41,18 @@ pub(crate) fn home_token_store() -> Option<(TokenStore, PathBuf)> {
     Some((TokenStore::with_path(path.clone()), path))
 }
 
-pub(crate) fn home_provider_config() -> Option<(ProvidersConfig, PathBuf)> {
-    let path = chelix_config::find_user_global_config_file()?;
-    let home_dir = home_config_dir_if_different()?;
+pub(crate) fn home_provider_config() -> ServiceResult<Option<(ProvidersConfig, PathBuf)>> {
+    let Some(path) = chelix_config::find_user_global_config_file() else {
+        return Ok(None);
+    };
+    let Some(home_dir) = home_config_dir_if_different() else {
+        return Ok(None);
+    };
     if !path.starts_with(&home_dir) {
-        return None;
+        return Ok(None);
     }
-    let loaded = chelix_config::loader::load_config(&path).ok()?;
-    Some((loaded.providers, path))
+    let loaded = chelix_config::loader::load_config(&path).map_err(ServiceError::message)?;
+    Ok(Some((loaded.providers, path)))
 }
 
 // ── Provider name helpers ──────────────────────────────────────────────────
@@ -63,10 +68,7 @@ pub(crate) fn env_value_with_overrides(
     chelix_config::env_value_with_overrides(env_overrides, key)
 }
 
-pub(crate) fn set_provider_enabled_in_config(
-    provider: &str,
-    enabled: bool,
-) -> chelix_service_traits::ServiceResult<()> {
+pub(crate) fn set_provider_enabled_in_config(provider: &str, enabled: bool) -> ServiceResult<()> {
     chelix_config::update_config(|cfg| {
         let entry = cfg
             .providers
@@ -75,7 +77,7 @@ pub(crate) fn set_provider_enabled_in_config(
             .or_default();
         entry.enabled = enabled;
     })
-    .map_err(chelix_service_traits::ServiceError::message)?;
+    .map_err(ServiceError::message)?;
     Ok(())
 }
 
@@ -119,9 +121,12 @@ fn merge_model_maps(preferred: &mut ModelConfigMap, fallback: ModelConfigMap) {
 
 /// Merge persisted provider configs into a ProvidersConfig so the registry rebuild
 /// picks them up without needing env vars.
-pub fn config_with_saved_keys(base: &ProvidersConfig, key_store: &KeyStore) -> ProvidersConfig {
+pub fn config_with_saved_keys(
+    base: &ProvidersConfig,
+    key_store: &KeyStore,
+) -> ServiceResult<ProvidersConfig> {
     let mut config = base.clone();
-    if let Some((home_config, _)) = home_provider_config() {
+    if let Some((home_config, _)) = home_provider_config()? {
         for (name, entry) in home_config.providers {
             let dst = config.providers.entry(name).or_default();
             if dst
@@ -189,7 +194,7 @@ pub fn config_with_saved_keys(base: &ProvidersConfig, key_store: &KeyStore) -> P
         merge_model_maps(&mut entry.models, saved.models);
     }
 
-    config
+    Ok(config)
 }
 
 // ── Explicit settings detection ────────────────────────────────────────────
@@ -220,13 +225,13 @@ pub fn detect_auto_provider_sources_with_overrides(
     config: &ProvidersConfig,
     deploy_platform: Option<&str>,
     env_overrides: &HashMap<String, String>,
-) -> Vec<AutoDetectedProviderSource> {
+) -> ServiceResult<Vec<AutoDetectedProviderSource>> {
     let is_cloud = deploy_platform.is_some();
     let key_store = KeyStore::new();
     let token_store = TokenStore::new();
     let home_key_store = home_key_store();
     let home_token_store = home_token_store();
-    let home_provider_config = home_provider_config();
+    let home_provider_config = home_provider_config()?;
     let config_dir = current_config_dir();
     let provider_keys_path = config_dir.join("provider_keys.json");
     let oauth_tokens_path = config_dir.join("oauth_tokens.json");
@@ -323,7 +328,7 @@ pub fn detect_auto_provider_sources_with_overrides(
         }
     }
 
-    detected
+    Ok(detected)
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -367,7 +372,7 @@ mod tests {
             .unwrap();
 
         let base = ProvidersConfig::default();
-        let merged = config_with_saved_keys(&base, &store);
+        let merged = config_with_saved_keys(&base, &store).expect("merge saved keys");
         let entry = merged.get("openai").unwrap();
         assert_eq!(
             entry.api_key.as_ref().map(|s| s.expose_secret().as_str()),
@@ -404,7 +409,7 @@ mod tests {
             ..Default::default()
         });
 
-        let merged = config_with_saved_keys(&base, &store);
+        let merged = config_with_saved_keys(&base, &store).expect("merge saved keys");
         let models = &merged.get("openai").unwrap().models;
         assert_eq!(models.keys().map(String::as_str).collect::<Vec<_>>(), vec![
             "gpt-4o"
@@ -430,7 +435,7 @@ mod tests {
         store.save("anthropic", "sk-saved").unwrap();
 
         let base = ProvidersConfig::default();
-        let merged = config_with_saved_keys(&base, &store);
+        let merged = config_with_saved_keys(&base, &store).expect("merge saved keys");
         let entry = merged.get("anthropic").unwrap();
         assert_eq!(
             entry.api_key.as_ref().map(|s| s.expose_secret().as_str()),
@@ -449,7 +454,7 @@ mod tests {
             api_key: Some(Secret::new("sk-config".into())),
             ..Default::default()
         });
-        let merged = config_with_saved_keys(&base, &store);
+        let merged = config_with_saved_keys(&base, &store).expect("merge saved keys");
         let entry = merged.get("anthropic").unwrap();
         // Config key takes precedence over saved key.
         assert_eq!(
@@ -491,7 +496,8 @@ mod tests {
                     "sk-test-openai-generic".to_string(),
                 ),
             ]),
-        );
+        )
+        .expect("detect provider sources");
 
         assert!(detected.iter().any(|source| {
             source.provider == "openai" && source.source == "env:CHELIX_PROVIDER+CHELIX_API_KEY"

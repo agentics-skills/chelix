@@ -51,7 +51,7 @@ fn compact() -> Result<()> {
     Ok(())
 }
 
-fn check(verbose: bool) -> Result<()> {
+pub(crate) fn check(verbose: bool) -> Result<()> {
     let result = validate::validate(None);
 
     // Print which file we're checking

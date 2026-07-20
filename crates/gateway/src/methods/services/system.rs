@@ -528,7 +528,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "mcp.config.get",
         Box::new(|_ctx| {
             Box::pin(async move {
-                let config = chelix_config::discover_and_load();
+                let config = chelix_config::discover_and_load().map_err(ServiceError::message)?;
                 Ok(serde_json::json!({
                     "request_timeout_secs": config.mcp.request_timeout_secs,
                 }))

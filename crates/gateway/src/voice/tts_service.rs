@@ -44,9 +44,9 @@ impl LiveTtsService {
     }
 
     /// Load fresh TTS config from disk (with KeyStore voice keys merged).
-    fn load_config() -> TtsConfig {
-        let cfg = load_voice_config();
-        TtsConfig {
+    fn load_config() -> Result<TtsConfig, ServiceError> {
+        let cfg = load_voice_config().map_err(ServiceError::message)?;
+        Ok(TtsConfig {
             enabled: cfg.voice.tts.enabled,
             provider: cfg.voice.tts.provider,
             auto: chelix_voice::TtsAutoMode::Off,
@@ -86,12 +86,14 @@ impl LiveTtsService {
                 speaker: None,
                 language: None,
             },
-        }
+        })
     }
 
     /// Create a provider on-demand from fresh config.
-    fn create_provider(provider_id: TtsProviderId) -> Option<Box<dyn TtsProvider + Send + Sync>> {
-        let config = Self::load_config();
+    fn create_provider(
+        config: &TtsConfig,
+        provider_id: TtsProviderId,
+    ) -> Option<Box<dyn TtsProvider + Send + Sync>> {
         match provider_id {
             TtsProviderId::ElevenLabs => config.elevenlabs.api_key.as_ref().map(|key| {
                 Box::new(ElevenLabsTts::with_defaults(
@@ -137,8 +139,7 @@ impl LiveTtsService {
     }
 
     /// List all providers with their configuration status.
-    fn list_providers() -> Vec<(TtsProviderId, bool)> {
-        let config = Self::load_config();
+    fn list_providers(config: &TtsConfig) -> Vec<(TtsProviderId, bool)> {
         vec![
             (
                 TtsProviderId::ElevenLabs,
@@ -155,12 +156,15 @@ impl LiveTtsService {
     }
 
     /// Resolve the active provider: explicit config value, or first configured.
-    fn resolve_provider(config_provider: Option<TtsProviderId>) -> Option<TtsProviderId> {
+    fn resolve_provider(
+        config: &TtsConfig,
+        config_provider: Option<TtsProviderId>,
+    ) -> Option<TtsProviderId> {
         if let Some(id) = config_provider {
             return Some(id);
         }
         // Auto-select: first configured provider
-        Self::list_providers()
+        Self::list_providers(config)
             .into_iter()
             .find(|(_, configured)| *configured)
             .map(|(id, _)| id)
@@ -169,12 +173,13 @@ impl LiveTtsService {
     /// Parse provider from JSON params, falling back to config/auto-select.
     fn resolve_from_params(
         params: &Value,
+        config: &TtsConfig,
         config_provider: Option<TtsProviderId>,
     ) -> Result<TtsProviderId, ServiceError> {
         match params.get("provider").and_then(|v| v.as_str()) {
             Some(s) => TtsProviderId::parse(s)
                 .ok_or_else(|| ServiceError::message(format!("unknown TTS provider '{s}'"))),
-            None => Self::resolve_provider(config_provider)
+            None => Self::resolve_provider(config, config_provider)
                 .ok_or_else(|| ServiceError::message("no TTS provider configured")),
         }
     }
@@ -183,10 +188,10 @@ impl LiveTtsService {
 #[async_trait]
 impl TtsService for LiveTtsService {
     async fn status(&self) -> ServiceResult {
-        let config = Self::load_config();
-        let providers = Self::list_providers();
+        let config = Self::load_config()?;
+        let providers = Self::list_providers(&config);
         let any_configured = providers.iter().any(|(_, configured)| *configured);
-        let resolved = Self::resolve_provider(config.provider);
+        let resolved = Self::resolve_provider(&config, config.provider);
 
         Ok(json!({
             "enabled": config.enabled && any_configured,
@@ -198,7 +203,8 @@ impl TtsService for LiveTtsService {
     }
 
     async fn providers(&self) -> ServiceResult {
-        let providers: Vec<_> = Self::list_providers()
+        let config = Self::load_config()?;
+        let providers: Vec<_> = Self::list_providers(&config)
             .into_iter()
             .map(|(id, configured)| {
                 json!({
@@ -213,10 +219,10 @@ impl TtsService for LiveTtsService {
     }
 
     async fn enable(&self, params: Value) -> ServiceResult {
-        let config = Self::load_config();
-        let provider_id = Self::resolve_from_params(&params, config.provider)?;
+        let config = Self::load_config()?;
+        let provider_id = Self::resolve_from_params(&params, &config, config.provider)?;
 
-        if Self::create_provider(provider_id).is_none() {
+        if Self::create_provider(&config, provider_id).is_none() {
             return Err(format!("provider '{}' not configured", provider_id).into());
         }
 
@@ -247,7 +253,7 @@ impl TtsService for LiveTtsService {
     }
 
     async fn convert(&self, params: Value) -> ServiceResult {
-        let config = Self::load_config();
+        let config = Self::load_config()?;
 
         if !config.enabled {
             warn!("TTS convert called but TTS is not enabled");
@@ -298,16 +304,16 @@ impl TtsService for LiveTtsService {
                 .ok_or_else(|| ServiceError::message(format!("unknown TTS provider '{s}'")))?
         } else if let Some(ref dp) = directives.provider
             && let Some(id) = TtsProviderId::parse(dp)
-            && Self::create_provider(id).is_some()
+            && Self::create_provider(&config, id).is_some()
         {
             id
         } else if let Some(ref p) = persona
             && let Some(prov) = p.provider
-            && Self::create_provider(prov).is_some()
+            && Self::create_provider(&config, prov).is_some()
         {
             prov
         } else {
-            Self::resolve_provider(config.provider)
+            Self::resolve_provider(&config, config.provider)
                 .ok_or_else(|| ServiceError::message("no TTS provider configured"))?
         };
 
@@ -320,7 +326,7 @@ impl TtsService for LiveTtsService {
             "TTS convert request"
         );
 
-        let provider = Self::create_provider(provider_id)
+        let provider = Self::create_provider(&config, provider_id)
             .ok_or_else(|| format!("provider '{}' not configured", provider_id))?;
 
         // Strip SSML tags for providers that don't support them natively
@@ -413,12 +419,12 @@ impl TtsService for LiveTtsService {
                 let mut last_error = e.to_string();
 
                 let mut fallback_output = None;
-                for (fallback_id, configured) in Self::list_providers() {
+                for (fallback_id, configured) in Self::list_providers(&config) {
                     if !configured || attempted_providers.contains(&fallback_id) {
                         continue;
                     }
                     attempted_providers.push(fallback_id);
-                    if let Some(fallback_provider) = Self::create_provider(fallback_id) {
+                    if let Some(fallback_provider) = Self::create_provider(&config, fallback_id) {
                         // Re-apply persona for the new provider if applicable.
                         let mut fb_request = request.clone();
                         if let Some(ref persona) = persona {
@@ -480,7 +486,8 @@ impl TtsService for LiveTtsService {
         let provider_id = TtsProviderId::parse(provider_str)
             .ok_or_else(|| format!("unknown TTS provider '{}'", provider_str))?;
 
-        if Self::create_provider(provider_id).is_none() {
+        let config = Self::load_config()?;
+        if Self::create_provider(&config, provider_id).is_none() {
             return Err(format!("provider '{}' not configured", provider_id).into());
         }
 
@@ -536,16 +543,18 @@ mod tests {
 
     #[test]
     fn test_live_tts_resolve_provider_handles_explicit_and_auto_selection() {
+        let config = TtsConfig::default();
         assert_eq!(
-            LiveTtsService::resolve_provider(Some(TtsProviderId::OpenAi)),
+            LiveTtsService::resolve_provider(&config, Some(TtsProviderId::OpenAi)),
             Some(TtsProviderId::OpenAi)
         );
         // None means auto-select — returns first configured.
-        assert!(LiveTtsService::resolve_provider(None).is_some());
+        assert!(LiveTtsService::resolve_provider(&config, None).is_some());
     }
 
     #[tokio::test]
     async fn test_live_tts_service_status() {
+        let _guard = VoiceConfigTestGuard::with_config("");
         let service = LiveTtsService::new(TtsConfig::default());
         let status = service.status().await.unwrap();
 
@@ -560,6 +569,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_live_tts_service_providers() {
+        let _guard = VoiceConfigTestGuard::with_config("");
         let service = LiveTtsService::new(TtsConfig::default());
         let providers = service.providers().await.unwrap();
 

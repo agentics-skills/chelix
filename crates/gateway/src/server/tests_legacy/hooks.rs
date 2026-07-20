@@ -3,10 +3,22 @@ use std::{collections::HashSet, sync::Arc};
 use {
     super::common::LocalModelConfigTestGuard,
     crate::server::{
-        hooks::{discover_and_build_hooks, seed_dcg_guard_hook},
+        hooks::{discover_and_build_hooks as discover_hooks, seed_dcg_guard_hook},
         seed_content::{DCG_GUARD_HANDLER_SH, DCG_GUARD_HOOK_MD},
     },
 };
+
+async fn discover_and_build_hooks(
+    disabled: &HashSet<String>,
+    session_store: Option<&Arc<chelix_sessions::store::SessionStore>>,
+) -> (
+    Option<Arc<chelix_common::hooks::HookRegistry>>,
+    Vec<crate::state::DiscoveredHookInfo>,
+) {
+    discover_hooks(disabled, session_store)
+        .await
+        .expect("discover hooks")
+}
 
 fn write_config_hook(config_dir: &std::path::Path, command: &str, env: Option<(&str, &str)>) {
     let env_config = env

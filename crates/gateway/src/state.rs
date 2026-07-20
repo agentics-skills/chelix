@@ -345,7 +345,10 @@ pub struct GatewayInner {
 }
 
 impl GatewayInner {
-    fn new(hook_registry: Option<Arc<chelix_common::hooks::HookRegistry>>) -> Self {
+    fn new(
+        hook_registry: Option<Arc<chelix_common::hooks::HookRegistry>>,
+        cached_location: Option<chelix_config::GeoLocation>,
+    ) -> Self {
         Self {
             nodes: NodeRegistry::new(),
             pairing: PairingState::new(),
@@ -367,7 +370,7 @@ impl GatewayInner {
             #[cfg(feature = "push-notifications")]
             push_service: None,
             llm_providers: None,
-            cached_location: chelix_config::resolve_user_profile().location,
+            cached_location,
             channel_status_log: HashMap::new(),
             channel_command_mode_sessions: HashSet::new(),
             fast_mode_sessions: HashSet::new(),
@@ -560,6 +563,7 @@ impl GatewayState {
             .ok()
             .and_then(|h| h.into_string().ok())
             .unwrap_or_else(|| "unknown".into());
+        let cached_location = chelix_config::resolve_user_profile_from_config(&config).location;
 
         Arc::new(Self {
             version: chelix_config::VERSION.to_string(),
@@ -604,7 +608,7 @@ impl GatewayState {
             ssh_target_count: Arc::new(AtomicUsize::new(0)),
             broadcaster: Arc::new(Broadcaster::new()),
             client_registry: RwLock::new(ClientRegistryInner::new()),
-            inner: RwLock::new(GatewayInner::new(hook_registry)),
+            inner: RwLock::new(GatewayInner::new(hook_registry, cached_location)),
         })
     }
 

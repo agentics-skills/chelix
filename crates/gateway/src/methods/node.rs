@@ -9,14 +9,15 @@ use crate::{
 
 use super::MethodRegistry;
 
-fn configured_ssh_target() -> Option<String> {
-    let config = chelix_config::discover_and_load();
-    config
+fn configured_ssh_target() -> Result<Option<String>, ErrorShape> {
+    let config = chelix_config::discover_and_load()
+        .map_err(|error| ErrorShape::new(error_codes::INTERNAL, error.to_string()))?;
+    Ok(config
         .tools
         .execute_command
         .ssh_target
         .map(|target| target.trim().to_string())
-        .filter(|target| !target.is_empty())
+        .filter(|target| !target.is_empty()))
 }
 
 fn ssh_summary_json(target: &str) -> serde_json::Value {
@@ -189,7 +190,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         Err(error) => tracing::warn!(%error, "failed to list managed ssh targets"),
                     }
                 }
-                if let Some(target) = configured_ssh_target() {
+                if let Some(target) = configured_ssh_target()? {
                     list.push(ssh_summary_json(&target));
                 }
                 Ok(serde_json::json!(list))
@@ -218,7 +219,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         },
                     }
                 }
-                if let Some(target) = configured_ssh_target()
+                if let Some(target) = configured_ssh_target()?
                     && crate::node_command::ssh_target_matches(node_id, &target)
                 {
                     return Ok(ssh_detail_json(&target));
@@ -318,7 +319,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e.to_string()))?
                     {
                         Some(target.node_id)
-                    } else if let Some(target) = configured_ssh_target()
+                    } else if let Some(target) = configured_ssh_target()?
                         && crate::node_command::ssh_target_matches(nid, &target)
                     {
                         Some(crate::node_command::ssh_node_id(&target))
@@ -598,10 +599,16 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         ctx.state.inner.write().await.cached_location = Some(geo.clone());
 
                         let write_mode = chelix_config::discover_and_load()
+                            .map_err(|error| {
+                                ErrorShape::new(error_codes::INTERNAL, error.to_string())
+                            })?
                             .memory
                             .user_profile_write_mode;
                         if write_mode.allows_auto_write() {
-                            let mut user = chelix_config::resolve_user_profile();
+                            let mut user =
+                                chelix_config::resolve_user_profile().map_err(|error| {
+                                    ErrorShape::new(error_codes::INTERNAL, error.to_string())
+                                })?;
                             user.location = Some(geo);
                             if let Err(e) = chelix_config::save_user_with_mode(&user, write_mode) {
                                 tracing::warn!(error = %e, "failed to persist location to USER.md");

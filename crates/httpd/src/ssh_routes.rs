@@ -23,6 +23,7 @@ const SSH_PRIVATE_KEY_REQUIRED: &str = "SSH_PRIVATE_KEY_REQUIRED";
 const SSH_TARGET_LABEL_REQUIRED: &str = "SSH_TARGET_LABEL_REQUIRED";
 const SSH_TARGET_REQUIRED: &str = "SSH_TARGET_REQUIRED";
 const SSH_LIST_FAILED: &str = "SSH_LIST_FAILED";
+const SSH_CONFIG_LOAD_FAILED: &str = "SSH_CONFIG_LOAD_FAILED";
 const SSH_KEY_GENERATE_FAILED: &str = "SSH_KEY_GENERATE_FAILED";
 const SSH_KEY_IMPORT_FAILED: &str = "SSH_KEY_IMPORT_FAILED";
 const SSH_KEY_DELETE_FAILED: &str = "SSH_KEY_DELETE_FAILED";
@@ -519,7 +520,8 @@ pub async fn ssh_doctor(
         .await
         .map_err(|err| ApiError::internal(SSH_LIST_FAILED, err))?;
 
-    let config = chelix_config::discover_and_load();
+    let config = chelix_config::discover_and_load()
+        .map_err(|err| ApiError::internal(SSH_CONFIG_LOAD_FAILED, err))?;
     let command_host = config.tools.execute_command.host.trim().to_string();
     let configured_node = config
         .tools
@@ -622,7 +624,8 @@ pub async fn ssh_doctor_test_active(
         ApiError::service_unavailable(SSH_STORE_UNAVAILABLE, "no credential store")
     })?;
 
-    let config = chelix_config::discover_and_load();
+    let config = chelix_config::discover_and_load()
+        .map_err(|err| ApiError::internal(SSH_CONFIG_LOAD_FAILED, err))?;
     if config.tools.execute_command.host.trim() != "ssh" {
         return Err(ApiError::bad_request(
             SSH_TARGET_TEST_FAILED,

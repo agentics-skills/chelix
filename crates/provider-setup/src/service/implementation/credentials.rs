@@ -93,7 +93,7 @@ impl LiveProviderSetupService {
         self.set_provider_enabled_in_memory(provider_name, true);
 
         // Rebuild the provider registry with saved keys merged into config.
-        let effective = self.effective_config();
+        let effective = self.effective_config()?;
         let new_registry = self.build_registry(&effective).await;
         let provider_summary = new_registry.provider_summary();
         let model_count = new_registry.list_models().len();
@@ -149,7 +149,7 @@ impl LiveProviderSetupService {
         }
 
         // Rebuild the provider registry without the removed provider.
-        let effective = self.effective_config();
+        let effective = self.effective_config()?;
         let new_registry = self.build_registry(&effective).await;
         let mut reg = self.registry.write().await;
         *reg = new_registry;

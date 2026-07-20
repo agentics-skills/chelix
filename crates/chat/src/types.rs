@@ -897,14 +897,6 @@ pub(crate) fn normalized_iana_timezone(timezone: Option<&str>) -> Option<String>
         .map(|tz| tz.to_string())
 }
 
-pub(crate) fn default_user_prompt_timezone() -> Option<String> {
-    chelix_config::resolve_user_profile()
-        .timezone
-        .as_ref()
-        .map(|timezone| timezone.name().to_string())
-        .and_then(|timezone| normalized_iana_timezone(Some(&timezone)))
-}
-
 pub(crate) fn server_prompt_timezone(configured_timezone: Option<&str>) -> String {
     if let Some(timezone) = configured_timezone
         .map(str::trim)

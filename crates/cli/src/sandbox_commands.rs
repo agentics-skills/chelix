@@ -79,7 +79,7 @@ async fn list() -> Result<()> {
 }
 
 async fn build() -> Result<()> {
-    let config = chelix_config::discover_and_load();
+    let config = chelix_config::discover_and_load()?;
     let mut sandbox_config = sandbox::SandboxConfig::from(&config.sandbox);
     sandbox_config.container_prefix = Some(instance_sandbox_prefix(&config));
 

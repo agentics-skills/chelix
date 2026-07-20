@@ -394,6 +394,7 @@ pub(crate) async fn run_explicit_shell_command(
     accept_language: Option<String>,
     conn_id: Option<String>,
     client_seq: Option<u64>,
+    max_tool_result_bytes: usize,
 ) -> AssistantTurnOutput {
     let started = Instant::now();
     let tool_call_id = format!("sh_{}", uuid::Uuid::new_v4().simple());
@@ -439,7 +440,6 @@ pub(crate) async fn run_explicit_shell_command(
             let persistence = tool.result_persistence(&command_params);
             match tool.execute(command_params).await {
                 Ok(result) => {
-                    let config = chelix_config::discover_and_load();
                     let tool_result_store =
                         ToolResultStore::new(chelix_config::data_dir().join("sessions"));
                     persist_and_truncate(
@@ -447,7 +447,7 @@ pub(crate) async fn run_explicit_shell_command(
                         session_key,
                         &tool_call_id,
                         &result,
-                        config.tools.max_tool_result_bytes,
+                        max_tool_result_bytes,
                         truncation,
                         persistence,
                     )

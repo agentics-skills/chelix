@@ -15,7 +15,7 @@ use {
     async_trait::async_trait,
     serde_json::{Map, Value},
     tokio::sync::{OnceCell, RwLock},
-    tracing::info,
+    tracing::{error, info},
 };
 
 use {
@@ -30,8 +30,7 @@ use {
     crate::{
         SetupBroadcaster,
         config_helpers::{
-            config_with_saved_keys, env_value_with_overrides, home_key_store, home_provider_config,
-            home_token_store,
+            config_with_saved_keys, env_value_with_overrides, home_key_store, home_token_store,
         },
         key_store::KeyStore,
         known_providers::{AuthType, KnownProvider},
@@ -170,6 +169,19 @@ impl LiveProviderSetupService {
                 let base = config.lock().unwrap_or_else(|e| e.into_inner()).clone();
                 config_with_saved_keys(&base, &key_store)
             };
+            let effective = match effective {
+                Ok(config) => config,
+                Err(error) => {
+                    error!(
+                        provider = %provider_name,
+                        reason,
+                        rebuild_seq,
+                        error = %error,
+                        "provider registry async rebuild aborted because config loading failed"
+                    );
+                    return;
+                },
+            };
 
             let new_registry = ProviderRegistry::discover(&effective, &env_overrides).await;
 
@@ -258,15 +270,6 @@ impl LiveProviderSetupService {
         {
             return true;
         }
-        // Check home/global config file as fallback when using custom config dir.
-        if home_provider_config()
-            .as_ref()
-            .and_then(|(cfg, _)| cfg.get(provider.name))
-            .and_then(|entry| entry.api_key.as_ref())
-            .is_some_and(|k| !k.expose_secret().is_empty())
-        {
-            return true;
-        }
         // Check persisted key store
         if self.key_store.load(provider.name).is_some() {
             return true;
@@ -304,7 +307,7 @@ impl LiveProviderSetupService {
     }
 
     /// Build a ProvidersConfig that includes saved keys for registry rebuild.
-    pub(crate) fn effective_config(&self) -> ProvidersConfig {
+    pub(crate) fn effective_config(&self) -> ServiceResult<ProvidersConfig> {
         let base = self.config_snapshot();
         config_with_saved_keys(&base, &self.key_store)
     }

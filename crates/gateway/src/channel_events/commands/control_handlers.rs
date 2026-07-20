@@ -235,7 +235,8 @@ pub(in crate::channel_events) async fn handle_mode(
     session_key: &str,
     args: &str,
 ) -> ChannelResult<String> {
-    let config = chelix_config::discover_and_load();
+    let config = chelix_config::discover_and_load()
+        .map_err(|error| ChannelError::external("load config", error))?;
     let modes = sorted_mode_presets(&config);
     if modes.is_empty() {
         return Ok("No modes are configured.".to_string());

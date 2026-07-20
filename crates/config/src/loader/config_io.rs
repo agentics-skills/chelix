@@ -5,7 +5,7 @@ use {
         path::{Path, PathBuf},
         sync::Mutex,
     },
-    tracing::{debug, info, warn},
+    tracing::{debug, info},
 };
 
 /// Write content to a file atomically via write-to-temp + rename.
@@ -53,11 +53,7 @@ fn load_config_with_aliases(
         parse_config(&second_pass, path)?
     };
 
-    Ok(apply_env_overrides_with_options(
-        config,
-        std::env::vars(),
-        apply_third_party_aliases,
-    ))
+    apply_env_overrides_with_options(config, std::env::vars(), apply_third_party_aliases)
 }
 
 /// Load and parse the config file with env substitution and includes.
@@ -85,12 +81,10 @@ pub fn load_config_value(path: &Path) -> crate::Result<serde_json::Value> {
 /// - Persists a randomly generated port so it stays stable
 ///
 /// After this, use [`discover_and_load`] (read-only) to load config.
-pub fn initialize_config() -> crate::Result<()> {
+pub fn initialize_config() -> crate::Result<ChelixConfig> {
     // Refresh Chelix-managed defaults.toml.
-    if let Some(dir) = config_dir()
-        && let Err(e) = crate::defaults::write_defaults_toml(&dir)
-    {
-        warn!(error = %e, "failed to write defaults.toml");
+    if let Some(dir) = config_dir() {
+        crate::defaults::write_defaults_toml(&dir)?;
     }
 
     // Write default user config on first run (when no config file exists).
@@ -102,41 +96,36 @@ pub fn initialize_config() -> crate::Result<()> {
         );
         let mut config = ChelixConfig::default();
         config.server.port = generate_random_port();
-        if let Err(e) = write_default_config(&default_path, &config) {
-            warn!(
-                path = %default_path.display(),
-                error = %e,
-                "failed to write default config file, continuing with in-memory defaults"
-            );
-        } else {
-            info!(
-                path = %default_path.display(),
-                "wrote default config template"
-            );
-        }
+        write_default_config(&default_path, &config)?;
+        info!(
+            path = %default_path.display(),
+            "wrote default config template"
+        );
     }
 
     let cfg = try_discover_and_load_readonly_with_options(true, true)?;
 
     // Persist randomly generated port so it stays stable across restarts.
-    // discover_and_load_readonly generates an in-memory port when the on-disk
+    // Read-only discovery generates an in-memory port when the on-disk
     // value is 0 — write it back so the port is stable across restarts.
-    if let Some(path) = find_config_file()
-        && cfg.server.port != 0
-        && let Ok(raw) = std::fs::read_to_string(&path)
-        && let Ok(on_disk) = parse_config(&raw, &path)
-        && on_disk.server.port == 0
-    {
+    let path = find_config_file()
+        .ok_or_else(|| crate::Error::message("config file disappeared during initialization"))?;
+    if cfg.server.port != 0 {
+        let raw = std::fs::read_to_string(&path).map_err(|source| {
+            crate::Error::external(format!("failed to read {}", path.display()), source)
+        })?;
+        let on_disk = parse_config(&raw, &path)?;
+        if on_disk.server.port != 0 {
+            return Ok(cfg);
+        }
         debug!(
             port = cfg.server.port,
             "persisting generated port to config"
         );
-        if let Err(e) = save_user_config_to_path(&path, &cfg) {
-            warn!(error = %e, "failed to save config with generated port");
-        }
+        save_user_config_to_path(&path, &cfg)?;
     }
 
-    Ok(())
+    Ok(cfg)
 }
 
 /// Discover and load config from disk (read-only, no side-effects).
@@ -149,63 +138,28 @@ pub fn initialize_config() -> crate::Result<()> {
 /// 1. `./chelix.{toml,yaml,yml,json}` (project-local)
 /// 2. `~/.config/chelix/chelix.{toml,yaml,yml,json}` (user-global)
 ///
-/// Returns `ChelixConfig::default()` if no config file is found.
-pub fn discover_and_load() -> ChelixConfig {
-    discover_and_load_readonly()
+/// Returns an error if no config file is found or the file is invalid.
+pub fn discover_and_load() -> crate::Result<ChelixConfig> {
+    try_discover_and_load_readonly_with_options(true, true)
 }
 
 /// Load config using layered merge without writing any files.
 ///
-/// Identical to [`discover_and_load`]. Retained for backward compatibility.
-pub fn discover_and_load_readonly() -> ChelixConfig {
-    discover_and_load_readonly_with_aliases(true)
-}
-
 /// Load config without merging markdown agent definitions.
-pub fn discover_and_load_readonly_without_agent_defs() -> ChelixConfig {
-    discover_and_load_readonly_with_options(true, false)
-}
-
-fn discover_and_load_readonly_with_aliases(apply_third_party_aliases: bool) -> ChelixConfig {
-    discover_and_load_readonly_with_options(apply_third_party_aliases, true)
-}
-
-fn discover_and_load_readonly_with_options(
-    apply_third_party_aliases: bool,
-    include_agent_defs: bool,
-) -> ChelixConfig {
-    match try_discover_and_load_readonly_with_options(apply_third_party_aliases, include_agent_defs)
-    {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            warn!(error = %e, "failed to reload config, using defaults");
-            apply_env_overrides_with_options(
-                ChelixConfig::default(),
-                std::env::vars(),
-                apply_third_party_aliases,
-            )
-        },
-    }
+pub fn discover_and_load_without_agent_defs() -> crate::Result<ChelixConfig> {
+    try_discover_and_load_readonly_with_options(true, false)
 }
 
 fn try_discover_and_load_readonly_with_options(
     apply_third_party_aliases: bool,
     include_agent_defs: bool,
 ) -> crate::Result<ChelixConfig> {
-    let mut cfg = if let Some(path) = find_config_file() {
-        debug!(path = %path.display(), "loading config (read-only)");
-        let mut cfg = load_layered_config(&path, apply_third_party_aliases)?;
-        if cfg.server.port == 0 {
-            cfg.server.port = generate_random_port();
-        }
-        cfg
-    } else {
-        apply_env_overrides_with_options(
-            ChelixConfig::default(),
-            std::env::vars(),
-            apply_third_party_aliases,
-        )
-    };
+    let path = find_config_file().ok_or_else(|| crate::Error::message("no config file found"))?;
+    debug!(path = %path.display(), "loading config (read-only)");
+    let mut cfg = load_layered_config(&path, apply_third_party_aliases)?;
+    if cfg.server.port == 0 {
+        cfg.server.port = generate_random_port();
+    }
 
     // Merge markdown agent definitions (TOML presets take precedence).
     if include_agent_defs {
@@ -260,25 +214,15 @@ fn load_layered_config_toml(
         crate::env_subst::substitute_env_with_overrides(&user_raw, &preliminary.env)
     };
 
-    // Load defaults TOML (generate fresh if missing).
-    let defaults_toml = crate::defaults::generate_defaults_toml().unwrap_or_else(|_| String::new());
+    // Load defaults TOML and deep merge defaults ← user overrides.
+    let defaults_toml = crate::defaults::generate_defaults_toml()?;
+    let config = crate::defaults::merge_defaults_with_user_toml(
+        &defaults_toml,
+        &user_substituted,
+        user_path,
+    )?;
 
-    // Deep merge: defaults ← user overrides.
-    let config = if defaults_toml.is_empty() {
-        parse_config(&user_substituted, user_path)?
-    } else {
-        crate::defaults::merge_defaults_with_user_toml(
-            &defaults_toml,
-            &user_substituted,
-            user_path,
-        )?
-    };
-
-    Ok(apply_env_overrides_with_options(
-        config,
-        std::env::vars(),
-        apply_third_party_aliases,
-    ))
+    apply_env_overrides_with_options(config, std::env::vars(), apply_third_party_aliases)
 }
 
 /// Find the first config file in standard locations.
@@ -350,7 +294,7 @@ pub fn update_config(f: impl FnOnce(&mut ChelixConfig)) -> crate::Result<PathBuf
     let mut guard = CONFIG_SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let target_path = find_or_default_config_path();
     guard.target_path = Some(target_path.clone());
-    let mut config = discover_and_load_readonly_with_aliases(false);
+    let mut config = try_discover_and_load_readonly_with_options(false, true)?;
     f(&mut config);
     save_user_config_to_path(&target_path, &config)
 }
@@ -375,8 +319,7 @@ pub fn save_config(config: &ChelixConfig) -> crate::Result<PathBuf> {
 /// Validates the input by parsing it first. Acquires the config save lock
 /// so concurrent callers cannot race.  Returns the path written to.
 pub fn save_raw_config(toml_str: &str) -> crate::Result<PathBuf> {
-    let _: ChelixConfig = toml::from_str(toml_str)
-        .map_err(|source| crate::Error::external(format!("invalid config: {source}"), source))?;
+    let _ = parse_config(toml_str, Path::new("chelix.toml"))?;
     let mut guard = CONFIG_SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let path = find_or_default_config_path();
     guard.target_path = Some(path.clone());
@@ -407,14 +350,7 @@ pub fn save_config_to_path(path: &Path, config: &ChelixConfig) -> crate::Result<
         .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"));
 
     if is_toml_path && path.exists() {
-        if let Err(error) = merge_toml_preserving_comments(path, &toml_str) {
-            warn!(
-                path = %path.display(),
-                error = %error,
-                "failed to preserve TOML comments, rewriting config without comments"
-            );
-            atomic_write(path, toml_str)?;
-        }
+        merge_toml_preserving_comments(path, &toml_str)?;
     } else {
         atomic_write(path, toml_str)?;
     }
@@ -765,7 +701,7 @@ pub(super) fn write_default_config(path: &Path, config: &ChelixConfig) -> crate:
 /// `CHELIX_ASSETS_DIR`, `CHELIX_TOKEN`, `CHELIX_PASSWORD`, `CHELIX_TAILSCALE`,
 /// `CHELIX_WEBAUTHN_RP_ID`, and `CHELIX_WEBAUTHN_ORIGIN` are excluded
 /// (they are handled separately).
-pub fn apply_env_overrides(config: ChelixConfig) -> ChelixConfig {
+pub fn apply_env_overrides(config: ChelixConfig) -> crate::Result<ChelixConfig> {
     apply_env_overrides_with_options(config, std::env::vars(), true)
 }
 
@@ -777,13 +713,14 @@ pub(super) fn apply_env_overrides_with(
     vars: impl Iterator<Item = (String, String)>,
 ) -> ChelixConfig {
     apply_env_overrides_with_options(config, vars, true)
+        .unwrap_or_else(|error| panic!("test env override must be valid: {error}"))
 }
 
-fn apply_env_overrides_with_options(
+pub(super) fn apply_env_overrides_with_options(
     config: ChelixConfig,
     vars: impl Iterator<Item = (String, String)>,
     apply_third_party_aliases: bool,
-) -> ChelixConfig {
+) -> crate::Result<ChelixConfig> {
     use serde_json::Value;
 
     const EXCLUDED: &[&str] = &[
@@ -799,13 +736,9 @@ fn apply_env_overrides_with_options(
         "CHELIX_EXTERNAL_URL",
     ];
 
-    let mut root: Value = match serde_json::to_value(&config) {
-        Ok(v) => v,
-        Err(e) => {
-            warn!(error = %e, "failed to serialize config for env override");
-            return config;
-        },
-    };
+    let mut root: Value = serde_json::to_value(config).map_err(|source| {
+        crate::Error::external("failed to serialize config for env override", source)
+    })?;
 
     // Third-party env var aliases.
     // Intentionally empty for now.
@@ -841,6 +774,9 @@ fn apply_env_overrides_with_options(
         if EXCLUDED.contains(&key.as_str()) {
             continue;
         }
+        if !key.contains("__") {
+            continue;
+        }
 
         // CHELIX_AUTH__DISABLED → ["auth", "disabled"]
         let path_parts: Vec<String> = key["CHELIX_".len()..]
@@ -860,13 +796,9 @@ fn apply_env_overrides_with_options(
         set_nested(&mut root, &path_parts, parsed_val);
     }
 
-    match serde_json::from_value(root) {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            warn!(error = %e, "failed to apply env overrides, using config as-is");
-            config
-        },
-    }
+    validate_config_shape(&root, "environment overrides")?;
+    serde_json::from_value(root)
+        .map_err(|source| crate::Error::external("failed to apply env overrides", source))
 }
 
 /// Re-resolve `${VAR}` placeholders in a loaded config using additional overrides.
@@ -886,7 +818,7 @@ pub fn resubstitute_config(
     let reloaded: ChelixConfig = serde_json::from_value(json).map_err(|source| {
         crate::Error::external("deserialize config after resubstitution", source)
     })?;
-    Ok(apply_env_overrides(reloaded))
+    apply_env_overrides(reloaded)
 }
 
 /// Recursively walk a JSON value tree and resolve `${VAR}` placeholders in
@@ -978,16 +910,28 @@ pub(super) fn set_nested(root: &mut serde_json::Value, path: &[String], val: ser
 }
 
 pub(super) fn parse_config(raw: &str, path: &Path) -> crate::Result<ChelixConfig> {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("toml");
+    let value = parse_config_value(raw, path)?;
+    validate_config_shape(&value, &format!("config {}", path.display()))?;
+    serde_json::from_value(value).map_err(|source| {
+        crate::Error::external(format!("invalid config {}", path.display()), source)
+    })
+}
 
-    match ext {
-        "toml" => Ok(toml::from_str(raw)?),
-        "yaml" | "yml" => Ok(serde_yaml::from_str(raw)?),
-        "json" => Ok(serde_json::from_str(raw)?),
-        _ => Err(crate::Error::message(format!(
-            "unsupported config format: .{ext}"
-        ))),
+fn validate_config_shape(value: &serde_json::Value, context: &str) -> crate::Result<()> {
+    let schema = crate::validate::schema_map::build_schema_map();
+    let mut diagnostics = Vec::new();
+    crate::validate::schema_map::check_unknown_fields(value, &schema, "", &mut diagnostics);
+    if !diagnostics.is_empty() {
+        let details = diagnostics
+            .into_iter()
+            .map(|diagnostic| format!("{}: {}", diagnostic.path, diagnostic.message))
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(crate::Error::message(format!(
+            "invalid {context}: {details}"
+        )));
     }
+    Ok(())
 }
 
 fn parse_config_value(raw: &str, path: &Path) -> crate::Result<serde_json::Value> {

@@ -21,7 +21,7 @@ pub fn handle_browser(action: BrowserAction) -> Result<()> {
 }
 
 fn status() -> Result<()> {
-    let config = chelix_config::discover_and_load();
+    let config = chelix_config::discover_and_load()?;
     let browser = &config.tools.browser;
 
     println!("Browser configuration:");

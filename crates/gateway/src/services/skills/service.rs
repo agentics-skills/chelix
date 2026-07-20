@@ -4,9 +4,11 @@ use {
     std::{
         collections::HashSet,
         path::{Path, PathBuf},
-        sync::Arc,
     },
 };
+
+#[cfg(feature = "bundled-skills")]
+use std::sync::Arc;
 
 use super::skills_helpers::*;
 
@@ -525,7 +527,7 @@ impl SkillsService for NoopSkillsService {
         {
             let store = chelix_skills::bundled::BundledSkillStore::new();
             let skills = store.discover();
-            let config = chelix_config::discover_and_load();
+            let config = chelix_config::discover_and_load().map_err(ServiceError::message)?;
             let disabled = &config.skills.disabled_bundled_categories;
 
             let mut cats: std::collections::BTreeMap<String, u32> =
@@ -881,6 +883,8 @@ mod tests {
         fn new(config_dir: PathBuf) -> Self {
             let lock = crate::config_override_test_lock();
             chelix_config::set_config_dir(config_dir);
+            chelix_config::initialize_config()
+                .unwrap_or_else(|error| panic!("test config should be initialized: {error}"));
             Self { _lock: lock }
         }
     }
@@ -907,7 +911,7 @@ mod tests {
             Some("mcp-servers")
         );
 
-        let config = chelix_config::discover_and_load();
+        let config = chelix_config::discover_and_load().expect("load updated config");
         assert!(config.skills.disabled_bundled_categories.is_empty());
         assert_eq!(config.skills.disabled_bundled_skills, vec![
             "mcp-servers".to_string()
@@ -941,7 +945,7 @@ mod tests {
             Some(true)
         );
 
-        let config = chelix_config::discover_and_load();
+        let config = chelix_config::discover_and_load().expect("load updated config");
         assert!(config.skills.disabled_bundled_categories.is_empty());
         assert_eq!(config.skills.disabled_bundled_skills, vec![
             "mcp-servers".to_string()

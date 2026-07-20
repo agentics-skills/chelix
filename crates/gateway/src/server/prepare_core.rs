@@ -31,7 +31,7 @@ use {
     },
     secrecy::{ExposeSecret, Secret},
     std::{path::PathBuf, sync::Arc},
-    tracing::{debug, info, warn},
+    tracing::{debug, error, info, warn},
 };
 mod log_persistence;
 mod post_state;
@@ -73,7 +73,7 @@ pub async fn prepare_gateway_core(
     // Load config file (chelix.toml / .yaml / .json) if present.
     // Note: initialize_config() is called once at CLI startup (main.rs)
     // before reaching here.
-    let mut config = chelix_config::discover_and_load();
+    let mut config = chelix_config::discover_and_load()?;
     info!(
         offered_channels = ?config.channels.offered,
         "loaded offered channels from config"
@@ -119,7 +119,7 @@ pub async fn prepare_gateway_core(
     // survive gateway restarts without requiring env vars.
     let key_store = crate::provider_setup::KeyStore::new();
     let effective_providers =
-        crate::provider_setup::config_with_saved_keys(&base_provider_config, &key_store);
+        crate::provider_setup::config_with_saved_keys(&base_provider_config, &key_store)?;
 
     let has_explicit_provider_settings =
         crate::provider_setup::has_explicit_provider_settings(&config.providers);
@@ -130,7 +130,7 @@ pub async fn prepare_gateway_core(
             &config.providers,
             deploy_platform.as_deref(),
             &config_env_overrides,
-        )
+        )?
     };
 
     if !has_explicit_provider_settings {
@@ -187,10 +187,19 @@ pub async fn prepare_gateway_core(
             loop {
                 interval.tick().await;
                 let key_store = crate::provider_setup::KeyStore::new();
-                let effective = crate::provider_setup::config_with_saved_keys(
+                let effective = match crate::provider_setup::config_with_saved_keys(
                     &provider_config_for_refresh,
                     &key_store,
-                );
+                ) {
+                    Ok(config) => config,
+                    Err(error) => {
+                        error!(
+                            error = %error,
+                            "daily provider model discovery skipped because config loading failed"
+                        );
+                        continue;
+                    },
+                };
                 let discovery = discover_models(&effective, &env_overrides_for_refresh, None).await;
                 let (new_models, model_count, provider_summary) = {
                     let mut reg = registry_for_refresh.write().await;
@@ -454,7 +463,7 @@ pub async fn prepare_gateway_core(
     }
     #[cfg(not(feature = "vault"))]
     let credential_store = Arc::new(
-        auth::CredentialStore::new(db_pool.clone())
+        auth::CredentialStore::with_config(db_pool.clone(), &config.auth)
             .await
             .expect("failed to init credential store"),
     );
@@ -475,12 +484,7 @@ pub async fn prepare_gateway_core(
     // that the credential store has been read, re-substitute so that TOML
     // values like `api_key = "${OPENROUTER_API_KEY}"` resolve against UI
     // env vars too.
-    config = chelix_config::resubstitute_config(&config, &runtime_env_overrides).unwrap_or_else(
-        |error| {
-            warn!(%error, "failed to resubstitute config with runtime env overrides");
-            config
-        },
-    );
+    config = chelix_config::resubstitute_config(&config, &runtime_env_overrides)?;
 
     live_mcp
         .manager()
@@ -1072,13 +1076,13 @@ pub async fn prepare_gateway_core(
 
     // ── Hook discovery & registration ─────────────────────────────────────
     seed_default_workspace_markdown_files();
-    warn_on_workspace_prompt_file_truncation();
+    warn_on_workspace_prompt_file_truncation(&config);
     super::hooks::seed_example_skill();
     super::hooks::seed_example_hook();
     super::hooks::seed_dcg_guard_hook().await;
     let persisted_disabled = crate::methods::load_disabled_hooks();
     let (hook_registry, discovered_hooks_info) =
-        crate::server::discover_and_build_hooks(&persisted_disabled, Some(&session_store)).await;
+        crate::server::discover_and_build_hooks(&persisted_disabled, Some(&session_store)).await?;
 
     #[cfg(feature = "fs-tools")]
     let shared_fs_state = if config.tools.fs.track_reads {

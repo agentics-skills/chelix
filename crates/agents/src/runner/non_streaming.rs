@@ -3,7 +3,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use {
-    anyhow::Result,
+    anyhow::{Context, Result},
     tracing::{debug, info, trace, warn},
 };
 
@@ -123,7 +123,7 @@ pub async fn run_agent_loop_with_context_and_limits(
     limits: AgentLoopLimits,
 ) -> Result<AgentRunResult, AgentRunError> {
     let native_tools = provider.supports_tools();
-    let config = chelix_config::discover_and_load();
+    let config = chelix_config::discover_and_load().context("reload Chelix config")?;
     let max_tool_result_bytes = limits
         .max_tool_result_bytes
         .unwrap_or(config.tools.max_tool_result_bytes);

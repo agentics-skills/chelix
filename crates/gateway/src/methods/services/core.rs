@@ -1274,7 +1274,9 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             .and_then(|v| v.as_str())
                             .unwrap_or("settings");
 
-                        let identity = chelix_config::resolve_identity();
+                        let identity = chelix_config::resolve_identity().map_err(|error| {
+                            ErrorShape::new(error_codes::INTERNAL, error.to_string())
+                        })?;
                         let user = identity
                             .user_name
                             .unwrap_or_else(|| "friend".into());

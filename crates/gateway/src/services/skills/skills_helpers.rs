@@ -146,7 +146,7 @@ pub(super) fn skill_detail_bundled(skill_name: &str) -> ServiceResult {
         .read_skill(skill_name)
         .ok_or_else(|| format!("bundled skill '{skill_name}' body not readable"))?;
 
-    let config = chelix_config::discover_and_load();
+    let config = chelix_config::discover_and_load().map_err(ServiceError::message)?;
     let enabled = config
         .skills
         .is_bundled_skill_enabled(&meta.name, meta.category.as_deref());

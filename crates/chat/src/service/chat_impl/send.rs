@@ -389,6 +389,7 @@ impl LiveChatService {
                 .and_then(|v| v.as_str())
                 .map(String::from);
             let conn_id_for_tool = conn_id.clone();
+            let max_tool_result_bytes = self.config.tools.max_tool_result_bytes;
 
             let handle = tokio::spawn(async move {
                 let permit = permit; // hold permit until command run completes
@@ -412,6 +413,7 @@ impl LiveChatService {
                     accept_language,
                     conn_id_for_tool,
                     client_seq,
+                    max_tool_result_bytes,
                 )
                 .await;
 
@@ -828,6 +830,7 @@ impl LiveChatService {
             "chat.send: loading persona"
         );
         let persona = load_prompt_persona_for_session(
+            &self.config,
             &session_key,
             session_entry.as_ref(),
             self.session_state_store.as_deref(),
@@ -867,7 +870,15 @@ impl LiveChatService {
         )
         .await;
         runtime_context.mode = resolve_prompt_mode_context(&persona.config, session_entry.as_ref());
-        apply_request_runtime_context(&mut runtime_context.host, &params);
+        apply_request_runtime_context(
+            &mut runtime_context.host,
+            &params,
+            persona
+                .user
+                .timezone
+                .as_ref()
+                .map(|timezone| timezone.name()),
+        );
         info!(
             session = %session_key,
             agent_id = %session_agent_id,

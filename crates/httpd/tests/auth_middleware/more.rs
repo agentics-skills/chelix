@@ -713,6 +713,7 @@ pub(super) async fn start_server_with_onboarding(
     behind_proxy: bool,
 ) -> (SocketAddr, Arc<CredentialStore>, Arc<GatewayState>) {
     let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("chelix.toml"), "").unwrap();
     chelix_config::set_config_dir(tmp.path().to_path_buf());
     chelix_config::set_data_dir(tmp.path().to_path_buf());
     std::mem::forget(tmp);

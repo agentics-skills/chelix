@@ -199,6 +199,7 @@ impl ChatService for LiveChatService {
         };
         let session_agent_id = resolve_prompt_agent_id(session_entry.as_ref());
         let persona = load_prompt_persona_for_session(
+            &self.config,
             &session_key,
             session_entry.as_ref(),
             self.session_state_store.as_deref(),
@@ -218,7 +219,15 @@ impl ChatService for LiveChatService {
         )
         .await;
         runtime_context.mode = resolve_prompt_mode_context(&persona.config, session_entry.as_ref());
-        apply_request_runtime_context(&mut runtime_context.host, &params);
+        apply_request_runtime_context(
+            &mut runtime_context.host,
+            &params,
+            persona
+                .user
+                .timezone
+                .as_ref()
+                .map(|timezone| timezone.name()),
+        );
 
         // Load conversation history (excluding the message we just appended).
         let mut history = self
@@ -710,6 +719,7 @@ impl ChatService for LiveChatService {
         let message_count = self.session_store.count(&session_key).await.unwrap_or(0);
         let session_entry = self.session_metadata.get(&session_key).await;
         let prompt_persona = load_prompt_persona_for_session(
+            &self.config,
             &session_key,
             session_entry.as_ref(),
             self.session_state_store.as_deref(),
@@ -797,7 +807,7 @@ impl ChatService for LiveChatService {
             .as_ref()
             .and_then(|e| e.mcp_disabled)
             .unwrap_or(false);
-        let config = chelix_config::discover_and_load();
+        let config = chelix_config::discover_and_load().map_err(ServiceError::message)?;
         // Read history once: the token usage below reuses it, and the tool
         // catalog needs it to restore lazy schema visibility.
         let messages = self
@@ -1011,6 +1021,7 @@ impl ChatService for LiveChatService {
         // Build runtime context.
         let session_entry = self.session_metadata.get(&session_key).await;
         let persona = load_prompt_persona_for_session(
+            &self.config,
             &session_key,
             session_entry.as_ref(),
             self.session_state_store.as_deref(),
@@ -1025,7 +1036,15 @@ impl ChatService for LiveChatService {
         )
         .await;
         runtime_context.mode = resolve_prompt_mode_context(&persona.config, session_entry.as_ref());
-        apply_request_runtime_context(&mut runtime_context.host, &params);
+        apply_request_runtime_context(
+            &mut runtime_context.host,
+            &params,
+            persona
+                .user
+                .timezone
+                .as_ref()
+                .map(|timezone| timezone.name()),
+        );
 
         // Resolve project context.
         let project_context = self
@@ -1158,6 +1177,7 @@ impl ChatService for LiveChatService {
         // Build runtime context.
         let session_entry = self.session_metadata.get(&session_key).await;
         let persona = load_prompt_persona_for_session(
+            &self.config,
             &session_key,
             session_entry.as_ref(),
             self.session_state_store.as_deref(),
@@ -1172,7 +1192,15 @@ impl ChatService for LiveChatService {
         )
         .await;
         runtime_context.mode = resolve_prompt_mode_context(&persona.config, session_entry.as_ref());
-        apply_request_runtime_context(&mut runtime_context.host, &params);
+        apply_request_runtime_context(
+            &mut runtime_context.host,
+            &params,
+            persona
+                .user
+                .timezone
+                .as_ref()
+                .map(|timezone| timezone.name()),
+        );
 
         // Resolve project context.
         let project_context = self
@@ -1306,6 +1334,7 @@ impl ChatService for LiveChatService {
         )
         .await;
         let persona = load_prompt_persona_for_session(
+            &self.config,
             &session_key,
             session_entry.as_ref(),
             self.session_state_store.as_deref(),

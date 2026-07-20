@@ -882,10 +882,15 @@ pub async fn handle_connection(
         let tz_val = tz;
         let tz_display = tz_str.clone();
         tokio::task::spawn_blocking(move || {
-            let write_mode = chelix_config::discover_and_load()
-                .memory
-                .user_profile_write_mode;
-            let existing_user = chelix_config::resolve_user_profile();
+            let config = match chelix_config::discover_and_load() {
+                Ok(config) => config,
+                Err(error) => {
+                    warn!(conn_id = %tz_conn_id, %error, "ws: failed to load config for timezone persistence");
+                    return;
+                },
+            };
+            let write_mode = config.memory.user_profile_write_mode;
+            let existing_user = chelix_config::resolve_user_profile_from_config(&config);
             if existing_user.timezone.as_ref().is_none() && write_mode.allows_auto_write() {
                 let mut user = existing_user;
                 user.timezone = Some(chelix_config::Timezone::from(tz_val));

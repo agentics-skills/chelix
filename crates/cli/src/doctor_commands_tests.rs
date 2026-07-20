@@ -39,6 +39,32 @@ fn print_report_counts_errors_and_warnings() {
 }
 
 #[test]
+fn config_dependent_section_reports_explicit_skip() {
+    let section = skipped_config_section("Providers", "effective config could not be loaded");
+
+    assert_eq!(section.title, "Providers");
+    assert_eq!(section.items.len(), 1);
+    assert_eq!(section.items[0].status, Status::Skip);
+    assert_eq!(
+        section.items[0].message,
+        "Skipped: effective config could not be loaded"
+    );
+}
+
+#[test]
+fn security_check_continues_without_effective_config() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let section = check_security(None, Some(temp.path()), temp.path());
+
+    assert!(section.items.iter().any(|item| {
+        item.status == Status::Skip
+            && item
+                .message
+                .contains("effective config could not be loaded")
+    }));
+}
+
+#[test]
 fn config_validation_status_warns_for_deprecated_field() {
     let diagnostic = Diagnostic {
         severity: Severity::Warning,
@@ -460,7 +486,7 @@ async fn check_remote_command_warns_for_unpinned_active_target() {
 fn check_security_no_api_keys_in_config() {
     let config = ChelixConfig::default();
     let temp = tempfile::TempDir::new().unwrap();
-    let section = check_security(&config, Some(temp.path()), temp.path());
+    let section = check_security(Some(&config), Some(temp.path()), temp.path());
 
     let ok_item = section
         .items
@@ -480,7 +506,7 @@ fn check_security_api_keys_in_config_warns() {
     config.providers.providers.insert("anthropic".into(), entry);
 
     let temp = tempfile::TempDir::new().unwrap();
-    let section = check_security(&config, Some(temp.path()), temp.path());
+    let section = check_security(Some(&config), Some(temp.path()), temp.path());
 
     let warn_item = section
         .items

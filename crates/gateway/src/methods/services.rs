@@ -110,8 +110,9 @@ async fn resolve_requested_agent_id(
     Ok(default_agent_id_for_ctx(ctx).await)
 }
 
-fn read_identity_payload_for_agent(agent_id: &str) -> serde_json::Value {
-    let config = chelix_config::discover_and_load();
+fn read_identity_payload_for_agent(agent_id: &str) -> Result<serde_json::Value, ErrorShape> {
+    let config = chelix_config::discover_and_load()
+        .map_err(|error| ErrorShape::new(error_codes::INTERNAL, error.to_string()))?;
     let identity = chelix_config::load_identity_for_agent(agent_id).unwrap_or_default();
     let user = chelix_config::resolve_user_profile_from_config(&config);
     let resolved_name = identity
@@ -125,7 +126,7 @@ fn read_identity_payload_for_agent(agent_id: &str) -> serde_json::Value {
     let soul = chelix_config::load_soul_for_agent(agent_id);
     let user_name = user.name.clone();
     let user_timezone = user.timezone.as_ref().map(|tz| tz.name().to_string());
-    serde_json::json!({
+    Ok(serde_json::json!({
         "name": resolved_name,
         "emoji": identity.emoji.clone(),
         "theme": identity.theme.clone(),
@@ -138,7 +139,7 @@ fn read_identity_payload_for_agent(agent_id: &str) -> serde_json::Value {
             "theme": identity.theme,
         },
         "soul": soul,
-    })
+    }))
 }
 
 fn write_soul_for_agent(agent_id: &str, soul: Option<String>) -> Result<(), ErrorShape> {
@@ -153,21 +154,24 @@ fn write_soul_for_agent(agent_id: &str, soul: Option<String>) -> Result<(), Erro
 fn mark_onboarded_if_ready(
     identity: &chelix_config::schema::AgentIdentity,
     params: &serde_json::Value,
-) {
+) -> Result<(), ErrorShape> {
     let has_agent_name = identity.name.as_ref().is_some_and(|n| !n.is_empty());
     let has_user_name = params
         .get("user_name")
         .and_then(|v| v.as_str())
         .is_some_and(|n| !n.is_empty())
         || chelix_config::resolve_user_profile()
+            .map_err(|error| ErrorShape::new(error_codes::INTERNAL, error.to_string()))?
             .name
             .as_ref()
             .is_some_and(|n| !n.is_empty());
 
     if has_agent_name && has_user_name {
         let sentinel = chelix_config::data_dir().join(".onboarded");
-        let _ = std::fs::write(&sentinel, "");
+        std::fs::write(&sentinel, "")
+            .map_err(|error| ErrorShape::new(error_codes::UNAVAILABLE, error.to_string()))?;
     }
+    Ok(())
 }
 
 /// Save user profile fields (user_name, user_timezone, user_location) from
@@ -235,8 +239,10 @@ fn save_user_profile_fields(params: &serde_json::Value) -> Result<(), ErrorShape
 
     // Persist to USER.md using the values we just built (not re-read from config).
     if let Some(user) = saved_user.into_inner().unwrap_or(None) {
-        let config = chelix_config::discover_and_load_readonly();
-        let _ = chelix_config::save_user_with_mode(&user, config.memory.user_profile_write_mode);
+        let config = chelix_config::discover_and_load()
+            .map_err(|error| ErrorShape::new(error_codes::INTERNAL, error.to_string()))?;
+        chelix_config::save_user_with_mode(&user, config.memory.user_profile_write_mode)
+            .map_err(|error| ErrorShape::new(error_codes::UNAVAILABLE, error.to_string()))?;
     }
 
     Ok(())
@@ -522,11 +528,13 @@ pub(super) fn register(reg: &mut MethodRegistry) {
     voice_personas::register(reg);
     voicecall::register(reg);
 }
-async fn reload_hooks(state: &Arc<crate::state::GatewayState>) {
+async fn reload_hooks(state: &Arc<crate::state::GatewayState>) -> Result<(), ErrorShape> {
     let disabled = state.inner.read().await.disabled_hooks.clone();
     let session_store = state.services.session_store.as_ref();
     let (new_registry, new_info) =
-        crate::server::discover_and_build_hooks(&disabled, session_store).await;
+        crate::server::discover_and_build_hooks(&disabled, session_store)
+            .await
+            .map_err(|error| ErrorShape::new(error_codes::INTERNAL, error.to_string()))?;
 
     {
         let mut inner = state.inner.write().await;
@@ -542,6 +550,7 @@ async fn reload_hooks(state: &Arc<crate::state::GatewayState>) {
         BroadcastOpts::default(),
     )
     .await;
+    Ok(())
 }
 
 /// Persist the disabled hooks set to `data_dir/disabled_hooks.json`.
@@ -581,6 +590,8 @@ mod tests {
                 .unwrap_or_else(|error| panic!("data tempdir should be created: {error}"));
             chelix_config::set_config_dir(config_dir.path().to_path_buf());
             chelix_config::set_data_dir(data_dir.path().to_path_buf());
+            chelix_config::initialize_config()
+                .unwrap_or_else(|error| panic!("test config should be initialized: {error}"));
             Self {
                 _lock: lock,
                 _config_dir: config_dir,
@@ -718,7 +729,7 @@ mod tests {
         assert_eq!(payload["session_export"], "off");
         assert_eq!(payload["prompt_memory_mode"], "frozen-at-session-start");
 
-        let config = chelix_config::discover_and_load();
+        let config = chelix_config::discover_and_load().expect("load updated config");
         assert_eq!(config.memory.style, chelix_config::MemoryStyle::PromptOnly);
         assert_eq!(
             config.memory.agent_write_mode,

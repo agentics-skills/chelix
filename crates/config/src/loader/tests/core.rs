@@ -153,6 +153,115 @@ fn apply_env_overrides_providers_offered_empty_array() {
 }
 
 #[test]
+fn apply_env_overrides_rejects_unknown_config_path() {
+    let vars = vec![("CHELIX_TOOLS__REMOVED_OPTION".into(), "true".into())];
+    let error = apply_env_overrides_with_options(ChelixConfig::default(), vars.into_iter(), true)
+        .expect_err("unknown environment override must fail");
+    assert!(
+        error.to_string().contains("tools.removed_option"),
+        "error should identify the unknown override: {error}"
+    );
+}
+
+#[test]
+fn apply_env_overrides_accepts_all_nested_profile_and_voice_fields() {
+    let vars = vec![
+        ("CHELIX_USER__LOCATION__LATITUDE".into(), "37.7749".into()),
+        (
+            "CHELIX_USER__LOCATION__LONGITUDE".into(),
+            "-122.4194".into(),
+        ),
+        (
+            "CHELIX_USER__LOCATION__PLACE".into(),
+            "San Francisco".into(),
+        ),
+        (
+            "CHELIX_USER__LOCATION__UPDATED_AT".into(),
+            "1234567890".into(),
+        ),
+        (
+            "CHELIX_VOICE__TTS__PIPER__BINARY_PATH".into(),
+            "/usr/bin/piper".into(),
+        ),
+        (
+            "CHELIX_VOICE__TTS__PIPER__CONFIG_PATH".into(),
+            "/models/voice.json".into(),
+        ),
+        ("CHELIX_VOICE__TTS__PIPER__SPEAKER_ID".into(), "2".into()),
+        (
+            "CHELIX_VOICE__TTS__PIPER__LENGTH_SCALE".into(),
+            "1.25".into(),
+        ),
+        ("CHELIX_VOICE__TTS__COQUI__MODEL".into(), "xtts_v2".into()),
+        ("CHELIX_VOICE__TTS__COQUI__SPEAKER".into(), "speaker".into()),
+        ("CHELIX_VOICE__TTS__COQUI__LANGUAGE".into(), "en".into()),
+        (
+            "CHELIX_VOICE__STT__GOOGLE__SERVICE_ACCOUNT_JSON".into(),
+            "/secrets/google.json".into(),
+        ),
+        ("CHELIX_VOICE__STT__GOOGLE__LANGUAGE".into(), "en-US".into()),
+        (
+            "CHELIX_VOICE__STT__GOOGLE__MODEL".into(),
+            "latest_long".into(),
+        ),
+        (
+            "CHELIX_VOICE__STT__VOXTRAL_LOCAL__LANGUAGE".into(),
+            "fr".into(),
+        ),
+        (
+            "CHELIX_VOICE__STT__SHERPA_ONNX__BINARY_PATH".into(),
+            "/usr/bin/sherpa-onnx-offline".into(),
+        ),
+    ];
+
+    let config = apply_env_overrides_with(ChelixConfig::default(), vars.into_iter());
+    let location = config
+        .user
+        .location
+        .expect("location override must be applied");
+    assert_eq!(location.latitude, 37.7749);
+    assert_eq!(location.longitude, -122.4194);
+    assert_eq!(location.place.as_deref(), Some("San Francisco"));
+    assert_eq!(location.updated_at, Some(1_234_567_890));
+    assert_eq!(
+        config.voice.tts.piper.binary_path.as_deref(),
+        Some("/usr/bin/piper")
+    );
+    assert_eq!(config.voice.tts.piper.speaker_id, Some(2));
+    assert_eq!(config.voice.tts.coqui.model.as_deref(), Some("xtts_v2"));
+    assert_eq!(config.voice.stt.google.language.as_deref(), Some("en-US"));
+    assert_eq!(
+        config.voice.stt.voxtral_local.language.as_deref(),
+        Some("fr")
+    );
+    assert_eq!(
+        config.voice.stt.sherpa_onnx.binary_path.as_deref(),
+        Some("/usr/bin/sherpa-onnx-offline")
+    );
+}
+
+#[test]
+fn apply_env_overrides_rejects_fields_not_present_in_voice_schema() {
+    for key in [
+        "CHELIX_VOICE__TTS__COQUI__BASE_URL",
+        "CHELIX_VOICE__STT__GOOGLE__LANGUAGE_CODE",
+        "CHELIX_VOICE__STT__VOXTRAL_LOCAL__BASE_URL",
+        "CHELIX_VOICE__STT__SHERPA_ONNX__SAMPLE_RATE",
+    ] {
+        let error = apply_env_overrides_with_options(
+            ChelixConfig::default(),
+            [(key.to_string(), "value".into())].into_iter(),
+            true,
+        )
+        .expect_err("field absent from the Rust config schema must fail");
+        assert!(
+            error.to_string().contains("unknown field"),
+            "{key} should be rejected as unknown: {error}"
+        );
+    }
+}
+
+#[test]
 fn generate_random_port_returns_valid_port() {
     // Generate a few random ports and verify they're in the valid range
     for _ in 0..5 {

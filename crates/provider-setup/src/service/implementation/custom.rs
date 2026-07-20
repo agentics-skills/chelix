@@ -60,7 +60,7 @@ impl LiveProviderSetupService {
 
         // Rebuild before returning so the just-added custom provider is immediately
         // available for model probing in the same UI flow.
-        let effective = self.effective_config();
+        let effective = self.effective_config()?;
         let new_registry = self.build_registry(&effective).await;
         let provider_summary = new_registry.provider_summary();
         let model_count = new_registry.list_models().len();

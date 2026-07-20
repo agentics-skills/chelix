@@ -1,7 +1,7 @@
 use {super::*, std::collections::HashMap};
 
 /// Represents the expected shape of the configuration schema.
-pub(super) enum KnownKeys {
+pub(crate) enum KnownKeys {
     /// A struct with fixed field names.
     Struct(HashMap<&'static str, KnownKeys>),
     /// A map with dynamic keys (providers, mcp.servers, etc.) whose values
@@ -19,7 +19,7 @@ pub(super) enum KnownKeys {
 }
 
 /// Build the full schema map mirroring every field in `schema.rs`.
-pub(super) fn build_schema_map() -> KnownKeys {
+pub(crate) fn build_schema_map() -> KnownKeys {
     use KnownKeys::{Array, Leaf, Map, MapWithFields, Struct};
 
     let tool_policy_entry = || {
@@ -472,7 +472,19 @@ pub(super) fn build_schema_map() -> KnownKeys {
         ),
         (
             "user",
-            Struct(HashMap::from([("name", Leaf), ("timezone", Leaf)])),
+            Struct(HashMap::from([
+                ("name", Leaf),
+                ("timezone", Leaf),
+                (
+                    "location",
+                    Struct(HashMap::from([
+                        ("latitude", Leaf),
+                        ("longitude", Leaf),
+                        ("place", Leaf),
+                        ("updated_at", Leaf),
+                    ])),
+                ),
+            ])),
         ),
         (
             "hooks",
@@ -640,15 +652,23 @@ pub(super) fn build_schema_map() -> KnownKeys {
                         ),
                         (
                             "piper",
-                            Struct(HashMap::from([("enabled", Leaf), ("model_path", Leaf)])),
+                            Struct(HashMap::from([
+                                ("enabled", Leaf),
+                                ("binary_path", Leaf),
+                                ("model_path", Leaf),
+                                ("config_path", Leaf),
+                                ("speaker_id", Leaf),
+                                ("length_scale", Leaf),
+                            ])),
                         ),
                         (
                             "coqui",
                             Struct(HashMap::from([
                                 ("enabled", Leaf),
-                                ("base_url", Leaf),
-                                ("voice_id", Leaf),
                                 ("endpoint", Leaf),
+                                ("model", Leaf),
+                                ("speaker", Leaf),
+                                ("language", Leaf),
                             ])),
                         ),
                     ])),
@@ -684,7 +704,9 @@ pub(super) fn build_schema_map() -> KnownKeys {
                             Struct(HashMap::from([
                                 ("enabled", Leaf),
                                 ("api_key", Leaf),
-                                ("language_code", Leaf),
+                                ("service_account_json", Leaf),
+                                ("language", Leaf),
+                                ("model", Leaf),
                             ])),
                         ),
                         (
@@ -700,9 +722,9 @@ pub(super) fn build_schema_map() -> KnownKeys {
                             "voxtral_local",
                             Struct(HashMap::from([
                                 ("enabled", Leaf),
-                                ("base_url", Leaf),
                                 ("model", Leaf),
                                 ("endpoint", Leaf),
+                                ("language", Leaf),
                             ])),
                         ),
                         (
@@ -727,9 +749,9 @@ pub(super) fn build_schema_map() -> KnownKeys {
                             "sherpa_onnx",
                             Struct(HashMap::from([
                                 ("enabled", Leaf),
+                                ("binary_path", Leaf),
                                 ("model_dir", Leaf),
                                 ("language", Leaf),
-                                ("sample_rate", Leaf),
                             ])),
                         ),
                     ])),
@@ -824,15 +846,15 @@ fn suggest<'a>(needle: &str, candidates: &[&'a str], max_distance: usize) -> Opt
 
 // ── Core validation ─────────────────────────────────────────────────────────
 
-/// Walk the TOML value tree against the schema tree and flag unknown keys.
-pub(super) fn check_unknown_fields(
-    value: &toml::Value,
+/// Walk a JSON-compatible config value tree and flag unknown keys.
+pub(crate) fn check_unknown_fields(
+    value: &serde_json::Value,
     schema: &KnownKeys,
     prefix: &str,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     match (value, schema) {
-        (toml::Value::Table(table), KnownKeys::Struct(fields)) => {
+        (serde_json::Value::Object(table), KnownKeys::Struct(fields)) => {
             let known_keys: Vec<&str> = fields.keys().copied().collect();
             for (key, child_value) in table {
                 let path = if prefix.is_empty() {
@@ -863,7 +885,7 @@ pub(super) fn check_unknown_fields(
                 }
             }
         },
-        (toml::Value::Table(table), KnownKeys::Map(value_schema)) => {
+        (serde_json::Value::Object(table), KnownKeys::Map(value_schema)) => {
             for (key, child_value) in table {
                 let path = if prefix.is_empty() {
                     key.clone()
@@ -874,7 +896,7 @@ pub(super) fn check_unknown_fields(
             }
         },
         (
-            toml::Value::Table(table),
+            serde_json::Value::Object(table),
             KnownKeys::MapWithFields {
                 value: value_schema,
                 fields,
@@ -893,7 +915,7 @@ pub(super) fn check_unknown_fields(
                 }
             }
         },
-        (toml::Value::Array(arr), KnownKeys::Array(item_schema)) => {
+        (serde_json::Value::Array(arr), KnownKeys::Array(item_schema)) => {
             for (i, item) in arr.iter().enumerate() {
                 let path = format!("{prefix}[{i}]");
                 check_unknown_fields(item, item_schema, &path, diagnostics);

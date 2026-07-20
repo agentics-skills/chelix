@@ -42,6 +42,23 @@ and which are inherited.
 The `defaults.toml` file lives in the same directory. Do not edit it — your
 changes will be overwritten on the next startup.
 
+## Strict Loading
+
+Chelix creates a default user config only during explicit startup
+initialization and only when no user config file exists. Runtime reloads are
+read-only: a missing config file is an error and is not recreated implicitly.
+
+Existing user config is never replaced with defaults when loading fails.
+Malformed values, type errors, and unknown fields in TOML, YAML, YML, or JSON
+cause startup or the requested config operation to fail. Config updates and
+onboarding also refuse to overwrite an invalid existing file; correct the
+reported error in that file and retry.
+
+Config environment overrides use `CHELIX_SECTION__FIELD` paths, for example
+`CHELIX_AUTH__DISABLED=true`. Unknown config paths are rejected instead of
+being ignored. Single-segment `CHELIX_*` variables are runtime or CLI controls,
+not config paths.
+
 ## Checking Config
 
 `chelix config check` validates your override file (`chelix.toml`) against the

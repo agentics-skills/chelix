@@ -6,6 +6,7 @@ use std::{
 };
 
 use {
+    anyhow::Context,
     async_trait::async_trait,
     futures::{FutureExt, future::Abortable},
     tracing::info,
@@ -436,7 +437,7 @@ impl AgentTool for SpawnAgentTool {
             .ok_or_else(|| Error::message("missing required parameter: task"))?;
         let context = str_param(&params, "context").unwrap_or("");
         let (preset_name, preset) = self.resolve_preset(&params).await?;
-        let config = chelix_config::discover_and_load();
+        let config = chelix_config::discover_and_load().context("reload Chelix config")?;
         let runtime_limits =
             AgentRuntimeLimits::resolve_for_spawned_agent(&config.tools, preset.as_ref());
         let explicit_model = str_param(&params, "model").map(String::from);

@@ -31,10 +31,10 @@ use secrecy::Secret;
 /// config and overlays any voice-specific keys found in the store, giving the
 /// store priority over legacy TOML values.
 #[cfg(feature = "voice")]
-pub(crate) fn load_voice_config() -> chelix_config::ChelixConfig {
-    let mut cfg = chelix_config::discover_and_load();
+pub(crate) fn load_voice_config() -> chelix_config::Result<chelix_config::ChelixConfig> {
+    let mut cfg = chelix_config::discover_and_load()?;
     merge_voice_keys(&mut cfg);
-    cfg
+    Ok(cfg)
 }
 
 /// Overlay voice API keys from [`KeyStore`] onto the given config.

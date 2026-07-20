@@ -7,7 +7,7 @@
 use {
     crate::schema::ChelixConfig,
     std::path::{Path, PathBuf},
-    tracing::{debug, warn},
+    tracing::debug,
 };
 
 /// Filename for the Chelix-managed defaults file.
@@ -35,38 +35,6 @@ pub fn write_defaults_toml(config_dir: &Path) -> crate::Result<PathBuf> {
     std::fs::write(&path, &content)?;
     debug!(path = %path.display(), "wrote Chelix-managed defaults.toml");
     Ok(path)
-}
-
-/// Load and parse `defaults.toml` from the given config directory.
-///
-/// Returns `ChelixConfig::default()` if the file does not exist or fails
-/// to parse (with a warning).
-pub fn load_defaults(config_dir: &Path) -> ChelixConfig {
-    let path = config_dir.join(DEFAULTS_FILENAME);
-    if !path.exists() {
-        return ChelixConfig::default();
-    }
-    match std::fs::read_to_string(&path) {
-        Ok(raw) => match toml::from_str::<ChelixConfig>(&raw) {
-            Ok(cfg) => cfg,
-            Err(e) => {
-                warn!(
-                    path = %path.display(),
-                    error = %e,
-                    "failed to parse defaults.toml, using in-memory defaults"
-                );
-                ChelixConfig::default()
-            },
-        },
-        Err(e) => {
-            warn!(
-                path = %path.display(),
-                error = %e,
-                "failed to read defaults.toml, using in-memory defaults"
-            );
-            ChelixConfig::default()
-        },
-    }
 }
 
 /// Merge user overrides on top of defaults using TOML-level deep merge.

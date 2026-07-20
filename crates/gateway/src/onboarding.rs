@@ -31,7 +31,9 @@ impl OnboardingService for GatewayOnboardingService {
             .get("force")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        Ok(self.inner.wizard_start(force))
+        self.inner
+            .wizard_start(force)
+            .map_err(ServiceError::message)
     }
 
     async fn wizard_next(&self, params: Value) -> ServiceResult {
@@ -49,7 +51,8 @@ impl OnboardingService for GatewayOnboardingService {
     }
 
     async fn identity_get(&self) -> ServiceResult {
-        Ok(serde_json::to_value(self.inner.identity_get()).unwrap_or_default())
+        let identity = self.inner.identity_get().map_err(ServiceError::message)?;
+        serde_json::to_value(identity).map_err(ServiceError::message)
     }
 
     async fn identity_update(&self, params: Value) -> ServiceResult {

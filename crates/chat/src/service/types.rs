@@ -418,6 +418,7 @@ impl LiveChatService {
         state: Arc<dyn ChatRuntime>,
         session_store: Arc<SessionStore>,
         session_metadata: Arc<SqliteSessionMetadata>,
+        config: chelix_config::ChelixConfig,
     ) -> Self {
         Self {
             providers,
@@ -439,13 +440,8 @@ impl LiveChatService {
             active_tool_calls: Arc::new(RwLock::new(HashMap::new())),
             active_partial_assistant: Arc::new(RwLock::new(HashMap::new())),
             active_reply_medium: Arc::new(RwLock::new(HashMap::new())),
-            config: chelix_config::discover_and_load(),
+            config,
         }
-    }
-
-    pub fn with_config(mut self, config: chelix_config::ChelixConfig) -> Self {
-        self.config = config;
-        self
     }
 
     pub fn with_tools(mut self, registry: Arc<RwLock<ToolRegistry>>) -> Self {
@@ -783,6 +779,7 @@ impl LiveChatService {
 
         let session_entry = self.session_metadata.get(session_key).await;
         let persona = load_prompt_persona_for_session(
+            &self.config,
             session_key,
             session_entry.as_ref(),
             self.session_state_store.as_deref(),
@@ -797,7 +794,15 @@ impl LiveChatService {
         )
         .await;
         runtime_context.mode = resolve_prompt_mode_context(&persona.config, session_entry.as_ref());
-        apply_request_runtime_context(&mut runtime_context.host, params);
+        apply_request_runtime_context(
+            &mut runtime_context.host,
+            params,
+            persona
+                .user
+                .timezone
+                .as_ref()
+                .map(|timezone| timezone.name()),
+        );
 
         let conn_id = params.get("_conn_id").and_then(|v| v.as_str());
         let project_context = self.resolve_project_context(session_key, conn_id).await;

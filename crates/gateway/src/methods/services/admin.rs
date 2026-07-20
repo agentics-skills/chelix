@@ -269,7 +269,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 "voice.config.get",
                 Box::new(|_ctx| {
                     Box::pin(async move {
-                        let config = chelix_config::discover_and_load();
+                        let config = chelix_config::discover_and_load()
+                            .map_err(ServiceError::message)?;
                         Ok(serde_json::json!({
                             "tts": {
                                 "enabled": config.voice.tts.enabled,
@@ -296,7 +297,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
             "voice.providers.all",
             Box::new(|_ctx| {
                 Box::pin(async move {
-                    let mut config = chelix_config::discover_and_load();
+                    let mut config =
+                        chelix_config::discover_and_load().map_err(ServiceError::message)?;
                     crate::voice::merge_voice_keys(&mut config);
                     let providers = voice::detect_voice_providers(&config).await;
                     Ok(serde_json::json!(providers))
@@ -307,7 +309,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
             "voice.elevenlabs.catalog",
             Box::new(|_ctx| {
                 Box::pin(async move {
-                    let mut config = chelix_config::discover_and_load();
+                    let mut config =
+                        chelix_config::discover_and_load().map_err(ServiceError::message)?;
                     crate::voice::merge_voice_keys(&mut config);
                     Ok(voice::fetch_elevenlabs_catalog(&config).await)
                 })
@@ -814,7 +817,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         Box::new(|_ctx| {
             Box::pin(async move {
                 // Read memory config from the config file
-                let config = chelix_config::discover_and_load();
+                let config = chelix_config::discover_and_load().map_err(ServiceError::message)?;
                 let memory = &config.memory;
                 let chat = &config.chat;
                 Ok(serde_json::json!({
@@ -879,7 +882,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "memory.config.update",
         Box::new(|ctx| {
             Box::pin(async move {
-                let current_config = chelix_config::discover_and_load();
+                let current_config =
+                    chelix_config::discover_and_load().map_err(ServiceError::message)?;
                 let current_memory = current_config.memory;
                 let current_chat = current_config.chat;
                 let style = ctx.params.get("style").and_then(|v| v.as_str()).unwrap_or(
@@ -1060,7 +1064,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 {
                     use chelix_qmd::{QmdManager, QmdManagerConfig};
 
-                    let config = chelix_config::discover_and_load();
+                    let config =
+                        chelix_config::discover_and_load().map_err(ServiceError::message)?;
                     let qmd_config = QmdManagerConfig {
                         command: config
                             .memory
@@ -1149,7 +1154,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 persist_disabled_hooks(&ctx.state).await;
 
                 // Rebuild hooks.
-                reload_hooks(&ctx.state).await;
+                reload_hooks(&ctx.state).await?;
 
                 Ok(serde_json::json!({ "ok": true }))
             })
@@ -1178,7 +1183,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 persist_disabled_hooks(&ctx.state).await;
 
                 // Rebuild hooks.
-                reload_hooks(&ctx.state).await;
+                reload_hooks(&ctx.state).await?;
 
                 Ok(serde_json::json!({ "ok": true }))
             })
@@ -1227,7 +1232,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 })?;
 
                 // Reload hooks to pick up the changes.
-                reload_hooks(&ctx.state).await;
+                reload_hooks(&ctx.state).await?;
 
                 Ok(serde_json::json!({ "ok": true }))
             })
@@ -1239,7 +1244,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "hooks.reload",
         Box::new(|ctx| {
             Box::pin(async move {
-                reload_hooks(&ctx.state).await;
+                reload_hooks(&ctx.state).await?;
                 Ok(serde_json::json!({ "ok": true }))
             })
         }),

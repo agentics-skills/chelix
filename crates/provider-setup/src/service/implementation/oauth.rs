@@ -57,7 +57,7 @@ impl LiveProviderSetupService {
         // Spawn background task to poll for the token
         let token_store = self.token_store.clone();
         let registry = Arc::clone(&self.registry);
-        let config = self.effective_config();
+        let config = self.effective_config()?;
         let env_overrides = self.env_overrides.clone();
         let poll_headers = extra_headers.clone();
         tokio::spawn(async move {
@@ -136,7 +136,7 @@ impl LiveProviderSetupService {
 
         // If tokens already exist, skip launching a fresh OAuth flow.
         if has_oauth_tokens(&provider_name, &self.token_store) {
-            let effective = self.effective_config();
+            let effective = self.effective_config()?;
             let new_registry = self.build_registry(&effective).await;
             let provider_summary = new_registry.provider_summary();
             let model_count = new_registry.list_models().len();
@@ -193,7 +193,7 @@ impl LiveProviderSetupService {
         // Spawn background task to wait for the callback and exchange the code
         let token_store = self.token_store.clone();
         let registry = Arc::clone(&self.registry);
-        let config = self.effective_config();
+        let config = self.effective_config()?;
         let env_overrides = self.env_overrides.clone();
         let bind_addr = self.callback_bind_addr.clone();
         let pending_oauth = Arc::clone(&self.pending_oauth);
@@ -337,7 +337,7 @@ impl LiveProviderSetupService {
         set_provider_enabled_in_config(&pending.provider_name, true)?;
         self.set_provider_enabled_in_memory(&pending.provider_name, true);
 
-        let effective = self.effective_config();
+        let effective = self.effective_config()?;
         let new_registry = self.build_registry(&effective).await;
         let provider_summary = new_registry.provider_summary();
         let model_count = new_registry.list_models().len();

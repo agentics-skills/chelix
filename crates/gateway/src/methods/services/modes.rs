@@ -57,7 +57,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "modes.list",
         Box::new(|_ctx| {
             Box::pin(async move {
-                let config = chelix_config::discover_and_load();
+                let config = chelix_config::discover_and_load()
+                    .map_err(|error| ErrorShape::new(error_codes::INTERNAL, error.to_string()))?;
                 let modes = sorted_mode_presets(&config)
                     .into_iter()
                     .map(|(id, preset)| {
@@ -79,7 +80,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         Box::new(|ctx| {
             Box::pin(async move {
                 let session_key = session_key_for_mode_set(&ctx).await?;
-                let config = chelix_config::discover_and_load();
+                let config = chelix_config::discover_and_load()
+                    .map_err(|error| ErrorShape::new(error_codes::INTERNAL, error.to_string()))?;
                 let mode_id = parse_mode_id_param(&ctx.params);
                 if let Some(ref id) = mode_id
                     && !config.modes.presets.contains_key(id)

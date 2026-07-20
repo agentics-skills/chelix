@@ -80,7 +80,7 @@ impl CredentialStore {
     /// Create a new store and initialize tables.
     /// Reads `auth.disabled` from the discovered config file.
     pub async fn new(pool: SqlitePool) -> Result<Self> {
-        let config = chelix_config::discover_and_load();
+        let config = chelix_config::discover_and_load()?;
         Self::with_config(pool, &config.auth).await
     }
 

@@ -252,7 +252,7 @@ async fn create_api_key(label: &str, scopes_str: Option<String>) -> Result<()> {
     // Connect to database and create the key
     let db_url = format!("sqlite:{}", db_path.display());
     let pool = sqlx::SqlitePool::connect(&db_url).await?;
-    let config = chelix_config::discover_and_load();
+    let config = chelix_config::discover_and_load()?;
     let store = chelix_gateway::auth::CredentialStore::with_config(pool, &config.auth).await?;
 
     let (id, raw_key) = store.create_api_key(label, scopes.as_deref()).await?;

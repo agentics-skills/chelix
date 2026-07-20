@@ -191,6 +191,22 @@ enum Commands {
     TrustCa,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReadOnlyDiagnostic {
+    ConfigCheck { verbose: bool },
+    Doctor,
+}
+
+fn read_only_diagnostic(command: Option<&Commands>) -> Option<ReadOnlyDiagnostic> {
+    match command {
+        Some(Commands::Config {
+            action: config_commands::ConfigAction::Check { verbose },
+        }) => Some(ReadOnlyDiagnostic::ConfigCheck { verbose: *verbose }),
+        Some(Commands::Doctor) => Some(ReadOnlyDiagnostic::Doctor),
+        _ => None,
+    }
+}
+
 #[derive(Subcommand)]
 enum SessionAction {
     List,
@@ -404,16 +420,23 @@ async fn main() -> anyhow::Result<()> {
         )
     });
 
-    // Initialize config directory once for all subcommands
+    // Read-only diagnostics must remain reachable when the effective config is
+    // invalid. They validate and report the existing config without creating,
+    // compacting, or replacing it.
+    if let Some(diagnostic) = read_only_diagnostic(cli.command.as_ref()) {
+        return match diagnostic {
+            ReadOnlyDiagnostic::ConfigCheck { verbose } => config_commands::check(verbose),
+            ReadOnlyDiagnostic::Doctor => doctor_commands::handle_doctor().await,
+        };
+    }
+
+    // Initialize config directory once for all service and mutation commands
     // (write defaults.toml, compact, persist random port).
-    chelix_config::initialize_config()?;
+    let config = chelix_config::initialize_config()?;
 
     match cli.command {
         // Default: start gateway when no subcommand is provided
         None | Some(Commands::Gateway) => {
-            // Load config to get server settings
-            let config = chelix_config::discover_and_load();
-
             // CLI args override config values
             let bind = cli.bind.unwrap_or(config.server.bind);
             let port = cli.port.unwrap_or(config.server.port);
@@ -562,7 +585,10 @@ async fn handle_skills(action: SkillAction) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use crate::default_telemetry_filter;
+    use crate::{
+        Commands, ReadOnlyDiagnostic, config_commands::ConfigAction, default_telemetry_filter,
+        read_only_diagnostic,
+    };
 
     #[test]
     fn default_telemetry_filter_quiets_noisy_targets() {
@@ -572,5 +598,31 @@ mod tests {
         assert!(filter.contains("matrix_sdk=warn"));
         assert!(filter.contains("matrix_sdk_base=warn"));
         assert!(filter.contains("matrix_sdk_crypto=error"));
+    }
+
+    #[test]
+    fn read_only_diagnostics_bypass_strict_startup_initialization() {
+        assert_eq!(
+            read_only_diagnostic(Some(&Commands::Doctor)),
+            Some(ReadOnlyDiagnostic::Doctor)
+        );
+        assert_eq!(
+            read_only_diagnostic(Some(&Commands::Config {
+                action: ConfigAction::Check { verbose: true },
+            })),
+            Some(ReadOnlyDiagnostic::ConfigCheck { verbose: true })
+        );
+    }
+
+    #[test]
+    fn config_mutations_remain_on_strict_startup_path() {
+        assert_eq!(
+            read_only_diagnostic(Some(&Commands::Config {
+                action: ConfigAction::Compact,
+            })),
+            None
+        );
+        assert_eq!(read_only_diagnostic(Some(&Commands::Gateway)), None);
+        assert_eq!(read_only_diagnostic(None), None);
     }
 }

@@ -20,9 +20,9 @@ use {
 use crate::{
     runtime::ChatRuntime,
     types::{
-        PromptMemoryStatus, PromptPersona, default_user_prompt_timezone, detect_host_sudo_access,
-        detect_runtime_shell, memory_style_allows_prompt, normalized_iana_timezone,
-        refresh_runtime_prompt_time, server_prompt_timezone,
+        PromptMemoryStatus, PromptPersona, detect_host_sudo_access, detect_runtime_shell,
+        memory_style_allows_prompt, normalized_iana_timezone, refresh_runtime_prompt_time,
+        server_prompt_timezone,
     },
 };
 
@@ -122,16 +122,18 @@ pub(crate) fn resolve_prompt_mode_context(
 }
 
 /// Load identity, user profile, soul, and workspace text for one agent.
-pub(crate) fn load_prompt_persona_base_for_agent(agent_id: &str) -> PromptPersona {
-    let config = chelix_config::discover_and_load();
+pub(crate) fn load_prompt_persona_base_for_agent(
+    config: &chelix_config::ChelixConfig,
+    agent_id: &str,
+) -> PromptPersona {
     let prompt_memory_mode = config.chat.prompt_memory_mode;
     let agent_write_mode = config.memory.agent_write_mode;
     let memory_style = config.memory.style;
     let identity =
         chelix_config::load_identity_for_agent(agent_id).unwrap_or_else(|| config.identity.clone());
-    let user = chelix_config::resolve_user_profile_from_config(&config);
+    let user = chelix_config::resolve_user_profile_from_config(config);
     PromptPersona {
-        config,
+        config: config.clone(),
         identity,
         user,
         soul_text: chelix_config::load_soul_for_agent(agent_id),
@@ -216,12 +218,13 @@ pub(crate) async fn load_prompt_memory_for_session(
 }
 
 pub(crate) async fn load_prompt_persona_for_session(
+    config: &chelix_config::ChelixConfig,
     session_key: &str,
     session_entry: Option<&SessionEntry>,
     state_store: Option<&SessionStateStore>,
 ) -> PromptPersona {
     let agent_id = resolve_prompt_agent_id(session_entry);
-    let mut persona = load_prompt_persona_base_for_agent(&agent_id);
+    let mut persona = load_prompt_persona_base_for_agent(config, &agent_id);
     let style = persona.config.memory.style;
     let mode = persona.config.chat.prompt_memory_mode;
     let write_mode = persona.config.memory.agent_write_mode;
@@ -501,7 +504,11 @@ pub(crate) async fn build_prompt_runtime_context(
     }
 }
 
-pub(crate) fn apply_request_runtime_context(host: &mut PromptHostRuntimeContext, params: &Value) {
+pub(crate) fn apply_request_runtime_context(
+    host: &mut PromptHostRuntimeContext,
+    params: &Value,
+    default_timezone: Option<&str>,
+) {
     host.accept_language = params
         .get("_accept_language")
         .and_then(|v| v.as_str())
@@ -522,7 +529,7 @@ pub(crate) fn apply_request_runtime_context(host: &mut PromptHostRuntimeContext,
 
     if let Some(timezone) =
         normalized_iana_timezone(params.get("_timezone").and_then(|v| v.as_str()))
-            .or_else(default_user_prompt_timezone)
+            .or_else(|| normalized_iana_timezone(default_timezone))
     {
         host.timezone = Some(timezone);
     }

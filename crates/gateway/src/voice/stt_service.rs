@@ -100,14 +100,16 @@ impl LiveSttService {
 
     /// Load fresh STT config from disk (with KeyStore voice keys merged) and
     /// create provider on demand.
-    fn create_provider(provider_id: SttProviderId) -> Option<Box<dyn SttProvider + Send + Sync>> {
-        let cfg = load_voice_config();
+    fn create_provider(
+        cfg: &chelix_config::ChelixConfig,
+        provider_id: SttProviderId,
+    ) -> Option<Box<dyn SttProvider + Send + Sync>> {
         match provider_id {
             SttProviderId::Whisper => {
-                let key = resolve_openai_key(cfg.voice.stt.whisper.api_key.as_ref(), &cfg);
+                let key = resolve_openai_key(cfg.voice.stt.whisper.api_key.as_ref(), cfg);
                 let provider = WhisperStt::with_options(
                     key,
-                    resolve_openai_whisper_base_url(&cfg),
+                    resolve_openai_whisper_base_url(cfg),
                     cfg.voice.stt.whisper.model.clone(),
                     cfg.voice.stt.whisper.language.clone(),
                 );
@@ -222,13 +224,12 @@ impl LiveSttService {
 
     /// List all providers with their configuration status (reads fresh config
     /// with KeyStore voice keys merged).
-    fn list_providers() -> Vec<(SttProviderId, bool)> {
-        let cfg = load_voice_config();
+    fn list_providers(cfg: &chelix_config::ChelixConfig) -> Vec<(SttProviderId, bool)> {
         vec![
             (
                 SttProviderId::Whisper,
-                resolve_openai_key(cfg.voice.stt.whisper.api_key.as_ref(), &cfg).is_some()
-                    || resolve_openai_whisper_base_url(&cfg).is_some(),
+                resolve_openai_key(cfg.voice.stt.whisper.api_key.as_ref(), cfg).is_some()
+                    || resolve_openai_whisper_base_url(cfg).is_some(),
             ),
             (
                 SttProviderId::Deepgram,
@@ -278,13 +279,14 @@ impl LiveSttService {
 
     /// Resolve the active provider: explicit config value, or first configured.
     fn resolve_provider(
+        cfg: &chelix_config::ChelixConfig,
         config_provider: Option<chelix_config::VoiceSttProvider>,
     ) -> Option<SttProviderId> {
         if let Some(p) = config_provider {
             return SttProviderId::parse(p.as_str());
         }
         // Auto-select: first configured provider
-        Self::list_providers()
+        Self::list_providers(cfg)
             .into_iter()
             .find(|(_, configured)| *configured)
             .map(|(id, _)| id)
@@ -294,10 +296,10 @@ impl LiveSttService {
 #[async_trait]
 impl SttService for LiveSttService {
     async fn status(&self) -> ServiceResult {
-        let cfg = load_voice_config();
-        let providers = Self::list_providers();
+        let cfg = load_voice_config().map_err(crate::services::ServiceError::message)?;
+        let providers = Self::list_providers(&cfg);
         let any_configured = providers.iter().any(|(_, configured)| *configured);
-        let resolved = Self::resolve_provider(cfg.voice.stt.provider);
+        let resolved = Self::resolve_provider(&cfg, cfg.voice.stt.provider);
 
         Ok(json!({
             "enabled": any_configured,
@@ -307,7 +309,8 @@ impl SttService for LiveSttService {
     }
 
     async fn providers(&self) -> ServiceResult {
-        let providers: Vec<_> = Self::list_providers()
+        let cfg = load_voice_config().map_err(crate::services::ServiceError::message)?;
+        let providers: Vec<_> = Self::list_providers(&cfg)
             .into_iter()
             .map(|(id, configured)| {
                 json!({
@@ -354,19 +357,19 @@ impl SttService for LiveSttService {
         language: Option<&str>,
         prompt: Option<&str>,
     ) -> ServiceResult {
-        let cfg = load_voice_config();
+        let cfg = load_voice_config().map_err(crate::services::ServiceError::message)?;
         let audio_len = audio.len();
 
         let provider_id = match provider {
             Some(s) => {
                 SttProviderId::parse(s).ok_or_else(|| format!("unknown STT provider '{s}'"))?
             },
-            None => Self::resolve_provider(cfg.voice.stt.provider)
+            None => Self::resolve_provider(&cfg, cfg.voice.stt.provider)
                 .ok_or_else(|| "no STT provider configured".to_string())?,
         };
 
         let stt_provider: Box<dyn SttProvider + Send + Sync> =
-            Self::create_provider(provider_id)
+            Self::create_provider(&cfg, provider_id)
                 .ok_or_else(|| format!("STT provider '{}' not configured", provider_id))?;
 
         let request = TranscribeRequest {
@@ -414,7 +417,8 @@ impl SttService for LiveSttService {
         let provider_id = SttProviderId::parse(provider_str)
             .ok_or_else(|| format!("unknown STT provider '{}'", provider_str))?;
 
-        if Self::create_provider(provider_id).is_none() {
+        let cfg = load_voice_config().map_err(crate::services::ServiceError::message)?;
+        if Self::create_provider(&cfg, provider_id).is_none() {
             return Err(format!("provider '{}' not configured", provider_id).into());
         }
 
@@ -471,11 +475,15 @@ mod tests {
 
     #[test]
     fn test_live_stt_resolve_provider_handles_explicit_and_auto_selection() {
+        let config = chelix_config::ChelixConfig::default();
         assert_eq!(
-            LiveSttService::resolve_provider(Some(chelix_config::VoiceSttProvider::Whisper)),
+            LiveSttService::resolve_provider(
+                &config,
+                Some(chelix_config::VoiceSttProvider::Whisper),
+            ),
             Some(SttProviderId::Whisper)
         );
-        assert!(LiveSttService::resolve_provider(None).is_some());
+        assert!(LiveSttService::resolve_provider(&config, None).is_some());
     }
 
     #[test]
@@ -490,7 +498,8 @@ base_url = "http://127.0.0.1:8001/"
 "#,
         );
 
-        let providers = LiveSttService::list_providers();
+        let config = load_voice_config().expect("load voice config");
+        let providers = LiveSttService::list_providers(&config);
         let whisper = providers
             .into_iter()
             .find(|(id, _)| *id == SttProviderId::Whisper);
@@ -498,7 +507,10 @@ base_url = "http://127.0.0.1:8001/"
         assert_eq!(whisper, Some((SttProviderId::Whisper, true)));
         // With explicit provider selection, Whisper is chosen
         assert_eq!(
-            LiveSttService::resolve_provider(Some(chelix_config::VoiceSttProvider::Whisper)),
+            LiveSttService::resolve_provider(
+                &config,
+                Some(chelix_config::VoiceSttProvider::Whisper),
+            ),
             Some(SttProviderId::Whisper)
         );
     }
@@ -518,7 +530,8 @@ endpoint = "http://127.0.0.1:9001/"
 "#,
         );
 
-        let providers = LiveSttService::list_providers();
+        let config = load_voice_config().expect("load voice config");
+        let providers = LiveSttService::list_providers(&config);
         let voxtral_local = providers
             .iter()
             .find(|(id, _)| *id == SttProviderId::VoxtralLocal);
@@ -532,6 +545,7 @@ endpoint = "http://127.0.0.1:9001/"
 
     #[tokio::test]
     async fn test_live_stt_service_status() {
+        let _guard = VoiceConfigTestGuard::with_config("");
         let service = LiveSttService::new(SttServiceConfig::default());
         let status = service.status().await.unwrap();
 
@@ -546,6 +560,7 @@ endpoint = "http://127.0.0.1:9001/"
 
     #[tokio::test]
     async fn test_live_stt_service_providers() {
+        let _guard = VoiceConfigTestGuard::with_config("");
         let service = LiveSttService::new(SttServiceConfig::default());
         let providers = service.providers().await.unwrap();
 

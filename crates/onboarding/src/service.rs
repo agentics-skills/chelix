@@ -35,6 +35,14 @@ impl LiveOnboardingService {
         Ok(())
     }
 
+    fn load_existing_or_default(&self) -> Result<ChelixConfig> {
+        if !self.config_path.exists() {
+            return Ok(ChelixConfig::default());
+        }
+        chelix_config::loader::load_config(&self.config_path)
+            .context("failed to load existing onboarding config")
+    }
+
     /// Check whether onboarding has been completed.
     ///
     /// Returns `true` when the `.onboarded` sentinel file exists in the data
@@ -52,30 +60,34 @@ impl LiveOnboardingService {
     }
 
     /// Mark onboarding as complete by writing the sentinel file.
-    fn mark_onboarded(&self) {
+    fn mark_onboarded(&self) -> Result<()> {
         let path = onboarded_sentinel();
-        let _ = std::fs::write(&path, "");
+        std::fs::write(&path, "").context("failed to mark onboarding complete")?;
+        Ok(())
     }
 
     /// Start the wizard. Returns current step info.
     ///
     /// If `force` is true, the wizard starts even when already onboarded,
     /// allowing the user to reconfigure their identity.
-    pub fn wizard_start(&self, force: bool) -> Value {
+    pub fn wizard_start(&self, force: bool) -> Result<Value> {
+        let existing_config = if self.config_path.exists() {
+            Some(self.load_existing_or_default()?)
+        } else {
+            None
+        };
         if !force && self.is_already_onboarded() {
-            return json!({
+            return Ok(json!({
                 "onboarded": true,
                 "step": "done",
                 "prompt": "Already onboarded!",
-            });
+            }));
         }
 
         let mut ws = WizardState::new();
 
         // Pre-populate from existing config so the user can keep values.
-        if self.config_path.exists()
-            && let Ok(cfg) = chelix_config::loader::load_config(&self.config_path)
-        {
+        if let Some(cfg) = existing_config {
             ws.identity = cfg.identity;
             ws.user = cfg.user;
         }
@@ -88,7 +100,7 @@ impl LiveOnboardingService {
 
         let resp = step_response(&ws);
         *self.state.lock().unwrap_or_else(|e| e.into_inner()) = Some(ws);
-        resp
+        Ok(resp)
     }
 
     /// Advance the wizard with user input.
@@ -100,7 +112,7 @@ impl LiveOnboardingService {
         if ws.is_done() {
             // Merge into existing config or create new one.
             let mut config = if self.config_path.exists() {
-                chelix_config::loader::load_config(&self.config_path).unwrap_or_default()
+                self.load_existing_or_default()?
             } else {
                 ChelixConfig::default()
             };
@@ -111,7 +123,7 @@ impl LiveOnboardingService {
                 .context("failed to save IDENTITY.md")?;
             chelix_config::save_user_with_mode(&ws.user, config.memory.user_profile_write_mode)
                 .context("failed to save USER.md")?;
-            self.mark_onboarded();
+            self.mark_onboarded()?;
 
             let resp = json!({
                 "step": "done",
@@ -162,7 +174,7 @@ impl LiveOnboardingService {
     /// Also accepts `"creature"` and `"vibe"` as backward-compat aliases for `"theme"`.
     pub fn identity_update(&self, params: Value) -> Result<Value> {
         let mut config = if self.config_path.exists() {
-            chelix_config::loader::load_config(&self.config_path).unwrap_or_default()
+            self.load_existing_or_default()?
         } else {
             ChelixConfig::default()
         };
@@ -275,7 +287,7 @@ impl LiveOnboardingService {
 
         // Mark onboarding complete once both names are present.
         if identity.name.is_some() && user.name.is_some() {
-            self.mark_onboarded();
+            self.mark_onboarded()?;
         }
 
         Ok(json!({
@@ -302,10 +314,9 @@ impl LiveOnboardingService {
     }
 
     /// Read identity from the config file (for `agent.identity.get`).
-    pub fn identity_get(&self) -> chelix_config::ResolvedIdentity {
-        let id = if self.config_path.exists()
-            && let Ok(cfg) = chelix_config::loader::load_config(&self.config_path)
-        {
+    pub fn identity_get(&self) -> Result<chelix_config::ResolvedIdentity> {
+        let id = if self.config_path.exists() {
+            let cfg = self.load_existing_or_default()?;
             info!(
                 config_path = %self.config_path.display(),
                 config_name = ?cfg.identity.name,
@@ -316,7 +327,7 @@ impl LiveOnboardingService {
         } else {
             info!(
                 config_path = %self.config_path.display(),
-                "identity_get: config not found, using defaults"
+                "identity_get: config not found, using first-run defaults"
             );
             chelix_config::resolve_identity_from_config(&ChelixConfig::default())
         };
@@ -327,7 +338,7 @@ impl LiveOnboardingService {
             resolved_user_name = ?id.user_name,
             "identity_get: resolved identity"
         );
-        id
+        Ok(id)
     }
 }
 
@@ -403,7 +414,7 @@ mod tests {
         let svc = LiveOnboardingService::new(config_path.clone());
 
         // Start
-        let resp = svc.wizard_start(false);
+        let resp = svc.wizard_start(false).expect("start wizard");
         assert_eq!(resp["onboarded"], false);
         assert_eq!(resp["step"], "welcome");
 
@@ -443,7 +454,7 @@ mod tests {
 
         let svc = LiveOnboardingService::new(config_path);
         // Should NOT be onboarded — data alone isn't enough.
-        let resp = svc.wizard_start(false);
+        let resp = svc.wizard_start(false).expect("start wizard");
         assert_eq!(resp["onboarded"], false);
         assert_eq!(resp["step"], "welcome");
         chelix_config::clear_data_dir();
@@ -459,7 +470,7 @@ mod tests {
         std::fs::write(dir.path().join(".onboarded"), "").unwrap();
 
         let svc = LiveOnboardingService::new(config_path);
-        let resp = svc.wizard_start(false);
+        let resp = svc.wizard_start(false).expect("start wizard");
         assert_eq!(resp["onboarded"], true);
         chelix_config::clear_data_dir();
     }
@@ -470,7 +481,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         chelix_config::set_data_dir(dir.path().to_path_buf());
         let svc = LiveOnboardingService::new(dir.path().join("chelix.toml"));
-        svc.wizard_start(false);
+        svc.wizard_start(false).expect("start wizard");
         assert_eq!(svc.wizard_status()["active"], true);
         svc.wizard_cancel();
         assert_eq!(svc.wizard_status()["active"], false);
@@ -508,7 +519,7 @@ mod tests {
         assert_eq!(res["emoji"], "\u{1f436}");
 
         // Verify identity_get reflects updates
-        let id = svc.identity_get();
+        let id = svc.identity_get().expect("get identity");
         assert_eq!(id.name, "Rex");
         assert_eq!(id.theme.as_deref(), Some("playful pup"));
         assert_eq!(id.user_name.as_deref(), Some("Alice"));
@@ -644,6 +655,26 @@ mod tests {
         svc.identity_update(json!({ "name": "Rex" })).unwrap();
         let res = svc.identity_update(json!({ "name": "" })).unwrap();
         assert!(res["name"].is_null());
+        chelix_config::clear_data_dir();
+    }
+
+    #[test]
+    fn invalid_existing_config_is_never_overwritten() {
+        let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        chelix_config::set_data_dir(dir.path().to_path_buf());
+        let config_path = dir.path().join("chelix.toml");
+        let invalid = "[server]\nremoved_option = true\n";
+        std::fs::write(&config_path, invalid).unwrap();
+        std::fs::write(dir.path().join(".onboarded"), "").unwrap();
+        let svc = LiveOnboardingService::new(config_path.clone());
+
+        svc.wizard_start(false)
+            .expect_err("invalid config must fail before sentinel handling");
+        svc.identity_update(json!({ "name": "Rex" }))
+            .expect_err("identity update must reject invalid existing config");
+
+        assert_eq!(std::fs::read_to_string(config_path).unwrap(), invalid);
         chelix_config::clear_data_dir();
     }
 }

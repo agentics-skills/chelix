@@ -32,6 +32,7 @@ struct TestServer {
 async fn start_test_server() -> TestServer {
     let config_dir = tempfile::tempdir().unwrap();
     let data_dir = tempfile::tempdir().unwrap();
+    std::fs::write(config_dir.path().join("chelix.toml"), "").unwrap();
     chelix_config::set_config_dir(config_dir.path().to_path_buf());
     chelix_config::set_data_dir(data_dir.path().to_path_buf());
 
@@ -276,6 +277,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
             chelix_gateway::chat::GatewayChatRuntime::from_state(Arc::clone(&state)),
             Arc::clone(&session_store1),
             Arc::clone(&session_metadata1),
+            chelix_config::ChelixConfig::default(),
         )));
     }
 
@@ -305,6 +307,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
         chelix_gateway::chat::GatewayChatRuntime::from_state(Arc::clone(&state2)),
         Arc::clone(&session_store2),
         Arc::clone(&session_metadata2),
+        chelix_config::ChelixConfig::default(),
     )));
 
     // Verify chat override is active — chat.send should use the LiveChatService,

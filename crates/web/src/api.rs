@@ -37,6 +37,7 @@ const SANDBOX_DAEMON_RESTART_FAILED: &str = "SANDBOX_DAEMON_RESTART_FAILED";
 const SANDBOX_SHARED_HOME_SAVE_FAILED: &str = "SANDBOX_SHARED_HOME_SAVE_FAILED";
 const SANDBOX_BACKEND_INVALID: &str = "SANDBOX_BACKEND_INVALID";
 const SANDBOX_BACKEND_SAVE_FAILED: &str = "SANDBOX_BACKEND_SAVE_FAILED";
+const CONFIG_LOAD_FAILED: &str = "CONFIG_LOAD_FAILED";
 const SESSION_HISTORY_FAILED: &str = "SESSION_HISTORY_FAILED";
 const SESSION_LIST_FAILED: &str = "SESSION_LIST_FAILED";
 const SESSION_LIST_DEFAULT_LIMIT: usize = 40;
@@ -53,6 +54,16 @@ fn api_error(code: &str, error: impl Into<String>) -> serde_json::Value {
 
 fn api_error_response(status: StatusCode, code: &str, error: impl Into<String>) -> Response {
     (status, Json(api_error(code, error))).into_response()
+}
+
+fn load_config_for_api() -> Result<chelix_config::ChelixConfig, Box<Response>> {
+    chelix_config::discover_and_load().map_err(|error| {
+        Box::new(api_error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            CONFIG_LOAD_FAILED,
+            error.to_string(),
+        ))
+    })
 }
 
 #[derive(serde::Deserialize)]
@@ -540,7 +551,10 @@ pub async fn api_skills_handler(State(state): State<AppState>) -> impl IntoRespo
         .and_then(|v| v.as_array().cloned())
         .unwrap_or_default();
 
-    let config = chelix_config::discover_and_load();
+    let config = match load_config_for_api() {
+        Ok(config) => config,
+        Err(response) => return *response,
+    };
     let mut skills = enabled_from_manifest(chelix_skills::manifest::ManifestStore::default_path());
 
     {
@@ -593,7 +607,7 @@ pub async fn api_skills_handler(State(state): State<AppState>) -> impl IntoRespo
         }
     }
 
-    Json(serde_json::json!({ "skills": skills, "repos": repos }))
+    Json(serde_json::json!({ "skills": skills, "repos": repos })).into_response()
 }
 
 async fn api_search_handler(
@@ -660,7 +674,10 @@ pub async fn api_skills_search_handler(
 // ── Images ───────────────────────────────────────────────────────────────────
 
 pub async fn api_cached_images_handler() -> impl IntoResponse {
-    let config = chelix_config::discover_and_load();
+    let config = match load_config_for_api() {
+        Ok(config) => config,
+        Err(response) => return *response,
+    };
     let builder =
         chelix_tools::image_cache::DockerImageBuilder::for_backend(config.sandbox.backend);
     let (cached, sandbox) = tokio::join!(
@@ -709,7 +726,10 @@ pub async fn api_delete_cached_image_handler(Path(tag): Path<String>) -> impl In
     let result = if tag.contains("-sandbox:") {
         chelix_tools::sandbox::remove_sandbox_image(&tag).await
     } else {
-        let cfg = chelix_config::discover_and_load();
+        let cfg = match load_config_for_api() {
+            Ok(config) => config,
+            Err(response) => return *response,
+        };
         let builder =
             chelix_tools::image_cache::DockerImageBuilder::for_backend(cfg.sandbox.backend);
         let full_tag = if tag.starts_with("chelix-cache/") {
@@ -730,7 +750,10 @@ pub async fn api_delete_cached_image_handler(Path(tag): Path<String>) -> impl In
 }
 
 pub async fn api_prune_cached_images_handler() -> impl IntoResponse {
-    let config = chelix_config::discover_and_load();
+    let config = match load_config_for_api() {
+        Ok(config) => config,
+        Err(response) => return *response,
+    };
     let builder =
         chelix_tools::image_cache::DockerImageBuilder::for_backend(config.sandbox.backend);
     let (tool_result, sandbox_result) = tokio::join!(
@@ -788,7 +811,10 @@ pub async fn api_check_packages_handler(Json(body): Json<serde_json::Value>) -> 
         .collect();
     let script = checks.join("\n");
 
-    let config = chelix_config::discover_and_load();
+    let config = match load_config_for_api() {
+        Ok(config) => config,
+        Err(response) => return *response,
+    };
     let cli = chelix_tools::image_cache::DockerImageBuilder::for_backend(config.sandbox.backend)
         .cli_name();
     let output = tokio::process::Command::new(cli)
@@ -822,8 +848,11 @@ pub async fn api_get_default_image_handler(State(state): State<AppState>) -> imp
 }
 
 pub async fn api_get_shared_home_handler() -> impl IntoResponse {
-    let config = chelix_config::discover_and_load();
-    Json(shared_home_config_payload(&config))
+    let config = match load_config_for_api() {
+        Ok(config) => config,
+        Err(response) => return *response,
+    };
+    Json(shared_home_config_payload(&config)).into_response()
 }
 
 pub async fn api_set_shared_home_handler(
@@ -850,7 +879,10 @@ pub async fn api_set_shared_home_handler(
 
     match update_result {
         Ok(saved_path) => {
-            let config = chelix_config::discover_and_load();
+            let config = match load_config_for_api() {
+                Ok(config) => config,
+                Err(response) => return *response,
+            };
             Json(serde_json::json!({
                 "ok": true,
                 "restart_required": true,
@@ -929,8 +961,11 @@ fn available_backends_payload(
 /// Returns which sandbox backends are available/configured on this instance.
 /// Used by the UI to populate backend selectors.
 pub async fn api_available_backends_handler() -> impl IntoResponse {
-    let config = chelix_config::discover_and_load();
-    Json(available_backends_payload(config.sandbox.backend))
+    let config = match load_config_for_api() {
+        Ok(config) => config,
+        Err(response) => return *response,
+    };
+    Json(available_backends_payload(config.sandbox.backend)).into_response()
 }
 
 pub async fn api_set_default_backend_handler(
@@ -1046,7 +1081,10 @@ WORKDIR /home/sandbox\n"
         );
     }
 
-    let config = chelix_config::discover_and_load();
+    let config = match load_config_for_api() {
+        Ok(config) => config,
+        Err(response) => return *response,
+    };
     let builder =
         chelix_tools::image_cache::DockerImageBuilder::for_backend(config.sandbox.backend);
     tracing::debug!(

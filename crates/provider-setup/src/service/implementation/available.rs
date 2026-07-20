@@ -20,7 +20,7 @@ use {
 impl LiveProviderSetupService {
     pub(super) async fn available_inner(&self) -> ServiceResult {
         let is_cloud = self.deploy_platform.is_some();
-        let active_config = self.effective_config();
+        let active_config = self.effective_config()?;
         let offered_order = ui_offered_provider_order(&active_config);
         let offered = ui_offered_provider_set(&offered_order);
         let offered_rank: HashMap<String, usize> = offered_order

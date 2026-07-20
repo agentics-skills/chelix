@@ -135,14 +135,26 @@ pub async fn handle_doctor() -> Result<()> {
 
     let mut sections = Vec::new();
 
-    // 1. Config validation
-    sections.push(check_config(config_dir.as_deref()));
-
-    // Load config for subsequent checks (best-effort)
-    let config = chelix_config::discover_and_load();
+    // 1. Config validation and effective config loading
+    let mut config_section = check_config(config_dir.as_deref());
+    let config = match chelix_config::discover_and_load() {
+        Ok(config) => Some(config),
+        Err(error) => {
+            config_section.push(
+                Status::Fail,
+                format!("Failed to load effective config: {error}"),
+            );
+            None
+        },
+    };
+    sections.push(config_section);
 
     // 2. Security audit
-    sections.push(check_security(&config, config_dir.as_deref(), &data_dir));
+    sections.push(check_security(
+        config.as_ref(),
+        config_dir.as_deref(),
+        &data_dir,
+    ));
 
     // 3. Directory health
     sections.push(check_directories(config_dir.as_deref(), &data_dir));
@@ -150,18 +162,27 @@ pub async fn handle_doctor() -> Result<()> {
     // 4. Database health
     sections.push(check_database(&data_dir).await);
 
-    // 5. Provider readiness
-    sections.push(check_providers(&config));
+    let config_error = "effective config could not be loaded";
+    if let Some(config) = config.as_ref() {
+        // 5. Provider readiness
+        sections.push(check_providers(config));
 
-    // 6. TLS health
-    #[cfg(feature = "tls")]
-    sections.push(check_tls(&config));
+        // 6. TLS health
+        #[cfg(feature = "tls")]
+        sections.push(check_tls(config));
 
-    // 7. MCP server health
-    sections.push(check_mcp_servers(&config));
+        // 7. MCP server health
+        sections.push(check_mcp_servers(config));
 
-    // 8. Remote command execution readiness
-    sections.push(check_remote_command(&config, &data_dir).await);
+        // 8. Remote command execution readiness
+        sections.push(check_remote_command(config, &data_dir).await);
+    } else {
+        sections.push(skipped_config_section("Providers", config_error));
+        #[cfg(feature = "tls")]
+        sections.push(skipped_config_section("TLS", config_error));
+        sections.push(skipped_config_section("MCP Servers", config_error));
+        sections.push(skipped_config_section("Remote Command", config_error));
+    }
 
     let (errors, warnings) = print_report(&sections);
 
@@ -266,29 +287,46 @@ fn config_validation_status(diagnostic: &chelix_config::Diagnostic) -> Option<St
     })
 }
 
+fn skipped_config_section(title: &str, reason: &str) -> Section {
+    let mut section = Section::new(title);
+    section.push(Status::Skip, format!("Skipped: {reason}"));
+    section
+}
+
 // ── 2. Security audit ───────────────────────────────────────────────────────
 
-fn check_security(config: &ChelixConfig, config_dir: Option<&Path>, data_dir: &Path) -> Section {
+fn check_security(
+    config: Option<&ChelixConfig>,
+    config_dir: Option<&Path>,
+    data_dir: &Path,
+) -> Section {
     let mut section = Section::new("Security");
 
     // Check for API keys in config file (should use env vars or credential store)
-    let mut api_keys_in_config = Vec::new();
-    for (name, entry) in &config.providers.providers {
-        if let Some(ref key) = entry.api_key
-            && !key.expose_secret().is_empty()
-        {
-            api_keys_in_config.push(name.clone());
+    if let Some(config) = config {
+        let mut api_keys_in_config = Vec::new();
+        for (name, entry) in &config.providers.providers {
+            if let Some(ref key) = entry.api_key
+                && !key.expose_secret().is_empty()
+            {
+                api_keys_in_config.push(name.clone());
+            }
         }
-    }
-    if api_keys_in_config.is_empty() {
-        section.push(Status::Ok, "No API keys in config file");
+        if api_keys_in_config.is_empty() {
+            section.push(Status::Ok, "No API keys in config file");
+        } else {
+            section.push(
+                Status::Warn,
+                format!(
+                    "API keys found in config for: {}. Use env vars or provider setup instead",
+                    api_keys_in_config.join(", ")
+                ),
+            );
+        }
     } else {
         section.push(
-            Status::Warn,
-            format!(
-                "API keys found in config for: {}. Use env vars or provider setup instead",
-                api_keys_in_config.join(", ")
-            ),
+            Status::Skip,
+            "API key placement check skipped: effective config could not be loaded",
         );
     }
 
@@ -401,7 +439,10 @@ fn check_directories(config_dir: Option<&Path>, data_dir: &Path) -> Section {
         if config_file.exists() {
             section.push(Status::Ok, "chelix.toml present");
         } else {
-            section.push(Status::Info, "chelix.toml not found (using defaults)");
+            section.push(
+                Status::Info,
+                "chelix.toml not found (startup initialization will create it)",
+            );
         }
     }
 

@@ -62,15 +62,15 @@ pub fn load_identity_for_agent(agent_id: &str) -> Option<AgentIdentity> {
 ///
 /// This is the single source of truth used by both the gateway (`identity_get`)
 /// and the Swift FFI bridge.
-pub fn resolve_identity() -> ResolvedIdentity {
-    let config = discover_and_load();
-    resolve_identity_from_config(&config)
+pub fn resolve_identity() -> crate::Result<ResolvedIdentity> {
+    let config = discover_and_load()?;
+    Ok(resolve_identity_from_config(&config))
 }
 
 /// Build a fully-resolved user profile by merging `chelix.toml` `[user]` with `USER.md`.
-pub fn resolve_user_profile() -> UserProfile {
-    let config = discover_and_load();
-    resolve_user_profile_from_config(&config)
+pub fn resolve_user_profile() -> crate::Result<UserProfile> {
+    let config = discover_and_load()?;
+    Ok(resolve_user_profile_from_config(&config))
 }
 
 /// Like [`resolve_user_profile`] but accepts a pre-loaded config.
@@ -180,8 +180,7 @@ _This file is yours to evolve. As you learn who you are, update it._";
 
 /// Load SOUL.md from the workspace root (`data_dir`) if present and non-empty.
 ///
-/// When the file does not exist, it is seeded with [`DEFAULT_SOUL`] (mirroring
-/// how `discover_and_load()` writes `chelix.toml` on first run).
+/// When the file does not exist, it is seeded with [`DEFAULT_SOUL`].
 pub fn load_soul() -> Option<String> {
     let path = soul_path();
     match std::fs::read_to_string(&path) {
