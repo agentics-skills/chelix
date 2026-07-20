@@ -81,7 +81,7 @@ impl DockerImageBuilder {
         let cli = match backend {
             SandboxBackend::AppleContainer | SandboxBackend::Docker => "docker",
             SandboxBackend::Podman => "podman",
-            SandboxBackend::Auto | SandboxBackend::Wasm => crate::sandbox::container_cli(),
+            SandboxBackend::Auto => crate::sandbox::container_cli(),
         };
         Self { cli }
     }

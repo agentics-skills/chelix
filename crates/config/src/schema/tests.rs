@@ -73,12 +73,12 @@ fn tools_loop_detector_window_defaults_to_two() {
 fn env_section_parses() {
     let toml = r#"
 [env]
-BRAVE_API_KEY = "test-key"
+FIRECRAWL_API_KEY = "test-key"
 OPENROUTER_API_KEY = "sk-or-test"
 "#;
     let config: ChelixConfig = toml::from_str(toml).unwrap();
     assert_eq!(config.env.len(), 2);
-    assert_eq!(config.env.get("BRAVE_API_KEY").unwrap(), "test-key");
+    assert_eq!(config.env.get("FIRECRAWL_API_KEY").unwrap(), "test-key");
     assert_eq!(config.env.get("OPENROUTER_API_KEY").unwrap(), "sk-or-test");
 }
 
@@ -265,9 +265,9 @@ emoji = "🔍"
 theme = "thorough"
 
 [agents.presets.research.tools]
-allow = ["web_search", "web_fetch"]
+allow = ["read_file", "ripgrep"]
 deny = ["execute_command"]
-preload = ["web_search"]
+preload = ["ripgrep"]
 "#;
     let config: ChelixConfig = toml::from_str(toml).unwrap();
     assert_eq!(config.agents.default_preset.as_deref(), Some("research"));
@@ -275,7 +275,7 @@ preload = ["web_search"]
     assert_eq!(preset.model.as_deref(), Some("openai/gpt-5.2"));
     assert_eq!(preset.tools.allow.len(), 2);
     assert_eq!(preset.tools.deny, vec!["execute_command".to_string()]);
-    assert_eq!(preset.tools.preload, vec!["web_search".to_string()]);
+    assert_eq!(preset.tools.preload, vec!["ripgrep".to_string()]);
     assert!(!preset.delegate_only);
     assert_eq!(
         preset.system_prompt_suffix.as_deref(),
@@ -582,7 +582,6 @@ fn sandbox_defaults_include_go_runtime() {
     assert!(sandbox.host_data_dir.is_none());
     assert!(sandbox.mounts.is_empty());
     assert_eq!(sandbox.workspace_sysmount, "ro");
-    assert!(sandbox.wasm_tool_limits.is_none());
 }
 
 #[test]
@@ -634,48 +633,6 @@ mode = "rw"
             mode: MountMode::Rw,
         },
     ]);
-}
-
-#[test]
-fn wasm_tool_limits_config_defaults() {
-    let limits = WasmToolLimitsConfig::default();
-    assert_eq!(limits.default_memory, 16 * 1024 * 1024);
-    assert_eq!(limits.default_fuel, 1_000_000);
-    assert!(limits.tool_overrides.contains_key("calc"));
-}
-
-#[test]
-fn sandbox_wasm_tool_limits_deserialize() {
-    let config: SandboxConfig = toml::from_str(
-        r#"
-mode = "On"
-scope = "session"
-workspace_sysmount = "rw"
-host_data_dir = "/host/chelix-data"
-
-[wasm_tool_limits]
-default_memory = 2048
-default_fuel = 5000
-
-[wasm_tool_limits.tool_overrides.calc]
-fuel = 100
-memory = 300
-"#,
-    )
-    .unwrap();
-
-    assert_eq!(config.host_data_dir.as_deref(), Some("/host/chelix-data"));
-    assert_eq!(config.workspace_sysmount, "rw");
-    let limits = config.wasm_tool_limits.unwrap();
-    assert_eq!(limits.default_memory, 2048);
-    assert_eq!(limits.default_fuel, 5000);
-    assert_eq!(
-        limits
-            .tool_overrides
-            .get("calc")
-            .and_then(|override_cfg| override_cfg.fuel),
-        Some(100)
-    );
 }
 
 #[test]

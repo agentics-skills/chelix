@@ -317,7 +317,7 @@ port = {port}                           # Port number (auto-generated for this i
 # [sandbox]
 # mode = "On"                       # "On" | "Off"; global for every session
 # scope = "session"                 # "session" | "agent" | "shared"
-# backend = "auto"                  # "auto" | "docker" | "podman" | "apple-container" | "wasm"
+# backend = "auto"                  # "auto" | "docker" | "podman" | "apple-container"
 # image = "custom-image:tag"        # Custom container image (default: auto-built)
 # network = "bridge"                # Docker/Podman network passed as --network=<name>
 # workspace_sysmount = "ro"         # "ro" | "rw" (rootfs + cap-drop/no-new-privileges hardening)
@@ -326,17 +326,11 @@ port = {port}                           # Port number (auto-generated for this i
 # shared_home_dir = "sandbox/home"  # Directory for shared /home/sandbox persistence (relative to data_dir)
 # gpus = "all"                      # GPU passthrough: "all", "device=0", "device=0,1"
 # packages = []                     # Packages installed in sandbox containers (default list lives in defaults.toml)
-# wasm_fuel_limit = 1000000000      # Optional WASM fuel limit
-# wasm_epoch_interval_ms = 100      # Optional WASM epoch interruption interval
 
 # [sandbox.resource_limits]
 # memory_limit = "512M"             # Memory limit (e.g., "512M", "1G")
 # cpu_quota = 1.0                   # CPU quota; Docker/Podman default to one core when unset
 # pids_max = 100                    # Maximum number of processes
-
-# [sandbox.wasm_tool_limits]
-# default_memory = 16777216         # Default WASM tool memory limit
-# default_fuel = 1000000            # Default WASM tool fuel limit
 
 # [sandbox.tools_policy]
 # allow = []                        # Tools allowed only when this sandbox policy layer applies
@@ -428,34 +422,8 @@ port = {port}                           # Port number (auto-generated for this i
 #   6. Sandbox       — [sandbox.tools_policy]
 
 # [tools.policy]
-# allow = []                        # Tools to always allow (e.g., ["execute_command", "web_fetch"])
+# allow = []                        # Tools to always allow (e.g., ["execute_command", "read_file"])
 # deny = []                         # Tools to always deny (e.g., ["browser"])
-
-# ── Web Search ────────────────────────────────────────────────────────────────
-
-# [tools.web.search]
-# enabled = true                    # Enable web search tool
-# provider = "brave"                # "brave" or "perplexity"
-# max_results = 5                   # Number of results to return (1-10)
-# timeout_seconds = 30              # HTTP request timeout
-# cache_ttl_minutes = 15            # Cache results (0 = no cache)
-# duckduckgo_fallback = false       # Enable DDG fallback without API keys
-# api_key = "..."                   # Brave API key (or set BRAVE_API_KEY env var)
-
-# [tools.web.search.perplexity]
-# api_key = "..."                   # Or set PERPLEXITY_API_KEY env var
-# model = "sonar"                   # Perplexity model to use
-
-# ── Web Fetch ─────────────────────────────────────────────────────────────────
-
-# [tools.web.fetch]
-# enabled = true                    # Enable web fetch tool
-# max_chars = 50000                 # Max characters to return
-# timeout_seconds = 30              # HTTP request timeout
-# cache_ttl_minutes = 15            # Cache fetched pages (0 = no cache)
-# max_redirects = 3                 # Maximum HTTP redirects
-# readability = true                # Use readability extraction for HTML
-# ssrf_allowlist = ["172.22.0.0/16"] # CIDR ranges exempt from SSRF blocking
 
 # ── Firecrawl (API-based web scraping) ────────────────────────────────────────
 
@@ -676,7 +644,6 @@ port = {port}                           # Port number (auto-generated for this i
 # Variables injected into the Chelix process at startup.
 
 # [env]
-# BRAVE_API_KEY = "..."
 # OPENROUTER_API_KEY = "sk-or-..."
 "##
     )

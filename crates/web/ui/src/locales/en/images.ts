@@ -46,7 +46,6 @@ export default {
 	backend: {
 		appleContainer: "Apple Container (VM-isolated)",
 		docker: "Docker",
-		wasm: "Wasmtime (WASM-isolated)",
 		none: "Off (direct host execution)",
 		containerBackendLabel: "Container backend:",
 	},
@@ -55,9 +54,7 @@ export default {
 	recommendation: {
 		macosDockerTip:
 			"Apple Container provides stronger VM-level isolation on macOS 26+. Install it for automatic use (chelix prefers it over Docker). Run: brew install container",
-		linuxDockerTip: "Docker provides filesystem-isolated execution. Podman and the WASM backend are also supported.",
-		wasmTip:
-			"Using WASM sandbox with filesystem isolation. For container-level isolation, install Docker or Apple Container.",
+		linuxDockerTip: "Docker provides filesystem-isolated execution. Podman is also supported.",
 	},
 
 	// ── Alert labels ───────────────────────────────────────

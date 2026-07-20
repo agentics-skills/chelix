@@ -385,7 +385,7 @@ provider)
 ```bash
 docker run -d \
   --name chelix \
-  -e BRAVE_API_KEY=your-key \
+  -e FIRECRAWL_API_KEY=fc-... \
   -e OPENROUTER_API_KEY=sk-or-... \
   ...
   ghcr.io/agentics-skills/chelix:latest
@@ -398,7 +398,7 @@ the Chelix process at startup, making them available to all features:
 
 ```toml
 [env]
-BRAVE_API_KEY = "your-brave-key"
+FIRECRAWL_API_KEY = "fc-..."
 OPENROUTER_API_KEY = "sk-or-..."
 ```
 

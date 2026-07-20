@@ -559,7 +559,7 @@ function AgentForm({ agent, onSave, onCancel }: AgentFormProps): VNode {
 										setSkillsAllow(val);
 										setSkillsAllowSet(val.trim().length > 0);
 									}}
-									placeholder="web_search, research"
+									placeholder="research, code-review"
 									style={{ fontSize: "0.75rem" }}
 								/>
 							</label>
@@ -761,7 +761,7 @@ function PresetForm({ preset, onSave, onCancel }: PresetFormProps): VNode {
 					className="provider-key-input"
 					value={toolsAllow}
 					onInput={(e) => setToolsAllow(targetValue(e))}
-					placeholder="Read, Glob, Grep, web_search"
+					placeholder="Read, Glob, Grep, ripgrep"
 				/>
 			</label>
 			<label className="flex flex-col gap-1">

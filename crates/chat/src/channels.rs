@@ -884,7 +884,7 @@ fn format_tool_result_message(
             }
         },
         _ => {
-            // Browser, web_fetch, web_search, and other tools: use error string.
+            // Other tools use the first line of the error string.
             error
                 .as_deref()
                 .map(|e| {
@@ -945,43 +945,6 @@ fn format_tool_status_message(tool_name: &str, arguments: &Value) -> String {
                 format!("💻 Running: `{}`", display_cmd)
             } else {
                 "💻 Executing command...".to_string()
-            }
-        },
-        "web_fetch" => {
-            let url = arguments.get("url").and_then(|v| v.as_str());
-            if let Some(u) = url {
-                format!("🔗 Fetching {}", truncate_url(u))
-            } else {
-                "🔗 Fetching URL...".to_string()
-            }
-        },
-        "web_search" => {
-            let query = arguments.get("query").and_then(|v| v.as_str());
-            if let Some(q) = query {
-                let display_q = if q.len() > 40 {
-                    format!("{}...", truncate_at_char_boundary(q, 40))
-                } else {
-                    q.to_string()
-                };
-                format!("🔍 Searching: {}", display_q)
-            } else {
-                "🔍 Searching...".to_string()
-            }
-        },
-        "calc" => {
-            let expr = arguments
-                .get("expression")
-                .or_else(|| arguments.get("expr"))
-                .and_then(|v| v.as_str());
-            if let Some(expression) = expr {
-                let display = if expression.len() > 50 {
-                    format!("{}...", truncate_at_char_boundary(expression, 50))
-                } else {
-                    expression.to_string()
-                };
-                format!("🧮 Calculating: {}", display)
-            } else {
-                "🧮 Calculating...".to_string()
             }
         },
         "memory_search" => "🧠 Searching memory...".to_string(),

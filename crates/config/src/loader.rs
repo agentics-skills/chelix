@@ -108,7 +108,7 @@ fn share_dir_override() -> Option<PathBuf> {
         .clone()
 }
 
-/// Returns the share directory for external assets (web files, WASM components).
+/// Returns the share directory for external web assets.
 ///
 /// Resolution order:
 /// 1. Programmatic override via `set_share_dir()`

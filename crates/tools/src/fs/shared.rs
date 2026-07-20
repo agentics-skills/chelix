@@ -926,7 +926,7 @@ const BINARY_EXTENSIONS: &[&str] = &[
     "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", // Fonts
     "ttf", "otf", "woff", "woff2", "eot", // Compiled / bytecode
     "pyc", "pyo", "class", "jar", "war", "ear", // Runtime artifacts
-    "node", "wasm", "rlib", // Databases
+    "node", "rlib", // Databases
     "sqlite", "sqlite3", "db", "mdb", "idx", // Design tools
     "psd", "ai", "eps", "sketch", "fig", "xd", // 3D / legacy
     "blend", "3ds", "max", "swf", "fla", // Misc binary

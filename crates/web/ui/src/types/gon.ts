@@ -46,7 +46,7 @@ export interface MemSnapshot {
 // ── Sandbox gon info ────────────────────────────────────────
 
 /** Known sandbox backend identifiers. */
-export type SandboxBackendId = "docker" | "podman" | "apple-container" | "wasm" | "none";
+export type SandboxBackendId = "docker" | "podman" | "apple-container" | "none";
 
 export interface SandboxGonInfo {
 	mode: "On" | "Off";

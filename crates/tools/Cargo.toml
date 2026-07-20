@@ -5,8 +5,7 @@ version.workspace = true
 
 [features]
 bundled-skills        = ["chelix-skills/bundled-skills"]
-default               = ["firecrawl", "fs-tools", "metrics", "provider-openai-codex", "wasm"]
-embedded-wasm         = []
+default               = ["firecrawl", "fs-tools", "metrics", "provider-openai-codex"]
 firecrawl             = []
 provider-openai-codex = ["chelix-providers/provider-openai-codex"]
 # Native filesystem tools (Read, Write, Edit, MultiEdit, Glob, Grep).
@@ -21,7 +20,6 @@ fs-tools = [
   "dep:pdf-extract",
 ]
 metrics = ["dep:chelix-metrics"]
-wasm = ["dep:wasmtime", "dep:wasmtime-wasi", "wasmtime/component-model"]
 
 [dependencies]
 anyhow                = { workspace = true }
@@ -46,13 +44,11 @@ globset               = { optional = true, workspace = true }
 grep-matcher          = { optional = true, workspace = true }
 grep-regex            = { optional = true, workspace = true }
 grep-searcher         = { optional = true, workspace = true }
-html2text             = { workspace = true }
 ignore                = { optional = true, workspace = true }
 image                 = { workspace = true }
-ipnet                 = { workspace = true }
 pdf-extract           = { optional = true, workspace = true }
 regex                 = { workspace = true }
-reqwest               = { features = ["blocking"], workspace = true }
+reqwest               = { workspace = true }
 secrecy               = { workspace = true }
 serde                 = { workspace = true }
 serde_json            = { workspace = true }
@@ -67,8 +63,6 @@ tokio                 = { workspace = true }
 tracing               = { workspace = true }
 url                   = { workspace = true }
 uuid                  = { workspace = true }
-wasmtime              = { optional = true, workspace = true }
-wasmtime-wasi         = { optional = true, workspace = true }
 which                 = { workspace = true }
 
 [dev-dependencies]

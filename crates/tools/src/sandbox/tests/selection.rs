@@ -1,26 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use {super::*, crate::sandbox::is_wasm_sandbox_available};
-
-#[test]
-fn explicit_wasm_backend_is_isolated_or_fails_closed() {
-    let config = SandboxConfig {
-        backend: SandboxBackend::Wasm,
-        ..Default::default()
-    };
-
-    match select_backend(config) {
-        Ok(backend) => {
-            assert!(is_wasm_sandbox_available());
-            assert_eq!(backend.backend_id(), SandboxBackendId::Wasm);
-            assert!(backend.provides_fs_isolation());
-        },
-        Err(error) => {
-            assert!(!is_wasm_sandbox_available());
-            assert!(error.to_string().contains("wasm feature"));
-        },
-    }
-}
+use super::*;
 
 #[test]
 fn explicit_unavailable_backend_fails_closed() {

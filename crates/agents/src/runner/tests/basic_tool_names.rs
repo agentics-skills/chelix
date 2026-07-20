@@ -16,7 +16,7 @@ fn sanitize_tool_name_trims_whitespace() {
 #[test]
 fn sanitize_tool_name_strips_quotes() {
     assert_eq!(sanitize_tool_name("\"execute_command\""), "execute_command");
-    assert_eq!(sanitize_tool_name("  \"web_search\"  "), "web_search");
+    assert_eq!(sanitize_tool_name("  \"read_file\"  "), "read_file");
 }
 
 #[test]
@@ -29,15 +29,14 @@ fn sanitize_tool_name_partial_quotes_unchanged() {
 fn sanitize_tool_name_noop_on_real_tool_names() {
     let real_names = [
         "execute_command",
-        "web_search",
-        "web_fetch",
+        "read_file",
+        "ripgrep",
         "memory_save",
         "memory_forget",
         "memory_delete",
         "memory_search",
         "file_read",
         "file_write",
-        "calc",
         "mcp-server_tool-name",
     ];
     for name in real_names {
@@ -97,7 +96,7 @@ fn sanitize_tool_name_strips_prefix_and_suffix() {
 
 #[test]
 fn sanitize_tool_name_preserves_legitimate_underscores() {
-    assert_eq!(sanitize_tool_name("web_search"), "web_search");
+    assert_eq!(sanitize_tool_name("read_file"), "read_file");
     assert_eq!(sanitize_tool_name("memory_save"), "memory_save");
     assert_eq!(sanitize_tool_name("memory_forget"), "memory_forget");
     assert_eq!(sanitize_tool_name("memory_delete"), "memory_delete");
@@ -127,49 +126,15 @@ fn sanitize_tool_name_functions_prefix_alone_yields_empty() {
 }
 
 #[test]
-fn legacy_public_tool_alias_strips_wasm_suffix() {
-    assert_eq!(
-        legacy_public_tool_alias("web_search_wasm"),
-        Some("web_search")
-    );
-    assert_eq!(legacy_public_tool_alias("calc_wasm"), Some("calc"));
-    assert_eq!(legacy_public_tool_alias("web_search"), None);
-}
-
-#[test]
-fn resolve_tool_lookup_prefers_public_alias_when_both_exist() {
+fn resolve_tool_lookup_uses_exact_name() {
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(LargeResultTool {
-        tool_name: "web_search",
-        payload: "public".into(),
+        tool_name: "read_file",
+        payload: "result".into(),
     }));
-    tools.register_wasm(
-        Box::new(LargeResultTool {
-            tool_name: "web_search_wasm",
-            payload: "legacy".into(),
-        }),
-        [0x11; 32],
-    );
 
-    let (tool, resolved_name) = resolve_tool_lookup(&tools, "web_search_wasm");
+    let (tool, resolved_name) = resolve_tool_lookup(&tools, "read_file");
     let tool = tool.expect("resolved tool should exist");
-    assert_eq!(resolved_name, "web_search");
-    assert_eq!(tool.name(), "web_search");
-}
-
-#[test]
-fn resolve_tool_lookup_falls_back_to_legacy_name_when_no_public_tool_exists() {
-    let mut tools = ToolRegistry::new();
-    tools.register_wasm(
-        Box::new(LargeResultTool {
-            tool_name: "web_search_wasm",
-            payload: "legacy".into(),
-        }),
-        [0x22; 32],
-    );
-
-    let (tool, resolved_name) = resolve_tool_lookup(&tools, "web_search_wasm");
-    let tool = tool.expect("legacy tool should exist");
-    assert_eq!(resolved_name, "web_search_wasm");
-    assert_eq!(tool.name(), "web_search_wasm");
+    assert_eq!(resolved_name, "read_file");
+    assert_eq!(tool.name(), "read_file");
 }

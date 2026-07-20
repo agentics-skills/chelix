@@ -28,12 +28,9 @@ backend = "auto"          # default — picks the best available
 # backend = "podman"      # force Podman (daemonless, rootless)
 # backend = "docker"      # force Docker
 # backend = "apple-container"  # force Apple Container (macOS only)
-# backend = "wasm"        # force WASM sandbox (Wasmtime + WASI)
 ```
 
-Only `"auto"`, `"docker"`, `"podman"`, `"apple-container"`, and `"wasm"`
-are accepted. Legacy values such as `"restricted-host"` and `"cgroup"` are
-configuration errors.
+Only `"auto"`, `"docker"`, `"podman"`, and `"apple-container"` are accepted.
 
 With `"auto"` (the default), Chelix selects the first available isolated
 container runtime:
@@ -43,10 +40,6 @@ container runtime:
 | 1        | Apple Container | macOS    | VM (Virtualization.framework)           |
 | 2        | Podman          | any      | Linux namespaces / cgroups (daemonless) |
 | 3        | Docker          | any      | Linux namespaces / cgroups              |
-
-The WASM backend (`backend = "wasm"`) is not in the auto-detect chain because it
-cannot execute arbitrary shell commands — use it explicitly when you want
-WASI-isolated execution.
 
 When `mode = "On"`, an unavailable explicit backend or an `"auto"` selection
 with no available isolated runtime aborts gateway startup. Chelix never falls
@@ -170,99 +163,6 @@ filesystem masks prevent leakage via shell commands as well.
 > even for root. Podman masks `/sys/firmware` via its built-in OCI
 > `MaskedPaths`; `/sys/class/dmi`, `/sys/devices/virtual/dmi`, and
 > `/sys/class/block` remain readable inside the container on Podman.
-
-## WASM Sandbox (Wasmtime + WASI)
-
-The WASM sandbox provides real sandboxed execution using
-[Wasmtime](https://wasmtime.dev/) with WASI. Commands execute in an isolated
-filesystem tree with fuel metering and epoch-based timeout enforcement.
-
-### How It Works
-
-The WASM sandbox has two execution tiers:
-
-**Tier 1 — Built-in commands** (~20 common coreutils implemented in Rust):
-`echo`, `cat`, `ls`, `mkdir`, `rm`, `cp`, `mv`, `pwd`, `env`, `head`, `tail`,
-`wc`, `sort`, `touch`, `which`, `true`, `false`, `test`/`[`, `basename`,
-`dirname`.
-
-These operate on a sandboxed directory tree, translating guest paths (e.g.
-`/home/sandbox/file.txt`) to host paths under `~/.chelix/sandbox/wasm/<id>/`.
-Paths outside the sandbox root are rejected.
-
-Basic shell features are supported: `&&`, `||`, `;` sequences, `$VAR` expansion,
-quoting via `shell-words`, and `>` / `>>` output redirects.
-
-**Tier 2 — Real WASM module execution**: When the command references a `.wasm`
-file, it is loaded and run via Wasmtime + WASI preview1 with full isolation:
-preopened directories, fuel metering, epoch interruption, and captured I/O.
-
-**Unknown commands** return exit code 127: "command not found in WASM sandbox".
-
-### Filesystem Isolation
-
-```
-~/.chelix/sandbox/wasm/<session-key>/
-  home/        preopened as /home/sandbox (rw)
-  tmp/         preopened as /tmp (rw)
-```
-
-Home persistence is respected:
-
-- `shared`: uses `data_dir()/sandbox/home/shared/wasm/`
-- `session`: uses `data_dir()/sandbox/wasm/<session-id>/`
-- `off`: per-session, cleaned up on `cleanup()`
-
-### Resource Limits
-
-- **Fuel metering**: `store.set_fuel(fuel_limit)` — limits WASM instruction
-  count (Tier 2 only)
-- **Epoch interruption**: background thread ticks epochs, store traps on
-  deadline (Tier 2 only)
-- **Memory**: `wasm_config.memory_reservation(bytes)` — Wasmtime memory limits
-  (Tier 2 only)
-
-### Configuration
-
-```toml
-[sandbox]
-backend = "wasm"
-
-# WASM-specific settings
-wasm_fuel_limit = 1000000000       # instruction fuel (default: 1 billion)
-wasm_epoch_interval_ms = 100       # epoch interruption interval (default: 100ms)
-
-[sandbox.resource_limits]
-memory_limit = "512M"    # Wasmtime memory reservation
-```
-
-### Limitations
-
-- Built-in commands cover common coreutils but not a full shell
-- No pipe support yet (planned via busybox.wasm in future)
-- No network access from WASM modules
-- `.wasm` modules must target WASI preview1
-
-### When to Use
-
-The WASM sandbox is a good fit when:
-
-- You want filesystem-isolated execution without container overhead
-- You need a sandboxed environment on platforms without Docker or Apple
-  Container
-- You are running `.wasm` modules and want fuel-metered, time-bounded execution
-
-### Compile-Time Feature
-
-The WASM sandbox is gated behind the `wasm` cargo feature, which is enabled by
-default. To build without Wasmtime (saves ~30 MB binary size):
-
-```bash
-cargo build --release --no-default-features --features lightweight
-```
-
-When the feature is disabled and the config requests `backend = "wasm"`, Chelix
-returns a startup error.
 
 ## Failover Chain
 
@@ -393,8 +293,7 @@ network = "chelix-sandbox-net"
 Runtime-provided values such as `none` or `host` are passed through unchanged;
 Chelix no longer has sandbox-specific network policy modes.
 
-> **Note**: Home persistence applies to Docker, Podman, Apple Container, and
-> WASM backends.
+> **Note**: Home persistence applies to Docker, Podman, and Apple Container.
 
 ## Resource limits
 
@@ -416,21 +315,21 @@ there is no lazy first-call rebuild.
 Docker and Podman sandboxes use one CPU by default. Set `cpu_quota` to override
 that launch limit.
 
-| Limit          | Docker/Podman  | Apple Container | WASM                 |
-| -------------- | -------------- | --------------- | -------------------- |
-| `memory_limit` | `--memory`     | `--memory`      | Wasmtime reservation |
-| `cpu_quota`    | `--cpus`       | `--cpus`        | epoch timeout        |
-| `pids_max`     | `--pids-limit` | `--pids-limit`  | n/a                  |
+| Limit          | Docker/Podman  | Apple Container |
+| -------------- | -------------- | --------------- |
+| `memory_limit` | `--memory`     | `--memory`      |
+| `cpu_quota`    | `--cpus`       | `--cpus`        |
+| `pids_max`     | `--pids-limit` | `--pids-limit`  |
 
 ## Comparison
 
-| Feature               | Apple Container    | Docker/Podman    | WASM              | Mode `Off`       |
-| --------------------- | ------------------ | ---------------- | ----------------- | ---------------- |
-| Filesystem isolation  | ✅ VM boundary     | ✅ namespaces    | ✅ sandboxed tree | ❌ host FS       |
-| Network isolation     | ✅                 | ✅               | ✅ (no network)   | ❌               |
-| Kernel isolation      | ✅ separate kernel | ❌ shared kernel | ✅ WASM VM        | ❌               |
-| Environment isolation | ✅                 | ✅               | ✅                | ❌               |
-| Resource limits       | ✅                 | ✅               | ✅ fuel + epoch   | ❌               |
-| Image building        | ✅ (via Docker)    | ✅               | ❌                | ❌               |
-| Shell commands        | ✅ full shell      | ✅ full shell    | ~20 built-ins     | ✅ direct host   |
-| Platform              | macOS 26+          | any              | any               | any              |
+| Feature               | Apple Container    | Docker/Podman    | Mode `Off`     |
+| --------------------- | ------------------ | ---------------- | -------------- |
+| Filesystem isolation  | ✅ VM boundary     | ✅ namespaces    | ❌ host FS     |
+| Network isolation     | ✅                 | ✅               | ❌             |
+| Kernel isolation      | ✅ separate kernel | ❌ shared kernel | ❌             |
+| Environment isolation | ✅                 | ✅               | ❌             |
+| Resource limits       | ✅                 | ✅               | ❌             |
+| Image building        | ✅ (via Docker)    | ✅               | ❌             |
+| Shell commands        | ✅ full shell      | ✅ full shell    | ✅ direct host |
+| Platform              | macOS 26+          | any              | any            |

@@ -250,5 +250,3 @@ mod network;
 mod resolve_env;
 mod selection;
 mod skills;
-#[cfg(feature = "wasm")]
-mod wasm;

@@ -2,7 +2,7 @@
 
 use std::{
     collections::HashMap,
-    path::{Component, Path as FsPath, PathBuf},
+    path::{Path as FsPath, PathBuf},
     sync::{Mutex, OnceLock},
 };
 
@@ -81,7 +81,7 @@ pub(crate) fn detected_container_cli(config: &SandboxConfig) -> Option<&'static 
                 None
             }
         },
-        SandboxBackend::AppleContainer | SandboxBackend::Wasm => None,
+        SandboxBackend::AppleContainer => None,
     }
 }
 
@@ -218,95 +218,4 @@ pub(crate) fn resolved_sandbox_mount_plan(
     }
 
     Ok(mounts)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MountAccess {
-    Read,
-    Write,
-}
-
-fn normalize_guest_path(path: &FsPath) -> Option<PathBuf> {
-    if !path.is_absolute() {
-        return None;
-    }
-    path.components()
-        .try_fold(PathBuf::new(), |mut normalized, component| {
-            match component {
-                Component::RootDir => normalized.push(component.as_os_str()),
-                Component::CurDir => {},
-                Component::ParentDir => {
-                    if !normalized.pop() {
-                        return None;
-                    }
-                },
-                Component::Normal(segment) => normalized.push(segment),
-                Component::Prefix(_) => return None,
-            }
-            Some(normalized)
-        })
-}
-
-pub(crate) fn sandbox_mount_target_overlaps(mounts: &[SandboxMount], guest_path: &FsPath) -> bool {
-    let Some(guest_path) = normalize_guest_path(guest_path) else {
-        return false;
-    };
-    mounts.iter().any(|mount| {
-        normalize_guest_path(&mount.guest).is_some_and(|mount_guest| {
-            mount_guest.starts_with(&guest_path) || guest_path.starts_with(mount_guest)
-        })
-    })
-}
-
-fn path_stays_within_mount(host_path: &FsPath, mount_root: &FsPath) -> bool {
-    let Ok(canonical_root) = mount_root.canonicalize() else {
-        return false;
-    };
-    let mut existing = host_path;
-    while !existing.exists() {
-        let Some(parent) = existing.parent() else {
-            return false;
-        };
-        existing = parent;
-    }
-    existing
-        .canonicalize()
-        .is_ok_and(|path| path.starts_with(canonical_root))
-}
-
-/// Resolve an absolute guest path through the most-specific declarative mount.
-///
-/// When multiple mounts have the same guest-path depth, the later entry in the
-/// plan wins. This matches OCI bind-mount ordering, where a later mount for the
-/// same target supersedes an earlier one.
-pub(crate) fn resolve_sandbox_mount_path(
-    mounts: &[SandboxMount],
-    guest_path: &FsPath,
-    access: MountAccess,
-) -> Option<PathBuf> {
-    let guest_path = normalize_guest_path(guest_path)?;
-    let (mount, relative) = mounts
-        .iter()
-        .filter_map(|mount| {
-            let guest_root = normalize_guest_path(&mount.guest)?;
-            let relative = guest_path.strip_prefix(&guest_root).ok()?.to_path_buf();
-            Some((guest_root.components().count(), mount, relative))
-        })
-        .max_by_key(|(depth, ..)| *depth)
-        .map(|(_, mount, relative)| (mount, relative))?;
-
-    if access == MountAccess::Write && mount.mode != chelix_config::container_mounts::MountMode::Rw
-    {
-        return None;
-    }
-
-    if mount.host.is_file() && !relative.as_os_str().is_empty() {
-        return None;
-    }
-    let host_path = if relative.as_os_str().is_empty() {
-        mount.host.clone()
-    } else {
-        mount.host.join(relative)
-    };
-    path_stays_within_mount(&host_path, &mount.host).then_some(host_path)
 }

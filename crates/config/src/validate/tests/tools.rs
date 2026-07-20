@@ -26,29 +26,6 @@ port = 0
 }
 
 #[test]
-fn unknown_and_removed_sandbox_backends_are_rejected() {
-    for backend in ["lxc", "restricted-host", "cgroup"] {
-        let toml = format!(
-            r#"
-[sandbox]
-backend = "{backend}"
-"#
-        );
-        let result = validate_toml_str(&toml);
-        let error = result.diagnostics.iter().find(|diagnostic| {
-            diagnostic.severity == Severity::Error
-                && diagnostic.category == "type-error"
-                && diagnostic.message.contains(backend)
-        });
-        assert!(
-            error.is_some(),
-            "sandbox backend {backend:?} must be rejected, got: {:?}",
-            result.diagnostics
-        );
-    }
-}
-
-#[test]
 fn podman_sandbox_backend_accepted() {
     let toml = r#"
 [sandbox]

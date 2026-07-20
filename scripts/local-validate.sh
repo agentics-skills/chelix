@@ -555,14 +555,6 @@ fi
 # These do not wait on local/zizmor, but local/zizmor remains required.
 run_check "local/lint" "$lint_cmd"
 
-# Build and pre-compile WASM guest components if the target is installed.
-# Release-profile builds embed `.cwasm` artifacts via include_bytes!.
-if rustup target list --installed 2>/dev/null | grep -q wasm32-wasip2; then
-  echo "Building WASM tool components..."
-  cargo build --target wasm32-wasip2 -p chelix-wasm-calc -p chelix-wasm-web-fetch -p chelix-wasm-web-search --release
-  cargo run -p chelix-wasm-precompile --release
-fi
-
 # Compile all workspace targets (bin + test harnesses) using the same nightly
 # toolchain as clippy. After clippy this is near-instant (shared build cache)
 # and means both nextest and E2E reuse these artifacts without recompilation.

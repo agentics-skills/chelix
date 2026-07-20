@@ -78,7 +78,7 @@ struct Cli {
     /// Custom data directory (overrides default data dir).
     #[arg(long, global = true, env = "CHELIX_DATA_DIR")]
     data_dir: Option<std::path::PathBuf>,
-    /// Custom share directory for external web/WASM assets (overrides default discovery).
+    /// Custom share directory for external web assets (overrides default discovery).
     #[arg(long, global = true, env = "CHELIX_SHARE_DIR")]
     share_dir: Option<std::path::PathBuf>,
     /// Disable TLS (for cloud deployments where the provider handles TLS).

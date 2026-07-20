@@ -69,8 +69,6 @@ pub enum ToolSource {
     Builtin,
     /// Tool provided by an MCP server.
     Mcp { server: McpServerId },
-    /// Tool provided by a precompiled WASM component.
-    Wasm { component_hash: [u8; 32] },
 }
 
 /// Internal entry pairing a tool with its source metadata.
@@ -163,24 +161,6 @@ impl ToolRegistry {
         });
     }
 
-    /// Register a tool from a WASM component. Warns (and overwrites) on name collision.
-    pub fn register_wasm(&mut self, tool: Box<dyn AgentTool>, component_hash: [u8; 32]) {
-        let name = tool.name().to_string();
-        let new_source = ToolSource::Wasm { component_hash };
-        if let Some(existing) = self.tools.get(&name) {
-            warn!(
-                tool = %name,
-                old_source = ?existing.source,
-                new_source = ?new_source,
-                "tool name collision — new registration overwrites existing entry"
-            );
-        }
-        self.tools.insert(name, ToolEntry {
-            tool: Arc::from(tool),
-            source: new_source,
-        });
-    }
-
     /// Replace an existing tool by name, preserving its source metadata.
     ///
     /// Returns `true` if an existing tool was replaced, `false` if this was a new entry.
@@ -224,10 +204,9 @@ impl ToolRegistry {
             .tools
             .iter()
             .filter(|(name, _)| {
-                is_public_tool_name(name)
-                    && visible
-                        .as_ref()
-                        .is_none_or(|visible| visible.contains(name.as_str()))
+                visible
+                    .as_ref()
+                    .is_none_or(|visible| visible.contains(name.as_str()))
             })
             .map(|(_, entry)| entry_to_schema(entry))
             .collect();
@@ -262,8 +241,8 @@ impl ToolRegistry {
 
     /// Public tools available in the current filtered registry.
     ///
-    /// Ignores lazy schema visibility: every public (non-`_wasm`) tool is
-    /// returned, including `get_tool` when the registry is lazy-wrapped.
+    /// Ignores lazy schema visibility: every tool is returned, including
+    /// `get_tool` when the registry is lazy-wrapped.
     /// Sorted by name. Returns only `name` + `description`, never parameter
     /// schemas — it is the discovery catalog, not the API schema list.
     #[must_use]
@@ -271,7 +250,6 @@ impl ToolRegistry {
         let mut catalog: Vec<ToolCatalogEntry> = self
             .tools
             .iter()
-            .filter(|(name, _)| is_public_tool_name(name))
             .map(|(name, entry)| ToolCatalogEntry {
                 name: name.clone(),
                 description: entry.tool.description().to_string(),
@@ -291,10 +269,9 @@ impl ToolRegistry {
             .tools
             .keys()
             .filter(|name| {
-                is_public_tool_name(name)
-                    && visible
-                        .as_ref()
-                        .is_none_or(|visible| visible.contains(name.as_str()))
+                visible
+                    .as_ref()
+                    .is_none_or(|visible| visible.contains(name.as_str()))
             })
             .cloned()
             .collect();
@@ -390,10 +367,6 @@ impl ToolRegistry {
     }
 }
 
-fn is_public_tool_name(name: &str) -> bool {
-    !name.ends_with("_wasm")
-}
-
 fn entry_to_schema(e: &ToolEntry) -> serde_json::Value {
     let mut schema = serde_json::json!({
         "name": e.tool.name(),
@@ -408,21 +381,8 @@ fn entry_to_schema(e: &ToolEntry) -> serde_json::Value {
             schema["source"] = serde_json::json!("mcp");
             schema["mcpServer"] = serde_json::json!(server.as_str());
         },
-        ToolSource::Wasm { component_hash } => {
-            schema["source"] = serde_json::json!("wasm");
-            schema["componentHash"] = serde_json::json!(hex_component_hash(*component_hash));
-        },
     }
     schema
-}
-
-fn hex_component_hash(component_hash: [u8; 32]) -> String {
-    let mut output = String::with_capacity(component_hash.len() * 2);
-    for byte in component_hash {
-        use std::fmt::Write as _;
-        let _ = write!(&mut output, "{byte:02x}");
-    }
-    output
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -460,7 +420,7 @@ mod tests {
             name: "execute_command".to_string(),
         }));
         registry.register(Box::new(DummyTool {
-            name: "web_fetch".to_string(),
+            name: "read_file".to_string(),
         }));
         registry.register(Box::new(DummyTool {
             name: "mcp__github_search".to_string(),
@@ -472,7 +432,7 @@ mod tests {
         let filtered = registry.clone_without_prefix("mcp__");
         assert_eq!(filtered.list_schemas().len(), 2);
         assert!(filtered.get("execute_command").is_some());
-        assert!(filtered.get("web_fetch").is_some());
+        assert!(filtered.get("read_file").is_some());
         assert!(filtered.get("mcp__github_search").is_none());
         assert!(filtered.get("mcp__memory_store").is_none());
     }
@@ -484,7 +444,7 @@ mod tests {
             name: "execute_command".to_string(),
         }));
         registry.register(Box::new(DummyTool {
-            name: "web_fetch".to_string(),
+            name: "read_file".to_string(),
         }));
 
         let filtered = registry.clone_without_prefix("mcp__");
@@ -554,12 +514,6 @@ mod tests {
             }),
             McpServerId::from("github"),
         );
-        registry.register_wasm(
-            Box::new(DummyTool {
-                name: "calc_wasm".to_string(),
-            }),
-            [0xAB; 32],
-        );
 
         let schemas = registry.list_schemas();
         let builtin = schemas
@@ -584,38 +538,14 @@ mod tests {
             name: "execute_command".to_string(),
         }));
         registry.register(Box::new(DummyTool {
-            name: "web_fetch".to_string(),
+            name: "read_file".to_string(),
         }));
 
         let names = registry.list_names();
         assert_eq!(names, vec![
             "execute_command".to_string(),
-            "web_fetch".to_string()
+            "read_file".to_string()
         ]);
-    }
-
-    #[test]
-    fn test_wasm_suffix_tools_are_hidden_from_public_lists() {
-        let mut registry = ToolRegistry::new();
-        registry.register(Box::new(DummyTool {
-            name: "execute_command".to_string(),
-        }));
-        registry.register_wasm(
-            Box::new(DummyTool {
-                name: "web_search_wasm".to_string(),
-            }),
-            [0xAB; 32],
-        );
-
-        assert_eq!(registry.list_names(), vec!["execute_command".to_string()]);
-        assert!(registry.get("web_search_wasm").is_some());
-
-        let schemas = registry.list_schemas();
-        assert!(
-            schemas
-                .iter()
-                .all(|schema| schema["name"] != "web_search_wasm")
-        );
     }
 
     #[test]
@@ -724,7 +654,7 @@ mod tests {
             name: "execute_command".to_string(),
         }));
         registry.register(Box::new(DummyTool {
-            name: "web_fetch".to_string(),
+            name: "read_file".to_string(),
         }));
         // Restrict lazy schema visibility to a single tool.
         let visible: LazyVisibleTools =
@@ -741,29 +671,8 @@ mod tests {
             .collect();
         assert_eq!(names, vec![
             "execute_command".to_string(),
-            "web_fetch".to_string()
+            "read_file".to_string()
         ]);
-    }
-
-    #[test]
-    fn test_list_catalog_excludes_wasm_tools() {
-        let mut registry = ToolRegistry::new();
-        registry.register(Box::new(DummyTool {
-            name: "execute_command".to_string(),
-        }));
-        registry.register_wasm(
-            Box::new(DummyTool {
-                name: "web_search_wasm".to_string(),
-            }),
-            [0xAB; 32],
-        );
-
-        let names: Vec<String> = registry
-            .list_catalog()
-            .into_iter()
-            .map(|entry| entry.name)
-            .collect();
-        assert_eq!(names, vec!["execute_command".to_string()]);
     }
 
     #[test]
@@ -773,18 +682,18 @@ mod tests {
             name: "execute_command".to_string(),
         }));
         registry.register(Box::new(DummyTool {
-            name: "web_fetch".to_string(),
+            name: "read_file".to_string(),
         }));
         registry.register(Box::new(DummyTool {
             name: "session_state".to_string(),
         }));
 
         let filtered =
-            registry.clone_allowed_by(|name| name.starts_with("web") || name == "execute_command");
+            registry.clone_allowed_by(|name| name.starts_with("read") || name == "execute_command");
         let names = filtered.list_names();
         assert_eq!(names, vec![
             "execute_command".to_string(),
-            "web_fetch".to_string()
+            "read_file".to_string()
         ]);
     }
 }

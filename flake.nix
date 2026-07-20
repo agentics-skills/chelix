@@ -8,7 +8,6 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    crane.url = "github:ipetkov/crane";
   };
 
   outputs = {
@@ -16,7 +15,6 @@
     nixpkgs,
     flake-utils,
     rust-overlay,
-    crane,
   }:
     flake-utils.lib.eachDefaultSystem (
       system: let
@@ -25,14 +23,6 @@
           inherit system overlays;
         };
         nightly = "2025-11-30";
-        wasmCraneLib =
-          (crane.mkLib pkgs).overrideToolchain
-          (
-            p:
-              p.rust-bin.nightly.${nightly}.default.override {
-                targets = ["wasm32-wasip2"];
-              }
-          );
 
         # Pinned nightly to avoid recursion limit overflow in matrix-sdk
         # Latest nightly (2026-04) has query depth changes that break matrix-sdk 0.16
@@ -43,29 +33,10 @@
           rustc = rustToolchain;
         };
 
-        # Create a clean source that includes necessary files and the wit directory
+        # Create a clean source that includes the required project files
         src = pkgs.lib.cleanSourceWith {
           src = ./.;
-          filter = path: type:
-            (pkgs.lib.cleanSourceFilter path type)
-            || (builtins.match ".*/wit.*" path != null);
-        };
-
-        chelix-wasm-tools = wasmCraneLib.buildPackage {
-          inherit src;
-          pname = "chelix-wasm-tools";
-          doCheck = false;
-          cargoExtraArgs = "--target wasm32-wasip2 -p chelix-wasm-calc -p chelix-wasm-web-fetch -p chelix-wasm-web-search ";
-          nativeBuildInputs = with pkgs;
-            [
-              rustPlatform.bindgenHook
-              cmake
-              perl
-              pkg-config
-            ]
-            ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
-              pkgs.libiconv
-            ];
+          filter = pkgs.lib.cleanSourceFilter;
         };
       in {
         packages.default = rustPlatform.buildRustPackage {
@@ -76,11 +47,8 @@
 
           buildFeatures = [
             "embedded-assets"
-            "embedded-wasm"
           ];
           preBuild = ''
-            mkdir -p target/wasm32-wasip2/release/
-            ln -s ${chelix-wasm-tools}/lib/* target/wasm32-wasip2/release/
             cargo build --release -p chelix-embedding-service
           '';
           cargoLock = {

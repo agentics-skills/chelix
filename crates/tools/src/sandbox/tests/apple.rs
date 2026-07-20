@@ -502,17 +502,17 @@ async fn test_failover_sandbox_switches_on_daemon_stale_error() {
 }
 
 #[tokio::test]
-async fn test_failover_sandbox_docker_to_wasm() {
+async fn test_failover_sandbox_docker_to_podman() {
     let primary = Arc::new(TestSandbox::new(
         SandboxBackendId::Docker,
         Some("cannot connect to the docker daemon"),
         None,
     ));
-    let fallback = Arc::new(TestSandbox::new(SandboxBackendId::Wasm, None, None));
+    let fallback = Arc::new(TestSandbox::new(SandboxBackendId::Podman, None, None));
     let sandbox = FailoverSandbox::new(primary.clone(), fallback.clone()).unwrap();
     let id = SandboxId {
         scope: SandboxScope::Session,
-        key: "session-docker-wasm".into(),
+        key: "session-docker-podman".into(),
     };
 
     sandbox.ensure_ready(&id).await.unwrap();
@@ -528,7 +528,7 @@ async fn test_failover_docker_does_not_switch_on_unrelated_error() {
         Some("image not found"),
         None,
     ));
-    let fallback = Arc::new(TestSandbox::new(SandboxBackendId::Wasm, None, None));
+    let fallback = Arc::new(TestSandbox::new(SandboxBackendId::Podman, None, None));
     let sandbox = FailoverSandbox::new(primary.clone(), fallback.clone()).unwrap();
     let id = SandboxId {
         scope: SandboxScope::Session,

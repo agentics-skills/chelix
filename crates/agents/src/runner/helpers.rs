@@ -514,10 +514,6 @@ pub(crate) fn finish_agent_run(
     }
 }
 
-pub(crate) fn legacy_public_tool_alias(name: &str) -> Option<&str> {
-    name.strip_suffix("_wasm").filter(|base| !base.is_empty())
-}
-
 pub(crate) fn resolve_tool_lookup<'a>(
     tools: &crate::tool_registry::ToolRegistry,
     name: &'a str,
@@ -525,12 +521,6 @@ pub(crate) fn resolve_tool_lookup<'a>(
     Option<Arc<dyn crate::tool_registry::AgentTool>>,
     Cow<'a, str>,
 ) {
-    if let Some(alias) = legacy_public_tool_alias(name)
-        && let Some(tool) = tools.get(alias)
-    {
-        return (Some(tool), Cow::Owned(alias.to_string()));
-    }
-
     (tools.get(name), Cow::Borrowed(name))
 }
 

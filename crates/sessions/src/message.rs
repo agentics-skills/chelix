@@ -974,8 +974,8 @@ mod tests {
     fn roundtrip_tool_result() {
         let original = PersistedMessage::tool_result(
             "call_3",
-            "web_fetch",
-            Some(serde_json::json!({"url": "https://example.com"})),
+            "read_file",
+            Some(serde_json::json!({"path": "README.md"})),
             true,
             Some(serde_json::json!({"stdout": "OK", "exit_code": 0})),
             None,
@@ -993,8 +993,8 @@ mod tests {
                 ..
             } => {
                 assert_eq!(tool_call_id, "call_3");
-                assert_eq!(tool_name, "web_fetch");
-                assert_eq!(arguments.unwrap()["url"], "https://example.com");
+                assert_eq!(tool_name, "read_file");
+                assert_eq!(arguments.unwrap()["path"], "README.md");
                 assert!(success);
                 assert_eq!(result.unwrap()["stdout"], "OK");
                 assert!(error.is_none());
@@ -1036,15 +1036,18 @@ mod tests {
     fn tool_result_with_reasoning_roundtrips() {
         let original = PersistedMessage::tool_result_with_reasoning(
             "call_5",
-            "web_search",
-            Some(serde_json::json!({"query": "top news"})),
+            "ripgrep",
+            Some(serde_json::json!({"pattern": "SandboxBackend"})),
             true,
             Some(serde_json::json!({"stdout": "results", "exit_code": 0})),
             None,
-            Some("I need to search for today's news".to_string()),
+            Some("I need to locate sandbox backend references".to_string()),
         );
         let json = original.to_value();
-        assert_eq!(json["reasoning"], "I need to search for today's news");
+        assert_eq!(
+            json["reasoning"],
+            "I need to locate sandbox backend references"
+        );
 
         let parsed: PersistedMessage = serde_json::from_value(json).unwrap();
         match parsed {
@@ -1056,7 +1059,7 @@ mod tests {
                 assert_eq!(tool_call_id, "call_5");
                 assert_eq!(
                     reasoning.as_deref(),
-                    Some("I need to search for today's news")
+                    Some("I need to locate sandbox backend references")
                 );
             },
             _ => panic!("expected ToolResult message"),

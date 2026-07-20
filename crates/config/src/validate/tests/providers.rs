@@ -126,7 +126,7 @@ enabled = true
 fn env_section_passes_validation() {
     let toml = r#"
 [env]
-BRAVE_API_KEY = "test-key"
+FIRECRAWL_API_KEY = "test-key"
 OPENROUTER_API_KEY = "sk-or-test"
 CUSTOM_VAR = "some-value"
 "#;

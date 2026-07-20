@@ -135,7 +135,6 @@ default = [
   "tls",
   "vault",
   "voice",
-  "wasm",
   "web-ui",
   "whatsapp",
 ]
@@ -183,7 +182,6 @@ vault = [
   "dep:chelix-vault",
 ]
 voice = ["dep:chelix-voice"]
-wasm = ["chelix-tools/wasm"]
 web-ui = ["chelix-chat/web-ui", "dep:include_dir", "dep:portable-pty", "dep:which"]
 whatsapp = ["chelix-whatsapp/metrics", "dep:chelix-whatsapp", "dep:qrcode"]
 

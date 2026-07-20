@@ -90,16 +90,6 @@ pub(super) fn build_schema_map() -> KnownKeys {
         ]))
     };
 
-    let wasm_tool_limit_override = || Struct(HashMap::from([("fuel", Leaf), ("memory", Leaf)]));
-
-    let wasm_tool_limits = || {
-        Struct(HashMap::from([
-            ("default_memory", Leaf),
-            ("default_fuel", Leaf),
-            ("tool_overrides", Map(Box::new(wasm_tool_limit_override()))),
-        ]))
-    };
-
     let sandbox = || {
         Struct(HashMap::from([
             ("mode", Leaf),
@@ -115,9 +105,6 @@ pub(super) fn build_schema_map() -> KnownKeys {
             ("resource_limits", resource_limits()),
             ("gpus", Leaf),
             ("packages", Leaf),
-            ("wasm_fuel_limit", Leaf),
-            ("wasm_epoch_interval_ms", Leaf),
-            ("wasm_tool_limits", wasm_tool_limits()),
             ("tools_policy", tool_policy_entry()),
             (
                 "mounts",
@@ -130,39 +117,6 @@ pub(super) fn build_schema_map() -> KnownKeys {
         ]))
     };
 
-    let perplexity = || {
-        Struct(HashMap::from([
-            ("api_key", Leaf),
-            ("base_url", Leaf),
-            ("model", Leaf),
-        ]))
-    };
-
-    let web_search = || {
-        Struct(HashMap::from([
-            ("enabled", Leaf),
-            ("provider", Leaf),
-            ("api_key", Leaf),
-            ("max_results", Leaf),
-            ("timeout_seconds", Leaf),
-            ("cache_ttl_minutes", Leaf),
-            ("duckduckgo_fallback", Leaf),
-            ("perplexity", perplexity()),
-        ]))
-    };
-
-    let web_fetch = || {
-        Struct(HashMap::from([
-            ("enabled", Leaf),
-            ("max_chars", Leaf),
-            ("timeout_seconds", Leaf),
-            ("cache_ttl_minutes", Leaf),
-            ("max_redirects", Leaf),
-            ("readability", Leaf),
-            ("ssrf_allowlist", Leaf),
-        ]))
-    };
-
     let firecrawl = || {
         Struct(HashMap::from([
             ("enabled", Leaf),
@@ -171,7 +125,6 @@ pub(super) fn build_schema_map() -> KnownKeys {
             ("only_main_content", Leaf),
             ("timeout_seconds", Leaf),
             ("cache_ttl_minutes", Leaf),
-            ("web_fetch_fallback", Leaf),
         ]))
     };
 
@@ -226,14 +179,7 @@ pub(super) fn build_schema_map() -> KnownKeys {
                     ("profile", Leaf),
                 ])),
             ),
-            (
-                "web",
-                Struct(HashMap::from([
-                    ("search", web_search()),
-                    ("fetch", web_fetch()),
-                    ("firecrawl", firecrawl()),
-                ])),
-            ),
+            ("web", Struct(HashMap::from([("firecrawl", firecrawl())]))),
             ("maps", Struct(HashMap::from([("provider", Leaf)]))),
             (
                 "fs",

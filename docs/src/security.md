@@ -83,7 +83,7 @@ dcg complements (does not replace) sandbox isolation and the approval system.
 
 The global `sandbox.mode` controls every command execution path. With `"On"`,
 Chelix starts only when it can select a filesystem-isolated Apple Container,
-Podman, Docker, or WASM runtime. With `"Off"`, commands execute directly on the
+Podman, or Docker runtime. With `"Off"`, commands execute directly on the
 host. There are no agent, session, heartbeat, project, chat, cron, skill, or
 browser sandbox overrides.
 
@@ -317,24 +317,6 @@ public hostname.
 
 WebSocket connections validate the `Origin` header to prevent cross-site
 WebSocket hijacking (CSWSH). Connections from untrusted origins are rejected.
-
-### SSRF Protection
-
-The `web_fetch` tool resolves DNS and blocks requests to private IP ranges
-(loopback, RFC 1918, link-local, CGNAT). This prevents server-side request
-forgery attacks.
-
-To allow access to trusted private networks (e.g. Docker sibling containers),
-add their CIDR ranges to `ssrf_allowlist`:
-
-```toml
-[tools.web.fetch]
-ssrf_allowlist = ["172.22.0.0/16"]
-```
-
-**Warning:** Only add networks you trust. The allowlist bypasses SSRF protection
-for the listed ranges. Never add cloud metadata ranges (`169.254.169.254/32`)
-unless you understand the risk.
 
 ## Authentication
 

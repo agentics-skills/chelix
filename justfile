@@ -85,19 +85,6 @@ build-embedding-service:
 build-release:
     ./scripts/cargo-build-chelix.sh --release
 
-# Build embedded WASM guest tools and pre-compile to .cwasm for AOT loading.
-wasm-tools:
-    cargo build --target wasm32-wasip2 -p chelix-wasm-calc -p chelix-wasm-web-fetch -p chelix-wasm-web-search --release
-    cargo run -p chelix-wasm-precompile --release
-
-# Build just the release WASM artifacts expected by embedded-wasm builds.
-build-wasm-artifacts: wasm-tools
-    @echo "Built target/wasm32-wasip2/release/{chelix_wasm_calc,chelix_wasm_web_fetch,chelix_wasm_web_search}.{wasm,cwasm}"
-
-# Build release after ensuring embedded WASM artifacts are present.
-build-release-with-wasm: build-wasm-artifacts
-    ./scripts/cargo-build-chelix.sh --release
-
 # Run local dev server with workspace-local config/data dirs.
 dev-server:
     cargo build --bin chelix

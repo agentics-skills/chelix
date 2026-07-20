@@ -65,18 +65,6 @@ pub async fn handle_sandbox(action: SandboxAction) -> Result<()> {
     }
 }
 
-fn image_build_not_supported_notice(
-    backend: sandbox::SandboxBackend,
-) -> Option<(&'static str, &'static str)> {
-    match backend {
-        sandbox::SandboxBackend::Wasm => Some((
-            "WASM sandbox does not use container images — nothing to build.",
-            "The WASM backend uses Wasmtime + WASI for sandboxed execution.",
-        )),
-        _ => None,
-    }
-}
-
 async fn list() -> Result<()> {
     let images = sandbox::list_sandbox_images().await?;
     if images.is_empty() {
@@ -94,12 +82,6 @@ async fn build() -> Result<()> {
     let config = chelix_config::discover_and_load();
     let mut sandbox_config = sandbox::SandboxConfig::from(&config.sandbox);
     sandbox_config.container_prefix = Some(instance_sandbox_prefix(&config));
-
-    if let Some((line_one, line_two)) = image_build_not_supported_notice(sandbox_config.backend) {
-        println!("{line_one}");
-        println!("{line_two}");
-        return Ok(());
-    }
 
     let packages = sandbox_config.packages.clone();
     let base = sandbox_config
@@ -165,28 +147,7 @@ async fn clean() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::{image_build_not_supported_notice, sanitize_instance_slug},
-        chelix_tools::sandbox::SandboxBackend,
-    };
-
-    #[test]
-    fn wasm_backend_skips_image_build() {
-        let notice = image_build_not_supported_notice(SandboxBackend::Wasm);
-        assert!(notice.is_some());
-    }
-
-    #[test]
-    fn container_backends_require_image_build() {
-        assert_eq!(
-            image_build_not_supported_notice(SandboxBackend::Docker),
-            None
-        );
-        assert_eq!(
-            image_build_not_supported_notice(SandboxBackend::AppleContainer),
-            None
-        );
-    }
+    use super::sanitize_instance_slug;
 
     #[test]
     fn slug_lowercases_and_replaces_non_alnum() {

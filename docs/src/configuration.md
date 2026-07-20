@@ -209,33 +209,6 @@ inspection cannot resolve the correct path, set `host_data_dir` explicitly.
 When you modify the packages list and restart, Chelix automatically rebuilds the sandbox image with a new tag.
 ```
 
-## Web Search
-
-Configure the built-in `web_search` tool:
-
-```toml
-[tools.web.search]
-enabled = true
-provider = "brave"               # "brave" or "perplexity"
-max_results = 5                  # 1-10
-timeout_seconds = 30
-cache_ttl_minutes = 15
-duckduckgo_fallback = false      # Default: do not use DuckDuckGo fallback
-# api_key = "..."                # Brave key, or use BRAVE_API_KEY
-
-[tools.web.search.perplexity]
-# api_key = "..."                # Or use PERPLEXITY_API_KEY / OPENROUTER_API_KEY
-# base_url = "..."               # Optional override
-# model = "perplexity/sonar-pro" # Optional override
-```
-
-If no search API key is configured:
-
-- with `duckduckgo_fallback = false` (default), Chelix returns a clear hint to
-  set `BRAVE_API_KEY` or `PERPLEXITY_API_KEY`
-- with `duckduckgo_fallback = true`, Chelix attempts DuckDuckGo HTML search,
-  which may hit CAPTCHA/rate limits
-
 ## Skills
 
 Configure skill discovery and agent-managed personal skills:
@@ -458,13 +431,13 @@ the host environment.
 
 ```toml
 [env]
-BRAVE_API_KEY = "your-brave-key"
+FIRECRAWL_API_KEY = "fc-..."
 OPENROUTER_API_KEY = "sk-or-..."
 ELEVENLABS_API_KEY = "..."
 ```
 
 **Precedence**: existing process environment variables are never overwritten. If
-`BRAVE_API_KEY` is already set via `docker -e` or the host shell, the `[env]`
+`FIRECRAWL_API_KEY` is already set via `docker -e` or the host shell, the `[env]`
 value is skipped. This means `docker -e` always wins.
 
 ```admonish info title="Settings UI vs [env]"

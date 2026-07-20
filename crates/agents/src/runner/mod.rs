@@ -48,5 +48,4 @@ pub(crate) use helpers::{
 #[cfg(test)]
 pub(crate) use helpers::{
     AUTO_COMPACTION_RATIO, estimate_prompt_tokens, estimate_tool_schema_tokens,
-    legacy_public_tool_alias,
 };

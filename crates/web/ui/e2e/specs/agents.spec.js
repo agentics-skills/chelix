@@ -221,7 +221,7 @@ test.describe("Agents settings page", () => {
 		await page
 			.getByPlaceholder("Give this sub-agent a focused role and constraints...")
 			.fill("Answer with concise evidence.");
-		await page.getByPlaceholder("Read, Glob, Grep, web_search").fill("Read, Grep");
+		await page.getByPlaceholder("Read, Glob, Grep, ripgrep").fill("Read, Grep");
 		await page.getByRole("button", { name: "Create", exact: true }).click();
 
 		const presetCard = page.locator(".backend-card").filter({ hasText: "E2E Sub Agent" });

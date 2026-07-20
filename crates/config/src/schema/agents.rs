@@ -128,8 +128,8 @@ pub fn default_agent_presets() -> HashMap<String, AgentPreset> {
                 "Researcher",
                 "thorough, skeptical, and evidence-oriented",
                 "Gather evidence before concluding. Prefer targeted file reads, searches, \
-                 web_search, and web_fetch when the answer depends on current or external \
-                 facts. Do not edit files unless the task explicitly asks for changes. \
+                 and browser automation when the answer depends on current or external facts. \
+                 Do not edit files unless the task explicitly asks for changes. \
                  Return a concise synthesis with source paths, URLs, commands, and open \
                  questions.",
                 Some(16),
@@ -484,7 +484,7 @@ impl Default for SessionAccessPolicyConfig {
 /// ```toml
 /// # Only allow specific skills
 /// [agents.presets.kids.skills]
-/// allow = ["web_search"]
+/// allow = ["research"]
 ///
 /// # Deny specific skills
 /// [agents.presets.admin.skills]

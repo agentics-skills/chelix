@@ -57,10 +57,6 @@ default-members = [
   "crates/tools-service",
   "crates/vault",
   "crates/voice",
-  "crates/wasm-precompile",
-  "crates/wasm-tools/calc",
-  "crates/wasm-tools/web-fetch",
-  "crates/wasm-tools/web-search",
   "crates/web",
   "crates/webhooks",
   "crates/whatsapp",
@@ -124,10 +120,6 @@ members = [
   "crates/tools-service",
   "crates/vault",
   "crates/voice",
-  "crates/wasm-precompile",
-  "crates/wasm-tools/calc",
-  "crates/wasm-tools/web-fetch",
-  "crates/wasm-tools/web-search",
   "crates/web",
   "crates/webhooks",
   "crates/whatsapp",
@@ -284,7 +276,6 @@ metrics-exporter-prometheus = "0.16"
 metrics-tracing-context     = "0.16"
 # Content processing
 content_inspector = "0.2.4"
-html2text         = "0.17.1"
 image             = { default-features = false, features = ["jpeg", "png", "webp"], version = "0.25" }
 ipnet             = "2"
 mdns-sd           = "0.20.2"
@@ -331,12 +322,8 @@ shell-words           = "1"
 tar                   = "0.4"
 tempfile              = "3"
 walkdir               = "2"
-wasmtime              = { features = ["component-model"], version = "36" }
-wasmtime-wasi         = "36"
 which                 = "8"
 wiremock              = "0.6"
-wit-bindgen           = "0.41"
-wit-bindgen-rt        = { features = ["bitflags"], version = "0.41" }
 # CalDAV / iCalendar
 hyper-rustls  = { features = ["http1", "native-tokio", "ring", "tls12"], version = "0.27" }
 icalendar     = "0.17"

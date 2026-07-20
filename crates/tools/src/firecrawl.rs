@@ -1,11 +1,11 @@
 //! Firecrawl integration — standalone scrape tool and shared helpers.
 //!
-//! Firecrawl is a hosted web scraping/search API that returns clean markdown
+//! Firecrawl is a hosted web scraping API that returns clean markdown
 //! from web pages, including JS-heavy and bot-protected sites.
 //!
 //! This module provides:
 //! - `FirecrawlScrapeTool` — an `AgentTool` for direct `firecrawl_scrape` calls
-//! - `firecrawl_scrape()` — a helper used by both the tool and the `web_fetch` fallback
+//! - `firecrawl_scrape()` — the shared Firecrawl API client
 
 use std::{
     collections::HashMap,
@@ -38,8 +38,7 @@ struct CacheEntry {
 }
 
 /// Firecrawl scrape tool — scrape a URL via the Firecrawl API and return
-/// clean markdown.  Useful for JS-heavy or bot-protected pages where plain
-/// `web_fetch` extraction is weak.
+/// clean markdown from JS-heavy or bot-protected pages.
 pub struct FirecrawlScrapeTool {
     api_key: Secret<String>,
     base_url: String,
@@ -114,8 +113,8 @@ impl AgentTool for FirecrawlScrapeTool {
 
     fn description(&self) -> &str {
         "Scrape a web page using Firecrawl and return clean markdown content. \
-         Useful for JavaScript-heavy or bot-protected pages where plain web_fetch \
-         produces poor results. Requires a Firecrawl API key."
+         Useful for JavaScript-heavy or bot-protected pages. Requires a \
+         Firecrawl API key."
     }
 
     fn result_persistence(&self, _params: &serde_json::Value) -> ToolResultPersistence {
@@ -231,7 +230,7 @@ impl AgentTool for FirecrawlScrapeTool {
 /// Returns `Ok(Some(result))` on success, `Ok(None)` when Firecrawl returns
 /// no content, and `Err` on network/API failures.
 ///
-/// Used by both `FirecrawlScrapeTool` and the `web_fetch` fallback path.
+/// Used by `FirecrawlScrapeTool` and available to other Firecrawl integrations.
 pub async fn firecrawl_scrape(
     client: &reqwest::Client,
     base_url: &str,
@@ -342,108 +341,6 @@ pub fn resolve_api_key(config: &FirecrawlConfig) -> Option<Secret<String>> {
         .map(Secret::new)
 }
 
-/// Search the web via the Firecrawl `/v1/search` API.
-///
-/// Returns a JSON value matching the format used by `WebSearchTool`.
-pub async fn firecrawl_search(
-    client: &reqwest::Client,
-    base_url: &str,
-    api_key: &str,
-    query: &str,
-    count: u8,
-    timeout: Duration,
-) -> crate::Result<serde_json::Value> {
-    let endpoint = format!("{}/v1/search", base_url.trim_end_matches('/'));
-
-    let body = serde_json::json!({
-        "query": query,
-        "limit": count,
-    });
-
-    let resp = client
-        .post(&endpoint)
-        .timeout(timeout)
-        .header("Authorization", format!("Bearer {api_key}"))
-        .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| Error::message(format!("Firecrawl search request failed: {e}")))?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let error_body = resp.text().await.unwrap_or_default();
-        return Err(Error::message(format!(
-            "Firecrawl Search API error (HTTP {status}): {error_body}"
-        )));
-    }
-
-    let payload: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| Error::message(format!("Firecrawl search response parse failed: {e}")))?;
-
-    if payload.get("success").and_then(|v| v.as_bool()) == Some(false) {
-        let error = payload
-            .get("error")
-            .or_else(|| payload.get("message"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown error");
-        return Err(Error::message(format!(
-            "Firecrawl Search API error: {error}"
-        )));
-    }
-
-    let results = extract_search_results(&payload);
-
-    Ok(serde_json::json!({
-        "query": query,
-        "provider": "firecrawl",
-        "results": results,
-    }))
-}
-
-/// Extract search results from the Firecrawl search API response.
-fn extract_search_results(payload: &serde_json::Value) -> Vec<serde_json::Value> {
-    // Firecrawl returns results in `data` as an array.
-    let items = payload
-        .get("data")
-        .and_then(|v| v.as_array())
-        .or_else(|| payload.get("results").and_then(|v| v.as_array()));
-
-    let Some(items) = items else {
-        return Vec::new();
-    };
-
-    items
-        .iter()
-        .filter_map(|entry| {
-            let url = entry
-                .get("url")
-                .or_else(|| entry.get("metadata").and_then(|m| m.get("sourceURL")))
-                .and_then(|v| v.as_str())?;
-
-            let title = entry
-                .get("title")
-                .or_else(|| entry.get("metadata").and_then(|m| m.get("title")))
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-
-            let description = entry
-                .get("description")
-                .or_else(|| entry.get("snippet"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-
-            Some(serde_json::json!({
-                "title": title,
-                "url": url,
-                "description": description,
-            }))
-        })
-        .collect()
-}
-
 /// Minimal markdown-to-text stripping.
 ///
 /// Removes heading markers (`#`), bold/italic markers (`**`, `__`, `*`).
@@ -464,7 +361,10 @@ fn strip_markdown(md: &str) -> String {
 
 /// Truncate a string at a char boundary, not mid-UTF-8.
 fn truncate_at_char_boundary(s: &str, max: usize) -> String {
-    crate::web_fetch::truncate_at_char_boundary(s, max)
+    if s.len() <= max {
+        return s.to_string();
+    }
+    s[..s.floor_char_boundary(max)].to_string()
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -480,7 +380,6 @@ mod tests {
             only_main_content: true,
             timeout_seconds: 10,
             cache_ttl_minutes: 5,
-            web_fetch_fallback: true,
         }
     }
 
@@ -570,59 +469,6 @@ mod tests {
         let t = truncate_at_char_boundary(s, 2);
         assert!(t.len() <= 2);
         assert!(std::str::from_utf8(t.as_bytes()).is_ok());
-    }
-
-    #[test]
-    fn test_extract_search_results_standard() {
-        let payload = serde_json::json!({
-            "success": true,
-            "data": [
-                {"url": "https://a.com", "title": "A", "description": "Desc A"},
-                {"url": "https://b.com", "title": "B", "snippet": "Desc B"},
-            ]
-        });
-        let results = extract_search_results(&payload);
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0]["url"], "https://a.com");
-        assert_eq!(results[1]["description"], "Desc B");
-    }
-
-    #[test]
-    fn test_extract_search_results_with_metadata() {
-        let payload = serde_json::json!({
-            "success": true,
-            "data": [
-                {
-                    "metadata": {"sourceURL": "https://c.com", "title": "C"},
-                    "description": "Desc C"
-                }
-            ]
-        });
-        let results = extract_search_results(&payload);
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0]["url"], "https://c.com");
-        assert_eq!(results[0]["title"], "C");
-    }
-
-    #[test]
-    fn test_extract_search_results_empty() {
-        let payload = serde_json::json!({"success": true});
-        let results = extract_search_results(&payload);
-        assert!(results.is_empty());
-    }
-
-    #[test]
-    fn test_extract_search_results_skips_no_url() {
-        let payload = serde_json::json!({
-            "success": true,
-            "data": [
-                {"title": "No URL"},
-                {"url": "https://valid.com", "title": "Valid"},
-            ]
-        });
-        let results = extract_search_results(&payload);
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0]["url"], "https://valid.com");
     }
 
     #[tokio::test]
@@ -757,78 +603,6 @@ mod tests {
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("500"));
-        mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn test_firecrawl_search_success() {
-        let mut server = mockito::Server::new_async().await;
-        let mock = server
-            .mock("POST", "/v1/search")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(
-                serde_json::json!({
-                    "success": true,
-                    "data": [
-                        {
-                            "url": "https://example.com",
-                            "title": "Example",
-                            "description": "An example site"
-                        },
-                        {
-                            "url": "https://test.com",
-                            "title": "Test",
-                            "description": "A test site"
-                        }
-                    ]
-                })
-                .to_string(),
-            )
-            .create_async()
-            .await;
-
-        let result = firecrawl_search(
-            &reqwest::Client::new(),
-            &server.url(),
-            "fc-test-key",
-            "test query",
-            5,
-            Duration::from_secs(10),
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(result["provider"], "firecrawl");
-        assert_eq!(result["query"], "test query");
-        let results = result["results"].as_array().unwrap();
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0]["url"], "https://example.com");
-        mock.assert_async().await;
-    }
-
-    #[tokio::test]
-    async fn test_firecrawl_search_api_error() {
-        let mut server = mockito::Server::new_async().await;
-        let mock = server
-            .mock("POST", "/v1/search")
-            .with_status(403)
-            .with_body("Forbidden")
-            .create_async()
-            .await;
-
-        let result = firecrawl_search(
-            &reqwest::Client::new(),
-            &server.url(),
-            "fc-bad-key",
-            "test query",
-            5,
-            Duration::from_secs(10),
-        )
-        .await;
-
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("403"));
         mock.assert_async().await;
     }
 

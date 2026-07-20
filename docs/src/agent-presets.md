@@ -34,7 +34,7 @@ identity.name = "scout"
 identity.emoji = "🔍"
 identity.theme = "thorough and methodical"
 model = "anthropic/claude-haiku-3-5-20241022"
-tools.allow = ["Read", "Glob", "Grep", "web_search", "web_fetch"]
+tools.allow = ["Read", "Glob", "Grep", "ripgrep"]
 tools.deny = ["execute_command", "Write"]
 tools.preload = ["Read", "Glob", "Grep"]
 system_prompt_suffix = "Gather facts and report clearly."
@@ -147,7 +147,7 @@ Filter which skills are visible to an agent by name or category.
 ```toml
 # Only allow specific skills:
 [agents.presets.focused.skills]
-allow = ["web_search", "research"]
+allow = ["research", "code-review"]
 
 # Block specific categories:
 [agents.presets.safe.skills]

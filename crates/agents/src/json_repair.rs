@@ -193,9 +193,9 @@ mod tests {
 
     #[test]
     fn combined_issues() {
-        let input = r#"{"tool": "calc", "arguments": {"expression": "2+2",} // compute"#;
+        let input = r#"{"tool": "read_file", "arguments": {"path": "README.md",} // read"#;
         let v = repair_json(input).unwrap();
-        assert_eq!(v["tool"], "calc");
+        assert_eq!(v["tool"], "read_file");
     }
 
     #[test]

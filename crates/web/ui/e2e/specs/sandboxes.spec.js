@@ -23,7 +23,6 @@ test.describe("Sandboxes page – Available backends", () => {
 						backends: [
 							{ id: "docker", label: "Docker", kind: "local", available: true },
 							{ id: "podman", label: "Podman", kind: "local", available: true },
-							{ id: "wasm", label: "WASM", kind: "local", available: true },
 						],
 						default: "auto",
 					}),
@@ -42,7 +41,6 @@ test.describe("Sandboxes page – Available backends", () => {
 							backends: [
 								{ id: "docker", label: "Docker", kind: "local", available: true },
 								{ id: "podman", label: "Podman", kind: "local", available: true },
-								{ id: "wasm", label: "WASM", kind: "local", available: true },
 							],
 							default: "docker",
 						},
@@ -62,8 +60,6 @@ test.describe("Sandboxes page – Available backends", () => {
 		const modeIndicator = page.getByRole("status", { name: "Sandbox mode", exact: true });
 		await expect(modeIndicator).toHaveText(/On/);
 		await expect(modeIndicator.locator("button, input")).toHaveCount(0);
-		await expect(page.getByText("Restricted Host", { exact: true })).toHaveCount(0);
-		await expect(page.getByText("cgroup", { exact: true })).toHaveCount(0);
 
 		await page.getByRole("button", { name: /Docker/ }).click();
 		await expect.poll(() => savedBody?.backend ?? null, { timeout: 10_000 }).toBe("docker");

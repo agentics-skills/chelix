@@ -13,7 +13,6 @@ pub(crate) mod provision;
 pub mod router;
 pub(crate) mod sync;
 pub(crate) mod types;
-pub(crate) mod wasm;
 
 #[cfg(test)]
 mod tests;
@@ -22,8 +21,6 @@ mod tests;
 
 #[cfg(target_os = "macos")]
 pub use apple::{AppleContainerSandbox, ensure_apple_container_service};
-#[cfg(feature = "wasm")]
-pub use wasm::WasmSandbox;
 pub use {
     containers::{
         ContainerBackend, ContainerDiskUsage, ContainerRunState, RunningContainer, SandboxImage,
@@ -41,5 +38,4 @@ pub use {
         SandboxBackend, SandboxBackendId, SandboxConfig, SandboxId, SandboxMode, SandboxScope,
         ToolsServiceEndpoint,
     },
-    wasm::is_wasm_sandbox_available,
 };

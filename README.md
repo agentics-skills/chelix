@@ -45,7 +45,7 @@ Current Rust workspace: ~270K LoC across 59 crates. The table below groups the m
 | Crate | LoC | Role |
 |-------|-----|------|
 | `chelix-gateway` | 37.4K | HTTP/WS server, RPC, auth, startup wiring |
-| `chelix-tools` | 37.0K | Tool execution, sandboxing, WASM tools |
+| `chelix-tools` | 37.0K | Tool execution and sandboxing |
 | `chelix-providers` | 18.9K | LLM provider implementations |
 | `chelix-agents` | 14.5K | Agent loop, streaming, prompt assembly |
 | `chelix-chat` | 14.2K | Chat engine, agent orchestration |
@@ -72,15 +72,14 @@ Current Rust workspace: ~270K LoC across 59 crates. The table below groups the m
 | Scheduling and automation | `chelix-cron`, `chelix-caldav`, `chelix-auto-reply` | 4.7K |
 | Setup and import | `chelix-provider-setup`, `chelix-onboarding` | 11.7K |
 | Native and node hosts | `chelix-node-host`, `chelix-courier` | 5.7K |
-| WASM tools | `chelix-wasm-precompile`, `chelix-wasm-calc`, `chelix-wasm-web-fetch`, `chelix-wasm-web-search` | 1.4K |
 | Supporting crates | `chelix-media`, `chelix-metrics`, `chelix-routing`, `chelix-canvas`, `chelix-schema-export`, `benchmarks` | 2.1K |
 
 Use `--no-default-features --features lightweight` for constrained devices (Raspberry Pi, etc.).
 
 ## Security
 
-- **Small unsafe surface** — core agent/gateway code stays safe Rust; unsafe is isolated to Swift FFI and precompiled WASM boundaries
-- **Sandboxed execution** — Docker + Apple Container, per-session isolation
+- **Small unsafe surface** — core agent/gateway code stays safe Rust; unsafe is isolated to Swift FFI boundaries
+- **Sandboxed execution** — Docker, Podman, and Apple Container with per-session isolation
 - **Secret handling** — `secrecy::Secret`, zeroed on drop, redacted from tool output
 - **Authentication** — password + passkey (WebAuthn), rate-limited, per-IP throttle
 - **SSRF protection** — DNS-resolved, blocks loopback/private/link-local
@@ -164,13 +163,6 @@ git clone https://github.com/agentics-skills/chelix.git
 cd chelix
 just build-css                  # Build Tailwind CSS for the web UI
 just build-release              # Build gateway + required tools sidecar (+ optional embedding sidecar)
-cargo run --release --bin chelix
-```
-
-For a full release build including WASM sandbox tools:
-
-```bash
-just build-release-with-wasm    # Builds WASM artifacts + release binary
 cargo run --release --bin chelix
 ```
 

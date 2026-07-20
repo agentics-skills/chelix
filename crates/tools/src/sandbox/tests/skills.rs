@@ -16,9 +16,7 @@ use {
     crate::{
         command::run_shell_command,
         sandbox::{
-            ExecEnv,
-            file_system::test_helpers::MockSandbox,
-            paths::{MountAccess, resolve_sandbox_mount_path, resolved_sandbox_mount_plan},
+            ExecEnv, file_system::test_helpers::MockSandbox, paths::resolved_sandbox_mount_plan,
         },
         skill_tools::{CreateSkillTool, PatchSkillTool, WriteSkillFilesTool},
     },
@@ -74,41 +72,21 @@ async fn create_skill_is_visible_in_sandbox_through_data_dir_mount() {
 
     let mounts = data_mount_plan(&host_data_dir);
     let guest_data_dir = chelix_config::data_dir();
+    let data_mount = mounts
+        .iter()
+        .find(|mount| mount.guest == guest_data_dir)
+        .expect("data_dir mount must be present");
+    assert_eq!(data_mount.host, host_data_dir);
+    assert_eq!(
+        data_mount.mode,
+        chelix_config::container_mounts::MountMode::Rw
+    );
 
-    // The skill and its script resolve to the agent-written host files through
-    // the mandatory data_dir mount, at the identical guest path (invariant §2.3).
-    for relative in [
-        "skills/sandbox-skill/SKILL.md",
-        "skills/sandbox-skill/scripts/run.sh",
-    ] {
-        let host_view =
-            resolve_sandbox_mount_path(&mounts, &guest_data_dir.join(relative), MountAccess::Read)
-                .unwrap_or_else(|| panic!("{relative} must resolve through the data_dir mount"));
-        assert_eq!(host_view, host_data_dir.join(relative));
-    }
-
-    let script = resolve_sandbox_mount_path(
-        &mounts,
-        &guest_data_dir.join("skills/sandbox-skill/scripts/run.sh"),
-        MountAccess::Read,
-    )
-    .unwrap();
+    let script = host_data_dir.join("skills/sandbox-skill/scripts/run.sh");
     assert_eq!(
         std::fs::read_to_string(script).unwrap(),
         "#!/usr/bin/env bash\necho skill-ok\n",
         "sandbox must see the exact bytes the skill tools wrote on the host"
-    );
-
-    // The data mount stays read-write, so in-sandbox edits land in the same
-    // skill directory the agent manages.
-    assert_eq!(
-        resolve_sandbox_mount_path(
-            &mounts,
-            &guest_data_dir.join("skills/sandbox-skill/notes.md"),
-            MountAccess::Write,
-        ),
-        Some(host_data_dir.join("skills/sandbox-skill/notes.md")),
-        "the mandatory data_dir mount must remain writable for skill paths"
     );
 }
 
@@ -120,10 +98,12 @@ async fn patch_skill_change_is_visible_at_same_guest_path() {
     create_test_skill(&host_data_dir, "patched-skill", "original instructions").await;
 
     let mounts = data_mount_plan(&host_data_dir);
-    let guest_skill_md = chelix_config::data_dir().join("skills/patched-skill/SKILL.md");
-
-    let host_view =
-        resolve_sandbox_mount_path(&mounts, &guest_skill_md, MountAccess::Read).unwrap();
+    let data_mount = mounts
+        .iter()
+        .find(|mount| mount.guest == chelix_config::data_dir())
+        .expect("data_dir mount must be present");
+    assert_eq!(data_mount.host, host_data_dir);
+    let host_view = host_data_dir.join("skills/patched-skill/SKILL.md");
     assert!(
         std::fs::read_to_string(&host_view)
             .unwrap()
@@ -142,13 +122,7 @@ async fn patch_skill_change_is_visible_at_same_guest_path() {
         .await
         .unwrap();
 
-    let host_view_after =
-        resolve_sandbox_mount_path(&mounts, &guest_skill_md, MountAccess::Read).unwrap();
-    assert_eq!(
-        host_view, host_view_after,
-        "the guest path must stay stable across patches"
-    );
-    let content = std::fs::read_to_string(&host_view_after).unwrap();
+    let content = std::fs::read_to_string(&host_view).unwrap();
     assert!(
         content.contains("patched instructions"),
         "patch_skill changes must be immediately readable at the sandbox guest path"

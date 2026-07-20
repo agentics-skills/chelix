@@ -247,7 +247,7 @@ in `default_sandbox_packages()`. CLI: `chelix sandbox {list,build,remove,clean}`
 ## Security
 
 - **WebSocket Origin validation**: `server.rs` rejects cross-origin WS upgrades (403). Loopback variants equivalent.
-- **SSRF protection**: `web_fetch.rs` blocks loopback/private/link-local/CGNAT IPs. Preserve this on changes.
+- **SSRF protection**: `chelix-common` blocks loopback/private/link-local/CGNAT IPs. Preserve this on changes.
 - **Secrets**: Use `secrecy::Secret<String>` for all passwords/keys/tokens. `expose_secret()` only at consumption point. Manual `Debug` impl with `[REDACTED]`. Scope `RwLock` read guards in blocks to avoid deadlocks. See `crates/oauth/src/types.rs` for serde helpers.
 - **Never commit** passwords, credentials, `.env` with real values, or PII.
 - If secrets accidentally committed: `git reset HEAD~1`, remove, re-commit. If pushed, rotate immediately.

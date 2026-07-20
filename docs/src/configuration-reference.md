@@ -52,12 +52,8 @@
   - [`sandbox`](#sandbox)
   - [`sandbox.resource_limits`](#sandboxresource_limits)
   - [`sandbox.tools_policy`](#sandboxtools_policy)
-  - [`sandbox.wasm_tool_limits`](#sandboxwasm_tool_limits)
   - [`tools.browser`](#toolsbrowser)
 - **Tools — Web & Data**
-  - [`tools.web.search`](#toolswebsearch)
-  - [`tools.web.search.perplexity`](#toolswebsearchperplexity)
-  - [`tools.web.fetch`](#toolswebfetch)
   - [`tools.web.firecrawl`](#toolswebfirecrawl)
   - [`tools.fs`](#toolsfs)
   - [`tools.maps`](#toolsmaps)
@@ -324,11 +320,9 @@ not create chat agents, change memory, or affect `spawn_agent` presets.
 | `image`                  | optional string                        | `null`            | Docker/Podman image for sandbox containers.                                                                                                                                          |
 | `container_prefix`       | optional string                        | `null`            | Name prefix for created containers.                                                                                                                                                  |
 | `network`                | string                                 | `"bridge"`        | Docker/Podman network name passed as `--network=<name>`.                                                                                                                             |
-| `backend`                | enum                                   | `"auto"`          | Isolated backend: `"auto"`, `"docker"`, `"podman"`, `"apple-container"`, or `"wasm"`. Unknown and removed values are rejected.                                                    |
+| `backend`                | enum                                   | `"auto"`          | Isolated backend: `"auto"`, `"docker"`, `"podman"`, or `"apple-container"`.                                                    |
 | `mounts`                 | array of tables                        | `[]`              | Additional mounts with `host`, absolute `guest`, and `mode` (`"ro"` or `"rw"`).                                                                                                      |
 | `packages`               | array                                  | _(~130 packages)_ | Packages to install via `apt-get` in the sandbox image. Empty list to skip.                                                                                                          |
-| `wasm_fuel_limit`        | optional integer                       | `null`            | Fuel limit for WASM sandbox execution (instructions).                                                                                                                                |
-| `wasm_epoch_interval_ms` | optional integer                       | `null`            | Epoch interruption interval in milliseconds for WASM sandbox.                                                                                                                        |
 
 Chelix always mounts `data_dir()` read-write at the identical absolute path
 inside the sandbox. This invariant is not configurable. Add other mounts with
@@ -349,31 +343,6 @@ inside the sandbox. This invariant is not configurable. Add other mounts with
 | `allow`   | array           | `[]`    | Tool names explicitly allowed inside the sandbox.    |
 | `deny`    | array           | `[]`    | Tool names explicitly denied inside the sandbox.     |
 | `profile` | optional string | `null`  | Named policy profile to apply (e.g. `"restricted"`). |
-
-### `sandbox.wasm_tool_limits` — WasmToolLimitsConfig
-
-| Key              | Type    | Default       | Description                                  |
-| ---------------- | ------- | ------------- | -------------------------------------------- |
-| `default_memory` | integer | `16777216`    | Default WASM memory limit in bytes (16 MB).  |
-| `default_fuel`   | integer | `1000000`     | Default WASM fuel limit (instructions).      |
-| `tool_overrides` | map     | _(see below)_ | Per-tool overrides for WASM fuel and memory. |
-
-### sandbox.wasm_tool_limits.tool_overrides.<name> (ToolLimitOverrideConfig)
-
-| Key      | Type             | Default | Description                                 |
-| -------- | ---------------- | ------- | ------------------------------------------- |
-| `fuel`   | optional integer | `null`  | Per-tool WASM fuel override (instructions). |
-| `memory` | optional integer | `null`  | Per-tool WASM memory override (bytes).      |
-
-Default `tool_overrides` entries:
-
-| Tool         | fuel       | memory             |
-| ------------ | ---------- | ------------------ |
-| `calc`       | `100000`   | `2097152` (2 MB)   |
-| `web_fetch`  | `10000000` | `33554432` (32 MB) |
-| `web_search` | `10000000` | `33554432` (32 MB) |
-| `show_map`   | `10000000` | `67108864` (64 MB) |
-| `location`   | `5000000`  | `16777216` (16 MB) |
 
 ### `tools.browser` — BrowserConfig
 
@@ -407,38 +376,6 @@ Default `tool_overrides` entries:
 
 ## Tools — Web & Data
 
-### `tools.web.search` — WebSearchConfig
-
-| Key                 | Type            | Default   | Description                                                                                                                            |
-| ------------------- | --------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| enabled             | bool            | `true`    | Enable the web search tool.                                                                                                            |
-| provider            | string (enum)   | `"brave"` | Search provider. One of: `brave`, `perplexity`, `firecrawl`.                                                                           |
-| api_key             | optional string | —         | API key (overrides `BRAVE_API_KEY` env var).                                                                                           |
-| max_results         | integer         | `5`       | Maximum number of results to return (1–10).                                                                                            |
-| timeout_seconds     | integer         | `30`      | HTTP request timeout in seconds.                                                                                                       |
-| cache_ttl_minutes   | integer         | `15`      | In-memory cache TTL in minutes (0 to disable).                                                                                         |
-| duckduckgo_fallback | bool            | `false`   | Enable DuckDuckGo HTML fallback when no provider API key is configured. Disabled by default because it may trigger CAPTCHA challenges. |
-
-### `tools.web.search.perplexity` — PerplexityConfig
-
-| Key      | Type            | Default | Description                                                               |
-| -------- | --------------- | ------- | ------------------------------------------------------------------------- |
-| api_key  | optional string | —       | API key (overrides `PERPLEXITY_API_KEY` / `OPENROUTER_API_KEY` env vars). |
-| base_url | optional string | —       | Base URL override. Auto-detected from key prefix if empty.                |
-| model    | optional string | —       | Model to use.                                                             |
-
-### `tools.web.fetch` — WebFetchConfig
-
-| Key               | Type    | Default | Description                                                                                                                                                                                                                                                                                |
-| ----------------- | ------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| enabled           | bool    | `true`  | Enable the web fetch tool.                                                                                                                                                                                                                                                                 |
-| max_chars         | integer | `50000` | Maximum characters to return from fetched content.                                                                                                                                                                                                                                         |
-| timeout_seconds   | integer | `30`    | HTTP request timeout in seconds.                                                                                                                                                                                                                                                           |
-| cache_ttl_minutes | integer | `15`    | In-memory cache TTL in minutes (0 to disable).                                                                                                                                                                                                                                             |
-| max_redirects     | integer | `3`     | Maximum number of HTTP redirects to follow.                                                                                                                                                                                                                                                |
-| readability       | bool    | `true`  | Use readability extraction for HTML pages.                                                                                                                                                                                                                                                 |
-| ssrf_allowlist    | array   | `[]`    | CIDR ranges exempt from SSRF blocking (e.g. `["172.22.0.0/16"]`). Default: empty (all private IPs blocked). ⚠️ **Security**: ranges added here bypass SSRF protection. Only add specific, trusted CIDR ranges (e.g. a known sidecar subnet), never broad private ranges like `10.0.0.0/8`. |
-
 ### `tools.web.firecrawl` — FirecrawlConfig
 
 | Key                | Type            | Default                       | Description                                                                                 |
@@ -449,7 +386,6 @@ Default `tool_overrides` entries:
 | only_main_content  | bool            | `true`                        | Only extract main content (skip navs, footers, etc.).                                       |
 | timeout_seconds    | integer         | `30`                          | HTTP request timeout in seconds.                                                            |
 | cache_ttl_minutes  | integer         | `15`                          | In-memory cache TTL in minutes (0 to disable).                                              |
-| web_fetch_fallback | bool            | `true`                        | Use Firecrawl as fallback in `web_fetch` when readability extraction produces poor results. |
 
 ### `tools.fs` — FsToolsConfig
 

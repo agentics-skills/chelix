@@ -8,9 +8,6 @@ use {
     tracing::{info, warn},
 };
 
-#[cfg(feature = "wasm")]
-use secrecy::ExposeSecret;
-
 mod credential_env;
 mod session_tools;
 
@@ -42,9 +39,6 @@ use crate::server::{
     prepared::PreparedGatewayCore,
 };
 
-#[cfg(feature = "wasm")]
-use crate::server::helpers::env_value_with_overrides;
-
 #[cfg(feature = "file-watcher")]
 use crate::server::helpers::start_skill_hot_reload_watcher;
 
@@ -60,7 +54,6 @@ pub(super) struct PostStateInputs {
     pub services: GatewayServices,
     pub session_mutations: Arc<chelix_service_traits::SessionMutationCoordinator>,
     pub registry: Arc<tokio::sync::RwLock<ProviderRegistry>>,
-    pub runtime_env_overrides: std::collections::HashMap<String, String>,
     pub provider_summary: String,
     pub mcp_configured_count: usize,
     pub model_store: Arc<tokio::sync::RwLock<crate::chat::DisabledModelsStore>>,
@@ -231,7 +224,6 @@ pub(super) async fn complete_startup(
         mut services,
         session_mutations,
         registry,
-        runtime_env_overrides,
         provider_summary,
         mcp_configured_count,
         model_store,
@@ -567,7 +559,6 @@ pub(super) async fn complete_startup(
                 &tmux_terminal_manager,
             )),
         ));
-        tool_registry.register(Box::new(chelix_tools::calc::CalcTool::new()));
         tool_registry.register(Box::new(
             chelix_tools::list_directory::ListDirectoryTool::new(Arc::clone(&tools_service)),
         ));
@@ -621,39 +612,6 @@ pub(super) async fn complete_startup(
                 context_window_tokens: fs_cfg.context_window_tokens,
             };
             chelix_tools::fs::register_fs_tools(&mut tool_registry, ctx);
-        }
-        #[cfg(feature = "wasm")]
-        {
-            let wasm_limits = sandbox_router
-                .config()
-                .wasm_tool_limits
-                .clone()
-                .unwrap_or_default();
-            let epoch_interval_ms = sandbox_router
-                .config()
-                .wasm_epoch_interval_ms
-                .unwrap_or(100);
-            let brave_api_key = config
-                .tools
-                .web
-                .search
-                .api_key
-                .as_ref()
-                .map(|s| s.expose_secret().clone())
-                .or_else(|| env_value_with_overrides(&runtime_env_overrides, "BRAVE_API_KEY"))
-                .filter(|k| !k.trim().is_empty());
-            if let Err(e) = chelix_tools::wasm_tool_runner::register_wasm_tools(
-                &mut tool_registry,
-                &wasm_limits,
-                epoch_interval_ms,
-                config.tools.web.fetch.timeout_seconds,
-                config.tools.web.fetch.cache_ttl_minutes,
-                config.tools.web.search.timeout_seconds,
-                config.tools.web.search.cache_ttl_minutes,
-                brave_api_key.as_deref(),
-            ) {
-                warn!(%e, "wasm tool registration failed");
-            }
         }
         tool_registry.register(Box::new(process_tool));
         tool_registry.register(Box::new(sandbox_packages_tool));
@@ -727,20 +685,6 @@ pub(super) async fn complete_startup(
             chelix_tools::send_document::SendDocumentTool::new(Arc::clone(&sandbox_router))
                 .with_session_store(Arc::clone(&session_store)),
         ));
-        if let Some(t) = chelix_tools::web_search::WebSearchTool::from_config_with_env_overrides(
-            &config.tools.web.search,
-            &runtime_env_overrides,
-        ) {
-            #[cfg(feature = "firecrawl")]
-            let t = t.with_firecrawl_config(&config.tools.web.firecrawl);
-            tool_registry.register(Box::new(t.with_env_provider(Arc::clone(&env_provider))));
-        }
-        if let Some(t) = chelix_tools::web_fetch::WebFetchTool::from_config(&config.tools.web.fetch)
-        {
-            #[cfg(feature = "firecrawl")]
-            let t = t.with_firecrawl(&config.tools.web.firecrawl);
-            tool_registry.register(Box::new(t));
-        }
         #[cfg(feature = "firecrawl")]
         if let Some(t) =
             chelix_tools::firecrawl::FirecrawlScrapeTool::from_config(&config.tools.web.firecrawl)

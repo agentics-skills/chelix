@@ -1131,14 +1131,14 @@ test.describe("WebSocket connection lifecycle", () => {
 				sessionKey: "main",
 				state: "tool_call_start",
 				runId: "run-think-tool",
-				toolCallId: "tc-web-search-1",
-				toolName: "web_search",
-				arguments: { query: "top news today" },
+				toolCallId: "tc-ripgrep-1",
+				toolName: "ripgrep",
+				arguments: { pattern: "SandboxBackend" },
 			},
 		});
 		await expect(page.locator("#thinkingIndicator")).toHaveCount(0);
 		// Reasoning disclosure is inside the tool card
-		const toolCard = page.locator("#tool-run-think-tool-tc-web-search-1");
+		const toolCard = page.locator("#tool-run-think-tool-tc-ripgrep-1");
 		await expect(toolCard).toBeVisible();
 		await expect(toolCard.locator(".msg-reasoning")).toBeVisible();
 		await expect(toolCard.locator(".msg-reasoning-body")).toContainText("I need to search the web for recent news");

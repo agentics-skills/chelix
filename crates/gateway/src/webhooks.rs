@@ -556,7 +556,7 @@ mod tests {
                 model: None,
                 system_prompt_suffix: None,
                 tool_policy: Some(chelix_webhooks::types::ToolPolicy {
-                    allow: vec!["web_fetch".into()],
+                    allow: vec!["read_file".into()],
                     deny: vec!["execute_command".into()],
                 }),
                 auth_mode: AuthMode::GithubHmacSha256,

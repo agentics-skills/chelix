@@ -412,11 +412,11 @@ mod tests {
     #[test]
     fn recover_tool_call_with_tool_key() {
         let input =
-            r#"<tool_call>{"tool": "web_search", "arguments": {"query": "rust"}}</tool_call>"#;
+            r#"<tool_call>{"tool": "read_file", "arguments": {"path": "README.md"}}</tool_call>"#;
         let (cleaned, calls) = recover_tool_calls_from_content(input);
         assert_eq!(cleaned, "");
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "web_search");
+        assert_eq!(calls[0].name, "read_file");
     }
 
     #[test]

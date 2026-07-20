@@ -15,9 +15,6 @@ Browser automation is useful when you need to:
 - Execute JavaScript in page context
 - Maintain session state across multiple interactions
 
-For simple page content retrieval (static HTML), prefer `web_fetch` as it's
-faster and more lightweight.
-
 ## Architecture
 
 ```
@@ -247,25 +244,7 @@ references. This approach provides:
 }
 ```
 
-## Comparison: Browser vs Web Fetch
-
-| Feature      | `web_fetch`    | `browser`         |
-| ------------ | -------------- | ----------------- |
-| Speed        | Fast           | Slower            |
-| Resources    | Minimal        | Chrome instance   |
-| JavaScript   | No             | Yes               |
-| Forms/clicks | No             | Yes               |
-| Screenshots  | No             | Yes               |
-| Sessions     | No             | Yes               |
-| Use case     | Static content | Interactive sites |
-
-**When to use `web_fetch`:**
-
-- Reading documentation
-- Fetching API responses
-- Scraping static HTML
-
-**When to use `browser`:**
+## When to use `browser`
 
 - Logging into websites
 - Filling forms

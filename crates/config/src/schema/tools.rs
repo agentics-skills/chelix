@@ -2,7 +2,6 @@ use {
     super::*,
     secrecy::Secret,
     serde::{Deserialize, Serialize},
-    std::collections::HashMap,
 };
 
 pub use crate::container_mounts::{MountMode, SandboxMount};
@@ -234,125 +233,17 @@ pub enum MapProvider {
     OpenStreetMap,
 }
 
-/// Web tools configuration (search, fetch, firecrawl).
+/// Web integration configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct WebConfig {
-    pub search: WebSearchConfig,
-    pub fetch: WebFetchConfig,
     pub firecrawl: FirecrawlConfig,
-}
-
-/// Search provider selection.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum SearchProvider {
-    #[default]
-    Brave,
-    Perplexity,
-    Firecrawl,
-}
-
-/// Web search tool configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct WebSearchConfig {
-    pub enabled: bool,
-    /// Search provider.
-    pub provider: SearchProvider,
-    /// Brave Search API key (overrides `BRAVE_API_KEY` env var).
-    #[serde(
-        default,
-        serialize_with = "serialize_option_secret",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub api_key: Option<Secret<String>>,
-    /// Maximum number of results to return (1-10).
-    pub max_results: u8,
-    /// HTTP request timeout in seconds.
-    pub timeout_seconds: u64,
-    /// In-memory cache TTL in minutes (0 to disable).
-    pub cache_ttl_minutes: u64,
-    /// Enable DuckDuckGo HTML fallback when no provider API key is configured.
-    /// Disabled by default because it may trigger CAPTCHA challenges.
-    pub duckduckgo_fallback: bool,
-    /// Perplexity-specific settings.
-    pub perplexity: PerplexityConfig,
-}
-
-impl Default for WebSearchConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            provider: SearchProvider::default(),
-            api_key: None,
-            max_results: 5,
-            timeout_seconds: 30,
-            cache_ttl_minutes: 15,
-            duckduckgo_fallback: false,
-            perplexity: PerplexityConfig::default(),
-        }
-    }
-}
-
-/// Perplexity search provider configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct PerplexityConfig {
-    /// API key (overrides `PERPLEXITY_API_KEY` / `OPENROUTER_API_KEY` env vars).
-    #[serde(
-        default,
-        serialize_with = "serialize_option_secret",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub api_key: Option<Secret<String>>,
-    /// Base URL override. Auto-detected from key prefix if empty.
-    pub base_url: Option<String>,
-    /// Model to use.
-    pub model: Option<String>,
-}
-
-/// Web fetch tool configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct WebFetchConfig {
-    pub enabled: bool,
-    /// Maximum characters to return from fetched content.
-    pub max_chars: usize,
-    /// HTTP request timeout in seconds.
-    pub timeout_seconds: u64,
-    /// In-memory cache TTL in minutes (0 to disable).
-    pub cache_ttl_minutes: u64,
-    /// Maximum number of HTTP redirects to follow.
-    pub max_redirects: u8,
-    /// Use readability extraction for HTML pages.
-    pub readability: bool,
-    /// CIDR ranges exempt from SSRF blocking (e.g. `["172.22.0.0/16"]`).
-    /// Default: empty (all private IPs blocked).
-    #[serde(default)]
-    pub ssrf_allowlist: Vec<String>,
-}
-
-impl Default for WebFetchConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            max_chars: 50_000,
-            timeout_seconds: 30,
-            cache_ttl_minutes: 15,
-            max_redirects: 3,
-            readability: true,
-            ssrf_allowlist: Vec::new(),
-        }
-    }
 }
 
 /// Firecrawl integration configuration.
 ///
 /// Firecrawl provides high-quality markdown extraction from web pages,
-/// including JS-heavy and bot-protected sites.  Used as a standalone
-/// `firecrawl_scrape` tool, as a `web_search` provider, and as a
-/// fallback extractor inside `web_fetch`.
+/// including JS-heavy and bot-protected sites.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FirecrawlConfig {
@@ -373,9 +264,6 @@ pub struct FirecrawlConfig {
     pub timeout_seconds: u64,
     /// In-memory cache TTL in minutes (0 to disable).
     pub cache_ttl_minutes: u64,
-    /// Use Firecrawl as fallback in `web_fetch` when readability
-    /// extraction produces poor results.
-    pub web_fetch_fallback: bool,
 }
 
 impl Default for FirecrawlConfig {
@@ -387,7 +275,6 @@ impl Default for FirecrawlConfig {
             only_main_content: true,
             timeout_seconds: 30,
             cache_ttl_minutes: 15,
-            web_fetch_fallback: true,
         }
     }
 }
@@ -568,59 +455,6 @@ pub struct ResourceLimitsConfig {
     pub pids_max: Option<u32>,
 }
 
-/// Optional per-tool overrides for WASM fuel and memory.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct ToolLimitOverrideConfig {
-    pub fuel: Option<u64>,
-    pub memory: Option<u64>,
-}
-
-/// Configurable WASM tool limits.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct WasmToolLimitsConfig {
-    pub default_memory: u64,
-    pub default_fuel: u64,
-    pub tool_overrides: HashMap<String, ToolLimitOverrideConfig>,
-}
-
-fn default_wasm_tool_overrides() -> HashMap<String, ToolLimitOverrideConfig> {
-    let mb = 1024_u64 * 1024_u64;
-    HashMap::from([
-        ("calc".to_string(), ToolLimitOverrideConfig {
-            fuel: Some(100_000),
-            memory: Some(2 * mb),
-        }),
-        ("web_fetch".to_string(), ToolLimitOverrideConfig {
-            fuel: Some(10_000_000),
-            memory: Some(32 * mb),
-        }),
-        ("web_search".to_string(), ToolLimitOverrideConfig {
-            fuel: Some(10_000_000),
-            memory: Some(32 * mb),
-        }),
-        ("show_map".to_string(), ToolLimitOverrideConfig {
-            fuel: Some(10_000_000),
-            memory: Some(64 * mb),
-        }),
-        ("location".to_string(), ToolLimitOverrideConfig {
-            fuel: Some(5_000_000),
-            memory: Some(16 * mb),
-        }),
-    ])
-}
-
-impl Default for WasmToolLimitsConfig {
-    fn default() -> Self {
-        Self {
-            default_memory: 16 * 1024 * 1024,
-            default_fuel: 1_000_000,
-            tool_overrides: default_wasm_tool_overrides(),
-        }
-    }
-}
-
 /// Persistence strategy for `/home/sandbox` in sandbox containers.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -660,7 +494,6 @@ pub enum SandboxBackend {
     Docker,
     Podman,
     AppleContainer,
-    Wasm,
 }
 
 impl SandboxBackend {
@@ -671,7 +504,6 @@ impl SandboxBackend {
             Self::Docker => "docker",
             Self::Podman => "podman",
             Self::AppleContainer => "apple-container",
-            Self::Wasm => "wasm",
         }
     }
 }
@@ -715,19 +547,13 @@ pub struct SandboxConfig {
     pub resource_limits: ResourceLimitsConfig,
     /// GPU device passthrough for Docker/Podman backends.
     /// Examples: "all", "device=0", "device=0,1".
-    /// Ignored for Apple Container and WASM backends.
+    /// Ignored for Apple Container.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gpus: Option<String>,
     /// Packages to install via `apt-get` in the sandbox image.
     /// Set to an empty list to skip provisioning.
     #[serde(default = "default_sandbox_packages")]
     pub packages: Vec<String>,
-    /// Fuel limit for WASM sandbox execution (default: 1 billion instructions).
-    pub wasm_fuel_limit: Option<u64>,
-    /// Epoch interruption interval in milliseconds for WASM sandbox (default: 100ms).
-    pub wasm_epoch_interval_ms: Option<u64>,
-    /// Optional per-tool WASM limits (fuel + memory).
-    pub wasm_tool_limits: Option<WasmToolLimitsConfig>,
     /// Optional tool policy applied when global sandbox mode is `On`.
     /// Acts as layer 6 in the policy resolution chain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -926,9 +752,6 @@ impl Default for SandboxConfig {
             resource_limits: ResourceLimitsConfig::default(),
             gpus: None,
             packages: default_sandbox_packages(),
-            wasm_fuel_limit: None,
-            wasm_epoch_interval_ms: None,
-            wasm_tool_limits: None,
             tools_policy: None,
         }
     }

@@ -1,10 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use {
     super::*,
-    crate::sandbox::{
-        paths::{MountAccess, resolve_sandbox_mount_path, resolved_sandbox_mount_plan},
-        types::tail_lines,
-    },
+    crate::sandbox::{paths::resolved_sandbox_mount_plan, types::tail_lines},
 };
 
 #[test]
@@ -174,108 +171,6 @@ fn test_home_persistence_display() {
 }
 
 #[test]
-fn test_mount_path_resolution_prefers_longest_prefix_and_enforces_ro() {
-    let broad = tempfile::tempdir().unwrap();
-    let nested = tempfile::tempdir().unwrap();
-    std::fs::write(nested.path().join("note.txt"), "nested").unwrap();
-    let mounts = vec![
-        chelix_config::container_mounts::SandboxMount {
-            host: broad.path().to_path_buf(),
-            guest: "/mnt".into(),
-            mode: chelix_config::container_mounts::MountMode::Rw,
-        },
-        chelix_config::container_mounts::SandboxMount {
-            host: nested.path().to_path_buf(),
-            guest: "/mnt/nested".into(),
-            mode: chelix_config::container_mounts::MountMode::Ro,
-        },
-    ];
-
-    assert_eq!(
-        resolve_sandbox_mount_path(
-            &mounts,
-            std::path::Path::new("/mnt/nested/note.txt"),
-            MountAccess::Read,
-        ),
-        Some(nested.path().join("note.txt"))
-    );
-    assert!(
-        resolve_sandbox_mount_path(
-            &mounts,
-            std::path::Path::new("/mnt/nested/new.txt"),
-            MountAccess::Write,
-        )
-        .is_none(),
-        "a nested read-only mount must not fall back to the broader rw mount"
-    );
-}
-
-#[test]
-fn test_mount_path_resolution_uses_later_mount_for_equal_guest_depth() {
-    let first = tempfile::tempdir().unwrap();
-    let second = tempfile::tempdir().unwrap();
-    std::fs::write(first.path().join("note.txt"), "first").unwrap();
-    std::fs::write(second.path().join("note.txt"), "second").unwrap();
-    let mounts = vec![
-        chelix_config::container_mounts::SandboxMount {
-            host: first.path().to_path_buf(),
-            guest: "/mnt/shared".into(),
-            mode: chelix_config::container_mounts::MountMode::Rw,
-        },
-        chelix_config::container_mounts::SandboxMount {
-            host: second.path().to_path_buf(),
-            guest: "/mnt/shared".into(),
-            mode: chelix_config::container_mounts::MountMode::Ro,
-        },
-    ];
-
-    assert_eq!(
-        resolve_sandbox_mount_path(
-            &mounts,
-            std::path::Path::new("/mnt/shared/note.txt"),
-            MountAccess::Read,
-        ),
-        Some(second.path().join("note.txt"))
-    );
-    assert!(
-        resolve_sandbox_mount_path(
-            &mounts,
-            std::path::Path::new("/mnt/shared/new.txt"),
-            MountAccess::Write,
-        )
-        .is_none(),
-        "the later read-only mount must supersede the earlier rw mount"
-    );
-}
-
-#[test]
-fn test_mount_path_resolution_rejects_parent_escape() {
-    let host = tempfile::tempdir().unwrap();
-    let mounts = vec![chelix_config::container_mounts::SandboxMount {
-        host: host.path().to_path_buf(),
-        guest: "/mnt".into(),
-        mode: chelix_config::container_mounts::MountMode::Rw,
-    }];
-
-    assert!(
-        resolve_sandbox_mount_path(
-            &mounts,
-            std::path::Path::new("/mnt/../../etc/passwd"),
-            MountAccess::Read,
-        )
-        .is_none()
-    );
-    assert!(
-        resolve_sandbox_mount_path(
-            &mounts,
-            std::path::Path::new("/mnt/../outside"),
-            MountAccess::Write,
-        )
-        .is_none()
-    );
-}
-
-#[test]
 fn test_resource_limits_default() {
     let limits = ResourceLimits::default();
     assert!(limits.memory_limit.is_none());
@@ -390,34 +285,23 @@ fn test_data_mount_exposes_agent_state_paths_in_sandbox_namespace() {
     };
     let mounts = resolved_sandbox_mount_plan(&config, Some("docker"), &test_sandbox_id()).unwrap();
     let data_dir = chelix_config::data_dir();
-
-    for relative in [
-        "memory",
-        "logs",
-        "skills",
-        "sessions",
-        "AGENTS.md",
-        "SOUL.md",
-        "IDENTITY.md",
-    ] {
-        assert_eq!(
-            resolve_sandbox_mount_path(&mounts, &data_dir.join(relative), MountAccess::Read,),
-            Some(host_data_dir.join(relative)),
-            "{relative} must resolve through the mandatory data_dir mount"
-        );
-    }
+    let data_mount = mounts
+        .iter()
+        .find(|mount| mount.guest == data_dir)
+        .expect("data_dir mount must be present");
+    assert_eq!(data_mount.host, host_data_dir);
     assert_eq!(
-        resolve_sandbox_mount_path(&mounts, &data_dir.join("memory/new.md"), MountAccess::Write,),
-        Some(host_data_dir.join("memory/new.md")),
-        "the mandatory data_dir mount must remain writable"
+        data_mount.mode,
+        chelix_config::container_mounts::MountMode::Rw
     );
 
     if let Some(config_dir) = chelix_config::config_dir() {
         for secret in ["credentials.json", "provider_keys.json"] {
             assert!(
-                resolve_sandbox_mount_path(&mounts, &config_dir.join(secret), MountAccess::Read,)
-                    .is_none(),
-                "config_dir secret {secret} must not resolve through a sandbox mount"
+                mounts
+                    .iter()
+                    .all(|mount| !config_dir.join(secret).starts_with(&mount.guest)),
+                "config_dir secret {secret} must not be exposed by a sandbox mount"
             );
         }
     }

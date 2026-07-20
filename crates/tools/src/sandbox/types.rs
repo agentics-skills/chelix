@@ -16,7 +16,6 @@ use crate::{
         SandboxGrepOptions, SandboxListFilesResult, SandboxReadResult, command_grep,
         command_list_files, command_read_file, command_write_file,
     },
-    wasm_limits::WasmToolLimits,
 };
 
 pub(crate) fn truncate_output_for_display(output: &mut String, max_output_bytes: usize) {
@@ -54,7 +53,6 @@ pub enum SandboxBackendId {
     Docker,
     Podman,
     AppleContainer,
-    Wasm,
     None,
 }
 
@@ -65,7 +63,6 @@ impl SandboxBackendId {
             Self::Docker => "docker",
             Self::Podman => "podman",
             Self::AppleContainer => "apple-container",
-            Self::Wasm => "wasm",
             Self::None => "none",
         }
     }
@@ -191,12 +188,6 @@ pub struct SandboxConfig {
     pub packages: Vec<String>,
     /// IANA timezone (e.g. "Europe/Paris") injected as `TZ` env var into containers.
     pub timezone: Option<String>,
-    /// Fuel limit for WASM sandbox execution (default: 1 billion instructions).
-    pub wasm_fuel_limit: Option<u64>,
-    /// Epoch interruption interval in milliseconds for WASM sandbox (default: 100ms).
-    pub wasm_epoch_interval_ms: Option<u64>,
-    /// Per-tool WASM limits (fuel/memory). Falls back to built-in defaults when absent.
-    pub wasm_tool_limits: Option<WasmToolLimits>,
 }
 
 impl Default for SandboxConfig {
@@ -217,9 +208,6 @@ impl Default for SandboxConfig {
             gpus: None,
             packages: Vec::new(),
             timezone: None,
-            wasm_fuel_limit: None,
-            wasm_epoch_interval_ms: None,
-            wasm_tool_limits: None,
         }
     }
 }
@@ -272,9 +260,6 @@ impl From<&chelix_config::schema::SandboxConfig> for SandboxConfig {
             gpus: cfg.gpus.clone(),
             packages: cfg.packages.clone(),
             timezone: None, // Set by gateway from user profile
-            wasm_fuel_limit: cfg.wasm_fuel_limit,
-            wasm_epoch_interval_ms: cfg.wasm_epoch_interval_ms,
-            wasm_tool_limits: cfg.wasm_tool_limits.as_ref().map(WasmToolLimits::from),
         }
     }
 }
@@ -394,8 +379,8 @@ pub trait Sandbox: Send + Sync {
     /// Whether this backend provides filesystem isolation from the host.
     ///
     /// Defaults to `false` (fail-safe): new backends must explicitly opt in
-    /// by returning `true`. Container-based backends and WASM override this
-    /// to `true`; direct host execution keeps the default.
+    /// by returning `true`. Container-based backends override this to `true`;
+    /// direct host execution keeps the default.
     ///
     /// Used by command execution to enforce approval gating and file-path
     /// restrictions when true filesystem isolation is unavailable.

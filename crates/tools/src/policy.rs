@@ -359,7 +359,7 @@ mod tests {
             .presets
             .insert("researcher".into(), chelix_config::schema::AgentPreset {
                 tools: chelix_config::schema::PresetToolPolicy {
-                    allow: vec!["web_search".into(), "web_fetch".into()],
+                    allow: vec!["read_file".into(), "ripgrep".into()],
                     deny: Vec::new(),
                     preload: Vec::new(),
                 },
@@ -371,8 +371,8 @@ mod tests {
             ..Default::default()
         };
         let policy = resolve_effective_policy(&cfg, &ctx);
-        assert!(policy.is_allowed("web_search"));
-        assert!(policy.is_allowed("web_fetch"));
+        assert!(policy.is_allowed("read_file"));
+        assert!(policy.is_allowed("ripgrep"));
         assert!(!policy.is_allowed("execute_command"));
     }
 
@@ -414,7 +414,7 @@ mod tests {
         let policy = resolve_effective_policy(&cfg, &ctx);
         assert!(!policy.is_allowed("execute_command"));
         assert!(!policy.is_allowed("browser"));
-        assert!(policy.is_allowed("web_search"));
+        assert!(policy.is_allowed("read_file"));
 
         // Trusted sender — execute_command allowed via by_sender override.
         let ctx_trusted = PolicyContext {
@@ -427,14 +427,14 @@ mod tests {
         assert!(!policy_trusted.is_allowed("execute_command"));
         assert!(!policy_trusted.is_allowed("browser"));
         // But a new allow pattern from sender layer works for non-denied tools.
-        assert!(policy_trusted.is_allowed("web_search"));
+        assert!(policy_trusted.is_allowed("read_file"));
     }
 
     #[test]
     fn test_resolve_channel_group_sender_override_allow() {
         let mut cfg = chelix_config::ChelixConfig::default();
-        // Restrict global to web_search only.
-        cfg.tools.policy.allow = vec!["web_search".into()];
+        // Restrict global to read_file only.
+        cfg.tools.policy.allow = vec!["read_file".into()];
 
         let account_config = serde_json::json!({
             "tools": {
@@ -463,7 +463,7 @@ mod tests {
         let policy = resolve_effective_policy(&cfg, &ctx);
         assert!(policy.is_allowed("execute_command"));
         assert!(policy.is_allowed("browser"));
-        assert!(policy.is_allowed("web_search"));
+        assert!(policy.is_allowed("read_file"));
     }
 
     #[test]
@@ -517,7 +517,7 @@ mod tests {
         let policy_sandboxed = resolve_effective_policy(&cfg, &ctx);
         assert!(policy_sandboxed.is_allowed("execute_command"));
         assert!(!policy_sandboxed.is_allowed("browser")); // Denied by sandbox layer.
-        assert!(!policy_sandboxed.is_allowed("web_search")); // Not in sandbox allow list.
+        assert!(!policy_sandboxed.is_allowed("read_file")); // Not in sandbox allow list.
     }
 
     #[test]
@@ -538,7 +538,7 @@ mod tests {
         let policy = resolve_effective_policy(&cfg, &ctx);
         // Regular tools still allowed.
         assert!(policy.is_allowed("execute_command"));
-        assert!(policy.is_allowed("web_search"));
+        assert!(policy.is_allowed("read_file"));
         // MCP tools from allowed servers still work.
         assert!(policy.is_allowed("mcp__github__list_repos"));
         // MCP tools from denied server are blocked.
@@ -628,7 +628,7 @@ mod tests {
     #[test]
     fn test_profile_expanded_in_sender_and_provider_layers() {
         let mut cfg = chelix_config::ChelixConfig::default();
-        cfg.tools.policy.allow = vec!["web_search".into()];
+        cfg.tools.policy.allow = vec!["read_file".into()];
 
         // Layer 2: provider with profile = "full"
         cfg.providers
@@ -650,11 +650,11 @@ mod tests {
         let policy = resolve_effective_policy(&cfg, &ctx);
         // "full" profile expands to allow = ["*"], so execute_command is now allowed.
         assert!(policy.is_allowed("execute_command"));
-        assert!(policy.is_allowed("web_search"));
+        assert!(policy.is_allowed("read_file"));
 
         // Layer 5: sender with profile = "full" in a restricted group.
         let mut cfg2 = chelix_config::ChelixConfig::default();
-        cfg2.tools.policy.allow = vec!["web_search".into()];
+        cfg2.tools.policy.allow = vec!["read_file".into()];
         let account_config = serde_json::json!({
             "tools": {
                 "groups": {

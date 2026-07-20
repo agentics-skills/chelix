@@ -22,9 +22,8 @@ fn gh770_env_section_vars_resolve_in_config_placeholders() {
 [env]
 MY_API_KEY = "{expected}"
 
-[tools.web.search.perplexity]
+[tools.web.firecrawl]
 api_key = "${{MY_API_KEY}}"
-model = "sonar"
 "#
         ),
     )
@@ -34,8 +33,7 @@ model = "sonar"
     let api_key = config
         .tools
         .web
-        .search
-        .perplexity
+        .firecrawl
         .api_key
         .as_ref()
         .expect("api_key should be set");
@@ -78,9 +76,8 @@ fn gh770_resubstitute_config_resolves_db_env_vars() {
         &path,
         format!(
             r#"
-[tools.web.search.perplexity]
+[tools.web.firecrawl]
 api_key = "${{{var}}}"
-model = "sonar"
 "#
         ),
     )
@@ -91,8 +88,7 @@ model = "sonar"
     let key_before = config
         .tools
         .web
-        .search
-        .perplexity
+        .firecrawl
         .api_key
         .as_ref()
         .expect("api_key should be set");
@@ -109,8 +105,7 @@ model = "sonar"
     let key_after = config
         .tools
         .web
-        .search
-        .perplexity
+        .firecrawl
         .api_key
         .as_ref()
         .expect("api_key should be set");
@@ -135,9 +130,8 @@ fn gh770_resubstitute_preserves_resolved_values() {
 [identity]
 name = "Rex"
 
-[tools.web.search.perplexity]
+[tools.web.firecrawl]
 api_key = "${{{var}}}"
-model = "sonar"
 "#
         ),
     )
@@ -159,8 +153,7 @@ model = "sonar"
     let key = config
         .tools
         .web
-        .search
-        .perplexity
+        .firecrawl
         .api_key
         .as_ref()
         .expect("api_key");
@@ -181,9 +174,8 @@ fn gh770_resubstitute_handles_special_chars_in_values() {
         &path,
         format!(
             r#"
-[tools.web.search.perplexity]
+[tools.web.firecrawl]
 api_key = "${{{var}}}"
-model = "sonar"
 "#
         ),
     )
@@ -201,8 +193,7 @@ model = "sonar"
     let key = config
         .tools
         .web
-        .search
-        .perplexity
+        .firecrawl
         .api_key
         .as_ref()
         .expect("api_key should be set");

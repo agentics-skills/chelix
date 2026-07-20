@@ -115,7 +115,6 @@ full = [
   "tls",
   "vault",
   "voice",
-  "wasm",
   "web-ui",
   "whatsapp",
 ]
@@ -125,7 +124,6 @@ code-index-builtin = ["chelix-gateway/code-index-builtin"]
 code-splitter      = ["chelix-memory/code-splitter"]
 discord            = ["chelix-httpd/discord"]
 embedded-assets    = ["chelix-web?/embedded-assets"]
-embedded-wasm      = ["chelix-tools/embedded-wasm"]
 file-watcher       = ["chelix-gateway/file-watcher"]
 firecrawl          = ["chelix-gateway/firecrawl"]
 fs-tools           = ["chelix-gateway/fs-tools"]
@@ -168,7 +166,6 @@ telephony             = ["chelix-httpd/telephony"]
 tls                   = ["chelix-httpd/tls"]
 vault                 = ["chelix-httpd/vault", "chelix-web?/vault"]
 voice                 = ["chelix-gateway/voice", "chelix-web?/voice"]
-wasm                  = ["chelix-tools/wasm"]
 web-ui                = ["chelix-httpd/web-ui", "dep:chelix-web"]
 whatsapp              = ["chelix-gateway/whatsapp"]
 

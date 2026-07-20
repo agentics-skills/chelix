@@ -52,10 +52,6 @@ RUN ARCH=$(uname -m) && \
     chmod +x "$TW" && \
     TAILWINDCSS="./$TW" ./scripts/build-web-assets.sh
 
-# Install WASM target and build WASM components (embedded via include_bytes!)
-RUN rustup target add wasm32-wasip2 && \
-    cargo build --target wasm32-wasip2 -p chelix-wasm-calc -p chelix-wasm-web-fetch -p chelix-wasm-web-search --release
-
 # Build release binary with the same portable production feature set used by
 # release/package builds.
 ARG CHELIX_VERSION
@@ -115,9 +111,6 @@ COPY --from=builder /build/target/release/chelix /usr/local/bin/chelix
 COPY --from=builder /build/target/release/chelix-tools-service /usr/local/bin/chelix-tools-service
 COPY --from=builder /build/target/release/chelix-embedding-service /usr/local/bin/chelix-embedding-service
 COPY --from=builder /build/crates/web/src/assets /usr/share/chelix/web
-COPY --from=builder /build/target/wasm32-wasip2/release/chelix_wasm_calc.wasm /usr/share/chelix/wasm/
-COPY --from=builder /build/target/wasm32-wasip2/release/chelix_wasm_web_fetch.wasm /usr/share/chelix/wasm/
-COPY --from=builder /build/target/wasm32-wasip2/release/chelix_wasm_web_search.wasm /usr/share/chelix/wasm/
 
 # Create config and data directories
 RUN mkdir -p /home/chelix/.config/chelix /home/chelix/.chelix /home/chelix/.npm && \

@@ -799,10 +799,10 @@ This is quoted code, not an action."#;
 
     #[test]
     fn parse_bare_json_with_trailing_comma() {
-        let text = r#"{"tool": "calc", "arguments": {"expression": "2+2",}}"#;
+        let text = r#"{"tool": "read_file", "arguments": {"path": "README.md",}}"#;
         let (calls, _) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "calc");
+        assert_eq!(calls[0].name, "read_file");
     }
 
     #[test]
@@ -910,12 +910,12 @@ Done."#;
 
     #[test]
     fn parse_invoke_multiple_args() {
-        let text = r#"<invoke name="web_fetch"><arg name="url">https://example.com</arg><arg name="method">GET</arg></invoke>"#;
+        let text = r#"<invoke name="browser"><arg name="action">navigate</arg><arg name="url">https://example.com</arg></invoke>"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "web_fetch");
+        assert_eq!(calls[0].name, "browser");
+        assert_eq!(calls[0].arguments["action"], "navigate");
         assert_eq!(calls[0].arguments["url"], "https://example.com");
-        assert_eq!(calls[0].arguments["method"], "GET");
         assert!(
             remaining.is_none() || remaining.as_deref() == Some(""),
             "remaining: {remaining:?}"
@@ -1076,11 +1076,11 @@ Step 2:
     #[test]
     fn multiple_invoke_blocks() {
         let text = r#"<invoke name="execute_command"><arg name="command">ls</arg></invoke>
-<invoke name="web_search"><arg name="query">rust</arg></invoke>"#;
+    <invoke name="read_file"><arg name="path">README.md</arg></invoke>"#;
         let (calls, _) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[0].name, "execute_command");
-        assert_eq!(calls[1].name, "web_search");
+        assert_eq!(calls[1].name, "read_file");
     }
 
     // ── looks_like_failed_tool_call: no false positives ──────────────
@@ -1131,11 +1131,11 @@ Done."#;
 
     #[test]
     fn parse_zhipu_block_single_arg() {
-        let text = r#"<tool_call>web_search<arg_key>query</arg_key><arg_value>rust lifetimes</arg_value></tool_call>"#;
+        let text = r#"<tool_call>ripgrep<arg_key>pattern</arg_key><arg_value>SandboxBackend</arg_value></tool_call>"#;
         let (calls, remaining) = parse_tool_calls_from_text(text);
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "web_search");
-        assert_eq!(calls[0].arguments["query"], "rust lifetimes");
+        assert_eq!(calls[0].name, "ripgrep");
+        assert_eq!(calls[0].arguments["pattern"], "SandboxBackend");
         assert!(
             remaining.is_none() || remaining.as_deref() == Some(""),
             "remaining: {remaining:?}"

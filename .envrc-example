@@ -24,8 +24,6 @@ export DEEPGRAM_API_KEY=""
 # export CHELIX_VOICE__STT__PROVIDER="deepgram"   # default is "whisper" (local)
 
 # ── Web search ───────────────────────────────────────────────────
-export BRAVE_API_KEY=""
-# export PERPLEXITY_API_KEY=""                     # alternative search
 
 # ── Restrict offered providers (optional) ────────────────────────
 # export CHELIX_PROVIDERS__OFFERED='["anthropic","openai","gemini"]'

@@ -21,9 +21,8 @@ use crate::error::Error;
 
 /// Browser automation tool for interacting with web pages.
 ///
-/// Unlike `web_fetch` which just retrieves page content, this tool allows
-/// full browser interaction: clicking buttons, filling forms, taking
-/// screenshots, and executing JavaScript.
+/// Supports clicking buttons, filling forms, taking screenshots, and
+/// executing JavaScript.
 ///
 /// This tool automatically tracks and reuses browser session IDs. When
 /// the LLM doesn't provide a session_id (or provides empty string), the

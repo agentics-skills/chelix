@@ -570,13 +570,7 @@ function backendRecommendation(info: SandboxGonInfo | null): { level: string; te
 	if (os === "linux" && backend === "docker") {
 		return {
 			level: "info",
-			text: "Docker provides filesystem-isolated execution. Podman and the WASM backend are also supported.",
-		};
-	}
-	if (backend === "wasm") {
-		return {
-			level: "info",
-			text: "Using WASM sandbox with filesystem isolation. For container-level isolation, install Docker or Apple Container.",
+			text: "Docker provides filesystem-isolated execution. Podman is also supported.",
 		};
 	}
 

@@ -528,7 +528,7 @@ async fn test_null_optional_array_params_are_treated_as_absent() {
     let spawn_tool = SpawnAgentTool::new(
         make_empty_provider_registry(),
         provider,
-        registry_with_tools(&["spawn_agent", "execute_command", "web_fetch", "task_list"]),
+        registry_with_tools(&["spawn_agent", "execute_command", "read_file", "task_list"]),
     );
 
     let params = serde_json::json!({
@@ -546,8 +546,8 @@ async fn test_null_optional_array_params_are_treated_as_absent() {
     seen.sort();
     assert_eq!(seen, vec![
         "execute_command".to_string(),
+        "read_file".to_string(),
         "task_list".to_string(),
-        "web_fetch".to_string(),
     ]);
 }
 
@@ -571,7 +571,7 @@ async fn test_build_sub_tools_applies_allow_and_deny() {
     let spawn_tool = SpawnAgentTool::new(
         make_empty_provider_registry(),
         provider,
-        registry_with_tools(&["spawn_agent", "execute_command", "web_fetch", "task_list"]),
+        registry_with_tools(&["spawn_agent", "execute_command", "read_file", "task_list"]),
     );
 
     let filtered = spawn_tool.build_sub_tools(
@@ -586,7 +586,7 @@ async fn test_build_sub_tools_applies_allow_and_deny() {
     assert!(filtered.get("execute_command").is_some());
     assert!(filtered.get("task_list").is_none());
     assert!(filtered.get("spawn_agent").is_none());
-    assert!(filtered.get("web_fetch").is_none());
+    assert!(filtered.get("read_file").is_none());
 }
 
 #[tokio::test]

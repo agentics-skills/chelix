@@ -472,24 +472,6 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         }
     }
 
-    // Firecrawl as search provider requires an API key.  We cannot check
-    // the FIRECRAWL_API_KEY env var here (static validation), so only emit
-    // an Info-level hint when neither config path supplies a key.
-    if config.tools.web.search.provider == crate::schema::SearchProvider::Firecrawl
-        && config.tools.web.firecrawl.api_key.is_none()
-        && config.tools.web.search.api_key.is_none()
-        && !config.tools.web.search.duckduckgo_fallback
-    {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Info,
-            category: "unknown-provider",
-            path: "tools.web.search.provider".into(),
-            message: "search provider is 'firecrawl' but no API key found in config \
-                      (may be supplied at runtime via FIRECRAWL_API_KEY env var)"
-                .into(),
-        });
-    }
-
     // agents.default_preset should reference an existing preset key.
     if let Some(default_preset) = config.agents.default_preset.as_deref()
         && !config.agents.presets.contains_key(default_preset)
@@ -550,28 +532,6 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
 
     // agents.presets.*.reasoning_effort is provider-defined. Runtime validates
     // it against the selected model's resolved reasoning.supported_efforts.
-
-    // SSRF allowlist CIDR validation
-    for (idx, entry) in config.tools.web.fetch.ssrf_allowlist.iter().enumerate() {
-        if entry.parse::<ipnet::IpNet>().is_err() {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Error,
-                category: "security",
-                path: format!("tools.web.fetch.ssrf_allowlist[{idx}]"),
-                message: format!(
-                    "\"{entry}\" is not a valid CIDR range (expected e.g. \"172.22.0.0/16\")"
-                ),
-            });
-        }
-    }
-    if !config.tools.web.fetch.ssrf_allowlist.is_empty() {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "security",
-            path: "tools.web.fetch.ssrf_allowlist".into(),
-            message: "ssrf_allowlist is set — SSRF protection is relaxed for the listed ranges. Ensure these are trusted networks.".into(),
-        });
-    }
 
     // Unknown tool_mode values on provider entries
     // Note: serde rejects truly invalid values at deserialization, but if a

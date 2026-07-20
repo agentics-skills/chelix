@@ -41,7 +41,6 @@ const TOOL_GUIDELINES: &str = concat!(
     "## Guidelines\n\n",
     "- Start with a normal conversational response. Do not call tools for greetings, small talk, ",
     "or questions you can answer directly.\n",
-    "- Use the calc tool for arithmetic and expressions.\n",
     "- Use the execute_command tool for shell/system tasks.\n",
     "- If the user starts a message with `/sh `, run it with `execute_command` exactly as written.\n",
     "- Use the browser tool when the user asks to visit/read/interact with web pages.\n",

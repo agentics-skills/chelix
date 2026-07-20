@@ -602,10 +602,6 @@ export function toolCallSummary(
 	switch (name) {
 		case "execute_command":
 			return summarizeCommandTool(args);
-		case "web_fetch":
-			return `web_fetch ${args.url || ""}`.trim();
-		case "web_search":
-			return `web_search "${args.query || ""}"`;
 		case "browser":
 			return summarizeBrowserTool(args, executionMode);
 		default:

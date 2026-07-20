@@ -1143,7 +1143,6 @@ pub async fn prepare_gateway_core(
         services,
         session_mutations,
         registry,
-        runtime_env_overrides,
         provider_summary,
         mcp_configured_count,
         model_store,

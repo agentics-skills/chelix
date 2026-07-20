@@ -16,8 +16,6 @@ use {async_trait::async_trait, tracing::debug};
 
 #[cfg(target_os = "macos")]
 use super::apple::{AppleContainerSandbox, ensure_apple_container_service};
-#[cfg(feature = "wasm")]
-use super::wasm::WasmSandbox;
 use {
     super::{
         containers::{is_cli_available, is_docker_daemon_available, should_use_docker_backend},
@@ -97,7 +95,7 @@ impl FailoverSandbox {
             SandboxBackendId::AppleContainer => is_apple_container_corruption_error(&message),
             SandboxBackendId::Docker => is_docker_failover_error(&message),
             SandboxBackendId::Podman => is_podman_failover_error(&message),
-            SandboxBackendId::Wasm | SandboxBackendId::None => false,
+            SandboxBackendId::None => false,
         }
     }
 }
@@ -400,7 +398,6 @@ fn select_backend_with_global_image(
             )))
         },
         SandboxBackend::AppleContainer => create_apple_backend(config, effective_image),
-        SandboxBackend::Wasm => create_wasm_backend(config),
     }
 }
 
@@ -428,25 +425,6 @@ fn create_apple_backend(
     Err(Error::message(
         "Apple Container sandbox is only available on macOS",
     ))
-}
-
-/// Create a WASM sandbox backend and fail closed when unavailable.
-fn create_wasm_backend(config: SandboxConfig) -> Result<Arc<dyn Sandbox>> {
-    #[cfg(feature = "wasm")]
-    {
-        let sandbox = WasmSandbox::new(config).map_err(|error| {
-            Error::message(format!("failed to initialize WASM sandbox: {error}"))
-        })?;
-        tracing::info!("sandbox backend: wasm (WASI-isolated execution)");
-        Ok(Arc::new(sandbox))
-    }
-    #[cfg(not(feature = "wasm"))]
-    {
-        let _ = config;
-        Err(Error::message(
-            "WASM sandbox requested but the wasm feature is not compiled in",
-        ))
-    }
 }
 
 /// Wrap a primary sandbox backend with a failover chain.
@@ -570,7 +548,7 @@ fn auto_detect_backend_with_global_image(
     }
 
     Err(Error::message(
-        "sandbox mode is On, but no isolated runtime is available; install or start Apple Container, Podman, or Docker, or configure the WASM backend",
+        "sandbox mode is On, but no isolated runtime is available; install or start Apple Container, Podman, or Docker",
     ))
 }
 

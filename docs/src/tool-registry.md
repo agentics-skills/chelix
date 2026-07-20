@@ -8,7 +8,7 @@ source.
 
 Every registered tool has a `ToolSource` that identifies its origin:
 
-- **`Builtin`** — tools shipped with the binary (`execute_command`, `web_fetch`,
+- **`Builtin`** — tools shipped with the binary (`execute_command`, `read_file`,
   etc.)
 - **`Mcp { server }`** — tools provided by an MCP server, tagged with the server
   name
@@ -136,10 +136,9 @@ The result mirrors the limits, a summary (`filesWithMatches`, `matchCount`,
 
 The registry exposes two independent surfaces:
 
-- **`list_catalog()`** — every allowed **public** tool as a
+- **`list_catalog()`** — every allowed tool as a
   `{ name, description }` pair, sorted by name. It ignores lazy schema
-  visibility, so the discovery catalog is always complete. Tools whose names end
-  in `_wasm` are execution-only and never appear here.
+  visibility, so the discovery catalog is always complete.
 - **`list_schemas()`** — the full JSON parameter schemas, filtered by lazy
   visibility. This is what is sent to the provider as the API tool list (native
   mode) or embedded in the prompt (text mode).

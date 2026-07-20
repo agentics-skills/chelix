@@ -818,7 +818,7 @@ async fn test_failover_sandbox_reports_isolated_fallback() {
         Some("cannot connect to the docker daemon"),
         None,
     ));
-    let fallback = Arc::new(TestSandbox::new(SandboxBackendId::Wasm, None, None));
+    let fallback = Arc::new(TestSandbox::new(SandboxBackendId::Podman, None, None));
     let failover = FailoverSandbox::new(primary, fallback).unwrap();
 
     let id = SandboxId {
@@ -829,7 +829,7 @@ async fn test_failover_sandbox_reports_isolated_fallback() {
     assert_eq!(failover.backend_id(), SandboxBackendId::Docker);
     assert!(failover.provides_fs_isolation());
     failover.ensure_ready(&id).await.unwrap();
-    assert_eq!(failover.backend_id(), SandboxBackendId::Wasm);
+    assert_eq!(failover.backend_id(), SandboxBackendId::Podman);
     assert!(failover.provides_fs_isolation());
 }
 

@@ -252,7 +252,7 @@ default_preset = "full"
 
 [agents.presets.full]
 [agents.presets.full.tools]
-deny = ["browser", "web_fetch"]
+deny = ["browser", "execute_command"]
 "#;
     let result = validate_toml_str(toml);
     let warning = find_preset_silent_policy_warning(&result).unwrap_or_else(|| {
@@ -279,7 +279,7 @@ fn preset_tools_allow_without_main_policy_also_warns() {
     let toml = r#"
 [agents.presets.research]
 [agents.presets.research.tools]
-allow = ["web_search", "web_fetch"]
+allow = ["read_file", "ripgrep"]
 "#;
     let result = validate_toml_str(toml);
     let warning = find_preset_silent_policy_warning(&result).unwrap_or_else(|| {
@@ -313,7 +313,7 @@ deny = ["browser"]
 fn preset_tools_deny_with_main_policy_allow_does_not_warn() {
     let toml = r#"
 [tools.policy]
-allow = ["web_search"]
+allow = ["read_file"]
 
 [agents.presets.full]
 [agents.presets.full.tools]
@@ -371,7 +371,7 @@ deny = ["browser"]
 
 [agents.presets.minimal]
 [agents.presets.minimal.tools]
-allow = ["web_search"]
+allow = ["read_file"]
 "#;
     let result = validate_toml_str(toml);
     let warning = find_preset_silent_policy_warning(&result).unwrap_or_else(|| {

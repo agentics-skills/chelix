@@ -18,7 +18,7 @@ use {anyhow::Result, async_trait::async_trait, tracing::debug};
 
 use crate::tool_registry::{AgentTool, LazyVisibleTools, ToolRegistry};
 
-/// Reserved control-plane meta-tool name. A user/MCP/WASM tool may not use it.
+/// Reserved control-plane meta-tool name. A user or MCP tool may not use it.
 pub const GET_TOOL_NAME: &str = "get_tool";
 
 const GET_TOOL_DESCRIPTION: &str = concat!(
@@ -346,8 +346,8 @@ mod tests {
             "Execute a shell command",
         )));
         registry.register(Box::new(DummyTool::new(
-            "web_fetch",
-            "Fetch a URL and return its content",
+            "ripgrep",
+            "Search workspace files",
         )));
         registry.register(Box::new(DummyTool::new(
             "memory_search",
@@ -377,7 +377,7 @@ mod tests {
             GET_TOOL_NAME.to_string(),
             "memory_save".to_string(),
             "memory_search".to_string(),
-            "web_fetch".to_string(),
+            "ripgrep".to_string(),
         ]);
     }
 
@@ -421,7 +421,7 @@ mod tests {
     fn wrap_registry_lazy_rejects_reserved_get_tool_collision() {
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(DummyTool::new(GET_TOOL_NAME, "user tool")));
-        registry.register(Box::new(DummyTool::new("web_fetch", "Fetch a URL")));
+        registry.register(Box::new(DummyTool::new("ripgrep", "Search files")));
 
         let err = wrap_registry_lazy(registry).err().unwrap();
         assert!(err.to_string().contains(GET_TOOL_NAME));
@@ -432,7 +432,7 @@ mod tests {
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(DummyTool::new(GET_TOOL_NAME, "user tool")));
 
-        assert!(wrap_registry_lazy_with_visible(registry, ["web_fetch".to_string()]).is_err());
+        assert!(wrap_registry_lazy_with_visible(registry, ["ripgrep".to_string()]).is_err());
     }
 
     #[test]
@@ -449,20 +449,15 @@ mod tests {
     }
 
     #[test]
-    fn wrap_registry_lazy_with_visible_ignores_unknown_and_private_names() {
-        let mut registry = build_full_registry();
-        registry.register_wasm(
-            Box::new(DummyTool::new("web_search_wasm", "internal")),
-            [0xAB; 32],
-        );
+    fn wrap_registry_lazy_with_visible_ignores_unknown_names() {
+        let registry = build_full_registry();
         let lazy = wrap_registry_lazy_with_visible(registry, [
             "execute_command".to_string(),
             "does_not_exist".to_string(),
-            "web_search_wasm".to_string(),
         ])
         .unwrap();
 
-        // Only the real public tool (plus get_tool) becomes schema-visible.
+        // Only the existing tool (plus get_tool) becomes schema-visible.
         assert_eq!(lazy.list_names(), vec![
             "execute_command".to_string(),
             GET_TOOL_NAME.to_string()

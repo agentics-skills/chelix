@@ -90,11 +90,11 @@ Agent presets (used by `spawn_agent`) can restrict their sub-agent's tools.
 ```toml
 [agents.presets.researcher]
 model = "anthropic/claude-haiku-3-5-20241022"
-tools.allow = ["read_file", "glob", "grep", "web_search", "web_fetch"]
+tools.allow = ["read_file", "glob", "grep", "ripgrep"]
 tools.deny  = ["execute_command", "write_file"]
 ```
 
-When the `researcher` preset is active, only the five listed tools are allowed,
+When the `researcher` preset is active, only the four listed tools are allowed,
 and `execute_command`/`write_file` are explicitly denied. See
 [Agent Presets](agent-presets.md) for the full preset reference.
 
@@ -142,7 +142,7 @@ list at the group level and widen it per-sender:
 
 ```toml
 [channels.telegram.my-bot.tools.groups.group]
-allow = ["web_search", "web_fetch", "memory_search"]
+allow = ["read_file", "ripgrep", "memory_search"]
 
 [channels.telegram.my-bot.tools.groups.group.by_sender."123456"]
 allow = ["*"]
@@ -192,13 +192,13 @@ Private chats are unaffected.
 
 ```toml
 [channels.telegram.my-bot.tools.groups.group]
-allow = ["web_search", "web_fetch"]
+allow = ["read_file", "ripgrep"]
 
 [channels.telegram.my-bot.tools.groups.group.by_sender."123456"]
 allow = ["*"]
 ```
 
-Normal group members can only search and fetch. Sender `123456` can use every
+Normal group members can only read and search files. Sender `123456` can use every
 tool (nothing was denied at the group layer, so nothing accumulates).
 
 ### Agent preset with limited tools
@@ -218,20 +218,20 @@ through.
 ```toml
 [tools.policy]
 profile = "coding"
-deny = ["web_fetch"]
+deny = ["send_message"]
 ```
 
 The `coding` profile expands to
-`allow = ["execute_command", "browser", "memory"]`. Then `web_fetch` is denied.
+`allow = ["execute_command", "browser", "memory"]`. Then `send_message` is denied.
 The effective policy allows `execute_command`, `browser`, and `memory`, and
-denies `web_fetch`. All other tools are not in the allow list and are therefore
+denies `send_message`. All other tools are not in the allow list and are therefore
 blocked.
 
 ### Widen a sender via profile
 
 ```toml
 [channels.telegram.my-bot.tools.groups.group]
-allow = ["web_search"]
+allow = ["read_file"]
 
 [channels.telegram.my-bot.tools.groups.group.by_sender."123456"]
 profile = "full"

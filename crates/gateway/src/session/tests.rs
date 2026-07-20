@@ -425,15 +425,15 @@ mod tests {
 
     #[test]
     fn redact_share_secret_values_masks_env_vars_and_api_tokens() {
-        let input = "OPENAI_API_KEY=sk-openai BRAVE_API_KEY=brave-secret Authorization: Bearer bearer-secret https://api.example.com/search?q=test&api_key=url-secret";
+        let input = "OPENAI_API_KEY=sk-openai FIRECRAWL_API_KEY=firecrawl-secret Authorization: Bearer bearer-secret https://api.example.com/search?q=test&api_key=url-secret";
         let redacted = redact_share_secret_values(input);
 
         assert!(!redacted.contains("sk-openai"));
-        assert!(!redacted.contains("brave-secret"));
+        assert!(!redacted.contains("firecrawl-secret"));
         assert!(!redacted.contains("bearer-secret"));
         assert!(!redacted.contains("url-secret"));
         assert!(redacted.contains("OPENAI_API_KEY=[REDACTED]"));
-        assert!(redacted.contains("BRAVE_API_KEY=[REDACTED]"));
+        assert!(redacted.contains("FIRECRAWL_API_KEY=[REDACTED]"));
         assert!(redacted.contains("Bearer [REDACTED]"));
     }
 

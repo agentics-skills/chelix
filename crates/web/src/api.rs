@@ -902,14 +902,6 @@ fn available_sandbox_backends() -> Vec<AvailableSandboxBackend> {
         });
     }
 
-    if chelix_tools::sandbox::is_wasm_sandbox_available() {
-        backends.push(AvailableSandboxBackend {
-            id: chelix_config::schema::SandboxBackend::Wasm,
-            label: "WASM",
-            kind: "local",
-        });
-    }
-
     backends
 }
 
