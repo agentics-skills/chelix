@@ -8,6 +8,31 @@ alwaysApply: true
 Chelix engineering guide for Rust architecture, testing, security, and release workflows.
 All code must have tests with high coverage. Always check for security.
 
+## Core Development Rules
+
+**All new functionality must be implemented simply, without hidden errors or fallbacks, in an architecturally correct manner, without legacy code, backward compatibility, or any form of "architectural garbage."**
+
+**Hidden defaults are forbidden for any errors. All errors must be explicitly propagated to logs and must result in a refusal to provide service so that the problem can be detected and fixed as quickly as possible, without hidden scenarios.**
+
+**All refactorings require removing previously created Claude garbage in the form of fallbacks within the affected scope and bringing the codebase up to the correct standard.**
+
+**Examples of correct service behavior:**
+
+- **An environment variable with an invalid value is passed at service startup — refuse to load without silently applying a default value.**
+- **The sandbox type is set to Docker, but its socket is unavailable — refuse service.**
+- **A sandbox image cannot be built while the sandbox is enabled in the service configuration — refuse service.**
+- **A user edits an agent configuration through the UI and the configuration becomes invalid — show an error in the UI without overwriting the old agent configuration.**
+- **An unknown or obsolete parameter is specified in the configuration — refuse to load the service.**
+- **A request to an LLM provider API fails because the supplied parameters are incompatible — report the error in the UI and logs without hidden use of anything other than what was explicitly specified in the request.**
+- **A token counter is used inside the agent loop and its indicator is shown in the UI — the UI must receive the real counter values from the backend directly from the point where they are counted or applied, without fake duplication, guessing, or transformation.**
+- **A request to an LLM provider API uses a specific model and reasoning level — exactly those values must be displayed in the UI request history, taken directly from the request rather than from defaults, invented values, or separately duplicated intermediate entities.**
+- **An MCP server explicitly listed among an agent's tools fails to start — the agent loop must not start and must explicitly state why the configured agent tools cannot be made operational.**
+
+**Allowed:**
+
+- **Retrying external interactions, such as network requests or external commands, a controlled number of times, with every retry explicitly recorded in logs and the fact of the retries propagated to the UI.**
+- **Pre-approved data migrations when there is an explicit business need. An extra unknown configuration parameter must never create migration garbage — it must unambiguously cause refusal.**
+
 ## Cargo Features
 
 Enable new feature flags **by default** in `crates/cli/Cargo.toml` (opt-out, not opt-in):
