@@ -38,6 +38,13 @@ interface InstancesResponse {
 
 interface CreateTerminalResponse {
 	terminal?: ToolsServiceTerminalInfo;
+	instanceId?: string;
+	error?: string;
+}
+
+interface SessionTerminalsResponse {
+	instanceId?: string;
+	terminals?: ToolsServiceTerminalInfo[];
 	error?: string;
 }
 
@@ -103,6 +110,7 @@ interface TerminalRuntime {
 }
 
 interface TerminalViewProps {
+	compact: boolean;
 	instances: Signal<ToolsServiceInstanceInfo[]>;
 	selectedInstanceId: Signal<string>;
 	selectedSessionId: Signal<string>;
@@ -119,6 +127,11 @@ interface TerminalViewProps {
 	onSelectTerminal: (terminalId: string) => void;
 	onControl: (action: "ctrl_c" | "clear" | "restart") => void;
 	terminalElementRef: (element: HTMLDivElement | null) => void;
+}
+
+interface TerminalPageProps {
+	compact?: boolean;
+	sessionKey?: string;
 }
 
 let terminalContainer: HTMLElement | null = null;
@@ -284,6 +297,10 @@ function terminalLabel(terminal: ToolsServiceTerminalInfo): string {
 	return `${terminal.kind} · ${terminal.id} · ${state}`;
 }
 
+function terminalShortId(terminal: ToolsServiceTerminalInfo): string {
+	return terminal.id;
+}
+
 function terminalSessionId(instanceId: string, sessionKey: string): string {
 	return `${encodeURIComponent(instanceId)}:${encodeURIComponent(sessionKey)}`;
 }
@@ -316,6 +333,52 @@ function TerminalView(props: TerminalViewProps): VNode {
 		props.instances.value.find((instance) => instance.id === props.selectedInstanceId.value) ?? null;
 	const selectedTerminal =
 		selectedSession?.terminals.find((terminal) => terminal.id === props.selectedTerminalId.value) ?? null;
+	if (props.compact) {
+		return (
+			<div className="terminal-page chat-terminal-page">
+				<div className="terminal-tabs-bar chat-terminal-tabs-bar">
+					<div className="terminal-tabs chat-terminal-tabs" aria-label="Chat terminals">
+						{selectedSession?.terminals.map((terminal) => {
+							const state = terminal.running ? "running" : "idle";
+							return (
+								<button
+									key={`${terminal.kind}:${terminal.id}`}
+									type="button"
+									className={`terminal-tab chat-terminal-tab ${terminal.id === props.selectedTerminalId.value ? "active" : ""}`}
+									title={`Terminal ${terminalShortId(terminal)} · ${state}`}
+									aria-label={`Terminal ${terminalShortId(terminal)}, ${state}`}
+									onClick={() => {
+										props.onSelectTerminal(terminal.id);
+									}}
+								>
+									<span>{terminalShortId(terminal)}</span>
+									<span className={`chat-terminal-state chat-terminal-state-${state}`} aria-hidden="true" />
+								</button>
+							);
+						})}
+						<button
+							type="button"
+							className="terminal-tab chat-terminal-new-tab"
+							title="New terminal tab"
+							aria-label="New terminal tab"
+							disabled={props.creating.value || props.loading.value}
+							onClick={props.onCreate}
+						>
+							+
+						</button>
+					</div>
+				</div>
+				<div className="terminal-output-wrap chat-terminal-output-wrap">
+					<div ref={props.terminalElementRef} className="terminal-output chat-terminal-output" aria-label="Chat terminal output" />
+				</div>
+				{props.statusLevel.value === "error" ? (
+					<div className="terminal-status terminal-status-error chat-terminal-status" role="alert">
+						{props.status.value}
+					</div>
+				) : null}
+			</div>
+		);
+	}
 
 	return (
 		<div className="terminal-page">
@@ -444,12 +507,12 @@ function TerminalView(props: TerminalViewProps): VNode {
 	);
 }
 
-function TerminalPage(): VNode {
+function TerminalPage({ compact = false, sessionKey: fixedSessionKey }: TerminalPageProps): VNode {
 	const instances = useSignal<ToolsServiceInstanceInfo[]>([]);
 	const selectedInstanceId = useSignal("");
 	const selectedSessionId = useSignal("");
 	const selectedTerminalId = useSignal("");
-	const sessionKey = useSignal("");
+	const sessionKey = useSignal(fixedSessionKey ?? "");
 	const status = useSignal("Loading tools service terminal inventory…");
 	const statusLevel = useSignal<"" | "ok" | "error">("");
 	const connected = useSignal(false);
@@ -495,10 +558,32 @@ function TerminalPage(): VNode {
 	async function refreshInventory(): Promise<void> {
 		loading.value = true;
 		try {
-			const response = await fetch("/api/terminal/instances", { headers: { Accept: "application/json" } });
-			const payload = await readJson<InstancesResponse>(response);
-			if (!response.ok) throw new Error(localizedApiErrorMessage(payload as never, "Failed to load terminals"));
-			const nextInstances = Array.isArray(payload.instances) ? payload.instances : [];
+			const response = await fetch(
+				compact
+					? `/api/terminal/terminals?${new URLSearchParams({ sessionKey: sessionKey.value }).toString()}`
+					: "/api/terminal/instances",
+				{ headers: { Accept: "application/json" } },
+			);
+			let nextInstances: ToolsServiceInstanceInfo[];
+			if (compact) {
+				const payload = await readJson<SessionTerminalsResponse>(response);
+				if (!response.ok)
+					throw new Error(localizedApiErrorMessage(payload as never, "Failed to load terminals"));
+				nextInstances = payload.instanceId
+					? [
+							{
+								id: payload.instanceId,
+								label: "",
+								terminals: Array.isArray(payload.terminals) ? payload.terminals : [],
+							},
+						]
+					: [];
+			} else {
+				const payload = await readJson<InstancesResponse>(response);
+				if (!response.ok)
+					throw new Error(localizedApiErrorMessage(payload as never, "Failed to load terminals"));
+				nextInstances = Array.isArray(payload.instances) ? payload.instances : [];
+			}
 			instances.value = nextInstances;
 			const sessions = terminalSessions(nextInstances);
 			let currentSession = sessions.find((session) => session.id === selectedSessionId.value) ?? null;
@@ -516,8 +601,12 @@ function TerminalPage(): VNode {
 				selectedTerminalId.value = currentSession?.terminals[0]?.id ?? "";
 				connected.value = false;
 			}
-			status.value = nextInstances.length === 0 ? "No active tools service instances are registered." : "Inventory refreshed.";
-			statusLevel.value = nextInstances.length === 0 ? "error" : "ok";
+			status.value = compact
+				? ""
+				: nextInstances.length === 0
+					? "No active tools service instances are registered."
+					: "Inventory refreshed.";
+			statusLevel.value = compact ? "" : nextInstances.length === 0 ? "error" : "ok";
 			if (selectedTerminalId.value) connect();
 		} catch (error) {
 			closeTerminalSocket();
@@ -535,11 +624,13 @@ function TerminalPage(): VNode {
 
 	async function createTerminal(): Promise<void> {
 		const explicitSessionKey = sessionKey.value.trim();
-		if (!(selectedInstanceId.value && explicitSessionKey)) return;
+		if (!(explicitSessionKey && (compact || selectedInstanceId.value))) return;
 		creating.value = true;
 		try {
 			const response = await fetch(
-				`/api/terminal/instances/${encodeURIComponent(selectedInstanceId.value)}/terminals`,
+				compact
+					? "/api/terminal/terminals"
+					: `/api/terminal/instances/${encodeURIComponent(selectedInstanceId.value)}/terminals`,
 				{
 					method: "POST",
 					headers: { Accept: "application/json", "Content-Type": "application/json" },
@@ -550,6 +641,7 @@ function TerminalPage(): VNode {
 			if (!response.ok || !payload.terminal)
 				throw new Error(localizedApiErrorMessage(payload as never, "Failed to create terminal"));
 			await refreshInventory();
+			if (payload.instanceId) selectedInstanceId.value = payload.instanceId;
 			selectedSessionId.value = terminalSessionId(selectedInstanceId.value, payload.terminal.sessionKey);
 			selectedTerminalId.value = payload.terminal.id;
 			status.value = `Created exact terminal ${payload.terminal.id}.`;
@@ -662,6 +754,7 @@ function TerminalPage(): VNode {
 
 	return (
 		<TerminalView
+			compact={compact}
 			instances={instances}
 			selectedInstanceId={selectedInstanceId}
 			selectedSessionId={selectedSessionId}
@@ -694,5 +787,16 @@ export function teardownTerminal(): void {
 		render(null, terminalContainer);
 		terminalContainer.classList.remove("flex", "min-h-0", "flex-col", "overflow-hidden", "p-0");
 	}
+	terminalContainer = null;
+}
+
+export function initChatTerminal(container: HTMLElement, sessionKey: string): void {
+	terminalContainer = container;
+	render(<TerminalPage compact sessionKey={sessionKey} />, container);
+}
+
+export function teardownChatTerminal(): void {
+	closeTerminalRuntime();
+	if (terminalContainer) render(null, terminalContainer);
 	terminalContainer = null;
 }

@@ -11,7 +11,8 @@ use {
         TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH,
         TOOLS_SERVICE_RIPGREP_PATH, TOOLS_SERVICE_TERMINAL_WS_PATH, TOOLS_SERVICE_TERMINALS_PATH,
         ToolsServiceError, ToolsServiceHealth, ToolsServiceInstanceInfo, ToolsServiceReady,
-        ToolsServiceTerminalAttachQuery, ToolsServiceTerminalKind, ToolsServiceTerminalsResponse,
+        ToolsServiceTerminalAttachQuery, ToolsServiceTerminalInfo, ToolsServiceTerminalKind,
+        ToolsServiceTerminalsResponse,
     },
     serde::{Serialize, de::DeserializeOwned},
     tokio::{
@@ -61,6 +62,20 @@ enum ManagedToolsRuntime {
     Sandbox,
     #[cfg(test)]
     Fixed(ToolsServiceEndpoint),
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionTerminals {
+    pub instance_id: String,
+    pub terminals: Vec<ToolsServiceTerminalInfo>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatedSessionTerminal {
+    pub instance_id: String,
+    pub terminal: ToolsServiceTerminalInfo,
 }
 
 impl ManagedToolsService {
@@ -125,6 +140,29 @@ impl ManagedToolsService {
             .ok_or_else(|| {
                 Error::message(format!("tools service instance not found: {instance_id}"))
             })
+    }
+
+    async fn instance_for_session(&self, session_key: &str) -> Result<ToolsServiceInstance> {
+        let (endpoint, _) = self.endpoint_for(session_key).await?;
+        let mut matches = self
+            .existing_instances()
+            .await?
+            .into_iter()
+            .filter(|instance| {
+                instance.endpoint.base_url == endpoint.base_url
+                    && instance.endpoint.token == endpoint.token
+            });
+        let instance = matches.next().ok_or_else(|| {
+            Error::message(format!(
+                "resolved tools service instance is not registered for session {session_key:?}"
+            ))
+        })?;
+        if matches.next().is_some() {
+            return Err(Error::message(format!(
+                "multiple tools service instances match session {session_key:?}"
+            )));
+        }
+        Ok(instance)
     }
 
     async fn post_tool<Request, Response>(
@@ -343,6 +381,52 @@ impl ManagedToolsService {
             });
         }
         Ok(result)
+    }
+
+    pub async fn session_terminals(&self, session_key: &str) -> Result<SessionTerminals> {
+        let instance = self.instance_for_session(session_key).await?;
+        let response = self
+            .get_tool::<ToolsServiceTerminalsResponse>(
+                &instance.endpoint,
+                TOOLS_SERVICE_TERMINALS_PATH,
+                DEFAULT_REQUEST_TIMEOUT,
+            )
+            .await?;
+        Ok(SessionTerminals {
+            instance_id: instance.id,
+            terminals: response
+                .terminals
+                .into_iter()
+                .filter(|terminal| terminal.session_key == session_key)
+                .collect(),
+        })
+    }
+
+    pub async fn create_session_terminal(
+        &self,
+        request: CreateToolsServiceTerminalRequest,
+    ) -> Result<CreatedSessionTerminal> {
+        let instance = self.instance_for_session(&request.session_key).await?;
+        let expected_session_key = request.session_key.clone();
+        let response: CreateToolsServiceTerminalResponse = self
+            .post_tool(
+                &instance.endpoint,
+                TOOLS_SERVICE_TERMINALS_PATH,
+                &request,
+                DEFAULT_REQUEST_TIMEOUT,
+            )
+            .await
+            .map_err(ToolsServiceCallError::into_error)?;
+        if response.terminal.session_key != expected_session_key {
+            return Err(Error::message(format!(
+                "tools service returned terminal for session {:?} instead of {:?}",
+                response.terminal.session_key, expected_session_key
+            )));
+        }
+        Ok(CreatedSessionTerminal {
+            instance_id: instance.id,
+            terminal: response.terminal,
+        })
     }
 
     pub async fn create_terminal(
@@ -862,6 +946,74 @@ mod tests {
         assert_eq!(created.terminal.session_id, "$9");
         assert_eq!(created.terminal.window_id, "@12");
         assert_eq!(created.terminal.pane_id, "%15");
+        call.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn session_terminal_inventory_filters_and_returns_resolved_instance() {
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("GET", TOOLS_SERVICE_TERMINALS_PATH)
+            .match_header("authorization", "Bearer terminal-token")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                r#"{"terminals":[{"kind":"execute","id":"42","sessionKey":"agent:active","sessionId":"$4","sessionName":"chelix-agent-active","windowId":"@8","windowName":"bash","paneId":"%11","running":true},{"kind":"execute","id":"43","sessionKey":"agent:other","sessionId":"$5","sessionName":"chelix-agent-other","windowId":"@9","windowName":"bash","paneId":"%12","running":false}]}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+        let service = ManagedToolsService::for_test(ToolsServiceEndpoint {
+            base_url: server.url(),
+            token: "terminal-token".into(),
+        })
+        .unwrap_or_else(|error| panic!("test service failed: {error}"));
+
+        let session = service
+            .session_terminals("agent:active")
+            .await
+            .unwrap_or_else(|error| panic!("session terminal inventory failed: {error}"));
+
+        assert_eq!(session.instance_id, "fixed");
+        assert_eq!(session.terminals.len(), 1);
+        assert_eq!(session.terminals[0].id, "42");
+        assert_eq!(session.terminals[0].window_id, "@8");
+        call.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn session_terminal_creation_uses_resolved_instance() {
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("POST", TOOLS_SERVICE_TERMINALS_PATH)
+            .match_header("authorization", "Bearer terminal-token")
+            .match_body(mockito::Matcher::Json(serde_json::json!({
+                "sessionKey": "agent:active"
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                r#"{"terminal":{"kind":"execute","id":"44","sessionKey":"agent:active","sessionId":"$9","sessionName":"chelix-agent-active","windowId":"@12","windowName":"shell","paneId":"%15","running":false}}"#,
+            )
+            .expect(1)
+            .create_async()
+            .await;
+        let service = ManagedToolsService::for_test(ToolsServiceEndpoint {
+            base_url: server.url(),
+            token: "terminal-token".into(),
+        })
+        .unwrap_or_else(|error| panic!("test service failed: {error}"));
+
+        let created = service
+            .create_session_terminal(CreateToolsServiceTerminalRequest {
+                session_key: "agent:active".into(),
+            })
+            .await
+            .unwrap_or_else(|error| panic!("session terminal creation failed: {error}"));
+
+        assert_eq!(created.instance_id, "fixed");
+        assert_eq!(created.terminal.id, "44");
+        assert_eq!(created.terminal.session_key, "agent:active");
         call.assert_async().await;
     }
 

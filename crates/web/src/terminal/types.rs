@@ -6,6 +6,12 @@ pub(crate) const TERMINAL_REQUEST_FAILED: &str = "TERMINAL_REQUEST_FAILED";
 
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TerminalSessionQuery {
+    pub(crate) session_key: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TerminalWsQuery {
     pub(crate) instance_id: String,
     pub(crate) kind: ToolsServiceTerminalKind,

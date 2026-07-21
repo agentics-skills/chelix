@@ -584,6 +584,25 @@ html {
     min-height: 220px;
   }
 
+  .chat-terminal-modal {
+    width: 99vw;
+    max-width: 99vw;
+    height: 94vh;
+    max-height: 94vh;
+  }
+
+  .chat-terminal-output-wrap {
+    padding: 2px;
+  }
+
+  .chat-terminal-output {
+    min-height: 0;
+  }
+
+  .chat-terminal-tabs-bar {
+    padding: 2px 2px 0;
+  }
+
   .terminal-hint {
     padding: 0 12px 12px;
   }

@@ -643,6 +643,101 @@
   padding: 3px 9px;
 }
 
+/* ── Chat Terminal Modal ── */
+
+.chat-terminal-modal {
+  width: min(1200px, 98vw);
+  max-width: 98vw;
+  height: min(860px, 92vh);
+  max-height: 92vh;
+}
+
+.chat-terminal-modal-header {
+  min-height: 0;
+  padding: 4px 6px;
+}
+
+.chat-terminal-modal-body {
+  min-height: 0;
+  flex: 1;
+  padding: 0;
+  overflow: hidden;
+}
+
+.chat-terminal-mount {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+}
+
+.chat-terminal-page {
+  width: 100%;
+  background: var(--bg);
+}
+
+.chat-terminal-tabs-bar {
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 3px 3px 0;
+  background: var(--surface);
+}
+
+.chat-terminal-tabs {
+  gap: 2px;
+  padding-bottom: 1px;
+}
+
+.chat-terminal-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 3px 5px;
+  font-size: 0.68rem;
+}
+
+.chat-terminal-state {
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
+.chat-terminal-state-running {
+  background: var(--ok);
+}
+
+.chat-terminal-state-idle {
+  background: var(--muted);
+}
+
+.chat-terminal-new-tab {
+  min-width: 20px;
+  padding: 3px 5px;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.chat-terminal-output-wrap {
+  padding: 2px;
+}
+
+.chat-terminal-output {
+  min-height: 0;
+  border-radius: 2px;
+}
+
+.chat-terminal-output .xterm {
+  padding: 3px 4px;
+}
+
+.chat-terminal-status {
+  min-height: 0;
+  padding: 0 3px 3px;
+  font-size: 0.68rem;
+}
+
 .terminal-hint-btn-primary {
   color: var(--accent);
   border-color: color-mix(in oklab, var(--accent) 55%, var(--border));

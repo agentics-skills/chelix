@@ -18,8 +18,8 @@ use {
 use super::{
     auth::{is_local_connection, is_same_origin, websocket_header_authenticated},
     types::{
-        TERMINAL_DISABLED, TERMINAL_REQUEST_FAILED, TERMINAL_SERVICE_UNAVAILABLE, TerminalWsQuery,
-        terminal_error,
+        TERMINAL_DISABLED, TERMINAL_REQUEST_FAILED, TERMINAL_SERVICE_UNAVAILABLE,
+        TerminalSessionQuery, TerminalWsQuery, terminal_error,
     },
     websocket,
 };
@@ -67,6 +67,48 @@ pub async fn api_terminal_instances_handler(State(state): State<AppState>) -> Re
     };
     match service.terminal_instances().await {
         Ok(instances) => Json(serde_json::json!({ "instances": instances })).into_response(),
+        Err(error) => (
+            StatusCode::BAD_GATEWAY,
+            Json(terminal_error(TERMINAL_REQUEST_FAILED, error.to_string())),
+        )
+            .into_response(),
+    }
+}
+
+pub async fn api_session_terminals_handler(
+    State(state): State<AppState>,
+    Query(query): Query<TerminalSessionQuery>,
+) -> Response {
+    if let Some(response) = terminal_disabled_response(&state) {
+        return response;
+    }
+    let service = match tools_service(&state) {
+        Some(service) => service,
+        None => return tools_service_unavailable_response(),
+    };
+    match service.session_terminals(&query.session_key).await {
+        Ok(response) => Json(response).into_response(),
+        Err(error) => (
+            StatusCode::BAD_GATEWAY,
+            Json(terminal_error(TERMINAL_REQUEST_FAILED, error.to_string())),
+        )
+            .into_response(),
+    }
+}
+
+pub async fn api_session_terminal_create_handler(
+    State(state): State<AppState>,
+    Json(request): Json<CreateToolsServiceTerminalRequest>,
+) -> Response {
+    if let Some(response) = terminal_disabled_response(&state) {
+        return response;
+    }
+    let service = match tools_service(&state) {
+        Some(service) => service,
+        None => return tools_service_unavailable_response(),
+    };
+    match service.create_session_terminal(request).await {
+        Ok(response) => Json(response).into_response(),
         Err(error) => (
             StatusCode::BAD_GATEWAY,
             Json(terminal_error(TERMINAL_REQUEST_FAILED, error.to_string())),

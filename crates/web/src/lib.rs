@@ -125,6 +125,11 @@ fn build_api_routes() -> Router<AppState> {
             axum::routing::post(terminal::api_terminal_create_handler),
         )
         .route(
+            "/api/terminal/terminals",
+            get(terminal::api_session_terminals_handler)
+                .post(terminal::api_session_terminal_create_handler),
+        )
+        .route(
             "/api/terminal/ws",
             get(terminal::api_terminal_ws_upgrade_handler),
         )

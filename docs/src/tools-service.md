@@ -50,6 +50,13 @@ session, window, pane, and run identifiers remain protocol metadata and are not
 included in that text. String agent results are persisted as `content.txt`;
 structured agent results are persisted as `content.json` with `schema.json`.
 
+The web chat toolbar exposes the terminals owned by the active chat session in
+a compact modal. Its tab strip shows only the numeric managed terminal ID
+returned to the agent and the running state. The trailing `+` tab creates a
+terminal through the tools-service instance resolved from the active session
+key. The UI never selects another session or falls back to a different
+tools-service instance.
+
 ## Process model
 
 At gateway startup, Chelix:
