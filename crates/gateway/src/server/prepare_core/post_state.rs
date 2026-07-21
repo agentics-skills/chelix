@@ -522,6 +522,13 @@ pub(super) async fn complete_startup(
                 .with_default_timeout(std::time::Duration::from_secs(
                     config.tools.execute_command.default_timeout_secs,
                 ))
+                .with_rewrite_timeout(
+                    config
+                        .tools
+                        .execute_command
+                        .rewrite_timeout_secs
+                        .map(std::time::Duration::from_secs),
+                )
                 .with_approval(Arc::clone(&approval_manager), Arc::clone(&broadcaster))
                 .with_env_provider(Arc::clone(&env_provider))
                 .with_completion_callback(command_completion_callback);

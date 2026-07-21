@@ -208,6 +208,24 @@ security_level = "paranoid"
 }
 
 #[test]
+fn execute_command_rewrite_timeout_is_accepted() {
+    let toml = r#"
+[tools.execute_command]
+rewrite_timeout_secs = 300
+"#;
+    let result = validate_toml_str(toml);
+    let invalid = result.diagnostics.iter().find(|diagnostic| {
+        diagnostic.path == "tools.execute_command.rewrite_timeout_secs"
+            || diagnostic.category == "type-error"
+    });
+    assert!(
+        invalid.is_none(),
+        "rewrite_timeout_secs should be accepted, got: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn browser_obscura_path_accepted() {
     let toml = r#"
 [tools.browser]

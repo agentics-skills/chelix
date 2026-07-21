@@ -313,12 +313,18 @@ for an oversized result because there would be no resolvable full-output file.
 
 ### `tools.execute_command` — ExecuteCommandConfig
 
-| Key                    | Type            | Default       | Description                                                                  |
-| ---------------------- | --------------- | ------------- | ---------------------------------------------------------------------------- |
-| `default_timeout_secs` | integer         | `30`          | Default wall-clock timeout in seconds for command execution.                 |
-| `approval_mode`        | enum            | `"never"`     | Operator approval policy. Accepted values are exactly `"always"`, `"on-miss"`, and `"never"`. |
-| `security_level`       | string          | `"allowlist"` | Security enforcement level (`"allowlist"`, `"sandbox"`, etc.).               |
-| `allowlist`            | array           | `[]`          | List of command globs permitted without sandboxing.                          |
+| Key                    | Type            | Default       | Description                                                                                                   |
+| ---------------------- | --------------- | ------------- | ------------------------------------------------------------------------------------------------------------- |
+| `default_timeout_secs` | integer         | `30`          | Wall-clock timeout in seconds used when the agent omits the command timeout.                                  |
+| `rewrite_timeout_secs` | integer         | unset         | Minimum timeout in seconds for an agent-provided timeout; smaller values are rewritten to this value.         |
+| `approval_mode`        | enum            | `"never"`     | Operator approval policy. Accepted values are exactly `"always"`, `"on-miss"`, and `"never"`.              |
+| `security_level`       | string          | `"allowlist"` | Security enforcement level (`"allowlist"`, `"sandbox"`, etc.).                                                |
+| `allowlist`            | array           | `[]`          | List of command globs permitted without sandboxing.                                                           |
+
+When the agent omits a timeout, `default_timeout_secs` is used without applying
+`rewrite_timeout_secs`. When the agent provides a timeout and
+`rewrite_timeout_secs` is configured, the physical timeout is the greater of
+the two values. Agent-provided command timeouts have no configured upper bound.
 
 `approval_mode = "never"` executes ordinary commands without approval. Commands
 matched by the built-in dangerous-command safety floor are denied instead of

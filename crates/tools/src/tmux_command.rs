@@ -22,7 +22,6 @@ use crate::{
 };
 
 const DEFAULT_TIMEOUT_MILLIS: u64 = 300_000;
-const MAX_TIMEOUT_MILLIS: u64 = 1_800_000;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -57,6 +56,7 @@ struct ReadTerminalOutputParams {
 pub struct ExecuteCommandTool {
     service: Arc<ManagedToolsService>,
     default_timeout: Duration,
+    rewrite_timeout: Option<Duration>,
     approval_manager: Option<Arc<ApprovalManager>>,
     broadcaster: Option<Arc<dyn crate::approval::ApprovalBroadcaster>>,
     env_provider: Option<Arc<dyn EnvVarProvider>>,
@@ -69,6 +69,7 @@ impl ExecuteCommandTool {
         Self {
             service,
             default_timeout: Duration::from_millis(DEFAULT_TIMEOUT_MILLIS),
+            rewrite_timeout: None,
             approval_manager: None,
             broadcaster: None,
             env_provider: None,
@@ -79,6 +80,12 @@ impl ExecuteCommandTool {
     #[must_use]
     pub fn with_default_timeout(mut self, timeout: Duration) -> Self {
         self.default_timeout = timeout;
+        self
+    }
+
+    #[must_use]
+    pub fn with_rewrite_timeout(mut self, timeout: Option<Duration>) -> Self {
+        self.rewrite_timeout = timeout;
         self
     }
 
@@ -168,6 +175,21 @@ impl ExecuteCommandTool {
             });
         }
     }
+
+    fn effective_timeout_millis(&self, requested_timeout: Option<u64>) -> Result<u64> {
+        let Some(requested_timeout) = requested_timeout else {
+            return duration_millis(self.default_timeout, "default command timeout");
+        };
+        let Some(rewrite_timeout) = self.rewrite_timeout else {
+            return Ok(requested_timeout);
+        };
+        Ok(requested_timeout.max(duration_millis(rewrite_timeout, "command timeout rewrite")?))
+    }
+}
+
+fn duration_millis(duration: Duration, name: &str) -> Result<u64> {
+    u64::try_from(duration.as_millis())
+        .map_err(|_| Error::message(format!("{name} exceeds the supported millisecond range")))
 }
 
 #[async_trait]
@@ -216,7 +238,7 @@ impl AgentTool for ExecuteCommandTool {
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": format!("Milliseconds to wait for completion (default {timeout_default}, max {MAX_TIMEOUT_MILLIS})")
+                    "description": format!("Milliseconds to wait for completion (default {timeout_default})")
                 },
                 "terminalId": {
                     "type": "string",
@@ -239,10 +261,7 @@ impl AgentTool for ExecuteCommandTool {
             tracing::debug!("execute_command destructive_flag provided for approval UI context");
         }
         self.approval_check(&command, &session_key).await?;
-        let timeout_millis = params
-            .timeout
-            .unwrap_or_else(|| u64::try_from(self.default_timeout.as_millis()).unwrap_or(u64::MAX))
-            .min(MAX_TIMEOUT_MILLIS);
+        let timeout_millis = self.effective_timeout_millis(params.timeout)?;
         let request = ExecuteCommandRequest {
             session_key: session_key.clone(),
             command: command.clone(),
@@ -385,7 +404,8 @@ mod tests {
             .match_header("authorization", "Bearer command-token")
             .match_body(mockito::Matcher::PartialJson(serde_json::json!({
                 "sessionKey": "session:test",
-                "command": "printf ok"
+                "command": "printf ok",
+                "timeoutMillis": DEFAULT_TIMEOUT_MILLIS
             })))
             .with_status(200)
             .with_header("content-type", "application/json")
@@ -427,6 +447,40 @@ mod tests {
             "Command finished in terminal (id: terminal).\nOutput:\nok"
         );
         call.assert_async().await;
+    }
+
+    #[test]
+    fn effective_timeout_uses_default_or_rewrites_explicit_value() {
+        let tool = ExecuteCommandTool::new(client("http://127.0.0.1:1".into(), "unused"))
+            .with_default_timeout(Duration::from_secs(60))
+            .with_rewrite_timeout(Some(Duration::from_secs(300)));
+
+        for (requested, expected) in [
+            (None, 60_000),
+            (Some(10_000), 300_000),
+            (Some(100_000), 300_000),
+            (Some(300_000), 300_000),
+            (Some(600_000), 600_000),
+            (Some(7_200_000), 7_200_000),
+        ] {
+            assert_eq!(
+                tool.effective_timeout_millis(requested)
+                    .unwrap_or_else(|error| panic!("timeout resolution failed: {error}")),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn effective_timeout_preserves_explicit_value_without_rewrite() {
+        let tool = ExecuteCommandTool::new(client("http://127.0.0.1:1".into(), "unused"))
+            .with_default_timeout(Duration::from_secs(60));
+
+        assert_eq!(
+            tool.effective_timeout_millis(Some(10_000))
+                .unwrap_or_else(|error| panic!("timeout resolution failed: {error}")),
+            10_000
+        );
     }
 
     #[test]

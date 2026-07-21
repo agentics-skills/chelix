@@ -402,6 +402,7 @@ port = {port}                           # Port number (auto-generated for this i
 
 # [tools.execute_command]
 # default_timeout_secs = 30         # Default timeout for commands
+# rewrite_timeout_secs = 300        # Minimum for agent-provided timeouts; unset by default
 # approval_mode = "never"           # "always" | "on-miss" | "never"
 # security_level = "allowlist"      # "permissive" | "allowlist" | "strict"
 # allowlist = []                    # Command patterns to allow. Example: ["git *", "npm *"]
