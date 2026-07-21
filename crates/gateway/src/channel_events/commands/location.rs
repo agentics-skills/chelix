@@ -58,7 +58,7 @@ pub(in crate::channel_events) async fn update_location(
         .inner
         .write()
         .await
-        .pending_invokes
+        .pending_location_requests
         .remove(&pending_key);
     if let Some(invoke) = pending {
         let result = serde_json::json!({
@@ -106,7 +106,7 @@ pub(in crate::channel_events) async fn resolve_pending_location(
         .inner
         .write()
         .await
-        .pending_invokes
+        .pending_location_requests
         .remove(&pending_key);
     if let Some(invoke) = pending {
         // Cache and persist only when we resolved an explicit request.

@@ -718,16 +718,15 @@ impl AgentTool for ReadTool {
     }
 
     /// Read already bounds its output in lines (`limit`, default
-    /// `DEFAULT_READ_LINE_LIMIT`) and bytes (`MAX_READ_OUTPUT_BYTES`),
-    /// so the byte-budget truncation layer is disabled here. This also
-    /// prevents recursion when Read is used to fetch persisted tool
-    /// results back into context.
+    /// `DEFAULT_READ_LINE_LIMIT`) and bytes (`MAX_READ_OUTPUT_BYTES`), so the
+    /// shared truncation and persistence layers are disabled. This prevents
+    /// recursion when Read fetches persisted tool results back into context.
     fn truncation(&self, _params: &Value) -> Truncation {
         Truncation::Off
     }
 
     fn result_persistence(&self, _params: &Value) -> ToolResultPersistence {
-        ToolResultPersistence::TextFields(&["content"])
+        ToolResultPersistence::Off
     }
 
     async fn execute(&self, params: Value) -> anyhow::Result<Value> {
@@ -790,7 +789,7 @@ mod tests {
         assert_eq!(tool.truncation(&json!({})), Truncation::Off);
         assert_eq!(
             tool.result_persistence(&json!({})),
-            ToolResultPersistence::TextFields(&["content"])
+            ToolResultPersistence::Off
         );
     }
 

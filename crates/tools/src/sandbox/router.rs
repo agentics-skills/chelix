@@ -23,7 +23,7 @@ use {
         env::ExecEnv,
         types::{
             DEFAULT_SANDBOX_IMAGE, Sandbox, SandboxBackend, SandboxBackendId, SandboxConfig,
-            SandboxId, SandboxMode, SharedSandboxImage, shared_sandbox_image,
+            SandboxId, SandboxMode, SharedSandboxImage, ToolsServiceInstance, shared_sandbox_image,
         },
     },
     crate::error::{Error, Result},
@@ -203,6 +203,14 @@ impl Sandbox for FailoverSandbox {
             self.fallback.tools_service_endpoint(id).await
         } else {
             self.primary.tools_service_endpoint(id).await
+        }
+    }
+
+    async fn tools_service_instances(&self) -> Result<Vec<ToolsServiceInstance>> {
+        if self.fallback_enabled().await {
+            self.fallback.tools_service_instances().await
+        } else {
+            self.primary.tools_service_instances().await
         }
     }
 
@@ -941,6 +949,11 @@ impl SandboxRouter {
     /// Effective global sandbox runtime identity.
     pub fn backend_id(&self) -> SandboxBackendId {
         self.backend.backend_id()
+    }
+
+    /// Return only tools-service instances already registered by the active backend.
+    pub async fn tools_service_instances(&self) -> Result<Vec<ToolsServiceInstance>> {
+        self.backend.tools_service_instances().await
     }
 
     /// Store the deterministic image produced from the global config.

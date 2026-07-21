@@ -1,121 +1,55 @@
-// Settings > Terminal (host shell via PTY + xterm.js over WebSocket)
-//
-// This page is entirely imperative DOM -- no Preact rendering.
-// It manages an xterm.js terminal instance and a WebSocket to the server.
-//
-// Note: container.innerHTML is set with a static template string containing
-// only hard-coded markup -- no user input is interpolated.
-
+import type { Signal } from "@preact/signals";
+import { useSignal } from "@preact/signals";
+import type { VNode } from "preact";
+import { render } from "preact";
+import { useCallback, useEffect, useRef } from "preact/hooks";
 import { localizedApiErrorMessage } from "../helpers";
-import { copyToClipboard } from "../ui";
+import { targetValue } from "../typed-events";
 
-// ── Types ────────────────────────────────────────────────────
-
-interface WindowInfo {
+interface ToolsServiceTerminalInfo {
+	kind: "execute" | "process";
 	id: string;
-	index: number;
-	name: string;
-	active: boolean;
-}
-
-interface SandboxTerminalTarget {
-	id: string;
-	label: string;
-	backend: string;
-	containerName: string;
-	state: string;
-	image: string;
-}
-
-interface SandboxTmuxPaneInfo {
-	id: string;
-	index: number;
-	active: boolean;
-	currentCommand: string;
-	currentPath: string;
-	title: string;
-}
-
-interface SandboxTmuxWindowInfo {
-	id: string;
-	index: number;
-	name: string;
-	active: boolean;
-	panes: SandboxTmuxPaneInfo[];
-}
-
-interface SandboxTmuxSessionInfo {
-	id: string;
-	name: string;
-	attached: boolean;
-	windows: SandboxTmuxWindowInfo[];
-}
-
-interface SandboxTmuxTreePayload {
-	tree?: {
-		available?: boolean;
-		reason?: string;
-		sessions?: SandboxTmuxSessionInfo[];
-	};
-}
-
-interface SandboxTmuxTab {
-	key: string;
+	sessionKey: string;
 	sessionId: string;
 	sessionName: string;
 	windowId: string;
-	windowIndex: number;
 	windowName: string;
-	paneId?: string;
-	paneLabel?: string;
+	paneId: string;
+	running: boolean;
 }
 
-interface ReadyPayload {
-	available: boolean;
-	mode?: string;
-	persistenceEnabled: boolean;
-	persistenceAvailable: boolean;
-	activeWindowId?: string;
-	tmuxInstallCommand?: string;
-	user?: string;
-	targetLabel?: string;
-	sessionId?: string;
-	windowId?: string;
-	paneId?: string;
+interface ToolsServiceInstanceInfo {
+	id: string;
+	label: string;
+	terminals: ToolsServiceTerminalInfo[];
 }
 
-interface TerminalMessage {
+interface TerminalSessionInfo {
+	id: string;
+	instanceId: string;
+	sessionKey: string;
+	terminals: ToolsServiceTerminalInfo[];
+}
+
+interface InstancesResponse {
+	instances?: ToolsServiceInstanceInfo[];
+	error?: string;
+}
+
+interface CreateTerminalResponse {
+	terminal?: ToolsServiceTerminalInfo;
+	error?: string;
+}
+
+interface TerminalServerMessage {
 	type: string;
+	available?: boolean;
 	data?: string;
 	encoding?: string;
 	text?: string;
 	level?: string;
 	error?: string;
-	windowId?: string;
-	windows?: unknown[];
-	activeWindowId?: string;
-	available?: boolean;
-	persistenceEnabled?: boolean;
-	persistenceAvailable?: boolean;
-	tmuxInstallCommand?: string;
-	user?: string;
-	mode?: string;
-	targetLabel?: string;
-	sessionId?: string;
-	paneId?: string;
-}
-
-interface SocketMessage {
-	type: string;
-	[key: string]: unknown;
-}
-
-interface WindowsPayload {
-	windows?: unknown[];
-	activeWindowId?: string;
-	available?: boolean;
-	window?: { id?: string };
-	windowId?: string;
+	terminal?: ToolsServiceTerminalInfo;
 }
 
 interface XtermOptions {
@@ -129,9 +63,6 @@ interface XtermOptions {
 	theme?: Record<string, string>;
 }
 
-type TerminalCtorType = new (opts: XtermOptions) => XtermInstance;
-type FitAddonCtorType = new () => FitAddonInstance;
-
 interface XtermInstance {
 	cols: number;
 	rows: number;
@@ -139,7 +70,7 @@ interface XtermInstance {
 	buffer: { active: { baseY: number; viewportY: number } };
 	parser: { registerOscHandler: (code: number, handler: () => boolean) => { dispose: () => void } };
 	loadAddon: (addon: FitAddonInstance) => void;
-	open: (el: HTMLElement) => void;
+	open: (element: HTMLElement) => void;
 	onData: (handler: (data: string) => void) => { dispose: () => void };
 	onResize: (handler: (size: { cols: number; rows: number }) => void) => { dispose: () => void };
 	write: (data: string | Uint8Array, callback?: () => void) => void;
@@ -153,533 +84,53 @@ interface FitAddonInstance {
 	fit: () => void;
 }
 
-// ── Module state ─────────────────────────────────────────────
+type TerminalCtor = new (options: XtermOptions) => XtermInstance;
+type FitAddonCtor = new () => FitAddonInstance;
 
-let _container: HTMLElement | null = null;
-let resizeObserver: ResizeObserver | null = null;
-let themeObserver: MutationObserver | null = null;
-let fitRaf = 0;
-let windowResizeListener: (() => void) | null = null;
-let fontsReadyListener: (() => void) | null = null;
-let resizeSettleTimers: ReturnType<typeof setTimeout>[] = [];
-
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let socket: WebSocket | null = null;
-let shuttingDown = false;
-
-let inputFlushTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingInput = "";
-let windowsRefreshTimer: ReturnType<typeof setInterval> | null = null;
-
-let terminalEl: HTMLElement | null = null;
-let metaEl: HTMLElement | null = null;
-let statusEl: HTMLElement | null = null;
-let hintEl: HTMLElement | null = null;
-let hintActionsEl: HTMLElement | null = null;
-let installCommandEl: HTMLElement | null = null;
-let sizeEl: HTMLElement | null = null;
-let tabsEl: HTMLElement | null = null;
-let newTabBtn: HTMLButtonElement | null = null;
-let ctrlCBtn: HTMLButtonElement | null = null;
-let clearBtn: HTMLButtonElement | null = null;
-let restartBtn: HTMLButtonElement | null = null;
-let installTmuxBtn: HTMLButtonElement | null = null;
-let copyInstallBtn: HTMLButtonElement | null = null;
-
-let xterm: XtermInstance | null = null;
-let fitAddon: FitAddonInstance | null = null;
-let xtermDataDisposable: { dispose: () => void } | null = null;
-let xtermResizeDisposable: { dispose: () => void } | null = null;
-let TerminalCtorRef: TerminalCtorType | null = null;
-let FitAddonCtorRef: FitAddonCtorType | null = null;
-let oscHandlerDisposables: { dispose: () => void }[] = [];
-
-let terminalAvailable = false;
-let selectedSandboxTargetId: string | null = null;
-let targetSelectorEl: HTMLSelectElement | null = null;
-let lastSentCols = 0;
-let lastSentRows = 0;
-let tmuxInstallCommand = "";
-let tmuxInstallPromptSeen = false;
-let tmuxPersistenceEnabled = false;
-let terminalWindows: WindowInfo[] = [];
-let activeWindowId: string | null = null;
-let pendingWindowId: string | null = null;
-let creatingWindow = false;
-let sandboxTargets: SandboxTerminalTarget[] = [];
-let sandboxTabs: SandboxTmuxTab[] = [];
-let activeSandboxTabKey: string | null = null;
-
-const RECONNECT_DELAY_MS = 800;
-const INPUT_FLUSH_MS = 16;
-const WINDOW_REFRESH_MS = 2000;
-const MAX_INPUT_CHUNK = 512;
-const TmuxInstallPromptStorageKey = "chelix.settings.terminal.tmuxInstallPromptSeen.v1";
-
-function readTmuxInstallPromptSeen(): boolean {
-	try {
-		if (typeof localStorage === "undefined") return false;
-		return localStorage.getItem(TmuxInstallPromptStorageKey) === "1";
-	} catch {
-		return false;
-	}
+interface TerminalRuntime {
+	xterm: XtermInstance;
+	fitAddon: FitAddonInstance;
+	socket: WebSocket | null;
+	resizeObserver: ResizeObserver | null;
+	themeObserver: MutationObserver | null;
+	windowResizeListener: (() => void) | null;
+	dataDisposable: { dispose: () => void };
+	resizeDisposable: { dispose: () => void };
+	oscDisposables: { dispose: () => void }[];
+	fitFrame: number;
+	lastCols: number;
+	lastRows: number;
 }
 
-function markTmuxInstallPromptSeen(): void {
-	tmuxInstallPromptSeen = true;
-	try {
-		if (typeof localStorage !== "undefined") localStorage.setItem(TmuxInstallPromptStorageKey, "1");
-	} catch {
-		/* private mode */
-	}
+interface TerminalViewProps {
+	instances: Signal<ToolsServiceInstanceInfo[]>;
+	selectedInstanceId: Signal<string>;
+	selectedSessionId: Signal<string>;
+	selectedTerminalId: Signal<string>;
+	sessionKey: Signal<string>;
+	status: Signal<string>;
+	statusLevel: Signal<"" | "ok" | "error">;
+	connected: Signal<boolean>;
+	loading: Signal<boolean>;
+	creating: Signal<boolean>;
+	onRefresh: () => Promise<void>;
+	onCreate: () => Promise<void>;
+	onSelectSession: (sessionId: string) => void;
+	onSelectTerminal: (terminalId: string) => void;
+	onControl: (action: "ctrl_c" | "clear" | "restart") => void;
+	terminalElementRef: (element: HTMLDivElement | null) => void;
 }
 
-function clearObservers(): void {
-	if (resizeObserver) {
-		resizeObserver.disconnect();
-		resizeObserver = null;
-	}
-	if (themeObserver) {
-		themeObserver.disconnect();
-		themeObserver = null;
-	}
-	if (windowResizeListener) {
-		window.removeEventListener("resize", windowResizeListener);
-		windowResizeListener = null;
-	}
-	if (fontsReadyListener && typeof document !== "undefined" && document.fonts?.removeEventListener) {
-		document.fonts.removeEventListener("loadingdone", fontsReadyListener);
-		fontsReadyListener = null;
-	}
-}
-
-function clearScheduledFit(): void {
-	if (fitRaf) {
-		cancelAnimationFrame(fitRaf);
-		fitRaf = 0;
-	}
-}
-function clearReconnectTimer(): void {
-	if (reconnectTimer) {
-		clearTimeout(reconnectTimer);
-		reconnectTimer = null;
-	}
-}
-function clearResizeSettleTimers(): void {
-	for (const t of resizeSettleTimers) clearTimeout(t);
-	resizeSettleTimers = [];
-}
-function clearInputQueue(): void {
-	if (inputFlushTimer) {
-		clearTimeout(inputFlushTimer);
-		inputFlushTimer = null;
-	}
-	pendingInput = "";
-}
-function clearWindowsRefreshTimer(): void {
-	if (windowsRefreshTimer) {
-		clearInterval(windowsRefreshTimer);
-		windowsRefreshTimer = null;
-	}
-}
-
-function setStatus(text: string, level?: string): void {
-	if (!statusEl) return;
-	statusEl.textContent = text || "";
-	statusEl.className = "terminal-status";
-	if (level === "error") statusEl.classList.add("terminal-status-error");
-	if (level === "ok") statusEl.classList.add("terminal-status-ok");
-}
-
-function setControlsEnabled(enabled: boolean): void {
-	const allow = !!enabled;
-	if (ctrlCBtn) ctrlCBtn.disabled = !allow;
-	if (clearBtn) clearBtn.disabled = !allow;
-	if (restartBtn) restartBtn.disabled = !allow;
-	setWindowControlsEnabled();
-}
-
-function setInstallActionsVisible(visible: boolean): void {
-	if (hintActionsEl) hintActionsEl.hidden = !visible;
-}
-function setWindowControlsEnabled(): void {
-	if (newTabBtn)
-		newTabBtn.disabled = isSandboxMode() || !(tmuxPersistenceEnabled && terminalAvailable) || creatingWindow;
-}
-
-function isSandboxMode(): boolean {
-	return !!selectedSandboxTargetId;
-}
-
-interface RawWindowPayload {
-	id?: string;
-	index?: number;
-	name?: string;
-	active?: boolean;
-}
-
-function normalizeWindowPayload(payloadWindow: unknown): WindowInfo | null {
-	if (!(payloadWindow && typeof payloadWindow === "object")) return null;
-	const pw = payloadWindow as RawWindowPayload;
-	const id = typeof pw.id === "string" ? pw.id.trim() : "";
-	if (!id) return null;
-	const index = Number(pw.index);
-	if (!Number.isFinite(index) || index < 0) return null;
-	const name = typeof pw.name === "string" ? pw.name : "";
-	return { id, index: Math.floor(index), name, active: pw.active === true };
-}
-
-function windowLabel(w: WindowInfo): string {
-	const title = w.name?.trim() || "shell";
-	return `${w.index}: ${title}`;
-}
-
-function renderWindowTabs(): void {
-	if (!tabsEl) return;
-	while (tabsEl.firstChild) tabsEl.removeChild(tabsEl.firstChild);
-	if (isSandboxMode()) {
-		if (!sandboxTabs.length) {
-			const s = document.createElement("span");
-			s.className = "terminal-tab-empty";
-			s.textContent = "No tmux windows in sandbox";
-			tabsEl.appendChild(s);
-			return;
-		}
-		for (const tabInfo of sandboxTabs) {
-			const tab = document.createElement("button");
-			tab.type = "button";
-			tab.className = "terminal-tab";
-			if (tabInfo.key === activeSandboxTabKey) tab.classList.add("active");
-			tab.title = `Attach ${tabInfo.sessionName}:${tabInfo.windowIndex}${tabInfo.paneLabel || ""}`;
-			tab.textContent = `${tabInfo.sessionName} / ${tabInfo.windowIndex}: ${tabInfo.windowName}`;
-			tab.addEventListener("click", () => onSandboxTabClick(tabInfo.key));
-			tabsEl.appendChild(tab);
-		}
-		return;
-	}
-	if (!tmuxPersistenceEnabled) {
-		const s = document.createElement("span");
-		s.className = "terminal-tab-empty";
-		s.textContent = "tmux unavailable";
-		tabsEl.appendChild(s);
-		return;
-	}
-	if (!terminalWindows.length) {
-		const s = document.createElement("span");
-		s.className = "terminal-tab-empty";
-		s.textContent = "No tmux windows";
-		tabsEl.appendChild(s);
-		return;
-	}
-	for (const w of terminalWindows) {
-		const tab = document.createElement("button");
-		tab.type = "button";
-		tab.className = "terminal-tab";
-		if (w.id === activeWindowId) tab.classList.add("active");
-		tab.title = `Attach ${windowLabel(w)}`;
-		tab.textContent = windowLabel(w);
-		tab.addEventListener("click", () => onWindowTabClick(w.id));
-		tabsEl.appendChild(tab);
-	}
-}
-
-function chooseActiveWindow(
-	windows: WindowInfo[],
-	preferred: string | null,
-	payloadActive: string | null,
-): string | null {
-	if (!windows.length) return null;
-	for (const c of [preferred, payloadActive, activeWindowId]) {
-		if (c && windows.some((w) => w.id === c)) return c;
-	}
-	const active = windows.find((w) => w.active);
-	return active ? active.id : windows[0].id;
-}
-
-function applyWindowsState(payload: WindowsPayload, preferred: string | null): void {
-	const next: WindowInfo[] = [];
-	for (const raw of Array.isArray(payload?.windows) ? payload.windows : []) {
-		const p = normalizeWindowPayload(raw);
-		if (p) next.push(p);
-	}
-	next.sort((a, b) => a.index - b.index);
-	terminalWindows = next;
-	const pa =
-		typeof payload?.activeWindowId === "string" && payload.activeWindowId.trim() ? payload.activeWindowId.trim() : null;
-	activeWindowId = chooseActiveWindow(next, preferred, pa);
-	renderWindowTabs();
-}
-
-async function fetchTerminalWindows(): Promise<WindowsPayload> {
-	const r = await fetch("/api/terminal/windows", { method: "GET", headers: { Accept: "application/json" } });
-	let p: WindowsPayload;
-	try {
-		p = await r.json();
-	} catch {
-		p = {};
-	}
-	if (!r.ok) throw new Error(localizedApiErrorMessage(p as never, "Failed to list tmux windows"));
-	return p;
-}
-
-function isSandboxTarget(value: unknown): value is SandboxTerminalTarget {
-	if (!(value && typeof value === "object")) return false;
-	const v = value as SandboxTerminalTarget;
-	return (
-		typeof v.id === "string" &&
-		typeof v.label === "string" &&
-		typeof v.backend === "string" &&
-		typeof v.containerName === "string" &&
-		typeof v.state === "string" &&
-		typeof v.image === "string"
-	);
-}
-
-async function fetchSandboxTargets(): Promise<SandboxTerminalTarget[]> {
-	const r = await fetch("/api/terminal/sandbox/targets", { method: "GET", headers: { Accept: "application/json" } });
-	let p: { targets?: unknown[] } = {};
-	try {
-		p = await r.json();
-	} catch {
-		p = {};
-	}
-	if (!r.ok) throw new Error(localizedApiErrorMessage(p as never, "Failed to list sandbox terminals"));
-	return Array.isArray(p.targets) ? p.targets.filter(isSandboxTarget) : [];
-}
-
-function flattenSandboxTmuxTabs(sessions: SandboxTmuxSessionInfo[]): SandboxTmuxTab[] {
-	const tabs: SandboxTmuxTab[] = [];
-	for (const session of sessions) {
-		for (const windowInfo of session.windows || []) {
-			const activePane = (windowInfo.panes || []).find((pane) => pane.active) || windowInfo.panes?.[0] || null;
-			const paneSuffix = activePane ? `:${activePane.id}` : "";
-			tabs.push({
-				key: `${session.id}:${windowInfo.id}${paneSuffix}`,
-				sessionId: session.id,
-				sessionName: session.name || session.id,
-				windowId: windowInfo.id,
-				windowIndex: windowInfo.index,
-				windowName: windowInfo.name || "shell",
-				paneId: activePane?.id,
-				paneLabel: activePane ? `.${activePane.index}` : undefined,
-			});
-		}
-	}
-	return tabs;
-}
-
-function chooseActiveSandboxTab(nextTabs: SandboxTmuxTab[]): string | null {
-	if (!nextTabs.length) return null;
-	if (activeSandboxTabKey && nextTabs.some((tab) => tab.key === activeSandboxTabKey)) return activeSandboxTabKey;
-	return nextTabs[0].key;
-}
-
-async function refreshSandboxTmuxTree(opts?: { silent?: boolean }): Promise<void> {
-	if (!selectedSandboxTargetId) return;
-	try {
-		const r = await fetch(`/api/terminal/sandbox/tmux-tree?targetId=${encodeURIComponent(selectedSandboxTargetId)}`, {
-			method: "GET",
-			headers: { Accept: "application/json" },
-		});
-		let p: SandboxTmuxTreePayload = {};
-		try {
-			p = await r.json();
-		} catch {
-			p = {};
-		}
-		if (!r.ok) throw new Error(localizedApiErrorMessage(p as never, "Failed to list sandbox tmux windows"));
-		if (p.tree?.available === false) {
-			sandboxTabs = [];
-			activeSandboxTabKey = null;
-			renderWindowTabs();
-			setWindowControlsEnabled();
-			if (!opts?.silent) setStatus("tmux is not available inside this sandbox", "error");
-			return;
-		}
-		sandboxTabs = flattenSandboxTmuxTabs(p.tree?.sessions || []);
-		activeSandboxTabKey = chooseActiveSandboxTab(sandboxTabs);
-		tmuxPersistenceEnabled = sandboxTabs.length > 0;
-		renderWindowTabs();
-		setWindowControlsEnabled();
-		if (!(sandboxTabs.length || opts?.silent)) setStatus("No tmux windows found inside this sandbox", "error");
-	} catch (e) {
-		if (!opts?.silent) setStatus((e as Error)?.message || "Failed to refresh sandbox tmux windows", "error");
-	}
-}
-
-async function refreshTerminalWindows(opts?: { preferredWindowId?: string | null; silent?: boolean }): Promise<void> {
-	if (isSandboxMode()) {
-		await refreshSandboxTmuxTree(opts);
-		return;
-	}
-	const preferred = opts?.preferredWindowId || pendingWindowId || null;
-	try {
-		const p = await fetchTerminalWindows();
-		tmuxPersistenceEnabled = p?.available === true;
-		applyWindowsState(p, preferred);
-		if (pendingWindowId && activeWindowId === pendingWindowId) pendingWindowId = null;
-		setWindowControlsEnabled();
-		if (!tmuxPersistenceEnabled) clearWindowsRefreshTimer();
-	} catch (e) {
-		if (!opts?.silent) setStatus((e as Error)?.message || "Failed to refresh terminal windows", "error");
-	}
-}
-
-function startWindowsRefreshLoop(): void {
-	clearWindowsRefreshTimer();
-	if (!(tmuxPersistenceEnabled || isSandboxMode())) return;
-	windowsRefreshTimer = setInterval(() => {
-		void refreshTerminalWindows({ silent: true });
-	}, WINDOW_REFRESH_MS);
-}
-
-function sendSocketMessage(payload: SocketMessage): boolean {
-	if (!(socket && socket.readyState === WebSocket.OPEN)) return false;
-	try {
-		socket.send(JSON.stringify(payload));
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-function sendResizeIfChanged(force?: boolean): void {
-	if (!(xterm && terminalAvailable)) return;
-	const cols = xterm.cols || 0,
-		rows = xterm.rows || 0;
-	if (!(cols > 0 && rows > 0)) return;
-	updateSizeIndicator(cols, rows);
-	if (!force && cols === lastSentCols && rows === lastSentRows) return;
-	lastSentCols = cols;
-	lastSentRows = rows;
-	sendSocketMessage({ type: "resize", cols, rows });
-}
-
-function scheduleFit(forceResize?: boolean): void {
-	if (!fitAddon) return;
-	const fr = forceResize === true;
-	clearScheduledFit();
-	fitRaf = requestAnimationFrame(() => {
-		fitRaf = 0;
-		if (!fitAddon) return;
-		try {
-			fitAddon.fit();
-			sendResizeIfChanged(fr);
-		} catch {
-			/* transient layout */
-		}
-	});
-}
-
-function kickResizeSettleLoop(): void {
-	if (!xterm) return;
-	clearResizeSettleTimers();
-	for (const d of [0, 50, 160, 380, 800]) {
-		resizeSettleTimers.push(
-			setTimeout(() => {
-				if (xterm) {
-					scheduleFit(true);
-					sendResizeIfChanged(true);
-				}
-			}, d),
-		);
-	}
-}
-
-function requestWindowSwitch(windowId: string): boolean {
-	if (!(tmuxPersistenceEnabled && windowId)) return false;
-	pendingWindowId = windowId;
-	activeWindowId = windowId;
-	renderWindowTabs();
-	setStatus("Switching tmux window...", "ok");
-	return socket?.readyState === WebSocket.OPEN && sendSocketMessage({ type: "switch_window", window: windowId });
-}
-
-function handleActiveWindowEvent(payload: TerminalMessage): void {
-	const wid = typeof payload?.windowId === "string" ? payload.windowId.trim() : "";
-	if (!wid) return;
-	activeWindowId = wid;
-	pendingWindowId = null;
-	renderWindowTabs();
-	setStatus("Switched tmux window.", "ok");
-	startWindowsRefreshLoop();
-	kickResizeSettleLoop();
-	if (xterm) xterm.focus();
-	void refreshTerminalWindows({ preferredWindowId: wid, silent: true });
-}
-
-function onWindowTabClick(windowId: string): void {
-	if (!(tmuxPersistenceEnabled && windowId) || windowId === activeWindowId) return;
-	if (requestWindowSwitch(windowId)) return;
-	terminalAvailable = false;
-	setControlsEnabled(false);
-	if (xterm) xterm.reset();
-	connectTerminalSocket();
-}
-
-function onSandboxTabClick(tabKey: string): void {
-	if (!isSandboxMode() || tabKey === activeSandboxTabKey) return;
-	activeSandboxTabKey = tabKey;
-	renderWindowTabs();
-	setStatus("Switching sandbox tmux window...", "ok");
-	if (xterm) xterm.reset();
-	connectTerminalSocket();
-}
-
-async function createTerminalWindow(): Promise<void> {
-	if (!(tmuxPersistenceEnabled && terminalAvailable) || creatingWindow) return;
-	creatingWindow = true;
-	setWindowControlsEnabled();
-	setStatus("Creating new tab...", "ok");
-	try {
-		const r = await fetch("/api/terminal/windows", {
-			method: "POST",
-			headers: { Accept: "application/json", "Content-Type": "application/json" },
-			body: JSON.stringify({}),
-		});
-		let p: WindowsPayload;
-		try {
-			p = await r.json();
-		} catch {
-			p = {};
-		}
-		if (!r.ok) throw new Error(localizedApiErrorMessage(p as never, "Failed to create new tab"));
-		const cid = p?.window?.id || p?.windowId || null;
-		if (Array.isArray(p?.windows)) {
-			tmuxPersistenceEnabled = true;
-			applyWindowsState(p, cid);
-		} else await refreshTerminalWindows({ preferredWindowId: cid, silent: true });
-		// Always reconnect for new tab creation rather than using requestWindowSwitch.
-		// The existing PTY is attached to the previous window; a fresh connection picks
-		// up the correct window. requestWindowSwitch would fail if the new window exited
-		// before the switch message arrives (race condition), showing a spurious error.
-		if (cid && cid !== activeWindowId) {
-			activeWindowId = cid;
-			pendingWindowId = null;
-			renderWindowTabs();
-		}
-		setStatus("New tab created.", "ok");
-		if (xterm) xterm.reset();
-		connectTerminalSocket();
-	} catch (e) {
-		setStatus((e as Error)?.message || "Failed to create tab", "error");
-	} finally {
-		creatingWindow = false;
-		setWindowControlsEnabled();
-	}
-}
-
-function updateSizeIndicator(cols: number, rows: number): void {
-	if (!sizeEl) return;
-	sizeEl.textContent = cols > 0 && rows > 0 ? `${cols}\u00d7${rows}` : "\u2014\u00d7\u2014";
-}
+let terminalContainer: HTMLElement | null = null;
+let terminalRuntime: TerminalRuntime | null = null;
+let terminalCtor: TerminalCtor | null = null;
+let fitAddonCtor: FitAddonCtor | null = null;
 
 function getCssVar(name: string, fallback: string): string {
-	if (typeof document === "undefined") return fallback;
 	return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
-function buildXtermTheme(): Record<string, string> {
+function xtermTheme(): Record<string, string> {
 	return {
 		background: getCssVar("--bg", "#0f1115"),
 		foreground: getCssVar("--text", "#e4e4e7"),
@@ -689,66 +140,90 @@ function buildXtermTheme(): Record<string, string> {
 	};
 }
 
-function applyTheme(): void {
-	if (xterm) xterm.options.theme = buildXtermTheme();
-}
-
-function registerOscStabilityGuards(): void {
-	if (!(xterm?.parser && typeof xterm.parser.registerOscHandler === "function")) return;
-	const swallow = () => true;
-	for (const code of [4, 10, 11, 12, 104, 110, 111, 112]) {
-		const d = xterm.parser.registerOscHandler(code, swallow);
-		if (d && typeof d.dispose === "function") oscHandlerDisposables.push(d);
-	}
-}
-
-function clearOscStabilityGuards(): void {
-	for (const d of oscHandlerDisposables) {
-		try {
-			d.dispose();
-		} catch {
-			/* ignore */
-		}
-	}
-	oscHandlerDisposables = [];
-}
-
 async function ensureXtermModules(): Promise<void> {
-	if (TerminalCtorRef && FitAddonCtorRef) return;
-	const [xtermMod, fitAddonMod] = await Promise.all([import("@xterm/xterm"), import("@xterm/addon-fit")]);
-	TerminalCtorRef = (xtermMod as unknown as { Terminal: TerminalCtorType }).Terminal;
-	FitAddonCtorRef = (fitAddonMod as unknown as { FitAddon: FitAddonCtorType }).FitAddon;
+	if (terminalCtor && fitAddonCtor) return;
+	const [xtermModule, fitAddonModule] = await Promise.all([import("@xterm/xterm"), import("@xterm/addon-fit")]);
+	terminalCtor = (xtermModule as unknown as { Terminal: TerminalCtor }).Terminal;
+	fitAddonCtor = (fitAddonModule as unknown as { FitAddon: FitAddonCtor }).FitAddon;
 }
 
-function queueInput(data: string): void {
-	if (!terminalAvailable || typeof data !== "string" || !data.length) return;
-	pendingInput += data;
-	if (!inputFlushTimer)
-		inputFlushTimer = setTimeout(() => {
-			inputFlushTimer = null;
-			flushInputQueue();
-		}, INPUT_FLUSH_MS);
+function sendSocketMessage(payload: object): boolean {
+	const socket = terminalRuntime?.socket;
+	if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+	socket.send(JSON.stringify(payload));
+	return true;
 }
 
-function flushInputQueue(): void {
-	if (!(terminalAvailable && pendingInput)) return;
-	while (pendingInput.length > 0) {
-		const chunk = pendingInput.slice(0, MAX_INPUT_CHUNK);
-		if (!sendSocketMessage({ type: "input", data: chunk })) break;
-		pendingInput = pendingInput.slice(MAX_INPUT_CHUNK);
+function publishTerminalSize(runtime: TerminalRuntime, cols: number, rows: number, force = false): void {
+	if (terminalRuntime !== runtime || cols < 2 || rows < 1) return;
+	if (!force && cols === runtime.lastCols && rows === runtime.lastRows) return;
+	runtime.lastCols = cols;
+	runtime.lastRows = rows;
+	sendSocketMessage({ type: "resize", cols, rows });
+}
+
+function scheduleFit(force = false): void {
+	const runtime = terminalRuntime;
+	if (!runtime) return;
+	if (runtime.fitFrame) cancelAnimationFrame(runtime.fitFrame);
+	runtime.fitFrame = requestAnimationFrame(() => {
+		runtime.fitFrame = 0;
+		runtime.fitAddon.fit();
+		publishTerminalSize(runtime, runtime.xterm.cols, runtime.xterm.rows, force);
+	});
+}
+
+function decodeBase64(encoded: string): Uint8Array | null {
+	try {
+		const binary = atob(encoded);
+		const bytes = new Uint8Array(binary.length);
+		for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index) & 0xff;
+		return bytes;
+	} catch {
+		return null;
 	}
-	if (pendingInput.length > 0 && !inputFlushTimer)
-		inputFlushTimer = setTimeout(() => {
-			inputFlushTimer = null;
-			flushInputQueue();
-		}, INPUT_FLUSH_MS);
 }
 
-async function initXterm(): Promise<void> {
-	if (!terminalEl) return;
+function writeTerminalOutput(data: string | Uint8Array): void {
+	const xterm = terminalRuntime?.xterm;
+	if (!xterm) return;
+	const buffer = xterm.buffer.active;
+	const shouldScroll = buffer.baseY - buffer.viewportY <= 2;
+	xterm.write(data, () => {
+		if (shouldScroll) xterm.scrollToBottom();
+	});
+}
+
+function closeTerminalRuntime(): void {
+	const runtime = terminalRuntime;
+	terminalRuntime = null;
+	if (!runtime) return;
+	if (runtime.fitFrame) cancelAnimationFrame(runtime.fitFrame);
+	if (runtime.socket && runtime.socket.readyState < WebSocket.CLOSING) runtime.socket.close();
+	runtime.resizeObserver?.disconnect();
+	runtime.themeObserver?.disconnect();
+	if (runtime.windowResizeListener) window.removeEventListener("resize", runtime.windowResizeListener);
+	runtime.dataDisposable.dispose();
+	runtime.resizeDisposable.dispose();
+	for (const disposable of runtime.oscDisposables) disposable.dispose();
+	runtime.xterm.dispose();
+}
+
+function closeTerminalSocket(): void {
+	const runtime = terminalRuntime;
+	const socket = runtime?.socket;
+	if (!(runtime && socket)) return;
+	runtime.socket = null;
+	socket.onmessage = null;
+	socket.onclose = null;
+	socket.onerror = null;
+	if (socket.readyState < WebSocket.CLOSING) socket.close();
+}
+
+async function createXterm(element: HTMLDivElement): Promise<TerminalRuntime> {
 	await ensureXtermModules();
-	if (!(TerminalCtorRef && FitAddonCtorRef)) throw new Error("xterm failed to load");
-	xterm = new TerminalCtorRef({
+	if (!(terminalCtor && fitAddonCtor)) throw new Error("xterm failed to load");
+	const xterm = new terminalCtor({
 		convertEol: false,
 		disableStdin: false,
 		cursorBlink: true,
@@ -756,471 +231,468 @@ async function initXterm(): Promise<void> {
 		fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
 		fontSize: 12,
 		lineHeight: 1.35,
-		theme: buildXtermTheme(),
+		theme: xtermTheme(),
 	});
-	registerOscStabilityGuards();
-	fitAddon = new FitAddonCtorRef();
+	const fitAddon = new fitAddonCtor();
 	xterm.loadAddon(fitAddon);
-	xterm.open(terminalEl);
-	xtermDataDisposable = xterm.onData((d: string) => queueInput(d));
-	xtermResizeDisposable = xterm.onResize((sz: { cols: number; rows: number }) => {
-		updateSizeIndicator(sz.cols, sz.rows);
-		sendResizeIfChanged();
+	xterm.open(element);
+	const oscDisposables = [4, 10, 11, 12, 104, 110, 111, 112].map((code) =>
+		xterm.parser.registerOscHandler(code, () => true),
+	);
+	const dataDisposable = xterm.onData((data) => {
+		sendSocketMessage({ type: "input", data });
 	});
-	scheduleFit();
-	terminalEl.addEventListener("click", () => {
-		if (xterm) xterm.focus();
+	let runtime: TerminalRuntime;
+	const resizeDisposable = xterm.onResize(({ cols, rows }) => {
+		publishTerminalSize(runtime, cols, rows);
 	});
-	if (typeof ResizeObserver !== "undefined") {
-		resizeObserver = new ResizeObserver(() => scheduleFit());
-		resizeObserver.observe(terminalEl.parentElement || terminalEl);
-	}
-	if (typeof window !== "undefined") {
-		windowResizeListener = () => scheduleFit();
-		window.addEventListener("resize", windowResizeListener);
-	}
-	if (typeof document !== "undefined" && document.fonts?.ready && typeof document.fonts.ready.then === "function")
-		document.fonts.ready.then(() => scheduleFit());
-	if (typeof document !== "undefined" && document.fonts?.addEventListener) {
-		fontsReadyListener = () => scheduleFit();
-		document.fonts.addEventListener("loadingdone", fontsReadyListener);
-	}
-	themeObserver = new MutationObserver(() => applyTheme());
+	const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => scheduleFit());
+	resizeObserver?.observe(element.parentElement ?? element);
+	const windowResizeListener = () => scheduleFit();
+	window.addEventListener("resize", windowResizeListener);
+	const themeObserver = new MutationObserver(() => {
+		xterm.options.theme = xtermTheme();
+	});
 	themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+	runtime = {
+		xterm,
+		fitAddon,
+		socket: null,
+		resizeObserver,
+		themeObserver,
+		windowResizeListener,
+		dataDisposable,
+		resizeDisposable,
+		oscDisposables,
+		fitFrame: 0,
+		lastCols: 0,
+		lastRows: 0,
+	};
+	return runtime;
 }
 
-function disposeXterm(): void {
-	clearObservers();
-	clearScheduledFit();
-	clearResizeSettleTimers();
-	clearOscStabilityGuards();
-	if (xtermDataDisposable) {
-		xtermDataDisposable.dispose();
-		xtermDataDisposable = null;
-	}
-	if (xtermResizeDisposable) {
-		xtermResizeDisposable.dispose();
-		xtermResizeDisposable = null;
-	}
-	if (xterm) {
-		xterm.dispose();
-		xterm = null;
-	}
-	fitAddon = null;
-	lastSentCols = 0;
-	lastSentRows = 0;
-	updateSizeIndicator(0, 0);
-}
-
-function isNearBottom(): boolean {
-	if (!xterm) return false;
-	const b = xterm.buffer.active;
-	return !b || b.baseY - b.viewportY <= 2;
-}
-
-function decodeBase64ToBytes(encoded: string): Uint8Array | null {
-	if (!encoded) return null;
+async function readJson<T>(response: Response): Promise<T> {
 	try {
-		const bin = atob(encoded);
-		const b = new Uint8Array(bin.length);
-		for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i) & 0xff;
-		return b;
+		return (await response.json()) as T;
 	} catch {
-		return null;
+		return {} as T;
 	}
 }
 
-function writeToXterm(chunk: string | Uint8Array, scrollBottom: boolean): void {
-	if (!xterm) return;
-	if ((typeof chunk === "string" && !chunk.length) || (chunk instanceof Uint8Array && !chunk.length)) {
-		if (scrollBottom) xterm.scrollToBottom();
-		return;
-	}
-	xterm.write(chunk, () => {
-		if (scrollBottom && xterm) xterm.scrollToBottom();
-	});
+function terminalLabel(terminal: ToolsServiceTerminalInfo): string {
+	const state = terminal.running ? "running" : "idle";
+	return `${terminal.kind} · ${terminal.id} · ${state}`;
 }
 
-function appendOutputChunk(chunk: string | Uint8Array, forceBottom: boolean): void {
-	if (!xterm) return;
-	writeToXterm(chunk, forceBottom || isNearBottom());
+function terminalSessionId(instanceId: string, sessionKey: string): string {
+	return `${encodeURIComponent(instanceId)}:${encodeURIComponent(sessionKey)}`;
 }
 
-function closeTerminalSocket(): void {
-	if (!socket) return;
-	const ws = socket;
-	socket = null;
-	ws.onopen = null;
-	ws.onmessage = null;
-	ws.onerror = null;
-	ws.onclose = null;
-	if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
-}
-
-function scheduleReconnect(): void {
-	if (shuttingDown || reconnectTimer) return;
-	reconnectTimer = setTimeout(() => {
-		reconnectTimer = null;
-		connectTerminalSocket();
-	}, RECONNECT_DELAY_MS);
-}
-
-function applyReadyPayload(payload: ReadyPayload): void {
-	if (payload.mode === "sandbox_tmux") {
-		terminalAvailable = !!payload.available;
-		tmuxPersistenceEnabled = true;
-		setControlsEnabled(terminalAvailable);
-		setInstallActionsVisible(false);
-		if (metaEl) metaEl.textContent = `Sandbox tmux: ${payload.targetLabel || selectedSandboxTargetId || "unknown"}`;
-		if (hintEl) hintEl.textContent = "Attached to a real tmux session inside the selected sandbox.";
-		renderWindowTabs();
-		setWindowControlsEnabled();
-		if (terminalAvailable) {
-			setStatus("Connected to sandbox tmux.", "ok");
-			startWindowsRefreshLoop();
-			kickResizeSettleLoop();
-			flushInputQueue();
-			if (xterm) xterm.focus();
-		} else {
-			setStatus("Failed to attach sandbox tmux.", "error");
+function terminalSessions(instances: ToolsServiceInstanceInfo[]): TerminalSessionInfo[] {
+	const sessions: TerminalSessionInfo[] = [];
+	for (const instance of instances) {
+		const terminalsBySession = new Map<string, ToolsServiceTerminalInfo[]>();
+		for (const terminal of instance.terminals) {
+			const terminals = terminalsBySession.get(terminal.sessionKey) ?? [];
+			terminals.push(terminal);
+			terminalsBySession.set(terminal.sessionKey, terminals);
 		}
-		return;
-	}
-	terminalAvailable = !!payload.available;
-	setControlsEnabled(terminalAvailable);
-	const pe = !!payload.persistenceEnabled;
-	tmuxPersistenceEnabled = pe;
-	const pa = !!payload.persistenceAvailable;
-	const paid =
-		typeof payload.activeWindowId === "string" && payload.activeWindowId.trim() ? payload.activeWindowId.trim() : null;
-	if (paid) activeWindowId = paid;
-	pendingWindowId = null;
-	const ic = payload.tmuxInstallCommand || "";
-	const shouldOffer = terminalAvailable && !pe && !pa && ic.length > 0;
-	const first = shouldOffer && !tmuxInstallPromptSeen;
-	tmuxInstallCommand = shouldOffer ? ic : "";
-	if (installCommandEl) installCommandEl.textContent = tmuxInstallCommand;
-	if (installTmuxBtn) installTmuxBtn.textContent = first ? "Run install command (first time)" : "Run install command";
-	setInstallActionsVisible(shouldOffer);
-	if (metaEl)
-		metaEl.textContent = terminalAvailable
-			? pe
-				? `Persistent tmux session, user ${payload.user || "unknown"}`
-				: `Ephemeral host shell, user ${payload.user || "unknown"}`
-			: "Host shell unavailable";
-	if (hintEl) {
-		if (!terminalAvailable) hintEl.textContent = "Unable to open host shell.";
-		else if (pe)
-			hintEl.textContent =
-				"Interactive host shell with persistent tmux session. Click inside terminal and type commands directly.";
-		else if (pa)
-			hintEl.textContent =
-				"Interactive host shell (ephemeral). Enable tmux persistence from terminal settings when available.";
-		else if (ic)
-			hintEl.textContent = first
-				? "First connection tip: run the install command once to enable persistent tmux sessions."
-				: `Interactive host shell (ephemeral). Install tmux for persistence: ${ic}`;
-		else hintEl.textContent = "Interactive host shell (ephemeral). Install tmux to persist sessions across reconnects.";
-	}
-	if (first) markTmuxInstallPromptSeen();
-	renderWindowTabs();
-	setWindowControlsEnabled();
-	if (terminalAvailable) {
-		kickResizeSettleLoop();
-		updateSizeIndicator(xterm?.cols || 0, xterm?.rows || 0);
-		if (pe) {
-			setStatus("Connected to host shell with persistent tmux session.", "ok");
-			startWindowsRefreshLoop();
-			void refreshTerminalWindows({ preferredWindowId: activeWindowId, silent: true });
-		} else {
-			setStatus("Connected to host shell (ephemeral session).", "ok");
-			clearWindowsRefreshTimer();
+		for (const [sessionKey, terminals] of terminalsBySession) {
+			sessions.push({
+				id: terminalSessionId(instance.id, sessionKey),
+				instanceId: instance.id,
+				sessionKey,
+				terminals,
+			});
 		}
-		flushInputQueue();
-		if (xterm) xterm.focus();
-	} else {
-		clearWindowsRefreshTimer();
-		updateSizeIndicator(0, 0);
-		setStatus("Failed to open host shell.", "error");
 	}
+	return sessions;
 }
 
-function handleTerminalMessage(payload: TerminalMessage): void {
-	if (!(payload && typeof payload === "object")) return;
-	switch (payload.type) {
-		case "ready":
-			applyReadyPayload(payload as unknown as ReadyPayload);
-			break;
-		case "active_window":
-			handleActiveWindowEvent(payload);
-			break;
-		case "output":
-			if (payload.encoding === "base64") {
-				const b = decodeBase64ToBytes(payload.data || "");
-				if (b) appendOutputChunk(b, false);
-			} else appendOutputChunk(payload.data || "", false);
-			break;
-		case "status":
-			setStatus(payload.text || "", payload.level || "");
-			break;
-		case "error":
-			setStatus(payload.error || "Terminal error", "error");
-			break;
-		case "pong":
-			break;
-		default:
-			break;
-	}
+function TerminalView(props: TerminalViewProps): VNode {
+	const sessions = terminalSessions(props.instances.value);
+	const selectedSession = sessions.find((session) => session.id === props.selectedSessionId.value) ?? null;
+	const selectedInstance =
+		props.instances.value.find((instance) => instance.id === props.selectedInstanceId.value) ?? null;
+	const selectedTerminal =
+		selectedSession?.terminals.find((terminal) => terminal.id === props.selectedTerminalId.value) ?? null;
+
+	return (
+		<div className="terminal-page">
+			<div className="terminal-toolbar">
+				<div className="terminal-heading">
+					<h2 className="text-lg font-medium text-[var(--text-strong)]">Terminal</h2>
+					<div className="terminal-meta">Real terminals owned by the active tools service</div>
+				</div>
+				<div className="terminal-actions">
+					<button className="logs-btn" type="button" disabled={props.loading.value} onClick={props.onRefresh}>
+						Refresh
+					</button>
+					<button
+						className="logs-btn"
+						type="button"
+						disabled={!props.connected.value}
+						onClick={() => props.onControl("ctrl_c")}
+					>
+						Ctrl+C
+					</button>
+					<button
+						className="logs-btn"
+						type="button"
+						disabled={!props.connected.value}
+						onClick={() => props.onControl("clear")}
+					>
+						Clear
+					</button>
+					<button
+						className="logs-btn"
+						type="button"
+						disabled={!props.connected.value}
+						onClick={() => props.onControl("restart")}
+					>
+						Restart attachment
+					</button>
+				</div>
+			</div>
+
+			<div className="terminal-tabs-bar gap-2">
+				<label className="sr-only" htmlFor="terminalSession">
+					Agent session
+				</label>
+				<select
+					id="terminalSession"
+					className="logs-btn max-w-64"
+					value={props.selectedSessionId.value}
+					disabled={sessions.length === 0}
+					onChange={(event) => {
+						props.onSelectSession(targetValue(event));
+					}}
+				>
+					{sessions.map((session) => (
+						<option key={session.id} value={session.id}>
+							{session.sessionKey}
+						</option>
+					))}
+				</select>
+				<div className="terminal-tabs" aria-label="Managed terminals">
+					{selectedSession?.terminals.map((terminal) => (
+						<button
+							key={`${terminal.kind}:${terminal.id}`}
+							type="button"
+							className={`terminal-tab ${terminal.id === props.selectedTerminalId.value ? "active" : ""}`}
+							title={`Attach terminal ${terminal.id}`}
+							onClick={() => {
+								props.onSelectTerminal(terminal.id);
+							}}
+						>
+							{terminalLabel(terminal)}
+						</button>
+					))}
+					{selectedSession && selectedSession.terminals.length === 0 ? (
+						<span className="terminal-tab-empty">No managed terminals</span>
+					) : null}
+				</div>
+			</div>
+
+			<div className="flex flex-wrap items-end gap-2 px-3 py-2">
+				<label className="flex min-w-64 flex-1 flex-col gap-1 text-xs text-[var(--muted)]" htmlFor="terminalSessionKey">
+					Session key for a new terminal
+					<input
+						id="terminalSessionKey"
+						className="logs-input font-mono"
+						type="text"
+						value={props.sessionKey.value}
+						placeholder="Enter an explicit agent session key"
+						onInput={(event) => {
+							props.sessionKey.value = targetValue(event);
+						}}
+					/>
+				</label>
+				<button
+					className="logs-btn"
+					type="button"
+					disabled={!selectedInstance || props.creating.value || props.sessionKey.value.trim().length === 0}
+					onClick={props.onCreate}
+				>
+					{props.creating.value ? "Creating…" : "Create in selected service"}
+				</button>
+			</div>
+
+			{selectedTerminal ? (
+				<div className="grid grid-cols-2 gap-x-4 gap-y-1 px-3 pb-2 font-mono text-xs text-[var(--muted)] md:grid-cols-4">
+					<span>terminal: {selectedTerminal.id}</span>
+					<span>session: {selectedTerminal.sessionId}</span>
+					<span>window: {selectedTerminal.windowId}</span>
+					<span>pane: {selectedTerminal.paneId}</span>
+					<span className="col-span-2 md:col-span-4">session key: {selectedTerminal.sessionKey}</span>
+				</div>
+			) : null}
+
+			<div className="terminal-output-wrap">
+				<div ref={props.terminalElementRef} className="terminal-output" aria-label="Managed terminal output" />
+			</div>
+			<div
+				className={`terminal-status ${props.statusLevel.value === "error" ? "terminal-status-error" : ""} ${props.statusLevel.value === "ok" ? "terminal-status-ok" : ""}`}
+			>
+				{props.status.value}
+			</div>
+			<div className="terminal-hint">
+				Inventory and attachment use exact IDs returned by the selected tools service. No host or container tmux is
+				accessed directly by the web server.
+			</div>
+		</div>
+	);
 }
 
-function connectTerminalSocket(): void {
-	if (typeof WebSocket === "undefined") {
-		setStatus("WebSocket not supported in this browser", "error");
-		return;
+function TerminalPage(): VNode {
+	const instances = useSignal<ToolsServiceInstanceInfo[]>([]);
+	const selectedInstanceId = useSignal("");
+	const selectedSessionId = useSignal("");
+	const selectedTerminalId = useSignal("");
+	const sessionKey = useSignal("");
+	const status = useSignal("Loading tools service terminal inventory…");
+	const statusLevel = useSignal<"" | "ok" | "error">("");
+	const connected = useSignal(false);
+	const loading = useSignal(false);
+	const creating = useSignal(false);
+	const terminalElementRef = useRef<HTMLDivElement | null>(null);
+	const initializedElement = useRef<HTMLDivElement | null>(null);
+	const setTerminalElementRef = useCallback((element: HTMLDivElement | null) => {
+		terminalElementRef.current = element;
+	}, []);
+
+	function selectedTerminal(): ToolsServiceTerminalInfo | null {
+		const instance = instances.value.find((candidate) => candidate.id === selectedInstanceId.value);
+		const session = terminalSessions(instances.value).find((candidate) => candidate.id === selectedSessionId.value);
+		return (
+			instance?.terminals.find(
+				(terminal) => terminal.sessionKey === session?.sessionKey && terminal.id === selectedTerminalId.value,
+			) ?? null
+		);
 	}
-	clearReconnectTimer();
-	clearResizeSettleTimers();
-	closeTerminalSocket();
-	lastSentCols = 0;
-	lastSentRows = 0;
-	const proto = location.protocol === "https:" ? "wss:" : "ws:";
-	let wsUrl = `${proto}//${location.host}/api/terminal/ws`;
-	const params: string[] = [];
-	if (isSandboxMode()) {
-		const activeTab = sandboxTabs.find((tab) => tab.key === activeSandboxTabKey) || sandboxTabs[0] || null;
-		if (!(selectedSandboxTargetId && activeTab)) {
-			setStatus("Select a sandbox tmux window to attach.", "error");
-			renderWindowTabs();
+
+	function selectSession(sessionId: string): void {
+		const session = terminalSessions(instances.value).find((candidate) => candidate.id === sessionId) ?? null;
+		closeTerminalSocket();
+		connected.value = false;
+		selectedSessionId.value = session?.id ?? "";
+		selectedInstanceId.value = session?.instanceId ?? "";
+		selectedTerminalId.value = session?.terminals[0]?.id ?? "";
+		connect();
+	}
+
+	function selectTerminal(terminalId: string): void {
+		if (terminalId === selectedTerminalId.value && connected.value) {
+			terminalRuntime?.xterm.focus();
 			return;
 		}
-		wsUrl = `${proto}//${location.host}/api/terminal/sandbox/ws`;
-		params.push(`targetId=${encodeURIComponent(selectedSandboxTargetId)}`);
-		params.push(`sessionId=${encodeURIComponent(activeTab.sessionId)}`);
-		params.push(`windowId=${encodeURIComponent(activeTab.windowId)}`);
-		if (activeTab.paneId) params.push(`paneId=${encodeURIComponent(activeTab.paneId)}`);
-	} else {
-		const tw = pendingWindowId || activeWindowId;
-		if (tmuxPersistenceEnabled && tw) params.push(`window=${encodeURIComponent(tw)}`);
+		closeTerminalSocket();
+		connected.value = false;
+		selectedTerminalId.value = terminalId;
+		connect();
 	}
-	if (params.length > 0) wsUrl += `?${params.join("&")}`;
-	socket = new WebSocket(wsUrl);
-	setStatus("Connecting terminal websocket...");
-	socket.onopen = () => setStatus("Terminal websocket connected.", "ok");
-	socket.onmessage = (ev: MessageEvent) => {
-		let p: TerminalMessage | null = null;
+
+	async function refreshInventory(): Promise<void> {
+		loading.value = true;
 		try {
-			p = JSON.parse(ev.data as string);
-		} catch {
-			return;
+			const response = await fetch("/api/terminal/instances", { headers: { Accept: "application/json" } });
+			const payload = await readJson<InstancesResponse>(response);
+			if (!response.ok) throw new Error(localizedApiErrorMessage(payload as never, "Failed to load terminals"));
+			const nextInstances = Array.isArray(payload.instances) ? payload.instances : [];
+			instances.value = nextInstances;
+			const sessions = terminalSessions(nextInstances);
+			let currentSession = sessions.find((session) => session.id === selectedSessionId.value) ?? null;
+			if (!currentSession) {
+				currentSession = sessions[0] ?? null;
+				selectedSessionId.value = currentSession?.id ?? "";
+			}
+			selectedInstanceId.value =
+				currentSession?.instanceId ??
+				nextInstances.find((instance) => instance.id === selectedInstanceId.value)?.id ??
+				nextInstances[0]?.id ??
+				"";
+			if (!currentSession?.terminals.some((terminal) => terminal.id === selectedTerminalId.value)) {
+				closeTerminalSocket();
+				selectedTerminalId.value = currentSession?.terminals[0]?.id ?? "";
+				connected.value = false;
+			}
+			status.value = nextInstances.length === 0 ? "No active tools service instances are registered." : "Inventory refreshed.";
+			statusLevel.value = nextInstances.length === 0 ? "error" : "ok";
+			if (selectedTerminalId.value) connect();
+		} catch (error) {
+			closeTerminalSocket();
+			instances.value = [];
+			selectedInstanceId.value = "";
+			selectedSessionId.value = "";
+			selectedTerminalId.value = "";
+			connected.value = false;
+			status.value = error instanceof Error ? error.message : "Failed to load terminals";
+			statusLevel.value = "error";
+		} finally {
+			loading.value = false;
 		}
-		if (p) handleTerminalMessage(p);
-	};
-	socket.onerror = () => {
-		/* onclose handles */
-	};
-	socket.onclose = () => {
-		socket = null;
-		setControlsEnabled(false);
-		terminalAvailable = false;
-		clearWindowsRefreshTimer();
-		setWindowControlsEnabled();
-		if (shuttingDown) return;
-		setStatus("Terminal disconnected. Reconnecting...", "error");
-		scheduleReconnect();
-	};
-}
+	}
 
-function sendControl(action: string): void {
-	if (terminalAvailable) sendSocketMessage({ type: "control", action });
-}
+	async function createTerminal(): Promise<void> {
+		const explicitSessionKey = sessionKey.value.trim();
+		if (!(selectedInstanceId.value && explicitSessionKey)) return;
+		creating.value = true;
+		try {
+			const response = await fetch(
+				`/api/terminal/instances/${encodeURIComponent(selectedInstanceId.value)}/terminals`,
+				{
+					method: "POST",
+					headers: { Accept: "application/json", "Content-Type": "application/json" },
+					body: JSON.stringify({ sessionKey: explicitSessionKey }),
+				},
+			);
+			const payload = await readJson<CreateTerminalResponse>(response);
+			if (!response.ok || !payload.terminal)
+				throw new Error(localizedApiErrorMessage(payload as never, "Failed to create terminal"));
+			await refreshInventory();
+			selectedSessionId.value = terminalSessionId(selectedInstanceId.value, payload.terminal.sessionKey);
+			selectedTerminalId.value = payload.terminal.id;
+			status.value = `Created exact terminal ${payload.terminal.id}.`;
+			statusLevel.value = "ok";
+			connect();
+		} catch (error) {
+			status.value = error instanceof Error ? error.message : "Failed to create terminal";
+			statusLevel.value = "error";
+		} finally {
+			creating.value = false;
+		}
+	}
 
-function bindEvents(): void {
-	if (newTabBtn)
-		newTabBtn.addEventListener("click", () => {
-			void createTerminalWindow();
+	function connect(): void {
+		const terminal = selectedTerminal();
+		const runtime = terminalRuntime;
+		if (!(terminal && runtime && selectedInstanceId.value)) return;
+		closeTerminalSocket();
+		runtime.xterm.reset();
+		connected.value = false;
+		const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+		const query = new URLSearchParams({
+			instanceId: selectedInstanceId.value,
+			kind: terminal.kind,
+			id: terminal.id,
+			sessionKey: terminal.sessionKey,
 		});
-	if (ctrlCBtn) ctrlCBtn.addEventListener("click", () => sendControl("ctrl_c"));
-	if (clearBtn) clearBtn.addEventListener("click", () => sendControl("clear"));
-	if (restartBtn) restartBtn.addEventListener("click", () => sendControl("restart"));
-	if (installTmuxBtn)
-		installTmuxBtn.addEventListener("click", () => {
-			if (!(terminalAvailable && tmuxInstallCommand)) return;
-			if (!sendSocketMessage({ type: "input", data: `${tmuxInstallCommand}\n` })) {
-				setStatus("Failed to queue install command.", "error");
+		const socket = new WebSocket(`${protocol}//${location.host}/api/terminal/ws?${query.toString()}`);
+		runtime.socket = socket;
+		status.value = `Connecting to exact terminal ${terminal.id}…`;
+		statusLevel.value = "";
+		socket.onmessage = (event: MessageEvent<unknown>) => {
+			if (runtime.socket !== socket) return;
+			if (typeof event.data !== "string") return;
+			let message: TerminalServerMessage;
+			try {
+				message = JSON.parse(event.data) as TerminalServerMessage;
+			} catch {
+				status.value = "Invalid terminal message received.";
+				statusLevel.value = "error";
 				return;
 			}
-			setStatus(`Queued install command: ${tmuxInstallCommand}`, "ok");
-			if (xterm) xterm.focus();
-		});
-	if (copyInstallBtn)
-		copyInstallBtn.addEventListener("click", () => {
-			if (!tmuxInstallCommand) return;
-			copyToClipboard(tmuxInstallCommand, "", "").then((ok) => {
-				setStatus(
-					ok ? "Install command copied to clipboard." : "Clipboard unavailable — copy the command manually.",
-					ok ? "ok" : "error",
-				);
-			});
-		});
-}
+			if (message.type === "ready") {
+				if (!message.available || message.terminal?.id !== terminal.id) {
+					status.value = "Tools service returned mismatched terminal metadata.";
+					statusLevel.value = "error";
+					socket.close();
+					return;
+				}
+				connected.value = true;
+				status.value = `Attached to exact terminal ${terminal.id}.`;
+				statusLevel.value = "ok";
+				scheduleFit(true);
+				runtime.xterm.focus();
+				return;
+			}
+			if (message.type === "output") {
+				const output = message.encoding === "base64" ? decodeBase64(message.data ?? "") : (message.data ?? "");
+				if (output !== null) writeTerminalOutput(output);
+				return;
+			}
+			if (message.type === "status" || message.type === "error") {
+				status.value = message.text ?? message.error ?? "Terminal error";
+				statusLevel.value = message.level === "error" || message.type === "error" ? "error" : "";
+			}
+		};
+		socket.onclose = () => {
+			if (runtime.socket !== socket) return;
+			runtime.socket = null;
+			connected.value = false;
+			if (statusLevel.value !== "error") {
+				status.value = `Terminal ${terminal.id} disconnected.`;
+				statusLevel.value = "";
+			}
+		};
+		socket.onerror = () => {
+			if (runtime.socket !== socket) return;
+			status.value = `Failed to attach terminal ${terminal.id}.`;
+			statusLevel.value = "error";
+		};
+	}
 
-// ── Target selector (host vs sandbox tmux) ───────────────────
-
-async function populateTargetSelector(): Promise<void> {
-	if (!targetSelectorEl) return;
-	try {
-		sandboxTargets = await fetchSandboxTargets();
-		while (targetSelectorEl.options.length > 1) targetSelectorEl.remove(1);
-		for (const target of sandboxTargets) {
-			const opt = document.createElement("option");
-			opt.value = `sandbox:${target.id}`;
-			opt.textContent = `\u{1F4E6} ${target.label}`;
-			targetSelectorEl.appendChild(opt);
+	function control(action: "ctrl_c" | "clear" | "restart"): void {
+		if (!sendSocketMessage({ type: "control", action })) {
+			status.value = "Terminal is not connected.";
+			statusLevel.value = "error";
 		}
-	} catch (e) {
-		setStatus((e as Error)?.message || "Failed to load sandbox terminals", "error");
 	}
+
+	useEffect(() => {
+		const element = terminalElementRef.current;
+		if (!element || initializedElement.current === element) return;
+		initializedElement.current = element;
+		void createXterm(element)
+			.then((runtime) => {
+				terminalRuntime = runtime;
+				scheduleFit();
+				if (selectedTerminal()) connect();
+			})
+			.catch((error: unknown) => {
+				status.value = error instanceof Error ? error.message : "Failed to initialize xterm";
+				statusLevel.value = "error";
+			});
+	}, []);
+
+	useEffect(() => {
+		void refreshInventory();
+		return () => closeTerminalRuntime();
+	}, []);
+
+	return (
+		<TerminalView
+			instances={instances}
+			selectedInstanceId={selectedInstanceId}
+			selectedSessionId={selectedSessionId}
+			selectedTerminalId={selectedTerminalId}
+			sessionKey={sessionKey}
+			status={status}
+			statusLevel={statusLevel}
+			connected={connected}
+			loading={loading}
+			creating={creating}
+			onRefresh={refreshInventory}
+			onCreate={createTerminal}
+			onSelectSession={selectSession}
+			onSelectTerminal={selectTerminal}
+			onControl={control}
+			terminalElementRef={setTerminalElementRef}
+		/>
+	);
 }
 
-async function handleTargetSelectionChange(): Promise<void> {
-	if (!targetSelectorEl) return;
-	const value = targetSelectorEl.value || "";
-	if (value.startsWith("sandbox:")) {
-		selectedSandboxTargetId = value.slice("sandbox:".length);
-		terminalWindows = [];
-		activeWindowId = null;
-		pendingWindowId = null;
-		if (xterm) xterm.reset();
-		await refreshSandboxTmuxTree();
-		connectTerminalSocket();
-		return;
-	}
-	selectedSandboxTargetId = null;
-	sandboxTabs = [];
-	activeSandboxTabKey = null;
-	if (xterm) xterm.reset();
-	await refreshTerminalWindows({ silent: true });
-	connectTerminalSocket();
-}
-
-// Static HTML template for terminal page layout. No user input is interpolated.
-function buildTerminalHtml(): string {
-	return [
-		'<div class="terminal-page">',
-		'<div class="terminal-toolbar">',
-		'<div class="terminal-heading">',
-		'<h2 class="text-lg font-medium text-[var(--text-strong)]">Terminal</h2>',
-		'<div id="terminalMeta" class="terminal-meta"></div>',
-		"</div>",
-		'<div class="terminal-actions">',
-		'<div id="terminalSize" class="terminal-size" title="Terminal size (columns \u00d7 rows)">\u2014\u00d7\u2014</div>',
-		'<button id="terminalCtrlC" class="logs-btn" type="button" title="Send Ctrl+C">Ctrl+C</button>',
-		'<button id="terminalClear" class="logs-btn" type="button" title="Send Ctrl+L">Clear</button>',
-		'<button id="terminalRestart" class="logs-btn" type="button">Restart</button>',
-		"</div></div>",
-		'<div class="terminal-tabs-bar">',
-		'<select id="terminalTarget" class="logs-btn" style="font-size:0.75rem;padding:2px 8px;margin-right:8px;" title="Terminal target">',
-		'<option value="">Host</option>',
-		"</select>",
-		'<div id="terminalTabs" class="terminal-tabs" aria-label="tmux windows"></div>',
-		'<button id="terminalNewTab" class="logs-btn terminal-new-tab" type="button" title="Create new tab">+ Tab</button>',
-		"</div>",
-		'<div class="terminal-output-wrap">',
-		'<div id="terminalOutput" class="terminal-output" aria-label="Host terminal output"></div>',
-		"</div>",
-		'<div id="terminalStatus" class="terminal-status"></div>',
-		'<div id="terminalHint" class="terminal-hint">Interactive host shell. Click inside terminal and type commands directly.</div>',
-		'<div id="terminalHintActions" class="terminal-hint-actions" hidden>',
-		'<code id="terminalInstallCommand" class="terminal-hint-code"></code>',
-		'<button id="terminalInstallTmux" class="logs-btn terminal-hint-btn terminal-hint-btn-primary" type="button">Run install command</button>',
-		'<button id="terminalCopyInstall" class="logs-btn terminal-hint-btn" type="button">Copy</button>',
-		"</div></div>",
-	].join("");
-}
-
-export async function initTerminal(container: HTMLElement): Promise<void> {
-	_container = container;
-	shuttingDown = false;
-	tmuxInstallPromptSeen = readTmuxInstallPromptSeen();
-	tmuxInstallCommand = "";
-	container.style.cssText = "display:flex;flex-direction:column;padding:0;overflow:hidden;min-height:0;";
-
-	// Safe: static HTML with no user-supplied values
-	const tpl = document.createElement("template");
-	tpl.innerHTML = buildTerminalHtml();
-	container.appendChild(tpl.content);
-
-	terminalEl = container.querySelector("#terminalOutput");
-	metaEl = container.querySelector("#terminalMeta");
-	statusEl = container.querySelector("#terminalStatus");
-	hintEl = container.querySelector("#terminalHint");
-	hintActionsEl = container.querySelector("#terminalHintActions");
-	installCommandEl = container.querySelector("#terminalInstallCommand");
-	sizeEl = container.querySelector("#terminalSize");
-	tabsEl = container.querySelector("#terminalTabs");
-	newTabBtn = container.querySelector("#terminalNewTab");
-	ctrlCBtn = container.querySelector("#terminalCtrlC");
-	clearBtn = container.querySelector("#terminalClear");
-	restartBtn = container.querySelector("#terminalRestart");
-	installTmuxBtn = container.querySelector("#terminalInstallTmux");
-	copyInstallBtn = container.querySelector("#terminalCopyInstall");
-	targetSelectorEl = container.querySelector("#terminalTarget");
-
-	// Populate target selector and bind change event.
-	if (targetSelectorEl) {
-		targetSelectorEl.addEventListener("change", () => {
-			void handleTargetSelectionChange();
-		});
-		void populateTargetSelector();
-	}
-
-	setStatus("Initializing terminal...");
-	setControlsEnabled(false);
-	renderWindowTabs();
-	bindEvents();
-
-	try {
-		await initXterm();
-		await refreshTerminalWindows({ silent: true });
-		connectTerminalSocket();
-	} catch (err) {
-		setStatus((err as Error).message || "Failed to initialize terminal", "error");
-	}
+export function initTerminal(container: HTMLElement): void {
+	terminalContainer = container;
+	container.classList.add("flex", "min-h-0", "flex-col", "overflow-hidden", "p-0");
+	render(<TerminalPage />, container);
 }
 
 export function teardownTerminal(): void {
-	shuttingDown = true;
-	clearReconnectTimer();
-	clearResizeSettleTimers();
-	closeTerminalSocket();
-	clearInputQueue();
-	clearWindowsRefreshTimer();
-	disposeXterm();
-	if (_container) while (_container.firstChild) _container.removeChild(_container.firstChild);
-	_container = null;
-	terminalEl = null;
-	metaEl = null;
-	statusEl = null;
-	hintEl = null;
-	hintActionsEl = null;
-	installCommandEl = null;
-	sizeEl = null;
-	tabsEl = null;
-	newTabBtn = null;
-	ctrlCBtn = null;
-	clearBtn = null;
-	restartBtn = null;
-	installTmuxBtn = null;
-	copyInstallBtn = null;
-	terminalAvailable = false;
-	tmuxPersistenceEnabled = false;
-	terminalWindows = [];
-	activeWindowId = null;
-	pendingWindowId = null;
-	creatingWindow = false;
-	tmuxInstallCommand = "";
-	selectedSandboxTargetId = null;
-	sandboxTargets = [];
-	sandboxTabs = [];
-	activeSandboxTabKey = null;
+	closeTerminalRuntime();
+	if (terminalContainer) {
+		render(null, terminalContainer);
+		terminalContainer.classList.remove("flex", "min-h-0", "flex-col", "overflow-hidden", "p-0");
+	}
+	terminalContainer = null;
 }

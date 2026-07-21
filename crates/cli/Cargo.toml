@@ -24,7 +24,6 @@ chelix-gateway       = { workspace = true }
 chelix-httpd         = { workspace = true }
 chelix-import-core   = { workspace = true }
 chelix-memory        = { workspace = true }
-chelix-node-host     = { workspace = true }
 chelix-oauth         = { workspace = true }
 chelix-onboarding    = { workspace = true }
 chelix-plugins       = { workspace = true }

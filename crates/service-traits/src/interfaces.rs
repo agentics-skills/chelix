@@ -1145,8 +1145,6 @@ pub trait SystemInfoService: Send + Sync {
     async fn health(&self) -> ServiceResult;
     async fn status(&self) -> ServiceResult;
     async fn system_presence(&self) -> ServiceResult;
-    async fn node_list(&self) -> ServiceResult;
-    async fn node_describe(&self, params: Value) -> ServiceResult;
     async fn hooks_list(&self) -> ServiceResult;
     async fn heartbeat_status(&self) -> ServiceResult;
     async fn heartbeat_runs(&self, params: Value) -> ServiceResult;
@@ -1170,15 +1168,7 @@ impl SystemInfoService for NoopSystemInfoService {
     }
 
     async fn system_presence(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "clients": [], "nodes": [] }))
-    }
-
-    async fn node_list(&self) -> ServiceResult {
-        Ok(serde_json::json!([]))
-    }
-
-    async fn node_describe(&self, _params: Value) -> ServiceResult {
-        Err("system info service not configured".into())
+        Ok(serde_json::json!({ "clients": [] }))
     }
 
     async fn hooks_list(&self) -> ServiceResult {

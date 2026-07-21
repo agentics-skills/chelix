@@ -4,7 +4,7 @@ use crate::state::GatewayState;
 
 /// Gateway implementation of [`chelix_tools::location::LocationRequester`].
 ///
-/// Uses the `PendingInvoke` + oneshot pattern to request the user's browser
+/// Uses a pending request + oneshot pattern to request the user's browser
 /// geolocation and waits for `location.result` RPC to resolve it.
 pub(crate) struct GatewayLocationRequester {
     pub(crate) state: Arc<GatewayState>,
@@ -46,8 +46,8 @@ impl chelix_tools::location::LocationRequester for GatewayLocationRequester {
         let (tx, rx) = tokio::sync::oneshot::channel();
         {
             let mut inner_w = self.state.inner.write().await;
-            let invokes = &mut inner_w.pending_invokes;
-            invokes.insert(request_id.clone(), crate::state::PendingInvoke {
+            let requests = &mut inner_w.pending_location_requests;
+            requests.insert(request_id.clone(), crate::state::PendingLocationRequest {
                 request_id: request_id.clone(),
                 sender: tx,
                 created_at: std::time::Instant::now(),
@@ -63,7 +63,7 @@ impl chelix_tools::location::LocationRequester for GatewayLocationRequester {
                     .inner
                     .write()
                     .await
-                    .pending_invokes
+                    .pending_location_requests
                     .remove(&request_id);
                 return Ok(LocationResult {
                     location: None,
@@ -76,7 +76,7 @@ impl chelix_tools::location::LocationRequester for GatewayLocationRequester {
                     .inner
                     .write()
                     .await
-                    .pending_invokes
+                    .pending_location_requests
                     .remove(&request_id);
                 return Ok(LocationResult {
                     location: None,
@@ -165,13 +165,14 @@ impl chelix_tools::location::LocationRequester for GatewayLocationRequester {
         let (tx, rx) = tokio::sync::oneshot::channel();
         {
             let mut inner = self.state.inner.write().await;
-            inner
-                .pending_invokes
-                .insert(pending_key.clone(), crate::state::PendingInvoke {
+            inner.pending_location_requests.insert(
+                pending_key.clone(),
+                crate::state::PendingLocationRequest {
                     request_id: pending_key.clone(),
                     sender: tx,
                     created_at: std::time::Instant::now(),
-                });
+                },
+            );
         }
 
         // Wait up to 60 seconds — user needs to navigate Telegram's UI.
@@ -182,7 +183,7 @@ impl chelix_tools::location::LocationRequester for GatewayLocationRequester {
                     .inner
                     .write()
                     .await
-                    .pending_invokes
+                    .pending_location_requests
                     .remove(&pending_key);
                 return Ok(LocationResult {
                     location: None,
@@ -194,7 +195,7 @@ impl chelix_tools::location::LocationRequester for GatewayLocationRequester {
                     .inner
                     .write()
                     .await
-                    .pending_invokes
+                    .pending_location_requests
                     .remove(&pending_key);
                 return Ok(LocationResult {
                     location: None,

@@ -30,8 +30,6 @@ pub type HandlerFn =
 
 // ── Scope authorization ──────────────────────────────────────────────────────
 
-const NODE_METHODS: &[&str] = &["node.invoke.result", "node.event"];
-
 const READ_METHODS: &[&str] = &[
     "health",
     "logs.tail",
@@ -96,9 +94,6 @@ const READ_METHODS: &[&str] = &[
     "heartbeat.runs",
     "system-presence",
     "last-heartbeat",
-    "node.list",
-    "node.describe",
-    "node.pairing.status",
     "chat.history",
     "chat.context",
     "chat.raw_prompt",
@@ -171,8 +166,6 @@ const WRITE_METHODS: &[&str] = &[
     "stt.transcribe",
     "stt.setProvider",
     "voicewake.set",
-    "node.invoke",
-    "nodes.set_session",
     "chat.send",
     "chat.send_sync",
     "chat.abort",
@@ -279,24 +272,6 @@ const WRITE_METHODS: &[&str] = &[
 
 const APPROVAL_METHODS: &[&str] = &["command.approval.request", "command.approval.resolve"];
 
-const PAIRING_METHODS: &[&str] = &[
-    "node.pair.request",
-    "node.pair.list",
-    "node.pair.approve",
-    "node.pair.reject",
-    "node.pair.verify",
-    "node.pairing.enable",
-    "node.pairing.disable",
-    "node.pairing.status",
-    "device.pair.list",
-    "device.pair.approve",
-    "device.pair.reject",
-    "device.token.create",
-    "device.token.rotate",
-    "device.token.revoke",
-    "node.rename",
-];
-
 fn is_in(method: &str, list: &[&str]) -> bool {
     list.contains(&method)
 }
@@ -305,16 +280,7 @@ fn is_in(method: &str, list: &[&str]) -> bool {
 pub fn authorize_method(method: &str, role: &str, scopes: &[String]) -> Option<ErrorShape> {
     use chelix_protocol::scopes as s;
 
-    if is_in(method, NODE_METHODS) {
-        if role == "node" {
-            return None;
-        }
-        return Some(ErrorShape::new(
-            error_codes::FORBIDDEN,
-            format!("unauthorized role: {role}"),
-        ));
-    }
-    if role == "node" || role != "operator" {
+    if role != "operator" {
         return Some(ErrorShape::new(
             error_codes::FORBIDDEN,
             format!("unauthorized role: {role}"),
@@ -332,12 +298,6 @@ pub fn authorize_method(method: &str, role: &str, scopes: &[String]) -> Option<E
             "missing scope: operator.approvals",
         ));
     }
-    if is_in(method, PAIRING_METHODS) && !has(s::PAIRING) {
-        return Some(ErrorShape::new(
-            error_codes::UNAUTHORIZED,
-            "missing scope: operator.pairing",
-        ));
-    }
     if is_in(method, READ_METHODS) && !(has(s::READ) || has(s::WRITE)) {
         return Some(ErrorShape::new(
             error_codes::UNAUTHORIZED,
@@ -352,7 +312,6 @@ pub fn authorize_method(method: &str, role: &str, scopes: &[String]) -> Option<E
     }
 
     if is_in(method, APPROVAL_METHODS)
-        || is_in(method, PAIRING_METHODS)
         || is_in(method, READ_METHODS)
         || is_in(method, WRITE_METHODS)
     {
@@ -436,8 +395,7 @@ impl MethodRegistry {
 
     fn register_defaults(&mut self) {
         super::gateway::register(self);
-        super::node::register(self);
-        super::pairing::register(self);
+        super::location::register(self);
         super::services::register(self);
         super::subscribe::register(self);
         super::channel_mux::register(self);

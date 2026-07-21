@@ -20,7 +20,6 @@ import { SessionHeader } from "../components/SessionHeader";
 import { sendRpc } from "../helpers";
 import { initMediaDrop, teardownMediaDrop } from "../media-drop";
 import { bindModelComboEvents, modelDisplayLabel, modelTitle } from "../models";
-import { bindNodeComboEvents, fetchNodes, unbindNodeEvents } from "../nodes-selector";
 import { bindProjectComboEvents } from "../project-combo";
 import { fetchProjects } from "../projects";
 import { bindReasoningToggle, unbindReasoningToggle } from "../reasoning-toggle";
@@ -649,13 +648,6 @@ function initializeChatControls(): void {
 	S.setModelDropdownList(S.$("modelDropdownList"));
 	bindModelComboEvents();
 	bindReasoningToggle();
-	S.setNodeCombo(S.$("nodeCombo"));
-	S.setNodeComboBtn(S.$("nodeComboBtn"));
-	S.setNodeComboLabel(S.$("nodeComboLabel"));
-	S.setNodeDropdown(S.$("nodeDropdown"));
-	S.setNodeDropdownList(S.$("nodeDropdownList"));
-	bindNodeComboEvents();
-	fetchNodes();
 	S.setProjectCombo(S.$("projectCombo"));
 	S.setProjectComboBtn(S.$("projectComboBtn"));
 	S.setProjectComboLabel(S.$("projectComboLabel"));
@@ -747,7 +739,6 @@ function initializeChatMediaDrop(): void {
 const chatPageHTML =
 	'<div style="position:absolute;inset:0;display:grid;grid-template-rows:auto auto 1fr auto auto;overflow:hidden">' +
 	'<div class="chat-toolbar h-12 px-4 border-b border-[var(--border)] bg-[var(--surface)] flex items-center gap-2" style="grid-row:1;">' +
-	'<div id="nodeCombo" class="model-combo hidden"><button id="nodeComboBtn" class="model-combo-btn" type="button"><span class="icon icon-sm icon-server" style="flex-shrink:0;"></span><span id="nodeComboLabel">Local</span><span class="icon icon-sm icon-chevron-down model-combo-chevron"></span></button><div id="nodeDropdown" class="model-dropdown hidden" tabindex="-1"><div id="nodeDropdownList" class="model-dropdown-list"></div></div></div>' +
 	'<div id="projectCombo" class="model-combo hidden"><button id="projectComboBtn" class="model-combo-btn" type="button"><span class="icon icon-sm icon-folder" style="flex-shrink:0;"></span><span id="projectComboLabel">No project</span><span class="icon icon-sm icon-chevron-down model-combo-chevron"></span></button><div id="projectDropdown" class="model-dropdown hidden"><div id="projectDropdownList" class="model-dropdown-list"></div></div></div>' +
 	'<div id="sessionNameMount" class="ml-auto flex items-center min-w-0"></div>' +
 	'<div id="sessionHeaderToolbarMount" class="flex items-center gap-1.5"></div>' +
@@ -826,7 +817,6 @@ registerPrefix(
 		teardownVoiceInput();
 		teardownMediaDrop();
 		unbindReasoningToggle();
-		unbindNodeEvents();
 		slashHideMenu();
 		if (contextModalsKeydownHandler) {
 			document.removeEventListener("keydown", contextModalsKeydownHandler);
@@ -849,11 +839,6 @@ registerPrefix(
 		S.setModelDropdown(null);
 		S.setModelSearchInput(null);
 		S.setModelDropdownList(null);
-		S.setNodeCombo(null);
-		S.setNodeComboBtn(null);
-		S.setNodeComboLabel(null);
-		S.setNodeDropdown(null);
-		S.setNodeDropdownList(null);
 		S.setSandboxLabel(null);
 		S.setProjectCombo(null);
 		S.setProjectComboBtn(null);

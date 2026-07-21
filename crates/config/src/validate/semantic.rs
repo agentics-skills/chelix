@@ -643,44 +643,6 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         }
     }
 
-    // Unknown command host
-    let valid_command_hosts = ["local", "node", "ssh"];
-    if !valid_command_hosts.contains(&config.tools.execute_command.host.as_str()) {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "unknown-field",
-            path: "tools.execute_command.host".into(),
-            message: format!(
-                "unknown command host \"{}\"; expected one of: {}",
-                config.tools.execute_command.host,
-                valid_command_hosts.join(", ")
-            ),
-        });
-    }
-
-    // Warn if host=node but no node specified
-    if config.tools.execute_command.host == "node" && config.tools.execute_command.node.is_none() {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "unknown-field",
-            path: "tools.execute_command.node".into(),
-            message: "tools.execute_command.host is \"node\" but no default node is specified; commands will fail unless a node connects".into(),
-        });
-    }
-
-    if config.tools.execute_command.host == "ssh"
-        && config.tools.execute_command.ssh_target.is_none()
-    {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "unknown-field",
-            path: "tools.execute_command.ssh_target".into(),
-            message:
-                "tools.execute_command.host is \"ssh\" but no SSH target is specified; commands will fail"
-                    .into(),
-        });
-    }
-
     // Unknown command security level
     let valid_security_levels = ["allowlist", "permissive", "strict"];
     if !valid_security_levels.contains(&config.tools.execute_command.security_level.as_str()) {

@@ -272,24 +272,7 @@ pub struct ConnectParamsV4 {
 impl ConnectParamsV4 {
     /// Convert to v3-compatible `ConnectParams` for internal processing.
     pub fn into_connect_params(self) -> ConnectParams {
-        // Extract Chelix-specific fields from extensions.
         let chelix = self.extensions.get("chelix");
-        let caps = chelix
-            .and_then(|v| v.get("caps"))
-            .and_then(|v| serde_json::from_value(v.clone()).ok());
-        let commands = chelix
-            .and_then(|v| v.get("commands"))
-            .and_then(|v| serde_json::from_value(v.clone()).ok());
-        let permissions = chelix
-            .and_then(|v| v.get("permissions"))
-            .and_then(|v| v.as_object().cloned());
-        let path_env = chelix
-            .and_then(|v| v.get("pathEnv"))
-            .and_then(|v| v.as_str())
-            .map(String::from);
-        let device = chelix
-            .and_then(|v| v.get("device"))
-            .and_then(|v| serde_json::from_value(v.clone()).ok());
         let user_agent = chelix
             .and_then(|v| v.get("userAgent"))
             .and_then(|v| v.as_str())
@@ -299,13 +282,8 @@ impl ConnectParamsV4 {
             min_protocol: self.protocol.min,
             max_protocol: self.protocol.max,
             client: self.client,
-            caps,
-            commands,
-            permissions,
-            path_env,
             role: self.role,
             scopes: self.scopes,
-            device,
             auth: self.auth,
             locale: self.locale,
             user_agent,
@@ -323,19 +301,9 @@ pub struct ConnectParams {
     pub max_protocol: u32,
     pub client: ClientInfo,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub caps: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub commands: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub permissions: Option<serde_json::Map<String, serde_json::Value>>,
-    #[serde(rename = "pathEnv", skip_serializing_if = "Option::is_none")]
-    pub path_env: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scopes: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub device: Option<DeviceInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth: Option<ConnectAuth>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -363,18 +331,6 @@ pub struct ClientInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeviceInfo {
-    pub id: String,
-    #[serde(rename = "publicKey")]
-    pub public_key: String,
-    pub signature: String,
-    #[serde(rename = "signedAt")]
-    pub signed_at: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub nonce: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectAuth {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
@@ -382,12 +338,6 @@ pub struct ConnectAuth {
     pub password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
-    /// Device token issued via pairing flow (used by nodes to authenticate).
-    #[serde(rename = "deviceToken", skip_serializing_if = "Option::is_none")]
-    pub device_token: Option<String>,
-    /// Ed25519 public key (base64-encoded, 32 bytes) for challenge-response auth.
-    #[serde(rename = "publicKey", skip_serializing_if = "Option::is_none")]
-    pub public_key: Option<String>,
 }
 
 /// Sent by the gateway after successful handshake.
@@ -426,8 +376,6 @@ pub struct Features {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HelloAuth {
-    #[serde(rename = "deviceToken")]
-    pub device_token: String,
     pub role: String,
     pub scopes: Vec<String>,
     #[serde(rename = "issuedAtMs", skip_serializing_if = "Option::is_none")]
@@ -465,18 +413,12 @@ pub const KNOWN_EVENTS: &[&str] = &[
     "health",
     "command.approval.requested",
     "command.approval.resolved",
-    "device.pair.requested",
-    "device.pair.resolved",
-    "node.pair.requested",
-    "node.pair.resolved",
-    "node.invoke.request",
 ];
 
 // ── Roles and scopes ─────────────────────────────────────────────────────────
 
 pub mod roles {
     pub const OPERATOR: &str = "operator";
-    pub const NODE: &str = "node";
 }
 
 pub mod scopes {
@@ -484,7 +426,6 @@ pub mod scopes {
     pub const READ: &str = "operator.read";
     pub const WRITE: &str = "operator.write";
     pub const APPROVALS: &str = "operator.approvals";
-    pub const PAIRING: &str = "operator.pairing";
 }
 
 // ── Schema discovery (v4) ────────────────────────────────────────────────────
@@ -545,8 +486,7 @@ mod tests {
             "locale": "fr",
             "extensions": {
                 "chelix": {
-                    "caps": ["audio"],
-                    "pathEnv": "/usr/bin"
+                    "userAgent": "test-agent"
                 }
             }
         });
@@ -558,8 +498,7 @@ mod tests {
         assert_eq!(params.min_protocol, 3);
         assert_eq!(params.max_protocol, 4);
         assert_eq!(params.client.id, "test-v4");
-        assert_eq!(params.caps.as_ref().unwrap(), &["audio"]);
-        assert_eq!(params.path_env.as_deref(), Some("/usr/bin"));
+        assert_eq!(params.user_agent.as_deref(), Some("test-agent"));
     }
 
     #[test]
@@ -570,9 +509,7 @@ mod tests {
         });
         let v4: ConnectParamsV4 = serde_json::from_value(json).unwrap();
         let params = v4.into_connect_params();
-        assert!(params.caps.is_none());
-        assert!(params.device.is_none());
-        assert!(params.path_env.is_none());
+        assert!(params.user_agent.is_none());
     }
 
     // ── EventFrame with stream/done/channel ────────────────────────────

@@ -20,8 +20,7 @@ use {
 };
 
 use {
-    crate::error::Error,
-    chelix_agents::tool_registry::{AgentTool, ToolResultPersistence},
+    crate::error::Error, chelix_agents::tool_registry::AgentTool,
     chelix_config::schema::FirecrawlConfig,
 };
 
@@ -115,10 +114,6 @@ impl AgentTool for FirecrawlScrapeTool {
         "Scrape a web page using Firecrawl and return clean markdown content. \
          Useful for JavaScript-heavy or bot-protected pages. Requires a \
          Firecrawl API key."
-    }
-
-    fn result_persistence(&self, _params: &serde_json::Value) -> ToolResultPersistence {
-        ToolResultPersistence::TextFields(&["content"])
     }
 
     fn parameters_schema(&self) -> serde_json::Value {

@@ -27,7 +27,7 @@ use crate::server::AppState;
 
 /// `SystemInfoService` implementation backed by the gateway's live state.
 ///
-/// Covers methods that read gateway-internal data (connections, nodes, hooks,
+/// Covers methods that read gateway-internal data (connections, hooks,
 /// heartbeat) rather than delegating to a domain service crate.
 pub struct GatewaySystemInfoService {
     pub state: Arc<GatewayState>,
@@ -159,65 +159,7 @@ impl chelix_service_traits::SystemInfoService for GatewaySystemInfoService {
                 })
                 .collect()
         };
-        let inner = self.state.inner.read().await;
-        let nodes: Vec<_> = inner
-            .nodes
-            .list()
-            .iter()
-            .map(|n| {
-                serde_json::json!({
-                    "nodeId": n.node_id,
-                    "connId": n.conn_id,
-                    "displayName": n.display_name,
-                    "platform": n.platform,
-                    "version": n.version,
-                })
-            })
-            .collect();
-        Ok(serde_json::json!({ "clients": clients, "nodes": nodes }))
-    }
-
-    async fn node_list(&self) -> ServiceResult {
-        let inner = self.state.inner.read().await;
-        let nodes: Vec<_> = inner
-            .nodes
-            .list()
-            .iter()
-            .map(|n| {
-                serde_json::json!({
-                    "nodeId": n.node_id,
-                    "connId": n.conn_id,
-                    "displayName": n.display_name,
-                    "platform": n.platform,
-                    "version": n.version,
-                })
-            })
-            .collect();
-        Ok(serde_json::json!(nodes))
-    }
-
-    async fn node_describe(&self, params: Value) -> ServiceResult {
-        let node_id = params
-            .get("nodeId")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "missing nodeId".to_string())?;
-        let inner = self.state.inner.read().await;
-        let node = inner
-            .nodes
-            .get(node_id)
-            .ok_or_else(|| "node not found".to_string())?;
-        Ok(serde_json::json!({
-            "nodeId": node.node_id,
-            "displayName": node.display_name,
-            "platform": node.platform,
-            "version": node.version,
-            "capabilities": node.capabilities,
-            "commands": node.commands,
-            "permissions": node.permissions,
-            "pathEnv": node.path_env,
-            "remoteIp": node.remote_ip,
-            "connectedAt": node.connected_at.elapsed().as_secs(),
-        }))
+        Ok(serde_json::json!({ "clients": clients }))
     }
 
     async fn hooks_list(&self) -> ServiceResult {

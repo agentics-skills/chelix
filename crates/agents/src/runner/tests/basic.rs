@@ -1536,14 +1536,10 @@ impl LlmProvider for NativeTextFunctionProvider {
                     }
                 })
                 .unwrap_or("");
-            assert!(
-                tool_content.contains("\"action\":\"start\""),
-                "tool result should include action=start, got: {tool_content}"
-            );
-            assert!(
-                tool_content.contains("\"command\":\"pwd\""),
-                "tool result should include command=pwd, got: {tool_content}"
-            );
+            let tool_result: serde_json::Value = serde_json::from_str(tool_content)
+                .unwrap_or_else(|error| panic!("tool result should be JSON: {error}"));
+            assert_eq!(tool_result["received"]["action"], "start");
+            assert_eq!(tool_result["received"]["command"], "pwd");
             Ok(CompletionResponse {
                 text: Some("Process started for pwd".into()),
                 tool_calls: vec![],

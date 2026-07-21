@@ -46,25 +46,25 @@ Configure approval behavior in `chelix.toml`:
 
 ```toml
 [tools.execute_command]
-approval_mode = "always"  # always require approval
-# approval_mode = "smart" # auto-approve safe commands (default)
-# approval_mode = "never" # dangerous: never require approval
+approval_mode = "never"    # default: do not request operator approval
+# approval_mode = "on-miss" # request approval for commands outside the safe list
+# approval_mode = "always"  # request approval for every command
 ```
 
-**Recommendation**: Keep `approval_mode = "smart"` (the default) for most use
-cases. Only use `"never"` in fully automated, sandboxed environments.
+The accepted values are exactly `"always"`, `"on-miss"`, and `"never"`.
+Unknown values cause configuration loading to fail.
 
 ### Built-in Dangerous Command Blocklist
 
-Even with `approval_mode = "never"` or `security_level = "full"`, Chelix
-maintains a safety floor: a hardcoded set of regex patterns for the most
+Chelix maintains a safety floor: a hardcoded set of regex patterns for the most
 critical destructive commands (e.g. `rm -rf /`, `git reset --hard`,
-`DROP TABLE`, `mkfs`, `terraform destroy`). Matching commands always require
-approval regardless of configuration.
+`DROP TABLE`, `mkfs`, `terraform destroy`). With `approval_mode = "on-miss"` or
+`"always"`, matching commands require approval. With `approval_mode = "never"`,
+matching commands are denied because no approval flow is enabled.
 
 Users can override specific patterns by adding matching entries to their
-`allowlist` in `chelix.toml`. The blocklist only applies to host execution;
-sandboxed commands are already isolated.
+`allowlist` in `chelix.toml`. Approval policy is evaluated before a command is
+routed to its configured tools service.
 
 ### Destructive Command Guard (dcg)
 
@@ -335,31 +335,6 @@ scopes, session management endpoints, and WebSocket auth — see the dedicated
 | **1** | Password/passkey is configured             | Auth **always** required (any IP)     |
 | **2** | No credentials + direct local connection   | Full access (dev convenience)         |
 | **3** | No credentials + remote/proxied connection | Onboarding only (setup code required) |
-
-### Node Identity (Ed25519 TOFU)
-
-Remote nodes authenticate using Ed25519 challenge-response, following the same
-Trust On First Use (TOFU) model as SSH:
-
-1. **First connection**: The operator opens the pairing window from the Nodes UI
-   or with `chelix node pairing enable`. The node generates an Ed25519 keypair
-   and presents its public key to the gateway. The operator verifies the
-   fingerprint and approves the pairing (via the web UI or
-   `chelix node approve`).
-2. **Subsequent connections**: The gateway sends a random 32-byte nonce. The
-   node signs it with its private key. The gateway verifies the signature
-   against the stored public key. No shared secret crosses the wire.
-3. **Key pinning**: Once approved, the public key is pinned to the device ID. If
-   the same device reconnects with a different key, the connection is rejected
-   and a `node.security.key-mismatch` alert is broadcast to operators.
-4. **Revocation**: Revoked keys are kept in the database so they cannot be
-   re-paired without explicit operator action.
-
-The private key (`~/.chelix/node_key`) is stored with mode 0600 and never leaves
-the node. The gateway stores only public keys.
-
-Pairing is disabled by default. Keep it disabled except while onboarding a new
-node, then close the window with `chelix node pairing disable`.
 
 ## HTTP Endpoint Throttling
 

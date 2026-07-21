@@ -24,24 +24,10 @@ interface ToolsContextData {
 	mcpDisabled?: boolean;
 }
 
-interface NodeInventoryEntry {
-	platform?: string;
-	[key: string]: unknown;
-}
-
-interface RemoteCommandSummary {
-	pairedNodes: number;
-	sshTargets: number;
-}
-
-function pluralizeToolsCount(count: number, noun: string): string {
-	return `${count} ${noun}${count === 1 ? "" : "s"}`;
-}
-
 export function toolsOverviewCategory(name: string | undefined): string {
 	if (typeof name !== "string" || !name) return "Core";
 	if (name.startsWith("mcp__")) return "MCP";
-	if (name === "execute_command" || name.startsWith("node") || name.startsWith("sandbox")) {
+	if (name === "execute_command" || name.startsWith("sandbox")) {
 		return "Execution";
 	}
 	if (name.startsWith("session") || name.startsWith("sessions_")) return "Sessions";
@@ -73,45 +59,21 @@ export function groupToolsForOverview(tools: ToolEntry[]): ToolGroup[] {
 		}));
 }
 
-function summarizeRemoteCommandInventory(entries: NodeInventoryEntry[]): RemoteCommandSummary {
-	const summary: RemoteCommandSummary = { pairedNodes: 0, sshTargets: 0 };
-	(entries || []).forEach((entry) => {
-		if (!entry || typeof entry !== "object") return;
-		if (entry.platform === "ssh") {
-			summary.sshTargets += 1;
-			return;
-		}
-		summary.pairedNodes += 1;
-	});
-	return summary;
-}
-
 export function ToolsSection(): VNode {
 	const [loadingTools, setLoadingTools] = useState(true);
 	const [toolData, setToolData] = useState<ToolsContextData | null>(null);
-	const [nodeInventory, setNodeInventory] = useState<NodeInventoryEntry[]>([]);
 	const [toolsErr, setToolsErr] = useState<string | null>(null);
 
 	function loadToolsOverview(): void {
 		setLoadingTools(true);
 		setToolsErr(null);
-		Promise.allSettled([sendRpc("chat.context", {}), sendRpc("node.list", {})])
-			.then((results) => {
-				const contextResult = results[0];
-				if (contextResult.status !== "fulfilled" || !(contextResult.value as RpcResponse)?.ok) {
-					const errValue = contextResult.status === "fulfilled" ? (contextResult.value as RpcResponse) : null;
-					throw new Error(errValue?.error?.message || "Failed to load tools overview.");
+		sendRpc("chat.context", {})
+			.then((result) => {
+				const response = result as RpcResponse;
+				if (!response?.ok) {
+					throw new Error(response?.error?.message || "Failed to load tools overview.");
 				}
-				const nextToolData = ((contextResult.value as RpcResponse).payload || {}) as ToolsContextData;
-				const nodesResult = results[1];
-				const nextNodeInventory =
-					nodesResult.status === "fulfilled" &&
-					(nodesResult.value as RpcResponse)?.ok &&
-					Array.isArray((nodesResult.value as RpcResponse).payload)
-						? ((nodesResult.value as RpcResponse).payload as NodeInventoryEntry[])
-						: [];
-				setToolData(nextToolData);
-				setNodeInventory(nextNodeInventory);
+				setToolData((response.payload || {}) as ToolsContextData);
 				setLoadingTools(false);
 			})
 			.catch((error: Error) => {
@@ -130,18 +92,7 @@ export function ToolsSection(): VNode {
 	const sandbox = data.sandbox || {};
 	const tools: ToolEntry[] = Array.isArray(data.tools) ? data.tools : [];
 	const toolGroups = groupToolsForOverview(tools);
-	const remoteCommandInventory = summarizeRemoteCommandInventory(nodeInventory);
-	const routeDetails: string[] = [];
-	routeDetails.push(execution.mode === "sandbox" ? "sandboxed commands" : "host commands");
-	if (remoteCommandInventory.pairedNodes > 0) {
-		routeDetails.push(pluralizeToolsCount(remoteCommandInventory.pairedNodes, "paired node"));
-	}
-	if (remoteCommandInventory.sshTargets > 0) {
-		routeDetails.push(pluralizeToolsCount(remoteCommandInventory.sshTargets, "SSH target"));
-	}
-	if (remoteCommandInventory.pairedNodes === 0 && remoteCommandInventory.sshTargets === 0) {
-		routeDetails.push("local only");
-	}
+	const executionMode = execution.mode === "sandbox" ? "Sandbox" : "Host";
 
 	return (
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
@@ -150,7 +101,7 @@ export function ToolsSection(): VNode {
 					<h2 className="text-lg font-medium text-[var(--text-strong)]">Tools</h2>
 					<p className="text-xs text-[var(--muted)] mt-1 max-w-[900px] leading-relaxed">
 						This page shows the effective tool inventory for the active session and model. Change the current LLM,
-						disable MCP for a session, or switch execution routes and the inventory here will change with it.
+						or disable MCP for a session, and the inventory here will change with it.
 					</p>
 				</div>
 				<button
@@ -195,13 +146,12 @@ export function ToolsSection(): VNode {
 				</div>
 
 				<div className="rounded border border-[var(--border)] bg-[var(--surface)] p-4">
-					<div className="text-xs uppercase tracking-wide text-[var(--muted)]">Execution Routes</div>
-					<div className="mt-2 text-sm font-medium text-[var(--text)]">{routeDetails.join(" \u00b7 ")}</div>
+					<div className="text-xs uppercase tracking-wide text-[var(--muted)]">Execution Runtime</div>
+					<div className="mt-2 text-sm font-medium text-[var(--text)]">{executionMode}</div>
 					<div className="text-xs text-[var(--muted)] mt-2 leading-relaxed">
 						{sandbox.enabled ? `Sandbox backend: ${sandbox.backend || "configured"}. ` : ""}
 						{execution.promptSymbol ? `Prompt symbol: ${execution.promptSymbol}. ` : ""}
-						The <code className="text-[var(--text)]">execute_command</code> tool uses these routes rather than exposing
-						SSH as a separate command runner.
+						The <code className="text-[var(--text)]">execute_command</code> tool runs through the managed tools service.
 					</div>
 				</div>
 			</div>

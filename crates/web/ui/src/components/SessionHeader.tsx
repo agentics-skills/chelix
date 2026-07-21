@@ -5,7 +5,6 @@
 
 import type { VNode } from "preact";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { onEvent } from "../events";
 import * as gon from "../gon";
 import { parseAgentsListPayload, sendRpc } from "../helpers";
 import {
@@ -22,13 +21,6 @@ import { sessionStore } from "../stores/session-store";
 import { ComboSelect, confirmDialog, shareLinkDialog, shareVisibilityDialog, showToast } from "../ui";
 
 // ── Types ────────────────────────────────────────────────────
-
-interface NodeInfo {
-	nodeId: string;
-	displayName?: string;
-	platform?: string;
-	[key: string]: unknown;
-}
 
 interface AgentOption {
 	id: string;
@@ -92,20 +84,6 @@ function buildShareUrl(payload: SharePayload): string {
 	return url;
 }
 
-function isSshTargetNode(node: NodeInfo | null): boolean {
-	return node?.platform === "ssh" || String(node?.nodeId || "").startsWith("ssh:");
-}
-
-function nodeOptionLabel(node: NodeInfo | null): string {
-	if (!node) return "Local";
-	if (node.displayName) return node.displayName;
-	if (isSshTargetNode(node)) {
-		const target = String(node.nodeId || "").replace(/^ssh:/, "");
-		return `SSH: ${target}`;
-	}
-	return node.nodeId;
-}
-
 async function copyShareUrl(url: string, visibility: string): Promise<void> {
 	try {
 		if (navigator.clipboard?.writeText) {
@@ -153,8 +131,6 @@ export function SessionHeader({
 	const [agentOptions, setAgentOptions] = useState<AgentOption[]>(initialAgentOptions);
 	const [defaultAgentId, setDefaultAgentId] = useState(initialDefaultAgentId);
 	const [agentOptionsLoaded, setAgentOptionsLoaded] = useState(initialAgentOptions.length > 0);
-	const [nodeOptions, setNodeOptions] = useState<NodeInfo[]>([]);
-	const [switchingNode, setSwitchingNode] = useState(false);
 	const [externalAgentOptions, setExternalAgentOptions] = useState<ExternalAgentInfo[]>([]);
 	const [switchingExternalAgent, setSwitchingExternalAgent] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -171,7 +147,6 @@ export function SessionHeader({
 	const canArchive = !!session && isArchivableSession(session.toMeta());
 	const showArchivedSessions = sessionStore.showArchivedSessions.value;
 	const currentAgentId = session?.agent_id || defaultAgentId || "main";
-	const currentNodeId = session?.node_id || "";
 	const currentExternalAgentKind = session?.external_agent_kind || "";
 	const currentExternalAgent = currentExternalAgentKind
 		? externalAgentOptions.find((agent) => agent.kind === currentExternalAgentKind) || null
@@ -203,25 +178,6 @@ export function SessionHeader({
 		});
 		return () => {
 			cancelled = true;
-		};
-	}, [currentKey]);
-
-	// Fetch connected nodes and subscribe to presence updates.
-	useEffect(() => {
-		let cancelled = false;
-		const fetchNodes = (): void => {
-			sendRpc<NodeInfo[]>("node.list", {}).then((res) => {
-				if (cancelled || !res?.ok) return;
-				setNodeOptions(Array.isArray(res.payload) ? res.payload : []);
-			});
-		};
-		fetchNodes();
-		const unsub = onEvent("presence", () => {
-			if (!cancelled) fetchNodes();
-		});
-		return () => {
-			cancelled = true;
-			unsub();
 		};
 	}, [currentKey]);
 
@@ -448,32 +404,6 @@ export function SessionHeader({
 		[currentAgentId, currentKey, session, switchingAgent],
 	);
 
-	const onNodeChange = useCallback(
-		(nextNodeId: string) => {
-			if (switchingNode) return;
-			setSwitchingNode(true);
-			sendRpc("nodes.set_session", {
-				session_key: currentKey,
-				node_id: nextNodeId || null,
-			})
-				.then((res) => {
-					if (!res?.ok) {
-						showToast((res?.error as { message?: string })?.message || "Failed to switch node", "error");
-						return;
-					}
-					if (session) {
-						session.node_id = nextNodeId || null;
-						session.dataVersion.value++;
-					}
-					fetchSessions();
-				})
-				.finally(() => {
-					setSwitchingNode(false);
-				});
-		},
-		[currentKey, session, switchingNode],
-	);
-
 	const onExternalAgentChange = useCallback(
 		(nextKind: string) => {
 			if (switchingExternalAgent || nextKind === currentExternalAgentKind) return;
@@ -522,7 +452,6 @@ export function SessionHeader({
 	const agentSelectDisabled = switchingAgent || agentSelectOptions.length === 0;
 	const shouldShowAgentPicker = !isCron && agentOptionsLoaded && (agentOptions.length > 1 || !hasCurrentAgentOption);
 
-	const shouldShowNodePicker = !isCron && (nodeOptions.length > 0 || Boolean(currentNodeId));
 	const externalAgentSelectOptions: SelectOption[] = [
 		{ value: "", label: "Chelix agent" },
 		...externalAgentOptions.map((agent) => ({
@@ -538,25 +467,6 @@ export function SessionHeader({
 				? `External session ${session.externalSessionId}`
 				: "External agent bound"
 		: "";
-	const hasCurrentNodeOption = currentNodeId === "" || nodeOptions.some((node) => node.nodeId === currentNodeId);
-	let nodeSelectOptions: SelectOption[] = [
-		{ value: "", label: "Local" },
-		...nodeOptions.map((node) => ({
-			value: node.nodeId,
-			label: nodeOptionLabel(node),
-		})),
-	];
-	if (!hasCurrentNodeOption && currentNodeId) {
-		const fallbackLabel = currentNodeId.startsWith("ssh:") ? `SSH: ${currentNodeId.slice(4)}` : `node:${currentNodeId}`;
-		nodeSelectOptions = [
-			{
-				value: currentNodeId,
-				label: switchingNode ? "Switching\u2026" : fallbackLabel,
-			},
-			...nodeSelectOptions,
-		];
-	}
-
 	const nameStyle: Record<string, string> = { cursor: canRename ? "pointer" : "default" };
 	if (nameOwnLine) {
 		nameStyle.color = "var(--text-strong)";
@@ -621,19 +531,6 @@ export function SessionHeader({
 						allowEmpty={false}
 						fullWidth={false}
 						disabled={agentSelectDisabled}
-						floating
-					/>
-				)}
-				{showSelectors && shouldShowNodePicker && (
-					<ComboSelect
-						options={nodeSelectOptions}
-						value={currentNodeId}
-						onChange={onNodeChange}
-						placeholder="Session node"
-						searchable={false}
-						allowEmpty={false}
-						fullWidth={false}
-						disabled={switchingNode}
 						floating
 					/>
 				)}

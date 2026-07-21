@@ -38,7 +38,6 @@ pub(super) async fn rpc_handler(
                 chelix_protocol::scopes::READ.into(),
                 chelix_protocol::scopes::WRITE.into(),
                 chelix_protocol::scopes::APPROVALS.into(),
-                chelix_protocol::scopes::PAIRING.into(),
             ]
         });
 

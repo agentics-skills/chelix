@@ -893,7 +893,7 @@ pub async fn prepare_gateway_core(
     sandbox::prepare_sandbox_images(&sandbox_router).await?;
 
     // Initialize the global managed tools runtime before tools are registered.
-    let tools_service: Arc<dyn chelix_tools::tools_service::ToolsService> =
+    let tools_service: Arc<chelix_tools::tools_service::ManagedToolsService> =
         chelix_tools::tools_service::ManagedToolsService::start(Arc::clone(&sandbox_router))
             .await
             .map_err(|error| anyhow::anyhow!("failed to start managed tools service: {error}"))?;

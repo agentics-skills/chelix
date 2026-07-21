@@ -438,21 +438,24 @@ pub(crate) async fn run_explicit_shell_command(
         Some(tool) => {
             let truncation = tool.truncation(&command_params);
             let persistence = tool.result_persistence(&command_params);
-            match tool.execute(command_params).await {
-                Ok(result) => {
-                    let tool_result_store =
-                        ToolResultStore::new(chelix_config::data_dir().join("sessions"));
-                    persist_and_truncate(
-                        &tool_result_store,
-                        session_key,
-                        &tool_call_id,
-                        &result,
-                        max_tool_result_bytes,
-                        truncation,
-                        persistence,
-                    )
-                    .await
-                    .map(|context_result| (result, context_result))
+            match tool.execute(command_params.clone()).await {
+                Ok(result) => match tool.agent_result(&command_params, &result) {
+                    Ok(agent_result) => {
+                        let tool_result_store =
+                            ToolResultStore::new(chelix_config::data_dir().join("sessions"));
+                        persist_and_truncate(
+                            &tool_result_store,
+                            session_key,
+                            &tool_call_id,
+                            &agent_result,
+                            max_tool_result_bytes,
+                            truncation,
+                            persistence,
+                        )
+                        .await
+                        .map(|context_result| (result, context_result))
+                    },
+                    Err(error) => Err(error),
                 },
                 Err(error) => Err(error),
             }

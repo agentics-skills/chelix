@@ -61,11 +61,6 @@ impl SubscriptionRoot {
         event_stream(ctx, "channel").await
     }
 
-    /// Node connect/disconnect events.
-    async fn node_event(&self, ctx: &Context<'_>) -> Result<impl Stream<Item = GenericEvent>> {
-        event_stream(ctx, "node").await
-    }
-
     /// System tick events (periodic heartbeat with stats).
     async fn tick(&self, ctx: &Context<'_>) -> Result<impl Stream<Item = TickEvent>> {
         let c = ctx.data::<Arc<GqlContext>>()?;

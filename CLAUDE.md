@@ -111,7 +111,7 @@ npx tsc --noEmit       # Type check (strict, must be 0 errors)
 ```
 
 **After changing TS/TSX files**, always:
-1. `biome check --write crates/web/ui/src/`
+1. `npx biome check --write crates/web/ui/src/`
 2. `cd crates/web/ui && npm run build`
 3. `cd crates/web/ui && npx tsc --noEmit`
 
@@ -251,7 +251,7 @@ cargo +nightly-2025-12-27 fmt --all -- --check   # Check Rust formatting
 just release-preflight   # fmt + clippy gates
 cargo check              # Fast compile check
 taplo fmt                # Format TOML files
-biome check --write      # Lint/format TS/TSX
+npx biome check --write  # Lint/format TS/TSX
 ```
 
 ## Sandbox Architecture
@@ -361,7 +361,7 @@ Conventional commits: `feat|fix|docs|style|refactor|test|chore(scope): descripti
 **Always** run `./scripts/local-validate.sh <PR_NUMBER>` when a PR exists.
 
 For incremental local edits before full validation:
-- TS/TSX changed: run `biome check --write` and `cd crates/web/ui && npm run build`.
+- TS/TSX changed: run `npx biome check --write` and `cd crates/web/ui && npm run build`.
 - Rust changed: run `cargo +nightly-2025-12-27 fmt --all -- --check`.
 - Both changed: run all three.
 
@@ -382,7 +382,7 @@ with exact commands), `## Manual QA`. Include concrete test steps.
 **Run before every commit:**
 - [ ] No secrets or private tokens (CRITICAL)
 - [ ] `taplo fmt` (TOML changes)
-- [ ] `biome check --write` (TS/TSX changes)
+- [ ] `npx biome check --write` (TS/TSX changes)
 - [ ] Rust fmt passes (exact command above)
 - [ ] `just lint` passes (OS-aware clippy)
 - [ ] `just release-preflight` passes

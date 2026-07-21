@@ -24,7 +24,7 @@ test.describe("Settings navigation", () => {
 		await expect(page.getByRole("heading", { name: "User Profile", exact: true })).toBeVisible();
 	});
 
-	test("settings nav keeps distinct icons for nodes, remote access, tools, and mcp", async ({ page }) => {
+	test("settings nav keeps distinct icons for remote access, tools, and mcp", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await navigateAndWait(page, "/settings/profile");
 		await expect(page.locator(".settings-sidebar-nav")).toBeVisible();
@@ -49,7 +49,6 @@ test.describe("Settings navigation", () => {
 				return null;
 			};
 			return {
-				nodes: readRuleMask('.settings-nav-item[data-section="nodes"]::before'),
 				ssh: readRuleMask('.settings-nav-item[data-section="ssh"]::before'),
 				tools: readRuleMask('.settings-nav-item[data-section="tools"]::before'),
 				mcp: readRuleMask('.settings-nav-item[data-section="mcp"]::before'),
@@ -61,10 +60,9 @@ test.describe("Settings navigation", () => {
 			const normalized = value.trim().toLowerCase();
 			return normalized !== "" && normalized !== "none";
 		};
-		if (masks.nodes !== null) {
-			expect(hasMask(masks.nodes)).toBeTruthy();
+		if (masks.ssh !== null) {
+			expect(hasMask(masks.ssh)).toBeTruthy();
 		}
-		expect(hasMask(masks.ssh)).toBeTruthy();
 		expect(hasMask(masks.tools)).toBeTruthy();
 		expect(hasMask(masks.mcp)).toBeTruthy();
 
@@ -195,17 +193,6 @@ test.describe("Settings navigation", () => {
 		await expect(content).not.toBeEmpty();
 	});
 
-	test("nodes page shows remote command status doctor", async ({ page }) => {
-		const pageErrors = watchPageErrors(page);
-		await navigateAndWait(page, "/settings/nodes");
-
-		await expect(page.getByRole("heading", { name: "Remote Command Status", exact: true })).toBeVisible();
-		await expect(page.getByRole("button", { name: "SSH Settings", exact: true })).toBeVisible();
-		await expect(page.getByText("Backend", { exact: true })).toBeVisible();
-
-		expect(pageErrors).toEqual([]);
-	});
-
 	test("tools settings shows effective inventory and routing summary", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await navigateAndWait(page, "/settings/tools");
@@ -217,183 +204,8 @@ test.describe("Settings navigation", () => {
 			}),
 		).toBeVisible();
 		await expect(page.getByText("Tool Calling", { exact: true })).toBeVisible();
-		await expect(page.getByText("Execution Routes", { exact: true })).toBeVisible();
+		await expect(page.getByText("Execution Runtime", { exact: true })).toBeVisible();
 		await expect(page.getByText("Registered Tools", { exact: true })).toBeVisible();
-
-		expect(pageErrors).toEqual([]);
-	});
-
-	test("nodes join URL uses browser location port, not gon port", async ({ page }) => {
-		const pageErrors = watchPageErrors(page);
-		await navigateAndWait(page, "/settings/nodes");
-		await waitForWsConnected(page);
-
-		// Override gon port to a different value to simulate a reverse proxy
-		// scenario where the internal bind port differs from the browser port.
-		await page.evaluate(() => {
-			const appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
-			if (!appScript) throw new Error("app.js module not found");
-			const appUrl = new URL(appScript.src, window.location.origin);
-			const prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
-			return import(`${prefix}js/gon.js`).then((gon) => {
-				gon.set("port", 99999);
-			});
-		});
-
-		// Re-navigate so ConnectNodeForm re-renders with the spoofed gon port.
-		await navigateAndWait(page, "/settings/nodes");
-
-		const endpointCode = page.locator("code").filter({ hasText: /^chelix node add --host wss?:\/\// });
-		await expect(endpointCode).toBeVisible();
-		const endpointText = (await endpointCode.textContent()).trim();
-		const wsUrl = endpointText.replace(/^chelix node add --host\s+/, "");
-
-		// The URL must use the browser's port (location.port), NOT the spoofed
-		// gon port 99999 — proving we are immune to the behind-proxy bug (#426).
-		expect(wsUrl).not.toContain(":99999");
-		const browserPort = new URL(page.url()).port;
-		if (browserPort) {
-			expect(wsUrl).toContain(`:${browserPort}/ws`);
-		} else {
-			// Running on a default port; the URL should have no port component.
-			expect(wsUrl).toMatch(/^wss?:\/\/[^:]+\/ws$/);
-		}
-
-		expect(pageErrors).toEqual([]);
-	});
-
-	test("nodes doctor can repair and clear the active SSH host pin", async ({ page }) => {
-		const pageErrors = watchPageErrors(page);
-		let hostPinned = false;
-
-		await page.route("**/api/ssh/doctor", async (route) => {
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify({
-					ok: true,
-					command_host: "ssh",
-					ssh_binary_available: true,
-					ssh_binary_version: "OpenSSH_9.9",
-					paired_node_count: 0,
-					managed_key_count: 1,
-					encrypted_key_count: 1,
-					managed_target_count: 1,
-					pinned_target_count: hostPinned ? 1 : 0,
-					configured_node: null,
-					configured_ssh_target: null,
-					active_route: {
-						target_id: 42,
-						label: "SSH: prod-box",
-						target: "deploy@example.com",
-						port: 2222,
-						host_pinned: hostPinned,
-						auth_mode: "managed",
-						source: "managed",
-					},
-					checks: [],
-				}),
-			});
-		});
-		await page.route("**/api/ssh/host-key/scan", async (route) => {
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify({
-					ok: true,
-					host: "example.com",
-					port: 2222,
-					known_host: "|1|salt|hash ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITestKey",
-				}),
-			});
-		});
-		await page.route("**/api/ssh/targets/42/pin", async (route) => {
-			if (route.request().method() === "POST") {
-				hostPinned = true;
-			}
-			if (route.request().method() === "DELETE") {
-				hostPinned = false;
-			}
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify({ ok: true, id: 42 }),
-			});
-		});
-
-		await navigateAndWait(page, "/settings/nodes");
-
-		await expect(page.getByRole("button", { name: "Pin Active Route", exact: true })).toBeVisible();
-		await page.getByRole("button", { name: "Pin Active Route", exact: true }).click();
-		await expect(page.getByRole("button", { name: "Refresh Active Pin", exact: true })).toBeVisible();
-		await expect(page.getByRole("button", { name: "Clear Active Pin", exact: true })).toBeVisible();
-		await expect(page.getByText("stored host key", { exact: false })).toBeVisible();
-
-		await page.getByRole("button", { name: "Clear Active Pin", exact: true }).click();
-		await expect(page.getByRole("button", { name: "Pin Active Route", exact: true })).toBeVisible();
-		await expect(page.getByText("inheriting global known_hosts policy", { exact: false })).toBeVisible();
-
-		expect(pageErrors).toEqual([]);
-	});
-
-	test("nodes doctor shows actionable hint for active SSH route failures", async ({ page }) => {
-		const pageErrors = watchPageErrors(page);
-		await page.route("**/api/ssh/doctor", async (route) => {
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify({
-					ok: true,
-					command_host: "ssh",
-					ssh_binary_available: true,
-					ssh_binary_version: "OpenSSH_9.9",
-					paired_node_count: 0,
-					managed_key_count: 1,
-					encrypted_key_count: 1,
-					managed_target_count: 1,
-					pinned_target_count: 1,
-					configured_node: null,
-					configured_ssh_target: null,
-					active_route: {
-						target_id: 42,
-						label: "SSH: prod-box",
-						target: "deploy@example.com",
-						port: 22,
-						host_pinned: true,
-						auth_mode: "managed",
-						source: "managed",
-					},
-					checks: [],
-				}),
-			});
-		});
-		await page.route("**/api/ssh/doctor/test-active", async (route) => {
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify({
-					ok: false,
-					reachable: false,
-					stdout: "",
-					stderr: "Host key verification failed.",
-					exit_code: 255,
-					route_label: "prod-box",
-					failure_code: "host_key_verification_failed",
-					failure_hint:
-						"SSH host verification failed. Refresh or clear the host pin if the server was rebuilt, otherwise inspect the host before trusting it.",
-				}),
-			});
-		});
-
-		await navigateAndWait(page, "/settings/nodes");
-		await page.getByRole("button", { name: "Test Active SSH Route", exact: true }).click();
-		await expect(page.getByText("Host key verification failed.", { exact: true })).toBeVisible();
-		await expect(
-			page.getByText(
-				"Hint: SSH host verification failed. Refresh or clear the host pin if the server was rebuilt, otherwise inspect the host before trusting it.",
-				{ exact: true },
-			),
-		).toBeVisible();
 
 		expect(pageErrors).toEqual([]);
 	});
@@ -592,16 +404,19 @@ test.describe("Settings navigation", () => {
 	});
 
 	test("terminal page renders from settings", async ({ page }) => {
+		await page.route("**/api/terminal/instances", async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({ instances: [] }),
+			});
+		});
 		await navigateAndWait(page, "/settings/terminal");
 		await expect(page.getByRole("heading", { name: "Terminal", exact: true })).toBeVisible();
-		await expect(page.locator("#terminalOutput .xterm")).toHaveCount(1);
-		await expect(page.locator("#terminalInput")).toHaveCount(0);
-		await expect(page.locator("#terminalSize")).toHaveCount(1);
-		await expect(page.locator("#terminalSize")).toHaveText(/.+/);
-		await expect(page.locator("#terminalTabs")).toHaveCount(1);
-		await expect(page.locator("#terminalNewTab")).toHaveCount(1);
-		await expect(page.locator("#terminalHintActions")).toHaveCount(1);
-		await expect(page.locator("#terminalInstallTmux")).toHaveCount(1);
+		await expect(page.getByLabel("Managed terminal output").locator(".xterm")).toHaveCount(1);
+		await expect(page.getByLabel("Tools service instance")).toBeDisabled();
+		await expect(page.getByLabel("Session key for a new terminal")).toBeVisible();
+		await expect(page.getByText("No active tools service instances are registered.", { exact: true })).toBeVisible();
 	});
 
 	test("graphql toggle applies immediately", async ({ page }) => {
@@ -662,7 +477,6 @@ test.describe("Settings navigation", () => {
 		const expected = [
 			"User Profile",
 			"Agents",
-			"Nodes",
 			"Projects",
 			"Environment",
 			"Memory",

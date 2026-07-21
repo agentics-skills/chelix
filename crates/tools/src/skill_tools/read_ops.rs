@@ -4,7 +4,7 @@ use std::{path::Path, sync::Arc};
 
 use {
     async_trait::async_trait,
-    chelix_agents::tool_registry::{AgentTool, ToolResultPersistence},
+    chelix_agents::tool_registry::AgentTool,
     chelix_skills::{discover::SkillDiscoverer, types::SkillSource, usage::SkillUsageStore},
     serde_json::{Value, json},
 };
@@ -93,10 +93,6 @@ impl AgentTool for ReadSkillTool {
 
     fn description(&self) -> &str {
         "Load a skill's instructions and linked resources."
-    }
-
-    fn result_persistence(&self, _params: &Value) -> ToolResultPersistence {
-        ToolResultPersistence::TextFields(&["content"])
     }
 
     fn parameters_schema(&self) -> Value {

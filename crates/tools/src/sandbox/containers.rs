@@ -151,6 +151,8 @@ pub(crate) fn apple_container_run_args(
         "chelix-tools-service".to_string(),
         "--listen".to_string(),
         format!("0.0.0.0:{}", chelix_protocol::TOOLS_SERVICE_CONTAINER_PORT),
+        "--working-dir".to_string(),
+        SANDBOX_HOME_DIR.to_string(),
     ]);
     args
 }

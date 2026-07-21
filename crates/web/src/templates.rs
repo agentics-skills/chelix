@@ -26,7 +26,6 @@ pub(crate) struct SpaRoutes {
     profile: &'static str,
     config: &'static str,
     logs: &'static str,
-    nodes: &'static str,
     onboarding: &'static str,
     projects: &'static str,
     skills: &'static str,
@@ -43,7 +42,6 @@ pub(crate) static SPA_ROUTES: SpaRoutes = SpaRoutes {
     profile: "/settings/profile",
     config: "/settings/config",
     logs: "/settings/logs",
-    nodes: "/settings/nodes",
     onboarding: "/onboarding",
     projects: "/projects",
     skills: "/skills",
@@ -256,7 +254,6 @@ async fn build_recent_sessions_snapshot(gw: &GatewayState, limit: usize) -> Vec<
             "archived": entry.archived,
             "agent_id": agent_id,
             "agentId": agent_id_camel,
-            "node_id": entry.node_id,
             "version": entry.version,
         }));
     }

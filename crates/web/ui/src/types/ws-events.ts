@@ -25,10 +25,6 @@ export enum WsEventName {
 	MetricsUpdate = "metrics.update",
 	SkillsInstallProgress = "skills.install.progress",
 	PushSubscriptions = "push.subscriptions",
-	NodePairRequested = "node.pair.requested",
-	NodePairResolved = "node.pair.resolved",
-	DevicePairResolved = "device.pair.resolved",
-	NodeTelemetry = "node.telemetry",
 }
 
 // ── Payload interfaces ───────────────────────────────────────
@@ -320,8 +316,4 @@ export interface WsEventPayloadMap {
 	[WsEventName.MetricsUpdate]: Record<string, unknown>;
 	[WsEventName.SkillsInstallProgress]: Record<string, unknown>;
 	[WsEventName.PushSubscriptions]: Record<string, unknown>;
-	[WsEventName.NodePairRequested]: Record<string, unknown>;
-	[WsEventName.NodePairResolved]: Record<string, unknown>;
-	[WsEventName.DevicePairResolved]: Record<string, unknown>;
-	[WsEventName.NodeTelemetry]: Record<string, unknown>;
 }

@@ -1,11 +1,54 @@
 # Managed Tools Service
 
-Chelix runs filesystem tools that require native executables through the
-separate `chelix-tools-service` binary. The first migrated tool is `ripgrep`:
-the gateway no longer starts `rg` directly.
+Chelix runs migrated tools exclusively through the separate
+`chelix-tools-service` binary. The service exists to guarantee that every
+migrated tool has one implementation and identical behavior whether the
+gateway calls a service inside a sandbox or a locally managed service.
 
 The gateway and every supported container sandbox use the same versioned HTTP
 API. Routing changes the service endpoint, not the tool protocol.
+
+## Architectural invariant
+
+For every tool migrated to `chelix-tools-service`:
+
+- the implementation and its runtime state live only in the service;
+- the gateway is only an authenticated API client and policy boundary;
+- global `sandbox.mode` selects the service endpoint, never another tool
+  implementation;
+- host execution, sandbox `exec`, remote-node execution, or any other direct
+  execution path in the gateway is forbidden;
+- service unavailability is an explicit error and never triggers local
+  fallback execution.
+
+The currently migrated tools are `list_directory`, `ripgrep`,
+`execute_command`, `read_terminal_output`, and `process`.
+
+`execute_command`, `read_terminal_output`, and `process` exclusively use tmux
+managed by `chelix-tools-service`. The same tmux implementation and state model
+are used by both the local service and the sandbox service. The gateway does
+not own terminal state and does not execute these tools through a node or a
+direct shell path.
+
+For each `execute_command` run, the service starts a tmux `pipe-pane` capture
+before pasting the command. Command completion and the returned output are read
+from that complete PTY stream, not from finite tmux scrollback. Capture files
+are private, transient service state: their paths are never returned through
+the tool protocol, and they are removed when the terminal is reused, disappears,
+or the service shuts down.
+
+Transient terminal capture is not tool-result persistence. The agent runner is
+the only owner of persistent `content.txt`/`content.json` files, configured
+result-size limits, in-context truncation, and the marker that returns a
+persisted path to the agent. The tools service must return the complete command
+output without applying another byte limit.
+
+The tools-service response is raw protocol state used by Chelix control and UI
+code. Before persistence or LLM context, the terminal tool converts it into the
+agent-facing text containing the terminal ID, status, and command output. Tmux
+session, window, pane, and run identifiers remain protocol metadata and are not
+included in that text. String agent results are persisted as `content.txt`;
+structured agent results are persisted as `content.json` with `schema.json`.
 
 ## Process model
 
@@ -14,7 +57,7 @@ At gateway startup, Chelix:
 1. prepares the current deterministic sandbox image;
 2. selects one managed runtime from the global `sandbox.mode`;
 3. initializes that runtime;
-4. registers tools that call the service.
+4. registers API-backed tool clients.
 
 - `sandbox.mode = "On"`: only the container tools-service runtime is available.
   Chelix does not start a local `chelix-tools-service` process.
@@ -35,16 +78,17 @@ The global `sandbox.mode` selects the only available tools-service runtime:
   backend.
 - **`Off`** — use the managed loopback host endpoint.
 
-`ripgrep` includes an internal session key only to select the container
-lifecycle instance when the configured sandbox scope requires one. It cannot
-change the global routing policy.
+Tool calls include an internal session key only to select the container
+lifecycle instance when the configured sandbox scope requires one and to scope
+service-owned state such as tmux terminals. It cannot change the global routing
+policy.
 
 The `On` path is fail-closed. If the selected backend does not expose a managed
 tools-service endpoint, the tool call returns an error instead of falling back
 to host-side `rg` execution.
 
 ```text
-ripgrep tool
+migrated tool
     │
     ├── global Off ───────────────────► host tools service
     │                                  127.0.0.1:<random>

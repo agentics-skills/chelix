@@ -24,15 +24,11 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         Box::new(|ctx| {
             Box::pin(async move {
                 let client_count = ctx.state.client_count().await;
-                let inner = ctx.state.inner.read().await;
-                let nodes = &inner.nodes;
                 Ok(serde_json::json!({
                     "version": ctx.state.version,
                     "hostname": ctx.state.hostname,
                     "connections": client_count,
                     "uptimeMs": ctx.state.uptime_ms(),
-                    "nodes": nodes.count(),
-                    "hasMobileNode": nodes.has_mobile_node(),
                 }))
             })
         }),
@@ -61,29 +57,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         .collect()
                 };
 
-                let node_list: Vec<_> = {
-                    let inner = ctx.state.inner.read().await;
-                    inner
-                        .nodes
-                        .list()
-                        .iter()
-                        .map(|n| {
-                            serde_json::json!({
-                                "nodeId": n.node_id,
-                                "displayName": n.display_name,
-                                "platform": n.platform,
-                                "version": n.version,
-                                "capabilities": n.capabilities,
-                                "commands": n.commands,
-                                "connectedAt": n.connected_at.elapsed().as_secs(),
-                            })
-                        })
-                        .collect()
-                };
-
                 Ok(serde_json::json!({
                     "clients": client_list,
-                    "nodes": node_list,
                 }))
             })
         }),
@@ -178,7 +153,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
 
 /// Core protocol method names for `system.describe`.
 ///
-/// This is a static subset of methods registered in `gateway.rs`, `node.rs`,
+/// This is a static subset of methods registered in `gateway.rs`, `location.rs`,
 /// `subscribe.rs`, and `channel_mux.rs`. The full method list (including all
 /// service methods) is already available in `HelloOk.features.methods`.
 ///
@@ -193,12 +168,6 @@ fn reg_method_names() -> Vec<&'static str> {
         "last-heartbeat",
         "set-heartbeats",
         "system.describe",
-        "node.list",
-        "node.describe",
-        "node.rename",
-        "node.invoke",
-        "node.invoke.result",
-        "node.event",
         "location.result",
         "subscribe",
         "unsubscribe",

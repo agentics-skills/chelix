@@ -1,6 +1,5 @@
 use crate::prompt::types::{
-    ModelFamily, PromptHostRuntimeContext, PromptNodeInfo, PromptNodesRuntimeContext,
-    PromptSandboxRuntimeContext, WorkspaceFilePromptStatus,
+    ModelFamily, PromptHostRuntimeContext, PromptSandboxRuntimeContext, WorkspaceFilePromptStatus,
 };
 
 use chelix_config::version::{IS_DEV_BUILD, VERSION};
@@ -191,47 +190,6 @@ pub(crate) fn format_host_runtime_line(host: &PromptHostRuntimeContext) -> Optio
     }
 
     (!parts.is_empty()).then(|| format!("Host: {}", parts.join(" | ")))
-}
-
-pub(crate) fn format_node_runtime_line(node: &PromptNodeInfo) -> String {
-    let name = node.display_name.as_deref().unwrap_or(&node.node_id);
-    let mut parts = vec![node.platform.clone()];
-    if !node.capabilities.is_empty() {
-        parts.push(format!("caps: {}", node.capabilities.join(",")));
-    }
-    if let Some(cpus) = node.cpu_count {
-        parts.push(format!("{cpus} cores"));
-    }
-    if let Some(total) = node.mem_total {
-        let total_gb = total as f64 / 1_073_741_824.0;
-        parts.push(format!("{total_gb:.0}GB mem"));
-    }
-    if !node.runtimes.is_empty() {
-        parts.push(format!("runtimes: {}", node.runtimes.join(",")));
-    }
-    if !node.providers.is_empty() {
-        let names: Vec<&str> = node.providers.iter().map(|(n, _)| n.as_str()).collect();
-        parts.push(format!("providers: {}", names.join(",")));
-    }
-    format!("{name} ({})", parts.join(", "))
-}
-
-pub(crate) fn format_nodes_runtime_section(
-    nodes_ctx: &PromptNodesRuntimeContext,
-) -> Option<String> {
-    if nodes_ctx.nodes.is_empty() {
-        return None;
-    }
-    let node_descs: Vec<String> = nodes_ctx
-        .nodes
-        .iter()
-        .map(format_node_runtime_line)
-        .collect();
-    let mut line = format!("Nodes: {}", node_descs.join(" | "));
-    if let Some(ref default) = nodes_ctx.default_node_id {
-        line.push_str(&format!(" [default: {default}]"));
-    }
-    Some(line)
 }
 
 pub(crate) fn format_sandbox_runtime_line(sandbox: &PromptSandboxRuntimeContext) -> String {

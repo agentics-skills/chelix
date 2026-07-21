@@ -1467,7 +1467,6 @@ mod tests {
             last_seen_message_count: 0,
             version: 0,
             agent_id: None,
-            node_id: None,
             mode_id: None,
             external_agent_kind: None,
             external_session_id: None,

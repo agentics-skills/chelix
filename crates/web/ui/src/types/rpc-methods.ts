@@ -54,9 +54,6 @@ export interface RpcMethodMap {
 	"cron.status": unknown;
 	"cron.update": unknown;
 
-	// ── Device ──────────────────────────────────────────────────
-	"device.token.revoke": unknown;
-
 	// ── Command Approvals ───────────────────────────────────────
 	"command.approval.resolve": unknown;
 	"external_agents.bind": unknown;
@@ -111,12 +108,6 @@ export interface RpcMethodMap {
 	"models.list": ModelInfo[];
 	"models.list_all": ModelInfo[];
 	"models.test": unknown;
-
-	// ── Nodes ───────────────────────────────────────────────────
-	"node.list": unknown;
-	"node.pair.approve": unknown;
-	"node.pair.reject": unknown;
-	"nodes.set_session": unknown;
 
 	// ── External imports ────────────────────────────────────────
 	"claude.detect": unknown;

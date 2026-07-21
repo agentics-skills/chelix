@@ -299,12 +299,6 @@ impl LiveSessionService {
                 .metadata
                 .set_agent_id(&new_key, Some(&parent_agent))
                 .await;
-            if parent.node_id.is_some() {
-                let _ = self
-                    .metadata
-                    .set_node_id(&new_key, parent.node_id.as_deref())
-                    .await;
-            }
         } else {
             let default_agent = self.default_agent_id().await;
             let _ = self
@@ -336,7 +330,6 @@ impl LiveSessionService {
             "messageCount": fork_point,
             "agent_id": final_entry.agent_id,
             "agentId": final_entry.agent_id,
-            "node_id": final_entry.node_id,
             "version": final_entry.version,
         }))
     }

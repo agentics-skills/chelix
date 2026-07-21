@@ -21,7 +21,6 @@ async fn sync_runtime_webauthn_host_registers_new_origin() {
         config,
         Arc::new(chelix_tools::sandbox::SandboxRouter::disabled()),
         Some(Arc::clone(&credential_store)),
-        None,
         false,
         false,
         false,

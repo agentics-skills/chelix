@@ -140,18 +140,10 @@ unless `context_length`,
 See [Providers](providers.md) for the full list of supported providers and
 configuration options.
 
-## Remote Command Execution
+## SSH Management
 
-Command execution can stay local, route to a paired node, or use SSH:
-
-```toml
-[tools.execute_command]
-host = "local"                 # "local", "node", or "ssh"
-# node = "mac-mini"            # default paired node when host = "node"
-# ssh_target = "deploy@box"    # default SSH target when host = "ssh"
-```
-
-When `host = "ssh"`, Chelix can work in two modes:
+SSH deploy keys and named targets are managed in **Settings → SSH**. Target
+authentication supports two modes:
 
 - **System OpenSSH**: reuse your existing host aliases, agent forwarding policy,
   and `~/.ssh/config`.
@@ -167,17 +159,14 @@ that for you, and saved targets can refresh or clear their stored pin later.
 When present, Chelix uses that pin instead of your global OpenSSH known-host
 policy for that target.
 
-Managed targets appear in the Nodes page and chat node picker, so users can see
-where `execute_command` will run without digging through config. If multiple
-managed targets exist, the default one is used when
-`tools.execute_command.host = "ssh"` and no session-specific route is selected.
-`chelix doctor` also reports remote command inventory, active backend mode, and
-obvious SSH setup problems from the CLI.
+The SSH settings page provides target connectivity tests and actions to scan,
+refresh, or clear a saved host-key pin. Keys, targets, default-target selection,
+and pins are persisted in Chelix storage rather than `chelix.toml`.
 
 `Settings -> Tools` shows the effective tool inventory for the active session
 and model, including tool-calling support, MCP server state, skills/plugins, and
-available execution routes. It is session-aware by design, switching the model
-or disabling MCP for a session changes what appears there.
+the execution runtime. It is session-aware by design: switching the model or
+disabling MCP for a session changes what appears there.
 
 ## Sandbox Configuration
 

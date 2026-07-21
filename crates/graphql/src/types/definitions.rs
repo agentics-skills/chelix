@@ -49,8 +49,6 @@ pub struct StatusInfo {
 pub struct SystemPresence {
     #[serde(default)]
     pub clients: Vec<ClientInfo>,
-    #[serde(default)]
-    pub nodes: Vec<NodeInfo>,
 }
 
 #[derive(Debug, SimpleObject, Deserialize)]
@@ -62,21 +60,6 @@ pub struct ClientInfo {
     pub role: Option<String>,
     #[serde(default)]
     pub connected_at: Option<u64>,
-}
-
-#[derive(Debug, SimpleObject, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NodeInfo {
-    #[serde(default)]
-    pub node_id: Option<String>,
-    #[serde(default)]
-    pub conn_id: Option<String>,
-    #[serde(default)]
-    pub display_name: Option<String>,
-    #[serde(default)]
-    pub platform: Option<String>,
-    #[serde(default)]
-    pub version: Option<String>,
 }
 
 // ── Sessions ────────────────────────────────────────────────────────────────
@@ -735,13 +718,6 @@ pub struct CommandApprovalConfig {
     pub security_level: Option<String>,
 }
 
-#[derive(Debug, SimpleObject, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CommandNodeApprovalConfig {
-    #[serde(default)]
-    pub mode: Option<String>,
-}
-
 // ── Agents ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, SimpleObject, Deserialize)]
@@ -777,34 +753,6 @@ pub struct MemoryStatus {
 pub struct VoicewakeConfig {
     #[serde(default)]
     pub enabled: Option<bool>,
-}
-
-// ── Node Description ────────────────────────────────────────────────────────
-
-#[derive(Debug, SimpleObject, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NodeDescription {
-    #[serde(default)]
-    pub node_id: Option<String>,
-    #[serde(default)]
-    pub display_name: Option<String>,
-    #[serde(default)]
-    pub platform: Option<String>,
-    #[serde(default)]
-    pub version: Option<String>,
-    #[serde(default)]
-    pub capabilities: Option<Vec<String>>,
-    #[serde(default)]
-    pub commands: Option<Vec<String>>,
-    #[graphql(name = "permissions")]
-    #[serde(default)]
-    pub permissions: Option<Json>,
-    #[serde(default)]
-    pub path_env: Option<String>,
-    #[serde(default)]
-    pub remote_ip: Option<String>,
-    #[serde(default)]
-    pub connected_at: Option<u64>,
 }
 
 // ── Voice Config ────────────────────────────────────────────────────────────

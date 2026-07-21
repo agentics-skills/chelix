@@ -34,7 +34,6 @@ mod doctor_commands;
 mod hooks_commands;
 mod import_commands;
 mod memory_commands;
-mod node_commands;
 mod sandbox_commands;
 mod service_commands;
 mod voicecall_commands;
@@ -165,11 +164,6 @@ enum Commands {
     Memory {
         #[command(subcommand)]
         action: memory_commands::MemoryAction,
-    },
-    /// Manage remote nodes (generate-token, add, remove, list).
-    Node {
-        #[command(subcommand)]
-        action: node_commands::NodeAction,
     },
     /// Install or manage chelix as an OS service.
     Service {
@@ -478,7 +472,6 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Data { action }) => data_commands::handle_data(action).await,
         Some(Commands::Db { action }) => db_commands::handle_db(action).await,
         Some(Commands::Memory { action }) => memory_commands::handle_memory(action).await,
-        Some(Commands::Node { action }) => node_commands::handle_node(action).await,
         Some(Commands::Service { action }) => service_commands::handle_service(action),
         Some(Commands::Import { action }) => import_commands::handle_import(action).await,
         Some(Commands::Skills { action }) => handle_skills(action).await,

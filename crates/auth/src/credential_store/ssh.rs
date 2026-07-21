@@ -374,14 +374,6 @@ impl CredentialStore {
         Ok(())
     }
 
-    pub async fn ssh_target_count(&self) -> Result<usize> {
-        let row: Option<(i64,)> = sqlx::query_as("SELECT COUNT(1) FROM ssh_targets")
-            .fetch_optional(&self.pool)
-            .await?;
-        let count = row.unwrap_or((0,)).0;
-        Ok(usize::try_from(count).unwrap_or_default())
-    }
-
     pub async fn get_default_ssh_target(&self) -> Result<Option<SshResolvedTarget>> {
         let row: Option<(
             i64,
@@ -417,7 +409,6 @@ impl CredentialStore {
 
         Ok(Some(SshResolvedTarget {
             id,
-            node_id: format!("ssh:target:{id}"),
             label,
             target,
             port: port.and_then(|value| u16::try_from(value).ok()),
@@ -428,25 +419,18 @@ impl CredentialStore {
         }))
     }
 
-    pub async fn resolve_ssh_target(&self, node_ref: &str) -> Result<Option<SshResolvedTarget>> {
-        if let Some(id_str) = node_ref.strip_prefix("ssh:target:")
-            && let Ok(id) = id_str.parse::<i64>()
-        {
-            return self.resolve_ssh_target_by_id(id).await;
-        }
-
+    pub async fn resolve_ssh_target(&self, target_ref: &str) -> Result<Option<SshResolvedTarget>> {
         let entries = self.list_ssh_targets().await?;
-        let lower = node_ref.trim().to_lowercase();
+        let lower = target_ref.trim().to_lowercase();
         let matched = entries
             .into_iter()
-            .find(|entry| entry.label.to_lowercase() == lower || entry.target == node_ref);
+            .find(|entry| entry.label.to_lowercase() == lower || entry.target == target_ref);
         let Some(entry) = matched else {
             return Ok(None);
         };
 
         Ok(Some(SshResolvedTarget {
             id: entry.id,
-            node_id: format!("ssh:target:{}", entry.id),
             label: entry.label,
             target: entry.target,
             port: entry.port,
@@ -491,7 +475,6 @@ impl CredentialStore {
 
         Ok(Some(SshResolvedTarget {
             id,
-            node_id: format!("ssh:target:{id}"),
             label,
             target,
             port: port.and_then(|value| u16::try_from(value).ok()),

@@ -156,6 +156,8 @@ fn test_apple_container_run_args_launch_tools_service() {
         "chelix-tools-service",
         "--listen",
         "0.0.0.0:43271",
+        "--working-dir",
+        "/home/sandbox",
     ]
     .into_iter()
     .map(str::to_string)
@@ -197,6 +199,8 @@ fn test_apple_container_run_args_with_declarative_mounts() {
         "chelix-tools-service",
         "--listen",
         "0.0.0.0:43271",
+        "--working-dir",
+        "/home/sandbox",
     ]
     .into_iter()
     .map(str::to_string)

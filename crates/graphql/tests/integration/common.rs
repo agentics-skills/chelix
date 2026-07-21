@@ -784,14 +784,6 @@ impl chelix_service_traits::SystemInfoService for MockSystemInfo {
         self.0.call("system-presence", json!({}))
     }
 
-    async fn node_list(&self) -> ServiceResult {
-        self.0.call("node.list", json!({}))
-    }
-
-    async fn node_describe(&self, p: Value) -> ServiceResult {
-        self.0.call("node.describe", p)
-    }
-
     async fn hooks_list(&self) -> ServiceResult {
         self.0.call("hooks.list", json!({}))
     }

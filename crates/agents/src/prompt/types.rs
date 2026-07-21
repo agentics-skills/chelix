@@ -76,26 +76,6 @@ pub struct PromptSandboxRuntimeContext {
     pub network: Option<String>,
 }
 
-/// Info about a single connected remote node, injected into the system prompt.
-#[derive(Debug, Clone)]
-pub struct PromptNodeInfo {
-    pub node_id: String,
-    pub display_name: Option<String>,
-    pub platform: String,
-    pub capabilities: Vec<String>,
-    pub cpu_count: Option<u32>,
-    pub mem_total: Option<u64>,
-    pub runtimes: Vec<String>,
-    pub providers: Vec<(String, Vec<String>)>,
-}
-
-/// Runtime context about connected remote nodes.
-#[derive(Debug, Clone, Default)]
-pub struct PromptNodesRuntimeContext {
-    pub nodes: Vec<PromptNodeInfo>,
-    pub default_node_id: Option<String>,
-}
-
 /// Active session mode prompt overlay.
 #[derive(Debug, Clone)]
 pub struct PromptModeRuntimeContext {
@@ -109,7 +89,6 @@ pub struct PromptModeRuntimeContext {
 pub struct PromptRuntimeContext {
     pub host: PromptHostRuntimeContext,
     pub sandbox: Option<PromptSandboxRuntimeContext>,
-    pub nodes: Option<PromptNodesRuntimeContext>,
     pub mode: Option<PromptModeRuntimeContext>,
 }
 

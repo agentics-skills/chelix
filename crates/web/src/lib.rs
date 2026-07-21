@@ -117,21 +117,12 @@ fn build_api_routes() -> Router<AppState> {
             axum::routing::post(api::api_restart_daemon_handler),
         )
         .route(
-            "/api/terminal/windows",
-            get(terminal::api_terminal_windows_handler)
-                .post(terminal::api_terminal_windows_create_handler),
+            "/api/terminal/instances",
+            get(terminal::api_terminal_instances_handler),
         )
         .route(
-            "/api/terminal/sandbox/targets",
-            get(terminal::api_terminal_sandbox_targets_handler),
-        )
-        .route(
-            "/api/terminal/sandbox/tmux-tree",
-            get(terminal::api_terminal_sandbox_tmux_tree_handler),
-        )
-        .route(
-            "/api/terminal/sandbox/ws",
-            get(terminal::api_terminal_sandbox_ws_upgrade_handler),
+            "/api/terminal/instances/{instance_id}/terminals",
+            axum::routing::post(terminal::api_terminal_create_handler),
         )
         .route(
             "/api/terminal/ws",
@@ -147,14 +138,9 @@ fn build_api_routes() -> Router<AppState> {
                 .delete(chelix_httpd::env_routes::env_delete),
         )
         .route("/api/ssh", get(chelix_httpd::ssh_routes::ssh_status))
-        .route("/api/ssh/doctor", get(chelix_httpd::ssh_routes::ssh_doctor))
         .route(
             "/api/ssh/host-key/scan",
             axum::routing::post(chelix_httpd::ssh_routes::ssh_scan_host_key),
-        )
-        .route(
-            "/api/ssh/doctor/test-active",
-            axum::routing::post(chelix_httpd::ssh_routes::ssh_doctor_test_active),
         )
         .route(
             "/api/ssh/keys/generate",

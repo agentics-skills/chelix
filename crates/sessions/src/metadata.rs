@@ -95,8 +95,6 @@ pub struct SessionEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub node_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_agent_kind: Option<ExternalAgentKind>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_session_id: Option<String>,
@@ -189,7 +187,6 @@ impl SessionMetadata {
                 preview: None,
                 agent_id: None,
                 mode_id: None,
-                node_id: None,
                 external_agent_kind: None,
                 external_session_id: None,
                 version: 0,
@@ -286,15 +283,6 @@ impl SessionMetadata {
         }
     }
 
-    /// Assign (or unassign) a session to a remote node.
-    pub fn set_node_id(&mut self, key: &str, node_id: Option<String>) {
-        if let Some(entry) = self.entries.get_mut(key) {
-            entry.node_id = node_id;
-            entry.updated_at = now_ms();
-            entry.version += 1;
-        }
-    }
-
     /// List all sessions belonging to a given agent.
     pub fn list_by_agent_id(&self, agent_id: &str) -> Vec<SessionEntry> {
         let mut entries: Vec<_> = self
@@ -366,7 +354,6 @@ struct SessionRow {
     preview: Option<String>,
     agent_id: Option<String>,
     mode_id: Option<String>,
-    node_id: Option<String>,
     external_agent_kind: Option<String>,
     external_session_id: Option<String>,
     version: i64,
@@ -394,7 +381,6 @@ impl From<SessionRow> for SessionEntry {
             preview: r.preview,
             agent_id: r.agent_id,
             mode_id: r.mode_id,
-            node_id: r.node_id,
             external_agent_kind: r
                 .external_agent_kind
                 .as_deref()
@@ -463,7 +449,6 @@ impl SqliteSessionMetadata {
                 preview             TEXT,
                 agent_id            TEXT,
                 mode_id             TEXT,
-                node_id             TEXT,
                 external_agent_kind TEXT,
                 external_session_id TEXT,
                 version             INTEGER NOT NULL DEFAULT 0
@@ -778,23 +763,6 @@ impl SqliteSessionMetadata {
             "UPDATE sessions SET mode_id = ?, updated_at = ?, version = version + 1 WHERE key = ?",
         )
         .bind(mode_id)
-        .bind(now)
-        .bind(key)
-        .execute(&self.pool)
-        .await?;
-        self.emit(crate::session_events::SessionEvent::Patched {
-            session_key: key.to_string(),
-        });
-        Ok(())
-    }
-
-    /// Assign (or unassign) a session to a remote node.
-    pub async fn set_node_id(&self, key: &str, node_id: Option<&str>) -> Result<()> {
-        let now = now_ms() as i64;
-        sqlx::query(
-            "UPDATE sessions SET node_id = ?, updated_at = ?, version = version + 1 WHERE key = ?",
-        )
-        .bind(node_id)
         .bind(now)
         .bind(key)
         .execute(&self.pool)

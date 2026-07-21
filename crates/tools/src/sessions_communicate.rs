@@ -326,7 +326,6 @@ impl AgentTool for SessionsSearchTool {
                 "model": entry.and_then(|value| value.model.clone()),
                 "projectId": entry.and_then(|value| value.project_id.clone()),
                 "agentId": entry.and_then(|value| value.agent_id.clone()),
-                "nodeId": entry.and_then(|value| value.node_id.clone()),
                 "createdAt": entry.map(|value| value.created_at),
                 "updatedAt": entry.map(|value| value.updated_at),
                 "messageCount": entry.map(|value| value.message_count),

@@ -381,7 +381,6 @@ fn test_runtime_context_injected_when_provided() {
             workspace_path: Some("/home/chelix/.chelix".into()),
             network: Some("bridge".into()),
         }),
-        nodes: None,
         mode: None,
     };
 
@@ -443,7 +442,6 @@ fn test_runtime_context_sandbox_without_sudo_omits_sudo_hint() {
             home: Some("/home/sandbox".into()),
             ..Default::default()
         }),
-        nodes: None,
         mode: None,
     };
 
@@ -480,7 +478,6 @@ fn test_runtime_context_no_sandbox_uses_host_only_routing() {
             ..Default::default()
         },
         sandbox: None,
-        nodes: None,
         mode: None,
     };
 
@@ -520,7 +517,6 @@ fn test_runtime_context_no_sandbox_with_sudo_includes_sudo_hint() {
             ..Default::default()
         },
         sandbox: None,
-        nodes: None,
         mode: None,
     };
 
@@ -555,7 +551,6 @@ fn test_runtime_context_includes_location_when_set() {
             ..Default::default()
         },
         sandbox: None,
-        nodes: None,
         mode: None,
     };
 
@@ -593,7 +588,6 @@ fn test_runtime_context_includes_channel_surface_fields_when_set() {
             ..Default::default()
         },
         sandbox: None,
-        nodes: None,
         mode: None,
     };
 
@@ -631,7 +625,6 @@ fn test_runtime_context_omits_location_when_none() {
             ..Default::default()
         },
         sandbox: None,
-        nodes: None,
         mode: None,
     };
 
@@ -662,7 +655,6 @@ fn test_minimal_prompt_runtime_does_not_add_command_routing_block() {
             ..Default::default()
         },
         sandbox: None,
-        nodes: None,
         mode: None,
     };
 
@@ -999,7 +991,6 @@ fn test_system_prompt_does_not_contain_datetime() {
             ..Default::default()
         },
         sandbox: None,
-        nodes: None,
         mode: None,
     };
 
@@ -1032,7 +1023,6 @@ fn test_runtime_datetime_message_returns_time_when_present() {
             ..Default::default()
         },
         sandbox: None,
-        nodes: None,
         mode: None,
     };
 
@@ -1051,7 +1041,6 @@ fn test_runtime_datetime_message_falls_back_to_today() {
             ..Default::default()
         },
         sandbox: None,
-        nodes: None,
         mode: None,
     };
 
@@ -1064,7 +1053,6 @@ fn test_runtime_datetime_message_returns_none_without_time_or_date() {
     let runtime = PromptRuntimeContext {
         host: PromptHostRuntimeContext::default(),
         sandbox: None,
-        nodes: None,
         mode: None,
     };
 
@@ -1454,7 +1442,6 @@ fn test_prepend_datetime_to_text_content() {
             ..Default::default()
         },
         sandbox: None,
-        nodes: None,
         mode: None,
     };
     let content = UserContent::Text("Hello, what time is it?".into());
@@ -1478,7 +1465,6 @@ fn test_prepend_datetime_to_multimodal_content() {
             ..Default::default()
         },
         sandbox: None,
-        nodes: None,
         mode: None,
     };
     let content = UserContent::Multimodal(vec![
@@ -1526,7 +1512,6 @@ fn test_prepend_datetime_returns_none_without_time_or_date() {
     let runtime = PromptRuntimeContext {
         host: PromptHostRuntimeContext::default(),
         sandbox: None,
-        nodes: None,
         mode: None,
     };
     let content = UserContent::Text("Hello".into());
@@ -1541,7 +1526,6 @@ fn test_prepend_datetime_falls_back_to_today() {
             ..Default::default()
         },
         sandbox: None,
-        nodes: None,
         mode: None,
     };
     let content = UserContent::Text("What day is it?".into());

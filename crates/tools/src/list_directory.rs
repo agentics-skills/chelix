@@ -6,6 +6,7 @@ use {
     anyhow::Context,
     async_trait::async_trait,
     chelix_agents::tool_registry::AgentTool,
+    chelix_protocol::ListDirectoryRequest,
     serde::Deserialize,
     serde_json::{Value, json},
 };
@@ -13,7 +14,7 @@ use {
 #[cfg(feature = "metrics")]
 use chelix_metrics::{counter, labels, tools as tools_metrics};
 
-use crate::tools_service::ToolsService;
+use crate::tools_service::ManagedToolsService;
 
 #[derive(Debug, Deserialize)]
 struct ListDirectoryInput {
@@ -21,12 +22,12 @@ struct ListDirectoryInput {
 }
 
 pub struct ListDirectoryTool {
-    service: Arc<dyn ToolsService>,
+    service: Arc<ManagedToolsService>,
 }
 
 impl ListDirectoryTool {
     #[must_use]
-    pub fn new(service: Arc<dyn ToolsService>) -> Self {
+    pub fn new(service: Arc<ManagedToolsService>) -> Self {
         Self { service }
     }
 }
@@ -63,7 +64,10 @@ impl AgentTool for ListDirectoryTool {
             .to_string();
         let input: ListDirectoryInput =
             serde_json::from_value(params).context("invalid list_directory parameters")?;
-        let result = self.service.list_directory(&session_key, input.path).await;
+        let result = self
+            .service
+            .list_directory(&session_key, ListDirectoryRequest { path: input.path })
+            .await;
         #[cfg(feature = "metrics")]
         match &result {
             Ok(_) => {
@@ -82,50 +86,25 @@ impl AgentTool for ListDirectoryTool {
                 .increment(1);
             },
         }
-        Ok(Value::String(result?))
+        Ok(Value::String(result?.result))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::{Result, error::Error},
-        std::sync::Mutex,
-    };
+    use {super::*, crate::sandbox::ToolsServiceEndpoint};
 
-    struct FakeToolsService {
-        calls: Mutex<Vec<(String, String)>>,
-        result: String,
-        fail: bool,
-    }
-
-    #[async_trait]
-    impl ToolsService for FakeToolsService {
-        async fn list_directory(&self, session_key: &str, path: String) -> Result<String> {
-            self.calls
-                .lock()
-                .map_err(|_| Error::message("test calls lock poisoned"))?
-                .push((session_key.to_string(), path));
-            if self.fail {
-                return Err(Error::message("synthetic tools service failure"));
-            }
-            Ok(self.result.clone())
-        }
-
-        async fn ripgrep(&self, _session_key: &str, _params: Value) -> Result<Value> {
-            Err(Error::message("ripgrep is not used by this test"))
-        }
+    fn client(base_url: String, token: &str) -> Arc<ManagedToolsService> {
+        ManagedToolsService::for_test(ToolsServiceEndpoint {
+            base_url,
+            token: token.into(),
+        })
+        .unwrap_or_else(|error| panic!("test client failed: {error}"))
     }
 
     #[test]
     fn exposes_reference_name_and_schema() {
-        let service = Arc::new(FakeToolsService {
-            calls: Mutex::new(Vec::new()),
-            result: String::new(),
-            fail: false,
-        });
-        let tool = ListDirectoryTool::new(service);
+        let tool = ListDirectoryTool::new(client("http://127.0.0.1:1".into(), "unused"));
 
         assert_eq!(tool.name(), "list_directory");
         let schema = tool.parameters_schema();
@@ -136,12 +115,18 @@ mod tests {
 
     #[tokio::test]
     async fn execute_routes_session_and_returns_plain_text() {
-        let service = Arc::new(FakeToolsService {
-            calls: Mutex::new(Vec::new()),
-            result: "src/\nCargo.toml (1 line)".into(),
-            fail: false,
-        });
-        let tool = ListDirectoryTool::new(service.clone());
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("POST", chelix_protocol::TOOLS_SERVICE_LIST_DIRECTORY_PATH)
+            .match_header("authorization", "Bearer list-token")
+            .match_body(mockito::Matcher::Json(json!({ "path": "/workspace" })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body("{\"result\":\"src/\\nCargo.toml (1 line)\"}")
+            .expect(1)
+            .create_async()
+            .await;
+        let tool = ListDirectoryTool::new(client(server.url(), "list-token"));
 
         let result = tool
             .execute(json!({
@@ -153,45 +138,12 @@ mod tests {
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
 
         assert_eq!(result, Value::String("src/\nCargo.toml (1 line)".into()));
-        let calls = service
-            .calls
-            .lock()
-            .unwrap_or_else(|error| panic!("calls lock failed: {error}"));
-        assert_eq!(calls.as_slice(), &[(
-            "session:test".into(),
-            "/workspace".into()
-        )]);
-    }
-
-    #[tokio::test]
-    async fn execute_uses_main_session_by_default() {
-        let service = Arc::new(FakeToolsService {
-            calls: Mutex::new(Vec::new()),
-            result: "Folder is empty".into(),
-            fail: false,
-        });
-
-        ListDirectoryTool::new(service.clone())
-            .execute(json!({ "path": "/workspace" }))
-            .await
-            .unwrap_or_else(|error| panic!("execute failed: {error}"));
-
-        let calls = service
-            .calls
-            .lock()
-            .unwrap_or_else(|error| panic!("calls lock failed: {error}"));
-        assert_eq!(calls.as_slice(), &[("main".into(), "/workspace".into())]);
+        call.assert_async().await;
     }
 
     #[tokio::test]
     async fn execute_rejects_missing_path() {
-        let service = Arc::new(FakeToolsService {
-            calls: Mutex::new(Vec::new()),
-            result: String::new(),
-            fail: false,
-        });
-
-        let error = ListDirectoryTool::new(service)
+        let error = ListDirectoryTool::new(client("http://127.0.0.1:1".into(), "unused"))
             .execute(json!({}))
             .await
             .unwrap_err();
@@ -205,13 +157,16 @@ mod tests {
 
     #[tokio::test]
     async fn execute_surfaces_service_failure() {
-        let service = Arc::new(FakeToolsService {
-            calls: Mutex::new(Vec::new()),
-            result: String::new(),
-            fail: true,
-        });
-
-        let error = ListDirectoryTool::new(service)
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("POST", chelix_protocol::TOOLS_SERVICE_LIST_DIRECTORY_PATH)
+            .with_status(422)
+            .with_header("content-type", "application/json")
+            .with_body("{\"error\":\"synthetic tools service failure\"}")
+            .expect(1)
+            .create_async()
+            .await;
+        let error = ListDirectoryTool::new(client(server.url(), "test-token"))
             .execute(json!({ "path": "/workspace" }))
             .await
             .unwrap_err();
@@ -221,5 +176,6 @@ mod tests {
                 .to_string()
                 .contains("synthetic tools service failure")
         );
+        call.assert_async().await;
     }
 }

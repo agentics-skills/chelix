@@ -1,12 +1,13 @@
 //! Tool result handling: blob stripping, disk persistence, and truncation
 //! with a pointer to the persisted full output.
 //!
-//! Every tool call's full output is persisted via
-//! [`chelix_sessions::ToolResultStore`]. When the in-context copy exceeds the
-//! configured byte budget it is truncated and a marker pointing at the
-//! persisted `content.txt`/`content.json` file is appended, so the agent can
-//! re-read the full result with Read/Grep. Modeled on VS Code Copilot Chat's
-//! large-tool-results-to-disk mechanism.
+//! A tool converts its raw implementation/protocol response into an
+//! agent-facing value. That value is persisted via
+//! [`chelix_sessions::ToolResultStore`] before it enters LLM context. When the
+//! in-context copy exceeds the configured byte budget it is truncated and a
+//! marker pointing at the persisted `content.txt`/`content.json` file is
+//! appended, so the agent can re-read the full result with Read/Grep. Modeled
+//! on VS Code Copilot Chat's large-tool-results-to-disk mechanism.
 
 use std::fmt::Write;
 
@@ -110,12 +111,15 @@ fn truncate_at_char_boundary(result: &mut String, max_bytes: usize) {
     result.truncate(end);
 }
 
-/// Persist the full tool output and build the in-context copy.
+/// Persist the complete agent-facing tool result and build the in-context copy.
 ///
-/// The raw output is always written to the session's tool-results directory
-/// (when a store is available). The in-context copy is blob-stripped and,
-/// when it exceeds `max_bytes` and `truncation` is [`Truncation::Standard`],
-/// truncated with an appended marker pointing at the persisted full output.
+/// Unless persistence is explicitly disabled by the tool, the agent-facing
+/// value is written to the session's tool-results directory. Strings are
+/// persisted as `content.txt`; structured values are persisted as
+/// `content.json` with a schema. The in-context copy is blob-stripped and,
+/// when it exceeds `max_bytes` and `truncation` is
+/// [`Truncation::Standard`], truncated with an appended marker pointing at the
+/// persisted full output.
 pub async fn persist_and_truncate(
     store: &ToolResultStore,
     session_key: &str,
@@ -125,17 +129,23 @@ pub async fn persist_and_truncate(
     truncation: Truncation,
     persistence: ToolResultPersistence,
 ) -> anyhow::Result<String> {
-    let raw = result_value
-        .as_str()
-        .map_or_else(|| result_value.to_string(), str::to_string);
-    // Persistence is mandatory: the in-context pointer must always resolve.
-    let persisted = persist_result(store, session_key, call_id, result_value, persistence).await?;
+    let raw = match result_value.as_str() {
+        Some(text) => text.to_string(),
+        None => serde_json::to_string_pretty(result_value)?,
+    };
+    let persisted =
+        persist_result(store, session_key, call_id, result_value, &raw, persistence).await?;
 
     let mut result = sanitize_tool_result(&raw);
     if truncation == Truncation::Off || result.len() <= max_bytes {
         return Ok(result);
     }
 
+    let persisted = persisted.ok_or_else(|| {
+        anyhow::anyhow!(
+            "tool result persistence cannot be disabled when standard truncation is required"
+        )
+    })?;
     truncate_at_char_boundary(&mut result, max_bytes);
     append_full_output_pointer(&mut result, &persisted);
     Ok(result)
@@ -145,47 +155,23 @@ async fn persist_result(
     store: &ToolResultStore,
     session_key: &str,
     call_id: &str,
-    result: &serde_json::Value,
+    result_value: &serde_json::Value,
+    rendered_result: &str,
     persistence: ToolResultPersistence,
-) -> chelix_sessions::Result<PersistedToolResult> {
+) -> chelix_sessions::Result<Option<PersistedToolResult>> {
     match persistence {
-        ToolResultPersistence::Structured => {
-            store
-                .persist(session_key, call_id, &result.to_string())
+        ToolResultPersistence::Off => Ok(None),
+        ToolResultPersistence::On => match result_value {
+            serde_json::Value::String(text) => store
+                .persist_text(session_key, call_id, text)
                 .await
-        },
-        ToolResultPersistence::TextFields(fields) => {
-            let content = render_text_result(result, fields)?;
-            store.persist_text(session_key, call_id, &content).await
+                .map(Some),
+            _ => store
+                .persist(session_key, call_id, rendered_result)
+                .await
+                .map(Some),
         },
     }
-}
-
-fn render_text_result(
-    result: &serde_json::Value,
-    text_fields: &[&str],
-) -> chelix_sessions::Result<String> {
-    let Some(object) = result.as_object() else {
-        return Ok(result.as_str().unwrap_or_default().to_string());
-    };
-
-    let metadata = object
-        .iter()
-        .filter(|(key, _)| !text_fields.contains(&key.as_str()))
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect::<serde_json::Map<_, _>>();
-    let mut sections = Vec::new();
-    if !metadata.is_empty() {
-        sections.push(serde_json::to_string_pretty(&metadata)?);
-    }
-    sections.extend(text_fields.iter().filter_map(|field| {
-        object
-            .get(*field)
-            .and_then(serde_json::Value::as_str)
-            .filter(|content| !content.is_empty())
-            .map(|content| format!("[{field}]\n{content}"))
-    }));
-    Ok(sections.join("\n\n"))
 }
 
 /// Append the marker pointing the agent at the persisted full output.

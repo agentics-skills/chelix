@@ -41,7 +41,6 @@ export interface SessionMeta {
 	mode_id?: string | null;
 	/** CamelCase alias emitted alongside mode_id. */
 	modeId?: string | null;
-	node_id?: string | null;
 	external_agent_kind?: string | null;
 	externalAgentKind?: string | null;
 	externalSessionId?: string | null;

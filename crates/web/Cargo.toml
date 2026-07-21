@@ -15,6 +15,7 @@ chelix-cron     = { workspace = true }
 chelix-gateway  = { workspace = true }
 chelix-httpd    = { workspace = true }
 chelix-media    = { workspace = true }
+chelix-protocol = { workspace = true }
 chelix-sessions = { workspace = true }
 chelix-skills   = { workspace = true }
 chelix-tools    = { workspace = true }
@@ -22,18 +23,17 @@ chrono          = { features = ["serde"], workspace = true }
 futures         = { workspace = true }
 gix             = { workspace = true }
 include_dir     = { optional = true, workspace = true }
-portable-pty    = { workspace = true }
 secrecy         = { workspace = true }
 serde           = { workspace = true }
 serde_json      = { workspace = true }
 sysinfo         = { workspace = true }
 thiserror       = { workspace = true }
 tokio           = { workspace = true }
+tokio-tungstenite = { workspace = true }
 tokio-util      = { workspace = true }
 tracing         = { workspace = true }
 url             = { workspace = true }
 uuid            = { workspace = true }
-which           = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

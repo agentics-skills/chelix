@@ -408,36 +408,76 @@ impl Default for BrowserConfig {
     }
 }
 
+/// Operator approval policy for `execute_command`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ApprovalMode {
+    Always,
+    OnMiss,
+    #[default]
+    Never,
+}
+
 /// `execute_command` tool configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ExecuteCommandConfig {
     pub default_timeout_secs: u64,
-    pub max_output_bytes: usize,
-    pub approval_mode: String,
+    pub approval_mode: ApprovalMode,
     pub security_level: String,
     pub allowlist: Vec<String>,
-    /// Where to run commands: `"local"` (default), `"node"`, or `"ssh"`.
-    pub host: String,
-    /// Default node id or display name for remote execution (when `host = "node"`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub node: Option<String>,
-    /// Default SSH target for remote execution (when `host = "ssh"`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ssh_target: Option<String>,
 }
 
 impl Default for ExecuteCommandConfig {
     fn default() -> Self {
         Self {
             default_timeout_secs: 30,
-            max_output_bytes: 200 * 1024,
-            approval_mode: "on-miss".into(),
+            approval_mode: ApprovalMode::default(),
             security_level: "allowlist".into(),
             allowlist: Vec::new(),
-            host: "local".into(),
-            node: None,
-            ssh_target: None,
+        }
+    }
+}
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[cfg(test)]
+mod approval_mode_tests {
+    use super::*;
+
+    #[derive(Debug, Deserialize)]
+    struct ApprovalModeDocument {
+        approval_mode: ApprovalMode,
+    }
+
+    #[test]
+    fn default_approval_mode_is_never() {
+        assert_eq!(ApprovalMode::default(), ApprovalMode::Never);
+        assert_eq!(
+            ExecuteCommandConfig::default().approval_mode,
+            ApprovalMode::Never
+        );
+        assert_eq!(
+            serde_json::to_value(ApprovalMode::default()).unwrap(),
+            "never"
+        );
+    }
+
+    #[test]
+    fn approval_mode_accepts_only_canonical_values() {
+        for (value, expected) in [
+            ("always", ApprovalMode::Always),
+            ("on-miss", ApprovalMode::OnMiss),
+            ("never", ApprovalMode::Never),
+        ] {
+            let document: ApprovalModeDocument =
+                toml::from_str(&format!("approval_mode = \"{value}\"")).unwrap();
+            assert_eq!(document.approval_mode, expected);
+        }
+
+        for value in ["off", "smart", "on_miss", "unknown"] {
+            let result =
+                toml::from_str::<ApprovalModeDocument>(&format!("approval_mode = \"{value}\""));
+            assert!(result.is_err(), "unexpectedly accepted {value}");
         }
     }
 }

@@ -81,8 +81,6 @@ use {chelix_channels::ChannelReplyTarget, chelix_sessions::session_events::Sessi
 use crate::{
     auth::{CredentialStore, ResolvedAuth},
     broadcast::Broadcaster,
-    nodes::NodeRegistry,
-    pairing::{PairingState, PairingStore},
     services::GatewayServices,
 };
 
@@ -192,10 +190,10 @@ impl ConnectedClient {
     }
 }
 
-// ── Pending node invoke ─────────────────────────────────────────────────────
+// ── Pending location request ────────────────────────────────────────────────
 
-/// A pending RPC invocation waiting for a node to respond.
-pub struct PendingInvoke {
+/// A pending location request waiting for a browser or channel response.
+pub struct PendingLocationRequest {
     pub request_id: String,
     pub sender: oneshot::Sender<serde_json::Value>,
     pub created_at: Instant,
@@ -281,12 +279,8 @@ impl ClientRegistryInner {
 /// [`ClientRegistryInner`] behind the separate `client_registry` lock on
 /// `GatewayState`.  Do **not** duplicate them here.
 pub struct GatewayInner {
-    /// Connected device nodes.
-    pub nodes: NodeRegistry,
-    /// Device pairing state.
-    pub pairing: PairingState,
-    /// Pending node invoke requests awaiting results.
-    pub pending_invokes: HashMap<String, PendingInvoke>,
+    /// Pending browser/channel location requests awaiting results.
+    pub pending_location_requests: HashMap<String, PendingLocationRequest>,
     /// Pending server → client RPC requests awaiting client responses (v4).
     pub pending_client_requests: HashMap<String, PendingClientRequest>,
     /// Heartbeat configuration (for gon data and RPC methods).
@@ -350,9 +344,7 @@ impl GatewayInner {
         cached_location: Option<chelix_config::GeoLocation>,
     ) -> Self {
         Self {
-            nodes: NodeRegistry::new(),
-            pairing: PairingState::new(),
-            pending_invokes: HashMap::new(),
+            pending_location_requests: HashMap::new(),
             pending_client_requests: HashMap::new(),
             heartbeat_config: chelix_config::schema::HeartbeatConfig::default(),
             channel_reply_queue: HashMap::new(),
@@ -413,9 +405,8 @@ pub struct GatewayState {
     /// Global sandbox router. Its immutable mode selects sandbox or host execution.
     /// `Arc` because it is shared with command/process tools in `chelix-tools`.
     pub sandbox_router: Arc<SandboxRouter>,
-    /// SQLite-backed pairing store for device token persistence.
-    /// `None` in tests that don't need pairing.
-    pub pairing_store: Option<Arc<PairingStore>>,
+    /// The single managed tools-service transport used by tools and terminal UI.
+    tools_service: std::sync::OnceLock<Arc<chelix_tools::tools_service::ManagedToolsService>>,
     /// Memory runtime for long-term memory search.
     /// `Arc` because it is cloned into background tokio tasks.
     pub memory_manager: Option<chelix_memory::runtime::DynMemoryRuntime>,
@@ -440,10 +431,6 @@ pub struct GatewayState {
     /// Cloud deploy platform label, read from
     /// `CHELIX_DEPLOY_PLATFORM`. `None` when running locally.
     pub deploy_platform: Option<String>,
-    /// Whether new node pairing requests are accepted. Disabled by default
-    /// to prevent unauthenticated connection spam. Enable from the web UI or
-    /// via `node.pairing.enable` RPC when you need to pair a new node.
-    pub node_pairing_enabled: AtomicBool,
     /// The port the gateway is bound to.
     pub port: u16,
     /// Monotonic process start timestamp used for uptime calculations.
@@ -486,10 +473,6 @@ pub struct GatewayState {
 
     // ── Atomics (lock-free) ───────────────────────────────��─────────────────
     pub tts_phrase_counter: AtomicUsize,
-    /// Live count of connected nodes.
-    pub node_count: Arc<AtomicUsize>,
-    /// Count of configured SSH targets exposed as remote execution options.
-    pub ssh_target_count: Arc<AtomicUsize>,
 
     // ── Broadcast state (lock-free) ─────────────────────────────────────────
     /// Lock-free broadcast state (seq counter, GraphQL subscription channel).
@@ -514,7 +497,6 @@ impl GatewayState {
             services,
             config,
             Arc::new(SandboxRouter::disabled()),
-            None,
             None,
             false,
             false,
@@ -544,7 +526,6 @@ impl GatewayState {
         config: chelix_config::schema::ChelixConfig,
         sandbox_router: Arc<SandboxRouter>,
         credential_store: Option<Arc<CredentialStore>>,
-        pairing_store: Option<Arc<PairingStore>>,
         localhost_only: bool,
         behind_proxy: bool,
         tls_active: bool,
@@ -573,7 +554,7 @@ impl GatewayState {
             services,
             credential_store,
             sandbox_router,
-            pairing_store,
+            tools_service: std::sync::OnceLock::new(),
             memory_manager,
             code_index,
             localhost_only,
@@ -583,7 +564,6 @@ impl GatewayState {
             session_event_bus: session_event_bus.unwrap_or_default(),
             deploy_platform,
             port,
-            node_pairing_enabled: AtomicBool::new(false),
             started_at: Instant::now(),
             #[cfg(feature = "graphql")]
             graphql_enabled: AtomicBool::new(true),
@@ -604,12 +584,22 @@ impl GatewayState {
             skill_usage_store: std::sync::OnceLock::new(),
             chat_override: std::sync::RwLock::new(None),
             tts_phrase_counter: AtomicUsize::new(0),
-            node_count: Arc::new(AtomicUsize::new(0)),
-            ssh_target_count: Arc::new(AtomicUsize::new(0)),
             broadcaster: Arc::new(Broadcaster::new()),
             client_registry: RwLock::new(ClientRegistryInner::new()),
             inner: RwLock::new(GatewayInner::new(hook_registry, cached_location)),
         })
+    }
+
+    pub fn set_tools_service(
+        &self,
+        service: Arc<chelix_tools::tools_service::ManagedToolsService>,
+    ) -> Result<(), Arc<chelix_tools::tools_service::ManagedToolsService>> {
+        self.tools_service.set(service)
+    }
+
+    #[must_use]
+    pub fn tools_service(&self) -> Option<&Arc<chelix_tools::tools_service::ManagedToolsService>> {
+        self.tools_service.get()
     }
 
     /// Whether the gateway *may* be serving over a secure channel.
@@ -993,12 +983,8 @@ impl GatewayState {
         }
     }
 
-    /// Close a client: remove from registry and unregister from nodes.
+    /// Close a client and remove it from the registry.
     pub async fn close_client(&self, conn_id: &str) -> Option<ConnectedClient> {
-        // Unregister the node first (inner lock).
-        self.inner.write().await.nodes.unregister_by_conn(conn_id);
-
-        // Then remove the client from the client registry (separate lock).
         let (removed, count) = self.client_registry.write().await.remove_client(conn_id);
 
         #[cfg(feature = "metrics")]
@@ -1034,14 +1020,6 @@ impl GatewayState {
             registry.active_sessions.clear();
             registry.active_projects.clear();
         }
-
-        // 2) Acquire inner write lock: clear nodes.
-        self.inner.write().await.nodes.clear();
-
-        // Reset the atomic node counter so has_connected_nodes() reflects
-        // reality. The normal WS cleanup path won't decrement because
-        // unregister_by_conn returns None after clear().
-        self.node_count.store(0, Ordering::Relaxed);
 
         #[cfg(feature = "metrics")]
         chelix_metrics::gauge!(chelix_metrics::system::CONNECTED_CLIENTS).set(0.0);
@@ -1093,13 +1071,8 @@ mod tests {
                     mode: "operator".into(),
                     instance_id: None,
                 },
-                caps: None,
-                commands: None,
-                permissions: None,
-                path_env: None,
                 role: None,
                 scopes: None,
-                device: None,
                 auth: None,
                 locale: None,
                 user_agent: None,
@@ -1188,51 +1161,6 @@ mod tests {
         // Should not panic.
         state.disconnect_all_clients("noop").await;
         assert_eq!(state.client_count().await, 0);
-    }
-
-    #[tokio::test]
-    async fn disconnect_all_clients_resets_node_count() {
-        use {
-            crate::nodes::NodeSession,
-            std::{collections::HashMap, time::Instant},
-        };
-
-        let state = test_state();
-
-        // Register a node so the counter goes up.
-        let node = NodeSession {
-            node_id: "node-1".into(),
-            conn_id: "conn-1".into(),
-            display_name: None,
-            platform: "macos".into(),
-            version: "0.1.0".into(),
-            capabilities: vec![],
-            commands: vec![],
-            permissions: HashMap::new(),
-            path_env: None,
-            remote_ip: None,
-            connected_at: Instant::now(),
-            mem_total: None,
-            mem_available: None,
-            cpu_count: None,
-            cpu_usage: None,
-            uptime_secs: None,
-            services: vec![],
-            last_telemetry: None,
-            disk_total: None,
-            disk_available: None,
-            runtimes: vec![],
-            providers: vec![],
-        };
-        state.inner.write().await.nodes.register(node);
-        state.node_count.fetch_add(1, Ordering::Relaxed);
-
-        assert_eq!(state.node_count.load(Ordering::Relaxed), 1);
-
-        state.disconnect_all_clients("test").await;
-
-        // node_count must be reset to 0 so has_connected_nodes() returns false.
-        assert_eq!(state.node_count.load(Ordering::Relaxed), 0);
     }
 
     // ── Subscription tests ──────────────────────────────────────────────

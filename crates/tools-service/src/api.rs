@@ -1,35 +1,72 @@
 use std::sync::Arc;
 
 use {
+    anyhow::Error,
     axum::{
         Json, Router,
-        extract::State,
-        http::{HeaderMap, StatusCode},
+        extract::{Query, State, WebSocketUpgrade},
+        http::{HeaderMap, StatusCode, header::AUTHORIZATION},
         response::{IntoResponse, Response},
         routing::{get, post},
     },
     chelix_protocol::{
-        ListDirectoryRequest, ListDirectoryResponse, RipgrepRequest, RipgrepResponse,
-        TOOLS_SERVICE_HEALTH_PATH, TOOLS_SERVICE_LIST_DIRECTORY_PATH,
-        TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_RIPGREP_PATH, ToolsServiceError,
-        ToolsServiceHealth,
+        CreateToolsServiceTerminalRequest, CreateToolsServiceTerminalResponse,
+        ExecuteCommandRequest, ListDirectoryRequest, ListDirectoryResponse, ProcessRequest,
+        ReadTerminalOutputRequest, RipgrepRequest, RipgrepResponse,
+        TOOLS_SERVICE_EXECUTE_COMMAND_PATH, TOOLS_SERVICE_HEALTH_PATH,
+        TOOLS_SERVICE_LIST_DIRECTORY_PATH, TOOLS_SERVICE_PROCESS_PATH,
+        TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH,
+        TOOLS_SERVICE_RIPGREP_PATH, TOOLS_SERVICE_TERMINAL_WS_PATH, TOOLS_SERVICE_TERMINALS_PATH,
+        ToolsServiceError, ToolsServiceHealth, ToolsServiceTerminalAttachQuery,
+        ToolsServiceTerminalKind, ToolsServiceTerminalsResponse,
     },
 };
 
-use crate::{list_directory, ripgrep};
+#[cfg(test)]
+use axum::serve;
+
+use crate::{
+    interactive_terminal, list_directory, process::ProcessManager, ripgrep,
+    terminal::TerminalManager, tmux::TmuxRuntime,
+};
 
 #[derive(Clone)]
 struct ApiState {
     token: Arc<str>,
+    terminal_manager: Arc<TerminalManager>,
+    process_manager: Arc<ProcessManager>,
+    tmux_runtime: Arc<TmuxRuntime>,
 }
 
-pub fn router(token: String) -> Router {
+pub fn router(
+    token: String,
+    terminal_manager: Arc<TerminalManager>,
+    process_manager: Arc<ProcessManager>,
+    tmux_runtime: Arc<TmuxRuntime>,
+) -> Router {
     Router::new()
         .route(TOOLS_SERVICE_HEALTH_PATH, get(health))
         .route(TOOLS_SERVICE_LIST_DIRECTORY_PATH, post(run_list_directory))
         .route(TOOLS_SERVICE_RIPGREP_PATH, post(run_ripgrep))
+        .route(
+            TOOLS_SERVICE_EXECUTE_COMMAND_PATH,
+            post(run_execute_command),
+        )
+        .route(
+            TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH,
+            post(run_read_terminal_output),
+        )
+        .route(TOOLS_SERVICE_PROCESS_PATH, post(run_process))
+        .route(
+            TOOLS_SERVICE_TERMINALS_PATH,
+            get(list_terminals).post(create_terminal),
+        )
+        .route(TOOLS_SERVICE_TERMINAL_WS_PATH, get(attach_terminal))
         .with_state(ApiState {
             token: Arc::from(token),
+            terminal_manager,
+            process_manager,
+            tmux_runtime,
         })
 }
 
@@ -76,7 +113,133 @@ async fn run_ripgrep(
     }
 }
 
-fn tool_error_response(error: anyhow::Error) -> Response {
+#[tracing::instrument(skip_all)]
+async fn run_execute_command(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Json(request): Json<ExecuteCommandRequest>,
+) -> Response {
+    if !is_authorized(&state, &headers) {
+        return unauthorized_response();
+    }
+
+    match state.terminal_manager.execute_command(request).await {
+        Ok(result) => Json(result).into_response(),
+        Err(error) => tool_error_response(error),
+    }
+}
+
+#[tracing::instrument(skip_all)]
+async fn run_read_terminal_output(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Json(request): Json<ReadTerminalOutputRequest>,
+) -> Response {
+    if !is_authorized(&state, &headers) {
+        return unauthorized_response();
+    }
+
+    match state.terminal_manager.read_terminal_output(request).await {
+        Ok(result) => Json(result).into_response(),
+        Err(error) => tool_error_response(error),
+    }
+}
+
+#[tracing::instrument(skip_all)]
+async fn run_process(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Json(request): Json<ProcessRequest>,
+) -> Response {
+    if !is_authorized(&state, &headers) {
+        return unauthorized_response();
+    }
+
+    match state.process_manager.run(request).await {
+        Ok(result) => Json(result).into_response(),
+        Err(error) => tool_error_response(error),
+    }
+}
+
+#[tracing::instrument(skip_all)]
+async fn list_terminals(State(state): State<ApiState>, headers: HeaderMap) -> Response {
+    if !is_authorized(&state, &headers) {
+        return unauthorized_response();
+    }
+
+    let result = async {
+        let mut terminals = state.terminal_manager.terminal_infos().await?;
+        terminals.extend(state.process_manager.terminal_infos().await?);
+        terminals.sort_by(|left, right| {
+            left.session_key
+                .cmp(&right.session_key)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        Ok::<_, Error>(ToolsServiceTerminalsResponse { terminals })
+    }
+    .await;
+    match result {
+        Ok(response) => Json(response).into_response(),
+        Err(error) => tool_error_response(error),
+    }
+}
+
+#[tracing::instrument(skip_all)]
+async fn create_terminal(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateToolsServiceTerminalRequest>,
+) -> Response {
+    if !is_authorized(&state, &headers) {
+        return unauthorized_response();
+    }
+
+    match state
+        .terminal_manager
+        .create_interactive_terminal(&request.session_key)
+        .await
+    {
+        Ok(terminal) => Json(CreateToolsServiceTerminalResponse { terminal }).into_response(),
+        Err(error) => tool_error_response(error),
+    }
+}
+
+#[tracing::instrument(skip_all)]
+async fn attach_terminal(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Query(query): Query<ToolsServiceTerminalAttachQuery>,
+    websocket: WebSocketUpgrade,
+) -> Response {
+    if !is_authorized(&state, &headers) {
+        return unauthorized_response();
+    }
+
+    let terminal = match query.kind {
+        ToolsServiceTerminalKind::Execute => {
+            state
+                .terminal_manager
+                .terminal_info(&query.session_key, &query.id)
+                .await
+        },
+        ToolsServiceTerminalKind::Process => {
+            state
+                .process_manager
+                .terminal_info(&query.session_key, &query.id)
+                .await
+        },
+    };
+    let terminal = match terminal {
+        Ok(terminal) => terminal,
+        Err(error) => return tool_error_response(error),
+    };
+    let runtime = Arc::clone(&state.tmux_runtime);
+    websocket
+        .on_upgrade(move |socket| interactive_terminal::handle(socket, runtime, terminal))
+        .into_response()
+}
+
+fn tool_error_response(error: Error) -> Response {
     (
         StatusCode::UNPROCESSABLE_ENTITY,
         Json(ToolsServiceError {
@@ -89,7 +252,7 @@ fn tool_error_response(error: anyhow::Error) -> Response {
 fn is_authorized(state: &ApiState, headers: &HeaderMap) -> bool {
     let expected = format!("Bearer {}", state.token);
     headers
-        .get(axum::http::header::AUTHORIZATION)
+        .get(AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .is_some_and(|value| value == expected)
 }
@@ -118,7 +281,23 @@ mod tests {
             .local_addr()
             .unwrap_or_else(|error| panic!("local address failed: {error}"));
         tokio::spawn(async move {
-            if let Err(error) = axum::serve(listener, router("test-token".into())).await {
+            let runtime = Arc::new(TmuxRuntime::new());
+            let terminal_manager = Arc::new(
+                TerminalManager::new(std::env::temp_dir(), Arc::clone(&runtime))
+                    .unwrap_or_else(|error| panic!("terminal manager failed: {error}")),
+            );
+            let process_manager = Arc::new(ProcessManager::new(Arc::clone(&runtime)));
+            if let Err(error) = serve(
+                listener,
+                router(
+                    "test-token".into(),
+                    terminal_manager,
+                    process_manager,
+                    runtime,
+                ),
+            )
+            .await
+            {
                 panic!("test server failed: {error}");
             }
         });
@@ -142,6 +321,16 @@ mod tests {
             .post(format!("{base_url}{TOOLS_SERVICE_LIST_DIRECTORY_PATH}"))
             .json(&ListDirectoryRequest { path: "/".into() })
             .send()
+            .await
+            .unwrap_or_else(|error| panic!("request failed: {error}"));
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn terminal_inventory_requires_authorization() {
+        let base_url = spawn_api().await;
+        let response = reqwest::get(format!("{base_url}{TOOLS_SERVICE_TERMINALS_PATH}"))
             .await
             .unwrap_or_else(|error| panic!("request failed: {error}"));
 
