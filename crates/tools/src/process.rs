@@ -33,7 +33,7 @@ impl AgentTool for ProcessTool {
     }
 
     fn description(&self) -> &str {
-        "Manage interactive terminal processes through tmux sessions owned by chelix-tools-service. Actions: start, poll, send_keys, paste, kill, list."
+        "Control terminals created by execute_command in the current session. Use execute_command to start work and read_terminal_output to read output. Actions: send_keys, paste, kill, list."
     }
 
     fn agent_result(
@@ -42,22 +42,23 @@ impl AgentTool for ProcessTool {
         raw_result: &serde_json::Value,
     ) -> anyhow::Result<serde_json::Value> {
         let response: ProcessResponse = serde_json::from_value(raw_result.clone())?;
-        if !response.success {
-            let error = response
-                .error
-                .as_deref()
-                .ok_or_else(|| anyhow::anyhow!("failed process response has no error"))?;
-            return Ok(serde_json::Value::String(format!(
-                "Process request failed: {error}"
-            )));
-        }
-        let status = match response.session_name.as_deref() {
-            Some(session_name) => format!("Process session {session_name} updated."),
-            None => "Process request completed.".to_string(),
-        };
-        let result = match response.output.as_deref() {
-            Some(output) if !output.is_empty() => format!("{status}\nOutput:\n{output}"),
-            _ => status,
+        let result = match response {
+            ProcessResponse::SendKeys { terminal_id } => {
+                format!("Keys sent to terminal {terminal_id}.")
+            },
+            ProcessResponse::Paste { terminal_id } => {
+                format!("Text pasted into terminal {terminal_id}.")
+            },
+            ProcessResponse::Kill { terminal_id } => format!("Terminal {terminal_id} killed."),
+            ProcessResponse::List { terminal_ids } if terminal_ids.is_empty() => {
+                "No terminals in the current session.".into()
+            },
+            ProcessResponse::List { terminal_ids } => {
+                format!(
+                    "Terminals in the current session: {}",
+                    terminal_ids.join(", ")
+                )
+            },
         };
         Ok(serde_json::Value::String(result))
     }
@@ -68,24 +69,20 @@ impl AgentTool for ProcessTool {
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["start", "poll", "send_keys", "paste", "kill", "list"],
-                    "description": "The action to perform"
+                    "enum": ["send_keys", "paste", "kill", "list"],
+                    "description": "Terminal control action to perform"
                 },
-                "command": {
+                "terminalId": {
                     "type": "string",
-                    "description": "The command to run for start"
-                },
-                "session_name": {
-                    "type": "string",
-                    "description": "Tmux session name. Auto-generated for start; required for poll/send_keys/paste/kill."
+                    "description": "Managed terminal id returned by execute_command. Required for send_keys, paste, and kill."
                 },
                 "keys": {
                     "type": "string",
-                    "description": "Keystrokes to send for send_keys"
+                    "description": "Tmux key name or literal keystrokes. Required for send_keys."
                 },
                 "text": {
                     "type": "string",
-                    "description": "Text to paste for paste"
+                    "description": "Text to paste without interpreting it as tmux keys. Required for paste."
                 }
             },
             "required": ["action"],
@@ -104,8 +101,6 @@ impl AgentTool for ProcessTool {
             .to_string();
         let action: ProcessAction = serde_json::from_value(without_null_params(params))?;
         let action_label = match &action {
-            ProcessAction::Start { .. } => "start",
-            ProcessAction::Poll { .. } => "poll",
             ProcessAction::SendKeys { .. } => "send_keys",
             ProcessAction::Paste { .. } => "paste",
             ProcessAction::Kill { .. } => "kill",
@@ -117,11 +112,12 @@ impl AgentTool for ProcessTool {
                 session_key: session_key.clone(),
                 action,
             })
-            .await?;
+            .await;
+        let success = response.is_ok();
         info!(
             session = session_key,
             action = action_label,
-            success = response.success,
+            success,
             "process tool completed"
         );
 
@@ -130,7 +126,7 @@ impl AgentTool for ProcessTool {
             counter!(
                 tools_metrics::EXECUTIONS_TOTAL,
                 labels::TOOL => "process".to_string(),
-                labels::SUCCESS => response.success.to_string()
+                labels::SUCCESS => success.to_string()
             )
             .increment(1);
             histogram!(
@@ -138,7 +134,7 @@ impl AgentTool for ProcessTool {
                 labels::TOOL => "process".to_string()
             )
             .record(start.elapsed().as_secs_f64());
-            if !response.success {
+            if !success {
                 counter!(
                     tools_metrics::EXECUTION_ERRORS_TOTAL,
                     labels::TOOL => "process".to_string()
@@ -147,6 +143,7 @@ impl AgentTool for ProcessTool {
             }
         }
 
+        let response = response?;
         Ok(serde_json::to_value(response)?)
     }
 }
@@ -169,7 +166,7 @@ mod tests {
             })))
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body("{\"success\":true,\"output\":\"no active sessions\"}")
+            .with_body("{\"action\":\"list\",\"terminalIds\":[\"2\",\"4\"]}")
             .expect(1)
             .create_async()
             .await;
@@ -186,8 +183,56 @@ mod tests {
             .await
             .unwrap_or_else(|error| panic!("process failed: {error}"));
 
-        assert_eq!(result["success"], true);
-        assert_eq!(result["output"], "no active sessions");
+        assert_eq!(result["action"], "list");
+        assert_eq!(result["terminalIds"], serde_json::json!(["2", "4"]));
+        assert_eq!(
+            ProcessTool::new(client("http://127.0.0.1:1".into(), "unused"))
+                .agent_result(&serde_json::json!({}), &result)
+                .unwrap_or_else(|error| panic!("agent result failed: {error}")),
+            "Terminals in the current session: 2, 4"
+        );
         call.assert_async().await;
+    }
+
+    fn client(base_url: String, token: &str) -> Arc<ManagedToolsService> {
+        ManagedToolsService::for_test(ToolsServiceEndpoint {
+            base_url,
+            token: token.into(),
+        })
+        .unwrap_or_else(|error| panic!("test client failed: {error}"))
+    }
+
+    #[test]
+    fn schema_matches_project_multi_action_contract() {
+        let schema =
+            ProcessTool::new(client("http://127.0.0.1:1".into(), "unused")).parameters_schema();
+
+        assert_eq!(
+            schema,
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["send_keys", "paste", "kill", "list"],
+                        "description": "Terminal control action to perform"
+                    },
+                    "terminalId": {
+                        "type": "string",
+                        "description": "Managed terminal id returned by execute_command. Required for send_keys, paste, and kill."
+                    },
+                    "keys": {
+                        "type": "string",
+                        "description": "Tmux key name or literal keystrokes. Required for send_keys."
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Text to paste without interpreting it as tmux keys. Required for paste."
+                    }
+                },
+                "required": ["action"],
+                "additionalProperties": false
+            })
+        );
     }
 }

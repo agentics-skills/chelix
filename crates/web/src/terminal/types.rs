@@ -1,4 +1,4 @@
-use chelix_protocol::{ToolsServiceTerminalAttachQuery, ToolsServiceTerminalKind};
+use chelix_protocol::ToolsServiceTerminalAttachQuery;
 
 pub(crate) const TERMINAL_DISABLED: &str = "TERMINAL_DISABLED";
 pub(crate) const TERMINAL_SERVICE_UNAVAILABLE: &str = "TERMINAL_SERVICE_UNAVAILABLE";
@@ -14,7 +14,6 @@ pub struct TerminalSessionQuery {
 #[serde(rename_all = "camelCase")]
 pub struct TerminalWsQuery {
     pub(crate) instance_id: String,
-    pub(crate) kind: ToolsServiceTerminalKind,
     pub(crate) id: String,
     pub(crate) session_key: String,
 }
@@ -22,7 +21,6 @@ pub struct TerminalWsQuery {
 impl From<TerminalWsQuery> for ToolsServiceTerminalAttachQuery {
     fn from(query: TerminalWsQuery) -> Self {
         Self {
-            kind: query.kind,
             id: query.id,
             session_key: query.session_key,
         }

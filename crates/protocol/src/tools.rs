@@ -4,7 +4,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 5;
+pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 6;
 pub const TOOLS_SERVICE_CONTAINER_PORT: u16 = 43_271;
 pub const TOOLS_SERVICE_HEALTH_PATH: &str = "/v1/health";
 pub const TOOLS_SERVICE_LIST_DIRECTORY_PATH: &str = "/v1/list-directory";
@@ -133,17 +133,9 @@ pub struct ReadTerminalOutputResponse {
     pub running: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ToolsServiceTerminalKind {
-    Execute,
-    Process,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolsServiceTerminalInfo {
-    pub kind: ToolsServiceTerminalKind,
     pub id: String,
     pub session_key: String,
     pub session_id: String,
@@ -183,7 +175,6 @@ pub struct CreateToolsServiceTerminalResponse {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolsServiceTerminalAttachQuery {
-    pub kind: ToolsServiceTerminalKind,
     pub id: String,
     pub session_key: String,
 }
@@ -215,24 +206,19 @@ pub enum ToolsServiceTerminalControlAction {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum ProcessAction {
-    Start {
-        command: String,
-        #[serde(default)]
-        session_name: Option<String>,
-    },
-    Poll {
-        session_name: String,
-    },
     SendKeys {
-        session_name: String,
+        #[serde(rename = "terminalId")]
+        terminal_id: String,
         keys: String,
     },
     Paste {
-        session_name: String,
+        #[serde(rename = "terminalId")]
+        terminal_id: String,
         text: String,
     },
     Kill {
-        session_name: String,
+        #[serde(rename = "terminalId")]
+        terminal_id: String,
     },
     List,
 }
@@ -245,14 +231,24 @@ pub struct ProcessRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProcessResponse {
-    pub success: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
+#[serde(tag = "action", rename_all = "snake_case")]
+pub enum ProcessResponse {
+    SendKeys {
+        #[serde(rename = "terminalId")]
+        terminal_id: String,
+    },
+    Paste {
+        #[serde(rename = "terminalId")]
+        terminal_id: String,
+    },
+    Kill {
+        #[serde(rename = "terminalId")]
+        terminal_id: String,
+    },
+    List {
+        #[serde(rename = "terminalIds")]
+        terminal_ids: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -335,7 +331,7 @@ mod tests {
         let process = ProcessRequest {
             session_key: "session:test".into(),
             action: ProcessAction::SendKeys {
-                session_name: "repl".into(),
+                terminal_id: "3".into(),
                 keys: "C-c".into(),
             },
         };
@@ -345,7 +341,6 @@ mod tests {
         assert_eq!(decoded, process);
 
         let terminal = ToolsServiceTerminalInfo {
-            kind: ToolsServiceTerminalKind::Execute,
             id: "terminal-id".into(),
             session_key: "session:test".into(),
             session_id: "$1".into(),

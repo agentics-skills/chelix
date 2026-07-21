@@ -18,7 +18,7 @@ use {
         TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH,
         TOOLS_SERVICE_RIPGREP_PATH, TOOLS_SERVICE_TERMINAL_WS_PATH, TOOLS_SERVICE_TERMINALS_PATH,
         ToolsServiceError, ToolsServiceHealth, ToolsServiceTerminalAttachQuery,
-        ToolsServiceTerminalKind, ToolsServiceTerminalsResponse,
+        ToolsServiceTerminalsResponse,
     },
 };
 
@@ -26,22 +26,20 @@ use {
 use axum::serve;
 
 use crate::{
-    interactive_terminal, list_directory, process::ProcessManager, ripgrep,
-    terminal::TerminalManager, tmux::TmuxRuntime,
+    interactive_terminal, list_directory, process, ripgrep, terminal::TerminalManager,
+    tmux::TmuxRuntime,
 };
 
 #[derive(Clone)]
 struct ApiState {
     token: Arc<str>,
     terminal_manager: Arc<TerminalManager>,
-    process_manager: Arc<ProcessManager>,
     tmux_runtime: Arc<TmuxRuntime>,
 }
 
 pub fn router(
     token: String,
     terminal_manager: Arc<TerminalManager>,
-    process_manager: Arc<ProcessManager>,
     tmux_runtime: Arc<TmuxRuntime>,
 ) -> Router {
     Router::new()
@@ -65,7 +63,6 @@ pub fn router(
         .with_state(ApiState {
             token: Arc::from(token),
             terminal_manager,
-            process_manager,
             tmux_runtime,
         })
 }
@@ -155,7 +152,7 @@ async fn run_process(
         return unauthorized_response();
     }
 
-    match state.process_manager.run(request).await {
+    match process::run(&state.terminal_manager, request).await {
         Ok(result) => Json(result).into_response(),
         Err(error) => tool_error_response(error),
     }
@@ -167,17 +164,11 @@ async fn list_terminals(State(state): State<ApiState>, headers: HeaderMap) -> Re
         return unauthorized_response();
     }
 
-    let result = async {
-        let mut terminals = state.terminal_manager.terminal_infos().await?;
-        terminals.extend(state.process_manager.terminal_infos().await?);
-        terminals.sort_by(|left, right| {
-            left.session_key
-                .cmp(&right.session_key)
-                .then_with(|| left.id.cmp(&right.id))
-        });
-        Ok::<_, Error>(ToolsServiceTerminalsResponse { terminals })
-    }
-    .await;
+    let result = state
+        .terminal_manager
+        .terminal_infos()
+        .await
+        .map(|terminals| ToolsServiceTerminalsResponse { terminals });
     match result {
         Ok(response) => Json(response).into_response(),
         Err(error) => tool_error_response(error),
@@ -215,20 +206,10 @@ async fn attach_terminal(
         return unauthorized_response();
     }
 
-    let terminal = match query.kind {
-        ToolsServiceTerminalKind::Execute => {
-            state
-                .terminal_manager
-                .terminal_info(&query.session_key, &query.id)
-                .await
-        },
-        ToolsServiceTerminalKind::Process => {
-            state
-                .process_manager
-                .terminal_info(&query.session_key, &query.id)
-                .await
-        },
-    };
+    let terminal = state
+        .terminal_manager
+        .terminal_info(&query.session_key, &query.id)
+        .await;
     let terminal = match terminal {
         Ok(terminal) => terminal,
         Err(error) => return tool_error_response(error),
@@ -286,15 +267,9 @@ mod tests {
                 TerminalManager::new(std::env::temp_dir(), Arc::clone(&runtime))
                     .unwrap_or_else(|error| panic!("terminal manager failed: {error}")),
             );
-            let process_manager = Arc::new(ProcessManager::new(Arc::clone(&runtime)));
             if let Err(error) = serve(
                 listener,
-                router(
-                    "test-token".into(),
-                    terminal_manager,
-                    process_manager,
-                    runtime,
-                ),
+                router("test-token".into(), terminal_manager, runtime),
             )
             .await
             {

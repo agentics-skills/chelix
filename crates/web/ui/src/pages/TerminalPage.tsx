@@ -7,7 +7,6 @@ import { localizedApiErrorMessage } from "../helpers";
 import { targetValue } from "../typed-events";
 
 interface ToolsServiceTerminalInfo {
-	kind: "execute" | "process";
 	id: string;
 	sessionKey: string;
 	sessionId: string;
@@ -294,7 +293,7 @@ async function readJson<T>(response: Response): Promise<T> {
 
 function terminalLabel(terminal: ToolsServiceTerminalInfo): string {
 	const state = terminal.running ? "running" : "idle";
-	return `${terminal.kind} · ${terminal.id} · ${state}`;
+	return `${terminal.id} · ${state}`;
 }
 
 function terminalShortId(terminal: ToolsServiceTerminalInfo): string {
@@ -342,7 +341,7 @@ function TerminalView(props: TerminalViewProps): VNode {
 							const state = terminal.running ? "running" : "idle";
 							return (
 								<button
-									key={`${terminal.kind}:${terminal.id}`}
+									key={terminal.id}
 									type="button"
 									className={`terminal-tab chat-terminal-tab ${terminal.id === props.selectedTerminalId.value ? "active" : ""}`}
 									title={`Terminal ${terminalShortId(terminal)} · ${state}`}
@@ -440,7 +439,7 @@ function TerminalView(props: TerminalViewProps): VNode {
 				<div className="terminal-tabs" aria-label="Managed terminals">
 					{selectedSession?.terminals.map((terminal) => (
 						<button
-							key={`${terminal.kind}:${terminal.id}`}
+							key={terminal.id}
 							type="button"
 							className={`terminal-tab ${terminal.id === props.selectedTerminalId.value ? "active" : ""}`}
 							title={`Attach terminal ${terminal.id}`}
@@ -665,7 +664,6 @@ function TerminalPage({ compact = false, sessionKey: fixedSessionKey }: Terminal
 		const protocol = location.protocol === "https:" ? "wss:" : "ws:";
 		const query = new URLSearchParams({
 			instanceId: selectedInstanceId.value,
-			kind: terminal.kind,
 			id: terminal.id,
 			sessionKey: terminal.sessionKey,
 		});

@@ -13,7 +13,6 @@ use {
     chelix_protocol::{
         ExecuteCommandRequest, ExecuteCommandResponse, ReadTerminalOutputRequest,
         ReadTerminalOutputResponse, ToolsServiceEnvVar, ToolsServiceTerminalInfo,
-        ToolsServiceTerminalKind,
     },
     tokio::sync::{Mutex, RwLock, Semaphore},
 };
@@ -379,6 +378,81 @@ impl TerminalManager {
         Ok(terminal_info(&terminal))
     }
 
+    pub(crate) async fn send_terminal_keys(
+        &self,
+        session_key: &str,
+        terminal_id: &str,
+        keys: &str,
+    ) -> Result<()> {
+        if keys.is_empty() {
+            bail!("keys cannot be empty");
+        }
+        let terminal = self.live_terminal(session_key, terminal_id).await?;
+        let output = self
+            .runtime
+            .run(&[
+                "send-keys".into(),
+                "-t".into(),
+                terminal.pane_id,
+                keys.into(),
+            ])
+            .await?;
+        if output.exit_code != 0 {
+            bail!("failed to send terminal keys: {}", command_error(&output));
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn paste_terminal_text(
+        &self,
+        session_key: &str,
+        terminal_id: &str,
+        text: &str,
+    ) -> Result<()> {
+        let terminal = self.live_terminal(session_key, terminal_id).await?;
+        self.paste_text(&terminal, text).await
+    }
+
+    pub(crate) async fn kill_terminal(&self, session_key: &str, terminal_id: &str) -> Result<()> {
+        let terminal = self.live_terminal(session_key, terminal_id).await?;
+        let output = self
+            .runtime
+            .run(&["kill-pane".into(), "-t".into(), terminal.pane_id.clone()])
+            .await?;
+        if output.exit_code != 0 {
+            bail!("failed to kill terminal: {}", command_error(&output));
+        }
+        self.remove_missing_terminal(&terminal).await
+    }
+
+    pub(crate) async fn terminal_ids(&self, session_key: &str) -> Result<Vec<String>> {
+        if session_key.trim().is_empty() {
+            bail!("session_key cannot be empty");
+        }
+        let terminals = self
+            .terminals
+            .read()
+            .await
+            .values()
+            .filter(|terminal| terminal.session_key == session_key)
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut ids = Vec::with_capacity(terminals.len());
+        for terminal in terminals {
+            if !self.pane_exists(&terminal.pane_id).await? {
+                self.remove_missing_terminal(&terminal).await?;
+                continue;
+            }
+            let numeric_id = terminal
+                .id
+                .parse::<u64>()
+                .with_context(|| format!("invalid managed terminal id: {}", terminal.id))?;
+            ids.push((numeric_id, terminal.id));
+        }
+        ids.sort_by_key(|(numeric_id, _)| *numeric_id);
+        Ok(ids.into_iter().map(|(_, id)| id).collect())
+    }
+
     pub async fn shutdown(&self) -> Result<()> {
         let terminals = self
             .terminals
@@ -488,6 +562,15 @@ impl TerminalManager {
             bail!("terminal {terminal_id} belongs to another session");
         }
         Ok(terminal)
+    }
+
+    async fn live_terminal(&self, session_key: &str, terminal_id: &str) -> Result<ManagedTerminal> {
+        let terminal = self.lookup_terminal(session_key, terminal_id).await?;
+        if self.pane_exists(&terminal.pane_id).await? {
+            return Ok(terminal);
+        }
+        self.remove_missing_terminal(&terminal).await?;
+        bail!("terminal id no longer exists: {terminal_id}")
     }
 
     async fn find_idle_terminal(&self, session_key: &str) -> Result<Option<ManagedTerminal>> {
@@ -998,7 +1081,6 @@ fn plain_terminal_text(bytes: &[u8]) -> String {
 
 fn terminal_info(terminal: &ManagedTerminal) -> ToolsServiceTerminalInfo {
     ToolsServiceTerminalInfo {
-        kind: ToolsServiceTerminalKind::Execute,
         id: terminal.id.clone(),
         session_key: terminal.session_key.clone(),
         session_id: terminal.session_id.clone(),
@@ -1554,6 +1636,138 @@ mod tests {
                 .await
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn process_lists_only_terminals_from_the_shared_session_pool() {
+        let runtime = Arc::new(TmuxRuntime::new());
+        let working_dir = std::env::temp_dir();
+        let manager = TerminalManager::new(working_dir.clone(), Arc::clone(&runtime))
+            .unwrap_or_else(|error| panic!("manager creation failed: {error}"));
+        manager
+            .resolve_terminal("agent-one", None, false, Some(&working_dir))
+            .await
+            .unwrap_or_else(|error| panic!("first allocation failed: {error}"));
+        manager
+            .resolve_terminal("agent-one", None, true, Some(&working_dir))
+            .await
+            .unwrap_or_else(|error| panic!("second allocation failed: {error}"));
+        manager
+            .resolve_terminal("agent-two", None, false, Some(&working_dir))
+            .await
+            .unwrap_or_else(|error| panic!("other allocation failed: {error}"));
+
+        let response = crate::process::run(&manager, chelix_protocol::ProcessRequest {
+            session_key: "agent-one".into(),
+            action: chelix_protocol::ProcessAction::List,
+        })
+        .await
+        .unwrap_or_else(|error| panic!("process list failed: {error}"));
+
+        assert_eq!(response, chelix_protocol::ProcessResponse::List {
+            terminal_ids: vec!["1".into(), "2".into()],
+        });
+
+        runtime
+            .shutdown()
+            .await
+            .unwrap_or_else(|error| panic!("tmux shutdown failed: {error}"));
+    }
+
+    #[tokio::test]
+    async fn process_rejects_terminal_from_another_session() {
+        let manager = TerminalManager::new(PathBuf::from("/tmp"), Arc::new(TmuxRuntime::new()))
+            .unwrap_or_else(|error| panic!("manager creation failed: {error}"));
+        manager
+            .store_terminal(test_terminal("3", "agent-one"))
+            .await;
+
+        let error = crate::process::run(&manager, chelix_protocol::ProcessRequest {
+            session_key: "agent-two".into(),
+            action: chelix_protocol::ProcessAction::SendKeys {
+                terminal_id: "3".into(),
+                keys: "C-c".into(),
+            },
+        })
+        .await
+        .expect_err("cross-session process action must fail");
+
+        assert_eq!(error.to_string(), "terminal 3 belongs to another session");
+    }
+
+    #[tokio::test]
+    async fn process_controls_execute_command_terminal_read_by_existing_output_api() {
+        let runtime = Arc::new(TmuxRuntime::new());
+        let manager = TerminalManager::new(std::env::temp_dir(), Arc::clone(&runtime))
+            .unwrap_or_else(|error| panic!("manager creation failed: {error}"));
+        let session_key = format!("session-{}", uuid::Uuid::new_v4());
+        let started = manager
+            .execute_command(ExecuteCommandRequest {
+                session_key: session_key.clone(),
+                command: "read value; printf 'received:%s\\n' \"$value\"".into(),
+                custom_cwd: None,
+                new_terminal: false,
+                background: true,
+                timeout_millis: 5_000,
+                terminal_id: None,
+                env: Vec::new(),
+            })
+            .await
+            .unwrap_or_else(|error| panic!("background command failed: {error}"));
+
+        crate::process::run(&manager, chelix_protocol::ProcessRequest {
+            session_key: session_key.clone(),
+            action: chelix_protocol::ProcessAction::Paste {
+                terminal_id: started.terminal_id.clone(),
+                text: "shared-input".into(),
+            },
+        })
+        .await
+        .unwrap_or_else(|error| panic!("process paste failed: {error}"));
+        crate::process::run(&manager, chelix_protocol::ProcessRequest {
+            session_key: session_key.clone(),
+            action: chelix_protocol::ProcessAction::SendKeys {
+                terminal_id: started.terminal_id.clone(),
+                keys: "Enter".into(),
+            },
+        })
+        .await
+        .unwrap_or_else(|error| panic!("process send_keys failed: {error}"));
+
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let output = loop {
+            let output = manager
+                .read_terminal_output(ReadTerminalOutputRequest {
+                    session_key: session_key.clone(),
+                    terminal_id: started.terminal_id.clone(),
+                    max_lines: Some(30),
+                })
+                .await
+                .unwrap_or_else(|error| panic!("terminal output failed: {error}"));
+            if output.completed {
+                break output;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "interactive command did not complete"
+            );
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        };
+
+        assert_eq!(output.terminal_id, started.terminal_id);
+        assert_eq!(output.output, "received:shared-input");
+        assert_eq!(output.exit_code, Some(0));
+        assert!(output.completed);
+        assert!(!output.running);
+
+        manager
+            .shutdown()
+            .await
+            .unwrap_or_else(|error| panic!("terminal manager shutdown failed: {error}"));
+        runtime
+            .shutdown()
+            .await
+            .unwrap_or_else(|error| panic!("tmux shutdown failed: {error}"));
     }
 
     #[tokio::test]

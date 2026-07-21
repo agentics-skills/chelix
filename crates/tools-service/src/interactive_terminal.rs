@@ -354,7 +354,6 @@ mod tests {
     #[test]
     fn attach_requires_exact_terminal_metadata() {
         let terminal = ToolsServiceTerminalInfo {
-            kind: chelix_protocol::ToolsServiceTerminalKind::Execute,
             id: "terminal-id".into(),
             session_key: "session:test".into(),
             session_id: "$1".into(),

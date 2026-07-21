@@ -24,11 +24,16 @@ For every tool migrated to `chelix-tools-service`:
 The currently migrated tools are `list_directory`, `ripgrep`,
 `execute_command`, `read_terminal_output`, and `process`.
 
-`execute_command`, `read_terminal_output`, and `process` exclusively use tmux
-managed by `chelix-tools-service`. The same tmux implementation and state model
-are used by both the local service and the sandbox service. The gateway does
-not own terminal state and does not execute these tools through a node or a
-direct shell path.
+`execute_command`, `read_terminal_output`, and `process` exclusively use the
+same terminal pool managed by `chelix-tools-service`. `execute_command` creates
+or reuses the session-scoped terminal identified by `terminalId`,
+`read_terminal_output` reads it, and `process` only adds interactive control:
+`send_keys`, `paste`, `kill`, and `list`. `process` cannot create terminals,
+duplicate output polling, address tmux session names, or cross the active
+`sessionKey` boundary. The same tmux implementation and state model are used by
+both the local service and the sandbox service. The gateway does not own
+terminal state and does not execute these tools through a node or a direct
+shell path.
 
 For each `execute_command` run, the service starts a tmux `pipe-pane` capture
 before pasting the command. Command completion and the returned output are read
@@ -107,7 +112,7 @@ migrated tool
 ## Protocol and authentication
 
 The shared wire types live in `chelix-protocol`. The current protocol version is
-`1`.
+`6`.
 
 | Method | Path          | Purpose                                      |
 | ------ | ------------- | -------------------------------------------- |

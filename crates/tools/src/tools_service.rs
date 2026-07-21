@@ -11,8 +11,7 @@ use {
         TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH,
         TOOLS_SERVICE_RIPGREP_PATH, TOOLS_SERVICE_TERMINAL_WS_PATH, TOOLS_SERVICE_TERMINALS_PATH,
         ToolsServiceError, ToolsServiceHealth, ToolsServiceInstanceInfo, ToolsServiceReady,
-        ToolsServiceTerminalAttachQuery, ToolsServiceTerminalInfo, ToolsServiceTerminalKind,
-        ToolsServiceTerminalsResponse,
+        ToolsServiceTerminalAttachQuery, ToolsServiceTerminalInfo, ToolsServiceTerminalsResponse,
     },
     serde::{Serialize, de::DeserializeOwned},
     tokio::{
@@ -469,10 +468,6 @@ impl ManagedToolsService {
             .map_err(|_| Error::message("failed to set tools service WebSocket scheme"))?;
         url.set_path(TOOLS_SERVICE_TERMINAL_WS_PATH);
         url.query_pairs_mut()
-            .append_pair("kind", match query.kind {
-                ToolsServiceTerminalKind::Execute => "execute",
-                ToolsServiceTerminalKind::Process => "process",
-            })
             .append_pair("id", &query.id)
             .append_pair("sessionKey", &query.session_key);
         let mut request = url.as_str().into_client_request().map_err(|error| {
@@ -886,7 +881,7 @@ mod tests {
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
-                r#"{"terminals":[{"kind":"execute","id":"terminal-42","sessionKey":"agent:42","sessionId":"$4","sessionName":"chelix-agent-42","windowId":"@8","windowName":"bash","paneId":"%11","running":true}]}"#,
+                r#"{"terminals":[{"id":"terminal-42","sessionKey":"agent:42","sessionId":"$4","sessionName":"chelix-agent-42","windowId":"@8","windowName":"bash","paneId":"%11","running":true}]}"#,
             )
             .expect(1)
             .create_async()
@@ -923,7 +918,7 @@ mod tests {
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
-                r#"{"terminal":{"kind":"execute","id":"terminal-created","sessionKey":"agent:explicit","sessionId":"$9","sessionName":"chelix-agent-explicit","windowId":"@12","windowName":"shell","paneId":"%15","running":false}}"#,
+                r#"{"terminal":{"id":"terminal-created","sessionKey":"agent:explicit","sessionId":"$9","sessionName":"chelix-agent-explicit","windowId":"@12","windowName":"shell","paneId":"%15","running":false}}"#,
             )
             .expect(1)
             .create_async()
@@ -958,7 +953,7 @@ mod tests {
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
-                r#"{"terminals":[{"kind":"execute","id":"42","sessionKey":"agent:active","sessionId":"$4","sessionName":"chelix-agent-active","windowId":"@8","windowName":"bash","paneId":"%11","running":true},{"kind":"execute","id":"43","sessionKey":"agent:other","sessionId":"$5","sessionName":"chelix-agent-other","windowId":"@9","windowName":"bash","paneId":"%12","running":false}]}"#,
+                r#"{"terminals":[{"id":"42","sessionKey":"agent:active","sessionId":"$4","sessionName":"chelix-agent-active","windowId":"@8","windowName":"bash","paneId":"%11","running":true},{"id":"43","sessionKey":"agent:other","sessionId":"$5","sessionName":"chelix-agent-other","windowId":"@9","windowName":"bash","paneId":"%12","running":false}]}"#,
             )
             .expect(1)
             .create_async()
@@ -993,7 +988,7 @@ mod tests {
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
-                r#"{"terminal":{"kind":"execute","id":"44","sessionKey":"agent:active","sessionId":"$9","sessionName":"chelix-agent-active","windowId":"@12","windowName":"shell","paneId":"%15","running":false}}"#,
+                r#"{"terminal":{"id":"44","sessionKey":"agent:active","sessionId":"$9","sessionName":"chelix-agent-active","windowId":"@12","windowName":"shell","paneId":"%15","running":false}}"#,
             )
             .expect(1)
             .create_async()

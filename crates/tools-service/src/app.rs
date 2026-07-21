@@ -44,15 +44,11 @@ pub async fn run() -> Result<()> {
         crate::terminal::TerminalManager::new(args.working_dir, Arc::clone(&tmux_runtime))
             .context("initializing terminal manager")?,
     );
-    let process_manager = Arc::new(crate::process::ProcessManager::new(Arc::clone(
-        &tmux_runtime,
-    )));
     let serve_result = axum::serve(
         listener,
         crate::api::router(
             token,
             Arc::clone(&terminal_manager),
-            process_manager,
             Arc::clone(&tmux_runtime),
         ),
     )

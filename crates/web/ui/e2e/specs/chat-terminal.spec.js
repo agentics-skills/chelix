@@ -3,7 +3,6 @@ const { navigateAndWait, watchPageErrors } = require("../helpers");
 
 function terminal(overrides = {}) {
 	return {
-		kind: "execute",
 		id: "42",
 		sessionKey: "main",
 		sessionId: "$4",

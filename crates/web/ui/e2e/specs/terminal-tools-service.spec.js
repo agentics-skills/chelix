@@ -3,7 +3,6 @@ const { navigateAndWait, watchPageErrors } = require("../helpers");
 
 function terminal(overrides = {}) {
 	return {
-		kind: "execute",
 		id: "terminal-agent-42",
 		sessionKey: "agent:session:42",
 		sessionId: "$4",
@@ -119,7 +118,7 @@ test.describe("Tools service terminals", () => {
 		);
 		expect(websocketUrl.pathname).toBe("/api/terminal/ws");
 		expect(websocketUrl.searchParams.get("instanceId")).toBe(instanceId);
-		expect(websocketUrl.searchParams.get("kind")).toBe("execute");
+		expect(websocketUrl.searchParams.has("kind")).toBe(false);
 		expect(websocketUrl.searchParams.get("id")).toBe("terminal-agent-42");
 		expect(websocketUrl.searchParams.get("sessionKey")).toBe("agent:session:42");
 
