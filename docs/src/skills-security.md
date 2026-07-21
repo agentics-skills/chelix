@@ -52,9 +52,10 @@ The UI/API mark this state as `source changed`.
 Chelix does not install system dependencies for skills. Each skill folder must
 contain its own instructions and every script or binary it needs.
 
-Legacy environment metadata is rejected during parsing, including top-level
-`requires` and `dockerfile` fields and namespaced `requires` or `install`
-metadata. It is not ignored or converted.
+Legacy environment metadata is accepted for skill-format compatibility,
+including top-level `requires` and `dockerfile` fields and namespaced `requires`
+or `install` metadata. Chelix does not execute or convert this metadata into
+dependency installation or sandbox provisioning.
 
 Repository, folder, and portable-bundle installation remain available; these
 flows install the skill folder itself and preserve the trust and provenance

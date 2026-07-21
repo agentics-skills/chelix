@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use serde::{Deserialize, de::IgnoredAny};
+use serde::Deserialize;
 
 use crate::error::{Error, Result};
 
@@ -72,7 +72,6 @@ fn resolve_name_or_slug(meta: &mut SkillMetadata, skill_dir: &Path) -> Result<()
 /// Parse a SKILL.md file into metadata only (frontmatter).
 pub fn parse_metadata(content: &str, skill_dir: &Path) -> Result<SkillMetadata> {
     let (frontmatter, _body) = split_frontmatter(content)?;
-    reject_environment_metadata(&frontmatter)?;
     let mut meta: SkillMetadata = serde_yaml::from_str(&frontmatter)
         .map_err(|e| Error::Parse(format!("invalid SKILL.md frontmatter: {e}")))?;
 
@@ -85,7 +84,6 @@ pub fn parse_metadata(content: &str, skill_dir: &Path) -> Result<SkillMetadata> 
 /// Parse a SKILL.md file into full content (metadata + body).
 pub fn parse_skill(content: &str, skill_dir: &Path) -> Result<SkillContent> {
     let (frontmatter, body) = split_frontmatter(content)?;
-    reject_environment_metadata(&frontmatter)?;
     let mut meta: SkillMetadata = serde_yaml::from_str(&frontmatter)
         .map_err(|e| Error::Parse(format!("invalid SKILL.md frontmatter: {e}")))?;
 
@@ -96,57 +94,6 @@ pub fn parse_skill(content: &str, skill_dir: &Path) -> Result<SkillContent> {
         metadata: meta,
         body: body.to_string(),
     })
-}
-
-// ── Unsupported environment metadata ───────────────────────────────────────
-
-#[derive(Deserialize, Default)]
-struct EnvironmentMetadataRoot {
-    #[serde(default)]
-    requires: Option<IgnoredAny>,
-    #[serde(default)]
-    dockerfile: Option<IgnoredAny>,
-    #[serde(default)]
-    metadata: Option<NamespacedMetadata>,
-}
-
-#[derive(Deserialize, Default)]
-struct NamespacedMetadata {
-    #[serde(default)]
-    openclaw: Option<EnvironmentMetadata>,
-    #[serde(default)]
-    clawdbot: Option<EnvironmentMetadata>,
-    #[serde(default)]
-    moltbot: Option<EnvironmentMetadata>,
-}
-
-#[derive(Deserialize, Default)]
-struct EnvironmentMetadata {
-    #[serde(default)]
-    requires: Option<IgnoredAny>,
-    #[serde(default)]
-    install: Option<IgnoredAny>,
-}
-
-fn reject_environment_metadata(frontmatter: &str) -> Result<()> {
-    let root: EnvironmentMetadataRoot = serde_yaml::from_str(frontmatter)
-        .map_err(|e| Error::Parse(format!("invalid SKILL.md frontmatter: {e}")))?;
-
-    let has_namespaced_metadata = root.metadata.is_some_and(|metadata| {
-        [metadata.openclaw, metadata.clawdbot, metadata.moltbot]
-            .into_iter()
-            .flatten()
-            .any(|namespace| namespace.requires.is_some() || namespace.install.is_some())
-    });
-
-    if root.requires.is_some() || root.dockerfile.is_some() || has_namespaced_metadata {
-        return Err(Error::Validation(
-            "skill environment metadata is not supported; skills must be self-contained folders"
-                .into(),
-        ));
-    }
-
-    Ok(())
 }
 
 // ── _meta.json support (openclaw) ───────────────────────────────────────────
@@ -436,7 +383,7 @@ Body.
     }
 
     #[test]
-    fn test_top_level_requires_is_rejected() {
+    fn test_top_level_requires_is_accepted_as_compatibility_metadata() {
         let content = r#"---
 name: songsee
 description: Generate spectrograms
@@ -450,12 +397,13 @@ requires:
 
 Instructions.
 "#;
-        let error = parse_metadata(content, Path::new("/tmp/songsee")).unwrap_err();
-        assert!(error.to_string().contains("self-contained folders"));
+        let metadata = parse_metadata(content, Path::new("/tmp/songsee")).unwrap();
+        assert_eq!(metadata.name, "songsee");
+        assert_eq!(metadata.description, "Generate spectrograms");
     }
 
     #[test]
-    fn test_openclaw_environment_metadata_is_rejected() {
+    fn test_openclaw_environment_metadata_is_accepted() {
         let content = r#"---
 name: himalaya
 description: CLI email client
@@ -472,12 +420,13 @@ metadata:
 
 Instructions.
 "#;
-        let error = parse_metadata(content, Path::new("/tmp/himalaya")).unwrap_err();
-        assert!(error.to_string().contains("self-contained folders"));
+        let metadata = parse_metadata(content, Path::new("/tmp/himalaya")).unwrap();
+        assert_eq!(metadata.name, "himalaya");
+        assert_eq!(metadata.description, "CLI email client");
     }
 
     #[test]
-    fn test_dockerfile_is_rejected() {
+    fn test_dockerfile_is_accepted_as_compatibility_metadata() {
         let content = r#"---
 name: docker-skill
 description: Needs a custom image
@@ -486,12 +435,13 @@ dockerfile: Dockerfile
 
 Body.
 "#;
-        let error = parse_metadata(content, Path::new("/tmp/docker-skill")).unwrap_err();
-        assert!(error.to_string().contains("self-contained folders"));
+        let metadata = parse_metadata(content, Path::new("/tmp/docker-skill")).unwrap();
+        assert_eq!(metadata.name, "docker-skill");
+        assert_eq!(metadata.description, "Needs a custom image");
     }
 
     #[test]
-    fn test_clawdbot_environment_metadata_is_rejected() {
+    fn test_clawdbot_environment_metadata_is_accepted() {
         // Real openclaw format: metadata is single-line JSON with "clawdbot" key
         let content = r#"---
 name: beeper
@@ -501,8 +451,12 @@ metadata: {"clawdbot":{"requires":{"bins":["beeper-cli"]},"install":[{"id":"go",
 
 Instructions.
 "#;
-        let error = parse_metadata(content, Path::new("/tmp/beeper")).unwrap_err();
-        assert!(error.to_string().contains("self-contained folders"));
+        let metadata = parse_metadata(content, Path::new("/tmp/beeper")).unwrap();
+        assert_eq!(metadata.name, "beeper");
+        assert_eq!(
+            metadata.description,
+            "Search and browse local Beeper chat history"
+        );
     }
 
     #[test]
