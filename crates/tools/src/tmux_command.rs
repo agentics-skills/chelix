@@ -1,46 +1,30 @@
-use std::{
-    collections::HashMap,
-    sync::{
-        Arc,
-        atomic::{AtomicU64, Ordering},
-    },
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use {
     async_trait::async_trait,
-    chelix_agents::tool_registry::{AgentTool, ToolResultPersistence},
+    chelix_agents::tool_registry::AgentTool,
+    chelix_protocol::{
+        ExecuteCommandRequest, ExecuteCommandResponse, ReadTerminalOutputRequest,
+        ReadTerminalOutputResponse, ToolsServiceEnvVar,
+    },
     secrecy::ExposeSecret,
-    serde::{Deserialize, Serialize},
-    tokio::sync::{RwLock, Semaphore},
-    tracing::{debug, info},
+    serde::Deserialize,
+    tracing::info,
 };
 
 use crate::{
     Result,
     approval::{ApprovalAction, ApprovalDecision, ApprovalManager},
-    command::{
-        CommandCompletionEvent, CommandCompletionFn, CommandLogPolicy, CommandNodeProvider,
-        CommandOptions, CommandOutput, EnvVarProvider, InjectedEnvVar, redact_command_output,
-        run_shell_command,
-    },
+    command::{CommandCompletionEvent, CommandCompletionFn, EnvVarProvider},
     error::Error,
     params::without_null_params,
-    sandbox::{ExecEnv, SandboxRouter},
+    tools_service::ManagedToolsService,
 };
 
 const DEFAULT_TIMEOUT_MILLIS: u64 = 300_000;
 const MAX_TIMEOUT_MILLIS: u64 = 1_800_000;
-const DEFAULT_CAPTURE_LINES: usize = 1_000;
-const MAX_CAPTURE_LINES: usize = 20_000;
-const DEFAULT_TMUX_COLS: u16 = 200;
-const DEFAULT_TMUX_ROWS: u16 = 50;
-const FIELD_SEP: &str = "|chelix-tmux-field|";
-const START_PREFIX: &str = "__CHELIX_COMMAND_START__";
-const DONE_PREFIX: &str = "__CHELIX_COMMAND_DONE__";
-const MAX_SANDBOX_RECOVERY_RETRIES: usize = 1;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ExecuteCommandParams {
     command: String,
@@ -56,909 +40,39 @@ struct ExecuteCommandParams {
     timeout: Option<u64>,
     #[serde(default)]
     terminal_id: Option<String>,
-    #[serde(default)]
-    node: Option<String>,
-    #[serde(rename = "_session_key")]
-    #[serde(default)]
-    _session_key: Option<String>,
+    #[serde(rename = "_session_key", default)]
+    session_key: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ReadTerminalOutputParams {
     terminal_id: String,
     #[serde(default)]
     max_lines: Option<usize>,
-    #[serde(rename = "_session_key")]
-    #[serde(default)]
-    _session_key: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ExecuteCommandResponse {
-    terminal_id: String,
-    run_id: String,
-    session_id: String,
-    session_name: String,
-    window_id: String,
-    window_name: String,
-    pane_id: String,
-    output: String,
-    exit_code: Option<i32>,
-    completed: bool,
-    timed_out: bool,
-    background: bool,
-    message: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ReadTerminalOutputResponse {
-    terminal_id: String,
-    session_id: String,
-    session_name: String,
-    window_id: String,
-    window_name: String,
-    pane_id: String,
-    output: String,
-    exit_code: Option<i32>,
-    completed: bool,
-    running: bool,
-}
-
-#[derive(Debug, Clone)]
-struct TmuxPaneInfo {
-    session_id: String,
-    session_name: String,
-    window_id: String,
-    window_index: u32,
-    window_name: String,
-    window_active: bool,
-    pane_id: String,
-    pane_index: u32,
-    pane_active: bool,
-}
-
-#[derive(Debug, Clone)]
-struct ManagedRun {
-    run_id: String,
-    command: String,
-    baseline_lines: usize,
-    marker_enabled: bool,
-    completed: bool,
-    exit_code: Option<i32>,
-    redaction_env: Vec<(String, String)>,
-}
-
-#[derive(Default)]
-struct CommandEnvironment {
-    values: Vec<(String, String)>,
-    values_for_log: Vec<(String, String)>,
-    secrets: Vec<(String, String)>,
-}
-
-impl From<Vec<InjectedEnvVar>> for CommandEnvironment {
-    fn from(vars: Vec<InjectedEnvVar>) -> Self {
-        let mut environment = Self {
-            values: Vec::with_capacity(vars.len()),
-            values_for_log: Vec::with_capacity(vars.len()),
-            secrets: Vec::new(),
-        };
-        for var in vars {
-            let value = var.value.expose_secret().clone();
-            if var.secret {
-                environment.secrets.push((var.key.clone(), value.clone()));
-                environment
-                    .values_for_log
-                    .push((var.key.clone(), "[REDACTED]".to_string()));
-            } else {
-                environment
-                    .values_for_log
-                    .push((var.key.clone(), value.clone()));
-            }
-            environment.values.push((var.key, value));
-        }
-        let log_policy = environment.command_log_policy();
-        environment
-            .values_for_log
-            .iter_mut()
-            .for_each(|(_, value)| {
-                *value = log_policy.for_log(value).into_owned();
-            });
-        environment
-    }
-}
-
-impl CommandEnvironment {
-    fn command_log_policy(&self) -> CommandLogPolicy {
-        CommandLogPolicy::redact_secrets(
-            self.secrets
-                .iter()
-                .map(|(_, value)| secrecy::Secret::new(value.clone())),
-        )
-    }
-}
-
-#[derive(Debug, Clone)]
-struct ManagedTerminal {
-    id: String,
-    session_key: String,
-    session_id: String,
-    session_name: String,
-    window_id: String,
-    window_name: String,
-    pane_id: String,
-    gate: Arc<Semaphore>,
-    last_run: Option<ManagedRun>,
-}
-
-impl ManagedTerminal {
-    fn is_running(&self) -> bool {
-        self.last_run.as_ref().is_some_and(|run| !run.completed)
-    }
-}
-
-#[derive(Debug, Clone)]
-struct CaptureResult {
-    output: String,
-    completed: bool,
-    exit_code: Option<i32>,
-}
-
-pub struct TmuxTerminalManager {
-    sandbox_router: Arc<SandboxRouter>,
-    terminals: RwLock<HashMap<String, ManagedTerminal>>,
-    next_id: AtomicU64,
-    max_output_bytes: usize,
-}
-
-impl TmuxTerminalManager {
-    #[must_use]
-    pub fn new(sandbox_router: Arc<SandboxRouter>, max_output_bytes: usize) -> Self {
-        Self {
-            sandbox_router,
-            terminals: RwLock::new(HashMap::new()),
-            next_id: AtomicU64::new(1),
-            max_output_bytes,
-        }
-    }
-
-    async fn execute_command(
-        &self,
-        session_key: &str,
-        params: ExecuteCommandParams,
-        env: CommandEnvironment,
-    ) -> Result<ExecuteCommandResponse> {
-        let command = params.command.trim();
-        if command.is_empty() {
-            return Err(Error::message("command cannot be empty"));
-        }
-
-        if params.destructive_flag.unwrap_or(false) {
-            debug!("execute_command destructive_flag provided for approval UI context");
-        }
-
-        let timeout_millis = params
-            .timeout
-            .unwrap_or(DEFAULT_TIMEOUT_MILLIS)
-            .min(MAX_TIMEOUT_MILLIS);
-        let timeout = Duration::from_millis(timeout_millis);
-        let terminal = self
-            .resolve_terminal(
-                session_key,
-                params.terminal_id.as_deref(),
-                params.new_terminal,
-                params.custom_cwd.as_deref(),
-            )
-            .await?;
-
-        let permit = terminal
-            .gate
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|_| Error::message("terminal gate closed"))?;
-        let terminal = self.refresh_terminal_completion(terminal).await?;
-        if terminal.is_running() {
-            return Err(Error::message(format!(
-                "terminal {} is still running a command; use read_terminal_output or newTerminal=true",
-                terminal.id
-            )));
-        }
-
-        let run_id = uuid::Uuid::new_v4().simple().to_string();
-        let capture_before = self
-            .capture_pane(&terminal, MAX_CAPTURE_LINES)
-            .await
-            .unwrap_or_default();
-        let baseline_lines = capture_before.lines().count();
-        let marker_enabled = true;
-        let paste_text = build_paste_payload(
-            command,
-            params.custom_cwd.as_deref(),
-            &run_id,
-            marker_enabled,
-            &env.values,
-        );
-        let log_policy = env.command_log_policy();
-        let command_for_log = log_policy.for_log(command);
-        let cwd_for_log = params
-            .custom_cwd
-            .as_deref()
-            .map(|cwd| log_policy.for_log(cwd).into_owned());
-        let paste_text_for_log = build_paste_payload(
-            &command_for_log,
-            cwd_for_log.as_deref(),
-            &run_id,
-            marker_enabled,
-            &env.values_for_log,
-        );
-        let paste_text_for_log = log_policy.for_log(&paste_text_for_log);
-
-        self.paste_text(&terminal, &paste_text, &paste_text_for_log)
-            .await?;
-
-        let mut updated = terminal.clone();
-        updated.last_run = Some(ManagedRun {
-            run_id: run_id.clone(),
-            command: command.to_string(),
-            baseline_lines,
-            marker_enabled,
-            completed: false,
-            exit_code: None,
-            redaction_env: env.secrets.clone(),
-        });
-        self.store_terminal(updated.clone()).await;
-
-        if params.background {
-            let terminal_id = updated.id.clone();
-            drop(permit);
-            return Ok(ExecuteCommandResponse {
-                terminal_id,
-                run_id,
-                session_id: updated.session_id,
-                session_name: updated.session_name,
-                window_id: updated.window_id,
-                window_name: updated.window_name,
-                pane_id: updated.pane_id,
-                output: String::new(),
-                exit_code: None,
-                completed: false,
-                timed_out: false,
-                background: true,
-                message: "Command started in sandbox tmux terminal".to_string(),
-            });
-        }
-
-        let deadline = tokio::time::Instant::now() + timeout;
-        let last_capture = loop {
-            let raw = self.capture_pane(&updated, MAX_CAPTURE_LINES).await?;
-            let capture = extract_run_capture(&raw, updated.last_run.as_ref());
-            if capture.completed || tokio::time::Instant::now() >= deadline {
-                break capture;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        };
-
-        if last_capture.completed {
-            self.mark_run_completed(&updated.id, last_capture.exit_code)
-                .await;
-        }
-        drop(permit);
-
-        let timed_out = !last_capture.completed;
-        let mut output = last_capture.output;
-        truncate_output_for_display(&mut output, self.max_output_bytes);
-        redact_text_output(&mut output, &env.secrets);
-        let terminal_id = updated.id.clone();
-        let message = if timed_out {
-            format!(
-                "Command still running in sandbox tmux terminal (id: {terminal_id}) after {timeout_millis}ms"
-            )
-        } else {
-            format!("Command finished in sandbox tmux terminal (id: {terminal_id})")
-        };
-
-        Ok(ExecuteCommandResponse {
-            terminal_id,
-            run_id,
-            session_id: updated.session_id,
-            session_name: updated.session_name,
-            window_id: updated.window_id,
-            window_name: updated.window_name,
-            pane_id: updated.pane_id,
-            output,
-            exit_code: last_capture.exit_code,
-            completed: last_capture.completed,
-            timed_out,
-            background: false,
-            message,
-        })
-    }
-
-    async fn read_terminal_output(
-        &self,
-        session_key: &str,
-        params: ReadTerminalOutputParams,
-    ) -> Result<ReadTerminalOutputResponse> {
-        let terminal = self
-            .lookup_terminal(session_key, &params.terminal_id)
-            .await?;
-        let terminal = self.refresh_terminal_completion(terminal).await?;
-        let max_lines = params
-            .max_lines
-            .unwrap_or(DEFAULT_CAPTURE_LINES)
-            .clamp(1, MAX_CAPTURE_LINES);
-        let raw = self.capture_pane(&terminal, max_lines).await?;
-        let capture = extract_run_capture(&raw, terminal.last_run.as_ref());
-        if capture.completed {
-            self.mark_run_completed(&terminal.id, capture.exit_code)
-                .await;
-        }
-        let running = !capture.completed && terminal.is_running();
-        let redaction_env = terminal
-            .last_run
-            .as_ref()
-            .map(|run| run.redaction_env.as_slice())
-            .unwrap_or(&[]);
-        let mut output = if terminal.last_run.is_some() {
-            capture.output
-        } else {
-            raw
-        };
-        truncate_output_for_display(&mut output, self.max_output_bytes);
-        redact_text_output(&mut output, redaction_env);
-
-        Ok(ReadTerminalOutputResponse {
-            terminal_id: terminal.id,
-            session_id: terminal.session_id,
-            session_name: terminal.session_name,
-            window_id: terminal.window_id,
-            window_name: terminal.window_name,
-            pane_id: terminal.pane_id,
-            output,
-            exit_code: capture.exit_code,
-            completed: capture.completed,
-            running,
-        })
-    }
-
-    async fn refresh_terminal_completion(
-        &self,
-        terminal: ManagedTerminal,
-    ) -> Result<ManagedTerminal> {
-        let Some(run) = terminal.last_run.as_ref() else {
-            return Ok(terminal);
-        };
-        if run.completed || !run.marker_enabled {
-            return Ok(terminal);
-        }
-        let raw = self.capture_pane(&terminal, MAX_CAPTURE_LINES).await?;
-        let capture = extract_run_capture(&raw, terminal.last_run.as_ref());
-        if !capture.completed {
-            return Ok(terminal);
-        }
-        self.mark_run_completed(&terminal.id, capture.exit_code)
-            .await;
-        let mut refreshed = terminal;
-        if let Some(ref mut run) = refreshed.last_run {
-            run.completed = true;
-            run.exit_code = capture.exit_code;
-        }
-        Ok(refreshed)
-    }
-
-    async fn resolve_terminal(
-        &self,
-        session_key: &str,
-        terminal_id: Option<&str>,
-        force_new: bool,
-        cwd: Option<&str>,
-    ) -> Result<ManagedTerminal> {
-        if let Some(terminal) = self
-            .requested_terminal_for_execute(session_key, terminal_id, force_new)
-            .await
-        {
-            return Ok(terminal);
-        }
-        if !force_new && let Some(terminal) = self.find_idle_terminal(session_key).await? {
-            return Ok(terminal);
-        }
-        let has_busy_terminal = !force_new
-            && self
-                .terminals
-                .read()
-                .await
-                .values()
-                .any(|terminal| terminal.session_key == session_key && terminal.is_running());
-        self.create_or_discover_terminal(session_key, force_new || has_busy_terminal, cwd)
-            .await
-    }
-
-    async fn requested_terminal_for_execute(
-        &self,
-        session_key: &str,
-        terminal_id: Option<&str>,
-        force_new: bool,
-    ) -> Option<ManagedTerminal> {
-        if force_new {
-            return None;
-        }
-        let terminal_id = terminal_id.filter(|id| !id.trim().is_empty())?;
-        let terminal = self.terminals.read().await.get(terminal_id).cloned()?;
-        if terminal.session_key == session_key {
-            Some(terminal)
-        } else {
-            None
-        }
-    }
-
-    async fn lookup_terminal(
-        &self,
-        session_key: &str,
-        terminal_id: &str,
-    ) -> Result<ManagedTerminal> {
-        let terminal = self
-            .terminals
-            .read()
-            .await
-            .get(terminal_id)
-            .cloned()
-            .ok_or_else(|| Error::message(format!("terminal id not found: {terminal_id}")))?;
-        if terminal.session_key != session_key {
-            return Err(Error::message(format!(
-                "terminal {terminal_id} belongs to another session"
-            )));
-        }
-        Ok(terminal)
-    }
-
-    async fn find_idle_terminal(&self, session_key: &str) -> Result<Option<ManagedTerminal>> {
-        let terminals: Vec<ManagedTerminal> = self
-            .terminals
-            .read()
-            .await
-            .values()
-            .filter(|terminal| terminal.session_key == session_key && !terminal.is_running())
-            .cloned()
-            .collect();
-        for terminal in terminals {
-            if self.pane_exists(session_key, &terminal.pane_id).await? {
-                return Ok(Some(terminal));
-            }
-            self.terminals.write().await.remove(&terminal.id);
-        }
-        Ok(None)
-    }
-
-    async fn create_or_discover_terminal(
-        &self,
-        session_key: &str,
-        force_new: bool,
-        cwd: Option<&str>,
-    ) -> Result<ManagedTerminal> {
-        let mut panes = self.list_panes(session_key).await?;
-        let mut use_initial_pane = false;
-        if panes.is_empty() {
-            let session_name = default_session_name(session_key);
-            let recovered_panes = self.new_session(session_key, &session_name, cwd).await?;
-            use_initial_pane = true;
-            panes = if recovered_panes.is_empty() {
-                self.list_panes(session_key).await?
-            } else {
-                recovered_panes
-            };
-        }
-        if panes.is_empty() {
-            return Err(Error::message("tmux session has no panes"));
-        }
-
-        let pane = if force_new && !use_initial_pane {
-            let session = choose_active_pane(&panes)
-                .ok_or_else(|| Error::message("tmux session has no active pane"))?;
-            self.new_window(session_key, &session.session_id, cwd)
-                .await?
-        } else {
-            choose_active_pane(&panes)
-                .ok_or_else(|| Error::message("tmux session has no active pane"))?
-        };
-
-        let terminal = ManagedTerminal {
-            id: self.next_terminal_id(),
-            session_key: session_key.to_string(),
-            session_id: pane.session_id,
-            session_name: pane.session_name,
-            window_id: pane.window_id,
-            window_name: pane.window_name,
-            pane_id: pane.pane_id,
-            gate: Arc::new(Semaphore::new(1)),
-            last_run: None,
-        };
-        self.store_terminal(terminal.clone()).await;
-        Ok(terminal)
-    }
-
-    async fn pane_exists(&self, session_key: &str, pane_id: &str) -> Result<bool> {
-        Ok(self
-            .list_panes(session_key)
-            .await?
-            .into_iter()
-            .any(|pane| pane.pane_id == pane_id))
-    }
-
-    async fn new_session(
-        &self,
-        session_key: &str,
-        session_name: &str,
-        cwd: Option<&str>,
-    ) -> Result<Vec<TmuxPaneInfo>> {
-        let workspace_dir = self.sandbox_workspace_dir(session_key).await?;
-        let cwd = cwd.unwrap_or(&workspace_dir);
-        let args = vec![
-            "new-session".to_string(),
-            "-d".to_string(),
-            "-s".to_string(),
-            session_name.to_string(),
-            "-x".to_string(),
-            DEFAULT_TMUX_COLS.to_string(),
-            "-y".to_string(),
-            DEFAULT_TMUX_ROWS.to_string(),
-            "-c".to_string(),
-            cwd.to_string(),
-            "bash -l".to_string(),
-        ];
-        let output = self
-            .run_tmux(session_key, &args, Duration::from_secs(10))
-            .await?;
-        if output.exit_code != 0 {
-            let error_text = command_error_text(&output);
-            if is_tmux_duplicate_session(&error_text) {
-                let panes = self.list_panes(session_key).await?;
-                if !panes.is_empty() {
-                    debug!(
-                        session = session_key,
-                        session_name,
-                        pane_count = panes.len(),
-                        "tmux session was created concurrently; reusing discovered pane"
-                    );
-                    return Ok(panes);
-                }
-            }
-            return Err(Error::message(format!(
-                "failed to create tmux session: {}",
-                error_text
-            )));
-        }
-        Ok(Vec::new())
-    }
-
-    async fn new_window(
-        &self,
-        session_key: &str,
-        session_id: &str,
-        cwd: Option<&str>,
-    ) -> Result<TmuxPaneInfo> {
-        let workspace_dir = self.sandbox_workspace_dir(session_key).await?;
-        let cwd = cwd.unwrap_or(&workspace_dir);
-        let window_name = format!("term-{}", self.next_id.load(Ordering::Relaxed));
-        let format = tmux_format(&[
-            "session_id",
-            "session_name",
-            "window_id",
-            "window_index",
-            "window_name",
-            "window_active",
-            "pane_id",
-            "pane_index",
-            "pane_active",
-        ]);
-        let args = vec![
-            "new-window".to_string(),
-            "-d".to_string(),
-            "-P".to_string(),
-            "-F".to_string(),
-            format,
-            "-t".to_string(),
-            session_id.to_string(),
-            "-n".to_string(),
-            window_name,
-            "-c".to_string(),
-            cwd.to_string(),
-            "bash -l".to_string(),
-        ];
-        let output = self
-            .run_tmux(session_key, &args, Duration::from_secs(10))
-            .await?;
-        if output.exit_code != 0 {
-            return Err(Error::message(format!(
-                "failed to create tmux window: {}",
-                command_error_text(&output)
-            )));
-        }
-        parse_pane_line(output.stdout.trim()).ok_or_else(|| {
-            Error::message(format!(
-                "failed to parse tmux new-window output: {}",
-                output.stdout.trim()
-            ))
-        })
-    }
-
-    async fn list_panes(&self, session_key: &str) -> Result<Vec<TmuxPaneInfo>> {
-        let format = tmux_format(&[
-            "session_id",
-            "session_name",
-            "window_id",
-            "window_index",
-            "window_name",
-            "window_active",
-            "pane_id",
-            "pane_index",
-            "pane_active",
-        ]);
-        let args = vec!["list-panes".to_string(), "-aF".to_string(), format];
-        let output = self
-            .run_tmux(session_key, &args, Duration::from_secs(10))
-            .await?;
-        if output.exit_code != 0 {
-            let message = command_error_text(&output);
-            if is_tmux_no_server(&message) {
-                return Ok(Vec::new());
-            }
-            if is_tmux_missing(&message) {
-                return Err(Error::message("tmux is not installed in the sandbox"));
-            }
-            return Err(Error::message(format!(
-                "failed to list tmux panes: {message}"
-            )));
-        }
-        output
-            .stdout
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .map(|line| {
-                parse_pane_line(line)
-                    .ok_or_else(|| Error::message(format!("invalid tmux pane line: {line}")))
-            })
-            .collect()
-    }
-
-    async fn capture_pane(&self, terminal: &ManagedTerminal, max_lines: usize) -> Result<String> {
-        let args = vec![
-            "capture-pane".to_string(),
-            "-t".to_string(),
-            terminal.pane_id.clone(),
-            "-p".to_string(),
-            "-S".to_string(),
-            format!("-{}", max_lines.clamp(1, MAX_CAPTURE_LINES)),
-        ];
-        let output = self
-            .run_tmux(&terminal.session_key, &args, Duration::from_secs(10))
-            .await?;
-        if output.exit_code != 0 {
-            return Err(Error::message(format!(
-                "failed to capture terminal output: {}",
-                command_error_text(&output)
-            )));
-        }
-        Ok(output.stdout)
-    }
-
-    async fn paste_text(
-        &self,
-        terminal: &ManagedTerminal,
-        text: &str,
-        text_for_log: &str,
-    ) -> Result<()> {
-        let buffer_name = tmux_paste_buffer_name(&terminal.id);
-        let set_args = set_paste_buffer_args(&buffer_name, text);
-        let command_for_log = shell_words::join(
-            std::iter::once("tmux".to_string())
-                .chain(set_paste_buffer_args(&buffer_name, text_for_log)),
-        );
-        let set_output = self
-            .run_tmux_with_log_policy(
-                &terminal.session_key,
-                &set_args,
-                Duration::from_secs(10),
-                CommandLogPolicy::replacement(command_for_log),
-            )
-            .await?;
-        if set_output.exit_code != 0 {
-            return Err(Error::message(format!(
-                "failed to set tmux paste buffer: {}",
-                command_error_text(&set_output)
-            )));
-        }
-
-        let paste_args = paste_buffer_args(&buffer_name, &terminal.pane_id);
-        let paste_output = match self
-            .run_tmux(&terminal.session_key, &paste_args, Duration::from_secs(10))
-            .await
-        {
-            Ok(output) => output,
-            Err(err) => {
-                self.delete_paste_buffer(terminal, &buffer_name).await;
-                return Err(err);
-            },
-        };
-        if paste_output.exit_code != 0 {
-            self.delete_paste_buffer(terminal, &buffer_name).await;
-            return Err(Error::message(format!(
-                "failed to paste command into tmux pane: {}",
-                command_error_text(&paste_output)
-            )));
-        }
-        Ok(())
-    }
-
-    async fn delete_paste_buffer(&self, terminal: &ManagedTerminal, buffer_name: &str) {
-        let delete_args = vec![
-            "delete-buffer".to_string(),
-            "-b".to_string(),
-            buffer_name.to_string(),
-        ];
-        if let Err(err) = self
-            .run_tmux(&terminal.session_key, &delete_args, Duration::from_secs(10))
-            .await
-        {
-            debug!(?err, buffer_name, "failed to clean up tmux paste buffer");
-        }
-    }
-
-    async fn run_tmux(
-        &self,
-        session_key: &str,
-        tmux_args: &[String],
-        timeout: Duration,
-    ) -> Result<CommandOutput> {
-        self.run_tmux_with_log_policy(session_key, tmux_args, timeout, CommandLogPolicy::Visible)
-            .await
-    }
-
-    async fn run_tmux_with_log_policy(
-        &self,
-        session_key: &str,
-        tmux_args: &[String],
-        timeout: Duration,
-        log_policy: CommandLogPolicy,
-    ) -> Result<CommandOutput> {
-        let ExecEnv::Sandbox { backend, .. } = self.sandbox_router.resolve_env(session_key).await?
-        else {
-            return Err(Error::message(
-                "tmux-backed execute_command requires an isolated sandbox session",
-            ));
-        };
-
-        let mut words = Vec::with_capacity(tmux_args.len() + 1);
-        words.push("tmux".to_string());
-        words.extend(tmux_args.iter().cloned());
-        let command = shell_words::join(words);
-        let opts = CommandOptions {
-            timeout,
-            max_output_bytes: self.max_output_bytes,
-            working_dir: Some(backend.workspace_dir().into()),
-            env: Vec::new(),
-            log_policy,
-        };
-        debug!(
-            session = session_key,
-            command = %opts.log_policy.for_log(&command),
-            "sandbox tmux command"
-        );
-        run_sandbox_command_with_recovery(&self.sandbox_router, session_key, &command, &opts).await
-    }
-
-    async fn sandbox_workspace_dir(&self, session_key: &str) -> Result<String> {
-        let ExecEnv::Sandbox { backend, .. } = self.sandbox_router.resolve_env(session_key).await?
-        else {
-            return Err(Error::message(
-                "tmux-backed execute_command requires an isolated sandbox session",
-            ));
-        };
-        Ok(backend.workspace_dir().to_string())
-    }
-
-    async fn store_terminal(&self, terminal: ManagedTerminal) {
-        self.terminals
-            .write()
-            .await
-            .insert(terminal.id.clone(), terminal);
-    }
-
-    async fn mark_run_completed(&self, terminal_id: &str, exit_code: Option<i32>) {
-        if let Some(terminal) = self.terminals.write().await.get_mut(terminal_id)
-            && let Some(run) = terminal.last_run.as_mut()
-        {
-            run.completed = true;
-            run.exit_code = exit_code;
-        }
-    }
-
-    fn next_terminal_id(&self) -> String {
-        self.next_id.fetch_add(1, Ordering::Relaxed).to_string()
-    }
-}
-
-async fn run_sandbox_command_with_recovery(
-    router: &SandboxRouter,
-    session_key: &str,
-    command: &str,
-    opts: &CommandOptions,
-) -> Result<CommandOutput> {
-    let (mut backend, mut id) = router.prepare_command_session(session_key).await?;
-    let mut result = backend.run_command(&id, command, opts).await?;
-
-    for retry_idx in 1..=MAX_SANDBOX_RECOVERY_RETRIES {
-        if result.exit_code == 0 || !is_container_not_running_command_error(&result.stderr) {
-            break;
-        }
-
-        tracing::warn!(
-            session = session_key,
-            sandbox_id = %id,
-            command = %opts.log_policy.for_log(command),
-            retry_idx,
-            max_retries = MAX_SANDBOX_RECOVERY_RETRIES,
-            "sandbox command failed because container is unavailable, reinitializing and retrying"
-        );
-        if let Err(error) = backend.cleanup(&id).await {
-            tracing::warn!(
-                session = session_key,
-                sandbox_id = %id,
-                %error,
-                "failed to clean up stale sandbox before retry, continuing"
-            );
-        }
-        router.clear_runtime_state(session_key).await;
-        (backend, id) = router.prepare_command_session(session_key).await?;
-        result = backend.run_command(&id, command, opts).await?;
-    }
-
-    Ok(result)
-}
-
-fn is_container_not_running_command_error(stderr: &str) -> bool {
-    let lower = stderr.to_ascii_lowercase();
-    lower.contains("cannot exec: container is not running")
-        || lower.contains("container is stopped")
-        || (lower.contains("no sandbox client exists") && lower.contains("container is stopped"))
-        || (lower.contains("failed to create process in container")
-            && lower.contains("container")
-            && lower.contains("not running"))
-        || (lower.contains("invalidstate")
-            && lower.contains("container")
-            && lower.contains("is not running"))
-        || (lower.contains("container")
-            && lower.contains("not running")
-            && lower.contains("failed to create process"))
-        || lower.contains("notfound")
-        || (lower.contains("not found") && lower.contains("container"))
+    #[serde(rename = "_session_key", default)]
+    session_key: Option<String>,
 }
 
 pub struct ExecuteCommandTool {
-    manager: Arc<TmuxTerminalManager>,
+    service: Arc<ManagedToolsService>,
     default_timeout: Duration,
     approval_manager: Option<Arc<ApprovalManager>>,
     broadcaster: Option<Arc<dyn crate::approval::ApprovalBroadcaster>>,
     env_provider: Option<Arc<dyn EnvVarProvider>>,
     completion_callback: Option<CommandCompletionFn>,
-    node_provider: Option<Arc<dyn CommandNodeProvider>>,
-    default_node: Option<String>,
 }
 
 impl ExecuteCommandTool {
     #[must_use]
-    pub fn new(manager: Arc<TmuxTerminalManager>) -> Self {
+    pub fn new(service: Arc<ManagedToolsService>) -> Self {
         Self {
-            manager,
+            service,
             default_timeout: Duration::from_millis(DEFAULT_TIMEOUT_MILLIS),
             approval_manager: None,
             broadcaster: None,
             env_provider: None,
             completion_callback: None,
-            node_provider: None,
-            default_node: None,
         }
     }
 
@@ -991,74 +105,24 @@ impl ExecuteCommandTool {
         self
     }
 
-    #[must_use]
-    pub fn with_node_provider(
-        mut self,
-        provider: Arc<dyn CommandNodeProvider>,
-        default_node: Option<String>,
-    ) -> Self {
-        self.node_provider = Some(provider);
-        self.default_node = default_node;
-        self
-    }
-
-    fn has_connected_nodes(&self) -> bool {
-        self.node_provider
-            .as_ref()
-            .is_some_and(|provider| provider.has_connected_nodes())
-    }
-
-    fn command_timeout_millis(&self, params: &ExecuteCommandParams) -> u64 {
-        params
-            .timeout
-            .unwrap_or_else(|| u64::try_from(self.default_timeout.as_millis()).unwrap_or(u64::MAX))
-            .min(MAX_TIMEOUT_MILLIS)
-    }
-
-    async fn command_env(&self) -> Result<CommandEnvironment> {
-        let Some(provider) = self.env_provider.as_ref() else {
-            return Ok(CommandEnvironment::default());
-        };
-        provider
-            .get_env_vars()
-            .await
-            .map(CommandEnvironment::from)
-            .map_err(|error| Error::message(format!("failed to load command environment: {error}")))
-    }
-
-    fn fire_completion(&self, command: &str, result: &CommandOutput) {
-        if let Some(callback) = self.completion_callback.as_ref() {
-            let preview_len = 200;
-            callback(CommandCompletionEvent {
-                command: command.to_string(),
-                exit_code: result.exit_code,
-                stdout_preview: result.stdout.chars().take(preview_len).collect(),
-                stderr_preview: result.stderr.chars().take(preview_len).collect(),
-            });
-        }
-    }
-
     async fn approval_check(&self, command: &str, session_key: &str) -> Result<()> {
         let Some(manager) = self.approval_manager.as_ref() else {
             return Ok(());
         };
-        let action = manager.check_command(command).await?;
-        if action != ApprovalAction::NeedsApproval {
+        if manager.check_command(command).await? != ApprovalAction::NeedsApproval {
             return Ok(());
         }
 
-        info!(command, "command needs approval, waiting");
-        let (request_id, rx) = manager.create_request(command, Some(session_key)).await;
-
-        if let Some(broadcaster) = self.broadcaster.as_ref()
-            && let Err(error) = broadcaster
+        let (request_id, receiver) = manager.create_request(command, Some(session_key)).await;
+        if let Some(broadcaster) = self.broadcaster.as_ref() {
+            broadcaster
                 .broadcast_request(&request_id, command, Some(session_key))
                 .await
-        {
-            tracing::warn!(%error, "failed to broadcast approval request");
+                .map_err(|error| {
+                    Error::message(format!("failed to broadcast command approval: {error}"))
+                })?;
         }
-
-        match manager.wait_for_decision(rx).await {
+        match manager.wait_for_decision(receiver).await {
             ApprovalDecision::Approved => Ok(()),
             ApprovalDecision::Denied => {
                 Err(Error::message(format!("command denied by user: {command}")))
@@ -1069,159 +133,39 @@ impl ExecuteCommandTool {
         }
     }
 
-    async fn direct_working_dir(&self, custom_cwd: Option<&str>) -> Option<std::path::PathBuf> {
-        if let Some(cwd) = custom_cwd.filter(|cwd| !cwd.trim().is_empty()) {
-            let path = std::path::PathBuf::from(cwd);
-            if path.is_dir() {
-                return Some(path);
-            }
-            debug!(path = %path.display(), "customCwd does not exist on host, using default");
-        }
-
-        let default_dir = chelix_config::home_dir().unwrap_or_else(chelix_config::data_dir);
-        if let Err(error) = tokio::fs::create_dir_all(&default_dir).await {
-            tracing::warn!(
-                path = %default_dir.display(),
-                %error,
-                "failed to create default command working directory"
-            );
-            None
-        } else {
-            Some(default_dir)
-        }
-    }
-
-    async fn execute_on_node(
-        &self,
-        params: &ExecuteCommandParams,
-        command: &str,
-        timeout_millis: u64,
-    ) -> Result<Option<CommandOutput>> {
-        let Some(provider) = self.node_provider.as_ref() else {
-            return Ok(None);
+    async fn command_env(&self) -> Result<Vec<ToolsServiceEnvVar>> {
+        let Some(provider) = self.env_provider.as_ref() else {
+            return Ok(Vec::new());
         };
-
-        let model_node = params
-            .node
-            .as_deref()
-            .map(str::trim)
-            .filter(|node| !node.is_empty())
-            .map(str::to_string);
-        let node_ref = if provider.has_connected_nodes() {
-            match model_node.clone().or_else(|| self.default_node.clone()) {
-                Some(node_ref) => Some(node_ref),
-                None => provider.default_node_ref().await,
-            }
-        } else if let Some(default_node) = self.default_node.as_ref() {
-            return Err(Error::message(format!(
-                "default node '{default_node}' is configured but no nodes are currently connected"
-            )));
-        } else {
-            if model_node.is_some() {
-                debug!("ignoring model-supplied node parameter because no nodes are connected");
-            }
-            None
-        };
-
-        let Some(node_ref) = node_ref else {
-            return Ok(None);
-        };
-        let node_id = provider.resolve_node_id(&node_ref).await.ok_or_else(|| {
-            Error::message(format!("node '{node_ref}' not found or not connected"))
-        })?;
-        let timeout_secs = timeout_millis.div_ceil(1_000).max(1);
-        info!(
-            command,
-            node_id = %node_id,
-            timeout_secs,
-            "execute_command forwarding to remote node"
-        );
-        let result = provider
-            .run_on_node(
-                &node_id,
-                command,
-                timeout_secs,
-                params.custom_cwd.as_deref(),
-                None,
-            )
+        provider
+            .get_env_vars()
             .await
-            .map_err(|error| Error::message(format!("node command failed: {error}")))?;
-        self.fire_completion(command, &result);
-        Ok(Some(result))
+            .map_err(|error| {
+                Error::message(format!("failed to load command environment: {error}"))
+            })?
+            .into_iter()
+            .map(|variable| {
+                let value = variable.value.expose_secret().clone();
+                Ok(ToolsServiceEnvVar {
+                    key: variable.key,
+                    value,
+                    secret: variable.secret,
+                })
+            })
+            .collect()
     }
 
-    async fn execute_direct(
-        &self,
-        session_key: &str,
-        params: &ExecuteCommandParams,
-        command: &str,
-        timeout_millis: u64,
-    ) -> Result<CommandOutput> {
-        self.approval_check(command, session_key).await?;
-        let env = self.command_env().await?;
-        let log_policy = env.command_log_policy();
-        let opts = CommandOptions {
-            timeout: Duration::from_millis(timeout_millis),
-            max_output_bytes: self.manager.max_output_bytes,
-            working_dir: self.direct_working_dir(params.custom_cwd.as_deref()).await,
-            env: env.values,
-            log_policy,
-        };
-
-        debug!(
-            session = session_key,
-            command = %opts.log_policy.for_log(command),
-            "running command on host"
-        );
-        let mut result = run_shell_command(command, &opts).await?;
-        redact_command_output(&mut result, &env.secrets);
-        self.fire_completion(command, &result);
-        Ok(result)
-    }
-
-    async fn execute_routed(
-        &self,
-        session_key: &str,
-        mut params: ExecuteCommandParams,
-    ) -> Result<serde_json::Value> {
-        let command = params.command.trim().to_string();
-        if command.is_empty() {
-            return Err(Error::message("command cannot be empty"));
+    fn fire_completion(&self, command: &str, response: &ExecuteCommandResponse) {
+        if !response.completed {
+            return;
         }
-
-        let timeout_millis = self.command_timeout_millis(&params);
-        params.timeout = Some(timeout_millis);
-
-        if let Some(result) = self
-            .execute_on_node(&params, &command, timeout_millis)
-            .await?
-        {
-            return Ok(serde_json::to_value(result)?);
-        }
-
-        match self.manager.sandbox_router.resolve_env(session_key).await? {
-            ExecEnv::Sandbox { .. } => {
-                let env = self.command_env().await?;
-                let response = self
-                    .manager
-                    .execute_command(session_key, params, env)
-                    .await?;
-                if response.completed {
-                    let result = CommandOutput {
-                        stdout: response.output.clone(),
-                        stderr: String::new(),
-                        exit_code: response.exit_code.unwrap_or(0),
-                    };
-                    self.fire_completion(&command, &result);
-                }
-                Ok(serde_json::to_value(response)?)
-            },
-            ExecEnv::Host => {
-                let result = self
-                    .execute_direct(session_key, &params, &command, timeout_millis)
-                    .await?;
-                Ok(serde_json::to_value(result)?)
-            },
+        if let Some(callback) = self.completion_callback.as_ref() {
+            callback(CommandCompletionEvent {
+                command: command.to_string(),
+                exit_code: response.exit_code.unwrap_or(-1),
+                stdout_preview: response.output.chars().take(200).collect(),
+                stderr_preview: String::new(),
+            });
         }
     }
 }
@@ -1233,16 +177,21 @@ impl AgentTool for ExecuteCommandTool {
     }
 
     fn description(&self) -> &str {
-        "Execute a shell command through the active command route. Isolated sandbox runs use a real tmux terminal and return terminalId for follow-up read_terminal_output calls."
+        "Execute a shell command in a tmux terminal managed by chelix-tools-service. Returns terminalId for follow-up read_terminal_output calls."
     }
 
-    fn result_persistence(&self, _params: &serde_json::Value) -> ToolResultPersistence {
-        ToolResultPersistence::TextFields(&["stderr", "stdout", "output"])
+    fn agent_result(
+        &self,
+        _params: &serde_json::Value,
+        raw_result: &serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        let response: ExecuteCommandResponse = serde_json::from_value(raw_result.clone())?;
+        Ok(serde_json::Value::String(format_execute_result(&response)))
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
         let timeout_default = self.default_timeout.as_millis();
-        let mut schema = serde_json::json!({
+        serde_json::json!({
             "type": "object",
             "properties": {
                 "command": {
@@ -1255,7 +204,7 @@ impl AgentTool for ExecuteCommandTool {
                 },
                 "newTerminal": {
                     "type": "boolean",
-                    "description": "If true, create a new tmux window/terminal for isolated sandbox execution"
+                    "description": "If true, create a new tmux window/terminal"
                 },
                 "destructiveFlag": {
                     "type": "boolean",
@@ -1263,51 +212,62 @@ impl AgentTool for ExecuteCommandTool {
                 },
                 "background": {
                     "type": "boolean",
-                    "description": "If true, start the command and return immediately without waiting for completion"
+                    "description": "If true, start the command and return immediately"
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": format!("Milliseconds to wait for completion before returning partial output (default {timeout_default}, max {MAX_TIMEOUT_MILLIS})")
+                    "description": format!("Milliseconds to wait for completion (default {timeout_default}, max {MAX_TIMEOUT_MILLIS})")
                 },
                 "terminalId": {
                     "type": "string",
-                    "description": "Managed tmux terminal id returned by a previous isolated sandbox execute_command call"
+                    "description": "Managed terminal id returned by a previous execute_command call"
                 }
             },
-            "required": ["command"]
-        });
-        if self.has_connected_nodes()
-            && let Some(properties) = schema
-                .get_mut("properties")
-                .and_then(|value| value.as_object_mut())
-        {
-            properties.insert(
-                "node".to_string(),
-                serde_json::json!({
-                    "type": "string",
-                    "description": "Node name or ID to run on. Omit to use the configured default route."
-                }),
-            );
-        }
-        schema
+            "required": ["command"],
+            "additionalProperties": false
+        })
     }
 
     async fn execute(&self, params: serde_json::Value) -> anyhow::Result<serde_json::Value> {
-        let parsed: ExecuteCommandParams = serde_json::from_value(without_null_params(params))?;
-        let session_key = parsed._session_key.as_deref().unwrap_or("main").to_string();
+        let params: ExecuteCommandParams = serde_json::from_value(without_null_params(params))?;
+        let session_key = params.session_key.as_deref().unwrap_or("main").to_string();
+        let command = params.command.trim().to_string();
+        if command.is_empty() {
+            return Err(Error::message("command cannot be empty").into());
+        }
+        if params.destructive_flag.unwrap_or(false) {
+            tracing::debug!("execute_command destructive_flag provided for approval UI context");
+        }
+        self.approval_check(&command, &session_key).await?;
+        let timeout_millis = params
+            .timeout
+            .unwrap_or_else(|| u64::try_from(self.default_timeout.as_millis()).unwrap_or(u64::MAX))
+            .min(MAX_TIMEOUT_MILLIS);
+        let request = ExecuteCommandRequest {
+            session_key: session_key.clone(),
+            command: command.clone(),
+            custom_cwd: params.custom_cwd,
+            new_terminal: params.new_terminal,
+            background: params.background,
+            timeout_millis,
+            terminal_id: params.terminal_id,
+            env: self.command_env().await?,
+        };
         info!(session = session_key, "execute_command tool invoked");
-        Ok(self.execute_routed(&session_key, parsed).await?)
+        let response = self.service.execute_command(&session_key, request).await?;
+        self.fire_completion(&command, &response);
+        Ok(serde_json::to_value(response)?)
     }
 }
 
 pub struct ReadTerminalOutputTool {
-    manager: Arc<TmuxTerminalManager>,
+    service: Arc<ManagedToolsService>,
 }
 
 impl ReadTerminalOutputTool {
     #[must_use]
-    pub fn new(manager: Arc<TmuxTerminalManager>) -> Self {
-        Self { manager }
+    pub fn new(service: Arc<ManagedToolsService>) -> Self {
+        Self { service }
     }
 }
 
@@ -1318,11 +278,16 @@ impl AgentTool for ReadTerminalOutputTool {
     }
 
     fn description(&self) -> &str {
-        "Read current output from a managed sandbox tmux terminal created by execute_command."
+        "Read current output from a tmux terminal managed by chelix-tools-service."
     }
 
-    fn result_persistence(&self, _params: &serde_json::Value) -> ToolResultPersistence {
-        ToolResultPersistence::TextFields(&["output"])
+    fn agent_result(
+        &self,
+        _params: &serde_json::Value,
+        raw_result: &serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        let response: ReadTerminalOutputResponse = serde_json::from_value(raw_result.clone())?;
+        Ok(serde_json::Value::String(format_terminal_output(&response)))
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -1338,628 +303,138 @@ impl AgentTool for ReadTerminalOutputTool {
                     "description": "Maximum number of tmux scrollback lines to read"
                 }
             },
-            "required": ["terminalId"]
+            "required": ["terminalId"],
+            "additionalProperties": false
         })
     }
 
     async fn execute(&self, params: serde_json::Value) -> anyhow::Result<serde_json::Value> {
-        let parsed: ReadTerminalOutputParams = serde_json::from_value(without_null_params(params))?;
-        let session_key = parsed._session_key.as_deref().unwrap_or("main").to_string();
+        let params: ReadTerminalOutputParams = serde_json::from_value(without_null_params(params))?;
+        let session_key = params.session_key.as_deref().unwrap_or("main").to_string();
+        let request = ReadTerminalOutputRequest {
+            session_key: session_key.clone(),
+            terminal_id: params.terminal_id,
+            max_lines: params.max_lines,
+        };
         Ok(serde_json::to_value(
-            self.manager
-                .read_terminal_output(&session_key, parsed)
+            self.service
+                .read_terminal_output(&session_key, request)
                 .await?,
         )?)
     }
 }
 
-fn tmux_paste_buffer_name(terminal_id: &str) -> String {
-    let id = terminal_id
-        .chars()
-        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
-        .collect::<String>();
-    format!("chelix-paste-{}-{}", id, uuid::Uuid::new_v4().simple())
-}
-
-fn set_paste_buffer_args(buffer_name: &str, text: &str) -> Vec<String> {
-    vec![
-        "set-buffer".to_string(),
-        "-b".to_string(),
-        buffer_name.to_string(),
-        "--".to_string(),
-        text.to_string(),
-    ]
-}
-
-fn paste_buffer_args(buffer_name: &str, pane_id: &str) -> Vec<String> {
-    vec![
-        "paste-buffer".to_string(),
-        "-d".to_string(),
-        "-b".to_string(),
-        buffer_name.to_string(),
-        "-t".to_string(),
-        pane_id.to_string(),
-    ]
-}
-
-fn build_paste_payload(
-    command: &str,
-    cwd: Option<&str>,
-    run_id: &str,
-    marker_enabled: bool,
-    env: &[(String, String)],
-) -> String {
-    let mut statements = Vec::new();
-    if let Some(cwd) = cwd.filter(|value| !value.trim().is_empty()) {
-        statements.push(format!("cd {}", shell_words::quote(cwd).as_ref()));
-    }
-    let mut env_keys = Vec::new();
-    for (key, value) in env {
-        if is_shell_env_key(key) {
-            env_keys.push(key.as_str());
-            statements.push(env_export_statement(key, value));
-        }
-    }
-    if marker_enabled {
-        statements.push(format!("printf '\\n{START_PREFIX}{run_id}\\n'"));
-        statements.push(format!("eval {}", shell_words::quote(command).as_ref()));
-        statements.push("__chelix_exit=$?".to_string());
-        if let Some(restore) = restore_shell_env_statement(&env_keys) {
-            statements.push(restore);
-        }
-        statements.push(format!(
-            "printf '\\n{DONE_PREFIX}{run_id}:%s\\n' \"$__chelix_exit\""
-        ));
-        let mut payload = statements.join("; ");
-        payload.push('\n');
-        return payload;
-    }
-    statements.push(command.to_string());
-    if let Some(restore) = restore_shell_env_statement(&env_keys) {
-        statements.push(restore);
-    }
-    let mut payload = statements.join("\n");
-    payload.push('\n');
-    payload
-}
-
-fn is_shell_env_key(key: &str) -> bool {
-    let mut chars = key.chars();
-    matches!(chars.next(), Some(ch) if ch.is_ascii_alphabetic() || ch == '_')
-        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-}
-
-fn env_export_statement(key: &str, value: &str) -> String {
-    let backup_set = shell_backup_set_var(key);
-    let backup_value = shell_backup_value_var(key);
-    format!(
-        "{backup_set}=${{{key}+x}}; {backup_value}=${{{key}-}}; export {key}={}",
-        shell_words::quote(value).as_ref()
-    )
-}
-
-fn restore_shell_env_statement(keys: &[&str]) -> Option<String> {
-    if keys.is_empty() {
-        return None;
-    }
-
-    Some(
-        keys.iter()
-            .map(|key| {
-                let backup_set = shell_backup_set_var(key);
-                let backup_value = shell_backup_value_var(key);
-                format!(
-                    "if [ -n \"${{{backup_set}}}\" ]; then export {key}=\"${{{backup_value}}}\"; else unset {key}; fi; unset {backup_set} {backup_value}"
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("; "),
-    )
-}
-
-fn shell_backup_set_var(key: &str) -> String {
-    format!("__chelix_env_{key}_was_set")
-}
-
-fn shell_backup_value_var(key: &str) -> String {
-    format!("__chelix_env_{key}_value")
-}
-
-fn extract_run_capture(raw: &str, run: Option<&ManagedRun>) -> CaptureResult {
-    let Some(run) = run else {
-        return CaptureResult {
-            output: raw.to_string(),
-            completed: false,
-            exit_code: None,
-        };
-    };
-    let lines: Vec<&str> = raw.lines().collect();
-    let start_marker = format!("{START_PREFIX}{}", run.run_id);
-    let done_marker = format!("{DONE_PREFIX}{}:", run.run_id);
-    let start = lines
-        .iter()
-        .position(|line| line.trim() == start_marker)
-        .map_or_else(
-            || {
-                if lines.len() < run.baseline_lines {
-                    0
-                } else {
-                    run.baseline_lines
-                }
-            },
-            |index| index + 1,
+fn format_execute_result(response: &ExecuteCommandResponse) -> String {
+    let status = if response.background {
+        format!(
+            "Command started in terminal (id: {}).",
+            response.terminal_id
         )
-        .min(lines.len());
-    let mut output_lines = Vec::new();
-    let mut completed = run.completed;
-    let mut exit_code = run.exit_code;
-
-    for line in lines.iter().skip(start) {
-        if let Some(raw_code) = line.trim().strip_prefix(&done_marker) {
-            exit_code = raw_code.trim().parse::<i32>().ok();
-            completed = true;
-            break;
-        }
-        if should_skip_wrapper_line(line, run) {
-            continue;
-        }
-        output_lines.push(*line);
-    }
-
-    CaptureResult {
-        output: output_lines.join("\n").trim().to_string(),
-        completed,
-        exit_code,
-    }
-}
-
-fn should_skip_wrapper_line(line: &str, run: &ManagedRun) -> bool {
-    let trimmed = line.trim();
-    trimmed.is_empty()
-        || trimmed == run.command.trim()
-        || trimmed.ends_with(run.command.trim()) && prompt_prefix(trimmed, run.command.trim())
-        || trimmed.contains(START_PREFIX)
-        || trimmed.contains("__chelix_exit=$?")
-        || trimmed.contains(DONE_PREFIX)
-}
-
-fn prompt_prefix(line: &str, command: &str) -> bool {
-    let prefix = line.trim_end_matches(command).trim_end();
-    prefix
-        .chars()
-        .last()
-        .is_some_and(|last| matches!(last, '$' | '#' | '>' | '%'))
-}
-
-fn tmux_format(fields: &[&str]) -> String {
-    fields
-        .iter()
-        .map(|field| format!("#{{{field}}}"))
-        .collect::<Vec<_>>()
-        .join(FIELD_SEP)
-}
-
-fn parse_pane_line(line: &str) -> Option<TmuxPaneInfo> {
-    let parts: Vec<&str> = line.split(FIELD_SEP).collect();
-    if parts.len() != 9 {
-        return None;
-    }
-    Some(TmuxPaneInfo {
-        session_id: parts[0].to_string(),
-        session_name: parts[1].to_string(),
-        window_id: parts[2].to_string(),
-        window_index: parts[3].parse().ok()?,
-        window_name: parts[4].to_string(),
-        window_active: parse_bool_flag(parts[5]),
-        pane_id: parts[6].to_string(),
-        pane_index: parts[7].parse().ok()?,
-        pane_active: parse_bool_flag(parts[8]),
-    })
-}
-
-fn choose_active_pane(panes: &[TmuxPaneInfo]) -> Option<TmuxPaneInfo> {
-    panes
-        .iter()
-        .max_by_key(|pane| {
-            (
-                pane.window_active,
-                pane.pane_active,
-                std::cmp::Reverse(pane.window_index),
-                std::cmp::Reverse(pane.pane_index),
-            )
-        })
-        .cloned()
-}
-
-fn parse_bool_flag(raw: &str) -> bool {
-    raw.trim() == "1"
-}
-
-fn default_session_name(session_key: &str) -> String {
-    let mut name = String::from("chelix-");
-    for ch in session_key.chars().take(48) {
-        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
-            name.push(ch);
-        } else {
-            name.push('-');
-        }
-    }
-    if name == "chelix-" {
-        name.push_str("main");
-    }
-    name
-}
-
-fn command_error_text(output: &CommandOutput) -> String {
-    let stderr = output.stderr.trim();
-    if !stderr.is_empty() {
-        return stderr.to_string();
-    }
-    let stdout = output.stdout.trim();
-    if !stdout.is_empty() {
-        return stdout.to_string();
-    }
-    format!("exit {}", output.exit_code)
-}
-
-fn redact_text_output(output: &mut String, env: &[(String, String)]) {
-    let mut result = CommandOutput {
-        stdout: std::mem::take(output),
-        stderr: String::new(),
-        exit_code: 0,
+    } else if response.timed_out {
+        format!(
+            "Command is still running in terminal (id: {}).",
+            response.terminal_id
+        )
+    } else {
+        format!(
+            "Command finished in terminal (id: {}).",
+            response.terminal_id
+        )
     };
-    redact_command_output(&mut result, env);
-    *output = result.stdout;
+    format_output(status, &response.output)
 }
 
-fn is_tmux_no_server(message: &str) -> bool {
-    let lower = message.to_ascii_lowercase();
-    lower.contains("no server running")
-        || lower.contains("no sessions")
-        || lower.contains("error connecting to")
-            && lower.contains("/tmux-")
-            && lower.contains("no such file")
+fn format_terminal_output(response: &ReadTerminalOutputResponse) -> String {
+    let status = if response.running {
+        format!("Terminal {} is running.", response.terminal_id)
+    } else if response.completed {
+        format!("Terminal {} completed.", response.terminal_id)
+    } else {
+        format!("Terminal {} output read.", response.terminal_id)
+    };
+    format_output(status, &response.output)
 }
 
-fn is_tmux_duplicate_session(message: &str) -> bool {
-    message.to_ascii_lowercase().contains("duplicate session")
-}
-
-fn is_tmux_missing(message: &str) -> bool {
-    let lower = message.to_ascii_lowercase();
-    lower.contains("tmux: command not found")
-        || lower.contains("executable file not found")
-        || lower.contains("tmux: not found")
-        || lower.contains("command not found")
-}
-
-fn truncate_output_for_display(output: &mut String, max_output_bytes: usize) {
-    if output.len() <= max_output_bytes {
-        return;
+fn format_output(status: String, output: &str) -> String {
+    if output.is_empty() {
+        status
+    } else {
+        format!("{status}\nOutput:\n{output}")
     }
-    output.truncate(output.floor_char_boundary(max_output_bytes));
-    output.push_str("\n... [output truncated]");
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::sandbox::ToolsServiceEndpoint;
+
     use super::*;
 
-    #[test]
-    fn tmux_paste_buffer_name_is_unique_and_tmux_safe() {
-        let first = tmux_paste_buffer_name("term/1:%2");
-        let second = tmux_paste_buffer_name("term/1:%2");
-
-        assert_ne!(first, second);
-        assert!(first.starts_with("chelix-paste-term12-"));
-        assert!(
-            first
-                .chars()
-                .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
-        );
+    fn client(base_url: String, token: &str) -> Arc<ManagedToolsService> {
+        ManagedToolsService::for_test(ToolsServiceEndpoint {
+            base_url,
+            token: token.into(),
+        })
+        .unwrap_or_else(|error| panic!("test client failed: {error}"))
     }
 
-    #[test]
-    fn terminal_tools_persist_line_oriented_output_as_text() {
-        let router = Arc::new(SandboxRouter::disabled());
-        let manager = Arc::new(TmuxTerminalManager::new(router, 4096));
-        let execute = ExecuteCommandTool::new(Arc::clone(&manager));
-        let read = ReadTerminalOutputTool::new(manager);
+    #[tokio::test]
+    async fn execute_routes_exclusively_to_service() {
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("POST", chelix_protocol::TOOLS_SERVICE_EXECUTE_COMMAND_PATH)
+            .match_header("authorization", "Bearer command-token")
+            .match_body(mockito::Matcher::PartialJson(serde_json::json!({
+                "sessionKey": "session:test",
+                "command": "printf ok"
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "terminalId": "terminal",
+                    "runId": "run",
+                    "sessionId": "$0",
+                    "sessionName": "main",
+                    "windowId": "@0",
+                    "windowName": "bash",
+                    "paneId": "%0",
+                    "output": "ok",
+                    "exitCode": 0,
+                    "completed": true,
+                    "timedOut": false,
+                    "background": false,
+                    "message": "done"
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create_async()
+            .await;
+        let tool = ExecuteCommandTool::new(client(server.url(), "command-token"));
 
+        let result = tool
+            .execute(serde_json::json!({
+                "command": "printf ok",
+                "_session_key": "session:test"
+            }))
+            .await
+            .unwrap_or_else(|error| panic!("execute failed: {error}"));
+
+        assert_eq!(result["terminalId"], "terminal");
         assert_eq!(
-            execute.result_persistence(&serde_json::json!({})),
-            ToolResultPersistence::TextFields(&["stderr", "stdout", "output"])
+            tool.agent_result(&serde_json::json!({}), &result)
+                .unwrap_or_else(|error| panic!("agent result failed: {error}")),
+            "Command finished in terminal (id: terminal).\nOutput:\nok"
         );
-        assert_eq!(
-            read.result_persistence(&serde_json::json!({})),
-            ToolResultPersistence::TextFields(&["output"])
-        );
+        call.assert_async().await;
     }
 
     #[test]
-    fn paste_buffer_args_use_named_delete_after_paste_buffer() {
-        let set_args = set_paste_buffer_args("chelix-paste-1-abc", "cat <<'EOF'\nhello\nEOF\n");
-        let paste_args = paste_buffer_args("chelix-paste-1-abc", "%2");
+    fn schemas_have_no_node_route() {
+        let schema = ExecuteCommandTool::new(client("http://127.0.0.1:1".into(), "unused"))
+            .parameters_schema();
 
-        assert_eq!(set_args, vec![
-            "set-buffer",
-            "-b",
-            "chelix-paste-1-abc",
-            "--",
-            "cat <<'EOF'\nhello\nEOF\n"
-        ]);
-        assert_eq!(paste_args, vec![
-            "paste-buffer",
-            "-d",
-            "-b",
-            "chelix-paste-1-abc",
-            "-t",
-            "%2"
-        ]);
-    }
-
-    #[test]
-    fn paste_payload_adds_marker_for_foreground_commands() {
-        let payload = build_paste_payload("echo true", Some("/home/sandbox"), "abc", true, &[]);
-        assert!(payload.contains("cd /home/sandbox"));
-        assert!(payload.contains("__CHELIX_COMMAND_START__abc"));
-        assert!(payload.contains("eval 'echo true'"));
-        assert!(payload.contains("__CHELIX_COMMAND_DONE__abc"));
-    }
-
-    #[test]
-    fn paste_payload_exports_env_before_start_marker() {
-        let env = vec![
-            ("TOKEN".to_string(), "value with spaces".to_string()),
-            ("BAD-NAME".to_string(), "ignored".to_string()),
-        ];
-        let payload = build_paste_payload("printenv TOKEN", None, "abc", true, &env);
-
-        assert!(payload.contains("export TOKEN='value with spaces'"));
-        assert!(payload.contains("__chelix_env_TOKEN_was_set=${TOKEN+x}"));
-        assert!(payload.contains("__chelix_env_TOKEN_value=${TOKEN-}"));
-        assert!(payload.contains("export TOKEN=\"${__chelix_env_TOKEN_value}\""));
-        assert!(!payload.contains("BAD-NAME"));
-        assert!(!payload.contains("ignored"));
-        assert!(matches!(
-            (payload.find("export TOKEN"), payload.find(START_PREFIX)),
-            (Some(export), Some(start)) if export < start
-        ));
-    }
-
-    #[test]
-    fn command_environment_redacts_only_secret_values() {
-        let environment = CommandEnvironment::from(vec![
-            InjectedEnvVar {
-                key: "SECRET_TOKEN".to_string(),
-                value: secrecy::Secret::new("hidden'value $dollar".to_string()),
-                secret: true,
-            },
-            InjectedEnvVar {
-                key: "PUBLIC_MODE".to_string(),
-                value: secrecy::Secret::new("visible-value hidden'value $dollar".to_string()),
-                secret: false,
-            },
-        ]);
-
-        assert_eq!(environment.values.len(), 2);
-        assert_eq!(environment.secrets, vec![(
-            "SECRET_TOKEN".to_string(),
-            "hidden'value $dollar".to_string()
-        )]);
-        let mut output = CommandOutput {
-            stdout: "hidden'value $dollar visible-value".to_string(),
-            stderr: String::new(),
-            exit_code: 0,
-        };
-        redact_command_output(&mut output, &environment.secrets);
-        assert_eq!(output.stdout, "[REDACTED] visible-value");
-
-        let command = "printf command-remains-visible \"hidden'value $dollar\"";
-        let cwd = "/tmp/hidden'value $dollar/workspace";
-        let payload = build_paste_payload(command, Some(cwd), "abc", true, &environment.values);
-        let log_policy = environment.command_log_policy();
-        let command_for_log = log_policy.for_log(command);
-        let cwd_for_log = log_policy.for_log(cwd);
-        let payload_for_log = build_paste_payload(
-            &command_for_log,
-            Some(&cwd_for_log),
-            "abc",
-            true,
-            &environment.values_for_log,
-        );
-        let payload_for_log = log_policy.for_log(&payload_for_log);
-        let tmux_payload = shell_words::join(
-            std::iter::once("tmux".to_string())
-                .chain(set_paste_buffer_args("chelix-paste-test", &payload)),
-        );
-        let tmux_payload_for_log = shell_words::join(
-            std::iter::once("tmux".to_string())
-                .chain(set_paste_buffer_args("chelix-paste-test", &payload_for_log)),
-        );
-        let policy = CommandLogPolicy::replacement(tmux_payload_for_log);
-        let logged_payload = policy.for_log(&tmux_payload);
-        assert!(!logged_payload.contains("hidden'value $dollar"));
-        assert!(!logged_payload.contains("hidden"));
-        assert!(logged_payload.contains("[REDACTED]"));
-        assert!(logged_payload.contains("visible-value"));
-        assert!(logged_payload.contains("command-remains-visible"));
-
-        let public_environment = CommandEnvironment::from(vec![InjectedEnvVar {
-            key: "PUBLIC_MODE".to_string(),
-            value: secrecy::Secret::new("visible-value".to_string()),
-            secret: false,
-        }]);
-        assert_eq!(
-            public_environment
-                .command_log_policy()
-                .for_log("printf visible-value"),
-            "printf visible-value"
-        );
-    }
-
-    #[test]
-    fn paste_payload_keeps_done_marker_in_same_shell_input_as_command() {
-        let payload = build_paste_payload(
-            "apt-get update -qq && apt-get install -y -qq iputils-ping",
-            Some("/home/sandbox"),
-            "abc",
-            true,
-            &[],
-        );
-
-        assert_eq!(payload.lines().count(), 1);
-        assert!(
-            payload
-                .contains("; eval 'apt-get update -qq && apt-get install -y -qq iputils-ping'; ")
-        );
-        assert!(payload.contains("; __chelix_exit=$?; "));
-        assert!(payload.contains("__CHELIX_COMMAND_DONE__abc:%s"));
-    }
-
-    #[test]
-    fn paste_payload_can_omit_marker_when_requested() {
-        let payload = build_paste_payload("sleep 100", None, "abc", false, &[]);
-        assert!(payload.contains("sleep 100"));
-        assert!(!payload.contains("__CHELIX_COMMAND_DONE__abc"));
-    }
-
-    #[test]
-    fn extract_run_capture_returns_command_output_and_exit_code() {
-        let run = ManagedRun {
-            run_id: "abc".to_string(),
-            command: "echo true".to_string(),
-            baseline_lines: 2,
-            marker_enabled: true,
-            completed: false,
-            exit_code: None,
-            redaction_env: Vec::new(),
-        };
-        let raw = "old\nold2\n$ printf '\\n__CHELIX_COMMAND_START__abc\\n'\n__CHELIX_COMMAND_START__abc\n$ echo true\ntrue\n__chelix_exit=$?\nprintf '\\n__CHELIX_COMMAND_DONE__abc:%s\\n' \"$__chelix_exit\"\n__CHELIX_COMMAND_DONE__abc:0\n$ ";
-        let capture = extract_run_capture(raw, Some(&run));
-        assert!(capture.completed);
-        assert_eq!(capture.exit_code, Some(0));
-        assert_eq!(capture.output, "true");
-    }
-
-    #[test]
-    fn extract_run_capture_uses_tail_when_baseline_scrollback_is_truncated() {
-        let run = ManagedRun {
-            run_id: "abc".to_string(),
-            command: "yes".to_string(),
-            baseline_lines: 20_000,
-            marker_enabled: true,
-            completed: false,
-            exit_code: None,
-            redaction_env: Vec::new(),
-        };
-        let raw = "line one\nline two\nline three";
-        let capture = extract_run_capture(raw, Some(&run));
-        assert!(!capture.completed);
-        assert_eq!(capture.output, raw);
-    }
-
-    #[test]
-    fn parse_pane_line_reads_tmux_ids() {
-        let sep = FIELD_SEP;
-        let line = format!("$0{sep}main{sep}@1{sep}0{sep}bash{sep}1{sep}%2{sep}0{sep}1");
-        let pane = parse_pane_line(&line).expect("pane line should parse");
-        assert_eq!(pane.session_id, "$0");
-        assert_eq!(pane.session_name, "main");
-        assert_eq!(pane.window_id, "@1");
-        assert_eq!(pane.pane_id, "%2");
-        assert!(pane.window_active);
-        assert!(pane.pane_active);
-    }
-
-    #[test]
-    fn tmux_socket_missing_is_no_server_not_missing_binary() {
-        let message = "error connecting to /tmp/tmux-0/default (No such file or directory)";
-
-        assert!(is_tmux_no_server(message));
-        assert!(!is_tmux_missing(message));
-    }
-
-    #[test]
-    fn tmux_duplicate_session_error_is_recognized() {
-        let message = "duplicate session: chelix-session-92cb0926-9c27-40be-915c-4dd243389a8f";
-
-        assert!(is_tmux_duplicate_session(message));
-        assert!(!is_tmux_duplicate_session(
-            "no server running on /tmp/tmux-0/default"
-        ));
-    }
-
-    #[test]
-    fn tmux_command_not_found_is_missing_binary() {
-        let message = "bash: line 1: tmux: command not found";
-
-        assert!(!is_tmux_no_server(message));
-        assert!(is_tmux_missing(message));
-    }
-
-    async fn test_manager_with_terminal(terminal: ManagedTerminal) -> TmuxTerminalManager {
-        let router = Arc::new(SandboxRouter::disabled());
-        let manager = TmuxTerminalManager::new(router, 4096);
-        manager.store_terminal(terminal).await;
-        manager
-    }
-
-    fn test_terminal(id: &str, session_key: &str) -> ManagedTerminal {
-        ManagedTerminal {
-            id: id.to_string(),
-            session_key: session_key.to_string(),
-            session_id: "$0".to_string(),
-            session_name: "main".to_string(),
-            window_id: "@1".to_string(),
-            window_name: "bash".to_string(),
-            pane_id: "%2".to_string(),
-            gate: Arc::new(Semaphore::new(1)),
-            last_run: None,
-        }
-    }
-
-    #[tokio::test]
-    async fn execute_terminal_id_resolves_existing_terminal_in_session() {
-        let manager = test_manager_with_terminal(test_terminal("1", "main")).await;
-
-        let terminal = manager
-            .requested_terminal_for_execute("main", Some("1"), false)
-            .await;
-
-        assert_eq!(terminal.map(|terminal| terminal.id), Some("1".to_string()));
-    }
-
-    #[tokio::test]
-    async fn execute_terminal_id_ignores_unknown_terminal_id() {
-        let manager = test_manager_with_terminal(test_terminal("1", "main")).await;
-
-        let terminal = manager
-            .requested_terminal_for_execute("main", Some("missing"), false)
-            .await;
-
-        assert!(terminal.is_none());
-    }
-
-    #[tokio::test]
-    async fn execute_terminal_id_ignores_terminal_from_another_session() {
-        let manager = test_manager_with_terminal(test_terminal("1", "other")).await;
-
-        let terminal = manager
-            .requested_terminal_for_execute("main", Some("1"), false)
-            .await;
-
-        assert!(terminal.is_none());
-    }
-
-    #[tokio::test]
-    async fn execute_terminal_id_ignores_terminal_id_when_new_terminal_is_requested() {
-        let manager = test_manager_with_terminal(test_terminal("1", "main")).await;
-
-        let terminal = manager
-            .requested_terminal_for_execute("main", Some("1"), true)
-            .await;
-
-        assert!(terminal.is_none());
+        assert!(schema["properties"].get("node").is_none());
+        assert_eq!(schema["additionalProperties"], false);
     }
 }

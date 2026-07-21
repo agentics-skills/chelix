@@ -132,14 +132,6 @@ export function buildCommands(): Command[] {
 			action: settingsNav("agents"),
 		},
 		{
-			id: "set-nodes",
-			label: "Nodes",
-			group: "settings",
-			icon: "icon-nodes",
-			keywords: ["node", "cluster"],
-			action: settingsNav("nodes"),
-		},
-		{
 			id: "set-environment",
 			label: "Environment",
 			group: "settings",

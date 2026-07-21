@@ -200,7 +200,7 @@ pub async fn run_agent_loop_with_context_and_limits(
     let channel_for_hooks =
         channel_binding_from_tool_context(&session_key_for_hooks, tool_context.as_ref());
 
-    // Every tool output is persisted before it can enter the LLM context.
+    // Every agent-facing tool result is persisted before it enters LLM context.
     let tool_result_store = ToolResultStore::new(chelix_config::data_dir().join("sessions"));
 
     dispatch_before_agent_start_hook(
@@ -851,8 +851,7 @@ pub async fn run_agent_loop_with_context_and_limits(
         // collect detector outcomes. The complete model round is recorded once
         // after every sibling result has been persisted.
         let mut round_outcomes = Vec::with_capacity(response.tool_calls.len());
-        for (tc, (success, mut result, error, rejected)) in response.tool_calls.iter().zip(results)
-        {
+        for (tc, (success, result, error, rejected)) in response.tool_calls.iter().zip(results) {
             if success {
                 info!(tool = %tc.name, id = %tc.id, "tool execution succeeded");
                 trace!(tool = %tc.name, result = %result, "tool result");
@@ -885,6 +884,21 @@ pub async fn run_agent_loop_with_context_and_limits(
                 });
             }
 
+            let has_raw_result = result.get("result").is_some();
+            let raw_result = result
+                .get("result")
+                .cloned()
+                .unwrap_or_else(|| result.clone());
+            let tool = resolve_tool_lookup(tools, sanitize_tool_name(&tc.name).as_ref()).0;
+            let mut agent_result = if has_raw_result {
+                match tool.as_ref() {
+                    Some(tool) => tool.agent_result(&tc.arguments, &raw_result)?,
+                    None => raw_result.clone(),
+                }
+            } else {
+                raw_result.clone()
+            };
+
             // Dispatch ToolResultPersist hook — the last opportunity for a handler
             // to sanitize, redact, or block attacker-controlled tool output before
             // it enters the messages array and is reasoned on by the next LLM
@@ -895,17 +909,17 @@ pub async fn run_agent_loop_with_context_and_limits(
                 let payload = HookPayload::ToolResultPersist {
                     session_key: session_key_for_hooks.clone(),
                     tool_name: sanitize_tool_name(&tc.name).into_owned(),
-                    result: result.clone(),
+                    result: agent_result.clone(),
                     channel: channel_for_hooks.clone(),
                 };
                 match hooks.dispatch(&payload).await {
                     Ok(HookAction::ModifyPayload(v)) => {
                         debug!(tool = %tc.name, "ToolResultPersist replaced tool result");
-                        result = v;
+                        agent_result = v;
                     },
                     Ok(HookAction::Block(reason)) => {
                         warn!(tool = %tc.name, reason = %reason, "ToolResultPersist blocked result — substituting error marker");
-                        result = serde_json::json!({
+                        agent_result = serde_json::json!({
                             "error": format!("blocked by hook: {reason}")
                         });
                     },
@@ -916,17 +930,11 @@ pub async fn run_agent_loop_with_context_and_limits(
                 }
             }
 
-            let result_payload = result
-                .get("result")
-                .cloned()
-                .unwrap_or_else(|| result.clone());
-
             // Persist the full output to disk, then sanitize the in-context
             // copy as a string - most LLM APIs don't support multimodal
             // content in tool results. Images are stripped but the UI still
             // receives them via ToolCallEnd event. Oversized results are
             // truncated with a pointer to the persisted full output.
-            let tool = resolve_tool_lookup(tools, sanitize_tool_name(&tc.name).as_ref()).0;
             let truncation = tool
                 .as_ref()
                 .map(|tool| tool.truncation(&tc.arguments))
@@ -939,7 +947,7 @@ pub async fn run_agent_loop_with_context_and_limits(
                 &tool_result_store,
                 &session_key_for_hooks,
                 &tc.id,
-                &result_payload,
+                &agent_result,
                 max_tool_result_bytes,
                 truncation,
                 persistence,
@@ -951,8 +959,8 @@ pub async fn run_agent_loop_with_context_and_limits(
                     name: tc.name.clone(),
                     success,
                     error,
-                    result: success.then(|| tool_result_str.clone()),
-                    raw_result: success.then(|| result_payload.clone()),
+                    result: Some(tool_result_str.clone()),
+                    raw_result: has_raw_result.then(|| raw_result.clone()),
                     context_budget: context_budget.clone(),
                 });
             }

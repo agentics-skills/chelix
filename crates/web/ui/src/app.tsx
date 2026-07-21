@@ -17,7 +17,6 @@ import { init as initI18n, translateStaticElements } from "./i18n";
 import { initMobile, toggleSessions } from "./mobile";
 import { fetchModels } from "./models";
 import { updateNavCounts } from "./nav-counts";
-import * as _nodeSelector from "./nodes-selector";
 import * as _channelsPage from "./pages/ChannelsPage";
 import { renderSessionProjectSelect } from "./project-combo";
 import { fetchProjects, renderProjectSelect } from "./projects";
@@ -41,7 +40,6 @@ import * as S from "./state";
 import { togglePalette } from "./stores/command-store";
 import * as modelStore from "./stores/model-store";
 import * as _modelStore from "./stores/model-store";
-import * as _nodeStore from "./stores/node-store";
 import * as projectStore from "./stores/project-store";
 import * as _sessionHistoryCache from "./stores/session-history-cache";
 import * as _sessionStoreModule from "./stores/session-store";
@@ -67,13 +65,11 @@ window.__chelix_modules = {
 	gon,
 	"code-highlight": _codeHighlight,
 	"ws-connect": _wsConnect,
-	"nodes-selector": _nodeSelector,
 	providers: _providers,
 	"page-channels": _channelsPage,
 	i18n: _i18n,
 	"stores/model-store": _modelStore,
 	"stores/session-store": _sessionStoreModule,
-	"stores/node-store": _nodeStore,
 	"stores/session-history-cache": _sessionHistoryCache,
 };
 

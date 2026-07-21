@@ -10,7 +10,7 @@ use tracing::{debug, info, warn};
 
 use chelix_providers::ProviderRegistry;
 
-use chelix_tools::approval::{ApprovalManager, ApprovalMode, SecurityLevel};
+use chelix_tools::approval::{ApprovalManager, SecurityLevel};
 
 // ── QMD helpers ──────────────────────────────────────────────────────────────
 
@@ -248,16 +248,7 @@ pub(crate) fn log_startup_model_inventory(reg: &ProviderRegistry) {
 // ── Approval manager ─────────────────────────────────────────────────────────
 
 pub fn approval_manager_from_config(config: &chelix_config::ChelixConfig) -> ApprovalManager {
-    let mut manager = ApprovalManager::default();
-
-    manager.mode =
-        ApprovalMode::parse(&config.tools.execute_command.approval_mode).unwrap_or_else(|| {
-            warn!(
-                value = %config.tools.execute_command.approval_mode,
-                "invalid tools.execute_command.approval_mode; falling back to 'on-miss'"
-            );
-            ApprovalMode::OnMiss
-        });
+    let mut manager = ApprovalManager::new(config.tools.execute_command.approval_mode);
 
     manager.security_level = SecurityLevel::parse(&config.tools.execute_command.security_level)
         .unwrap_or_else(|| {

@@ -23,7 +23,7 @@ async fn small_result_is_persisted_but_not_truncated() {
         &serde_json::json!("short output"),
         50_000,
         Truncation::Standard,
-        ToolResultPersistence::Structured,
+        ToolResultPersistence::On,
     )
     .await
     .unwrap();
@@ -55,7 +55,7 @@ async fn oversized_result_is_truncated_with_pointer_to_file() {
         &serde_json::json!(raw),
         100,
         Truncation::Standard,
-        ToolResultPersistence::Structured,
+        ToolResultPersistence::On,
     )
     .await
     .unwrap();
@@ -86,7 +86,7 @@ async fn oversized_json_result_mentions_schema_file() {
         &serde_json::from_str(&raw).unwrap(),
         100,
         Truncation::Standard,
-        ToolResultPersistence::Structured,
+        ToolResultPersistence::On,
     )
     .await
     .unwrap();
@@ -116,7 +116,7 @@ async fn truncation_off_keeps_full_result_in_context() {
         &serde_json::json!(raw),
         100,
         Truncation::Off,
-        ToolResultPersistence::Structured,
+        ToolResultPersistence::On,
     )
     .await
     .unwrap();
@@ -145,7 +145,7 @@ async fn truncation_respects_char_boundary() {
         &serde_json::json!(raw),
         51,
         Truncation::Standard,
-        ToolResultPersistence::Structured,
+        ToolResultPersistence::On,
     )
     .await
     .unwrap();
@@ -169,7 +169,7 @@ async fn blob_stripping_applies_to_in_context_copy_only() {
         &serde_json::json!(raw),
         50_000,
         Truncation::Standard,
-        ToolResultPersistence::Structured,
+        ToolResultPersistence::On,
     )
     .await
     .unwrap();
@@ -189,14 +189,12 @@ async fn blob_stripping_applies_to_in_context_copy_only() {
 }
 
 #[tokio::test]
-async fn terminal_result_is_always_persisted_as_line_oriented_text() {
+async fn agent_facing_text_is_persisted_without_protocol_metadata() {
     let dir = tempfile::tempdir().unwrap();
     let store = store_in(&dir);
-    let result_value = serde_json::json!({
-        "stdout": "line one\nline two\nline three",
-        "stderr": "warning one\nwarning two",
-        "exit_code": 7
-    });
+    let result_value = serde_json::json!(
+        "Command finished in terminal (id: 7).\nOutput:\nline one\nline two\nline three"
+    );
 
     let result = persist_and_truncate(
         &store,
@@ -205,7 +203,7 @@ async fn terminal_result_is_always_persisted_as_line_oriented_text() {
         &result_value,
         10,
         Truncation::Standard,
-        ToolResultPersistence::TextFields(&["stderr", "stdout", "output"]),
+        ToolResultPersistence::On,
     )
     .await
     .unwrap();
@@ -220,19 +218,11 @@ async fn terminal_result_is_always_persisted_as_line_oriented_text() {
         .join("terminal_call")
         .join("content.txt");
     let content = std::fs::read_to_string(content_path).unwrap();
-    assert!(!content.contains("\"result\""));
-    assert!(!content.contains("[truncated —"));
-    assert!(content.contains("\"exit_code\": 7"));
-    assert!(content.contains("[stderr]\nwarning one\nwarning two"));
-    assert!(content.contains("[stdout]\nline one\nline two\nline three"));
-    assert_eq!(
-        content.lines().filter(|line| *line == "line two").count(),
-        1
-    );
+    assert_eq!(content, result_value.as_str().unwrap());
 }
 
 #[tokio::test]
-async fn text_field_persistence_does_not_depend_on_result_size() {
+async fn structured_agent_result_is_persisted_as_json() {
     let dir = tempfile::tempdir().unwrap();
     let store = store_in(&dir);
     let result_value = serde_json::json!({"output": "short\noutput", "completed": true});
@@ -244,7 +234,7 @@ async fn text_field_persistence_does_not_depend_on_result_size() {
         &result_value,
         50_000,
         Truncation::Standard,
-        ToolResultPersistence::TextFields(&["output"]),
+        ToolResultPersistence::On,
     )
     .await
     .unwrap();
@@ -256,8 +246,8 @@ async fn text_field_persistence_does_not_depend_on_result_size() {
         .join("chat_main")
         .join("small_terminal_call")
         .join("content.txt");
-    assert!(content_path.exists());
-    assert!(!content_path.with_file_name("content.json").exists());
+    assert!(!content_path.exists());
+    assert!(content_path.with_file_name("content.json").exists());
 }
 
 // ── Truncation trait hook ───────────────────────────────────────────────
@@ -298,12 +288,12 @@ fn default_truncation_is_standard() {
 }
 
 #[test]
-fn default_persistence_is_structured() {
+fn default_persistence_is_enabled() {
     let tool = EchoTool;
     use crate::tool_registry::AgentTool as _;
     assert_eq!(
         tool.result_persistence(&serde_json::json!({})),
-        ToolResultPersistence::Structured
+        ToolResultPersistence::On
     );
 }
 

@@ -7,8 +7,8 @@ use {serde_json::Value, tracing::warn};
 use {
     chelix_agents::{
         prompt::{
-            PromptBuildLimits, PromptHostRuntimeContext, PromptModeRuntimeContext, PromptNodeInfo,
-            PromptNodesRuntimeContext, PromptRuntimeContext, PromptSandboxRuntimeContext,
+            PromptBuildLimits, PromptHostRuntimeContext, PromptModeRuntimeContext,
+            PromptRuntimeContext, PromptSandboxRuntimeContext,
         },
         tool_registry::ToolSource,
     },
@@ -472,34 +472,9 @@ pub(crate) async fn build_prompt_runtime_context(
     };
     refresh_runtime_prompt_time(&mut host_ctx);
 
-    // Build nodes context from connected remote nodes.
-    let connected = state.connected_nodes().await;
-    let nodes_ctx = if connected.is_empty() {
-        None
-    } else {
-        let default_node_id = session_entry.and_then(|e| e.node_id.clone());
-        Some(PromptNodesRuntimeContext {
-            nodes: connected
-                .into_iter()
-                .map(|n| PromptNodeInfo {
-                    node_id: n.node_id,
-                    display_name: n.display_name,
-                    platform: n.platform,
-                    capabilities: n.capabilities,
-                    cpu_count: n.cpu_count,
-                    mem_total: n.mem_total,
-                    runtimes: n.runtimes,
-                    providers: n.providers,
-                })
-                .collect(),
-            default_node_id,
-        })
-    };
-
     PromptRuntimeContext {
         host: host_ctx,
         sandbox: sandbox_ctx,
-        nodes: nodes_ctx,
         mode: None,
     }
 }

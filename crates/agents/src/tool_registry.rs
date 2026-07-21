@@ -27,14 +27,13 @@ pub enum Truncation {
 /// On-disk representation for a tool's complete result.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ToolResultPersistence {
-    /// Preserve the structured result as `content.json` (or a bare string as
-    /// `content.txt`) and generate `schema.json` for JSON values.
+    /// Do not persist this result. Tools that select this must also disable
+    /// truncation so an oversized result never loses its full-output pointer.
+    Off,
+    /// Persist the exact agent-facing result. Strings use `content.txt`;
+    /// structured values use `content.json` plus `schema.json`.
     #[default]
-    Structured,
-    /// Persist the listed top-level string fields, in declaration order, as
-    /// line-oriented `content.txt`. This is deterministic per tool and does
-    /// not depend on result size.
-    TextFields(&'static [&'static str]),
+    On,
 }
 
 /// Agent-callable tool.
@@ -53,11 +52,19 @@ pub trait AgentTool: Send + Sync {
     fn truncation(&self, _params: &serde_json::Value) -> Truncation {
         Truncation::Standard
     }
-    /// On-disk representation for this call's complete result. Tools whose
-    /// structured response wraps line-oriented output in string fields should
-    /// declare those fields here so Read/Grep can consume `content.txt`.
+    /// Whether to persist this call's complete agent-facing result.
     fn result_persistence(&self, _params: &serde_json::Value) -> ToolResultPersistence {
-        ToolResultPersistence::Structured
+        ToolResultPersistence::On
+    }
+    /// Convert the raw implementation/protocol result into the value exposed
+    /// to the LLM and persisted as tool context. The default contract exposes
+    /// the complete raw value unchanged, including MCP structured results.
+    fn agent_result(
+        &self,
+        _params: &serde_json::Value,
+        raw_result: &serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        Ok(raw_result.clone())
     }
     async fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value>;
 }

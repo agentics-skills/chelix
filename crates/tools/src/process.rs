@@ -5,336 +5,24 @@ use std::time::Instant;
 
 use {
     async_trait::async_trait,
-    serde::{Deserialize, Serialize},
-    tracing::{debug, info, warn},
+    chelix_agents::tool_registry::AgentTool,
+    chelix_protocol::{ProcessAction, ProcessRequest, ProcessResponse},
+    tracing::info,
 };
 
 #[cfg(feature = "metrics")]
 use chelix_metrics::{counter, histogram, labels, tools as tools_metrics};
 
-use chelix_agents::tool_registry::{AgentTool, ToolResultPersistence};
+use crate::{params::without_null_params, tools_service::ManagedToolsService};
 
-use crate::{
-    command::{CommandOptions, CommandOutput, run_shell_command},
-    sandbox::{ExecEnv, SandboxRouter},
-};
-
-/// Regex pattern for valid tmux session names: only `[a-zA-Z0-9_-]`.
-fn is_valid_session_name(name: &str) -> bool {
-    !name.is_empty()
-        && name.len() <= 64
-        && name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-}
-
-/// Generate a short unique session name.
-fn generate_session_name() -> String {
-    let id = uuid::Uuid::new_v4();
-    // Use first 8 hex chars for brevity.
-    format!("proc-{}", &id.simple().to_string()[..8])
-}
-
-/// Actions supported by the process tool.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "action", rename_all = "snake_case")]
-enum ProcessAction {
-    /// Start a command in a new tmux session.
-    Start {
-        command: String,
-        #[serde(default)]
-        session_name: Option<String>,
-    },
-    /// Capture current visible terminal output.
-    Poll { session_name: String },
-    /// Send keystrokes to a session (e.g. `q`, `Enter`, `C-c`).
-    SendKeys { session_name: String, keys: String },
-    /// Paste text into a session via tmux buffer.
-    Paste { session_name: String, text: String },
-    /// Kill a tmux session.
-    Kill { session_name: String },
-    /// List active tmux sessions.
-    List,
-}
-
-/// Result returned from a process tool action.
-#[derive(Debug, Clone, Serialize)]
-struct ProcessResult {
-    /// Whether the action succeeded.
-    success: bool,
-    /// The tmux session name (for start/poll/send_keys/paste/kill).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    session_name: Option<String>,
-    /// Captured terminal output (for poll) or command output.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    output: Option<String>,
-    /// Error message if the action failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
-}
-
-impl ProcessResult {
-    fn ok(session_name: Option<String>, output: Option<String>) -> Self {
-        Self {
-            success: true,
-            session_name,
-            output,
-            error: None,
-        }
-    }
-
-    fn err(msg: impl Into<String>) -> Self {
-        Self {
-            success: false,
-            session_name: None,
-            output: None,
-            error: Some(msg.into()),
-        }
-    }
-}
-
-/// Tool for managing interactive/TUI processes via tmux inside the sandbox.
-///
-/// The LLM can start long-running or interactive programs (htop, vim, etc.)
-/// in named tmux sessions, poll their output, send keystrokes, paste text,
-/// and kill them.
 pub struct ProcessTool {
-    sandbox_router: Arc<SandboxRouter>,
+    service: Arc<ManagedToolsService>,
 }
 
 impl ProcessTool {
-    pub fn new(sandbox_router: Arc<SandboxRouter>) -> Self {
-        Self { sandbox_router }
-    }
-
-    /// Run a tmux command in the session's resolved environment.
-    async fn run_tmux(
-        &self,
-        session_key: &str,
-        tmux_args: &str,
-        timeout_secs: u64,
-    ) -> anyhow::Result<CommandOutput> {
-        let command = format!("tmux {tmux_args}");
-        let env = self.sandbox_router.resolve_env(session_key).await?;
-
-        match env {
-            ExecEnv::Sandbox { backend, id } => {
-                let opts = CommandOptions {
-                    timeout: std::time::Duration::from_secs(timeout_secs),
-                    working_dir: Some(backend.workspace_dir().into()),
-                    ..Default::default()
-                };
-                Ok(backend.run_command(&id, &command, &opts).await?)
-            },
-            ExecEnv::Host => {
-                let opts = CommandOptions {
-                    timeout: std::time::Duration::from_secs(timeout_secs),
-                    ..Default::default()
-                };
-                Ok(run_shell_command(&command, &opts).await?)
-            },
-        }
-    }
-
-    async fn handle_start(
-        &self,
-        session_key: &str,
-        command: &str,
-        session_name: Option<&str>,
-    ) -> ProcessResult {
-        // Treat empty strings as "not provided" — LLMs often send "" instead of omitting.
-        let name = match session_name.filter(|n| !n.is_empty()) {
-            Some(n) => {
-                if !is_valid_session_name(n) {
-                    return ProcessResult::err(
-                        "invalid session_name: only [a-zA-Z0-9_-] allowed, max 64 chars",
-                    );
-                }
-                n.to_string()
-            },
-            None => generate_session_name(),
-        };
-
-        // Escape single quotes in the command for safe shell embedding.
-        let escaped_command = command.replace('\'', "'\\''");
-        let tmux_cmd = format!("new-session -d -s '{name}' -x 200 -y 50 '{escaped_command}'");
-
-        match self.run_tmux(session_key, &tmux_cmd, 10).await {
-            Ok(result) if result.exit_code == 0 => {
-                info!(session_name = %name, command, "tmux session started");
-                ProcessResult::ok(Some(name), Some("session started".into()))
-            },
-            Ok(result) => {
-                let err_output = if !result.stderr.is_empty() {
-                    result.stderr
-                } else {
-                    result.stdout
-                };
-                warn!(session_name = %name, %err_output, "tmux start failed");
-                ProcessResult::err(format!("tmux start failed: {err_output}"))
-            },
-            Err(e) => ProcessResult::err(format!("failed to start tmux session: {e}")),
-        }
-    }
-
-    async fn handle_poll(&self, session_key: &str, session_name: &str) -> ProcessResult {
-        if !is_valid_session_name(session_name) {
-            return ProcessResult::err(
-                "invalid session_name: only [a-zA-Z0-9_-] allowed, max 64 chars",
-            );
-        }
-
-        let tmux_cmd = format!("capture-pane -t '{session_name}' -p");
-
-        match self.run_tmux(session_key, &tmux_cmd, 10).await {
-            Ok(result) if result.exit_code == 0 => {
-                ProcessResult::ok(Some(session_name.into()), Some(result.stdout))
-            },
-            Ok(result) => {
-                let err = if !result.stderr.is_empty() {
-                    result.stderr
-                } else {
-                    result.stdout
-                };
-                ProcessResult::err(format!("poll failed: {err}"))
-            },
-            Err(e) => ProcessResult::err(format!("failed to poll session: {e}")),
-        }
-    }
-
-    async fn handle_send_keys(
-        &self,
-        session_key: &str,
-        session_name: &str,
-        keys: &str,
-    ) -> ProcessResult {
-        if !is_valid_session_name(session_name) {
-            return ProcessResult::err(
-                "invalid session_name: only [a-zA-Z0-9_-] allowed, max 64 chars",
-            );
-        }
-
-        // tmux send-keys accepts key names like Enter, C-c, etc.
-        // Escape single quotes in key strings.
-        let escaped_keys = keys.replace('\'', "'\\''");
-        let tmux_cmd = format!("send-keys -t '{session_name}' '{escaped_keys}'");
-
-        match self.run_tmux(session_key, &tmux_cmd, 10).await {
-            Ok(result) if result.exit_code == 0 => {
-                debug!(session_name, keys, "keys sent");
-                ProcessResult::ok(Some(session_name.into()), Some("keys sent".into()))
-            },
-            Ok(result) => {
-                let err = if !result.stderr.is_empty() {
-                    result.stderr
-                } else {
-                    result.stdout
-                };
-                ProcessResult::err(format!("send_keys failed: {err}"))
-            },
-            Err(e) => ProcessResult::err(format!("failed to send keys: {e}")),
-        }
-    }
-
-    async fn handle_paste(
-        &self,
-        session_key: &str,
-        session_name: &str,
-        text: &str,
-    ) -> ProcessResult {
-        if !is_valid_session_name(session_name) {
-            return ProcessResult::err(
-                "invalid session_name: only [a-zA-Z0-9_-] allowed, max 64 chars",
-            );
-        }
-
-        // Use tmux set-buffer + paste-buffer to avoid shell interpolation.
-        let escaped_text = text.replace('\'', "'\\''");
-        let set_cmd = format!("set-buffer '{escaped_text}'");
-
-        match self.run_tmux(session_key, &set_cmd, 10).await {
-            Ok(result) if result.exit_code == 0 => {
-                // Now paste the buffer into the target session.
-                let paste_cmd = format!("paste-buffer -t '{session_name}'");
-                match self.run_tmux(session_key, &paste_cmd, 10).await {
-                    Ok(r) if r.exit_code == 0 => {
-                        debug!(session_name, "text pasted");
-                        ProcessResult::ok(Some(session_name.into()), Some("text pasted".into()))
-                    },
-                    Ok(r) => {
-                        let err = if !r.stderr.is_empty() {
-                            r.stderr
-                        } else {
-                            r.stdout
-                        };
-                        ProcessResult::err(format!("paste-buffer failed: {err}"))
-                    },
-                    Err(e) => ProcessResult::err(format!("failed to paste: {e}")),
-                }
-            },
-            Ok(result) => {
-                let err = if !result.stderr.is_empty() {
-                    result.stderr
-                } else {
-                    result.stdout
-                };
-                ProcessResult::err(format!("set-buffer failed: {err}"))
-            },
-            Err(e) => ProcessResult::err(format!("failed to set buffer: {e}")),
-        }
-    }
-
-    async fn handle_kill(&self, session_key: &str, session_name: &str) -> ProcessResult {
-        if !is_valid_session_name(session_name) {
-            return ProcessResult::err(
-                "invalid session_name: only [a-zA-Z0-9_-] allowed, max 64 chars",
-            );
-        }
-
-        let tmux_cmd = format!("kill-session -t '{session_name}'");
-
-        match self.run_tmux(session_key, &tmux_cmd, 10).await {
-            Ok(result) if result.exit_code == 0 => {
-                info!(session_name, "tmux session killed");
-                ProcessResult::ok(Some(session_name.into()), Some("session killed".into()))
-            },
-            Ok(result) => {
-                let err = if !result.stderr.is_empty() {
-                    result.stderr
-                } else {
-                    result.stdout
-                };
-                ProcessResult::err(format!("kill failed: {err}"))
-            },
-            Err(e) => ProcessResult::err(format!("failed to kill session: {e}")),
-        }
-    }
-
-    async fn handle_list(&self, session_key: &str) -> ProcessResult {
-        match self.run_tmux(session_key, "list-sessions", 10).await {
-            Ok(result) if result.exit_code == 0 => ProcessResult::ok(None, Some(result.stdout)),
-            Ok(result) => {
-                // "no server running" is normal when there are no sessions.
-                let output = if !result.stderr.is_empty() {
-                    &result.stderr
-                } else {
-                    &result.stdout
-                };
-                if output.contains("no server running") || output.contains("no sessions") {
-                    ProcessResult::ok(None, Some("no active sessions".into()))
-                } else {
-                    ProcessResult::err(format!("list failed: {output}"))
-                }
-            },
-            Err(e) => {
-                let msg = e.to_string();
-                if msg.contains("no server running") {
-                    ProcessResult::ok(None, Some("no active sessions".into()))
-                } else {
-                    ProcessResult::err(format!("failed to list sessions: {e}"))
-                }
-            },
-        }
+    #[must_use]
+    pub fn new(service: Arc<ManagedToolsService>) -> Self {
+        Self { service }
     }
 }
 
@@ -345,12 +33,33 @@ impl AgentTool for ProcessTool {
     }
 
     fn description(&self) -> &str {
-        "Manage interactive terminal processes (TUI apps, REPLs, long-running commands) \
-         via tmux sessions in the sandbox. Actions: start, poll, send_keys, paste, kill, list."
+        "Manage interactive terminal processes through tmux sessions owned by chelix-tools-service. Actions: start, poll, send_keys, paste, kill, list."
     }
 
-    fn result_persistence(&self, _params: &serde_json::Value) -> ToolResultPersistence {
-        ToolResultPersistence::TextFields(&["output"])
+    fn agent_result(
+        &self,
+        _params: &serde_json::Value,
+        raw_result: &serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        let response: ProcessResponse = serde_json::from_value(raw_result.clone())?;
+        if !response.success {
+            let error = response
+                .error
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("failed process response has no error"))?;
+            return Ok(serde_json::Value::String(format!(
+                "Process request failed: {error}"
+            )));
+        }
+        let status = match response.session_name.as_deref() {
+            Some(session_name) => format!("Process session {session_name} updated."),
+            None => "Process request completed.".to_string(),
+        };
+        let result = match response.output.as_deref() {
+            Some(output) if !output.is_empty() => format!("{status}\nOutput:\n{output}"),
+            _ => status,
+        };
+        Ok(serde_json::Value::String(result))
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -364,22 +73,23 @@ impl AgentTool for ProcessTool {
                 },
                 "command": {
                     "type": "string",
-                    "description": "The command to run (for 'start' action)"
+                    "description": "The command to run for start"
                 },
                 "session_name": {
                     "type": "string",
-                    "description": "Tmux session name. Auto-generated if omitted for 'start'. Required for poll/send_keys/paste/kill."
+                    "description": "Tmux session name. Auto-generated for start; required for poll/send_keys/paste/kill."
                 },
                 "keys": {
                     "type": "string",
-                    "description": "Keystrokes to send (for 'send_keys'). Examples: 'q', 'Enter', 'C-c', 'Up'"
+                    "description": "Keystrokes to send for send_keys"
                 },
                 "text": {
                     "type": "string",
-                    "description": "Text to paste into the session (for 'paste' action)"
+                    "description": "Text to paste for paste"
                 }
             },
-            "required": ["action"]
+            "required": ["action"],
+            "additionalProperties": false
         })
     }
 
@@ -389,17 +99,10 @@ impl AgentTool for ProcessTool {
 
         let session_key = params
             .get("_session_key")
-            .and_then(|v| v.as_str())
-            .unwrap_or("main");
-
-        let action: ProcessAction = match serde_json::from_value(params.clone()) {
-            Ok(a) => a,
-            Err(e) => {
-                let result = ProcessResult::err(format!("invalid parameters: {e}"));
-                return Ok(serde_json::to_value(&result)?);
-            },
-        };
-
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("main")
+            .to_string();
+        let action: ProcessAction = serde_json::from_value(without_null_params(params))?;
         let action_label = match &action {
             ProcessAction::Start { .. } => "start",
             ProcessAction::Poll { .. } => "poll",
@@ -408,56 +111,34 @@ impl AgentTool for ProcessTool {
             ProcessAction::Kill { .. } => "kill",
             ProcessAction::List => "list",
         };
-
-        debug!(action = action_label, "process tool invoked");
-
-        let result = match action {
-            ProcessAction::Start {
-                command,
-                session_name,
-            } => {
-                self.handle_start(session_key, &command, session_name.as_deref())
-                    .await
-            },
-            ProcessAction::Poll { session_name } => {
-                self.handle_poll(session_key, &session_name).await
-            },
-            ProcessAction::SendKeys { session_name, keys } => {
-                self.handle_send_keys(session_key, &session_name, &keys)
-                    .await
-            },
-            ProcessAction::Paste { session_name, text } => {
-                self.handle_paste(session_key, &session_name, &text).await
-            },
-            ProcessAction::Kill { session_name } => {
-                self.handle_kill(session_key, &session_name).await
-            },
-            ProcessAction::List => self.handle_list(session_key).await,
-        };
-
+        let response = self
+            .service
+            .process(&session_key, ProcessRequest {
+                session_key: session_key.clone(),
+                action,
+            })
+            .await?;
         info!(
+            session = session_key,
             action = action_label,
-            success = result.success,
+            success = response.success,
             "process tool completed"
         );
 
         #[cfg(feature = "metrics")]
         {
-            let duration = start.elapsed().as_secs_f64();
             counter!(
                 tools_metrics::EXECUTIONS_TOTAL,
                 labels::TOOL => "process".to_string(),
-                labels::SUCCESS => result.success.to_string()
+                labels::SUCCESS => response.success.to_string()
             )
             .increment(1);
-
             histogram!(
                 tools_metrics::EXECUTION_DURATION_SECONDS,
                 labels::TOOL => "process".to_string()
             )
-            .record(duration);
-
-            if !result.success {
+            .record(start.elapsed().as_secs_f64());
+            if !response.success {
                 counter!(
                     tools_metrics::EXECUTION_ERRORS_TOTAL,
                     labels::TOOL => "process".to_string()
@@ -466,388 +147,47 @@ impl AgentTool for ProcessTool {
             }
         }
 
-        Ok(serde_json::to_value(&result)?)
+        Ok(serde_json::to_value(response)?)
     }
 }
 
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
+    use crate::sandbox::ToolsServiceEndpoint;
+
     use super::*;
 
-    fn process_tool() -> ProcessTool {
-        ProcessTool::new(Arc::new(SandboxRouter::disabled()))
-    }
-
-    #[test]
-    fn test_valid_session_names() {
-        assert!(is_valid_session_name("my-session"));
-        assert!(is_valid_session_name("my_session"));
-        assert!(is_valid_session_name("session123"));
-        assert!(is_valid_session_name("a"));
-        assert!(is_valid_session_name("ABC-123_xyz"));
-    }
-
-    #[test]
-    fn test_invalid_session_names() {
-        assert!(!is_valid_session_name(""));
-        assert!(!is_valid_session_name("has space"));
-        assert!(!is_valid_session_name("has;semicolon"));
-        assert!(!is_valid_session_name("has'quote"));
-        assert!(!is_valid_session_name("has\"dquote"));
-        assert!(!is_valid_session_name("has$dollar"));
-        assert!(!is_valid_session_name("has`backtick"));
-        assert!(!is_valid_session_name("has|pipe"));
-        assert!(!is_valid_session_name("has&amp"));
-        assert!(!is_valid_session_name("path/traversal"));
-        assert!(!is_valid_session_name("dot.not.allowed"));
-    }
-
-    #[test]
-    fn test_session_name_too_long() {
-        let long_name: String = "a".repeat(65);
-        assert!(!is_valid_session_name(&long_name));
-        let max_name: String = "a".repeat(64);
-        assert!(is_valid_session_name(&max_name));
-    }
-
-    #[test]
-    fn test_generate_session_name() {
-        let name = generate_session_name();
-        assert!(name.starts_with("proc-"));
-        assert_eq!(name.len(), 13); // "proc-" (5) + 8 hex chars
-        assert!(is_valid_session_name(&name));
-
-        // Names are unique.
-        let name2 = generate_session_name();
-        assert_ne!(name, name2);
-    }
-
-    #[test]
-    fn test_process_result_ok() {
-        let result = ProcessResult::ok(Some("my-sess".into()), Some("output".into()));
-        assert!(result.success);
-        assert_eq!(result.session_name.as_deref(), Some("my-sess"));
-        assert_eq!(result.output.as_deref(), Some("output"));
-        assert!(result.error.is_none());
-    }
-
-    #[test]
-    fn test_process_result_err() {
-        let result = ProcessResult::err("something went wrong");
-        assert!(!result.success);
-        assert!(result.session_name.is_none());
-        assert!(result.output.is_none());
-        assert_eq!(result.error.as_deref(), Some("something went wrong"));
-    }
-
-    #[test]
-    fn test_process_result_serialization() {
-        // Ensure None fields are omitted from JSON.
-        let result = ProcessResult::ok(None, Some("output".into()));
-        let json = serde_json::to_value(&result).unwrap();
-        assert!(json.get("session_name").is_none());
-        assert!(json.get("error").is_none());
-        assert_eq!(json["success"], true);
-        assert_eq!(json["output"], "output");
-    }
-
-    #[test]
-    fn test_process_action_deserialize_start() {
-        let json = serde_json::json!({
-            "action": "start",
-            "command": "htop",
-            "session_name": "my-htop"
-        });
-        let action: ProcessAction = serde_json::from_value(json).unwrap();
-        match action {
-            ProcessAction::Start {
-                command,
-                session_name,
-            } => {
-                assert_eq!(command, "htop");
-                assert_eq!(session_name.as_deref(), Some("my-htop"));
-            },
-            _ => panic!("expected Start action"),
-        }
-    }
-
-    #[test]
-    fn test_process_action_deserialize_start_no_name() {
-        let json = serde_json::json!({
-            "action": "start",
-            "command": "python3"
-        });
-        let action: ProcessAction = serde_json::from_value(json).unwrap();
-        match action {
-            ProcessAction::Start {
-                command,
-                session_name,
-            } => {
-                assert_eq!(command, "python3");
-                assert!(session_name.is_none());
-            },
-            _ => panic!("expected Start action"),
-        }
-    }
-
-    #[test]
-    fn test_process_action_deserialize_start_empty_name() {
-        // LLMs often send "" instead of omitting — should deserialize as Some("").
-        let json = serde_json::json!({
-            "action": "start",
-            "command": "htop",
-            "session_name": ""
-        });
-        let action: ProcessAction = serde_json::from_value(json).unwrap();
-        match action {
-            ProcessAction::Start {
-                command,
-                session_name,
-            } => {
-                assert_eq!(command, "htop");
-                assert_eq!(session_name.as_deref(), Some(""));
-            },
-            _ => panic!("expected Start action"),
-        }
-    }
-
-    #[test]
-    fn test_process_action_deserialize_poll() {
-        let json = serde_json::json!({
-            "action": "poll",
-            "session_name": "my-htop"
-        });
-        let action: ProcessAction = serde_json::from_value(json).unwrap();
-        match action {
-            ProcessAction::Poll { session_name } => {
-                assert_eq!(session_name, "my-htop");
-            },
-            _ => panic!("expected Poll action"),
-        }
-    }
-
-    #[test]
-    fn test_process_action_deserialize_send_keys() {
-        let json = serde_json::json!({
-            "action": "send_keys",
-            "session_name": "repl",
-            "keys": "C-c"
-        });
-        let action: ProcessAction = serde_json::from_value(json).unwrap();
-        match action {
-            ProcessAction::SendKeys { session_name, keys } => {
-                assert_eq!(session_name, "repl");
-                assert_eq!(keys, "C-c");
-            },
-            _ => panic!("expected SendKeys action"),
-        }
-    }
-
-    #[test]
-    fn test_process_action_deserialize_paste() {
-        let json = serde_json::json!({
-            "action": "paste",
-            "session_name": "editor",
-            "text": "print('hello')\n"
-        });
-        let action: ProcessAction = serde_json::from_value(json).unwrap();
-        match action {
-            ProcessAction::Paste { session_name, text } => {
-                assert_eq!(session_name, "editor");
-                assert_eq!(text, "print('hello')\n");
-            },
-            _ => panic!("expected Paste action"),
-        }
-    }
-
-    #[test]
-    fn test_process_action_deserialize_kill() {
-        let json = serde_json::json!({
-            "action": "kill",
-            "session_name": "old-session"
-        });
-        let action: ProcessAction = serde_json::from_value(json).unwrap();
-        match action {
-            ProcessAction::Kill { session_name } => {
-                assert_eq!(session_name, "old-session");
-            },
-            _ => panic!("expected Kill action"),
-        }
-    }
-
-    #[test]
-    fn test_process_action_deserialize_list() {
-        let json = serde_json::json!({ "action": "list" });
-        let action: ProcessAction = serde_json::from_value(json).unwrap();
-        assert!(matches!(action, ProcessAction::List));
-    }
-
-    #[test]
-    fn test_process_action_invalid_action() {
-        let json = serde_json::json!({ "action": "invalid" });
-        let result: Result<ProcessAction, _> = serde_json::from_value(json);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_process_action_missing_required_field() {
-        // start without command
-        let json = serde_json::json!({ "action": "start" });
-        let result: Result<ProcessAction, _> = serde_json::from_value(json);
-        assert!(result.is_err());
-
-        // poll without session_name
-        let json = serde_json::json!({ "action": "poll" });
-        let result: Result<ProcessAction, _> = serde_json::from_value(json);
-        assert!(result.is_err());
-    }
-
     #[tokio::test]
-    async fn test_process_tool_schema() {
-        let tool = process_tool();
-        assert_eq!(tool.name(), "process");
-        assert!(!tool.description().is_empty());
-
-        let schema = tool.parameters_schema();
-        assert_eq!(schema["type"], "object");
-        assert!(schema["properties"]["action"].is_object());
-        assert!(schema["properties"]["command"].is_object());
-        assert!(schema["properties"]["session_name"].is_object());
-        assert!(schema["properties"]["keys"].is_object());
-        assert!(schema["properties"]["text"].is_object());
-    }
-
-    #[test]
-    fn process_tool_persists_line_oriented_output_as_text() {
-        let tool = process_tool();
-        assert_eq!(
-            tool.result_persistence(&serde_json::json!({ "action": "poll" })),
-            ToolResultPersistence::TextFields(&["output"])
-        );
-    }
-
-    #[tokio::test]
-    async fn test_process_tool_invalid_params() {
-        let tool = process_tool();
-        let result = tool
-            .execute(serde_json::json!({ "action": "bogus" }))
-            .await
-            .unwrap();
-        assert!(!result["success"].as_bool().unwrap());
-        assert!(
-            result["error"]
-                .as_str()
-                .unwrap()
-                .contains("invalid parameters")
-        );
-    }
-
-    #[tokio::test]
-    async fn test_process_tool_invalid_session_name_on_poll() {
-        let tool = process_tool();
-        let result = tool
+    async fn process_routes_to_service_with_session_scope() {
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("POST", chelix_protocol::TOOLS_SERVICE_PROCESS_PATH)
+            .match_header("authorization", "Bearer process-token")
+            .match_body(mockito::Matcher::Json(serde_json::json!({
+                "sessionKey": "session:test",
+                "action": { "action": "list" }
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body("{\"success\":true,\"output\":\"no active sessions\"}")
+            .expect(1)
+            .create_async()
+            .await;
+        let service = ManagedToolsService::for_test(ToolsServiceEndpoint {
+            base_url: server.url(),
+            token: "process-token".into(),
+        })
+        .unwrap_or_else(|error| panic!("test client failed: {error}"));
+        let result = ProcessTool::new(service)
             .execute(serde_json::json!({
-                "action": "poll",
-                "session_name": "bad;name"
+                "action": "list",
+                "_session_key": "session:test"
             }))
             .await
-            .unwrap();
-        assert!(!result["success"].as_bool().unwrap());
-        assert!(
-            result["error"]
-                .as_str()
-                .unwrap()
-                .contains("invalid session_name")
-        );
-    }
+            .unwrap_or_else(|error| panic!("process failed: {error}"));
 
-    #[tokio::test]
-    async fn test_process_tool_invalid_session_name_on_send_keys() {
-        let tool = process_tool();
-        let result = tool
-            .execute(serde_json::json!({
-                "action": "send_keys",
-                "session_name": "has space",
-                "keys": "Enter"
-            }))
-            .await
-            .unwrap();
-        assert!(!result["success"].as_bool().unwrap());
-        assert!(
-            result["error"]
-                .as_str()
-                .unwrap()
-                .contains("invalid session_name")
-        );
-    }
-
-    #[tokio::test]
-    async fn test_process_tool_invalid_session_name_on_paste() {
-        let tool = process_tool();
-        let result = tool
-            .execute(serde_json::json!({
-                "action": "paste",
-                "session_name": "a|b",
-                "text": "hello"
-            }))
-            .await
-            .unwrap();
-        assert!(!result["success"].as_bool().unwrap());
-        assert!(
-            result["error"]
-                .as_str()
-                .unwrap()
-                .contains("invalid session_name")
-        );
-    }
-
-    #[tokio::test]
-    async fn test_process_tool_invalid_session_name_on_kill() {
-        let tool = process_tool();
-        let result = tool
-            .execute(serde_json::json!({
-                "action": "kill",
-                "session_name": "$(whoami)"
-            }))
-            .await
-            .unwrap();
-        assert!(!result["success"].as_bool().unwrap());
-        assert!(
-            result["error"]
-                .as_str()
-                .unwrap()
-                .contains("invalid session_name")
-        );
-    }
-
-    #[tokio::test]
-    async fn test_process_tool_list_no_sandbox() {
-        // Without a sandbox router, list runs tmux on the host.
-        // This may or may not have tmux installed, so we just check
-        // the result is valid JSON with success or error.
-        let tool = process_tool();
-        let result = tool
-            .execute(serde_json::json!({ "action": "list" }))
-            .await
-            .unwrap();
-        // Should always return valid JSON with a success field.
-        assert!(result.get("success").is_some());
-    }
-
-    #[tokio::test]
-    async fn test_process_tool_start_without_command() {
-        let tool = process_tool();
-        let result = tool
-            .execute(serde_json::json!({ "action": "start" }))
-            .await
-            .unwrap();
-        assert!(!result["success"].as_bool().unwrap());
-        assert!(
-            result["error"]
-                .as_str()
-                .unwrap()
-                .contains("invalid parameters")
-        );
+        assert_eq!(result["success"], true);
+        assert_eq!(result["output"], "no active sessions");
+        call.assert_async().await;
     }
 }

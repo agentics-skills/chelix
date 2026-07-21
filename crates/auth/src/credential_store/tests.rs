@@ -396,7 +396,6 @@ async fn test_credential_store_ssh_keys_and_targets() {
     assert!(targets[0].is_default);
 
     let resolved = store.resolve_ssh_target("prod-box").await.unwrap().unwrap();
-    assert_eq!(resolved.node_id, format!("ssh:target:{target_id}"));
     assert_eq!(resolved.target, "deploy@example.com");
     assert_eq!(
         resolved.known_host.as_deref(),

@@ -30,7 +30,6 @@ async fn subscription_event_stream_variants_emit_payloads() {
         ("sessionChanged", "session"),
         ("cronNotification", "cron"),
         ("channelEvent", "channel"),
-        ("nodeEvent", "node"),
         ("logEntry", "logs"),
         ("mcpStatusChanged", "mcp.status"),
         ("configChanged", "config"),
@@ -44,12 +43,20 @@ async fn subscription_event_stream_variants_emit_payloads() {
     for (field, event_name) in cases {
         let query = format!("subscription {{ {field} {{ data }} }}");
         let mut stream = schema.execute_stream(Request::new(query));
-        let _ = timeout(Duration::from_millis(20), stream.next()).await;
+        let response_task = tokio::spawn(async move { stream.next().await });
+        timeout(Duration::from_secs(1), async {
+            while tx.receiver_count() == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("subscription receiver registration timeout");
         tx.send((event_name.to_string(), json!({ "kind": event_name })))
             .expect("broadcast");
-        let resp = timeout(Duration::from_secs(1), stream.next())
+        let resp = timeout(Duration::from_secs(1), response_task)
             .await
             .expect("timeout")
+            .expect("subscription task")
             .expect("subscription response");
         assert!(resp.errors.is_empty(), "errors: {:?}", resp.errors);
         let payload = resp.data.into_json().expect("json");

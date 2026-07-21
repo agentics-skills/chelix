@@ -131,13 +131,9 @@ pub(crate) fn build_schema_map() -> KnownKeys {
     let execute_command = || {
         Struct(HashMap::from([
             ("default_timeout_secs", Leaf),
-            ("max_output_bytes", Leaf),
             ("approval_mode", Leaf),
             ("security_level", Leaf),
             ("allowlist", Leaf),
-            ("host", Leaf),
-            ("node", Leaf),
-            ("ssh_target", Leaf),
         ]))
     };
 

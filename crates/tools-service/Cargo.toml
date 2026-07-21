@@ -16,15 +16,18 @@ chelix-protocol = { workspace = true }
 clap            = { workspace = true }
 content_inspector = { workspace = true }
 futures         = { workspace = true }
+portable-pty    = { workspace = true }
 serde           = { workspace = true }
 serde_json      = { workspace = true }
+shell-words     = { workspace = true }
+tempfile        = { workspace = true }
 tokio           = { workspace = true }
 tracing         = { workspace = true }
 uuid            = { workspace = true }
+vte             = { workspace = true }
 
 [dev-dependencies]
-reqwest  = { workspace = true }
-tempfile = { workspace = true }
+reqwest = { workspace = true }
 
 [lints]
 workspace = true

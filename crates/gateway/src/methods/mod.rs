@@ -1,8 +1,7 @@
 mod channel_mux;
 mod dispatch;
 mod gateway;
-mod node;
-mod pairing;
+mod location;
 pub(crate) mod phone;
 mod services;
 mod subscribe;

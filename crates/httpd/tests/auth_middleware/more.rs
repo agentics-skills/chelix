@@ -739,7 +739,6 @@ pub(super) async fn start_server_with_onboarding(
         config,
         sandbox_router,
         Some(Arc::clone(&cred_store)),
-        None, // pairing_store
         false,
         behind_proxy,
         false,

@@ -136,14 +136,6 @@ export interface SenderInfo {
 	[key: string]: unknown;
 }
 
-/** Remote node info as returned by node.list RPC. */
-export interface NodeInfo {
-	nodeId: string;
-	displayName?: string;
-	platform?: string;
-	[key: string]: unknown;
-}
-
 /** MCP server info as returned by the server. */
 export interface McpServerInfo {
 	name?: string;

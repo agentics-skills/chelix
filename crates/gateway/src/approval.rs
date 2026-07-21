@@ -191,11 +191,11 @@ fn channel_reply_target_for_entry(entry: &SessionEntry) -> Option<ChannelReplyTa
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, chelix_config::ApprovalMode};
 
     #[tokio::test]
     async fn test_live_service_resolve() {
-        let mgr = Arc::new(ApprovalManager::default());
+        let mgr = Arc::new(ApprovalManager::new(ApprovalMode::Never));
         let svc = LiveCommandApprovalService::new(Arc::clone(&mgr));
 
         // Create a pending request.
@@ -217,16 +217,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_live_service_get() {
-        let mgr = Arc::new(ApprovalManager::default());
+        let mgr = Arc::new(ApprovalManager::new(ApprovalMode::Never));
         let svc = LiveCommandApprovalService::new(mgr);
         let result = svc.get().await.unwrap();
-        // Default mode is on-miss.
-        assert_eq!(result["mode"], "on-miss");
+        assert_eq!(result["mode"], "never");
     }
 
     #[tokio::test]
     async fn test_live_service_request_filters_by_session() {
-        let mgr = Arc::new(ApprovalManager::default());
+        let mgr = Arc::new(ApprovalManager::new(ApprovalMode::Never));
         let svc = LiveCommandApprovalService::new(Arc::clone(&mgr));
         let _ = mgr.create_request("echo one", Some("session:a")).await;
         let _ = mgr.create_request("echo two", Some("session:b")).await;
@@ -273,7 +272,6 @@ mod tests {
             preview: None,
             agent_id: None,
             mode_id: None,
-            node_id: None,
             external_agent_kind: None,
             external_session_id: None,
             version: 0,
@@ -306,7 +304,6 @@ mod tests {
             preview: None,
             agent_id: None,
             mode_id: None,
-            node_id: None,
             external_agent_kind: None,
             external_session_id: None,
             version: 0,

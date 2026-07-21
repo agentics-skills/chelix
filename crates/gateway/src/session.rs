@@ -137,7 +137,6 @@ fn session_entry_value(entry: &chelix_sessions::metadata::SessionEntry) -> Value
         "agentId": &entry.agent_id,
         "mode_id": &entry.mode_id,
         "modeId": &entry.mode_id,
-        "node_id": &entry.node_id,
         "external_agent_kind": entry.external_agent_kind.map(|kind| kind.as_str()),
         "externalAgentKind": entry.external_agent_kind.map(|kind| kind.as_str()),
         "externalSessionId": &entry.external_session_id,

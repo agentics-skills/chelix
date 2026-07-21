@@ -1392,7 +1392,6 @@ dependencies = [
  "chelix-httpd",
  "chelix-import-core",
  "chelix-memory",
- "chelix-node-host",
  "chelix-oauth",
  "chelix-onboarding",
  "chelix-plugins",
@@ -2189,33 +2188,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chelix-node-host"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "chelix-config",
- "chelix-metrics",
- "chelix-protocol",
- "ed25519-dalek",
- "futures",
- "rand 0.10.1",
- "reqwest 0.13.2",
- "rustls 0.23.39",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sysinfo",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-tungstenite 0.26.2",
- "tracing",
- "url",
- "uuid",
- "which 8.0.2",
-]
-
-[[package]]
 name = "chelix-nostr"
 version = "0.1.0"
 dependencies = [
@@ -2696,6 +2668,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-stream",
+ "tokio-tungstenite 0.26.2",
  "tracing",
  "url",
  "uuid",
@@ -2713,13 +2686,16 @@ dependencies = [
  "clap",
  "content_inspector",
  "futures",
+ "portable-pty",
  "reqwest 0.13.2",
  "serde",
  "serde_json",
+ "shell-words",
  "tempfile",
  "tokio",
  "tracing",
  "uuid",
+ "vte",
 ]
 
 [[package]]
@@ -2781,6 +2757,7 @@ dependencies = [
  "chelix-gateway",
  "chelix-httpd",
  "chelix-media",
+ "chelix-protocol",
  "chelix-sessions",
  "chelix-skills",
  "chelix-tools",
@@ -2788,7 +2765,6 @@ dependencies = [
  "futures",
  "gix",
  "include_dir",
- "portable-pty",
  "secrecy 0.8.0",
  "serde",
  "serde_json",
@@ -2796,11 +2772,11 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-tungstenite 0.26.2",
  "tokio-util",
  "tracing",
  "url",
  "uuid",
- "which 8.0.2",
 ]
 
 [[package]]
@@ -12925,6 +12901,16 @@ name = "vsimd"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
+
+[[package]]
+name = "vte"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd"
+dependencies = [
+ "arrayvec",
+ "memchr",
+]
 
 [[package]]
 name = "wacore"

@@ -1,7 +1,4 @@
-use std::{
-    path::PathBuf,
-    sync::{Arc, atomic::Ordering},
-};
+use std::{path::PathBuf, sync::Arc};
 
 use {
     secrecy::Secret,
@@ -72,7 +69,7 @@ pub(super) struct PostStateInputs {
     pub session_state_store: Arc<chelix_sessions::state_store::SessionStateStore>,
     pub agent_persona_store: Arc<crate::agent_persona::AgentPersonaStore>,
     pub sandbox_router: Arc<chelix_tools::sandbox::SandboxRouter>,
-    pub tools_service: Arc<dyn chelix_tools::tools_service::ToolsService>,
+    pub tools_service: Arc<chelix_tools::tools_service::ManagedToolsService>,
     pub cron_service: Arc<chelix_cron::service::CronService>,
     pub deferred_state: Arc<tokio::sync::OnceCell<Arc<GatewayState>>>,
     pub startup_mem_probe: StartupMemProbe,
@@ -307,7 +304,6 @@ pub(super) async fn complete_startup(
     };
 
     let browser_for_lifecycle = Arc::clone(&services.browser);
-    let pairing_store = Arc::new(crate::pairing::PairingStore::new(db_pool.clone()));
     #[cfg(feature = "tls")]
     let tls_enabled_for_gateway = config.tls.enabled;
     #[cfg(not(feature = "tls"))]
@@ -343,7 +339,6 @@ pub(super) async fn complete_startup(
         config.clone(),
         Arc::clone(&sandbox_router),
         Some(Arc::clone(&credential_store)),
-        Some(pairing_store),
         is_localhost,
         env_flag_enabled("CHELIX_BEHIND_PROXY"),
         tls_enabled_for_gateway,
@@ -361,6 +356,9 @@ pub(super) async fn complete_startup(
         #[cfg(feature = "vault")]
         vault.clone(),
     );
+    state
+        .set_tools_service(Arc::clone(&tools_service))
+        .map_err(|_| anyhow::anyhow!("managed tools service was already initialized"))?;
 
     // Wire the shared LLM provider registry for lightweight generation
     // (auto-title, session summary, tts.generate_phrase).
@@ -441,11 +439,6 @@ pub(super) async fn complete_startup(
         &state,
     )));
 
-    match credential_store.ssh_target_count().await {
-        Ok(count) => state.ssh_target_count.store(count, Ordering::Relaxed),
-        Err(error) => warn!(%error, "failed to load ssh target count"),
-    }
-
     {
         let mut inner = state.inner.write().await;
         inner.discovered_hooks = discovered_hooks_info;
@@ -519,17 +512,13 @@ pub(super) async fn complete_startup(
         let cron_tool = chelix_tools::cron_tool::CronTool::new(Arc::clone(&cron_service));
 
         let mut tool_registry = chelix_agents::tool_registry::ToolRegistry::new();
-        let process_tool = chelix_tools::process::ProcessTool::new(Arc::clone(&sandbox_router));
+        let process_tool = chelix_tools::process::ProcessTool::new(Arc::clone(&tools_service));
 
         let sandbox_packages_tool =
             chelix_tools::sandbox_packages::SandboxPackagesTool::new(Arc::clone(&sandbox_router));
 
-        let tmux_terminal_manager = Arc::new(chelix_tools::tmux_command::TmuxTerminalManager::new(
-            Arc::clone(&sandbox_router),
-            config.tools.execute_command.max_output_bytes,
-        ));
-        let mut execute_command_tool =
-            chelix_tools::tmux_command::ExecuteCommandTool::new(Arc::clone(&tmux_terminal_manager))
+        let execute_command_tool =
+            chelix_tools::tmux_command::ExecuteCommandTool::new(Arc::clone(&tools_service))
                 .with_default_timeout(std::time::Duration::from_secs(
                     config.tools.execute_command.default_timeout_secs,
                 ))
@@ -537,27 +526,9 @@ pub(super) async fn complete_startup(
                 .with_env_provider(Arc::clone(&env_provider))
                 .with_completion_callback(command_completion_callback);
 
-        {
-            let provider = Arc::new(crate::node_command::GatewayNodeCommandProvider::new(
-                Arc::clone(&state),
-                Arc::clone(&state.node_count),
-                Arc::clone(&state.ssh_target_count),
-                config.tools.execute_command.ssh_target.clone(),
-                config.tools.execute_command.max_output_bytes,
-            ));
-            let default_node = match config.tools.execute_command.host.as_str() {
-                "node" => config.tools.execute_command.node.clone(),
-                "ssh" => config.tools.execute_command.ssh_target.clone(),
-                _ => None,
-            };
-            execute_command_tool = execute_command_tool.with_node_provider(provider, default_node);
-        }
-
         tool_registry.register(Box::new(execute_command_tool));
         tool_registry.register(Box::new(
-            chelix_tools::tmux_command::ReadTerminalOutputTool::new(Arc::clone(
-                &tmux_terminal_manager,
-            )),
+            chelix_tools::tmux_command::ReadTerminalOutputTool::new(Arc::clone(&tools_service)),
         ));
         tool_registry.register(Box::new(
             chelix_tools::list_directory::ListDirectoryTool::new(Arc::clone(&tools_service)),
@@ -762,23 +733,6 @@ pub(super) async fn complete_startup(
                     ))
                 },
             );
-        }
-
-        {
-            let node_info_provider: Arc<dyn chelix_tools::nodes::NodeInfoProvider> =
-                Arc::new(crate::node_command::GatewayNodeInfoProvider::new(
-                    Arc::clone(&state),
-                    config.tools.execute_command.ssh_target.clone(),
-                ));
-            tool_registry.register(Box::new(chelix_tools::nodes::NodesListTool::new(
-                Arc::clone(&node_info_provider),
-            )));
-            tool_registry.register(Box::new(chelix_tools::nodes::NodesDescribeTool::new(
-                Arc::clone(&node_info_provider),
-            )));
-            tool_registry.register(Box::new(chelix_tools::nodes::NodesSelectTool::new(
-                Arc::clone(&node_info_provider),
-            )));
         }
 
         tool_registry.register(Box::new(

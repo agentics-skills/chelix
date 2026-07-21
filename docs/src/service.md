@@ -67,20 +67,3 @@ This stops the service, removes the service file, and cleans up.
 | `chelix service stop`      | Stop the service              |
 | `chelix service restart`   | Restart the service           |
 | `chelix service logs`      | Print log file path           |
-
-## How It Differs from `chelix node add`
-
-`chelix service install` manages the **gateway** — the main Chelix server that
-hosts the web UI, chat sessions, and API.
-
-`chelix node add` registers a **headless node** — a client process on a remote
-machine that connects back to a gateway for command execution. See
-[Multi-Node](nodes.md) for details.
-
-|                          | `chelix service`        | `chelix node`         |
-| ------------------------ | ----------------------- | --------------------- |
-| What it runs             | The gateway server      | A node client         |
-| Needs `--host`/`--token` | No                      | Yes                   |
-| Config source            | `~/.chelix/chelix.toml` | `~/.chelix/node.json` |
-| launchd label            | `org.chelix.gateway`    | `org.chelix.node`     |
-| systemd unit             | `chelix.service`        | `chelix-node.service` |

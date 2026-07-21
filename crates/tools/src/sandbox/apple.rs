@@ -27,8 +27,8 @@ use super::paths::resolved_sandbox_mount_plan;
 #[cfg(target_os = "macos")]
 use super::types::{
     BuildImageResult, Sandbox, SandboxBackendId, SandboxConfig, SandboxId, SharedSandboxImage,
-    ToolsServiceEndpoint, canonical_sandbox_packages, shared_sandbox_image, tail_lines,
-    truncate_output_for_display,
+    ToolsServiceEndpoint, ToolsServiceInstance, canonical_sandbox_packages, shared_sandbox_image,
+    tail_lines, truncate_output_for_display,
 };
 #[cfg(target_os = "macos")]
 use crate::command::{CommandOptions, CommandOutput};
@@ -765,6 +765,22 @@ impl Sandbox for AppleContainerSandbox {
                     "apple tools service endpoint is unavailable for container {name}"
                 ))
             })
+    }
+
+    async fn tools_service_instances(&self) -> Result<Vec<ToolsServiceInstance>> {
+        let mut instances = self
+            .tools_endpoints
+            .read()
+            .await
+            .iter()
+            .map(|(name, endpoint)| ToolsServiceInstance {
+                id: name.clone(),
+                label: format!("{name} (apple-container)"),
+                endpoint: endpoint.clone(),
+            })
+            .collect::<Vec<_>>();
+        instances.sort_by(|left, right| left.id.cmp(&right.id));
+        Ok(instances)
     }
 
     async fn run_command(

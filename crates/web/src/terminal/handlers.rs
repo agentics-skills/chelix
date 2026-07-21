@@ -3,358 +3,118 @@ use std::net::SocketAddr;
 use {
     axum::{
         Json,
-        extract::{ConnectInfo, Query, State, WebSocketUpgrade},
-        http::StatusCode,
-        response::IntoResponse,
+        extract::{ConnectInfo, Path, Query, State, WebSocketUpgrade},
+        http::{
+            HeaderMap, StatusCode,
+            header::{HOST, ORIGIN},
+        },
+        response::{IntoResponse, Response},
     },
     chelix_httpd::AppState,
+    chelix_protocol::CreateToolsServiceTerminalRequest,
     tracing::warn,
 };
 
 use super::{
     auth::{is_local_connection, is_same_origin, websocket_header_authenticated},
-    sandbox_tmux::{resolve_sandbox_terminal_target, sandbox_terminal_targets, sandbox_tmux_tree},
-    tmux::{
-        host_terminal_apply_tmux_profile, host_terminal_ensure_tmux_session,
-        host_terminal_normalize_window_name, host_terminal_tmux_available,
-        host_terminal_tmux_create_window, host_terminal_tmux_list_windows,
-    },
     types::{
-        HOST_TERMINAL_SESSION_NAME, HostTerminalCreateWindowRequest, HostTerminalWindowInfo,
-        HostTerminalWsQuery, SandboxTerminalTargetQuery, SandboxTerminalWsQuery, TERMINAL_DISABLED,
-        TERMINAL_SESSION_INIT_FAILED, TERMINAL_TMUX_UNAVAILABLE, TERMINAL_WINDOW_CREATE_FAILED,
-        TERMINAL_WINDOW_NAME_INVALID, TERMINAL_WINDOWS_LIST_FAILED, terminal_error,
+        TERMINAL_DISABLED, TERMINAL_REQUEST_FAILED, TERMINAL_SERVICE_UNAVAILABLE, TerminalWsQuery,
+        terminal_error,
     },
-    websocket::{handle_sandbox_terminal_ws_connection, handle_terminal_ws_connection},
+    websocket,
 };
 
-// ── Payload builders ─────────────────────────────────────────────────────────
-
-fn host_terminal_windows_payload(
-    windows: Vec<HostTerminalWindowInfo>,
-    session_name: Option<&str>,
-) -> serde_json::Value {
-    let active_window_id = windows
-        .iter()
-        .find(|window| window.active)
-        .map(|window| window.id.clone());
-    serde_json::json!({
-        "ok": true,
-        "available": true,
-        "sessionName": session_name,
-        "windows": windows,
-        "activeWindowId": active_window_id,
-    })
-}
-
-// ── HTTP handlers ────────────────────────────────────────────────────────────
-
-pub async fn api_terminal_windows_handler(State(state): State<AppState>) -> impl IntoResponse {
-    if !state.gateway.config.server.is_terminal_enabled() {
-        return (
+fn terminal_disabled_response(state: &AppState) -> Option<Response> {
+    if state.gateway.config.server.is_terminal_enabled() {
+        return None;
+    }
+    Some(
+        (
             StatusCode::FORBIDDEN,
             Json(terminal_error(
                 TERMINAL_DISABLED,
                 "terminal has been disabled by the server administrator",
             )),
         )
-            .into_response();
-    }
-    if !host_terminal_tmux_available() {
-        return Json(serde_json::json!({
-            "ok": true,
-            "available": false,
-            "sessionName": Option::<&str>::None,
-            "windows": Vec::<HostTerminalWindowInfo>::new(),
-            "activeWindowId": Option::<String>::None,
-        }))
-        .into_response();
-    }
-    if let Err(err) = host_terminal_ensure_tmux_session() {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(terminal_error(
-                TERMINAL_SESSION_INIT_FAILED,
-                err.to_string(),
-            )),
-        )
-            .into_response();
-    }
-    host_terminal_apply_tmux_profile();
-    match host_terminal_tmux_list_windows() {
-        Ok(windows) => Json(host_terminal_windows_payload(
-            windows,
-            Some(HOST_TERMINAL_SESSION_NAME),
-        ))
-        .into_response(),
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(terminal_error(
-                TERMINAL_WINDOWS_LIST_FAILED,
-                err.to_string(),
-            )),
-        )
             .into_response(),
-    }
+    )
 }
 
-pub async fn api_terminal_windows_create_handler(
-    State(state): State<AppState>,
-    Json(payload): Json<HostTerminalCreateWindowRequest>,
-) -> impl IntoResponse {
-    if !state.gateway.config.server.is_terminal_enabled() {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(terminal_error(
-                TERMINAL_DISABLED,
-                "terminal has been disabled by the server administrator",
-            )),
-        )
-            .into_response();
-    }
-    if !host_terminal_tmux_available() {
-        return (
-            StatusCode::CONFLICT,
-            Json(terminal_error(
-                TERMINAL_TMUX_UNAVAILABLE,
-                "tmux is not available on host terminal",
-            )),
-        )
-            .into_response();
-    }
-    let window_name = match payload
-        .name
-        .as_deref()
-        .map(host_terminal_normalize_window_name)
-        .transpose()
-    {
-        Ok(name) => name,
-        Err(err) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(terminal_error(
-                    TERMINAL_WINDOW_NAME_INVALID,
-                    err.to_string(),
-                )),
-            )
-                .into_response();
-        },
-    };
-    if let Err(err) = host_terminal_ensure_tmux_session() {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(terminal_error(
-                TERMINAL_SESSION_INIT_FAILED,
-                err.to_string(),
-            )),
-        )
-            .into_response();
-    }
-    match host_terminal_tmux_create_window(window_name.as_deref()) {
-        Ok(window_id) => match host_terminal_tmux_list_windows() {
-            Ok(windows) => {
-                let created = windows
-                    .iter()
-                    .find(|window| window.id == window_id)
-                    .cloned();
-                Json(serde_json::json!({
-                    "ok": true,
-                    "window": created,
-                    "windowId": window_id,
-                    "sessionName": HOST_TERMINAL_SESSION_NAME,
-                    "windows": windows,
-                }))
-                .into_response()
-            },
-            Err(err) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(terminal_error(
-                    TERMINAL_WINDOWS_LIST_FAILED,
-                    err.to_string(),
-                )),
-            )
-                .into_response(),
-        },
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(terminal_error(
-                TERMINAL_WINDOW_CREATE_FAILED,
-                err.to_string(),
-            )),
-        )
-            .into_response(),
-    }
+fn tools_service(
+    state: &AppState,
+) -> Option<&std::sync::Arc<chelix_tools::tools_service::ManagedToolsService>> {
+    state.gateway.tools_service()
 }
 
-pub async fn api_terminal_sandbox_targets_handler(
-    State(state): State<AppState>,
-) -> impl IntoResponse {
-    if !state.gateway.config.server.is_terminal_enabled() {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(terminal_error(
-                TERMINAL_DISABLED,
-                "terminal has been disabled by the server administrator",
-            )),
-        )
-            .into_response();
-    }
-
-    match sandbox_terminal_targets(&state).await {
-        Ok(targets) => Json(serde_json::json!({
-            "ok": true,
-            "targets": targets,
-        }))
-        .into_response(),
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(terminal_error(
-                TERMINAL_WINDOWS_LIST_FAILED,
-                err.to_string(),
-            )),
-        )
-            .into_response(),
-    }
-}
-
-pub async fn api_terminal_sandbox_tmux_tree_handler(
-    State(state): State<AppState>,
-    Query(query): Query<SandboxTerminalTargetQuery>,
-) -> impl IntoResponse {
-    if !state.gateway.config.server.is_terminal_enabled() {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(terminal_error(
-                TERMINAL_DISABLED,
-                "terminal has been disabled by the server administrator",
-            )),
-        )
-            .into_response();
-    }
-
-    let target = match resolve_sandbox_terminal_target(&state, &query.target_id).await {
-        Ok(target) => target,
-        Err(err) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(terminal_error(
-                    TERMINAL_WINDOWS_LIST_FAILED,
-                    err.to_string(),
-                )),
-            )
-                .into_response();
-        },
-    };
-
-    match sandbox_tmux_tree(&target).await {
-        Ok(tree) => Json(serde_json::json!({
-            "ok": true,
-            "target": target,
-            "tree": tree,
-        }))
-        .into_response(),
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(terminal_error(
-                TERMINAL_WINDOWS_LIST_FAILED,
-                err.to_string(),
-            )),
-        )
-            .into_response(),
-    }
-}
-
-/// Dedicated host terminal WebSocket stream (`Settings > Terminal`).
-pub async fn api_terminal_ws_upgrade_handler(
-    ws: WebSocketUpgrade,
-    Query(query): Query<HostTerminalWsQuery>,
-    headers: axum::http::HeaderMap,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    State(state): State<AppState>,
-) -> impl IntoResponse {
-    if !state.gateway.config.server.is_terminal_enabled() {
-        return (
-            StatusCode::FORBIDDEN,
-            "terminal has been disabled by the server administrator",
-        )
-            .into_response();
-    }
-
-    // CSWSH protection: only same-origin browser upgrades are allowed.
-    if let Some(origin) = headers
-        .get(axum::http::header::ORIGIN)
-        .and_then(|v| v.to_str().ok())
-    {
-        let host = headers
-            .get(axum::http::header::HOST)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        if !is_same_origin(origin, host) {
-            warn!(
-                origin,
-                host,
-                remote = %addr,
-                "rejected cross-origin terminal WebSocket upgrade"
-            );
-            return (
-                StatusCode::FORBIDDEN,
-                "cross-origin WebSocket connections are not allowed",
-            )
-                .into_response();
-        }
-    }
-
-    let is_local = is_local_connection(&headers, addr, state.gateway.behind_proxy);
-    let header_authenticated =
-        websocket_header_authenticated(&headers, state.gateway.credential_store.as_ref(), is_local)
-            .await;
-    if !header_authenticated {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(terminal_error(
-                "AUTH_NOT_AUTHENTICATED",
-                "not authenticated",
-            )),
-        )
-            .into_response();
-    }
-
-    let requested_window = query.window;
-    ws.on_upgrade(move |socket| handle_terminal_ws_connection(socket, addr, requested_window))
+fn tools_service_unavailable_response() -> Response {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(terminal_error(
+            TERMINAL_SERVICE_UNAVAILABLE,
+            "managed tools service is unavailable",
+        )),
+    )
         .into_response()
 }
 
-/// Dedicated sandbox tmux WebSocket stream (`Settings > Terminal`).
-pub async fn api_terminal_sandbox_ws_upgrade_handler(
-    ws: WebSocketUpgrade,
-    Query(query): Query<SandboxTerminalWsQuery>,
-    headers: axum::http::HeaderMap,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    State(state): State<AppState>,
-) -> impl IntoResponse {
-    if !state.gateway.config.server.is_terminal_enabled() {
-        return (
-            StatusCode::FORBIDDEN,
-            "terminal has been disabled by the server administrator",
+pub async fn api_terminal_instances_handler(State(state): State<AppState>) -> Response {
+    if let Some(response) = terminal_disabled_response(&state) {
+        return response;
+    }
+    let service = match tools_service(&state) {
+        Some(service) => service,
+        None => return tools_service_unavailable_response(),
+    };
+    match service.terminal_instances().await {
+        Ok(instances) => Json(serde_json::json!({ "instances": instances })).into_response(),
+        Err(error) => (
+            StatusCode::BAD_GATEWAY,
+            Json(terminal_error(TERMINAL_REQUEST_FAILED, error.to_string())),
         )
-            .into_response();
+            .into_response(),
+    }
+}
+
+pub async fn api_terminal_create_handler(
+    State(state): State<AppState>,
+    Path(instance_id): Path<String>,
+    Json(request): Json<CreateToolsServiceTerminalRequest>,
+) -> Response {
+    if let Some(response) = terminal_disabled_response(&state) {
+        return response;
+    }
+    let service = match tools_service(&state) {
+        Some(service) => service,
+        None => return tools_service_unavailable_response(),
+    };
+    match service.create_terminal(&instance_id, request).await {
+        Ok(response) => Json(response).into_response(),
+        Err(error) => (
+            StatusCode::BAD_GATEWAY,
+            Json(terminal_error(TERMINAL_REQUEST_FAILED, error.to_string())),
+        )
+            .into_response(),
+    }
+}
+
+pub async fn api_terminal_ws_upgrade_handler(
+    websocket_upgrade: WebSocketUpgrade,
+    Query(query): Query<TerminalWsQuery>,
+    headers: HeaderMap,
+    ConnectInfo(address): ConnectInfo<SocketAddr>,
+    State(state): State<AppState>,
+) -> Response {
+    if let Some(response) = terminal_disabled_response(&state) {
+        return response;
     }
 
-    if let Some(origin) = headers
-        .get(axum::http::header::ORIGIN)
-        .and_then(|v| v.to_str().ok())
-    {
+    if let Some(origin) = headers.get(ORIGIN).and_then(|value| value.to_str().ok()) {
         let host = headers
-            .get(axum::http::header::HOST)
-            .and_then(|v| v.to_str().ok())
+            .get(HOST)
+            .and_then(|value| value.to_str().ok())
             .unwrap_or("");
         if !is_same_origin(origin, host) {
-            warn!(
-                origin,
-                host,
-                remote = %addr,
-                "rejected cross-origin sandbox terminal WebSocket upgrade"
-            );
+            warn!(origin, host, remote = %address, "rejected cross-origin terminal websocket upgrade");
             return (
                 StatusCode::FORBIDDEN,
                 "cross-origin WebSocket connections are not allowed",
@@ -363,11 +123,10 @@ pub async fn api_terminal_sandbox_ws_upgrade_handler(
         }
     }
 
-    let is_local = is_local_connection(&headers, addr, state.gateway.behind_proxy);
-    let header_authenticated =
-        websocket_header_authenticated(&headers, state.gateway.credential_store.as_ref(), is_local)
-            .await;
-    if !header_authenticated {
+    let is_local = is_local_connection(&headers, address, state.gateway.behind_proxy);
+    if !websocket_header_authenticated(&headers, state.gateway.credential_store.as_ref(), is_local)
+        .await
+    {
         return (
             StatusCode::UNAUTHORIZED,
             Json(terminal_error(
@@ -378,20 +137,24 @@ pub async fn api_terminal_sandbox_ws_upgrade_handler(
             .into_response();
     }
 
-    let target = match resolve_sandbox_terminal_target(&state, &query.target_id).await {
-        Ok(target) => target,
-        Err(err) => {
+    let service = match tools_service(&state) {
+        Some(service) => service,
+        None => return tools_service_unavailable_response(),
+    };
+    let instance_id = query.instance_id.clone();
+    let attach_query = query.into();
+    let upstream = match service.connect_terminal(&instance_id, &attach_query).await {
+        Ok(upstream) => upstream,
+        Err(error) => {
             return (
-                StatusCode::NOT_FOUND,
-                Json(terminal_error(
-                    TERMINAL_WINDOWS_LIST_FAILED,
-                    err.to_string(),
-                )),
+                StatusCode::BAD_GATEWAY,
+                Json(terminal_error(TERMINAL_REQUEST_FAILED, error.to_string())),
             )
                 .into_response();
         },
     };
 
-    ws.on_upgrade(move |socket| handle_sandbox_terminal_ws_connection(socket, addr, target, query))
+    websocket_upgrade
+        .on_upgrade(move |browser| websocket::proxy(browser, upstream))
         .into_response()
 }

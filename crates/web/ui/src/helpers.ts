@@ -570,19 +570,7 @@ export function updateCountdown(el: HTMLElement, resetsAtMs: number): boolean {
 }
 
 function summarizeCommandTool(args: ToolCallArgs): string {
-	const command = args.command || "execute_command";
-	const nodeRef = typeof args.node === "string" ? args.node.trim() : "";
-	if (!nodeRef) return command;
-	if (nodeRef.startsWith("ssh:target:")) {
-		return `${command} [SSH target]`;
-	}
-	if (nodeRef.startsWith("ssh:")) {
-		return `${command} [SSH: ${nodeRef.slice(4)}]`;
-	}
-	if (nodeRef.includes("@")) {
-		return `${command} [SSH: ${nodeRef}]`;
-	}
-	return `${command} [node: ${nodeRef}]`;
+	return args.command || "execute_command";
 }
 
 function summarizeBrowserTool(args: ToolCallArgs, executionMode?: string): string {

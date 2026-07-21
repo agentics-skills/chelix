@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
+use std::{borrow::Cow, path::PathBuf, sync::Arc, time::Duration};
 
 use {
     async_trait::async_trait,
@@ -34,25 +34,6 @@ pub struct InjectedEnvVar {
 #[async_trait]
 pub trait EnvVarProvider: Send + Sync {
     async fn get_env_vars(&self) -> anyhow::Result<Vec<InjectedEnvVar>>;
-}
-
-/// Provider that routes command execution to a remote node.
-#[async_trait]
-pub trait CommandNodeProvider: Send + Sync {
-    async fn run_on_node(
-        &self,
-        node_id: &str,
-        command: &str,
-        timeout_secs: u64,
-        cwd: Option<&str>,
-        env: Option<&HashMap<String, String>>,
-    ) -> anyhow::Result<CommandOutput>;
-
-    async fn resolve_node_id(&self, node_ref: &str) -> Option<String>;
-
-    fn has_connected_nodes(&self) -> bool;
-
-    async fn default_node_ref(&self) -> Option<String>;
 }
 
 /// Result of a shell command execution.

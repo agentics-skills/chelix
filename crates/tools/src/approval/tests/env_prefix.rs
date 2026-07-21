@@ -280,7 +280,7 @@ fn test_allowlist_prefix_no_bypass_via_chained_assignment() {
 
 #[tokio::test]
 async fn test_env_injection_needs_approval_on_miss() {
-    let mgr = ApprovalManager::default();
+    let mgr = ApprovalManager::new(ApprovalMode::OnMiss);
     let action = mgr
         .check_command("LD_PRELOAD=/evil.so cat /etc/passwd")
         .await
@@ -289,15 +289,12 @@ async fn test_env_injection_needs_approval_on_miss() {
 }
 
 #[tokio::test]
-async fn test_env_injection_denied_in_off_mode() {
-    let mgr = ApprovalManager {
-        mode: ApprovalMode::Off,
-        ..Default::default()
-    };
+async fn test_env_injection_denied_in_never_mode() {
+    let mgr = ApprovalManager::new(ApprovalMode::Never);
     let err = mgr
         .check_command("LD_PRELOAD=/evil.so cat /etc/passwd")
         .await
-        .expect_err("expected denial for env injection in off mode");
+        .expect_err("expected denial for env injection in never mode");
     assert!(
         err.to_string().contains("dangerous"),
         "unexpected error message: {err}"
@@ -305,17 +302,14 @@ async fn test_env_injection_denied_in_off_mode() {
 }
 
 #[tokio::test]
-async fn test_chained_env_injection_denied_in_off_empty_allowlist() {
+async fn test_chained_env_injection_denied_in_never_empty_allowlist() {
     // Regression: chained assignments must be caught by Layer 2 safety
-    // floor even when Off+empty-allowlist short-circuits before mode check.
-    let mgr = ApprovalManager {
-        mode: ApprovalMode::Off,
-        ..Default::default()
-    };
+    // floor even when Never+empty-allowlist short-circuits before mode check.
+    let mgr = ApprovalManager::new(ApprovalMode::Never);
     let err = mgr
         .check_command("FOO=bar LD_PRELOAD=/evil.so cat /etc/passwd")
         .await
-        .expect_err("expected denial for chained env injection in off mode");
+        .expect_err("expected denial for chained env injection in never mode");
     assert!(
         err.to_string().contains("dangerous env-var prefix"),
         "unexpected error message: {err}"
@@ -324,7 +318,7 @@ async fn test_chained_env_injection_denied_in_off_empty_allowlist() {
 
 #[tokio::test]
 async fn test_chained_env_injection_needs_approval_on_miss() {
-    let mgr = ApprovalManager::default();
+    let mgr = ApprovalManager::new(ApprovalMode::OnMiss);
     let action = mgr
         .check_command("FOO=bar LD_PRELOAD=/evil.so cat /etc/passwd")
         .await
@@ -334,10 +328,7 @@ async fn test_chained_env_injection_needs_approval_on_miss() {
 
 #[tokio::test]
 async fn test_env_injection_needs_approval_always_mode() {
-    let mgr = ApprovalManager {
-        mode: ApprovalMode::Always,
-        ..Default::default()
-    };
+    let mgr = ApprovalManager::new(ApprovalMode::Always);
     let action = mgr
         .check_command("DYLD_INSERT_LIBRARIES=/evil.dylib ls")
         .await
@@ -347,7 +338,7 @@ async fn test_env_injection_needs_approval_always_mode() {
 
 #[tokio::test]
 async fn test_benign_prefix_proceeds_on_miss() {
-    let mgr = ApprovalManager::default();
+    let mgr = ApprovalManager::new(ApprovalMode::OnMiss);
     let action = mgr.check_command("RUST_LOG=debug echo hi").await.unwrap();
     assert_eq!(action, ApprovalAction::Proceed);
 }
@@ -356,7 +347,7 @@ async fn test_benign_prefix_proceeds_on_miss() {
 async fn test_env_injection_in_subshell_needs_approval() {
     // Regex doesn't match inside quotes, but sh is not a safe bin so
     // the mode check (OnMiss) still requires approval.
-    let mgr = ApprovalManager::default();
+    let mgr = ApprovalManager::new(ApprovalMode::OnMiss);
     let action = mgr
         .check_command(r#"sh -c "LD_PRELOAD=/evil.so cat /etc/passwd""#)
         .await
@@ -367,17 +358,15 @@ async fn test_env_injection_in_subshell_needs_approval() {
 #[tokio::test]
 async fn test_env_injection_with_explicit_allowlist_wildcard() {
     // Wildcard allowlist still overrides dangerous env var patterns.
-    let mgr = ApprovalManager {
-        allowlist: vec!["*".into()],
-        ..Default::default()
-    };
+    let mut mgr = ApprovalManager::new(ApprovalMode::OnMiss);
+    mgr.allowlist = vec!["*".into()];
     let action = mgr
         .check_command("LD_PRELOAD=/evil.so cat /etc/passwd")
         .await
         .unwrap();
     // Dangerous pattern matched, but allowlist wildcard overrides -> falls
     // through to the mode check where safe-bin check fails (extract_first_bin
-    // returns None) -> NeedsApproval in default OnMiss mode.
+    // returns None) -> NeedsApproval in explicit OnMiss mode.
     // Actually: check_dangerous fires, matches_allowlist("*") returns true,
     // so the dangerous block is skipped. Then security_level=Allowlist,
     // mode=OnMiss. is_safe_command returns false (extract_first_bin -> None).

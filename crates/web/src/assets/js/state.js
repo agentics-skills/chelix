@@ -47,11 +47,6 @@ export let voicePending = state().voicePending;
 export let sandboxInfo = state().sandboxInfo;
 export let cachedChannels = state().cachedChannels;
 export let selectedModelId = state().selectedModelId;
-export let nodeCombo = state().nodeCombo;
-export let nodeComboBtn = state().nodeComboBtn;
-export let nodeComboLabel = state().nodeComboLabel;
-export let nodeDropdown = state().nodeDropdown;
-export let nodeDropdownList = state().nodeDropdownList;
 
 // Sync all mutable state from the bundled namespace on each frame.
 function _sync() {
@@ -81,11 +76,6 @@ function _sync() {
 	sandboxInfo = S.sandboxInfo;
 	cachedChannels = S.cachedChannels;
 	selectedModelId = S.selectedModelId;
-	nodeCombo = S.nodeCombo;
-	nodeComboBtn = S.nodeComboBtn;
-	nodeComboLabel = S.nodeComboLabel;
-	nodeDropdown = S.nodeDropdown;
-	nodeDropdownList = S.nodeDropdownList;
 	requestAnimationFrame(_sync);
 }
 requestAnimationFrame(_sync);
@@ -124,11 +114,6 @@ export function setLogsEventHandler(v) { state().setLogsEventHandler?.(v); }
 export function setUnseenErrors(v) { state().setUnseenErrors?.(v); }
 export function setUnseenWarns(v) { state().setUnseenWarns?.(v); }
 export function setReconnectDelay(v) { state().setReconnectDelay?.(v); }
-export function setNodeCombo(v) { state().setNodeCombo?.(v); nodeCombo = v; }
-export function setNodeComboBtn(v) { state().setNodeComboBtn?.(v); nodeComboBtn = v; }
-export function setNodeComboLabel(v) { state().setNodeComboLabel?.(v); nodeComboLabel = v; }
-export function setNodeDropdown(v) { state().setNodeDropdown?.(v); nodeDropdown = v; }
-export function setNodeDropdownList(v) { state().setNodeDropdownList?.(v); nodeDropdownList = v; }
 export function setAutoScrollMode(v) { state().setAutoScrollMode?.(v); }
 
 // DOM shorthand

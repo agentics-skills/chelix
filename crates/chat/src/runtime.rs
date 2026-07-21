@@ -21,24 +21,6 @@ pub struct TtsOverride {
     pub model: Option<String>,
 }
 
-/// Summary of a connected remote node, returned by `ChatRuntime::connected_nodes`.
-#[derive(Debug, Clone)]
-pub struct ConnectedNodeSummary {
-    pub node_id: String,
-    pub display_name: Option<String>,
-    pub platform: String,
-    pub capabilities: Vec<String>,
-    pub cpu_count: Option<u32>,
-    pub cpu_usage: Option<f32>,
-    pub mem_total: Option<u64>,
-    pub mem_available: Option<u64>,
-    pub telemetry_stale: bool,
-    pub disk_total: Option<u64>,
-    pub disk_available: Option<u64>,
-    pub runtimes: Vec<String>,
-    pub providers: Vec<(String, Vec<String>)>,
-}
-
 /// Abstraction over the mutable gateway runtime state that the chat engine
 /// requires. The gateway implements this for `GatewayState`; tests can provide
 /// a lightweight mock.
@@ -141,11 +123,6 @@ pub trait ChatRuntime: Send + Sync {
         url: Option<&str>,
         session_key: Option<&str>,
     ) -> crate::error::Result<usize>;
-
-    // ── Remote nodes ─────────────────────────────────────────────────────
-
-    /// List currently connected remote nodes.
-    async fn connected_nodes(&self) -> Vec<ConnectedNodeSummary>;
 
     // ── Mid-flight steering ──────────────────────────────────────────────
 

@@ -7,6 +7,7 @@ use std::{
 
 use {
     crate::error::Error,
+    chelix_config::ApprovalMode,
     regex::RegexSet,
     serde::{Deserialize, Serialize},
     tokio::sync::{RwLock, oneshot},
@@ -33,33 +34,6 @@ pub enum ApprovalDecision {
     Approved,
     Denied,
     Timeout,
-}
-
-/// Approval mode.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-#[derive(Default)]
-pub enum ApprovalMode {
-    Off,
-    #[default]
-    OnMiss,
-    Always,
-}
-
-impl ApprovalMode {
-    /// Parse approval mode from config value.
-    ///
-    /// Accepts canonical values plus legacy aliases:
-    /// - `on-miss` / `smart` -> `OnMiss`
-    /// - `off` / `never` -> `Off`
-    pub fn parse(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "off" | "never" => Some(Self::Off),
-            "on-miss" | "on_miss" | "smart" => Some(Self::OnMiss),
-            "always" => Some(Self::Always),
-            _ => None,
-        }
-    }
 }
 
 /// Security level for shell commands.
@@ -187,8 +161,8 @@ const DANGEROUS_ENV_VARS: &[&str] = &[
     "ZDOTDIR",
 ];
 
-/// Dangerous command patterns that force approval even when `approval_mode` is
-/// off or `security_level` is full.  Each entry: `(regex_pattern, description)`.
+/// Dangerous command patterns that force approval unless `approval_mode` is
+/// `never`, in which case they are denied. Each entry: `(regex_pattern, description)`.
 static DANGEROUS_PATTERN_DEFS: &[(&str, &str)] = &[
     // Filesystem destruction
     (
@@ -515,10 +489,11 @@ pub struct ApprovalManager {
     approved_commands: Arc<RwLock<HashSet<String>>>,
 }
 
-impl Default for ApprovalManager {
-    fn default() -> Self {
+impl ApprovalManager {
+    #[must_use]
+    pub fn new(mode: ApprovalMode) -> Self {
         Self {
-            mode: ApprovalMode::OnMiss,
+            mode,
             security_level: SecurityLevel::Allowlist,
             allowlist: Vec::new(),
             timeout: Duration::from_secs(120),
@@ -526,27 +501,25 @@ impl Default for ApprovalManager {
             approved_commands: Arc::new(RwLock::new(HashSet::new())),
         }
     }
-}
 
-impl ApprovalManager {
     /// Decide whether a command needs approval.
     /// Returns Ok(()) if the command can proceed, Err if denied.
     pub async fn check_command(&self, command: &str) -> Result<ApprovalAction> {
         // Safety floor: dangerous patterns are blocked unless explicitly
         // allowlisted. In OnMiss/Always mode we escalate to NeedsApproval so a
-        // human can gate. In Off mode there is no human approver to wait on,
+        // human can gate. In Never mode there is no human approver to wait on,
         // so the only safe outcome is to deny — otherwise the agent would hang
         // on `NeedsApproval` forever in headless deployments (agentics-skills/chelix#654).
         if let Some(desc) = check_dangerous(command) {
             if !matches_allowlist(command, &self.allowlist) {
-                if self.mode == ApprovalMode::Off {
+                if self.mode == ApprovalMode::Never {
                     warn!(
                         command,
                         pattern = %desc,
-                        "dangerous command denied in approval_mode=off",
+                        "dangerous command denied in approval_mode=never",
                     );
                     return Err(Error::message(format!(
-                        "command denied: dangerous command pattern '{desc}' (approval_mode=off): \
+                        "command denied: dangerous command pattern '{desc}' (approval_mode=never): \
                          {command}"
                     )));
                 }
@@ -562,13 +535,13 @@ impl ApprovalManager {
         // the regex layer above (agentics-skills/chelix#814).
         if !command.trim().is_empty() && extract_first_bin(command).is_none() {
             if !matches_allowlist(command, &self.allowlist) {
-                if self.mode == ApprovalMode::Off {
+                if self.mode == ApprovalMode::Never {
                     warn!(
                         command,
-                        "dangerous env-var prefix denied in approval_mode=off",
+                        "dangerous env-var prefix denied in approval_mode=never",
                     );
                     return Err(Error::message(format!(
-                        "command denied: dangerous env-var prefix (approval_mode=off): {command}"
+                        "command denied: dangerous env-var prefix (approval_mode=never): {command}"
                     )));
                 }
                 warn!(
@@ -592,8 +565,8 @@ impl ApprovalManager {
         }
 
         match self.mode {
-            ApprovalMode::Off => {
-                // With an empty allowlist, Off mode is unrestricted (preserves
+            ApprovalMode::Never => {
+                // With an empty allowlist, Never mode is unrestricted (preserves
                 // historical behavior for deployments that never configured a list).
                 // With a non-empty allowlist, the list is authoritative: the user
                 // explicitly asked for enforcement, and there is no human to prompt
@@ -613,12 +586,12 @@ impl ApprovalManager {
                     // follow-up for an opt-in strict mode that gates safe bins).
                     warn!(
                         command,
-                        "command safe-bin bypassed non-empty allowlist in approval_mode=off",
+                        "command safe-bin bypassed non-empty allowlist in approval_mode=never",
                     );
                     return Ok(ApprovalAction::Proceed);
                 }
                 Err(Error::message(format!(
-                    "command denied: command not in allowlist (approval_mode=off): {command}"
+                    "command denied: command not in allowlist (approval_mode=never): {command}"
                 )))
             },
             ApprovalMode::Always => Ok(ApprovalAction::NeedsApproval),
@@ -769,15 +742,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_approval_mode_aliases() {
-        assert_eq!(ApprovalMode::parse("on-miss"), Some(ApprovalMode::OnMiss));
-        assert_eq!(ApprovalMode::parse("smart"), Some(ApprovalMode::OnMiss));
-        assert_eq!(ApprovalMode::parse("always"), Some(ApprovalMode::Always));
-        assert_eq!(ApprovalMode::parse("never"), Some(ApprovalMode::Off));
-        assert_eq!(ApprovalMode::parse("bogus"), None);
-    }
-
-    #[test]
     fn test_parse_security_level_aliases() {
         assert_eq!(
             SecurityLevel::parse("allowlist"),
@@ -794,42 +758,33 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_approval_off_mode() {
-        let mgr = ApprovalManager {
-            mode: ApprovalMode::Off,
-            ..Default::default()
-        };
-        // Non-dangerous commands proceed when mode is off and allowlist is empty.
+    async fn test_approval_never_mode() {
+        let mgr = ApprovalManager::new(ApprovalMode::Never);
+        // Non-dangerous commands proceed when mode is never and allowlist is empty.
         let action = mgr.check_command("curl https://example.com").await.unwrap();
         assert_eq!(action, ApprovalAction::Proceed);
     }
 
     #[tokio::test]
-    async fn test_approval_off_with_allowlist_match() {
+    async fn test_approval_never_with_allowlist_match() {
         // Regression test for agentics-skills/chelix#654: non-empty allowlist must be
-        // enforced even when approval_mode is off (headless deployments).
-        let mgr = ApprovalManager {
-            mode: ApprovalMode::Off,
-            allowlist: vec!["git *".into()],
-            ..Default::default()
-        };
+        // enforced even when approval_mode is never (headless deployments).
+        let mut mgr = ApprovalManager::new(ApprovalMode::Never);
+        mgr.allowlist = vec!["git *".into()];
         let action = mgr.check_command("git status").await.unwrap();
         assert_eq!(action, ApprovalAction::Proceed);
     }
 
     #[tokio::test]
-    async fn test_approval_off_with_allowlist_miss_denies() {
+    async fn test_approval_never_with_allowlist_miss_denies() {
         // Regression test for agentics-skills/chelix#654: commands outside the
-        // configured allowlist must be denied in Off mode, not silently proceeded.
-        let mgr = ApprovalManager {
-            mode: ApprovalMode::Off,
-            allowlist: vec!["git *".into()],
-            ..Default::default()
-        };
+        // configured allowlist must be denied in Never mode, not silently proceeded.
+        let mut mgr = ApprovalManager::new(ApprovalMode::Never);
+        mgr.allowlist = vec!["git *".into()];
         let err = mgr
             .check_command("curl https://evil.example.com")
             .await
-            .expect_err("expected denial for non-allowlisted command in off mode");
+            .expect_err("expected denial for non-allowlisted command in never mode");
         assert!(
             err.to_string().contains("not in allowlist"),
             "unexpected error message: {err}"
@@ -837,27 +792,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_approval_off_with_allowlist_safe_bin() {
-        // Safe bins are still allowed in Off mode so operators don't have to
+    async fn test_approval_never_with_allowlist_safe_bin() {
+        // Safe bins are still allowed in Never mode so operators don't have to
         // enumerate them in every allowlist.
-        let mgr = ApprovalManager {
-            mode: ApprovalMode::Off,
-            allowlist: vec!["git *".into()],
-            ..Default::default()
-        };
+        let mut mgr = ApprovalManager::new(ApprovalMode::Never);
+        mgr.allowlist = vec!["git *".into()];
         let action = mgr.check_command("echo hi").await.unwrap();
         assert_eq!(action, ApprovalAction::Proceed);
     }
 
     #[tokio::test]
-    async fn test_approval_off_empty_allowlist_unrestricted() {
-        // Explicit contract lock: Off mode with an empty allowlist preserves
+    async fn test_approval_never_empty_allowlist_unrestricted() {
+        // Explicit contract lock: Never mode with an empty allowlist preserves
         // historical unrestricted semantics.
-        let mgr = ApprovalManager {
-            mode: ApprovalMode::Off,
-            allowlist: Vec::new(),
-            ..Default::default()
-        };
+        let mgr = ApprovalManager::new(ApprovalMode::Never);
         let action = mgr
             .check_command(r#"python3 -c "print('hi')""#)
             .await
@@ -866,49 +814,41 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_approval_off_full_security_bypasses_allowlist() {
+    async fn test_approval_never_full_security_bypasses_allowlist() {
         // SecurityLevel::Full short-circuits before the mode match, so even an
         // explicit allowlist has no effect.
-        let mgr = ApprovalManager {
-            mode: ApprovalMode::Off,
-            security_level: SecurityLevel::Full,
-            allowlist: vec!["git *".into()],
-            ..Default::default()
-        };
+        let mut mgr = ApprovalManager::new(ApprovalMode::Never);
+        mgr.security_level = SecurityLevel::Full;
+        mgr.allowlist = vec!["git *".into()];
         let action = mgr.check_command("curl https://example.com").await.unwrap();
         assert_eq!(action, ApprovalAction::Proceed);
     }
 
     #[tokio::test]
     async fn test_approval_always_mode() {
-        let mgr = ApprovalManager {
-            mode: ApprovalMode::Always,
-            ..Default::default()
-        };
+        let mgr = ApprovalManager::new(ApprovalMode::Always);
         let action = mgr.check_command("echo hi").await.unwrap();
         assert_eq!(action, ApprovalAction::NeedsApproval);
     }
 
     #[tokio::test]
     async fn test_approval_on_miss_safe() {
-        let mgr = ApprovalManager::default();
+        let mgr = ApprovalManager::new(ApprovalMode::OnMiss);
         let action = mgr.check_command("echo hi").await.unwrap();
         assert_eq!(action, ApprovalAction::Proceed);
     }
 
     #[tokio::test]
     async fn test_approval_on_miss_unsafe() {
-        let mgr = ApprovalManager::default();
+        let mgr = ApprovalManager::new(ApprovalMode::OnMiss);
         let action = mgr.check_command("rm -rf /").await.unwrap();
         assert_eq!(action, ApprovalAction::NeedsApproval);
     }
 
     #[tokio::test]
     async fn test_deny_security_level() {
-        let mgr = ApprovalManager {
-            security_level: SecurityLevel::Deny,
-            ..Default::default()
-        };
+        let mut mgr = ApprovalManager::new(ApprovalMode::Never);
+        mgr.security_level = SecurityLevel::Deny;
         assert!(mgr.check_command("echo hi").await.is_err());
     }
 
@@ -1078,28 +1018,22 @@ rm -rf /\n";
 
     #[tokio::test]
     async fn test_dangerous_overridden_by_allowlist() {
-        let mgr = ApprovalManager {
-            mode: ApprovalMode::Off,
-            allowlist: vec!["rm*".into()],
-            ..Default::default()
-        };
+        let mut mgr = ApprovalManager::new(ApprovalMode::Never);
+        mgr.allowlist = vec!["rm*".into()];
         let action = mgr.check_command("rm -rf /").await.unwrap();
         assert_eq!(action, ApprovalAction::Proceed);
     }
 
     #[tokio::test]
-    async fn test_dangerous_denied_when_mode_off() {
-        // In Off mode dangerous commands must be denied (not NeedsApproval),
+    async fn test_dangerous_denied_when_mode_never() {
+        // In Never mode dangerous commands must be denied (not NeedsApproval),
         // otherwise headless agents hang waiting for an approver that never
         // arrives (agentics-skills/chelix#654).
-        let mgr = ApprovalManager {
-            mode: ApprovalMode::Off,
-            ..Default::default()
-        };
+        let mgr = ApprovalManager::new(ApprovalMode::Never);
         let err = mgr
             .check_command("rm -rf /")
             .await
-            .expect_err("expected denial for dangerous command in off mode");
+            .expect_err("expected denial for dangerous command in never mode");
         assert!(
             err.to_string().contains("dangerous command pattern"),
             "unexpected error message: {err}"
@@ -1107,11 +1041,8 @@ rm -rf /\n";
     }
 
     #[tokio::test]
-    async fn test_heredoc_body_allowed_when_mode_off() {
-        let mgr = ApprovalManager {
-            mode: ApprovalMode::Off,
-            ..Default::default()
-        };
+    async fn test_heredoc_body_allowed_when_mode_never() {
+        let mgr = ApprovalManager::new(ApprovalMode::Never);
         let command = "cat > /tmp/safety-test.md << 'EOF'\n\
 WARNING: never run rm -rf / on a production server\n\
 EOF\n";
@@ -1121,18 +1052,15 @@ EOF\n";
     }
 
     #[tokio::test]
-    async fn test_dangerous_denied_when_mode_off_full_security() {
+    async fn test_dangerous_denied_when_mode_never_full_security() {
         // Full security level does not change the safety floor: dangerous
-        // commands are still denied in Off mode.
-        let mgr = ApprovalManager {
-            mode: ApprovalMode::Off,
-            security_level: SecurityLevel::Full,
-            ..Default::default()
-        };
+        // commands are still denied in Never mode.
+        let mut mgr = ApprovalManager::new(ApprovalMode::Never);
+        mgr.security_level = SecurityLevel::Full;
         let err = mgr
             .check_command("git reset --hard")
             .await
-            .expect_err("expected denial for dangerous command in off+full");
+            .expect_err("expected denial for dangerous command in never+full");
         assert!(
             err.to_string().contains("dangerous command pattern"),
             "unexpected error message: {err}"
@@ -1141,17 +1069,15 @@ EOF\n";
 
     #[tokio::test]
     async fn test_dangerous_forces_approval_when_full() {
-        let mgr = ApprovalManager {
-            security_level: SecurityLevel::Full,
-            ..Default::default()
-        };
+        let mut mgr = ApprovalManager::new(ApprovalMode::OnMiss);
+        mgr.security_level = SecurityLevel::Full;
         let action = mgr.check_command("git reset --hard").await.unwrap();
         assert_eq!(action, ApprovalAction::NeedsApproval);
     }
 
     #[tokio::test]
     async fn test_pending_requests_for_session_filters_other_sessions() {
-        let mgr = ApprovalManager::default();
+        let mgr = ApprovalManager::new(ApprovalMode::Never);
         let _ = mgr.create_request("echo one", Some("session:a")).await;
         let _ = mgr.create_request("echo two", Some("session:b")).await;
         let _ = mgr.create_request("echo three", Some("session:a")).await;

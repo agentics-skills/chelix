@@ -25,14 +25,6 @@ impl MutationRoot {
         SystemMutation
     }
 
-    async fn node(&self) -> NodeMutation {
-        NodeMutation
-    }
-
-    async fn device(&self) -> DeviceMutation {
-        DeviceMutation
-    }
-
     async fn chat(&self) -> ChatMutation {
         ChatMutation
     }
@@ -163,84 +155,6 @@ impl SystemMutation {
     async fn update_run(&self, ctx: &Context<'_>) -> Result<BoolResult> {
         let s = services!(ctx);
         from_service(s.update.run(serde_json::json!({})).await)
-    }
-}
-
-// ── Node ────────────────────────────────────────────────────────────────────
-
-#[derive(Default)]
-pub struct NodeMutation;
-
-#[Object]
-impl NodeMutation {
-    /// Forward RPC request to a node.
-    async fn invoke(&self, ctx: &Context<'_>, input: Json) -> Result<Json> {
-        // Node invoke is gateway-level; return placeholder.
-        let _ = (ctx, input);
-        from_service_json(Ok(serde_json::json!({ "ok": true })))
-    }
-
-    /// Rename a connected node.
-    async fn rename(
-        &self,
-        ctx: &Context<'_>,
-        node_id: String,
-        display_name: String,
-    ) -> Result<BoolResult> {
-        let _ = (ctx, node_id, display_name);
-        from_service(Ok(serde_json::json!({ "ok": true })))
-    }
-
-    /// Request pairing with a new node.
-    async fn pair_request(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
-        let _ = (ctx, input);
-        from_service(Ok(serde_json::json!({ "ok": true })))
-    }
-
-    /// Approve node pairing.
-    async fn pair_approve(&self, ctx: &Context<'_>, request_id: String) -> Result<BoolResult> {
-        let _ = (ctx, request_id);
-        from_service(Ok(serde_json::json!({ "ok": true })))
-    }
-
-    /// Reject node pairing.
-    async fn pair_reject(&self, ctx: &Context<'_>, request_id: String) -> Result<BoolResult> {
-        let _ = (ctx, request_id);
-        from_service(Ok(serde_json::json!({ "ok": true })))
-    }
-
-    /// Verify node pairing signature.
-    async fn pair_verify(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
-        let _ = (ctx, input);
-        from_service(Ok(serde_json::json!({ "ok": true })))
-    }
-}
-
-// ── Device ──────────────────────────────────────────────────────────────────
-
-#[derive(Default)]
-pub struct DeviceMutation;
-
-#[Object]
-impl DeviceMutation {
-    async fn pair_approve(&self, ctx: &Context<'_>, device_id: String) -> Result<BoolResult> {
-        let _ = (ctx, device_id);
-        from_service(Ok(serde_json::json!({ "ok": true })))
-    }
-
-    async fn pair_reject(&self, ctx: &Context<'_>, device_id: String) -> Result<BoolResult> {
-        let _ = (ctx, device_id);
-        from_service(Ok(serde_json::json!({ "ok": true })))
-    }
-
-    async fn token_rotate(&self, ctx: &Context<'_>, device_id: String) -> Result<BoolResult> {
-        let _ = (ctx, device_id);
-        from_service(Ok(serde_json::json!({ "ok": true })))
-    }
-
-    async fn token_revoke(&self, ctx: &Context<'_>, device_id: String) -> Result<BoolResult> {
-        let _ = (ctx, device_id);
-        from_service(Ok(serde_json::json!({ "ok": true })))
     }
 }
 

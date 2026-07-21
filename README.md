@@ -18,11 +18,11 @@ Native Rust gateway with a required managed tools sidecar — sandboxed, secure,
 
 Please [open an issue](https://github.com/agentics-skills/chelix/issues) for any friction at all. I'm focused on making Chelix excellent.
 
-**Secure by design** — Your keys stay under your control. Tool execution follows explicit per-session routing: enabled sessions use isolated container sandboxes, while host execution remains available when policy disables sandboxing.
+**Secure by design** — Your keys stay under your control. Enabled sessions use isolated container sandboxes, while host execution remains available when policy disables sandboxing.
 
 **Your hardware** — Runs on a Mac Mini, a Raspberry Pi, or any server you own. The Rust gateway has no Node.js or npm runtime; native filesystem tools run in the required `chelix-tools-service` managed sidecar, and local embeddings use a separate optional sidecar.
 
-**Full-featured** — Voice, memory, cross-session recall, scheduling, Telegram, Signal, Discord, browser automation, MCP servers, SSH or node-backed remote command execution, managed deploy keys with host pinning in the web UI, a live Settings → Tools inventory, Cursor-compatible project context, and context-file threat scanning — all built-in. No plugin marketplace to get supply-chain attacked through.
+**Full-featured** — Voice, memory, cross-session recall, scheduling, Telegram, Signal, Discord, browser automation, MCP servers, managed SSH deploy keys and targets with host pinning in the web UI, a live Settings → Tools inventory, Cursor-compatible project context, and context-file threat scanning — all built-in. No plugin marketplace to get supply-chain attacked through.
 
 **Auditable** — The agent runner and model interface fit in ~7.5K lines, with providers in ~19K more. The Rust workspace is ~270K lines across 59 modular crates you can audit independently, with 470+ Rust files containing tests. Unsafe code is isolated to FFI and precompiled runtime boundaries, not the core agent loop.
 
@@ -71,7 +71,6 @@ Current Rust workspace: ~270K LoC across 59 crates. The table below groups the m
 | Auth and security | `chelix-auth`, `chelix-oauth`, `chelix-vault`, `chelix-secret-store`, `chelix-tls` | 8.5K |
 | Scheduling and automation | `chelix-cron`, `chelix-caldav`, `chelix-auto-reply` | 4.7K |
 | Setup and import | `chelix-provider-setup`, `chelix-onboarding` | 11.7K |
-| Native and node hosts | `chelix-node-host`, `chelix-courier` | 5.7K |
 | Supporting crates | `chelix-media`, `chelix-metrics`, `chelix-routing`, `chelix-canvas`, `chelix-schema-export`, `benchmarks` | 2.1K |
 
 Use `--no-default-features --features lightweight` for constrained devices (Raspberry Pi, etc.).
@@ -97,7 +96,7 @@ Verify releases with `gh attestation verify <artifact> -R agentics-skills/chelix
 - **Memory & Recall** — Per-agent memory workspaces, embeddings-powered long-term memory, hybrid vector + full-text search, session persistence with auto-compaction, cross-session recall, Cursor-compatible project context, context-file safety scanning
 - **Extensibility** — MCP servers (stdio + HTTP/SSE), skill system, 14 lifecycle hook events with circuit breaker, destructive command guard
 - **Security** — Encryption-at-rest vault (XChaCha20-Poly1305 + Argon2id), password + passkey + API key auth, sandbox isolation, SSRF/CSWSH protection
-- **Operations** — Cron scheduling, OpenTelemetry tracing, Prometheus metrics, cloud deploy, managed SSH deploy keys, host-pinned remote targets, live tool inventory in Settings, and CLI/web remote command doctor flows
+- **Operations** — Cron scheduling, OpenTelemetry tracing, Prometheus metrics, cloud deploy, managed SSH deploy keys, host-pinned SSH targets, and live tool inventory in Settings
 
 ## How It Works
 

@@ -208,38 +208,6 @@ security_level = "paranoid"
 }
 
 #[test]
-fn ssh_command_host_accepted() {
-    let toml = r#"
-[tools.execute_command]
-host = "ssh"
-ssh_target = "deploy@example"
-"#;
-    let result = validate_toml_str(toml);
-    let warning = result
-        .diagnostics
-        .iter()
-        .find(|d| d.path == "tools.execute_command.host");
-    assert!(
-        warning.is_none(),
-        "ssh should be accepted as a valid command host"
-    );
-}
-
-#[test]
-fn ssh_command_host_without_target_warned() {
-    let toml = r#"
-[tools.execute_command]
-host = "ssh"
-"#;
-    let result = validate_toml_str(toml);
-    let warning = result
-        .diagnostics
-        .iter()
-        .find(|d| d.path == "tools.execute_command.ssh_target");
-    assert!(warning.is_some(), "expected warning for missing ssh target");
-}
-
-#[test]
 fn browser_obscura_path_accepted() {
     let toml = r#"
 [tools.browser]

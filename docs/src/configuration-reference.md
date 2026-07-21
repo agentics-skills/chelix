@@ -294,18 +294,36 @@ not create chat agents, change memory, or affect `spawn_agent` presets.
 
 ## Tools — Execution
 
+Tool-result truncation and persistence have one owner:
+`chelix-agents` processes the complete agent-facing result after a tool returns.
+Raw implementation and protocol metadata remain separate for control and UI
+handling. The shared `tools.max_tool_result_bytes` limit controls the
+agent-facing in-context copy, while that complete value is persisted first and
+an oversized result receives a pointer to its `content.txt` or `content.json`
+file. Strings use `content.txt`; objects and arrays use `content.json` with
+`schema.json`. Agent presets can override the shared limit with
+`agents.presets.<name>.max_tool_result_bytes`.
+
+Tools must not truncate their own returned results. A tool can select its
+in-code truncation and persistence policies independently. Reading tools use
+both opt-outs: Read already applies explicit line and byte bounds, so it neither
+re-truncates nor re-persists content when reading a persisted tool result back
+into context. A tool that disables persistence cannot use standard truncation
+for an oversized result because there would be no resolvable full-output file.
+
 ### `tools.execute_command` — ExecuteCommandConfig
 
 | Key                    | Type            | Default       | Description                                                                  |
 | ---------------------- | --------------- | ------------- | ---------------------------------------------------------------------------- |
 | `default_timeout_secs` | integer         | `30`          | Default wall-clock timeout in seconds for command execution.                 |
-| `max_output_bytes`     | integer         | `204800`      | Maximum bytes of stdout/stderr captured per command.                         |
-| `approval_mode`        | string          | `"on-miss"`   | When operator approval is required (`"always"`, `"on-miss"`, `"never"`).     |
+| `approval_mode`        | enum            | `"never"`     | Operator approval policy. Accepted values are exactly `"always"`, `"on-miss"`, and `"never"`. |
 | `security_level`       | string          | `"allowlist"` | Security enforcement level (`"allowlist"`, `"sandbox"`, etc.).               |
 | `allowlist`            | array           | `[]`          | List of command globs permitted without sandboxing.                          |
-| `host`                 | string          | `"local"`     | Where to run commands: `"local"`, `"node"`, or `"ssh"`.                      |
-| `node`                 | optional string | `null`        | Default node id or display name for remote execution (when `host = "node"`). |
-| `ssh_target`           | optional string | `null`        | Default SSH target for remote execution (when `host = "ssh"`).               |
+
+`approval_mode = "never"` executes ordinary commands without approval. Commands
+matched by the built-in dangerous-command safety floor are denied instead of
+creating an approval request. `"on-miss"` and `"always"` enable operator approval
+explicitly. Any other value is rejected while loading the configuration.
 
 ### `sandbox` — SandboxConfig
 
@@ -428,7 +446,7 @@ inside the sandbox. This invariant is not configurable. Add other mounts with
 | agent_max_iterations                           | integer       | `25`            | Maximum number of agent loop iterations before aborting.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | agent_max_auto_continues                       | integer       | `2`             | Maximum auto-continue nudges when the model stops mid-task (0 = disabled).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | agent_auto_continue_min_tool_calls             | integer       | `3`             | Minimum tool calls in the current run before auto-continue can trigger.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| max_tool_result_bytes                          | integer       | `50000` (50 KB) | Maximum in-context bytes for a single tool result before truncation. Full outputs are always persisted under `<data_dir>/sessions/tool-results/<session>/<call>/`. Tools with line-oriented output (including terminal, Read, skill/web content, and spawned-agent text) explicitly and deterministically use `content.txt` with real line breaks; structured tools use `content.json` + `schema.json`. This format does not depend on result size. Truncated results end with a direct pointer to the persisted file so the agent can re-read it with Read/Grep. Overridable per agent via `agents.presets.<name>.max_tool_result_bytes`. |
+| max_tool_result_bytes                          | integer       | `50000` (50 KB) | Maximum in-context bytes for a single agent-facing tool result before truncation. Agent-facing values are persisted under `<data_dir>/sessions/tool-results/<session>/<call>/`; raw protocol metadata is not included. Strings use `content.txt`, while objects and arrays use `content.json` + `schema.json`. This format does not depend on result size. Truncated results end with a direct pointer to the persisted file so the agent can re-read it with Read/Grep. Overridable per agent via `agents.presets.<name>.max_tool_result_bytes`. |
 | registry_mode                                  | string (enum) | `"full"`        | How tool schemas are presented to the model. One of: `full` (all schemas sent every turn), `lazy` (the full tool catalog is always advertised, but parameter schemas are deferred — `get_tool`, schemas listed in the active agent preset's `tools.preload`, and schemas fetched on demand by exact name are sent).                                                                                                                                                                                                                                                       |
 | agent_loop_detector_window                     | integer       | `2`             | Window size for the tool-call reflex-loop detector. When this many consecutive model rounds contain equivalent failures (same tool and either the same normalized arguments or the same non-empty error), the runner injects a directive intervention message. Parallel sibling calls from one model response count as one round. Set to 0 to disable.                                                                                                                                                                                                                                                                                         |
 | agent_loop_detector_strip_tools_on_second_fire | bool          | `true`          | When the loop detector fires a second time (stage 2), strip the tool schema list for a single LLM turn so the model is forced to respond in text.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |

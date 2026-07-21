@@ -14,6 +14,7 @@ use {
     },
     async_trait::async_trait,
     chelix_agents::tool_registry::ToolRegistry,
+    chelix_config::ApprovalMode,
     serde_json::json,
     std::{
         path::PathBuf,
@@ -982,7 +983,7 @@ async fn sandbox_write_requires_approval_before_bridge() {
         backend,
     ));
 
-    let approval_manager = Arc::new(ApprovalManager::default());
+    let approval_manager = Arc::new(ApprovalManager::new(ApprovalMode::Never));
     let broadcaster = Arc::new(TestBroadcaster::new());
     let broadcaster_dyn: Arc<dyn ApprovalBroadcaster> = broadcaster.clone();
 
@@ -1031,7 +1032,7 @@ async fn edit_denied_without_approval_does_not_mutate_host_file() {
     let target = dir.path().join("edit.txt");
     tokio::fs::write(&target, "before\n").await.unwrap();
 
-    let approval_manager = Arc::new(ApprovalManager::default());
+    let approval_manager = Arc::new(ApprovalManager::new(ApprovalMode::Never));
     let broadcaster = Arc::new(TestBroadcaster::new());
     let broadcaster_dyn: Arc<dyn ApprovalBroadcaster> = broadcaster.clone();
 
@@ -1079,7 +1080,7 @@ async fn multi_edit_denied_without_approval_does_not_mutate_host_file() {
     let target = dir.path().join("multi.txt");
     tokio::fs::write(&target, "alpha\nbeta\n").await.unwrap();
 
-    let approval_manager = Arc::new(ApprovalManager::default());
+    let approval_manager = Arc::new(ApprovalManager::new(ApprovalMode::Never));
     let broadcaster = Arc::new(TestBroadcaster::new());
     let broadcaster_dyn: Arc<dyn ApprovalBroadcaster> = broadcaster.clone();
 

@@ -36,6 +36,6 @@ pub use {
     types::{
         BuildImageResult, DEFAULT_SANDBOX_IMAGE, HomePersistence, ResourceLimits, Sandbox,
         SandboxBackend, SandboxBackendId, SandboxConfig, SandboxId, SandboxMode, SandboxScope,
-        ToolsServiceEndpoint,
+        ToolsServiceEndpoint, ToolsServiceInstance,
     },
 };

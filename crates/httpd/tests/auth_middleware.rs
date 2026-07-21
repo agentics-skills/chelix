@@ -153,7 +153,6 @@ async fn start_auth_server_impl_with_webauthn(
         config,
         sandbox_router,
         Some(Arc::clone(&cred_store)),
-        None, // pairing_store
         localhost_only,
         behind_proxy,
         false,
@@ -239,7 +238,6 @@ async fn start_localhost_server_with_vault() -> (
         config,
         sandbox_router,
         Some(Arc::clone(&cred_store)),
-        None, // pairing_store
         true,
         false,
         false,
@@ -318,7 +316,6 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
         config,
         sandbox_router,
         Some(Arc::clone(&cred_store)),
-        None, // pairing_store
         true,
         false,
         false,

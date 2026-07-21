@@ -52,7 +52,6 @@
 - [Webhooks](webhooks.md)
 - [Skill Self-Extension](skill-tools.md)
 - [Mobile PWA](mobile-pwa.md)
-- [Multi-Node](nodes.md)
 - [Service Management](service.md)
 
 ---

@@ -43,13 +43,6 @@ export let modelSearchInput: HTMLElement | null = null;
 export let modelDropdownList: HTMLElement | null = null;
 export let modelIdx = -1;
 
-// Node selector elements — created dynamically inside the chat page
-export let nodeCombo: HTMLElement | null = null;
-export let nodeComboBtn: HTMLElement | null = null;
-export let nodeComboLabel: HTMLElement | null = null;
-export let nodeDropdown: HTMLElement | null = null;
-export let nodeDropdownList: HTMLElement | null = null;
-
 // Session project combo (in chat header)
 export let projectCombo: HTMLElement | null = null;
 export let projectComboBtn: HTMLElement | null = null;
@@ -190,21 +183,6 @@ export function setModelDropdownList(v: HTMLElement | null): void {
 }
 export function setModelIdx(v: number): void {
 	modelIdx = v;
-}
-export function setNodeCombo(v: HTMLElement | null): void {
-	nodeCombo = v;
-}
-export function setNodeComboBtn(v: HTMLElement | null): void {
-	nodeComboBtn = v;
-}
-export function setNodeComboLabel(v: HTMLElement | null): void {
-	nodeComboLabel = v;
-}
-export function setNodeDropdown(v: HTMLElement | null): void {
-	nodeDropdown = v;
-}
-export function setNodeDropdownList(v: HTMLElement | null): void {
-	nodeDropdownList = v;
 }
 export function setProjectCombo(v: HTMLElement | null): void {
 	projectCombo = v;

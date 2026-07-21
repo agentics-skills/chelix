@@ -303,6 +303,24 @@ impl std::fmt::Debug for ToolsServiceEndpoint {
     }
 }
 
+#[derive(Clone)]
+pub struct ToolsServiceInstance {
+    pub id: String,
+    pub label: String,
+    pub endpoint: ToolsServiceEndpoint,
+}
+
+impl std::fmt::Debug for ToolsServiceInstance {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ToolsServiceInstance")
+            .field("id", &self.id)
+            .field("label", &self.label)
+            .field("endpoint", &self.endpoint)
+            .finish()
+    }
+}
+
 /// Result of a `build_image` call.
 #[derive(Debug, Clone)]
 pub struct BuildImageResult {
@@ -327,6 +345,11 @@ pub trait Sandbox: Send + Sync {
             "sandbox backend {} does not expose the managed tools service",
             self.backend_id()
         )))
+    }
+
+    /// Return only tools-service instances already started and registered by this backend.
+    async fn tools_service_instances(&self) -> Result<Vec<ToolsServiceInstance>> {
+        Ok(Vec::new())
     }
 
     /// Run a command inside the sandbox.

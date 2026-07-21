@@ -14,7 +14,6 @@ import { initImages, teardownImages } from "./ImagesPage";
 import { initLogs, teardownLogs } from "./LogsPage";
 import { initMcp, teardownMcp } from "./McpPage";
 import { initMonitoring, teardownMonitoring } from "./MetricsPage";
-import { initNodes, teardownNodes } from "./NodesPage";
 import { initProjects, teardownProjects } from "./ProjectsPage";
 import { initProviders, teardownProviders } from "./ProvidersPage";
 import { initSkills, teardownSkills } from "./SkillsPage";
@@ -63,12 +62,6 @@ const sections: SectionItem[] = [
 		id: "agents",
 		label: "Agents",
 		icon: <span className="icon icon-users" />,
-		page: true,
-	},
-	{
-		id: "nodes",
-		label: "Nodes",
-		icon: <span className="icon icon-nodes" />,
 		page: true,
 	},
 	{
@@ -279,7 +272,6 @@ const pageSectionHandlers: Record<string, PageSectionHandler> = {
 	providers: { init: initProviders, teardown: teardownProviders },
 	channels: { init: initChannels, teardown: teardownChannels },
 	mcp: { init: initMcp, teardown: teardownMcp },
-	nodes: { init: initNodes, teardown: teardownNodes },
 	projects: { init: initProjects, teardown: teardownProjects },
 	hooks: { init: initHooks, teardown: teardownHooks },
 	skills: { init: initSkills, teardown: teardownSkills },

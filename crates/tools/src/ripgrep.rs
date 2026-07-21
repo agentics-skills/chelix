@@ -5,13 +5,14 @@ use std::sync::Arc;
 use {
     async_trait::async_trait,
     chelix_agents::tool_registry::AgentTool,
+    chelix_protocol::RipgrepRequest,
     serde_json::{Value, json},
 };
 
 #[cfg(feature = "metrics")]
 use chelix_metrics::{counter, labels, tools as tools_metrics};
 
-use crate::tools_service::ToolsService;
+use crate::tools_service::ManagedToolsService;
 
 const DEFAULT_MAX_MATCHES: usize = 2000;
 const DEFAULT_MAX_FILES: usize = 200;
@@ -19,12 +20,12 @@ const DEFAULT_MAX_OUTPUT_CHARS: usize = 200_000;
 const DEFAULT_TIMEOUT_MS: u64 = 10_000;
 
 pub struct RipgrepTool {
-    service: Arc<dyn ToolsService>,
+    service: Arc<ManagedToolsService>,
 }
 
 impl RipgrepTool {
     #[must_use]
-    pub fn new(service: Arc<dyn ToolsService>) -> Self {
+    pub fn new(service: Arc<ManagedToolsService>) -> Self {
         Self { service }
     }
 }
@@ -145,7 +146,10 @@ impl AgentTool for RipgrepTool {
             .unwrap_or("main")
             .to_string();
         strip_internal_and_null_params(&mut params);
-        let result = self.service.ripgrep(&session_key, params).await;
+        let result = self
+            .service
+            .ripgrep(&session_key, RipgrepRequest { params })
+            .await;
         #[cfg(feature = "metrics")]
         match &result {
             Ok(_) => {
@@ -164,7 +168,7 @@ impl AgentTool for RipgrepTool {
                 .increment(1);
             },
         }
-        Ok(result?)
+        Ok(result?.result)
     }
 }
 
@@ -182,44 +186,32 @@ fn strip_internal_and_null_params(value: &mut Value) {
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::{Result, error::Error},
-        std::sync::Mutex,
-    };
+    use {super::*, crate::sandbox::ToolsServiceEndpoint};
 
-    struct FakeToolsService {
-        calls: Mutex<Vec<(String, Value)>>,
-        result: Value,
-        fail: bool,
-    }
-
-    #[async_trait]
-    impl ToolsService for FakeToolsService {
-        async fn list_directory(&self, _session_key: &str, _path: String) -> Result<String> {
-            Err(Error::message("list_directory is not used by this test"))
-        }
-
-        async fn ripgrep(&self, session_key: &str, params: Value) -> Result<Value> {
-            self.calls
-                .lock()
-                .map_err(|_| Error::message("test calls lock poisoned"))?
-                .push((session_key.to_string(), params));
-            if self.fail {
-                return Err(Error::message("synthetic tools service failure"));
-            }
-            Ok(self.result.clone())
-        }
+    fn client(base_url: String, token: &str) -> Arc<ManagedToolsService> {
+        ManagedToolsService::for_test(ToolsServiceEndpoint {
+            base_url,
+            token: token.into(),
+        })
+        .unwrap_or_else(|error| panic!("test client failed: {error}"))
     }
 
     #[tokio::test]
     async fn execute_routes_session_and_strips_internal_context() {
-        let service = Arc::new(FakeToolsService {
-            calls: Mutex::new(Vec::new()),
-            result: json!({ "found": true }),
-            fail: false,
-        });
-        let tool = RipgrepTool::new(service.clone());
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("POST", chelix_protocol::TOOLS_SERVICE_RIPGREP_PATH)
+            .match_header("authorization", "Bearer rg-token")
+            .match_body(mockito::Matcher::Json(json!({
+                "params": { "pattern": "needle" }
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body("{\"result\":{\"found\":true}}")
+            .expect(1)
+            .create_async()
+            .await;
+        let tool = RipgrepTool::new(client(server.url(), "rg-token"));
         let result = tool
             .execute(json!({
                 "pattern": "needle",
@@ -231,23 +223,21 @@ mod tests {
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
 
         assert_eq!(result["found"], true);
-        let calls = service
-            .calls
-            .lock()
-            .unwrap_or_else(|error| panic!("calls lock failed: {error}"));
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].0, "session:test");
-        assert_eq!(calls[0].1, json!({ "pattern": "needle" }));
+        call.assert_async().await;
     }
 
     #[tokio::test]
     async fn execute_surfaces_service_failure() {
-        let service = Arc::new(FakeToolsService {
-            calls: Mutex::new(Vec::new()),
-            result: Value::Null,
-            fail: true,
-        });
-        let error = RipgrepTool::new(service)
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("POST", chelix_protocol::TOOLS_SERVICE_RIPGREP_PATH)
+            .with_status(422)
+            .with_header("content-type", "application/json")
+            .with_body("{\"error\":\"synthetic tools service failure\"}")
+            .expect(1)
+            .create_async()
+            .await;
+        let error = RipgrepTool::new(client(server.url(), "test-token"))
             .execute(json!({ "pattern": "needle" }))
             .await
             .unwrap_err();
@@ -257,5 +247,6 @@ mod tests {
                 .to_string()
                 .contains("synthetic tools service failure")
         );
+        call.assert_async().await;
     }
 }

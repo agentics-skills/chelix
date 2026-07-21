@@ -84,25 +84,20 @@ async fn system_presence_query_returns_typed_shape() {
     mock.set_response(
         "system-presence",
         json!({
-            "clients": [{"connId": "c1", "role": "operator", "connectedAt": 42}],
-            "nodes": [{"nodeId": "n1", "displayName": "Node One"}]
+            "clients": [{"connId": "c1", "role": "operator", "connectedAt": 42}]
         }),
     );
     let (schema, _) = build_test_schema(mock);
 
     let res = schema
         .execute(Request::new(
-            r#"{ system { presence { clients { connId role connectedAt } nodes { nodeId displayName } } } }"#,
+            r#"{ system { presence { clients { connId role connectedAt } } } }"#,
         ))
         .await;
 
     assert!(res.errors.is_empty(), "errors: {:?}", res.errors);
     let data = res.data.into_json().expect("json");
     assert_eq!(data["system"]["presence"]["clients"][0]["connId"], "c1");
-    assert_eq!(
-        data["system"]["presence"]["nodes"][0]["displayName"],
-        "Node One"
-    );
 }
 
 #[tokio::test]

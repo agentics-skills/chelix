@@ -11,13 +11,12 @@ use crate::{
     services,
     types::{
         AgentIdentity, BoolResult, ChannelInfo, ChannelSendersResult, ChatRawPrompt,
-        CommandApprovalConfig, CommandNodeApprovalConfig, CronJob, CronRunRecord, CronStatus,
-        HealthInfo, HeartbeatStatus, HookInfo, LogListResult, LogStatus, LogTailResult, McpServer,
-        McpTool, MemoryConfig, MemoryStatus, ModelInfo, NodeDescription, NodeInfo, Project,
-        ProjectContext, ProviderInfo, SecurityScanResult, SecurityStatus, SessionActiveResult,
-        SessionBranch, SessionEntry, SessionShareResult, SkillInfo, SkillRepo, StatusInfo,
-        SttStatus, SystemPresence, TtsStatus, UsageCost, UsageStatus, VoiceConfig, VoicewakeConfig,
-        VoxtralRequirements,
+        CommandApprovalConfig, CronJob, CronRunRecord, CronStatus, HealthInfo, HeartbeatStatus,
+        HookInfo, LogListResult, LogStatus, LogTailResult, McpServer, McpTool, MemoryConfig,
+        MemoryStatus, ModelInfo, Project, ProjectContext, ProviderInfo, SecurityScanResult,
+        SecurityStatus, SessionActiveResult, SessionBranch, SessionEntry, SessionShareResult,
+        SkillInfo, SkillRepo, StatusInfo, SttStatus, SystemPresence, TtsStatus, UsageCost,
+        UsageStatus, VoiceConfig, VoicewakeConfig, VoxtralRequirements,
     },
 };
 
@@ -44,11 +43,6 @@ impl QueryRoot {
     /// System queries (presence, heartbeat).
     async fn system(&self) -> SystemQuery {
         SystemQuery
-    }
-
-    /// Node management queries.
-    async fn node(&self) -> NodeQuery {
-        NodeQuery
     }
 
     /// Chat queries (history, context).
@@ -155,11 +149,6 @@ impl QueryRoot {
     async fn voicewake(&self) -> VoicewakeQuery {
         VoicewakeQuery
     }
-
-    /// Device pairing queries.
-    async fn device(&self) -> DeviceQuery {
-        DeviceQuery
-    }
 }
 
 // ── System ──────────────────────────────────────────────────────────────────
@@ -169,7 +158,7 @@ pub struct SystemQuery;
 
 #[Object]
 impl SystemQuery {
-    /// Detailed client and node presence information.
+    /// Detailed client presence information.
     async fn presence(&self, ctx: &Context<'_>) -> Result<SystemPresence> {
         let s = services!(ctx);
         from_service(s.system_info.system_presence().await)
@@ -179,42 +168,6 @@ impl SystemQuery {
     async fn last_heartbeat(&self, ctx: &Context<'_>) -> Result<BoolResult> {
         let s = services!(ctx);
         from_service(s.system_info.health().await)
-    }
-}
-
-// ── Node ────────────────────────────────────────────────────────────────────
-
-#[derive(Default)]
-pub struct NodeQuery;
-
-#[Object]
-impl NodeQuery {
-    /// List all connected nodes.
-    async fn list(&self, ctx: &Context<'_>) -> Result<Vec<NodeInfo>> {
-        let s = services!(ctx);
-        from_service(s.system_info.node_list().await)
-    }
-
-    /// Get detailed info for a specific node.
-    async fn describe(&self, ctx: &Context<'_>, node_id: String) -> Result<NodeDescription> {
-        let s = services!(ctx);
-        from_service(
-            s.system_info
-                .node_describe(serde_json::json!({ "nodeId": node_id }))
-                .await,
-        )
-    }
-
-    /// List pending pairing requests.
-    async fn pair_requests(&self, ctx: &Context<'_>) -> Result<Json> {
-        // Pairing request shape varies by transport.
-        let s = services!(ctx);
-        from_service_json(
-            s.system_info
-                .node_list()
-                .await
-                .map(|_| serde_json::json!([])),
-        )
     }
 }
 
@@ -681,12 +634,6 @@ impl CommandApprovalQuery {
         let s = services!(ctx);
         from_service(s.command_approval.get().await)
     }
-
-    /// Get node-specific approval settings.
-    async fn node_config(&self, ctx: &Context<'_>) -> Result<CommandNodeApprovalConfig> {
-        let s = services!(ctx);
-        from_service(s.command_approval.node_get(serde_json::json!({})).await)
-    }
 }
 
 // ── Projects ────────────────────────────────────────────────────────────────
@@ -794,19 +741,5 @@ impl VoicewakeQuery {
     async fn get(&self, ctx: &Context<'_>) -> Result<VoicewakeConfig> {
         let s = services!(ctx);
         from_service(s.voicewake.get().await)
-    }
-}
-
-// ── Device ──────────────────────────────────────────────────────────────────
-
-#[derive(Default)]
-pub struct DeviceQuery;
-
-#[Object]
-impl DeviceQuery {
-    /// List paired devices.
-    async fn pair_requests(&self, _ctx: &Context<'_>) -> Result<Json> {
-        // Device pairing info varies by transport type.
-        from_service_json(Ok(serde_json::json!([])))
     }
 }

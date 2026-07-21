@@ -36,8 +36,8 @@ curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/insta
 - **Multiple LLM Providers** — Anthropic, OpenAI, Google Gemini, xAI,
   OpenRouter, Moonshot, Z.AI, and more
 - **Streaming-First** — Responses appear as tokens arrive, not after completion
-- **Session-Aware Tool Routing** — Tools use the selected host or sandbox
-  execution environment
+- **Managed Tool Execution** — Host and sandbox tools use the required
+  `chelix-tools-service`
 - **MCP Support** — Connect to Model Context Protocol servers for extended
   capabilities
 - **Multi-Channel** — Web UI, Telegram, Discord, API access with synchronized
@@ -46,8 +46,8 @@ curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/insta
 - **Long-Term Memory** — Embeddings-powered knowledge base with hybrid search
 - **Cross-Session Recall** — Search earlier sessions for relevant snippets and
   prior decisions
-- **Remote Command Targets** — Route command execution locally, through a paired
-  node, or over SSH
+- **SSH Key Management** — Manage deploy keys, named targets, connectivity
+  checks, and host-key pins in Settings
 - **Context Hardening** — Load `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, and
   rule directories with safety scanning
 - **Hook System** — Observe, modify, or block actions at any lifecycle point

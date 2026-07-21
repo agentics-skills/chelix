@@ -6,8 +6,8 @@ use {
         prompt::{
             formatting::{
                 append_truncated_text_block, format_chelix_runtime_line,
-                format_compact_tool_schema, format_host_runtime_line, format_nodes_runtime_section,
-                format_sandbox_runtime_line, tool_call_guidance, truncate_prompt_text,
+                format_compact_tool_schema, format_host_runtime_line, format_sandbox_runtime_line,
+                tool_call_guidance, truncate_prompt_text,
             },
             types::{
                 DEFAULT_WORKSPACE_FILE_MAX_CHARS, PromptBuildLimits, PromptBuildMetadata,
@@ -63,11 +63,6 @@ const MINIMAL_GUIDELINES: &str = concat!(
     "- If you don't know something, say so rather than making things up.\n",
     "- For coding questions, provide clear explanations with examples.\n",
 );
-const NODE_ROUTING_GUIDANCE: &str = "\
-- When nodes are connected, the `execute_command` tool accepts an optional `node` parameter to target a specific node.\n\
-- Omitting `node` runs on the session's default node (shown as [default: ...] above), or locally if none is set.\n\
-- Use `nodes_list` or `nodes_describe` to check live telemetry (CPU, memory, disk) before picking targets for resource-intensive tasks.\n\n";
-
 /// Build the system prompt for an agent run, including available tools.
 pub fn build_system_prompt(
     tools: &ToolRegistry,
@@ -448,10 +443,6 @@ fn append_runtime_section(
 
     let host_line = format_host_runtime_line(&runtime.host);
     let sandbox_line = runtime.sandbox.as_ref().map(format_sandbox_runtime_line);
-    let nodes_line = runtime
-        .nodes
-        .as_ref()
-        .and_then(format_nodes_runtime_section);
 
     prompt.push_str("## Runtime\n\n");
     prompt.push_str(&format_chelix_runtime_line());
@@ -462,11 +453,6 @@ fn append_runtime_section(
     }
     let has_sandbox = sandbox_line.is_some();
     if let Some(line) = sandbox_line {
-        prompt.push_str(&line);
-        prompt.push('\n');
-    }
-    let has_nodes = nodes_line.is_some();
-    if let Some(line) = nodes_line {
         prompt.push_str(&line);
         prompt.push('\n');
     }
@@ -483,9 +469,6 @@ fn append_runtime_section(
             prompt.push_str(COMMAND_ROUTING_SANDBOX_CLOSING);
         }
         prompt.push('\n');
-        if has_nodes {
-            prompt.push_str(NODE_ROUTING_GUIDANCE);
-        }
     } else {
         prompt.push('\n');
     }

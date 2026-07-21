@@ -402,13 +402,9 @@ port = {port}                           # Port number (auto-generated for this i
 
 # [tools.execute_command]
 # default_timeout_secs = 30         # Default timeout for commands
-# max_output_bytes = 204800         # Max command output bytes (200KB)
-# approval_mode = "on-miss"         # "always" | "on-miss" | "never"
+# approval_mode = "never"           # "always" | "on-miss" | "never"
 # security_level = "allowlist"      # "permissive" | "allowlist" | "strict"
 # allowlist = []                    # Command patterns to allow. Example: ["git *", "npm *"]
-# host = "local"                    # "local" | "node" | "ssh"
-# node = "mac-mini"                 # Default node when host = "node"
-# ssh_target = "deploy@box"         # SSH target when host = "ssh"
 
 # ── Tool Policy ───────────────────────────────────────────────────────────────
 # Control which tools the agent can use. Policies are layered (later wins for

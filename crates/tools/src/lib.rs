@@ -1,6 +1,6 @@
 //! Tool implementations and policy enforcement.
 //!
-//! Tools: command execution, browser, canvas, message, nodes, cron, sessions,
+//! Tools: command execution, browser, canvas, message, cron, sessions,
 //! memory, image gen, plus channel and plugin tools.
 //!
 //! Policy: multi-layered allow/deny (global, per-agent, per-provider,
@@ -26,7 +26,6 @@ pub mod image_generation;
 pub mod list_directory;
 pub mod location;
 pub mod map;
-pub mod nodes;
 pub mod params;
 pub mod policy;
 pub mod process;

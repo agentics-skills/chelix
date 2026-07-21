@@ -150,7 +150,6 @@ pub struct SshTargetEntry {
 #[derive(Debug, Clone)]
 pub struct SshResolvedTarget {
     pub id: i64,
-    pub node_id: String,
     pub label: String,
     pub target: String,
     pub port: Option<u16>,
