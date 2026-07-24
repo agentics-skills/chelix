@@ -1010,7 +1010,7 @@ pub async fn run_agent_loop_streaming_with_limits(
             let tool = resolve_tool_lookup(tools, sanitize_tool_name(&tc.name).as_ref()).0;
             let mut agent_result = if has_raw_result {
                 match tool.as_ref() {
-                    Some(tool) => tool.agent_result(&tc.arguments, &raw_result)?,
+                    Some(tool) => tool.agent_result(&tc.arguments, &raw_result).await?,
                     None => raw_result.clone(),
                 }
             } else {

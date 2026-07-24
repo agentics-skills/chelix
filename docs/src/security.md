@@ -95,10 +95,27 @@ Filesystem isolation protects your host system from:
 
 See [sandbox.md](sandbox.md) for backend configuration.
 
-Agent-facing `execute_command` runs sandbox commands through real tmux panes. It
-returns a managed `terminalId` that can be passed to `read_terminal_output` for
-commands that outlive the initial timeout or run in background mode. If no tmux
-server is running in the sandbox, Chelix creates one before pasting the command.
+Agent-facing `execute_command` runs through the managed tools service inside the
+selected execution environment. With sandboxing enabled, the RMUX PTY and its
+interactive shell stay inside that sandbox. The returned numeric `terminalId`
+can be passed to `read_terminal_output` for commands that outlive the initial
+timeout or run in background mode. Reusing a terminal also reuses its current
+directory, exported variables, shell functions, jobs, child processes, and
+retained output, so a terminal should be treated as persistent session state
+rather than an isolated one-shot command.
+
+### Terminal Output and Secret Redaction
+
+Terminal clients receive the original PTY byte stream so the web terminal can
+render the same output produced by the shell. Secret redaction is applied when
+`execute_command` or `read_terminal_output` converts a tools-service response
+into the agent-facing tool result. That redacted result is the value persisted
+in tool history and supplied to the model.
+
+Only values of enabled environment variables marked `secret = true` are
+replaced with `[REDACTED]`. Values marked `secret = false` remain unchanged.
+The `secret` flag therefore controls the agent/history boundary; it does not
+modify the terminal's PTY stream or the output shown by terminal clients.
 
 ### Resource Limits
 

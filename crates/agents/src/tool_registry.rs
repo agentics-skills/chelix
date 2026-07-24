@@ -59,7 +59,7 @@ pub trait AgentTool: Send + Sync {
     /// Convert the raw implementation/protocol result into the value exposed
     /// to the LLM and persisted as tool context. The default contract exposes
     /// the complete raw value unchanged, including MCP structured results.
-    fn agent_result(
+    async fn agent_result(
         &self,
         _params: &serde_json::Value,
         raw_result: &serde_json::Value,

@@ -4,8 +4,8 @@ mod interactive_terminal;
 mod list_directory;
 mod process;
 mod ripgrep;
+mod rmux;
 mod terminal;
-mod tmux;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

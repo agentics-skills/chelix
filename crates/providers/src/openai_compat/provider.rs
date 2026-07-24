@@ -14,11 +14,8 @@ use {
     tracing::trace,
 };
 
-use super::{
-    schema_normalization::{
-        collapse_schema_unions_for_non_strict_tools, sanitize_schema_for_openai_compat,
-    },
-    strict_mode::patch_schema_for_strict_mode,
+use super::schema_normalization::{
+    collapse_schema_unions_for_non_strict_tools, sanitize_schema_for_openai_compat,
 };
 
 // ============================================================================
@@ -75,27 +72,18 @@ pub struct ResponsesApiTool {
 /// { "type": "function", "function": { "name": "...", ... } }
 /// ```
 ///
-/// When `strict` is `true`, patches schemas for strict mode compliance:
-/// - `additionalProperties: false` on all object schemas
-/// - All properties included in `required` array
-/// - Originally-optional properties made nullable via array-form types
-///
-/// When `strict` is `false`, schemas are sanitized but not patched for strict
-/// mode. This avoids array-form types like `["boolean", "null"]` that
-/// non-OpenAI backends (e.g. Google via OpenRouter) reject.
+/// Tool schemas are always sent with `strict: false`. Their declared
+/// `required` fields remain authoritative, so optional properties are never
+/// rewritten into required nullable properties.
 ///
 /// See: <https://platform.openai.com/docs/guides/function-calling>
-pub fn to_openai_tools(tools: &[serde_json::Value], strict: bool) -> Vec<serde_json::Value> {
+pub fn to_openai_tools(tools: &[serde_json::Value], _strict: bool) -> Vec<serde_json::Value> {
     let result: Vec<serde_json::Value> = tools
         .iter()
         .filter_map(|t| {
             let mut params = t["parameters"].clone();
             sanitize_schema_for_openai_compat(&mut params);
-            if strict {
-                patch_schema_for_strict_mode(&mut params);
-            } else {
-                collapse_schema_unions_for_non_strict_tools(&mut params);
-            }
+            collapse_schema_unions_for_non_strict_tools(&mut params);
 
             let name = t["name"].as_str()?.to_string();
             let description = t["description"].as_str().unwrap_or("").to_string();
@@ -107,11 +95,11 @@ pub fn to_openai_tools(tools: &[serde_json::Value], strict: bool) -> Vec<serde_j
                     name: name.clone(),
                     description,
                     parameters: params,
-                    strict,
+                    strict: false,
                 },
             };
 
-            trace!(tool_name = %name, strict, "converted tool to Chat Completions format");
+            trace!(tool_name = %name, "converted tool to Chat Completions format");
 
             // Serialize to Value for compatibility with existing API
             serde_json::to_value(tool).ok()
@@ -126,24 +114,22 @@ pub fn to_openai_tools(tools: &[serde_json::Value], strict: bool) -> Vec<serde_j
 ///
 /// Uses the flat format required by the Responses API where `name` is at top level:
 /// ```json
-/// { "type": "function", "name": "...", "parameters": {...}, "strict": true }
+/// { "type": "function", "name": "...", "parameters": {...}, "strict": false }
 /// ```
 ///
 /// This is the format used by OpenAI Codex and the Responses API.
 ///
-/// Patches schemas for strict mode compliance:
-/// - `additionalProperties: false` on all object schemas
-/// - All properties included in `required` array
+/// Preserves the tool's declared `required` fields so optional properties
+/// remain optional on the wire.
 ///
 /// See: <https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/responses>
 pub fn to_responses_api_tools(tools: &[serde_json::Value]) -> Vec<serde_json::Value> {
     let result: Vec<serde_json::Value> = tools
         .iter()
         .filter_map(|t| {
-            // Clone parameters and patch for strict mode
+            // Keep the tool's required/optional contract intact.
             let mut params = t["parameters"].clone();
             sanitize_schema_for_openai_compat(&mut params);
-            patch_schema_for_strict_mode(&mut params);
 
             let name = t["name"].as_str()?.to_string();
             let description = t["description"].as_str().unwrap_or("").to_string();
@@ -154,7 +140,7 @@ pub fn to_responses_api_tools(tools: &[serde_json::Value]) -> Vec<serde_json::Va
                 name: name.clone(),
                 description,
                 parameters: params,
-                strict: true,
+                strict: false,
             };
 
             trace!(tool_name = %name, "converted tool to Responses API format");

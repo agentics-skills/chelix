@@ -997,6 +997,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "bindgen"
 version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2686,16 +2695,16 @@ dependencies = [
  "clap",
  "content_inspector",
  "futures",
- "portable-pty",
  "reqwest 0.13.2",
+ "rmux-core",
+ "rmux-pty",
  "serde",
  "serde_json",
- "shell-words",
+ "sha2 0.10.9",
  "tempfile",
  "tokio",
  "tracing",
  "uuid",
- "vte",
 ]
 
 [[package]]
@@ -3151,6 +3160,20 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "compact_str"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fd622ebbb56a5b2ccb651b32b911cdeb2a9b4b11776b2473bf26a26a286244e"
+dependencies = [
+ "castaway",
+ "cfg-if",
+ "itoa",
+ "rustversion",
+ "ryu",
+ "static_assertions",
 ]
 
 [[package]]
@@ -9894,6 +9917,67 @@ dependencies = [
 ]
 
 [[package]]
+name = "rmux-core"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68d91407352626dc3edf45801a2286204fce54e79ca9b7364541c1be9bdc3bbb"
+dependencies = [
+ "chrono",
+ "compact_str",
+ "regex",
+ "rmux-proto",
+ "unicode-width",
+]
+
+[[package]]
+name = "rmux-os"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f0ee0a472017edc4dc318b6209fe3e9a9bc30bd4326c44571549866269b9392"
+dependencies = [
+ "libc",
+ "rmux-types",
+ "rustix",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "rmux-proto"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3abad36a0a3601ec97c31ec5937a7199436bb7ec1333b25342c7bda1b4f5492"
+dependencies = [
+ "bincode",
+ "rmux-types",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "rmux-pty"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eaff058ab6a3c75217b179320043b09d9e4dd9527f24aca691d09842767c64f3"
+dependencies = [
+ "libc",
+ "rmux-os",
+ "rmux-types",
+ "rustix",
+ "tracing",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "rmux-types"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9bd39cffc10c08bb0e67eb4f85297ba4483f57607f4ae108be87e1ee0dba423"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "roxmltree"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12692,6 +12776,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9629274872b2bfaf8d66f5f15725007f635594914870f65218920345aa11aa8c"
 
 [[package]]
+name = "unicode-width"
+version = "0.1.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
+
+[[package]]
 name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12901,16 +12991,6 @@ name = "vsimd"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
-
-[[package]]
-name = "vte"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd"
-dependencies = [
- "arrayvec",
- "memchr",
-]
 
 [[package]]
 name = "wacore"

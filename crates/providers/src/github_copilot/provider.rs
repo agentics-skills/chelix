@@ -179,6 +179,140 @@ impl GitHubCopilotProvider {
     }
 }
 
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use std::{collections::HashMap, sync::Arc};
+
+    use {
+        axum::{
+            Json, Router,
+            body::Body,
+            extract::State,
+            http::{Uri, header::CONTENT_TYPE},
+            response::Response,
+            routing::post,
+        },
+        secrecy::Secret,
+        tokio::sync::Mutex,
+    };
+
+    use super::*;
+
+    type CapturedBodies = Arc<Mutex<HashMap<String, serde_json::Value>>>;
+
+    async fn capture_request(
+        State(captured): State<CapturedBodies>,
+        uri: Uri,
+        Json(body): Json<serde_json::Value>,
+    ) -> Response<Body> {
+        let path = uri.path().to_string();
+        captured.lock().await.insert(path.clone(), body);
+
+        let response_body = if path.ends_with("/responses") {
+            let completed = serde_json::json!({
+                "type": "response.completed",
+                "response": {
+                    "usage": {
+                        "input_tokens": 1,
+                        "output_tokens": 1,
+                        "input_tokens_details": { "cached_tokens": 0 }
+                    }
+                }
+            });
+            format!("data: {completed}\n\n")
+        } else {
+            "data: [DONE]\n\n".to_string()
+        };
+
+        Response::builder()
+            .header(CONTENT_TYPE, "text/event-stream")
+            .body(Body::from(response_body))
+            .expect("capture response should build")
+    }
+
+    async fn start_capture_server() -> (String, CapturedBodies) {
+        let captured = Arc::new(Mutex::new(HashMap::new()));
+        let app = Router::new()
+            .route("/chat/completions", post(capture_request))
+            .route("/responses", post(capture_request))
+            .with_state(Arc::clone(&captured));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("capture server should bind");
+        let address = listener
+            .local_addr()
+            .expect("capture server should have an address");
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("capture server should run");
+        });
+        (format!("http://{address}"), captured)
+    }
+
+    #[tokio::test]
+    async fn enterprise_requests_preserve_non_strict_tool_schema() {
+        let (base_url, captured) = start_capture_server().await;
+        let client = reqwest::Client::new();
+        let auth = CopilotAuth {
+            token: Secret::new("test-token".to_string()),
+            base_url,
+            is_enterprise: true,
+        };
+        let messages = [ChatMessage::user("run a command")];
+        let tools = [serde_json::json!({
+            "name": "execute_command",
+            "description": "Execute a command",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": { "type": "string" },
+                    "terminalId": { "type": "string" }
+                },
+                "required": ["command"]
+            }
+        })];
+
+        collect_streamed_completion(&client, &auth, "test-chat", &messages, &tools, None)
+            .await
+            .expect("chat completion should succeed");
+        collect_streamed_responses_completion(
+            &client,
+            &auth,
+            "test-responses",
+            &messages,
+            &tools,
+            None,
+        )
+        .await
+        .expect("responses completion should succeed");
+
+        let captured = captured.lock().await;
+        let chat_tool = &captured["/chat/completions"]["tools"][0]["function"];
+        assert_eq!(chat_tool["strict"], false);
+        assert_eq!(
+            chat_tool["parameters"]["required"],
+            serde_json::json!(["command"])
+        );
+        assert_eq!(
+            chat_tool["parameters"]["properties"]["terminalId"]["type"],
+            "string"
+        );
+
+        let responses_tool = &captured["/responses"]["tools"][0];
+        assert_eq!(responses_tool["strict"], false);
+        assert_eq!(
+            responses_tool["parameters"]["required"],
+            serde_json::json!(["command"])
+        );
+        assert_eq!(
+            responses_tool["parameters"]["properties"]["terminalId"]["type"],
+            "string"
+        );
+    }
+}
+
 fn home_token_store_if_different() -> Option<TokenStore> {
     let home = chelix_config::user_global_config_dir_if_different()?;
     Some(TokenStore::with_path(home.join("oauth_tokens.json")))
@@ -395,7 +529,7 @@ async fn collect_streamed_completion(
     });
 
     if !tools.is_empty() {
-        body["tools"] = serde_json::Value::Array(to_openai_tools(tools, true));
+        body["tools"] = serde_json::Value::Array(to_openai_tools(tools, false));
     }
     if let Some(max_output_tokens) = max_output_tokens {
         body["max_completion_tokens"] = serde_json::json!(max_output_tokens);
@@ -763,7 +897,7 @@ impl LlmProvider for GitHubCopilotProvider {
         });
 
         if !tools.is_empty() {
-            body["tools"] = serde_json::Value::Array(to_openai_tools(tools, true));
+            body["tools"] = serde_json::Value::Array(to_openai_tools(tools, false));
         }
         if let Some(max_output_tokens) = options.max_output_tokens {
             body["max_completion_tokens"] = serde_json::json!(max_output_tokens);
@@ -1112,7 +1246,7 @@ impl GitHubCopilotProvider {
             });
 
             if !tools.is_empty() {
-                body["tools"] = serde_json::Value::Array(to_openai_tools(&tools, true));
+                body["tools"] = serde_json::Value::Array(to_openai_tools(&tools, false));
             }
 
             debug!(

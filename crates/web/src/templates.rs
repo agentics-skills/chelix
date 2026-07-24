@@ -69,6 +69,7 @@ pub(crate) struct GonData {
     tts_enabled: bool,
     graphql_enabled: bool,
     terminal_enabled: bool,
+    terminal_scrollback_lines: u32,
     git_branch: Option<String>,
     mem: MemSnapshot,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -515,6 +516,7 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> GonData {
         tts_enabled: cfg!(feature = "voice") && gw.config.voice.tts.enabled,
         graphql_enabled: cfg!(feature = "graphql"),
         terminal_enabled: gw.config.server.is_terminal_enabled(),
+        terminal_scrollback_lines: gw.config.server.scrollback_lines,
         git_branch: tokio::task::spawn_blocking(detect_git_branch)
             .await
             .ok()

@@ -120,13 +120,22 @@ pub fn truncate_output_for_display(output: &mut String, max_output_bytes: usize)
 
 /// Redact injected environment variable values from command output.
 pub fn redact_command_output(result: &mut CommandOutput, env: &[(String, String)]) {
-    for (_, value) in env {
+    let values = env
+        .iter()
+        .map(|(_, value)| value.clone())
+        .collect::<Vec<_>>();
+    redact_secret_values(&mut result.stdout, &values);
+    redact_secret_values(&mut result.stderr, &values);
+}
+
+/// Replace secret values and supported encoded derivatives in text.
+pub fn redact_secret_values(text: &mut String, values: &[String]) {
+    for value in values {
         if value.is_empty() {
             continue;
         }
         for needle in redaction_needles(value) {
-            result.stdout = result.stdout.replace(&needle, "[REDACTED]");
-            result.stderr = result.stderr.replace(&needle, "[REDACTED]");
+            *text = text.replace(&needle, "[REDACTED]");
         }
     }
 }

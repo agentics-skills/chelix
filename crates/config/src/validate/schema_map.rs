@@ -65,7 +65,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             ("alias", Leaf),
             ("tool_mode", Leaf),
             ("cache_retention", Leaf),
-            ("strict_tools", Leaf),
             ("policy", tool_policy_entry()),
             ("probe_timeout_secs", Leaf),
         ]))
@@ -341,6 +340,7 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                 ("db_pool_max_connections", Leaf),
                 ("shiki_cdn_url", Leaf),
                 ("terminal_enabled", Leaf),
+                ("scrollback_lines", Leaf),
                 ("external_url", Leaf),
             ])),
         ),

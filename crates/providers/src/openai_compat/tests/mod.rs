@@ -289,7 +289,7 @@ fn parse_responses_completion_preserves_native_falsy_types() {
 }
 
 #[test]
-fn responses_tools_strip_nested_not_schemas() {
+fn responses_tools_preserve_optional_properties() {
     let tools = vec![serde_json::json!({
         "name": "mcp__attio__list-attribute-definitions",
         "description": "Attio test tool",
@@ -323,11 +323,13 @@ fn responses_tools_strip_nested_not_schemas() {
     let params = &converted[0]["parameters"];
     let encoded = params.to_string();
 
-    assert_eq!(converted[0]["strict"], true);
+    assert_eq!(converted[0]["strict"], false);
     assert!(!encoded.contains("\"not\""));
     assert_eq!(params["type"], "object");
-    assert_eq!(params["additionalProperties"], false);
-    assert_eq!(params["required"], serde_json::json!(["query"]));
+    assert!(
+        params.get("required").is_none(),
+        "optional query must not be added to required: {params}"
+    );
 }
 
 #[test]
@@ -455,7 +457,7 @@ fn sanitize_schema_for_openai_compat_recurses_into_array_form_items() {
 }
 
 #[test]
-fn to_openai_tools_strict_mode_applied_by_default() {
+fn to_openai_tools_ignores_strict_flag_and_preserves_optional_properties() {
     let tools = vec![serde_json::json!({
         "name": "create_file",
         "description": "Create a file",
@@ -474,16 +476,13 @@ fn to_openai_tools_strict_mode_applied_by_default() {
     assert_eq!(converted.len(), 1);
 
     let func = &converted[0]["function"];
-    assert_eq!(func["strict"], true);
-    assert_eq!(func["parameters"]["additionalProperties"], false);
-
-    let Some(required) = func["parameters"]["required"].as_array() else {
-        panic!("required should be an array");
-    };
-    let required_names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
-    assert!(required_names.contains(&"path"));
-    assert!(required_names.contains(&"content"));
-    assert!(required_names.contains(&"overwrite"));
+    let params = &func["parameters"];
+    assert_eq!(func["strict"], false);
+    assert!(params.get("additionalProperties").is_none());
+    assert_eq!(params["required"], serde_json::json!(["path"]));
+    assert_eq!(params["properties"]["path"]["type"], "string");
+    assert_eq!(params["properties"]["content"]["type"], "string");
+    assert_eq!(params["properties"]["overwrite"]["type"], "boolean");
 }
 
 #[test]
@@ -672,10 +671,10 @@ fn strict_mode_required_enum_keeps_original_values() {
     );
 }
 
-/// Issue #712: end-to-end test through `to_openai_tools` with an MCP-style
-/// schema that has optional enum parameters.
+/// Issue #712: optional enum parameters must remain optional and non-nullable
+/// through the non-strict `to_openai_tools` pipeline.
 #[test]
-fn to_openai_tools_strict_nullable_enum_has_null() {
+fn to_openai_tools_preserves_optional_enum_without_null() {
     let tools = vec![serde_json::json!({
         "name": "mcp__tavily__search",
         "description": "Search the web",
@@ -693,15 +692,24 @@ fn to_openai_tools_strict_nullable_enum_has_null() {
     })];
 
     let converted = to_openai_tools(&tools, true);
-    let params = &converted[0]["function"]["parameters"];
+    let func = &converted[0]["function"];
+    let params = &func["parameters"];
 
     let Some(time_enum) = params["properties"]["time_range"]["enum"].as_array() else {
         panic!("time_range should have enum");
     };
-    assert!(
-        time_enum.iter().any(|v| v.is_null()),
-        "time_range enum should include null after strict-mode patching, got: {time_enum:?}"
-    );
+    assert_eq!(func["strict"], false);
+    assert_eq!(time_enum.len(), 4);
+    for expected in ["day", "week", "month", "year"] {
+        assert!(
+            time_enum
+                .iter()
+                .any(|value| value.as_str() == Some(expected)),
+            "time_range enum should contain {expected}: {time_enum:?}"
+        );
+    }
+    assert!(!time_enum.iter().any(serde_json::Value::is_null));
+    assert_eq!(params["required"], serde_json::json!(["query"]));
 }
 
 /// Canonicalization strips `"type": "string"` from
@@ -792,10 +800,10 @@ fn sanitize_infers_number_for_mixed_int_float_enum() {
     );
 }
 
-/// End-to-end: `to_openai_tools` with strict=true must preserve type
-/// annotations on enum properties after the full pipeline.
+/// End-to-end: the non-strict `to_openai_tools` pipeline preserves scalar type
+/// annotations without making optional properties nullable.
 #[test]
-fn to_openai_tools_strict_preserves_enum_type_annotation() {
+fn to_openai_tools_non_strict_preserves_scalar_type_annotations() {
     let tools = vec![serde_json::json!({
         "name": "browser_action",
         "description": "Perform a browser action",
@@ -813,25 +821,19 @@ fn to_openai_tools_strict_preserves_enum_type_annotation() {
     })];
 
     let converted = to_openai_tools(&tools, true);
-    let params = &converted[0]["function"]["parameters"];
+    let func = &converted[0]["function"];
+    let params = &func["parameters"];
 
+    assert_eq!(func["strict"], false);
     assert_eq!(
         params["properties"]["action"]["type"], "string",
-        "string enum must retain type through strict pipeline"
+        "string enum must retain its scalar type"
     );
-    // `enabled` is optional → strict mode makes it nullable → type becomes
-    // ["boolean", "null"]. The important thing is that "type" is present
-    // (not stripped), and includes "boolean".
-    let enabled_type = &params["properties"]["enabled"]["type"];
-    let has_boolean = if let Some(arr) = enabled_type.as_array() {
-        arr.iter().any(|v| v.as_str() == Some("boolean"))
-    } else {
-        enabled_type.as_str() == Some("boolean")
-    };
-    assert!(
-        has_boolean,
-        "boolean must retain type through strict pipeline, got: {enabled_type}"
+    assert_eq!(
+        params["properties"]["enabled"]["type"], "boolean",
+        "optional boolean must retain its scalar type"
     );
+    assert_eq!(params["required"], serde_json::json!(["action"]));
 }
 
 /// Mixed enum values (e.g. string + integer) should NOT get a type

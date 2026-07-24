@@ -69,18 +69,34 @@ grouped by origin.
 
 Chelix registers command execution tools for agent command work:
 
-- `execute_command` runs through the active execution route: local host, paired
-  node, SSH target, or isolated sandbox. Isolated sandbox runs paste a
-  structured command into a real tmux pane. It accepts `command`, `customCwd`,
-  `newTerminal`, `destructiveFlag`, `background`, `timeout`, optional `node`,
-  and an optional `terminalId` for reusing a managed terminal.
-- `read_terminal_output` captures output from a managed tmux terminal by
-  `terminalId`. Use it after a foreground timeout or for background commands
-  that continue running after `execute_command` returns.
+- `execute_command` runs through the session's managed `chelix-tools-service`
+  route: the host sidecar when sandboxing is disabled or the service inside the
+  selected sandbox when sandboxing is enabled.
+- `read_terminal_output` reads retained output from the same managed terminal
+  pool by `terminalId`. Use it after a foreground timeout or for a background
+  command that continues after `execute_command` returns.
 
-When a sandbox has no tmux server yet, `execute_command` creates a tmux session
-and returns the generated `terminalId`, tmux session/window/pane IDs, output,
-completion state, and exit code when available.
+`execute_command` requires only `command`. The optional parameters are:
+
+- `customCwd`: working directory for the command;
+- `newTerminal`: create a new persistent terminal instead of reusing one;
+- `destructiveFlag`: approval UI hint;
+- `background`: return immediately after starting the command;
+- `timeout`: milliseconds to wait for completion without terminating the
+  process;
+- `terminalId`: run in the terminal returned by an earlier call.
+
+Omit optional routing parameters when they do not apply. Empty `customCwd` and
+`terminalId` strings are treated as omitted. A non-empty `terminalId` cannot be
+combined with `newTerminal = true`. Invalid terminal IDs and invalid working
+directories are returned as explicit tool errors.
+
+Each terminal is an in-process RMUX PTY with one persistent interactive shell.
+Its current directory, exported variables, shell functions, job-control state,
+child processes, terminal emulator state, and retained output remain associated
+with the returned numeric `terminalId`. Reusing that ID continues in the same
+shell; creating a new terminal starts a separate shell with the environment
+that is current at creation time.
 
 ## Managed filesystem tools
 

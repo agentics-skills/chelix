@@ -693,8 +693,6 @@ fn default_sandbox_packages() -> Vec<String> {
         "ripgrep",
         "fd-find",
         "yq",
-        // Terminal multiplexer (useful for capturing ncurses apps)
-        "tmux",
         // Browser automation (for browser tool)
         "chromium",
         "libxss1",

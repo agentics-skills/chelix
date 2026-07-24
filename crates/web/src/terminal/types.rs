@@ -11,6 +11,12 @@ pub struct TerminalSessionQuery {
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateTerminalRequest {
+    pub(crate) session_key: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalWsQuery {
     pub(crate) instance_id: String,

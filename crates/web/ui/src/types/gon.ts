@@ -213,6 +213,7 @@ export interface GonData {
 	tts_enabled: boolean;
 	graphql_enabled: boolean;
 	terminal_enabled: boolean;
+	terminal_scrollback_lines: number;
 	git_branch?: string;
 	mem: MemSnapshot;
 	deploy_platform?: string;

@@ -42,7 +42,7 @@ pub mod skill_tools;
 pub mod spawn_agent;
 pub mod spawn_agent_tasks;
 pub mod task_list;
-pub mod tmux_command;
+pub mod terminal_command;
 pub mod tools_service;
 pub mod webhook_tool;
 

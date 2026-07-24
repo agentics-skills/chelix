@@ -45,6 +45,11 @@ pub struct ServerConfig {
     /// this field and cannot be changed from the web UI config editor.
     #[serde(default = "default_terminal_enabled")]
     pub terminal_enabled: bool,
+    /// Maximum number of terminal lines retained by the web UI.
+    ///
+    /// Defaults to 300,000 lines.
+    #[serde(default = "default_scrollback_lines")]
+    pub scrollback_lines: u32,
     /// Public URL when running behind a reverse proxy (e.g.
     /// `https://chelix.example.com`). Used to derive the WebAuthn RP ID
     /// and origin so passkey auth works with the proxy's public hostname.
@@ -66,6 +71,10 @@ fn default_terminal_enabled() -> bool {
     true
 }
 
+const fn default_scrollback_lines() -> u32 {
+    300_000
+}
+
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
@@ -78,6 +87,7 @@ impl Default for ServerConfig {
             db_pool_max_connections: default_db_pool_max_connections(),
             shiki_cdn_url: None,
             terminal_enabled: default_terminal_enabled(),
+            scrollback_lines: default_scrollback_lines(),
             external_url: None,
         }
     }

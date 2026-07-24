@@ -124,6 +124,7 @@ Gateway server configuration.
 | `db_pool_max_connections` | integer         | `5`           | Maximum number of SQLite pool connections. Lower values reduce memory usage for personal gateways.                                                                          |
 | `shiki_cdn_url`           | optional string | —             | Base URL for the Shiki syntax-highlighting library loaded by the web UI. Defaults to `https://esm.sh/shiki@3.2.1?bundle` when unset.                                        |
 | `terminal_enabled`        | bool            | `true`        | Enable or disable the host terminal in the web UI. Set to `false` to prevent an unsandboxed shell. The `CHELIX_TERMINAL_DISABLED` env var (`1` or `true`) takes precedence. |
+| `scrollback_lines`        | integer         | `300000`      | Maximum number of terminal lines retained by the web UI.                                                                                                                     |
 
 ### `auth` — AuthConfig
 

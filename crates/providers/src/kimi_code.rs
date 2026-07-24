@@ -221,7 +221,7 @@ impl LlmProvider for KimiCodeProvider {
         });
 
         if !tools.is_empty() {
-            body["tools"] = serde_json::Value::Array(to_openai_tools(tools, true));
+            body["tools"] = serde_json::Value::Array(to_openai_tools(tools, false));
         }
         if let Some(max_output_tokens) = options.max_output_tokens {
             body["max_completion_tokens"] = serde_json::json!(max_output_tokens);
@@ -319,7 +319,7 @@ impl LlmProvider for KimiCodeProvider {
             });
 
             if !tools.is_empty() {
-                body["tools"] = serde_json::Value::Array(to_openai_tools(&tools, true));
+                body["tools"] = serde_json::Value::Array(to_openai_tools(&tools, false));
             }
 
             debug!(
@@ -539,7 +539,7 @@ mod tests {
             });
 
             if !tools.is_empty() {
-                body["tools"] = serde_json::Value::Array(to_openai_tools(tools, true));
+                body["tools"] = serde_json::Value::Array(to_openai_tools(tools, false));
             }
 
             let http_resp = self
@@ -692,13 +692,24 @@ mod tests {
     #[tokio::test]
     async fn complete_sends_tools_when_provided() {
         let (base_url, captured) = start_mock_with_capture(mock_completion_response()).await;
-        let provider = mock_provider(&base_url, "kimi-k2.5");
+        let provider = KimiCodeProvider::new_with_api_key(
+            Secret::new("sk-kimi".into()),
+            "kimi-k2.5".into(),
+            base_url,
+        );
 
-        let messages = vec![serde_json::json!({"role": "user", "content": "test"})];
+        let messages = vec![ChatMessage::user("test")];
         let tools = vec![serde_json::json!({
-            "name": "read_file",
-            "description": "Read a file",
-            "parameters": {"type": "object", "properties": {"path": {"type": "string"}}}
+            "name": "execute_command",
+            "description": "Execute a command",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": { "type": "string" },
+                    "terminalId": { "type": "string" }
+                },
+                "required": ["command"]
+            }
         })];
         provider.complete(&messages, &tools).await.unwrap();
 
@@ -707,7 +718,17 @@ mod tests {
         let tools_arr = body["tools"].as_array().unwrap();
         assert_eq!(tools_arr.len(), 1);
         assert_eq!(tools_arr[0]["type"], "function");
-        assert_eq!(tools_arr[0]["function"]["name"], "read_file");
+        let function = &tools_arr[0]["function"];
+        assert_eq!(function["name"], "execute_command");
+        assert_eq!(function["strict"], false);
+        assert_eq!(
+            function["parameters"]["required"],
+            serde_json::json!(["command"])
+        );
+        assert_eq!(
+            function["parameters"]["properties"]["terminalId"]["type"],
+            "string"
+        );
     }
 
     #[tokio::test]

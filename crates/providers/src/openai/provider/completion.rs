@@ -711,4 +711,67 @@ mod tests {
                 .is_none()
         );
     }
+
+    #[tokio::test]
+    async fn tools_remain_non_strict_in_both_openai_wire_formats() {
+        let (base_url, captured) = start_capture_server().await;
+        let messages = [ChatMessage::user("run a command")];
+        let tools = [serde_json::json!({
+            "name": "execute_command",
+            "description": "Execute a command",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": { "type": "string" },
+                    "terminalId": { "type": "string" }
+                },
+                "required": ["command"]
+            }
+        })];
+
+        let chat = OpenAiProvider::new_with_name(
+            Secret::new("test-key".to_string()),
+            "test-chat".to_string(),
+            base_url.clone(),
+            "test-provider".to_string(),
+        );
+        chat.complete(&messages, &tools)
+            .await
+            .expect("chat completion should succeed");
+
+        let responses = OpenAiProvider::new_with_name(
+            Secret::new("test-key".to_string()),
+            "test-responses".to_string(),
+            base_url,
+            "test-provider".to_string(),
+        )
+        .with_wire_api(chelix_config::WireApi::Responses);
+        responses
+            .complete(&messages, &tools)
+            .await
+            .expect("responses completion should succeed");
+
+        let captured = captured.lock().await;
+        let chat_tool = &captured["/v1/chat/completions"]["tools"][0]["function"];
+        assert_eq!(chat_tool["strict"], false);
+        assert_eq!(
+            chat_tool["parameters"]["required"],
+            serde_json::json!(["command"])
+        );
+        assert_eq!(
+            chat_tool["parameters"]["properties"]["terminalId"]["type"],
+            "string"
+        );
+
+        let responses_tool = &captured["/v1/responses"]["tools"][0];
+        assert_eq!(responses_tool["strict"], false);
+        assert_eq!(
+            responses_tool["parameters"]["required"],
+            serde_json::json!(["command"])
+        );
+        assert_eq!(
+            responses_tool["parameters"]["properties"]["terminalId"]["type"],
+            "string"
+        );
+    }
 }

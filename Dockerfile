@@ -72,7 +72,6 @@ RUN apt-get update -qq && \
         libgomp1 \
         ripgrep \
         sudo \
-        tmux \
         vim-tiny && \
     rm -rf /var/lib/apt/lists/*
 

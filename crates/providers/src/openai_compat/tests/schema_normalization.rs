@@ -691,16 +691,10 @@ fn non_strict_allof_collapsed_and_merged() {
     assert_no_orphaned_required(&schema, "root");
 }
 
-/// `json_schema_ast` canonicalization converts `"type": "boolean"`
-/// to `"enum": [false, true]`. `RestoreEnumTypeTransform` restores
-/// `"type": "boolean"` but leaves the redundant `enum`. Then strict mode's
-/// `make_nullable` appends `null` to the enum: `[false, true, null]`.
-///
-/// `RestoreEnumTypeTransform` strips redundant `[false, true]` enum
-/// arrays when `type: "boolean"` is restored, preventing `null` from being
-/// added to a boolean enum.
+/// The non-strict serializer restores scalar boolean types without adding
+/// nullable types or enum values, regardless of its compatibility argument.
 #[test]
-fn strict_mode_boolean_property_no_null_in_enum() {
+fn non_strict_boolean_properties_remain_non_nullable() {
     let tools = vec![serde_json::json!({
         "name": "test_tool",
         "description": "Test",
@@ -715,32 +709,19 @@ fn strict_mode_boolean_property_no_null_in_enum() {
         }
     })];
 
-    // strict=true
     let converted = to_openai_tools(&tools, true);
-    let params = &converted[0]["function"]["parameters"];
-    let serialized = params.to_string();
+    let func = &converted[0]["function"];
+    let params = &func["parameters"];
 
-    // Boolean properties should NOT have enum arrays containing null.
-    // They should use type-nullability only: "type": ["boolean", "null"]
+    assert_eq!(func["strict"], false);
+    assert_eq!(params["required"], serde_json::json!(["query"]));
     for prop_name in ["verbose", "dry_run"] {
         let prop = &params["properties"][prop_name];
-
-        // Should NOT have an enum with null
-        if let Some(enum_arr) = prop.get("enum").and_then(|v| v.as_array()) {
-            assert!(
-                !enum_arr.iter().any(|v| v.is_null()),
-                "{prop_name} should not have null in enum: {enum_arr:?} \
-                 (full schema: {serialized})"
-            );
-        }
-
-        // Should be nullable via type
-        let ty = prop.get("type");
-        assert!(
-            ty.is_some(),
-            "{prop_name} should have a type field: {}",
-            serde_json::to_string_pretty(prop).unwrap_or_default()
+        assert_eq!(
+            prop["type"], "boolean",
+            "{prop_name} should retain its scalar boolean type"
         );
+        assert!(prop.get("enum").is_none());
     }
 }
 

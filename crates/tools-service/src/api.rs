@@ -25,23 +25,15 @@ use {
 #[cfg(test)]
 use axum::serve;
 
-use crate::{
-    interactive_terminal, list_directory, process, ripgrep, terminal::TerminalManager,
-    tmux::TmuxRuntime,
-};
+use crate::{interactive_terminal, list_directory, process, ripgrep, terminal::TerminalManager};
 
 #[derive(Clone)]
 struct ApiState {
     token: Arc<str>,
     terminal_manager: Arc<TerminalManager>,
-    tmux_runtime: Arc<TmuxRuntime>,
 }
 
-pub fn router(
-    token: String,
-    terminal_manager: Arc<TerminalManager>,
-    tmux_runtime: Arc<TmuxRuntime>,
-) -> Router {
+pub fn router(token: String, terminal_manager: Arc<TerminalManager>) -> Router {
     Router::new()
         .route(TOOLS_SERVICE_HEALTH_PATH, get(health))
         .route(TOOLS_SERVICE_LIST_DIRECTORY_PATH, post(run_list_directory))
@@ -63,7 +55,6 @@ pub fn router(
         .with_state(ApiState {
             token: Arc::from(token),
             terminal_manager,
-            tmux_runtime,
         })
 }
 
@@ -187,7 +178,7 @@ async fn create_terminal(
 
     match state
         .terminal_manager
-        .create_interactive_terminal(&request.session_key)
+        .create_interactive_terminal(&request.session_key, &request.env)
         .await
     {
         Ok(terminal) => Json(CreateToolsServiceTerminalResponse { terminal }).into_response(),
@@ -214,9 +205,9 @@ async fn attach_terminal(
         Ok(terminal) => terminal,
         Err(error) => return tool_error_response(error),
     };
-    let runtime = Arc::clone(&state.tmux_runtime);
+    let terminal_manager = Arc::clone(&state.terminal_manager);
     websocket
-        .on_upgrade(move |socket| interactive_terminal::handle(socket, runtime, terminal))
+        .on_upgrade(move |socket| interactive_terminal::handle(socket, terminal_manager, terminal))
         .into_response()
 }
 
@@ -252,6 +243,10 @@ fn unauthorized_response() -> Response {
 mod tests {
     use std::net::Ipv4Addr;
 
+    use chelix_protocol::{
+        ExecuteCommandResponse, ProcessAction, ProcessResponse, ReadTerminalOutputResponse,
+    };
+
     use super::*;
 
     async fn spawn_api() -> String {
@@ -262,16 +257,11 @@ mod tests {
             .local_addr()
             .unwrap_or_else(|error| panic!("local address failed: {error}"));
         tokio::spawn(async move {
-            let runtime = Arc::new(TmuxRuntime::new());
             let terminal_manager = Arc::new(
-                TerminalManager::new(std::env::temp_dir(), Arc::clone(&runtime))
+                TerminalManager::new(std::env::temp_dir())
                     .unwrap_or_else(|error| panic!("terminal manager failed: {error}")),
             );
-            if let Err(error) = serve(
-                listener,
-                router("test-token".into(), terminal_manager, runtime),
-            )
-            .await
+            if let Err(error) = serve(listener, router("test-token".into(), terminal_manager)).await
             {
                 panic!("test server failed: {error}");
             }
@@ -310,6 +300,188 @@ mod tests {
             .unwrap_or_else(|error| panic!("request failed: {error}"));
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn terminal_tool_routes_require_authorization() {
+        let base_url = spawn_api().await;
+        let client = reqwest::Client::new();
+        let requests = [
+            client
+                .post(format!("{base_url}{TOOLS_SERVICE_EXECUTE_COMMAND_PATH}"))
+                .json(&ExecuteCommandRequest {
+                    session_key: "session:http".into(),
+                    command: "printf ok".into(),
+                    custom_cwd: None,
+                    new_terminal: true,
+                    background: false,
+                    timeout_millis: 5_000,
+                    terminal_id: None,
+                    env: Vec::new(),
+                }),
+            client
+                .post(format!(
+                    "{base_url}{TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH}"
+                ))
+                .json(&ReadTerminalOutputRequest {
+                    session_key: "session:http".into(),
+                    terminal_id: "1".into(),
+                    max_lines: None,
+                }),
+            client
+                .post(format!("{base_url}{TOOLS_SERVICE_PROCESS_PATH}"))
+                .json(&ProcessRequest {
+                    session_key: "session:http".into(),
+                    action: ProcessAction::List,
+                }),
+        ];
+
+        for request in requests {
+            let response = request
+                .send()
+                .await
+                .unwrap_or_else(|error| panic!("request failed: {error}"));
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+            let body = response
+                .json::<ToolsServiceError>()
+                .await
+                .unwrap_or_else(|error| panic!("response decode failed: {error}"));
+            assert_eq!(body.error, "unauthorized");
+        }
+    }
+
+    #[tokio::test]
+    async fn terminal_tool_routes_return_typed_success_responses() {
+        let base_url = spawn_api().await;
+        let client = reqwest::Client::new();
+        let execute = client
+            .post(format!("{base_url}{TOOLS_SERVICE_EXECUTE_COMMAND_PATH}"))
+            .bearer_auth("test-token")
+            .json(&ExecuteCommandRequest {
+                session_key: "session:http".into(),
+                command: "printf 'api-output\\n'".into(),
+                custom_cwd: None,
+                new_terminal: true,
+                background: false,
+                timeout_millis: 5_000,
+                terminal_id: None,
+                env: Vec::new(),
+            })
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("execute request failed: {error}"));
+        assert_eq!(execute.status(), StatusCode::OK);
+        let execute = execute
+            .json::<ExecuteCommandResponse>()
+            .await
+            .unwrap_or_else(|error| panic!("execute response decode failed: {error}"));
+        assert!(execute.completed);
+        assert_eq!(execute.output.trim(), "api-output");
+        assert!(execute.terminal_id.parse::<u64>().is_ok());
+
+        let read = client
+            .post(format!(
+                "{base_url}{TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH}"
+            ))
+            .bearer_auth("test-token")
+            .json(&ReadTerminalOutputRequest {
+                session_key: "session:http".into(),
+                terminal_id: execute.terminal_id.clone(),
+                max_lines: Some(20),
+            })
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("read request failed: {error}"));
+        assert_eq!(read.status(), StatusCode::OK);
+        let read = read
+            .json::<ReadTerminalOutputResponse>()
+            .await
+            .unwrap_or_else(|error| panic!("read response decode failed: {error}"));
+        assert_eq!(read.terminal_id, execute.terminal_id);
+        assert!(read.output.contains("api-output"));
+        assert!(read.completed);
+        assert!(!read.running);
+
+        let list = client
+            .post(format!("{base_url}{TOOLS_SERVICE_PROCESS_PATH}"))
+            .bearer_auth("test-token")
+            .json(&ProcessRequest {
+                session_key: "session:http".into(),
+                action: ProcessAction::List,
+            })
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("process request failed: {error}"));
+        assert_eq!(list.status(), StatusCode::OK);
+        assert_eq!(
+            list.json::<ProcessResponse>()
+                .await
+                .unwrap_or_else(|error| panic!("process response decode failed: {error}")),
+            ProcessResponse::List {
+                terminal_ids: vec![execute.terminal_id],
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn terminal_tool_routes_return_typed_unprocessable_errors() {
+        let base_url = spawn_api().await;
+        let client = reqwest::Client::new();
+        let responses = [
+            client
+                .post(format!("{base_url}{TOOLS_SERVICE_EXECUTE_COMMAND_PATH}"))
+                .bearer_auth("test-token")
+                .json(&ExecuteCommandRequest {
+                    session_key: "session:http".into(),
+                    command: String::new(),
+                    custom_cwd: None,
+                    new_terminal: true,
+                    background: false,
+                    timeout_millis: 5_000,
+                    terminal_id: None,
+                    env: Vec::new(),
+                })
+                .send()
+                .await
+                .unwrap_or_else(|error| panic!("execute request failed: {error}")),
+            client
+                .post(format!(
+                    "{base_url}{TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH}"
+                ))
+                .bearer_auth("test-token")
+                .json(&ReadTerminalOutputRequest {
+                    session_key: "session:http".into(),
+                    terminal_id: "404".into(),
+                    max_lines: None,
+                })
+                .send()
+                .await
+                .unwrap_or_else(|error| panic!("read request failed: {error}")),
+            client
+                .post(format!("{base_url}{TOOLS_SERVICE_PROCESS_PATH}"))
+                .bearer_auth("test-token")
+                .json(&ProcessRequest {
+                    session_key: String::new(),
+                    action: ProcessAction::List,
+                })
+                .send()
+                .await
+                .unwrap_or_else(|error| panic!("process request failed: {error}")),
+        ];
+        let expected_errors = [
+            "command cannot be empty",
+            "terminal 404 was not found",
+            "session_key cannot be empty",
+        ];
+
+        for (response, expected_error) in responses.into_iter().zip(expected_errors) {
+            assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+            let body = response
+                .json::<ToolsServiceError>()
+                .await
+                .unwrap_or_else(|error| panic!("response decode failed: {error}"));
+            assert_eq!(body.error, expected_error);
+        }
     }
 
     #[tokio::test]

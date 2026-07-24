@@ -492,6 +492,7 @@ pub(super) async fn complete_startup(
                 gateway_url: sandbox_gateway_url,
                 sandbox_api_key: sandbox_api_key.map(Secret::new),
             });
+        tools_service.set_env_provider(Arc::clone(&env_provider))?;
         let events_queue = cron_service.events_queue().clone();
         let cron_for_command_events = Arc::clone(&cron_service);
         let command_completion_callback: chelix_tools::command::CommandCompletionFn =
@@ -518,7 +519,7 @@ pub(super) async fn complete_startup(
             chelix_tools::sandbox_packages::SandboxPackagesTool::new(Arc::clone(&sandbox_router));
 
         let execute_command_tool =
-            chelix_tools::tmux_command::ExecuteCommandTool::new(Arc::clone(&tools_service))
+            chelix_tools::terminal_command::ExecuteCommandTool::new(Arc::clone(&tools_service))
                 .with_default_timeout(std::time::Duration::from_secs(
                     config.tools.execute_command.default_timeout_secs,
                 ))
@@ -535,7 +536,7 @@ pub(super) async fn complete_startup(
 
         tool_registry.register(Box::new(execute_command_tool));
         tool_registry.register(Box::new(
-            chelix_tools::tmux_command::ReadTerminalOutputTool::new(Arc::clone(&tools_service)),
+            chelix_tools::terminal_command::ReadTerminalOutputTool::new(Arc::clone(&tools_service)),
         ));
         tool_registry.register(Box::new(
             chelix_tools::list_directory::ListDirectoryTool::new(Arc::clone(&tools_service)),

@@ -90,7 +90,6 @@ const CATEGORY_MAP: &[(&str, &[&str])] = &[
         "tzdata",
         "shellcheck",
         "patchelf",
-        "tmux",
     ]),
     ("Text processing", &["ripgrep", "fd-find", "yq"]),
     ("Browser automation", &["chromium"]),

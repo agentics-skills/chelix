@@ -523,6 +523,7 @@
   border: 1px solid var(--border);
   background: var(--surface2);
   color: var(--muted);
+  flex-shrink: 0;
   border-radius: var(--radius-sm);
   font-size: 0.72rem;
   font-family: var(--font-mono);

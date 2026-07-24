@@ -23,7 +23,7 @@ struct Args {
 
 pub async fn run() -> Result<()> {
     let args = Args::parse();
-    crate::tmux::verify_runtime(&args.working_dir).await?;
+    crate::rmux::verify_runtime(&args.working_dir).await?;
     let token = args.token.unwrap_or_else(generate_token);
     let listener = tokio::net::TcpListener::bind(args.listen)
         .await
@@ -39,18 +39,13 @@ pub async fn run() -> Result<()> {
     })?;
 
     let shutdown_on_stdin_eof = args.shutdown_on_stdin_eof;
-    let tmux_runtime = Arc::new(crate::tmux::TmuxRuntime::new());
     let terminal_manager = Arc::new(
-        crate::terminal::TerminalManager::new(args.working_dir, Arc::clone(&tmux_runtime))
+        crate::terminal::TerminalManager::new(args.working_dir)
             .context("initializing terminal manager")?,
     );
     let serve_result = axum::serve(
         listener,
-        crate::api::router(
-            token,
-            Arc::clone(&terminal_manager),
-            Arc::clone(&tmux_runtime),
-        ),
+        crate::api::router(token, Arc::clone(&terminal_manager)),
     )
     .with_graceful_shutdown(async move {
         if shutdown_on_stdin_eof {
@@ -65,27 +60,16 @@ pub async fn run() -> Result<()> {
         .shutdown()
         .await
         .context("shutting down terminal manager");
-    let tmux_shutdown_result = tmux_runtime
-        .shutdown()
-        .await
-        .context("shutting down managed tmux runtime");
-    finish_service(serve_result, terminal_shutdown_result, tmux_shutdown_result)
+    finish_service(serve_result, terminal_shutdown_result)
 }
 
-fn finish_service(
-    serve_result: Result<()>,
-    terminal_shutdown_result: Result<()>,
-    tmux_shutdown_result: Result<()>,
-) -> Result<()> {
+fn finish_service(serve_result: Result<()>, terminal_shutdown_result: Result<()>) -> Result<()> {
     let mut errors = Vec::new();
     if let Err(error) = serve_result {
         errors.push(("tools API", error));
     }
     if let Err(error) = terminal_shutdown_result {
         errors.push(("terminal manager shutdown", error));
-    }
-    if let Err(error) = tmux_shutdown_result {
-        errors.push(("managed tmux shutdown", error));
     }
     if errors.is_empty() {
         return Ok(());
@@ -134,32 +118,29 @@ mod tests {
 
     #[test]
     fn finish_service_propagates_each_error() {
-        assert_eq!(
-            finish_service(Err(anyhow!("serve failed")), Ok(()), Ok(()))
-                .unwrap_err()
-                .to_string(),
-            "serve failed"
-        );
-        assert_eq!(
-            finish_service(Ok(()), Err(anyhow!("shutdown failed")), Ok(()))
-                .unwrap_err()
-                .to_string(),
-            "shutdown failed"
-        );
+        let serve_error = match finish_service(Err(anyhow!("serve failed")), Ok(())) {
+            Ok(()) => panic!("expected serve error"),
+            Err(error) => error,
+        };
+        assert_eq!(serve_error.to_string(), "serve failed");
+        let shutdown_error = match finish_service(Ok(()), Err(anyhow!("shutdown failed"))) {
+            Ok(()) => panic!("expected shutdown error"),
+            Err(error) => error,
+        };
+        assert_eq!(shutdown_error.to_string(), "shutdown failed");
     }
 
     #[test]
     fn finish_service_preserves_serve_and_shutdown_errors() {
-        let error = finish_service(
+        let error = match finish_service(
             Err(anyhow!("serve failed")),
             Err(anyhow!("terminal shutdown failed")),
-            Err(anyhow!("tmux shutdown failed")),
-        )
-        .unwrap_err()
-        .to_string();
+        ) {
+            Ok(()) => panic!("expected combined service error"),
+            Err(error) => error.to_string(),
+        };
 
         assert!(error.contains("serve failed"));
         assert!(error.contains("terminal shutdown failed"));
-        assert!(error.contains("tmux shutdown failed"));
     }
 }

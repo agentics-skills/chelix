@@ -13,17 +13,19 @@ use {
         ToolsServiceError, ToolsServiceHealth, ToolsServiceInstanceInfo, ToolsServiceReady,
         ToolsServiceTerminalAttachQuery, ToolsServiceTerminalInfo, ToolsServiceTerminalsResponse,
     },
+    secrecy::ExposeSecret,
     serde::{Serialize, de::DeserializeOwned},
     tokio::{
         io::{AsyncBufReadExt, BufReader},
         process::{Child, Command},
-        sync::Mutex,
+        sync::{Mutex, OnceCell},
     },
     tokio_tungstenite::tungstenite::{client::IntoClientRequest, http::HeaderValue},
     tracing::{info, warn},
 };
 
 use crate::{
+    command::EnvVarProvider,
     error::{Error, Result},
     sandbox::{ExecEnv, SandboxRouter, ToolsServiceEndpoint, ToolsServiceInstance},
 };
@@ -54,6 +56,7 @@ pub struct ManagedToolsService {
     router: Arc<SandboxRouter>,
     runtime: ManagedToolsRuntime,
     client: reqwest::Client,
+    env_provider: OnceCell<Arc<dyn EnvVarProvider>>,
 }
 
 enum ManagedToolsRuntime {
@@ -95,7 +98,45 @@ impl ManagedToolsService {
             router,
             runtime,
             client,
+            env_provider: OnceCell::new(),
         }))
+    }
+
+    pub fn set_env_provider(&self, provider: Arc<dyn EnvVarProvider>) -> Result<()> {
+        self.env_provider.set(provider).map_err(|_| {
+            Error::message("managed tools service environment provider was already initialized")
+        })
+    }
+
+    async fn terminal_environment(&self) -> Result<Vec<chelix_protocol::ToolsServiceEnvVar>> {
+        let provider = self.env_provider.get().ok_or_else(|| {
+            Error::message("managed tools service environment provider is not initialized")
+        })?;
+        provider
+            .get_env_vars()
+            .await
+            .map_err(|error| {
+                Error::message(format!("failed to load terminal environment: {error}"))
+            })?
+            .into_iter()
+            .map(|variable| {
+                Ok(chelix_protocol::ToolsServiceEnvVar {
+                    key: variable.key,
+                    value: variable.value.expose_secret().clone(),
+                    secret: variable.secret,
+                })
+            })
+            .collect()
+    }
+
+    pub(crate) async fn current_terminal_secret_values(&self) -> Result<Vec<String>> {
+        Ok(self
+            .terminal_environment()
+            .await?
+            .into_iter()
+            .filter(|variable| variable.secret)
+            .map(|variable| variable.value)
+            .collect())
     }
 
     async fn endpoint_for(&self, session_key: &str) -> Result<(ToolsServiceEndpoint, bool)> {
@@ -403,10 +444,13 @@ impl ManagedToolsService {
 
     pub async fn create_session_terminal(
         &self,
-        request: CreateToolsServiceTerminalRequest,
+        session_key: &str,
     ) -> Result<CreatedSessionTerminal> {
-        let instance = self.instance_for_session(&request.session_key).await?;
-        let expected_session_key = request.session_key.clone();
+        let instance = self.instance_for_session(session_key).await?;
+        let request = CreateToolsServiceTerminalRequest {
+            session_key: session_key.to_owned(),
+            env: self.terminal_environment().await?,
+        };
         let response: CreateToolsServiceTerminalResponse = self
             .post_tool(
                 &instance.endpoint,
@@ -416,10 +460,10 @@ impl ManagedToolsService {
             )
             .await
             .map_err(ToolsServiceCallError::into_error)?;
-        if response.terminal.session_key != expected_session_key {
+        if response.terminal.session_key != session_key {
             return Err(Error::message(format!(
                 "tools service returned terminal for session {:?} instead of {:?}",
-                response.terminal.session_key, expected_session_key
+                response.terminal.session_key, session_key
             )));
         }
         Ok(CreatedSessionTerminal {
@@ -431,9 +475,13 @@ impl ManagedToolsService {
     pub async fn create_terminal(
         &self,
         instance_id: &str,
-        request: CreateToolsServiceTerminalRequest,
+        session_key: &str,
     ) -> Result<CreateToolsServiceTerminalResponse> {
         let instance = self.existing_instance(instance_id).await?;
+        let request = CreateToolsServiceTerminalRequest {
+            session_key: session_key.to_owned(),
+            env: self.terminal_environment().await?,
+        };
         self.post_tool(
             &instance.endpoint,
             TOOLS_SERVICE_TERMINALS_PATH,
@@ -496,6 +544,7 @@ impl ManagedToolsService {
             router: Arc::new(SandboxRouter::disabled()),
             runtime: ManagedToolsRuntime::Fixed(endpoint),
             client,
+            env_provider: OnceCell::new(),
         }))
     }
 }
@@ -651,11 +700,26 @@ mod tests {
     use {
         super::*,
         crate::{
-            command::{CommandOptions, CommandOutput},
+            command::{CommandOptions, CommandOutput, InjectedEnvVar},
             sandbox::{Sandbox, SandboxConfig, SandboxId},
         },
         async_trait::async_trait,
     };
+
+    struct EmptyEnvProvider;
+
+    #[async_trait]
+    impl EnvVarProvider for EmptyEnvProvider {
+        async fn get_env_vars(&self) -> anyhow::Result<Vec<InjectedEnvVar>> {
+            Ok(Vec::new())
+        }
+    }
+
+    fn initialize_empty_environment(service: &ManagedToolsService) {
+        service
+            .set_env_provider(Arc::new(EmptyEnvProvider))
+            .unwrap_or_else(|error| panic!("environment provider setup failed: {error}"));
+    }
 
     struct RecoveringSandbox {
         endpoints: [ToolsServiceEndpoint; 2],
@@ -723,6 +787,7 @@ mod tests {
                 router,
                 runtime: ManagedToolsRuntime::Sandbox,
                 client,
+                env_provider: OnceCell::new(),
             },
             backend,
         )
@@ -881,7 +946,7 @@ mod tests {
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
-                r#"{"terminals":[{"id":"terminal-42","sessionKey":"agent:42","sessionId":"$4","sessionName":"chelix-agent-42","windowId":"@8","windowName":"bash","paneId":"%11","running":true}]}"#,
+                r#"{"terminals":[{"id":"terminal-42","sessionKey":"agent:42","running":true,"alive":true}]}"#,
             )
             .expect(1)
             .create_async()
@@ -900,9 +965,9 @@ mod tests {
         assert_eq!(instances.len(), 1);
         assert_eq!(instances[0].id, "fixed");
         assert_eq!(instances[0].terminals[0].id, "terminal-42");
-        assert_eq!(instances[0].terminals[0].session_id, "$4");
-        assert_eq!(instances[0].terminals[0].window_id, "@8");
-        assert_eq!(instances[0].terminals[0].pane_id, "%11");
+        assert_eq!(instances[0].terminals[0].session_key, "agent:42");
+        assert!(instances[0].terminals[0].running);
+        assert!(instances[0].terminals[0].alive);
         call.assert_async().await;
     }
 
@@ -913,12 +978,13 @@ mod tests {
             .mock("POST", TOOLS_SERVICE_TERMINALS_PATH)
             .match_header("authorization", "Bearer terminal-token")
             .match_body(mockito::Matcher::Json(serde_json::json!({
-                "sessionKey": "agent:explicit"
+                "sessionKey": "agent:explicit",
+                "env": []
             })))
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
-                r#"{"terminal":{"id":"terminal-created","sessionKey":"agent:explicit","sessionId":"$9","sessionName":"chelix-agent-explicit","windowId":"@12","windowName":"shell","paneId":"%15","running":false}}"#,
+                r#"{"terminal":{"id":"terminal-created","sessionKey":"agent:explicit","running":false,"alive":true}}"#,
             )
             .expect(1)
             .create_async()
@@ -928,19 +994,17 @@ mod tests {
             token: "terminal-token".into(),
         })
         .unwrap_or_else(|error| panic!("test service failed: {error}"));
+        initialize_empty_environment(&service);
 
         let created = service
-            .create_terminal("fixed", CreateToolsServiceTerminalRequest {
-                session_key: "agent:explicit".into(),
-            })
+            .create_terminal("fixed", "agent:explicit")
             .await
             .unwrap_or_else(|error| panic!("terminal creation failed: {error}"));
 
         assert_eq!(created.terminal.id, "terminal-created");
         assert_eq!(created.terminal.session_key, "agent:explicit");
-        assert_eq!(created.terminal.session_id, "$9");
-        assert_eq!(created.terminal.window_id, "@12");
-        assert_eq!(created.terminal.pane_id, "%15");
+        assert!(!created.terminal.running);
+        assert!(created.terminal.alive);
         call.assert_async().await;
     }
 
@@ -953,7 +1017,7 @@ mod tests {
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
-                r#"{"terminals":[{"id":"42","sessionKey":"agent:active","sessionId":"$4","sessionName":"chelix-agent-active","windowId":"@8","windowName":"bash","paneId":"%11","running":true},{"id":"43","sessionKey":"agent:other","sessionId":"$5","sessionName":"chelix-agent-other","windowId":"@9","windowName":"bash","paneId":"%12","running":false}]}"#,
+                r#"{"terminals":[{"id":"42","sessionKey":"agent:active","running":true,"alive":true},{"id":"43","sessionKey":"agent:other","running":false,"alive":true}]}"#,
             )
             .expect(1)
             .create_async()
@@ -972,7 +1036,8 @@ mod tests {
         assert_eq!(session.instance_id, "fixed");
         assert_eq!(session.terminals.len(), 1);
         assert_eq!(session.terminals[0].id, "42");
-        assert_eq!(session.terminals[0].window_id, "@8");
+        assert!(session.terminals[0].running);
+        assert!(session.terminals[0].alive);
         call.assert_async().await;
     }
 
@@ -983,12 +1048,13 @@ mod tests {
             .mock("POST", TOOLS_SERVICE_TERMINALS_PATH)
             .match_header("authorization", "Bearer terminal-token")
             .match_body(mockito::Matcher::Json(serde_json::json!({
-                "sessionKey": "agent:active"
+                "sessionKey": "agent:active",
+                "env": []
             })))
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
-                r#"{"terminal":{"id":"44","sessionKey":"agent:active","sessionId":"$9","sessionName":"chelix-agent-active","windowId":"@12","windowName":"shell","paneId":"%15","running":false}}"#,
+                r#"{"terminal":{"id":"44","sessionKey":"agent:active","running":false,"alive":true}}"#,
             )
             .expect(1)
             .create_async()
@@ -998,11 +1064,10 @@ mod tests {
             token: "terminal-token".into(),
         })
         .unwrap_or_else(|error| panic!("test service failed: {error}"));
+        initialize_empty_environment(&service);
 
         let created = service
-            .create_session_terminal(CreateToolsServiceTerminalRequest {
-                session_key: "agent:active".into(),
-            })
+            .create_session_terminal("agent:active")
             .await
             .unwrap_or_else(|error| panic!("session terminal creation failed: {error}"));
 
@@ -1021,9 +1086,7 @@ mod tests {
         .unwrap_or_else(|error| panic!("test service failed: {error}"));
 
         let error = service
-            .create_terminal("missing", CreateToolsServiceTerminalRequest {
-                session_key: "agent:explicit".into(),
-            })
+            .create_terminal("missing", "agent:explicit")
             .await
             .expect_err("unknown instance must fail");
 

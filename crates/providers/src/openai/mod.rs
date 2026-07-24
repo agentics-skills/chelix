@@ -18,7 +18,6 @@ pub(crate) enum ResponsesWebSocketPolicy {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct OpenAiProviderCapabilities {
-    pub(crate) default_strict_tools: bool,
     pub(crate) requires_gemini_tool_call_extra_content: bool,
     pub(crate) default_reasoning_content_on_tool_messages: bool,
     pub(crate) requires_single_leading_system_message: bool,
@@ -28,7 +27,6 @@ pub(crate) struct OpenAiProviderCapabilities {
 
 impl OpenAiProviderCapabilities {
     pub(crate) const DEFAULT: Self = Self {
-        default_strict_tools: true,
         requires_gemini_tool_call_extra_content: false,
         default_reasoning_content_on_tool_messages: false,
         requires_single_leading_system_message: false,
@@ -56,8 +54,6 @@ pub struct OpenAiProvider {
     reasoning_effort: Option<chelix_agents::model::ReasoningEffort>,
     /// Prompt cache retention policy (used for OpenRouter Anthropic passthrough).
     cache_retention: chelix_config::CacheRetention,
-    /// Explicit override for strict tool schema mode. `None` = auto-detect.
-    strict_tools_override: Option<bool>,
     /// Explicit override for reasoning_content requirement. `None` = auto-detect.
     reasoning_content_override: Option<bool>,
     /// Explicit provider behavior policies. Never inferred from provider name or URL.

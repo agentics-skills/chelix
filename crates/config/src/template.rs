@@ -39,6 +39,7 @@ port = {port}                           # Port number (auto-generated for this i
 # http_request_logs = false              # Enable verbose Axum HTTP request/response logs (debugging)
 # ws_request_logs = false                # Enable WebSocket RPC request/response logs (debugging)
 # terminal_enabled = true                # Enable interactive host terminal in Settings > Terminal
+# scrollback_lines = 300000               # Maximum terminal lines retained by the web UI
                                          # Set to false to disable the unsandboxed shell in the web UI.
                                          # NOTE: this can be re-enabled via the web UI config editor.
                                          # For hard lockdown, set CHELIX_TERMINAL_DISABLED=1 (env var
@@ -124,7 +125,6 @@ port = {port}                           # Port number (auto-generated for this i
 #   fetch_models - Discover models from provider API when available (default: true)
 #   stream_transport - Streaming transport: "sse", "websocket", or "auto" (default: "sse")
 #   alias     - Custom name for metrics labels (useful for multiple instances)
-#   strict_tools - Force strict/non-strict tool schemas (default: auto-detect per provider)
 #   policy    - Per-provider tool policy override (allow/deny lists)
 #   probe_timeout_secs - Timeout for completion-based model probes (default: 30s).
 #

@@ -67,6 +67,14 @@ wire_api = "responses"
 
 Chelix calls `/models` and merges returned metadata into those records.
 
+### OpenAI-Compatible Tool Schemas
+
+OpenAI-compatible Chat Completions and Responses requests send native function
+tools with `strict: false`. Chelix preserves each tool schema's declared
+`required` array, so properties omitted from that array remain optional and are
+not rewritten as required nullable properties. There is no `strict_tools`
+provider setting.
+
 ## Configuration
 
 ### Via Web UI (Recommended)

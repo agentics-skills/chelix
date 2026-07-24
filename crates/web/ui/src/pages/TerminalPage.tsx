@@ -3,18 +3,15 @@ import { useSignal } from "@preact/signals";
 import type { VNode } from "preact";
 import { render } from "preact";
 import { useCallback, useEffect, useRef } from "preact/hooks";
+import * as gon from "../gon";
 import { localizedApiErrorMessage } from "../helpers";
 import { targetValue } from "../typed-events";
 
 interface ToolsServiceTerminalInfo {
 	id: string;
 	sessionKey: string;
-	sessionId: string;
-	sessionName: string;
-	windowId: string;
-	windowName: string;
-	paneId: string;
 	running: boolean;
+	alive: boolean;
 }
 
 interface ToolsServiceInstanceInfo {
@@ -235,11 +232,15 @@ function closeTerminalSocket(): void {
 async function createXterm(element: HTMLDivElement): Promise<TerminalRuntime> {
 	await ensureXtermModules();
 	if (!(terminalCtor && fitAddonCtor)) throw new Error("xterm failed to load");
+	const scrollbackLines = gon.get("terminal_scrollback_lines");
+	if (typeof scrollbackLines !== "number" || !Number.isSafeInteger(scrollbackLines) || scrollbackLines < 0) {
+		throw new Error("terminal scrollback configuration is unavailable or invalid");
+	}
 	const xterm = new terminalCtor({
 		convertEol: false,
 		disableStdin: false,
 		cursorBlink: true,
-		scrollback: 4000,
+		scrollback: scrollbackLines,
 		fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
 		fontSize: 12,
 		lineHeight: 1.35,
@@ -481,12 +482,10 @@ function TerminalView(props: TerminalViewProps): VNode {
 			</div>
 
 			{selectedTerminal ? (
-				<div className="grid grid-cols-2 gap-x-4 gap-y-1 px-3 pb-2 font-mono text-xs text-[var(--muted)] md:grid-cols-4">
+				<div className="grid grid-cols-2 gap-x-4 gap-y-1 px-3 pb-2 font-mono text-xs text-[var(--muted)]">
 					<span>terminal: {selectedTerminal.id}</span>
-					<span>session: {selectedTerminal.sessionId}</span>
-					<span>window: {selectedTerminal.windowId}</span>
-					<span>pane: {selectedTerminal.paneId}</span>
-					<span className="col-span-2 md:col-span-4">session key: {selectedTerminal.sessionKey}</span>
+					<span>state: {selectedTerminal.alive ? (selectedTerminal.running ? "running" : "ready") : "exited"}</span>
+					<span className="col-span-2">session key: {selectedTerminal.sessionKey}</span>
 				</div>
 			) : null}
 
@@ -499,8 +498,7 @@ function TerminalView(props: TerminalViewProps): VNode {
 				{props.status.value}
 			</div>
 			<div className="terminal-hint">
-				Inventory and attachment use exact IDs returned by the selected tools service. No host or container tmux is
-				accessed directly by the web server.
+				Inventory, retained history, and live attachment are owned by the selected in-process terminal service.
 			</div>
 		</div>
 	);
@@ -723,6 +721,10 @@ function TerminalPage({ compact = false, sessionKey: fixedSessionKey }: Terminal
 	}
 
 	function control(action: "ctrl_c" | "clear" | "restart"): void {
+		if (action === "restart") {
+			connect();
+			return;
+		}
 		if (!sendSocketMessage({ type: "control", action })) {
 			status.value = "Terminal is not connected.";
 			statusLevel.value = "error";

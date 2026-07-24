@@ -40,7 +40,6 @@ pub(crate) const OPENAI_COMPAT_PROVIDERS: &[OpenAiCompatDef] = &[
         env_base_url_key: "OPENROUTER_BASE_URL",
         default_base_url: "https://openrouter.ai/api/v1",
         capabilities: OpenAiProviderCapabilities {
-            default_strict_tools: false,
             cache_control_policy: CacheControlPolicy::OpenRouterAnthropic,
             ..OpenAiProviderCapabilities::DEFAULT
         },
@@ -95,7 +94,6 @@ pub(crate) const OPENAI_COMPAT_PROVIDERS: &[OpenAiCompatDef] = &[
         env_base_url_key: "GEMINI_BASE_URL",
         default_base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
         capabilities: OpenAiProviderCapabilities {
-            default_strict_tools: false,
             requires_gemini_tool_call_extra_content: true,
             ..OpenAiProviderCapabilities::DEFAULT
         },

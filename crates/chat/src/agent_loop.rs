@@ -439,7 +439,7 @@ pub(crate) async fn run_explicit_shell_command(
             let truncation = tool.truncation(&command_params);
             let persistence = tool.result_persistence(&command_params);
             match tool.execute(command_params.clone()).await {
-                Ok(result) => match tool.agent_result(&command_params, &result) {
+                Ok(result) => match tool.agent_result(&command_params, &result).await {
                     Ok(agent_result) => {
                         let tool_result_store =
                             ToolResultStore::new(chelix_config::data_dir().join("sessions"));

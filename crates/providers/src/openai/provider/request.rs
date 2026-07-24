@@ -72,24 +72,6 @@ impl OpenAiProvider {
         }
     }
 
-    /// Returns `true` when tool schemas should use OpenAI strict mode.
-    ///
-    /// Strict mode is an OpenAI-specific feature that adds `additionalProperties:
-    /// false` and forces all properties into the `required` array (making
-    /// originally-optional ones nullable via array-form types like
-    /// `["boolean", "null"]`).
-    ///
-    /// The `strict_tools` config field overrides auto-detection when set.
-    /// When unset, providers whose backends reject array-form types default to
-    /// non-strict: OpenRouter (proxies to Google, Anthropic, Meta, etc.),
-    /// Gemini direct, and Vertex AI (`googleapis.com`).
-    pub(super) fn needs_strict_tools(&self) -> bool {
-        if let Some(explicit) = self.strict_tools_override {
-            return explicit;
-        }
-        self.capabilities.default_strict_tools
-    }
-
     fn requires_reasoning_content_on_tool_messages(&self) -> bool {
         if let Some(explicit) = self.reasoning_content_override {
             return explicit;
@@ -104,7 +86,7 @@ impl OpenAiProvider {
     /// Convert raw tool schemas into the provider-compatible Chat
     /// Completions format.
     pub(super) fn prepare_chat_tools(&self, tools: &[serde_json::Value]) -> Vec<serde_json::Value> {
-        crate::openai_compat::to_openai_tools(tools, self.needs_strict_tools())
+        crate::openai_compat::to_openai_tools(tools, false)
     }
 
     fn system_message_rewrite_strategy(&self) -> SystemMessageRewriteStrategy {
@@ -476,17 +458,7 @@ mod tests {
         assert_eq!(messages[1]["role"], "user");
     }
 
-    // ── strict_tools and reasoning_content overrides ────────────────
-
-    #[test]
-    fn strict_tools_override_false_disables_strict() {
-        let p = provider("custom-model", "custom", "https://example.invalid/v1")
-            .with_strict_tools(false);
-        assert!(
-            !p.needs_strict_tools(),
-            "strict_tools_override=false must disable strict tools"
-        );
-    }
+    // ── reasoning_content overrides ─────────────────────────────────
 
     #[test]
     fn reasoning_content_override_true_enables_reasoning() {
@@ -495,15 +467,6 @@ mod tests {
         assert!(
             p.requires_reasoning_content_on_tool_messages(),
             "reasoning_content_override=true must enable reasoning_content"
-        );
-    }
-
-    #[test]
-    fn provider_defaults_to_strict_tools() {
-        let p = provider("custom-model", "custom", "https://example.invalid/v1");
-        assert!(
-            p.needs_strict_tools(),
-            "providers should use strict tools by default"
         );
     }
 
@@ -633,14 +596,10 @@ mod tests {
 
     // ── Wire-format tests ───────────────────────────────────────────
 
-    /// A provider with strict_tools=false must emit `"strict": false` in the
-    /// serialized tool schemas.
+    /// Chat Completions tool schemas must preserve optional properties.
     #[test]
-    fn non_strict_tool_schema_sets_strict_false() {
+    fn chat_tool_schema_sets_strict_false() {
         use crate::openai_compat::to_openai_tools;
-
-        let p = provider("custom-model", "custom", "https://example.invalid/v1")
-            .with_strict_tools(false);
 
         let tools = vec![serde_json::json!({
             "name": "get_weather",
@@ -654,7 +613,7 @@ mod tests {
             }
         })];
 
-        let serialized = to_openai_tools(&tools, p.needs_strict_tools());
+        let serialized = to_openai_tools(&tools, false);
         assert_eq!(serialized.len(), 1);
 
         let strict_val = serialized[0]["function"]["strict"].as_bool();

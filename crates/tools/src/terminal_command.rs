@@ -15,7 +15,7 @@ use {
 use crate::{
     Result,
     approval::{ApprovalAction, ApprovalDecision, ApprovalManager},
-    command::{CommandCompletionEvent, CommandCompletionFn, EnvVarProvider},
+    command::{CommandCompletionEvent, CommandCompletionFn, EnvVarProvider, redact_secret_values},
     error::Error,
     params::without_null_params,
     tools_service::ManagedToolsService,
@@ -199,15 +199,19 @@ impl AgentTool for ExecuteCommandTool {
     }
 
     fn description(&self) -> &str {
-        "Execute a shell command in a tmux terminal managed by chelix-tools-service. Returns terminalId for follow-up read_terminal_output calls."
+        "Execute a shell command in a persistent terminal managed in-process by chelix-tools-service. Returns terminalId for follow-up read_terminal_output calls."
     }
 
-    fn agent_result(
+    async fn agent_result(
         &self,
         _params: &serde_json::Value,
         raw_result: &serde_json::Value,
     ) -> anyhow::Result<serde_json::Value> {
-        let response: ExecuteCommandResponse = serde_json::from_value(raw_result.clone())?;
+        let mut response: ExecuteCommandResponse = serde_json::from_value(raw_result.clone())?;
+        redact_secret_values(
+            &mut response.output,
+            &self.service.current_terminal_secret_values().await?,
+        );
         Ok(serde_json::Value::String(format_execute_result(&response)))
     }
 
@@ -226,7 +230,7 @@ impl AgentTool for ExecuteCommandTool {
                 },
                 "newTerminal": {
                     "type": "boolean",
-                    "description": "If true, create a new tmux window/terminal"
+                    "description": "If true, create a new persistent terminal"
                 },
                 "destructiveFlag": {
                     "type": "boolean",
@@ -254,6 +258,8 @@ impl AgentTool for ExecuteCommandTool {
         let params: ExecuteCommandParams = serde_json::from_value(without_null_params(params))?;
         let session_key = params.session_key.as_deref().unwrap_or("main").to_string();
         let command = params.command.trim().to_string();
+        let custom_cwd = params.custom_cwd.filter(|value| !value.is_empty());
+        let terminal_id = params.terminal_id.filter(|value| !value.is_empty());
         if command.is_empty() {
             return Err(Error::message("command cannot be empty").into());
         }
@@ -265,11 +271,11 @@ impl AgentTool for ExecuteCommandTool {
         let request = ExecuteCommandRequest {
             session_key: session_key.clone(),
             command: command.clone(),
-            custom_cwd: params.custom_cwd,
+            custom_cwd,
             new_terminal: params.new_terminal,
             background: params.background,
             timeout_millis,
-            terminal_id: params.terminal_id,
+            terminal_id,
             env: self.command_env().await?,
         };
         info!(session = session_key, "execute_command tool invoked");
@@ -297,15 +303,19 @@ impl AgentTool for ReadTerminalOutputTool {
     }
 
     fn description(&self) -> &str {
-        "Read current output from a tmux terminal managed by chelix-tools-service."
+        "Read retained history from a persistent terminal managed by chelix-tools-service."
     }
 
-    fn agent_result(
+    async fn agent_result(
         &self,
         _params: &serde_json::Value,
         raw_result: &serde_json::Value,
     ) -> anyhow::Result<serde_json::Value> {
-        let response: ReadTerminalOutputResponse = serde_json::from_value(raw_result.clone())?;
+        let mut response: ReadTerminalOutputResponse = serde_json::from_value(raw_result.clone())?;
+        redact_secret_values(
+            &mut response.output,
+            &self.service.current_terminal_secret_values().await?,
+        );
         Ok(serde_json::Value::String(format_terminal_output(&response)))
     }
 
@@ -319,7 +329,7 @@ impl AgentTool for ReadTerminalOutputTool {
                 },
                 "maxLines": {
                     "type": "integer",
-                    "description": "Maximum number of tmux scrollback lines to read"
+                    "description": "Maximum number of retained terminal history lines to read"
                 }
             },
             "required": ["terminalId"],
@@ -384,9 +394,60 @@ fn format_output(status: String, output: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::sandbox::ToolsServiceEndpoint;
+    use {
+        crate::{
+            command::{EnvVarProvider, InjectedEnvVar},
+            sandbox::ToolsServiceEndpoint,
+        },
+        secrecy::Secret,
+    };
 
     use super::*;
+
+    struct StaticEnvProvider {
+        variables: Vec<InjectedEnvVar>,
+    }
+
+    #[async_trait]
+    impl EnvVarProvider for StaticEnvProvider {
+        async fn get_env_vars(&self) -> anyhow::Result<Vec<InjectedEnvVar>> {
+            Ok(self.variables.clone())
+        }
+    }
+
+    fn response(
+        output: &str,
+        completed: bool,
+        timed_out: bool,
+        background: bool,
+    ) -> ExecuteCommandResponse {
+        ExecuteCommandResponse {
+            terminal_id: "7".into(),
+            run_id: "run".into(),
+            output: output.into(),
+            exit_code: completed.then_some(0),
+            completed,
+            alive: true,
+            timed_out,
+            background,
+            message: "state".into(),
+        }
+    }
+
+    fn execute_response(terminal_id: &str) -> String {
+        serde_json::json!({
+            "terminalId": terminal_id,
+            "runId": "run",
+            "output": "ok",
+            "exitCode": 0,
+            "completed": true,
+            "alive": true,
+            "timedOut": false,
+            "background": false,
+            "message": "done"
+        })
+        .to_string()
+    }
 
     fn client(base_url: String, token: &str) -> Arc<ManagedToolsService> {
         ManagedToolsService::for_test(ToolsServiceEndpoint {
@@ -394,6 +455,14 @@ mod tests {
             token: token.into(),
         })
         .unwrap_or_else(|error| panic!("test client failed: {error}"))
+    }
+
+    fn initialize_empty_environment(service: &ManagedToolsService) {
+        service
+            .set_env_provider(Arc::new(StaticEnvProvider {
+                variables: Vec::new(),
+            }))
+            .unwrap_or_else(|error| panic!("environment provider setup failed: {error}"));
     }
 
     #[tokio::test]
@@ -405,32 +474,22 @@ mod tests {
             .match_body(mockito::Matcher::PartialJson(serde_json::json!({
                 "sessionKey": "session:test",
                 "command": "printf ok",
-                "timeoutMillis": DEFAULT_TIMEOUT_MILLIS
+                "customCwd": null,
+                "newTerminal": false,
+                "background": false,
+                "timeoutMillis": DEFAULT_TIMEOUT_MILLIS,
+                "terminalId": null,
+                "env": []
             })))
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(
-                serde_json::json!({
-                    "terminalId": "terminal",
-                    "runId": "run",
-                    "sessionId": "$0",
-                    "sessionName": "main",
-                    "windowId": "@0",
-                    "windowName": "bash",
-                    "paneId": "%0",
-                    "output": "ok",
-                    "exitCode": 0,
-                    "completed": true,
-                    "timedOut": false,
-                    "background": false,
-                    "message": "done"
-                })
-                .to_string(),
-            )
+            .with_body(execute_response("terminal"))
             .expect(1)
             .create_async()
             .await;
-        let tool = ExecuteCommandTool::new(client(server.url(), "command-token"));
+        let service = client(server.url(), "command-token");
+        initialize_empty_environment(&service);
+        let tool = ExecuteCommandTool::new(service);
 
         let result = tool
             .execute(serde_json::json!({
@@ -443,8 +502,111 @@ mod tests {
         assert_eq!(result["terminalId"], "terminal");
         assert_eq!(
             tool.agent_result(&serde_json::json!({}), &result)
+                .await
                 .unwrap_or_else(|error| panic!("agent result failed: {error}")),
             "Command finished in terminal (id: terminal).\nOutput:\nok"
+        );
+        call.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn execute_treats_empty_routing_strings_as_omitted() {
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("POST", chelix_protocol::TOOLS_SERVICE_EXECUTE_COMMAND_PATH)
+            .match_body(mockito::Matcher::PartialJson(serde_json::json!({
+                "command": "pwd",
+                "customCwd": null,
+                "newTerminal": true,
+                "terminalId": null
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(execute_response("1"))
+            .expect(1)
+            .create_async()
+            .await;
+        let tool = ExecuteCommandTool::new(client(server.url(), "command-token"));
+
+        let result = tool
+            .execute(serde_json::json!({
+                "command": "pwd",
+                "customCwd": "",
+                "newTerminal": true,
+                "terminalId": ""
+            }))
+            .await
+            .unwrap_or_else(|error| panic!("execute failed: {error}"));
+
+        assert_eq!(result["terminalId"], "1");
+        call.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn execute_preserves_non_empty_routing_values() {
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("POST", chelix_protocol::TOOLS_SERVICE_EXECUTE_COMMAND_PATH)
+            .match_body(mockito::Matcher::PartialJson(serde_json::json!({
+                "command": "pwd",
+                "customCwd": "/tmp",
+                "newTerminal": false,
+                "terminalId": "42"
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(execute_response("42"))
+            .expect(1)
+            .create_async()
+            .await;
+        let tool = ExecuteCommandTool::new(client(server.url(), "command-token"));
+
+        let result = tool
+            .execute(serde_json::json!({
+                "command": "pwd",
+                "customCwd": "/tmp",
+                "terminalId": "42"
+            }))
+            .await
+            .unwrap_or_else(|error| panic!("execute failed: {error}"));
+
+        assert_eq!(result["terminalId"], "42");
+        call.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn execute_propagates_new_terminal_id_conflict() {
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("POST", chelix_protocol::TOOLS_SERVICE_EXECUTE_COMMAND_PATH)
+            .match_body(mockito::Matcher::PartialJson(serde_json::json!({
+                "command": "pwd",
+                "newTerminal": true,
+                "terminalId": "42"
+            })))
+            .with_status(400)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"error":"terminalId cannot be combined with newTerminal=true"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let tool = ExecuteCommandTool::new(client(server.url(), "command-token"));
+
+        let error = match tool
+            .execute(serde_json::json!({
+                "command": "pwd",
+                "newTerminal": true,
+                "terminalId": "42"
+            }))
+            .await
+        {
+            Ok(_) => panic!("expected terminal routing conflict"),
+            Err(error) => error,
+        };
+
+        assert_eq!(
+            error.to_string(),
+            "terminalId cannot be combined with newTerminal=true"
         );
         call.assert_async().await;
     }
@@ -484,11 +646,82 @@ mod tests {
     }
 
     #[test]
-    fn schemas_have_no_node_route() {
+    fn execute_result_formats_finished_timed_out_and_background_states() {
+        assert_eq!(
+            format_execute_result(&response("done", true, false, false)),
+            "Command finished in terminal (id: 7).\nOutput:\ndone"
+        );
+        assert_eq!(
+            format_execute_result(&response("partial", false, true, false)),
+            "Command is still running in terminal (id: 7).\nOutput:\npartial"
+        );
+        assert_eq!(
+            format_execute_result(&response("started", false, false, true)),
+            "Command started in terminal (id: 7).\nOutput:\nstarted"
+        );
+    }
+
+    #[test]
+    fn execute_result_omits_output_section_when_empty() {
+        assert_eq!(
+            format_execute_result(&response("", true, false, false)),
+            "Command finished in terminal (id: 7)."
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_result_redacts_only_secret_environment_values() {
+        let service = client("http://127.0.0.1:1".into(), "unused");
+        service
+            .set_env_provider(Arc::new(StaticEnvProvider {
+                variables: vec![
+                    InjectedEnvVar {
+                        key: "SECRET_TOKEN".into(),
+                        value: Secret::new("secret-value".into()),
+                        secret: true,
+                    },
+                    InjectedEnvVar {
+                        key: "PUBLIC_VALUE".into(),
+                        value: Secret::new("public-value".into()),
+                        secret: false,
+                    },
+                ],
+            }))
+            .unwrap_or_else(|error| panic!("environment provider setup failed: {error}"));
+        let tool = ExecuteCommandTool::new(service);
+        let raw_result =
+            serde_json::to_value(response("secret-value public-value", true, false, false))
+                .unwrap_or_else(|error| panic!("response encoding failed: {error}"));
+
+        let result = tool
+            .agent_result(&serde_json::json!({}), &raw_result)
+            .await
+            .unwrap_or_else(|error| panic!("agent result failed: {error}"));
+
+        assert_eq!(
+            result,
+            "Command finished in terminal (id: 7).\nOutput:\n[REDACTED] public-value"
+        );
+    }
+
+    #[test]
+    fn execute_schema_requires_only_command() {
         let schema = ExecuteCommandTool::new(client("http://127.0.0.1:1".into(), "unused"))
             .parameters_schema();
 
+        assert_eq!(schema["required"], serde_json::json!(["command"]));
         assert!(schema["properties"].get("node").is_none());
+        assert_eq!(schema["additionalProperties"], false);
+    }
+
+    #[test]
+    fn read_terminal_output_schema_requires_terminal_id_only() {
+        let schema = ReadTerminalOutputTool::new(client("http://127.0.0.1:1".into(), "unused"))
+            .parameters_schema();
+
+        assert_eq!(schema["required"], serde_json::json!(["terminalId"]));
+        assert_eq!(schema["properties"]["terminalId"]["type"], "string");
+        assert_eq!(schema["properties"]["maxLines"]["type"], "integer");
         assert_eq!(schema["additionalProperties"], false);
     }
 }

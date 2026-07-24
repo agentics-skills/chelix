@@ -512,8 +512,5 @@ fn configure_openai_transport(
     if !matches!(entry.tool_mode, chelix_config::ToolMode::Auto) {
         provider = provider.with_tool_mode(entry.tool_mode);
     }
-    if let Some(strict_tools) = entry.strict_tools {
-        provider = provider.with_strict_tools(strict_tools);
-    }
     provider
 }

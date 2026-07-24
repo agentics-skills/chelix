@@ -11,15 +11,14 @@ use {
         response::{IntoResponse, Response},
     },
     chelix_httpd::AppState,
-    chelix_protocol::CreateToolsServiceTerminalRequest,
     tracing::warn,
 };
 
 use super::{
     auth::{is_local_connection, is_same_origin, websocket_header_authenticated},
     types::{
-        TERMINAL_DISABLED, TERMINAL_REQUEST_FAILED, TERMINAL_SERVICE_UNAVAILABLE,
-        TerminalSessionQuery, TerminalWsQuery, terminal_error,
+        CreateTerminalRequest, TERMINAL_DISABLED, TERMINAL_REQUEST_FAILED,
+        TERMINAL_SERVICE_UNAVAILABLE, TerminalSessionQuery, TerminalWsQuery, terminal_error,
     },
     websocket,
 };
@@ -98,7 +97,7 @@ pub async fn api_session_terminals_handler(
 
 pub async fn api_session_terminal_create_handler(
     State(state): State<AppState>,
-    Json(request): Json<CreateToolsServiceTerminalRequest>,
+    Json(request): Json<CreateTerminalRequest>,
 ) -> Response {
     if let Some(response) = terminal_disabled_response(&state) {
         return response;
@@ -107,7 +106,7 @@ pub async fn api_session_terminal_create_handler(
         Some(service) => service,
         None => return tools_service_unavailable_response(),
     };
-    match service.create_session_terminal(request).await {
+    match service.create_session_terminal(&request.session_key).await {
         Ok(response) => Json(response).into_response(),
         Err(error) => (
             StatusCode::BAD_GATEWAY,
@@ -120,7 +119,7 @@ pub async fn api_session_terminal_create_handler(
 pub async fn api_terminal_create_handler(
     State(state): State<AppState>,
     Path(instance_id): Path<String>,
-    Json(request): Json<CreateToolsServiceTerminalRequest>,
+    Json(request): Json<CreateTerminalRequest>,
 ) -> Response {
     if let Some(response) = terminal_disabled_response(&state) {
         return response;
@@ -129,7 +128,10 @@ pub async fn api_terminal_create_handler(
         Some(service) => service,
         None => return tools_service_unavailable_response(),
     };
-    match service.create_terminal(&instance_id, request).await {
+    match service
+        .create_terminal(&instance_id, &request.session_key)
+        .await
+    {
         Ok(response) => Json(response).into_response(),
         Err(error) => (
             StatusCode::BAD_GATEWAY,

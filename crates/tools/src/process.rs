@@ -36,7 +36,7 @@ impl AgentTool for ProcessTool {
         "Control terminals created by execute_command in the current session. Use execute_command to start work and read_terminal_output to read output. Actions: send_keys, paste, kill, list."
     }
 
-    fn agent_result(
+    async fn agent_result(
         &self,
         _params: &serde_json::Value,
         raw_result: &serde_json::Value,
@@ -78,11 +78,11 @@ impl AgentTool for ProcessTool {
                 },
                 "keys": {
                     "type": "string",
-                    "description": "Tmux key name or literal keystrokes. Required for send_keys."
+                    "description": "RMUX key name or literal keystrokes. Required for send_keys."
                 },
                 "text": {
                     "type": "string",
-                    "description": "Text to paste without interpreting it as tmux keys. Required for paste."
+                    "description": "Text to paste without interpreting it as key names. Required for paste."
                 }
             },
             "required": ["action"],
@@ -188,6 +188,7 @@ mod tests {
         assert_eq!(
             ProcessTool::new(client("http://127.0.0.1:1".into(), "unused"))
                 .agent_result(&serde_json::json!({}), &result)
+                .await
                 .unwrap_or_else(|error| panic!("agent result failed: {error}")),
             "Terminals in the current session: 2, 4"
         );
@@ -223,11 +224,11 @@ mod tests {
                     },
                     "keys": {
                         "type": "string",
-                        "description": "Tmux key name or literal keystrokes. Required for send_keys."
+                        "description": "RMUX key name or literal keystrokes. Required for send_keys."
                     },
                     "text": {
                         "type": "string",
-                        "description": "Text to paste without interpreting it as tmux keys. Required for paste."
+                        "description": "Text to paste without interpreting it as key names. Required for paste."
                     }
                 },
                 "required": ["action"],
