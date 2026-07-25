@@ -1,0 +1,36 @@
+[package]
+edition.workspace = true
+name              = "chelix-skills"
+version.workspace = true
+
+[dependencies]
+async-trait           = { workspace = true }
+chelix-config         = { workspace = true }
+chelix-metrics        = { optional = true, workspace = true }
+flate2                = { workspace = true }
+include_dir           = { optional = true, workspace = true }
+notify-debouncer-full = { optional = true, workspace = true }
+reqwest               = { workspace = true }
+serde                 = { workspace = true }
+serde_json            = { workspace = true }
+serde_yaml            = { workspace = true }
+tar                   = { workspace = true }
+thiserror             = { workspace = true }
+tokio                 = { workspace = true }
+tracing               = { workspace = true }
+walkdir               = { workspace = true }
+zip                   = { workspace = true }
+
+[features]
+bundled-skills = ["dep:include_dir"]
+default        = []
+file-watcher   = ["dep:notify-debouncer-full"]
+metrics        = ["dep:chelix-metrics"]
+
+[dev-dependencies]
+rstest   = { workspace = true }
+tempfile = { workspace = true }
+tokio    = { features = ["macros", "rt"], workspace = true }
+
+[lints]
+workspace = true

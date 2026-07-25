@@ -1,0 +1,1420 @@
+use std::{
+    fs::{self, File, OpenOptions},
+    io::{BufRead, BufReader, Seek, Write},
+    path::PathBuf,
+};
+
+use {
+    crate::{Error, Result},
+    fd_lock::RwLock,
+    serde::{Deserialize, Serialize},
+};
+
+/// How to locate a user message that starts a session-tail mutation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UserMessageTarget {
+    /// Zero-based physical JSONL message index.
+    MessageIndex(usize),
+    /// Client-assigned user message sequence number.
+    ClientSeq(u64),
+}
+
+/// Result of truncating a session from a selected user message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TruncateTailResult {
+    pub target_index: usize,
+    pub kept_count: usize,
+    pub removed_count: usize,
+    pub pruned_media_count: usize,
+}
+
+/// A single search hit within a session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResult {
+    pub session_key: String,
+    pub snippet: String,
+    pub role: String,
+    pub message_index: usize,
+}
+
+/// Append-only JSONL session storage with file locking.
+pub struct SessionStore {
+    pub base_dir: PathBuf,
+}
+
+#[must_use]
+fn slice_on_char_boundaries(content: &str, start: usize, end: usize) -> &str {
+    let bounded_start = content.floor_char_boundary(start.min(content.len()));
+    let bounded_end = content.floor_char_boundary(end.min(content.len()));
+    if bounded_start >= bounded_end {
+        return "";
+    }
+    &content[bounded_start..bounded_end]
+}
+
+impl SessionStore {
+    pub fn new(base_dir: PathBuf) -> Self {
+        Self { base_dir }
+    }
+
+    /// Sanitize a session key for use as a filename.
+    pub fn key_to_filename(key: &str) -> String {
+        key.replace(':', "_")
+    }
+
+    fn path_for(&self, key: &str) -> PathBuf {
+        self.base_dir
+            .join(format!("{}.jsonl", Self::key_to_filename(key)))
+    }
+
+    /// Directory for session media files (screenshots, audio, etc.).
+    fn media_dir_for(&self, key: &str) -> PathBuf {
+        self.base_dir.join("media").join(Self::key_to_filename(key))
+    }
+
+    /// Absolute path for a session media file.
+    pub fn media_path_for(&self, key: &str, filename: &str) -> PathBuf {
+        self.media_dir_for(key).join(filename)
+    }
+
+    /// Save a media file for a session. Returns the relative path from base_dir.
+    pub async fn save_media(&self, key: &str, filename: &str, data: &[u8]) -> Result<String> {
+        let dir = self.media_dir_for(key);
+        let file_path = self.media_path_for(key, filename);
+        let data = data.to_vec();
+
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            fs::create_dir_all(&dir)?;
+            fs::write(&file_path, &data)?;
+            Ok(())
+        })
+        .await??;
+
+        let sanitized = Self::key_to_filename(key);
+        Ok(format!("media/{sanitized}/{filename}"))
+    }
+
+    /// Read a media file. Returns raw bytes.
+    pub async fn read_media(&self, key: &str, filename: &str) -> Result<Vec<u8>> {
+        let file_path = self.media_path_for(key, filename);
+
+        tokio::task::spawn_blocking(move || -> Result<Vec<u8>> {
+            let data = fs::read(&file_path)?;
+            Ok(data)
+        })
+        .await?
+    }
+
+    /// Append a message (JSON value) as a single line to the session file.
+    pub async fn append(&self, key: &str, message: &serde_json::Value) -> Result<()> {
+        let path = self.path_for(key);
+        let line = serde_json::to_string(message)?;
+
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let file = OpenOptions::new().create(true).append(true).open(&path)?;
+            let mut lock = RwLock::new(file);
+            let mut guard = lock
+                .write()
+                .map_err(|e| Error::lock_failed(e.to_string()))?;
+            writeln!(*guard, "{line}")?;
+            Ok(())
+        })
+        .await??;
+
+        Ok(())
+    }
+
+    /// Append a message and return its zero-based physical JSONL index.
+    ///
+    /// The existing line count and append share one exclusive file lock, so
+    /// the returned index always identifies the record written by this call.
+    pub async fn append_with_index(&self, key: &str, message: &serde_json::Value) -> Result<usize> {
+        let path = self.path_for(key);
+        let line = serde_json::to_string(message)?;
+
+        tokio::task::spawn_blocking(move || -> Result<usize> {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let file = OpenOptions::new()
+                .create(true)
+                .read(true)
+                .append(true)
+                .open(&path)?;
+            let mut lock = RwLock::new(file);
+            let mut guard = lock
+                .write()
+                .map_err(|e| Error::lock_failed(e.to_string()))?;
+            let message_index = BufReader::new(&*guard)
+                .lines()
+                .collect::<std::io::Result<Vec<_>>>()?
+                .into_iter()
+                .filter(|line| !line.trim().is_empty())
+                .count();
+            writeln!(*guard, "{line}")?;
+            Ok(message_index)
+        })
+        .await?
+    }
+
+    /// Read all messages from a session file.
+    pub async fn read(&self, key: &str) -> Result<Vec<serde_json::Value>> {
+        let path = self.path_for(key);
+
+        tokio::task::spawn_blocking(move || -> Result<Vec<serde_json::Value>> {
+            if !path.exists() {
+                return Ok(vec![]);
+            }
+            let file = File::open(&path)?;
+            let reader = BufReader::new(file);
+            let mut messages = Vec::new();
+            for line in reader.lines() {
+                let line = line?;
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                match serde_json::from_str(trimmed) {
+                    Ok(val) => messages.push(val),
+                    Err(e) => {
+                        tracing::warn!("skipping malformed JSONL line: {e}");
+                    },
+                }
+            }
+            Ok(messages)
+        })
+        .await?
+    }
+
+    /// Read all messages from a session that match a given `run_id`.
+    pub async fn read_by_run_id(&self, key: &str, run_id: &str) -> Result<Vec<serde_json::Value>> {
+        let all = self.read(key).await?;
+        let run_id = run_id.to_string();
+        Ok(all
+            .into_iter()
+            .filter(|msg| msg.get("run_id").and_then(|v| v.as_str()) == Some(&run_id))
+            .collect())
+    }
+
+    /// Read the last N messages from a session file.
+    pub async fn read_last_n(&self, key: &str, n: usize) -> Result<Vec<serde_json::Value>> {
+        let path = self.path_for(key);
+
+        tokio::task::spawn_blocking(move || -> Result<Vec<serde_json::Value>> {
+            if !path.exists() {
+                return Ok(vec![]);
+            }
+            let file = File::open(&path)?;
+            let reader = BufReader::new(file);
+            let mut all: Vec<serde_json::Value> = Vec::new();
+            for line in reader.lines() {
+                let line = line?;
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                if let Ok(val) = serde_json::from_str(trimmed) {
+                    all.push(val);
+                }
+            }
+            let start = all.len().saturating_sub(n);
+            Ok(all[start..].to_vec())
+        })
+        .await?
+    }
+
+    /// Delete the session file, its media directory, and its persisted tool results.
+    pub async fn clear(&self, key: &str) -> Result<()> {
+        let path = self.path_for(key);
+        let media_dir = self.media_dir_for(key);
+        let tool_results_dir =
+            crate::tool_results::ToolResultStore::new(self.base_dir.clone()).session_dir(key);
+
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            if path.exists() {
+                fs::remove_file(&path)?;
+            }
+            if media_dir.exists() {
+                // Deleting this parent-session media directory also breaks any fork that still
+                // references the same paths; forks need containerized media snapshots.
+                let _ = fs::remove_dir_all(&media_dir);
+            }
+            if tool_results_dir.exists() {
+                let _ = fs::remove_dir_all(&tool_results_dir);
+            }
+            Ok(())
+        })
+        .await??;
+
+        Ok(())
+    }
+
+    /// List all session keys by scanning JSONL files in the base directory.
+    pub fn list_keys(&self) -> Vec<String> {
+        let Ok(entries) = fs::read_dir(&self.base_dir) else {
+            return vec![];
+        };
+        entries
+            .filter_map(|e| e.ok())
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                name.strip_suffix(".jsonl").map(|s| s.replace('_', ":"))
+            })
+            .collect()
+    }
+
+    /// Search all sessions for messages containing `query` (case-insensitive).
+    /// Returns up to `max_results` hits, at most one per session.
+    pub async fn search(&self, query: &str, max_results: usize) -> Result<Vec<SearchResult>> {
+        let base = self.base_dir.clone();
+        let query = query.to_lowercase();
+
+        tokio::task::spawn_blocking(move || {
+            let mut results = Vec::new();
+            let entries = fs::read_dir(&base)?;
+
+            for entry in entries.flatten() {
+                if results.len() >= max_results {
+                    break;
+                }
+                let path = entry.path();
+                let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                    continue;
+                };
+                let Some(key_raw) = name.strip_suffix(".jsonl") else {
+                    continue;
+                };
+                let session_key = key_raw.replace('_', ":");
+
+                let Ok(file) = File::open(&path) else {
+                    continue;
+                };
+                let reader = BufReader::new(file);
+                for (idx, line) in reader.lines().enumerate() {
+                    let Ok(line) = line else {
+                        continue;
+                    };
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+                        continue;
+                    };
+                    let content = val.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                    if content.to_lowercase().contains(&query) {
+                        let role = val
+                            .get("role")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown")
+                            .to_string();
+
+                        // Build a snippet: find the match position and extract context.
+                        let lower = content.to_lowercase();
+                        let pos = lower.find(&query).unwrap_or(0);
+                        let start = pos.saturating_sub(40);
+                        let end = pos.saturating_add(query.len()).saturating_add(60);
+                        let snippet = slice_on_char_boundaries(content, start, end).to_string();
+
+                        results.push(SearchResult {
+                            session_key: session_key.clone(),
+                            snippet,
+                            role,
+                            message_index: idx,
+                        });
+                        // One hit per session is enough for autocomplete.
+                        break;
+                    }
+                }
+            }
+
+            Ok(results)
+        })
+        .await?
+    }
+
+    /// Replace the entire session history with the given messages.
+    pub async fn replace_history(&self, key: &str, messages: Vec<serde_json::Value>) -> Result<()> {
+        let path = self.path_for(key);
+
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&path)?;
+            let mut lock = RwLock::new(file);
+            let mut guard = lock
+                .write()
+                .map_err(|e| Error::lock_failed(e.to_string()))?;
+            for msg in &messages {
+                let line = serde_json::to_string(msg)?;
+                writeln!(*guard, "{line}")?;
+            }
+            Ok(())
+        })
+        .await??;
+
+        Ok(())
+    }
+
+    /// Read all messages as typed [`PersistedMessage`] values.
+    ///
+    /// Lines that fail to deserialize into `PersistedMessage` are skipped
+    /// (with a warning), matching the behavior of [`read`].
+    pub async fn read_typed(&self, key: &str) -> Result<Vec<crate::message::PersistedMessage>> {
+        let path = self.path_for(key);
+
+        tokio::task::spawn_blocking(move || -> Result<Vec<crate::message::PersistedMessage>> {
+            if !path.exists() {
+                return Ok(vec![]);
+            }
+            let file = File::open(&path)?;
+            let reader = BufReader::new(file);
+            let mut messages = Vec::new();
+            for line in reader.lines() {
+                let line = line?;
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                match serde_json::from_str(trimmed) {
+                    Ok(msg) => messages.push(msg),
+                    Err(e) => {
+                        tracing::warn!("skipping malformed JSONL line (typed): {e}");
+                    },
+                }
+            }
+            Ok(messages)
+        })
+        .await?
+    }
+
+    /// Read the last N messages as typed [`PersistedMessage`] values.
+    pub async fn read_last_n_typed(
+        &self,
+        key: &str,
+        n: usize,
+    ) -> Result<Vec<crate::message::PersistedMessage>> {
+        let path = self.path_for(key);
+
+        tokio::task::spawn_blocking(move || -> Result<Vec<crate::message::PersistedMessage>> {
+            if !path.exists() {
+                return Ok(vec![]);
+            }
+            let file = File::open(&path)?;
+            let reader = BufReader::new(file);
+            let mut all: Vec<crate::message::PersistedMessage> = Vec::new();
+            for line in reader.lines() {
+                let line = line?;
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                if let Ok(msg) = serde_json::from_str(trimmed) {
+                    all.push(msg);
+                }
+            }
+            let start = all.len().saturating_sub(n);
+            Ok(all[start..].to_vec())
+        })
+        .await?
+    }
+
+    /// Replace the entire session history with typed messages.
+    pub async fn replace_history_typed(
+        &self,
+        key: &str,
+        messages: &[crate::message::PersistedMessage],
+    ) -> Result<()> {
+        let path = self.path_for(key);
+        let values: Vec<serde_json::Value> = messages.iter().map(|m| m.to_value()).collect();
+
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&path)?;
+            let mut lock = RwLock::new(file);
+            let mut guard = lock
+                .write()
+                .map_err(|e| Error::lock_failed(e.to_string()))?;
+            for msg in &values {
+                let line = serde_json::to_string(msg)?;
+                writeln!(*guard, "{line}")?;
+            }
+            Ok(())
+        })
+        .await??;
+
+        Ok(())
+    }
+
+    /// Truncate a session from a selected user message, removing that message
+    /// and every subsequent message in the JSONL file.
+    pub async fn truncate_from_user_message(
+        &self,
+        key: &str,
+        target: UserMessageTarget,
+    ) -> Result<TruncateTailResult> {
+        let path = self.path_for(key);
+        let media_dir = self.media_dir_for(key);
+        let key_filename = Self::key_to_filename(key);
+        let session_key = key.to_string();
+
+        tokio::task::spawn_blocking(move || -> Result<TruncateTailResult> {
+            if !path.exists() {
+                return Err(Error::message(format!("session '{session_key}' not found")));
+            }
+            let file = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .truncate(false)
+                .open(&path)?;
+            let mut lock = RwLock::new(file);
+            let mut guard = lock
+                .write()
+                .map_err(|e| Error::lock_failed(e.to_string()))?;
+
+            let mut messages = read_messages_from_file(&mut guard)?;
+            let original_count = messages.len();
+            let target_index = find_user_message_target(&messages, target)?;
+            let retained_media =
+                collect_session_media_refs(&messages[..target_index], &key_filename);
+            let removed_count = original_count.saturating_sub(target_index);
+            messages.truncate(target_index);
+
+            guard.set_len(0)?;
+            guard.rewind()?;
+            for msg in &messages {
+                let line = serde_json::to_string(msg)?;
+                writeln!(*guard, "{line}")?;
+            }
+
+            // This only checks media references retained in the current session file.
+            // Forks may still reference parent media until fork snapshots get their
+            // own containerized media copy without prompt-cache-sensitive URL rewrites.
+            let pruned_media_count = prune_unreferenced_media(&media_dir, &retained_media)?;
+
+            Ok(TruncateTailResult {
+                target_index,
+                kept_count: messages.len(),
+                removed_count,
+                pruned_media_count,
+            })
+        })
+        .await?
+    }
+
+    /// Append a typed message to the session file.
+    pub async fn append_typed(
+        &self,
+        key: &str,
+        message: &crate::message::PersistedMessage,
+    ) -> Result<()> {
+        self.append(key, &message.to_value()).await
+    }
+
+    /// Update one typed message by its zero-based history index.
+    ///
+    /// The entire read-modify-write operation is performed while holding the
+    /// session file lock, so callers can safely finalize metadata on an
+    /// already-persisted assistant segment without changing its position.
+    pub async fn update_typed_at<F>(
+        &self,
+        key: &str,
+        message_index: usize,
+        update: F,
+    ) -> Result<crate::message::PersistedMessage>
+    where
+        F: FnOnce(crate::message::PersistedMessage) -> crate::message::PersistedMessage
+            + Send
+            + 'static,
+    {
+        let path = self.path_for(key);
+
+        tokio::task::spawn_blocking(move || -> Result<crate::message::PersistedMessage> {
+            let Some(parent) = path.parent() else {
+                return Err(Error::message(path.display().to_string()));
+            };
+            fs::create_dir_all(parent)?;
+
+            let file = OpenOptions::new().read(true).write(true).open(&path)?;
+            let mut lock = RwLock::new(file);
+            let mut guard = lock
+                .write()
+                .map_err(|e| Error::lock_failed(e.to_string()))?;
+            let mut lines: Vec<String> = BufReader::new(&*guard)
+                .lines()
+                .collect::<std::io::Result<Vec<_>>>()?
+                .into_iter()
+                .filter(|line| !line.trim().is_empty())
+                .collect();
+            if message_index >= lines.len() {
+                return Err(Error::message(format!(
+                    "message index {message_index} is outside session history"
+                )));
+            }
+            let existing = serde_json::from_str(&lines[message_index])?;
+            let updated = update(existing);
+            lines[message_index] = serde_json::to_string(&updated.to_value())?;
+
+            guard.set_len(0)?;
+            guard.rewind()?;
+            for line in lines {
+                writeln!(*guard, "{line}")?;
+            }
+            Ok(updated)
+        })
+        .await?
+    }
+
+    /// Count messages in a session file without parsing them.
+    pub async fn count(&self, key: &str) -> Result<u32> {
+        let path = self.path_for(key);
+
+        tokio::task::spawn_blocking(move || -> Result<u32> {
+            if !path.exists() {
+                return Ok(0);
+            }
+            let file = File::open(&path)?;
+            let reader = BufReader::new(file);
+            let count = reader
+                .lines()
+                .map_while(std::result::Result::ok)
+                .filter(|l| !l.trim().is_empty())
+                .count();
+            Ok(count as u32)
+        })
+        .await?
+    }
+}
+
+fn read_messages_from_file(file: &mut File) -> Result<Vec<serde_json::Value>> {
+    file.rewind()?;
+    let mut messages = Vec::new();
+    {
+        let reader = BufReader::new(&mut *file);
+        for line in reader.lines() {
+            let line = line?;
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            match serde_json::from_str(trimmed) {
+                Ok(val) => messages.push(val),
+                Err(e) => {
+                    tracing::warn!("skipping malformed JSONL line while truncating: {e}");
+                },
+            }
+        }
+    }
+    file.rewind()?;
+    Ok(messages)
+}
+
+fn find_user_message_target(
+    messages: &[serde_json::Value],
+    target: UserMessageTarget,
+) -> Result<usize> {
+    let index = match target {
+        UserMessageTarget::MessageIndex(idx) => {
+            if idx >= messages.len() {
+                return Err(Error::message(format!(
+                    "messageIndex {idx} exceeds message count {}",
+                    messages.len()
+                )));
+            }
+            idx
+        },
+        UserMessageTarget::ClientSeq(seq) => messages
+            .iter()
+            .position(|msg| {
+                msg.get("role").and_then(|v| v.as_str()) == Some("user")
+                    && msg.get("seq").and_then(|v| v.as_u64()) == Some(seq)
+            })
+            .ok_or_else(|| Error::message(format!("user message with seq {seq} not found")))?,
+    };
+
+    let role = messages[index].get("role").and_then(|v| v.as_str());
+    if role != Some("user") {
+        return Err(Error::message(format!(
+            "message at index {index} is not a user message"
+        )));
+    }
+    Ok(index)
+}
+
+fn collect_session_media_refs(
+    messages: &[serde_json::Value],
+    key_filename: &str,
+) -> std::collections::HashSet<String> {
+    let prefix = format!("media/{key_filename}/");
+    let mut refs = std::collections::HashSet::new();
+    for message in messages {
+        collect_media_refs_from_value(message, &prefix, &mut refs);
+    }
+    refs
+}
+
+fn collect_media_refs_from_value(
+    value: &serde_json::Value,
+    prefix: &str,
+    refs: &mut std::collections::HashSet<String>,
+) {
+    match value {
+        serde_json::Value::String(text) => {
+            if let Some(rest) = text.strip_prefix(prefix)
+                && !rest.is_empty()
+                && !rest.contains('/')
+            {
+                refs.insert(rest.to_string());
+            }
+        },
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_media_refs_from_value(item, prefix, refs);
+            }
+        },
+        serde_json::Value::Object(map) => {
+            for value in map.values() {
+                collect_media_refs_from_value(value, prefix, refs);
+            }
+        },
+        _ => {},
+    }
+}
+
+fn prune_unreferenced_media(
+    media_dir: &std::path::Path,
+    retained_media: &std::collections::HashSet<String>,
+) -> Result<usize> {
+    let Ok(entries) = fs::read_dir(media_dir) else {
+        return Ok(0);
+    };
+    let mut pruned = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if retained_media.contains(file_name) {
+            continue;
+        }
+        // Deleting this parent-session media file also breaks any fork that still
+        // references the same path; forks need containerized media snapshots.
+        match fs::remove_file(&path) {
+            Ok(()) => pruned += 1,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(pruned)
+}
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[cfg(test)]
+mod tests {
+    use {super::*, serde_json::json};
+
+    fn temp_store() -> (SessionStore, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(dir.path().to_path_buf());
+        (store, dir)
+    }
+
+    #[test]
+    fn slice_on_char_boundaries_handles_multibyte_boundary() {
+        let content = format!("{}л{}", "a".repeat(39), "z".repeat(20));
+        let snippet = slice_on_char_boundaries(&content, 0, 40);
+        assert_eq!(snippet.len(), 39);
+        assert!(snippet.chars().all(|c| c == 'a'));
+    }
+
+    #[tokio::test]
+    async fn test_append_and_read() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("main", &json!({"role": "user", "content": "hello"}))
+            .await
+            .unwrap();
+        store
+            .append("main", &json!({"role": "assistant", "content": "hi"}))
+            .await
+            .unwrap();
+
+        let msgs = store.read("main").await.unwrap();
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0]["role"], "user");
+        assert_eq!(msgs[1]["role"], "assistant");
+    }
+
+    #[tokio::test]
+    async fn test_read_empty() {
+        let (store, _dir) = temp_store();
+        let msgs = store.read("nonexistent").await.unwrap();
+        assert!(msgs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_read_last_n() {
+        let (store, _dir) = temp_store();
+
+        for i in 0..10 {
+            store.append("test", &json!({"i": i})).await.unwrap();
+        }
+
+        let last3 = store.read_last_n("test", 3).await.unwrap();
+        assert_eq!(last3.len(), 3);
+        assert_eq!(last3[0]["i"], 7);
+        assert_eq!(last3[2]["i"], 9);
+    }
+
+    #[tokio::test]
+    async fn test_clear() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("main", &json!({"role": "user", "content": "hello"}))
+            .await
+            .unwrap();
+        assert_eq!(store.read("main").await.unwrap().len(), 1);
+
+        store.clear("main").await.unwrap();
+        assert!(store.read("main").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_count() {
+        let (store, _dir) = temp_store();
+
+        assert_eq!(store.count("main").await.unwrap(), 0);
+        store
+            .append("main", &json!({"role": "user"}))
+            .await
+            .unwrap();
+        store
+            .append("main", &json!({"role": "assistant"}))
+            .await
+            .unwrap();
+        assert_eq!(store.count("main").await.unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_search_matching() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("s1", &json!({"role": "user", "content": "hello world"}))
+            .await
+            .unwrap();
+        store
+            .append("s1", &json!({"role": "assistant", "content": "hi there"}))
+            .await
+            .unwrap();
+        store
+            .append("s2", &json!({"role": "user", "content": "goodbye world"}))
+            .await
+            .unwrap();
+
+        let results = store.search("hello", 10).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].session_key, "s1");
+        assert_eq!(results[0].role, "user");
+        assert!(results[0].snippet.contains("hello"));
+    }
+
+    #[tokio::test]
+    async fn test_search_case_insensitive() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("s1", &json!({"role": "user", "content": "Hello World"}))
+            .await
+            .unwrap();
+
+        let results = store.search("hello world", 10).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].session_key, "s1");
+    }
+
+    #[tokio::test]
+    async fn test_search_no_match() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("s1", &json!({"role": "user", "content": "hello"}))
+            .await
+            .unwrap();
+
+        let results = store.search("xyz", 10).await.unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_search_empty_query() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("s1", &json!({"role": "user", "content": "hello"}))
+            .await
+            .unwrap();
+
+        // Empty query should match nothing (caller should guard against this)
+        let results = store.search("", 10).await.unwrap();
+        // Empty string is contained in every string, so it would match.
+        // The frontend guards against empty queries, but the store doesn't — that's fine.
+        assert!(!results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_search_across_sessions() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("s1", &json!({"role": "user", "content": "rust is great"}))
+            .await
+            .unwrap();
+        store
+            .append(
+                "s2",
+                &json!({"role": "assistant", "content": "rust is awesome"}),
+            )
+            .await
+            .unwrap();
+        store
+            .append("s3", &json!({"role": "user", "content": "python is nice"}))
+            .await
+            .unwrap();
+
+        let results = store.search("rust", 10).await.unwrap();
+        assert_eq!(results.len(), 2);
+        let keys: Vec<&str> = results.iter().map(|r| r.session_key.as_str()).collect();
+        assert!(keys.contains(&"s1"));
+        assert!(keys.contains(&"s2"));
+    }
+
+    #[tokio::test]
+    async fn test_search_max_results() {
+        let (store, _dir) = temp_store();
+
+        for i in 0..10 {
+            let key = format!("s{i}");
+            store
+                .append(&key, &json!({"role": "user", "content": "common term"}))
+                .await
+                .unwrap();
+        }
+
+        let results = store.search("common", 3).await.unwrap();
+        assert!(results.len() <= 3);
+    }
+
+    #[tokio::test]
+    async fn test_replace_history() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("main", &json!({"role": "user", "content": "hello"}))
+            .await
+            .unwrap();
+        store
+            .append("main", &json!({"role": "assistant", "content": "hi"}))
+            .await
+            .unwrap();
+        assert_eq!(store.read("main").await.unwrap().len(), 2);
+
+        let new_history = vec![json!({"role": "assistant", "content": "summary"})];
+        store.replace_history("main", new_history).await.unwrap();
+
+        let msgs = store.read("main").await.unwrap();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0]["content"], "summary");
+    }
+
+    #[tokio::test]
+    async fn test_replace_history_empty() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("main", &json!({"role": "user", "content": "hello"}))
+            .await
+            .unwrap();
+
+        store.replace_history("main", vec![]).await.unwrap();
+        assert!(store.read("main").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_key_sanitization() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("session:abc-123", &json!({"role": "user"}))
+            .await
+            .unwrap();
+        let msgs = store.read("session:abc-123").await.unwrap();
+        assert_eq!(msgs.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_save_and_read_media() {
+        let (store, _dir) = temp_store();
+        let data = b"fake png data";
+
+        let path = store.save_media("main", "call_1.png", data).await.unwrap();
+        assert_eq!(path, "media/main/call_1.png");
+
+        let read_back = store.read_media("main", "call_1.png").await.unwrap();
+        assert_eq!(read_back, data);
+    }
+
+    #[tokio::test]
+    async fn test_save_media_with_colon_key() {
+        let (store, _dir) = temp_store();
+        let data = b"screenshot bytes";
+
+        let path = store
+            .save_media("session:abc", "shot.png", data)
+            .await
+            .unwrap();
+        assert_eq!(path, "media/session_abc/shot.png");
+
+        let read_back = store.read_media("session:abc", "shot.png").await.unwrap();
+        assert_eq!(read_back, data);
+    }
+
+    #[test]
+    fn test_media_path_for_uses_session_media_dir() {
+        let (store, dir) = temp_store();
+        let path = store.media_path_for("session:abc", "report.pdf");
+        assert_eq!(
+            path,
+            dir.path()
+                .join("media")
+                .join("session_abc")
+                .join("report.pdf")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_read_media_missing_file() {
+        let (store, _dir) = temp_store();
+        let result = store.read_media("main", "nonexistent.png").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_clear_removes_media_dir() {
+        let (store, dir) = temp_store();
+
+        // Create a session and media.
+        store
+            .append("main", &json!({"role": "user", "content": "hello"}))
+            .await
+            .unwrap();
+        store
+            .save_media("main", "shot.png", b"img data")
+            .await
+            .unwrap();
+
+        let media_dir = dir.path().join("media").join("main");
+        assert!(media_dir.exists());
+
+        store.clear("main").await.unwrap();
+
+        assert!(!media_dir.exists());
+        assert!(store.read("main").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_truncate_from_user_message_removes_target_and_tail() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("main", &json!({"role": "system", "content": "context"}))
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &json!({"role": "user", "content": "remove me", "seq": 7}),
+            )
+            .await
+            .unwrap();
+        store
+            .append("main", &json!({"role": "assistant", "content": "tail"}))
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &json!({"role": "tool_result", "tool_name": "execute_command", "success": true}),
+            )
+            .await
+            .unwrap();
+
+        let result = store
+            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(1))
+            .await
+            .unwrap();
+
+        assert_eq!(result.target_index, 1);
+        assert_eq!(result.kept_count, 1);
+        assert_eq!(result.removed_count, 3);
+        let messages = store.read("main").await.unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["role"], "system");
+    }
+
+    #[tokio::test]
+    async fn test_truncate_from_user_message_can_target_client_seq() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append(
+                "main",
+                &json!({"role": "user", "content": "keep", "seq": 1}),
+            )
+            .await
+            .unwrap();
+        store
+            .append("main", &json!({"role": "assistant", "content": "keep"}))
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &json!({"role": "user", "content": "remove", "seq": 2}),
+            )
+            .await
+            .unwrap();
+
+        let result = store
+            .truncate_from_user_message("main", UserMessageTarget::ClientSeq(2))
+            .await
+            .unwrap();
+
+        assert_eq!(result.target_index, 2);
+        assert_eq!(store.read("main").await.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_truncate_from_user_message_rejects_non_user_target() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("main", &json!({"role": "assistant", "content": "not user"}))
+            .await
+            .unwrap();
+
+        let error = store
+            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(0))
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("not a user message"));
+        assert_eq!(store.read("main").await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_truncate_from_user_message_rejects_out_of_range() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("main", &json!({"role": "user", "content": "only"}))
+            .await
+            .unwrap();
+
+        let error = store
+            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(5))
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("exceeds message count"));
+        assert_eq!(store.read("main").await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_truncate_from_user_message_rejects_missing_session() {
+        let (store, dir) = temp_store();
+
+        let error = store
+            .truncate_from_user_message("missing", UserMessageTarget::MessageIndex(0))
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("session 'missing' not found"));
+        assert!(!dir.path().join("missing.jsonl").exists());
+    }
+
+    #[tokio::test]
+    async fn test_truncate_from_user_message_prunes_unreferenced_media() {
+        let (store, _dir) = temp_store();
+
+        store.save_media("main", "keep.ogg", b"keep").await.unwrap();
+        store
+            .save_media("main", "remove.ogg", b"remove")
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &json!({"role": "user", "content": "keep", "audio": "media/main/keep.ogg"}),
+            )
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &json!({"role": "user", "content": "remove", "audio": "media/main/remove.ogg"}),
+            )
+            .await
+            .unwrap();
+
+        let result = store
+            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(1))
+            .await
+            .unwrap();
+
+        assert_eq!(result.pruned_media_count, 1);
+        assert!(store.media_path_for("main", "keep.ogg").exists());
+        assert!(!store.media_path_for("main", "remove.ogg").exists());
+    }
+
+    // --- Typed API tests ---
+
+    #[tokio::test]
+    async fn test_append_typed_and_read_typed() {
+        use crate::message::PersistedMessage;
+
+        let (store, _dir) = temp_store();
+
+        store
+            .append_typed("main", &PersistedMessage::user("hello"))
+            .await
+            .unwrap();
+        store
+            .append_typed(
+                "main",
+                &PersistedMessage::assistant("hi", "gpt-4o", "openai", 10, 5, None),
+            )
+            .await
+            .unwrap();
+
+        let msgs = store.read_typed("main").await.unwrap();
+        assert_eq!(msgs.len(), 2);
+        match &msgs[0] {
+            PersistedMessage::User { content, .. } => {
+                assert!(matches!(content, crate::message::MessageContent::Text(t) if t == "hello"));
+            },
+            _ => panic!("expected User message"),
+        }
+        match &msgs[1] {
+            PersistedMessage::Assistant { content, model, .. } => {
+                assert_eq!(content, "hi");
+                assert_eq!(model.as_deref(), Some("gpt-4o"));
+            },
+            _ => panic!("expected Assistant message"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_append_with_index_returns_its_physical_history_index() {
+        let (store, _dir) = temp_store();
+        store
+            .append("main", &json!({ "role": "user", "content": "before" }))
+            .await
+            .unwrap();
+        store
+            .append("main", &json!({ "role": "assistant", "content": "middle" }))
+            .await
+            .unwrap();
+
+        let index = store
+            .append_with_index("main", &json!({ "role": "assistant", "content": "final" }))
+            .await
+            .unwrap();
+
+        assert_eq!(index, 2);
+        let history = store.read("main").await.unwrap();
+        assert_eq!(history.len(), 3);
+        assert_eq!(history[index]["content"], "final");
+    }
+
+    #[tokio::test]
+    async fn test_update_typed_at_preserves_history_order() {
+        use crate::message::PersistedMessage;
+
+        let (store, _dir) = temp_store();
+        store
+            .append_typed("main", &PersistedMessage::user("before"))
+            .await
+            .unwrap();
+        store
+            .append_typed(
+                "main",
+                &PersistedMessage::assistant("tool segment", "gpt-4.1", "openai", 10, 2, None),
+            )
+            .await
+            .unwrap();
+        store
+            .append_typed("main", &PersistedMessage::system("after"))
+            .await
+            .unwrap();
+
+        store
+            .update_typed_at("main", 1, |_| {
+                PersistedMessage::assistant("finalized segment", "gpt-4.1", "openai", 20, 5, None)
+            })
+            .await
+            .unwrap();
+
+        let messages = store.read_typed("main").await.unwrap();
+        assert_eq!(messages.len(), 3);
+        assert!(matches!(
+            &messages[0],
+            PersistedMessage::User { content: crate::message::MessageContent::Text(content), .. } if content == "before"
+        ));
+        assert!(matches!(
+            &messages[1],
+            PersistedMessage::Assistant { content, input_tokens: Some(20), output_tokens: Some(5), .. } if content == "finalized segment"
+        ));
+        assert!(matches!(
+            &messages[2],
+            PersistedMessage::System { content, .. } if content == "after"
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_update_typed_at_missing_session_does_not_create_file() {
+        use crate::message::PersistedMessage;
+
+        let (store, dir) = temp_store();
+        let session_path = dir.path().join("missing.jsonl");
+
+        let result = store
+            .update_typed_at("missing", 0, |_| {
+                PersistedMessage::assistant("noop", "gpt-4.1", "openai", 1, 1, None)
+            })
+            .await;
+
+        assert!(result.is_err());
+        assert!(!session_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_read_typed_empty() {
+        let (store, _dir) = temp_store();
+        let msgs = store.read_typed("nonexistent").await.unwrap();
+        assert!(msgs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_read_last_n_typed() {
+        use crate::message::PersistedMessage;
+
+        let (store, _dir) = temp_store();
+
+        for i in 0..5 {
+            store
+                .append_typed("test", &PersistedMessage::user(format!("msg-{i}")))
+                .await
+                .unwrap();
+        }
+
+        let last2 = store.read_last_n_typed("test", 2).await.unwrap();
+        assert_eq!(last2.len(), 2);
+        match &last2[0] {
+            PersistedMessage::User { content, .. } => {
+                assert!(matches!(content, crate::message::MessageContent::Text(t) if t == "msg-3"));
+            },
+            _ => panic!("expected User message"),
+        }
+        match &last2[1] {
+            PersistedMessage::User { content, .. } => {
+                assert!(matches!(content, crate::message::MessageContent::Text(t) if t == "msg-4"));
+            },
+            _ => panic!("expected User message"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_replace_history_typed() {
+        use crate::message::PersistedMessage;
+
+        let (store, _dir) = temp_store();
+
+        store
+            .append_typed("main", &PersistedMessage::user("old"))
+            .await
+            .unwrap();
+        assert_eq!(store.count("main").await.unwrap(), 1);
+
+        let new_history = vec![
+            PersistedMessage::user("new1"),
+            PersistedMessage::assistant("new2", "gpt-4o", "openai", 10, 5, None),
+        ];
+        store
+            .replace_history_typed("main", &new_history)
+            .await
+            .unwrap();
+
+        let msgs = store.read_typed("main").await.unwrap();
+        assert_eq!(msgs.len(), 2);
+        match &msgs[0] {
+            PersistedMessage::User { content, .. } => {
+                assert!(matches!(content, crate::message::MessageContent::Text(t) if t == "new1"));
+            },
+            _ => panic!("expected User message"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_typed_roundtrip_with_value_api() {
+        use crate::message::PersistedMessage;
+
+        let (store, _dir) = temp_store();
+
+        // Write with typed API, read with Value API.
+        store
+            .append_typed("main", &PersistedMessage::user("typed write"))
+            .await
+            .unwrap();
+        let values = store.read("main").await.unwrap();
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0]["role"], "user");
+        assert_eq!(values[0]["content"], "typed write");
+
+        // Write with Value API, read with typed API.
+        store
+            .append(
+                "main",
+                &json!({"role": "assistant", "content": "value write"}),
+            )
+            .await
+            .unwrap();
+        let typed = store.read_typed("main").await.unwrap();
+        assert_eq!(typed.len(), 2);
+        match &typed[1] {
+            PersistedMessage::Assistant { content, .. } => {
+                assert_eq!(content, "value write");
+            },
+            _ => panic!("expected Assistant message"),
+        }
+    }
+}

@@ -1,0 +1,238 @@
+# shellcheck disable=all
+# Default recipe (runs when just is called without arguments)
+default:
+    @just --list
+
+# Read nightly toolchain from rust-toolchain.toml (single source of truth).
+nightly_toolchain := `grep '^channel' rust-toolchain.toml | sed 's/.*"\(.*\)"/\1/'`
+
+# Format Rust code
+format:
+    cargo +{{nightly_toolchain}} fmt --all
+
+# Check if code is formatted
+format-check:
+    cargo +{{nightly_toolchain}} fmt --all -- --check
+
+# Run the full live provider integration workflow locally (sources .envrc when present).
+provider-e2e-weekly:
+    ./scripts/run-provider-integration-weekly.sh
+
+# Run only the scenario-driven provider E2E serialization checks.
+provider-e2e-scenarios:
+    ./scripts/run-provider-e2e-daily.sh
+
+# Compatibility alias for the old daily recipe name.
+provider-e2e-daily: provider-e2e-scenarios
+
+# Verify Cargo.lock is in sync with workspace manifests.
+lockfile-check:
+    cargo fetch --locked
+
+# Lint Rust code using clippy (OS-aware: macOS excludes CUDA features)
+lint: lockfile-check
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "$(uname -s)" = "Darwin" ]; then
+        cargo +{{nightly_toolchain}} clippy -Z unstable-options --workspace --all-targets --exclude chelix-matrix --timings -- -D warnings
+    else
+        cargo +{{nightly_toolchain}} clippy -Z unstable-options --workspace --all-features --all-targets --timings -- -D warnings
+    fi
+
+# Build Tailwind CSS for the web UI.
+build-css:
+    cd crates/web/ui && ./build.sh
+
+# Build Vite frontend JS (TS/TSX -> dist/).
+build-frontend:
+    cd crates/web/ui && npm run build
+
+# Build the service worker (sw.ts -> sw.js).
+build-sw:
+    cd crates/web/ui && npm run build:sw
+
+# Build all web assets (Vite JS + Tailwind CSS + service worker).
+build-web-assets:
+    ./scripts/build-web-assets.sh
+
+# Ad-hoc codesign debug binaries (macOS only, requires MACOS_CODESIGN_IDENTITY).
+# Signs the main binary and all test binaries in target/debug/deps/ so Little
+# Snitch doesn't prompt on every rebuild during local dev.
+codesign-debug:
+    #!/usr/bin/env bash
+    [ "$(uname -s)" = "Darwin" ] || exit 0
+    [ -n "${MACOS_CODESIGN_IDENTITY:-}" ] || exit 0
+    id="${MACOS_CODESIGN_IDENTIFIER:-org.chelix.dev}"
+    sign() { codesign --force --sign "$MACOS_CODESIGN_IDENTITY" --identifier "$id" "$1" 2>/dev/null || true; }
+    # Main binary
+    if [ -f target/debug/chelix ]; then sign target/debug/chelix; fi
+    # Test binaries (Mach-O executables, skip .d/.fingerprint/dylib)
+    for bin in target/debug/deps/chelix*; do
+        if [ -f "$bin" ] && [ -x "$bin" ] && [ "${bin##*.}" != "d" ]; then sign "$bin"; fi
+    done
+
+# Build the project
+build: build-web-assets
+    cargo build
+    cargo build -p chelix-embedding-service
+    just codesign-debug
+
+# Build only the native local-GGUF embedding sidecar.
+build-embedding-service:
+    cargo build -p chelix-embedding-service
+
+# Build in release mode
+build-release:
+    ./scripts/cargo-build-chelix.sh --release
+
+# Run local dev server with workspace-local config/data dirs.
+dev-server:
+    cargo build --bin chelix
+    cargo build -p chelix-embedding-service
+    just codesign-debug
+    CHELIX_CONFIG_DIR=.chelix/config CHELIX_DATA_DIR=.chelix/ cargo run --bin chelix
+
+# Run all CI checks (format, lint, build, test)
+ci: format-check lint i18n-check build-web-assets build test
+
+# Compile once, then run Rust tests and E2E tests in parallel.
+# Uses the same nightly toolchain as clippy/local-validate so the build cache
+# is shared — no double-compilation.
+build-test: build-web-assets
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "==> Building all workspace targets (bins + tests)..."
+    if [ "$(uname -s)" = "Darwin" ]; then
+        cargo +{{nightly_toolchain}} build --workspace --all-targets
+    else
+        cargo +{{nightly_toolchain}} build --workspace --all-features --all-targets
+    fi
+    just codesign-debug
+    echo "==> Build complete. Running Rust tests and E2E tests in parallel..."
+
+    RUST_LOG="$(mktemp)"
+    E2E_LOG="$(mktemp)"
+    trap 'rm -f "${RUST_LOG}" "${E2E_LOG}"' EXIT
+
+    if [ "$(uname -s)" = "Darwin" ]; then
+        cargo +{{nightly_toolchain}} nextest run --workspace > "${RUST_LOG}" 2>&1 &
+    else
+        cargo +{{nightly_toolchain}} nextest run --workspace --all-features > "${RUST_LOG}" 2>&1 &
+    fi
+    TEST_PID=$!
+
+    (cd crates/web/ui && npm run e2e) > "${E2E_LOG}" 2>&1 &
+    E2E_PID=$!
+
+    TEST_EXIT=0; E2E_EXIT=0
+    wait "${TEST_PID}" || TEST_EXIT=$?
+    wait "${E2E_PID}" || E2E_EXIT=$?
+
+    if [ "${TEST_EXIT}" -ne 0 ]; then
+        echo "==> Rust tests FAILED (exit ${TEST_EXIT}):"
+        cat "${RUST_LOG}"
+    else
+        echo "==> Rust tests PASSED"
+    fi
+
+    if [ "${E2E_EXIT}" -ne 0 ]; then
+        echo "==> E2E tests FAILED (exit ${E2E_EXIT}):"
+        cat "${E2E_LOG}"
+    else
+        echo "==> E2E tests PASSED"
+    fi
+
+    exit $(( TEST_EXIT > 0 ? TEST_EXIT : E2E_EXIT ))
+
+# Run the same Rust preflight gates used before release packaging.
+release-preflight: lint
+    cargo +{{nightly_toolchain}} fmt --all -- --check
+
+# Dispatch release workflow from GitHub Actions (normal mode).
+release-workflow ref='main':
+    gh workflow run release.yml --ref {{ref}} -f dry_run=false
+
+# Dispatch release workflow from GitHub Actions (dry-run mode).
+release-workflow-dry ref='main':
+    gh workflow run release.yml --ref {{ref}} -f dry_run=true
+
+# Dispatch both release workflow modes for the same ref (dry-run then normal).
+release-workflow-both ref='main':
+    gh workflow run release.yml --ref {{ref}} -f dry_run=true
+    gh workflow run release.yml --ref {{ref}} -f dry_run=false
+
+# Regenerate CHANGELOG.md from git history and tags.
+changelog:
+    git-cliff --config cliff.toml --output CHANGELOG.md
+
+# Preview unreleased changelog entries from commits since the last tag.
+changelog-unreleased:
+    git-cliff --config cliff.toml --unreleased
+
+# Generate release entries for unreleased commits under the provided version.
+changelog-release version:
+    git-cliff --config cliff.toml --unreleased --tag "{{version}}" --strip all
+
+# Commit all changes, push branch, create/update PR, and run local validation.
+# All args are optional; defaults are auto-generated from branch + changed files.
+ship commit_message='' pr_title='' pr_body='':
+    ./scripts/ship-pr.sh {{ quote(commit_message) }} {{ quote(pr_title) }} {{ quote(pr_body) }}
+
+# Run all tests (nightly to share build cache with clippy/lint, OS-aware).
+# On macOS: single nextest run using default features (includes Metal, not CUDA).
+# On Linux: --all-features (includes CUDA).
+# Builds first so codesign can run before test execution (prevents Little Snitch prompts).
+test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "$(uname -s)" = "Darwin" ]; then
+        cargo +{{nightly_toolchain}} build --workspace --all-targets
+        just codesign-debug
+        cargo +{{nightly_toolchain}} nextest run --workspace
+    else
+        cargo +{{nightly_toolchain}} nextest run --workspace --all-features
+    fi
+
+# Run contract test suites (channel, provider, memory, tools)
+contract-tests:
+    cargo test -p chelix-channels contract
+    cargo test -p chelix-providers contract
+    cargo test -p chelix-memory contract
+    cargo test -p chelix-tools contract
+
+# Verify locale key parity across frontend i18n bundles.
+i18n-check:
+    ./scripts/i18n-check.sh
+
+# Install browser tooling for gateway web UI e2e tests.
+ui-e2e-install:
+    cd crates/web/ui && npm install && npm run e2e:install
+
+# Run gateway web UI e2e tests (Playwright).
+ui-e2e:
+    cargo +{{nightly_toolchain}} build --bin chelix
+    just codesign-debug
+    cd crates/web/ui && npm run e2e
+
+# Run gateway web UI e2e tests with headed browser.
+ui-e2e-headed:
+    cargo +{{nightly_toolchain}} build --bin chelix
+    just codesign-debug
+    cd crates/web/ui && npm run e2e:headed
+
+# Build the APNS push relay.
+courier-build:
+    cargo build -p chelix-courier --release
+
+# Cross-compile courier for linux/x86_64.
+courier-cross:
+    cargo build -p chelix-courier --release --target x86_64-unknown-linux-gnu
+
+# Deploy courier to remote server(s) via Ansible.
+courier-deploy:
+    cd apps/courier/deploy && ansible-playbook playbook.yml
+
+# Run the APNS push relay (dev).
+courier-run *ARGS:
+    cargo run -p chelix-courier -- {{ARGS}}
+

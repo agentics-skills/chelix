@@ -1,0 +1,473 @@
+# Browser Automation
+
+Chelix provides full browser automation via Chrome DevTools Protocol (CDP),
+enabling agents to interact with JavaScript-heavy websites, fill forms, click
+buttons, and capture screenshots.
+
+## Overview
+
+Browser automation is useful when you need to:
+
+- Interact with SPAs (Single Page Applications)
+- Fill forms and click buttons
+- Navigate sites that require JavaScript rendering
+- Take screenshots of pages
+- Execute JavaScript in page context
+- Maintain session state across multiple interactions
+
+## Architecture
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌──────────────────┐
+│   BrowserTool   │────▶│  BrowserManager │────▶│   BrowserPool    │
+│   (AgentTool)   │     │   (actions)     │     │   (instances)    │
+└─────────────────┘     └─────────────────┘     └──────────────────┘
+                                                         │
+                                                         ▼
+                                                ┌──────────────────┐
+                                                │  Chrome/Chromium │
+                                                │     via CDP      │
+                                                └──────────────────┘
+```
+
+### Components
+
+- **BrowserTool** (`crates/tools/src/browser.rs`) - AgentTool wrapper for LLM
+- **BrowserManager** (`crates/browser/src/manager.rs`) - High-level action API
+- **BrowserPool** (`crates/browser/src/pool.rs`) - Chrome instance management
+- **Snapshot** (`crates/browser/src/snapshot.rs`) - DOM element extraction
+
+## Configuration
+
+Browser automation is **enabled by default**. To customize, add to your
+`chelix.toml`:
+
+```toml
+[tools.browser]
+enabled = true              # Enable browser support
+headless = true             # Run without visible window (default)
+viewport_width = 2560       # Default viewport width
+viewport_height = 1440      # Default viewport height
+device_scale_factor = 2.0   # HiDPI/Retina scaling (1.0 = standard, 2.0 = Retina)
+
+# Pool management
+max_instances = 0           # 0 = unlimited (limited by memory), >0 = hard limit
+memory_limit_percent = 90   # Block new instances when memory exceeds this %
+idle_timeout_secs = 300     # Close idle browsers after 5 min
+navigation_timeout_ms = 30000  # Page load timeout
+
+# Optional customization
+# chrome_path = "/path/to/chrome"  # Custom Chrome path
+# obscura_path = "/path/to/obscura"  # Custom Obscura path
+# lightpanda_path = "/path/to/lightpanda"  # Custom Lightpanda path
+# user_agent = "Custom UA"         # Custom user agent
+# chrome_args = ["--disable-extensions"]  # Extra args
+
+# Browser container image (used when global sandbox mode is "On")
+sandbox_image = "docker.io/browserless/chrome"
+# allowed_domains = ["example.com", "*.trusted.org"]  # Restrict navigation
+
+# Container connectivity (for Chelix-in-Docker setups)
+# container_host = "127.0.0.1"  # Default; change when Chelix runs inside Docker
+```
+
+### Memory-Based Pool Limits
+
+By default, browser instances are limited by system memory rather than a fixed
+count:
+
+- `max_instances = 0` (default): Unlimited instances, blocked only when memory
+  exceeds `memory_limit_percent`
+- `memory_limit_percent = 90`: New browsers blocked when system memory > 90%
+- Set `max_instances > 0` for a hard limit if you prefer fixed constraints
+
+This allows multiple chat sessions to each have their own browser without
+artificial limits, while protecting system stability when memory is constrained.
+
+### Domain Restrictions
+
+For improved security, you can restrict which domains the browser can navigate
+to:
+
+```toml
+[tools.browser]
+allowed_domains = [
+    "docs.example.com",    # Exact match
+    "*.github.com",        # Wildcard: matches any subdomain
+    "localhost",           # Allow localhost
+]
+```
+
+When `allowed_domains` is set, any navigation to a domain not in the list will
+be blocked with an error. Wildcards (`*.domain.com`) match any subdomain and
+also the base domain itself.
+
+## Tool Usage
+
+### Actions
+
+| Action       | Description               | Required Params             |
+| ------------ | ------------------------- | --------------------------- |
+| `navigate`   | Go to a URL               | `url`                       |
+| `snapshot`   | Get DOM with element refs | -                           |
+| `screenshot` | Capture page image        | `full_page` (optional)      |
+| `click`      | Click element by ref      | `ref_`                      |
+| `type`       | Type into element         | `ref_`, `text`              |
+| `scroll`     | Scroll page/element       | `x`, `y`, `ref_` (optional) |
+| `evaluate`   | Run JavaScript            | `code`                      |
+| `wait`       | Wait for element          | `selector` or `ref_`        |
+| `get_url`    | Get current URL           | -                           |
+| `get_title`  | Get page title            | -                           |
+| `back`       | Go back in history        | -                           |
+| `forward`    | Go forward in history     | -                           |
+| `refresh`    | Reload the page           | -                           |
+| `close`      | Close browser session     | -                           |
+
+### Automatic Session Tracking
+
+The browser tool automatically tracks and reuses session IDs. After a `navigate`
+action creates a session, subsequent actions will reuse it without needing to
+pass `session_id` explicitly:
+
+```json
+// 1. Navigate (creates session)
+{ "action": "navigate", "url": "https://example.com" }
+
+// 2. Snapshot (session_id auto-injected)
+{ "action": "snapshot" }
+
+// 3. Click (session_id auto-injected)
+{ "action": "click", "ref_": 1 }
+
+// 4. Screenshot (session_id auto-injected)
+{ "action": "screenshot" }
+
+// 5. Close (clears tracked session)
+{ "action": "close" }
+```
+
+This prevents pool exhaustion from LLMs that forget to pass the session_id.
+
+### Browser selection
+
+You can ask for a specific browser at runtime (host mode):
+
+```json
+{ "action": "navigate", "url": "https://example.com", "browser": "brave" }
+```
+
+Supported values: `auto`, `chrome`, `chromium`, `edge`, `brave`, `opera`,
+`vivaldi`, `arc`, `obscura`, `lightpanda`.
+
+`auto` (default) picks the first detected installed browser. If none are
+installed, Chelix will attempt a best-effort auto-install, then retry detection.
+
+`obscura` launches the Obscura sidecar binary from `obscura_path`, the `OBSCURA`
+environment variable, or `PATH`. It supports DOM-oriented browsing through CDP,
+but not pixel screenshots.
+
+`lightpanda` launches the Lightpanda sidecar binary from `lightpanda_path`, the
+`LIGHTPANDA` environment variable, or `PATH`. It supports DOM-oriented browsing
+through CDP, but not pixel screenshots.
+
+### Workflow Example
+
+```json
+// 1. Navigate to a page
+{
+  "action": "navigate",
+  "url": "https://example.com/login"
+}
+// Returns: { "session_id": "browser-abc123", "url": "https://..." }
+
+// 2. Get interactive elements (session_id optional - auto-tracked)
+{
+  "action": "snapshot"
+}
+// Returns element refs like:
+// { "elements": [
+//   { "ref_": 1, "tag": "input", "role": "textbox", "placeholder": "Email" },
+//   { "ref_": 2, "tag": "input", "role": "textbox", "placeholder": "Password" },
+//   { "ref_": 3, "tag": "button", "role": "button", "text": "Sign In" }
+// ]}
+
+// 3. Fill in the form
+{
+  "action": "type",
+  "ref_": 1,
+  "text": "user@example.com"
+}
+
+{
+  "action": "type",
+  "ref_": 2,
+  "text": "password123"
+}
+
+// 4. Click the submit button
+{
+  "action": "click",
+  "ref_": 3
+}
+
+// 5. Take a screenshot of the result
+{
+  "action": "screenshot"
+}
+// Returns: { "screenshot": "data:image/png;base64,..." }
+```
+
+## Element Reference System
+
+The snapshot action extracts interactive elements and assigns them numeric
+references. This approach provides:
+
+- **Stability**: References don't break with minor page updates
+- **Security**: No CSS selectors exposed to the model
+- **Reliability**: Elements identified by role/content, not fragile paths
+
+### Extracted Element Info
+
+```json
+{
+  "ref_": 1,
+  "tag": "button",
+  "role": "button",
+  "text": "Submit",
+  "href": null,
+  "placeholder": null,
+  "value": null,
+  "aria_label": "Submit form",
+  "visible": true,
+  "interactive": true,
+  "bounds": { "x": 100, "y": 200, "width": 80, "height": 40 }
+}
+```
+
+## When to use `browser`
+
+- Logging into websites
+- Filling forms
+- Interacting with SPAs
+- Sites that require JavaScript
+- Taking screenshots
+
+## Metrics
+
+When the `metrics` feature is enabled, the browser module records:
+
+| Metric                                       | Description                |
+| -------------------------------------------- | -------------------------- |
+| `chelix_browser_instances_active`            | Currently running browsers |
+| `chelix_browser_instances_created_total`     | Total browsers launched    |
+| `chelix_browser_instances_destroyed_total`   | Total browsers closed      |
+| `chelix_browser_screenshots_total`           | Screenshots taken          |
+| `chelix_browser_navigation_duration_seconds` | Page load time histogram   |
+| `chelix_browser_errors_total`                | Errors by type             |
+
+## Sandbox Mode
+
+Browser isolation follows the global `[sandbox]` mode. With `mode = "On"`, the
+browser tool runs in a sandboxed container. With `mode = "Off"`, it runs
+directly on the host.
+
+### Host Mode
+
+When global sandbox mode is `"Off"`, Chrome runs directly on the host machine.
+This is faster but the browser has full access to the host network and
+filesystem.
+
+### Sandbox Mode
+
+When global sandbox mode is `"On"`, Chrome runs inside a container with:
+
+- **Network isolation**: Browser can access the internet but not local services
+- **Filesystem isolation**: No access to host filesystem
+- **Automatic lifecycle**: Container started/stopped with browser session
+- **Readiness detection**: Waits for Chrome to be fully ready before connecting
+
+```toml
+[tools.browser]
+sandbox_image = "docker.io/browserless/chrome"  # Browser container image
+```
+
+Requirements:
+
+- Docker or Apple Container must be installed and running
+- The container image is pulled automatically on first use
+- Global sandbox mode must be enabled (`[sandbox] mode = "On"`)
+
+### Chelix Inside Docker (Sibling Containers)
+
+When Chelix itself runs inside a Docker container, the browser container is
+launched as a sibling via the host's Docker socket. By default Chelix connects
+to the browser at `127.0.0.1`, which points to the Chelix container's own
+loopback — not the host where the browser port is mapped.
+
+Set `container_host` so Chelix can reach the browser container through the
+host's port mapping:
+
+```toml
+[tools.browser]
+container_host = "host.docker.internal"   # macOS / Windows Docker Desktop
+# container_host = "172.17.0.1"           # Linux Docker bridge gateway IP
+```
+
+On Linux, `host.docker.internal` is not available by default. Use the Docker
+bridge gateway IP (typically `172.17.0.1`) or add
+`--add-host=host.docker.internal:host-gateway` to the Chelix container's
+`docker run` command.
+
+### Execute Command Scripts
+
+If agents need to run browser automation **scripts** (Puppeteer, Playwright,
+Selenium) inside the command sandbox, Chromium is included in the default
+sandbox packages:
+
+```bash
+# Inside sandbox (via execute_command tool)
+chromium --headless --no-sandbox --dump-dom https://example.com
+```
+
+Or use Puppeteer/Playwright in a Node.js script executed via the
+`execute_command` tool.
+
+## Security Considerations
+
+### Prompt Injection Risk
+
+**Important**: Web pages can contain content designed to manipulate LLM behavior
+(prompt injection). When the browser tool returns page content to the LLM,
+malicious sites could attempt to inject instructions.
+
+**Mitigations**:
+
+1. **Domain restrictions**: Use `allowed_domains` to limit navigation to trusted
+   sites only. This is the most effective mitigation.
+
+2. **Review returned content**: The snapshot action returns element text which
+   could contain injected prompts. Be cautious with untrusted sites.
+
+3. **Sandbox mode**: Set global `sandbox.mode = "On"` to run the browser in an
+  isolated container for additional security.
+
+### Other Security Considerations
+
+1. **Host vs Sandbox mode**: Browser isolation follows the global sandbox mode.
+  With `"On"`, the browser runs in a container with network/filesystem
+  isolation. With `"Off"`, it runs on the host with `--no-sandbox` for
+  container compatibility.
+
+2. **Resource limits**: Browser instances are limited by memory usage (default:
+   block when > 90% used). Set `max_instances > 0` for a hard limit.
+
+3. **Idle cleanup**: Browsers are automatically closed after `idle_timeout_secs`
+   of inactivity.
+
+4. **Network access**: In host mode, the browser has full network access. In
+   sandbox mode, the browser can reach the internet but not local services. Use
+   firewall rules for additional restrictions.
+
+5. **Sandbox scripts**: Browser scripts running in the command sandbox
+   (Puppeteer, Playwright) inherit `sandbox.network`, which defaults to the
+   Docker/Podman `bridge` network.
+
+## Browser Detection
+
+Chelix automatically detects installed Chromium-based browsers in the following
+order:
+
+1. **Custom path** from `chrome_path` config
+2. **CHROME environment variable**
+3. **Platform-specific app bundles** (macOS/Windows)
+   - macOS: `/Applications/Google Chrome.app`, `/Applications/Chromium.app`,
+     etc.
+   - Windows: `C:\Program Files\Google\Chrome\Application\chrome.exe`, etc.
+4. **PATH executables** (fallback): `chrome`, `chromium`, `msedge`, `brave`,
+   etc.
+
+If no browser is found, Chelix displays platform-specific installation
+instructions.
+
+### Supported Browsers
+
+Any Chromium-based browser works:
+
+- Google Chrome
+- Chromium
+- Microsoft Edge
+- Brave
+- Opera
+- Vivaldi
+- Arc (macOS)
+
+## Screenshot Display
+
+When the browser tool takes a screenshot, it's displayed in the chat UI:
+
+- **Thumbnail view**: Screenshots appear as clickable thumbnails (200×150px max)
+- **Fullscreen lightbox**: Click to view full-size with dark overlay
+- **Scrollable view**: Long screenshots can be scrolled within the lightbox
+- **Download button**: Save screenshot to disk (top of lightbox)
+- **Close button**: Click ✕ button, click outside, or press Escape to close
+- **HiDPI scaling**: Screenshots display at correct size on Retina displays
+
+Screenshots are base64-encoded PNGs returned in the tool result. The
+`device_scale_factor` config (default: 2.0) controls the rendering resolution
+for high-DPI displays.
+
+### Telegram Integration
+
+When using the Telegram channel, screenshots are automatically sent to the chat:
+
+- Images sent as photos when dimensions are within Telegram limits
+- Automatically retried as documents for oversized images (aspect ratio > 20)
+- Error messages sent to channel if delivery fails
+
+## Handling Model Errors
+
+Some models (particularly Claude via GitHub Copilot) occasionally send malformed
+tool calls with missing required fields. Chelix handles this gracefully:
+
+- **Default action**: If `url` is provided but `action` is missing, defaults to
+  `navigate`
+- **Automatic retry**: The agent loop retries with corrected arguments
+- **Muted error display**: Validation errors show as muted/informational cards
+  in the UI (60% opacity, gray text) to indicate they're expected, not alarming
+
+## Troubleshooting
+
+### Browser not launching
+
+- Ensure Chrome/Chromium is installed
+- Check `chrome_path` in config if using custom location
+- Set `CHROME` environment variable to specify browser path
+- On Linux, install dependencies: `apt-get install chromium-browser`
+- On macOS, if using Homebrew Chromium, prefer installing Google Chrome or Brave
+  (the Homebrew chromium wrapper can be unreliable)
+
+### Elements not found
+
+- Use `snapshot` to see available elements
+- Elements must be visible in the viewport
+- Some elements may need scrolling first
+
+### Timeouts
+
+- Increase `navigation_timeout_ms` for slow pages
+- Use `wait` action to wait for dynamic content
+- Check network connectivity
+
+### High memory usage
+
+- Browser instances are now limited by memory (blocks at 90% by default)
+- Set `max_instances > 0` for a hard limit if preferred
+- Lower `idle_timeout_secs` to clean up faster
+- Consider enabling headless mode if not already
+
+### Pool exhaustion
+
+- Browser tool now auto-tracks session IDs, preventing pool exhaustion from LLMs
+  that forget to pass session_id
+- If you still hit limits, check `memory_limit_percent` threshold
+- Use `close` action when done to free up sessions

@@ -1,0 +1,123 @@
+# Gateway UI E2E Tests
+
+These tests use Playwright against a real `chelix` server process.
+
+## Why this setup
+
+- Exercises real browser behavior (routing, DOM updates, WebSocket lifecycle).
+- Runs against real gateway APIs, not mocked frontend responses.
+- Uses isolated config/data dirs per run to avoid local machine state leakage.
+
+## Quickstart
+
+From repo root:
+
+```bash
+just ui-e2e-install
+just ui-e2e
+```
+
+Directly from `crates/web/ui`:
+
+```bash
+npm install
+npm run e2e:install
+npm run e2e
+```
+
+## Test Runtime
+
+### Default server (`start-gateway.sh`)
+
+1. Creates `target/e2e-runtime/{config,data}`.
+2. Seeds `IDENTITY.md` and `USER.md` so onboarding is completed.
+3. Sets `CHELIX_CONFIG_DIR`, `CHELIX_DATA_DIR`, and `CHELIX_SERVER__PORT`.
+4. Checks for a pre-built binary (`target/debug/chelix` or `target/release/chelix`)
+   before falling back to `cargo run`. Set `CHELIX_BINARY` to override.
+
+### Onboarding server (`start-gateway-onboarding.sh`)
+
+Same as above but does **not** seed `IDENTITY.md` or `USER.md`, so the
+app enters onboarding mode. Uses a random free port by default.
+
+## Playwright Projects
+
+The local test suite keeps a single `default` project for targeted debugging.
+CI uses `e2e/run-ci.sh` to launch four independent default-suite Playwright
+processes by default, controlled by `CHELIX_E2E_SHARDS`. Each process runs with
+one worker against its own Chelix process, port, config dir, and data dir. That
+gives parallelism without letting two stateful spec files talk to the same
+gateway at the same time. CI also runs special projects (`agents`, `auth`,
+onboarding variants, OAuth, and optional live-provider suites) as separate
+single-project processes so each one starts only its own web server.
+
+| Project | Port | Spec files | Notes |
+|---------|------|------------|-------|
+| `default` | Random free port (`CHELIX_E2E_PORT`) | All except isolated project specs, or one CI shard when `CHELIX_E2E_PROCESS_SHARD_INDEX` is set | Seeded identity, no password |
+| `agents` | Local: same as `default`; CI: random free port (`CHELIX_E2E_AGENTS_PORT`) | `agents.spec.js` | CI uses isolated runtime state |
+| `auth` | Local: same as `default`; CI: random free port (`CHELIX_E2E_AUTH_PORT`) | `auth.spec.js` | CI uses isolated runtime state |
+| `onboarding` | Random free port (`CHELIX_E2E_ONBOARDING_PORT`) | `onboarding.spec.js` | Separate server without seeded identity |
+| `onboarding-auth` | Random free port (`CHELIX_E2E_ONBOARDING_AUTH_PORT`) | `onboarding-auth.spec.js` | Separate server with remote-auth simulation |
+| `onboarding-anthropic` | Random free port (`CHELIX_E2E_ONBOARDING_ANTHROPIC_PORT`) | `onboarding-anthropic.spec.js` | Separate server proving first-run Anthropic onboarding with zero providers at startup |
+| `openai-live` | Random free port (`CHELIX_E2E_OPENAI_LIVE_PORT`) | `openai-live.spec.js` | Separate server that preserves only the existing OpenAI env and proves a real OpenAI chat turn works |
+
+## Spec Files
+
+| File | Tests | Description |
+|------|-------|-------------|
+| `smoke.spec.js` | 6 | App shell loads, route navigation renders without errors |
+| `websocket.spec.js` | 4 | WS connection, reconnection, tick events, RPC health |
+| `sessions.spec.js` | 6 | Session list, create, switch, search, clear, panel visibility |
+| `chat-input.spec.js` | 7 | Chat input focus, slash commands, Shift+Enter, model selector |
+| `settings-nav.spec.js` | 17 | Settings subsection routing and rendering |
+| `theme.spec.js` | 3 | Theme toggle, dark mode, localStorage persistence |
+| `providers.spec.js` | 5 | Provider page load, add/detect buttons, guidance |
+| `gemini-tool-signature.spec.js` | 1 | Mock Gemini-compatible provider verifies tool-call `thought_signature` survives a web chat tool round trip |
+| `cron.spec.js` | 4 | Cron jobs page, heartbeat tab, create button |
+| `skills.spec.js` | 4 | Skills page, install input, featured repos |
+| `projects.spec.js` | 4 | Projects page, add input, auto-detect |
+| `mcp.spec.js` | 3 | MCP tools page, featured servers |
+| `monitoring.spec.js` | 3 | Monitoring dashboard, time range selector |
+| `auth.spec.js` | 6 | Password setup, login, wrong password, Bearer auth |
+| `onboarding.spec.js` | 5 | Onboarding redirect, steps, skip, identity input |
+| `onboarding-auth.spec.js` | 1 | Remote onboarding auth flow with setup code and identity save |
+| `onboarding-anthropic.spec.js` | 1 | Anthropic onboarding from empty startup, model discovery, model selection |
+| `openai-live.spec.js` | 1 | Live OpenAI provider smoke test using the existing env and a real chat turn |
+
+## Shared Helpers
+
+`e2e/helpers.js` exports reusable utilities:
+
+- `expectPageContentMounted(page)` — waits for `#pageContent` to have children
+- `watchPageErrors(page)` — collects uncaught page errors
+- `waitForWsConnected(page)` — waits for `#statusDot.connected`
+- `navigateAndWait(page, path)` — goto + content mounted
+- `createSession(page)` — clicks new session button, waits for navigation
+
+## Running Specific Tests
+
+```bash
+# Run a single spec file
+cd crates/web/ui && npx playwright test e2e/specs/sessions.spec.js
+
+# Run a specific project
+npx playwright test --project=auth
+
+# Run with visible browser
+just ui-e2e-headed
+
+# Debug mode (step through)
+npm run e2e:debug
+
+# View HTML report
+npx playwright show-report
+```
+
+## Tips
+
+- **Build the binary first** (`cargo build`) to avoid recompilation on every
+  test run. The startup script auto-detects `target/debug/chelix`.
+- Set `CHELIX_BINARY=/path/to/chelix` to use a specific binary.
+- Each Playwright process runs serially (`workers: 1`) because a Chelix runtime
+  is stateful. CI gets parallelism by running multiple single-worker processes.
+- On failure, traces, screenshots, and videos are saved in `test-results/`.

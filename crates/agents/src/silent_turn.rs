@@ -1,0 +1,631 @@
+/// Silent agentic turns for periodic memory extraction and session summaries.
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use time::macros::format_description;
+
+#[cfg(feature = "metrics")]
+use std::time::Instant;
+
+use {
+    anyhow::Result,
+    tracing::{debug, info, warn},
+};
+
+#[cfg(feature = "metrics")]
+use chelix_metrics::{counter, histogram, labels, memory as mem_metrics};
+
+use crate::{
+    memory_writer::{MemoryWriteResult, MemoryWriter},
+    model::{ChatMessage, LlmProvider},
+    runner::run_agent_loop,
+    tool_registry::{AgentTool, ToolRegistry},
+};
+
+#[must_use]
+fn truncate_at_char_boundary(content: &str, max_bytes: usize) -> &str {
+    &content[..content.floor_char_boundary(max_bytes)]
+}
+
+/// A thin `AgentTool` wrapper around `dyn MemoryWriter` that tracks written locations.
+struct MemoryWriteFileTool {
+    writer: Arc<dyn MemoryWriter>,
+    written_paths: std::sync::Mutex<Vec<PathBuf>>,
+}
+
+impl MemoryWriteFileTool {
+    fn new(writer: Arc<dyn MemoryWriter>) -> Self {
+        Self {
+            writer,
+            written_paths: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    fn take_written_paths(&self) -> Vec<PathBuf> {
+        std::mem::take(&mut *self.written_paths.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+}
+
+#[async_trait::async_trait]
+impl AgentTool for MemoryWriteFileTool {
+    fn name(&self) -> &str {
+        "write_file"
+    }
+
+    fn description(&self) -> &str {
+        "Write content to a file. Use this to save important memories and context."
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "File path relative to workspace (e.g. 'MEMORY.md' or 'memory/YYYY-MM-DD.md')"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Content to write to the file"
+                },
+                "append": {
+                    "type": "boolean",
+                    "description": "If true, append to the file instead of overwriting",
+                    "default": false
+                }
+            },
+            "required": ["path", "content"]
+        })
+    }
+
+    async fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value> {
+        let raw_path = params["path"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing 'path' parameter"))?;
+        let path_str = normalize_daily_log_date(raw_path);
+        let content = params["content"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing 'content' parameter"))?;
+        let append = params["append"].as_bool().unwrap_or(false);
+
+        let MemoryWriteResult {
+            location,
+            bytes_written,
+        } = self.writer.write_memory(&path_str, content, append).await?;
+
+        self.written_paths
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(PathBuf::from(&location));
+
+        debug!(location = %location, bytes = bytes_written, "silent memory turn: wrote file");
+        Ok(serde_json::json!({
+            "ok": true,
+            "path": location,
+        }))
+    }
+}
+
+const SESSION_SUMMARY_SYSTEM_PROMPT: &str = r#"You are a session summarizer. Review the conversation and write a concise summary to memory using the write_file tool.
+
+Focus on:
+- What was accomplished (key outcomes and decisions)
+- What was left unfinished (follow-up items)
+- Any preferences or patterns the user demonstrated
+- Technical context that would help resume this work
+
+Write to `memory/YYYY-MM-DD.md` (append, don't overwrite).
+Be concise — 5-15 bullet points maximum.
+Do NOT respond to the user. Only use the write_file tool to save the summary."#;
+
+const PERIODIC_EXTRACT_SYSTEM_PROMPT: &str = r#"You are a memory extraction agent. Review the recent conversation turns below and save any important new information to memory using the write_file tool.
+
+Save information that would be useful in future conversations:
+- User preferences and working style
+- Key decisions and their reasoning
+- Important facts, names, dates, and relationships
+- Technical context (tools, languages, frameworks)
+
+Write to `memory/YYYY-MM-DD.md` (append, don't overwrite).
+Be concise — only save genuinely new information not already in memory.
+Do NOT respond to the user. Only use the write_file tool to save memories."#;
+
+/// Normalize the date portion of a `memory/YYYY-MM-DD.md` path to today's date.
+///
+/// The silent memory turn prompts instruct the LLM to write to `memory/YYYY-MM-DD.md`
+/// but the LLM may hallucinate a wrong date. This function detects that pattern and
+/// rewrites it to the current UTC date, ensuring daily log files always reflect when
+/// the memory was actually written.
+///
+/// Non-date filenames (e.g. `memory/notes.md`, `MEMORY.md`) pass through unchanged.
+fn normalize_daily_log_date(path: &str) -> String {
+    // Only rewrite paths under memory/ that look like date-stamped daily logs.
+    let Some(name) = path.strip_prefix("memory/") else {
+        return path.to_owned();
+    };
+
+    // Must end with .md and have a stem matching YYYY-MM-DD (exactly 10 chars).
+    let Some(stem) = name.strip_suffix(".md") else {
+        return path.to_owned();
+    };
+    if stem.len() != 10 {
+        return path.to_owned();
+    }
+
+    // Structural check: NNNN-NN-NN (digits and hyphens at expected positions).
+    let is_dateish = stem.chars().enumerate().all(|(i, c)| {
+        matches!(
+            (i, c),
+            (0..=3, '0'..='9') | (4 | 7, '-') | (5..=6, '0'..='9') | (8..=9, '0'..='9')
+        )
+    });
+    if !is_dateish {
+        return path.to_owned();
+    }
+
+    // Already today? Fast path — no allocation needed beyond the original.
+    let fmt = format_description!("[year]-[month]-[day]");
+    let today = time::OffsetDateTime::now_utc()
+        .format(fmt)
+        .unwrap_or_else(|_| stem.to_owned());
+    if stem == today {
+        return path.to_owned();
+    }
+
+    // Rewrite to today's date.
+    format!("memory/{today}.md")
+}
+
+/// Prompt variant for [`run_silent_memory_turn_with_prompt`].
+#[derive(Debug)]
+pub enum SilentTurnPrompt {
+    /// Periodic background extraction for the last N turns.
+    PeriodicExtract,
+    /// Session-end summary.
+    SessionSummary,
+}
+
+/// Run a silent memory turn with a specific prompt variant.
+#[tracing::instrument(skip(provider, conversation, writer), fields(variant))]
+pub async fn run_silent_memory_turn_with_prompt(
+    provider: Arc<dyn LlmProvider>,
+    conversation: &[ChatMessage],
+    writer: Arc<dyn MemoryWriter>,
+    prompt_variant: SilentTurnPrompt,
+) -> Result<Vec<PathBuf>> {
+    let write_tool = Arc::new(MemoryWriteFileTool::new(writer));
+
+    let mut tools = ToolRegistry::new();
+    // We need to register a non-Arc version. Use a wrapper.
+    struct ToolWrapper(Arc<MemoryWriteFileTool>);
+
+    #[async_trait::async_trait]
+    impl AgentTool for ToolWrapper {
+        fn name(&self) -> &str {
+            self.0.name()
+        }
+
+        fn description(&self) -> &str {
+            self.0.description()
+        }
+
+        fn parameters_schema(&self) -> serde_json::Value {
+            self.0.parameters_schema()
+        }
+
+        async fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value> {
+            self.0.execute(params).await
+        }
+    }
+
+    tools.register(Box::new(ToolWrapper(Arc::clone(&write_tool))));
+
+    // Format the conversation for the user message
+    let mut conversation_text = String::new();
+    for msg in conversation {
+        let (role, content) = match msg {
+            ChatMessage::System { content } => ("system", content.as_str()),
+            ChatMessage::User {
+                content: crate::model::UserContent::Text(t),
+                ..
+            } => ("user", t.as_str()),
+            ChatMessage::User {
+                content: crate::model::UserContent::Multimodal(_),
+                ..
+            } => ("user", "[multimodal content]"),
+            ChatMessage::Assistant { content, .. } => {
+                ("assistant", content.as_deref().unwrap_or(""))
+            },
+            ChatMessage::Tool { content, .. } => ("tool", content.as_str()),
+        };
+        // Skip very long messages (tool results, etc.)
+        let truncated = truncate_at_char_boundary(content, 2000);
+        conversation_text.push_str(&format!("{role}: {truncated}\n\n"));
+    }
+
+    let (system_prompt, label) = match prompt_variant {
+        SilentTurnPrompt::PeriodicExtract => (PERIODIC_EXTRACT_SYSTEM_PROMPT, "periodic-extract"),
+        SilentTurnPrompt::SessionSummary => (SESSION_SUMMARY_SYSTEM_PROMPT, "session-summary"),
+    };
+
+    // Inject today's date as an advisory hint. The tool layer enforces the correct
+    // date regardless, but giving the LLM the right date reduces unnecessary rewrites.
+    let fmt = format_description!("[year]-[month]-[day]");
+    let today = time::OffsetDateTime::now_utc()
+        .format(fmt)
+        .unwrap_or_else(|_| "YYYY-MM-DD".to_owned());
+    let system_prompt = system_prompt.replace("YYYY-MM-DD", &today);
+
+    info!(
+        messages = conversation.len(),
+        variant = label,
+        "running silent memory turn"
+    );
+
+    #[cfg(feature = "metrics")]
+    let start = Instant::now();
+
+    let user_content = crate::model::UserContent::Text(conversation_text);
+    let result = run_agent_loop(
+        provider,
+        &tools,
+        &system_prompt,
+        &user_content,
+        None, // no event callbacks — silent
+        None, // no history
+    )
+    .await;
+
+    match result {
+        Ok(run_result) => {
+            let paths = write_tool.take_written_paths();
+            #[cfg(feature = "metrics")]
+            {
+                let duration = start.elapsed().as_secs_f64();
+                counter!(
+                    mem_metrics::SILENT_TURNS_TOTAL,
+                    labels::VARIANT => label,
+                    labels::SUCCESS => "true"
+                )
+                .increment(1);
+                histogram!(
+                    mem_metrics::SILENT_TURN_DURATION_SECONDS,
+                    labels::VARIANT => label
+                )
+                .record(duration);
+                counter!(mem_metrics::SILENT_TURN_FILES_WRITTEN, labels::VARIANT => label)
+                    .increment(paths.len() as u64);
+            }
+            info!(
+                files_written = paths.len(),
+                tool_calls = run_result.tool_calls_made,
+                variant = label,
+                "silent memory turn complete"
+            );
+            Ok(paths)
+        },
+        Err(e) => {
+            #[cfg(feature = "metrics")]
+            {
+                let duration = start.elapsed().as_secs_f64();
+                counter!(
+                    mem_metrics::SILENT_TURNS_TOTAL,
+                    labels::VARIANT => label,
+                    labels::SUCCESS => "false"
+                )
+                .increment(1);
+                histogram!(
+                    mem_metrics::SILENT_TURN_DURATION_SECONDS,
+                    labels::VARIANT => label
+                )
+                .record(duration);
+            }
+            warn!(error = %e, variant = label, "silent memory turn failed");
+            Ok(Vec::new())
+        },
+    }
+}
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::model::{ChatMessage, CompletionResponse, StreamEvent, ToolCall, Usage},
+        std::pin::Pin,
+        tokio_stream::Stream,
+    };
+
+    const TEST_CONTEXT_WINDOW: u32 = 128_000;
+    const TEST_MAX_INPUT_TOKENS: u32 = 96_000;
+    const TEST_MAX_OUTPUT_TOKENS: u32 = 32_000;
+
+    /// Mock provider that makes one write_file call then returns.
+    struct MemoryWritingProvider {
+        call_count: std::sync::atomic::AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmProvider for MemoryWritingProvider {
+        fn name(&self) -> &str {
+            "mock"
+        }
+
+        fn id(&self) -> &str {
+            "mock-model"
+        }
+
+        fn context_window(&self) -> Option<u32> {
+            Some(TEST_CONTEXT_WINDOW)
+        }
+
+        fn max_input_tokens(&self) -> Option<u32> {
+            Some(TEST_MAX_INPUT_TOKENS)
+        }
+
+        fn max_output_tokens(&self) -> Option<u32> {
+            Some(TEST_MAX_OUTPUT_TOKENS)
+        }
+
+        fn supports_tools(&self) -> bool {
+            true
+        }
+
+        async fn complete(
+            &self,
+            _messages: &[ChatMessage],
+            _tools: &[serde_json::Value],
+        ) -> Result<CompletionResponse> {
+            let count = self
+                .call_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if count == 0 {
+                Ok(CompletionResponse {
+                    text: None,
+                    tool_calls: vec![ToolCall {
+                        id: "call_1".into(),
+                        name: "write_file".into(),
+                        arguments: serde_json::json!({
+                            "path": "MEMORY.md",
+                            "content": "# Memories\n\nUser prefers Rust over Python."
+                        }),
+                        argument_diagnostic: None,
+                        metadata: None,
+                    }],
+                    usage: Usage {
+                        input_tokens: 100,
+                        output_tokens: 50,
+                        ..Default::default()
+                    },
+                })
+            } else {
+                Ok(CompletionResponse {
+                    text: Some("NO_REPLY".into()),
+                    tool_calls: vec![],
+                    usage: Usage {
+                        input_tokens: 50,
+                        output_tokens: 5,
+                        ..Default::default()
+                    },
+                })
+            }
+        }
+
+        fn stream(
+            &self,
+            _messages: Vec<ChatMessage>,
+        ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+            Box::pin(tokio_stream::empty())
+        }
+    }
+
+    /// Mock MemoryWriter that writes to a temp directory.
+    struct MockMemoryWriter {
+        dir: PathBuf,
+    }
+
+    #[async_trait::async_trait]
+    impl MemoryWriter for MockMemoryWriter {
+        async fn write_memory(
+            &self,
+            file: &str,
+            content: &str,
+            append: bool,
+        ) -> Result<MemoryWriteResult> {
+            let path = self.dir.join(file);
+            if let Some(parent) = path.parent() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
+            if append && path.exists() {
+                let existing = tokio::fs::read_to_string(&path).await.unwrap_or_default();
+                let combined = format!("{existing}\n\n{content}");
+                tokio::fs::write(&path, &combined).await?;
+            } else {
+                tokio::fs::write(&path, content).await?;
+            }
+            let bytes = tokio::fs::read(&path).await?.len();
+            Ok(MemoryWriteResult {
+                location: path.to_string_lossy().into_owned(),
+                bytes_written: bytes,
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn test_periodic_extract_variant_writes_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let provider = Arc::new(MemoryWritingProvider {
+            call_count: std::sync::atomic::AtomicUsize::new(0),
+        });
+        let writer: Arc<dyn MemoryWriter> = Arc::new(MockMemoryWriter {
+            dir: tmp.path().to_path_buf(),
+        });
+
+        let conversation = vec![
+            ChatMessage::user("Set up a CI pipeline for the project."),
+            ChatMessage::assistant("Done! I configured GitHub Actions with lint and test jobs."),
+        ];
+
+        let paths = run_silent_memory_turn_with_prompt(
+            provider,
+            &conversation,
+            writer,
+            SilentTurnPrompt::PeriodicExtract,
+        )
+        .await
+        .unwrap();
+
+        assert!(!paths.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_session_summary_variant_writes_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let provider = Arc::new(MemoryWritingProvider {
+            call_count: std::sync::atomic::AtomicUsize::new(0),
+        });
+        let writer: Arc<dyn MemoryWriter> = Arc::new(MockMemoryWriter {
+            dir: tmp.path().to_path_buf(),
+        });
+
+        let conversation = vec![
+            ChatMessage::user("Help me refactor the auth module."),
+            ChatMessage::assistant("Refactored auth into separate middleware and handler modules."),
+            ChatMessage::user("Now add passkey support."),
+            ChatMessage::assistant("Added WebAuthn passkey registration and login."),
+        ];
+
+        let paths = run_silent_memory_turn_with_prompt(
+            provider,
+            &conversation,
+            writer,
+            SilentTurnPrompt::SessionSummary,
+        )
+        .await
+        .unwrap();
+
+        assert!(!paths.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_silent_turn_variant_does_not_crash_on_failure() {
+        /// Provider that always returns an error.
+        struct FailingProvider;
+
+        #[async_trait::async_trait]
+        impl LlmProvider for FailingProvider {
+            fn name(&self) -> &str {
+                "failing"
+            }
+
+            fn id(&self) -> &str {
+                "fail-model"
+            }
+
+            fn context_window(&self) -> Option<u32> {
+                Some(TEST_CONTEXT_WINDOW)
+            }
+
+            fn supports_tools(&self) -> bool {
+                true
+            }
+
+            async fn complete(
+                &self,
+                _messages: &[ChatMessage],
+                _tools: &[serde_json::Value],
+            ) -> Result<CompletionResponse> {
+                Err(anyhow::anyhow!("simulated LLM failure"))
+            }
+
+            fn stream(
+                &self,
+                _messages: Vec<ChatMessage>,
+            ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+                Box::pin(tokio_stream::empty())
+            }
+        }
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let provider = Arc::new(FailingProvider);
+        let writer: Arc<dyn MemoryWriter> = Arc::new(MockMemoryWriter {
+            dir: tmp.path().to_path_buf(),
+        });
+
+        // Should return Ok(empty) instead of propagating the error.
+        let paths = run_silent_memory_turn_with_prompt(
+            provider,
+            &[ChatMessage::user("test")],
+            writer,
+            SilentTurnPrompt::PeriodicExtract,
+        )
+        .await
+        .unwrap();
+
+        assert!(paths.is_empty());
+    }
+
+    #[test]
+    fn normalize_daily_log_date_rewrites_wrong_date_to_today() {
+        let fmt = format_description!("[year]-[month]-[day]");
+        let today = time::OffsetDateTime::now_utc().format(fmt).unwrap();
+
+        // Past dates get rewritten
+        assert_eq!(
+            normalize_daily_log_date("memory/2024-05-23.md"),
+            format!("memory/{today}.md")
+        );
+        assert_eq!(
+            normalize_daily_log_date("memory/2025-04-09.md"),
+            format!("memory/{today}.md")
+        );
+
+        // Today's date passes through
+        assert_eq!(
+            normalize_daily_log_date(&format!("memory/{today}.md")),
+            format!("memory/{today}.md")
+        );
+    }
+
+    #[test]
+    fn normalize_daily_log_date_preserves_non_date_paths() {
+        // Non-date filenames pass through unchanged
+        assert_eq!(normalize_daily_log_date("MEMORY.md"), "MEMORY.md");
+        assert_eq!(
+            normalize_daily_log_date("memory/notes.md"),
+            "memory/notes.md"
+        );
+        assert_eq!(
+            normalize_daily_log_date("memory/project-x.md"),
+            "memory/project-x.md"
+        );
+        assert_eq!(
+            normalize_daily_log_date("memory/config.md"),
+            "memory/config.md"
+        );
+    }
+
+    #[test]
+    fn normalize_daily_log_date_preserves_malformed_dates() {
+        // Things that look vaguely date-like but aren't YYYY-MM-DD
+        assert_eq!(
+            normalize_daily_log_date("memory/24-01-15.md"),
+            "memory/24-01-15.md"
+        );
+        assert_eq!(
+            normalize_daily_log_date("memory/2024-1-15.md"),
+            "memory/2024-1-15.md"
+        );
+    }
+
+    #[test]
+    fn truncate_at_char_boundary_handles_multibyte_boundary() {
+        let content = format!("{}л{}", "a".repeat(1999), "z".repeat(20));
+
+        let truncated = truncate_at_char_boundary(&content, 2000);
+
+        assert_eq!(truncated.len(), 1999);
+        assert!(content.is_char_boundary(truncated.len()));
+        assert!(truncated.chars().all(|c| c == 'a'));
+    }
+}

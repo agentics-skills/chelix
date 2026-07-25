@@ -1,0 +1,445 @@
+const { expect, test } = require("../base-test");
+const { expectRpcOk, navigateAndWait, sendRpcFromPage, waitForWsConnected, watchPageErrors } = require("../helpers");
+
+test.describe("Cron jobs page", () => {
+	test("cron page loads with heading", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+
+		await expect(page.getByRole("heading", { name: "Cron Jobs", exact: true })).toBeVisible();
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("heartbeat tab loads", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/heartbeat");
+
+		await expect(page.getByRole("heading", { name: /heartbeat/i })).toBeVisible();
+		await expect(page.getByText("Deliver to channel", { exact: true })).toBeVisible();
+		await expect(page.getByText("Channel Account", { exact: true })).toBeVisible();
+		await expect(page.getByText("Chat ID", { exact: true })).toBeVisible();
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("heartbeat inactive state disables run now with info notice", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/heartbeat");
+
+		await expect(page.getByRole("button", { name: "Run Now", exact: true })).toBeDisabled();
+		await expect(page.getByText(/Heartbeat inactive:/)).toBeVisible();
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("create job button present", async ({ page }) => {
+		await navigateAndWait(page, "/settings/crons");
+
+		// Page should have content, create button may depend on state
+		const content = page.locator("#pageContent");
+		await expect(content).not.toBeEmpty();
+	});
+
+	test("cron modal exposes model without routing overrides", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+
+		await page.getByRole("button", { name: "+ Add Job", exact: true }).click();
+
+		await expect(page.getByText("Model (Agent Turn)", { exact: true })).toBeVisible();
+		await expect(page.getByText("Execution Target", { exact: true })).toHaveCount(0);
+		await expect(page.getByText("Sandbox Image", { exact: true })).toHaveCount(0);
+		await expect(page.locator('[data-field="executionTarget"]')).toHaveCount(0);
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("modal defaults are compatible: systemEvent + main", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+
+		await page.getByRole("button", { name: "+ Add Job", exact: true }).click();
+
+		await expect(page.locator('[data-field="payloadKind"]')).toHaveValue("systemEvent");
+		await expect(page.locator('[data-field="target"]')).toHaveValue("main");
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("cron modal clarifies schedule, timezone, and payload copy", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+
+		await page.getByRole("button", { name: "+ Add Job", exact: true }).click();
+
+		await expect(page.locator('[data-field="schedKind"] option[value="at"]')).toHaveText("Run Once");
+		await expect(page.locator('[data-field="schedKind"]')).toHaveValue("cron");
+		await expect(page.getByText(/Leave blank to use UTC/)).toBeVisible();
+		await expect(page.getByText(/Adds this text to the main session as a system event/)).toBeVisible();
+		await expect(page.locator('[data-field="message"]')).toHaveAttribute(
+			"placeholder",
+			"Message sent to the main session",
+		);
+
+		await page.locator('[data-field="payloadKind"]').selectOption("agentTurn");
+		await expect(page.getByText(/Starts an isolated agent turn with this prompt/)).toBeVisible();
+		await expect(page.locator('[data-field="message"]')).toHaveAttribute("placeholder", "Prompt sent to the agent");
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("auto-sync: switching payload kind updates session target", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+
+		await page.getByRole("button", { name: "+ Add Job", exact: true }).click();
+
+		// Default state
+		await expect(page.locator('[data-field="payloadKind"]')).toHaveValue("systemEvent");
+		await expect(page.locator('[data-field="target"]')).toHaveValue("main");
+
+		// Switch to agentTurn => target should become isolated
+		await page.locator('[data-field="payloadKind"]').selectOption("agentTurn");
+		await expect(page.locator('[data-field="target"]')).toHaveValue("isolated");
+
+		// Switch back to systemEvent => target should become main
+		await page.locator('[data-field="payloadKind"]').selectOption("systemEvent");
+		await expect(page.locator('[data-field="target"]')).toHaveValue("main");
+
+		// Switch target to isolated => payload should become agentTurn
+		await page.locator('[data-field="target"]').selectOption("isolated");
+		await expect(page.locator('[data-field="payloadKind"]')).toHaveValue("agentTurn");
+
+		// Switch target to main => payload should become systemEvent
+		await page.locator('[data-field="target"]').selectOption("main");
+		await expect(page.locator('[data-field="payloadKind"]')).toHaveValue("systemEvent");
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("form fields survive schedule type change", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+
+		await page.getByRole("button", { name: "+ Add Job", exact: true }).click();
+
+		// Fill in the name field
+		await page.locator('[data-field="name"]').fill("test-job-persist");
+		await expect(page.locator('[data-field="name"]')).toHaveValue("test-job-persist");
+
+		// Change schedule type from cron to every
+		await page.locator('[data-field="schedKind"]').selectOption("every");
+
+		// Name should still be there
+		await expect(page.locator('[data-field="name"]')).toHaveValue("test-job-persist");
+
+		// Change schedule type again to at
+		await page.locator('[data-field="schedKind"]').selectOption("at");
+		await expect(page.locator('[data-field="name"]')).toHaveValue("test-job-persist");
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("delivery toggle visible only for agentTurn", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+
+		await page.getByRole("button", { name: "+ Add Job", exact: true }).click();
+
+		// Default: systemEvent — no delivery toggle
+		await expect(page.getByText("Deliver output to channel")).not.toBeVisible();
+
+		// Switch to agentTurn — delivery toggle should appear
+		await page.locator('[data-field="payloadKind"]').selectOption("agentTurn");
+		await expect(page.getByText("Deliver output to channel")).toBeVisible();
+
+		// Switch back to systemEvent — delivery toggle should hide
+		await page.locator('[data-field="payloadKind"]').selectOption("systemEvent");
+		await expect(page.getByText("Deliver output to channel")).not.toBeVisible();
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("delivery toggle shows and hides channel fields", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+
+		await page.getByRole("button", { name: "+ Add Job", exact: true }).click();
+		await page.locator('[data-field="payloadKind"]').selectOption("agentTurn");
+
+		// Channel fields not visible before checking toggle
+		await expect(page.getByText("Channel Account", { exact: true })).not.toBeVisible();
+		await expect(page.getByText("Chat ID (recipient)", { exact: true })).not.toBeVisible();
+
+		// Check the delivery toggle
+		const toggle = page.getByText("Deliver output to channel");
+		await toggle.scrollIntoViewIfNeeded();
+		await toggle.click();
+
+		// Channel fields should appear (scroll to make visible)
+		const chatIdLabel = page.getByText("Chat ID (recipient)", { exact: true });
+		await chatIdLabel.scrollIntoViewIfNeeded();
+		await expect(page.getByText("Channel Account", { exact: true })).toBeVisible();
+		await expect(chatIdLabel).toBeVisible();
+
+		// Uncheck the toggle
+		await toggle.scrollIntoViewIfNeeded();
+		await toggle.click();
+
+		// Channel fields should disappear
+		await expect(page.getByText("Channel Account", { exact: true })).not.toBeVisible();
+		await expect(page.getByText("Chat ID (recipient)", { exact: true })).not.toBeVisible();
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("edit modal populates fields from existing systemEvent job", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+		await waitForWsConnected(page);
+
+		// Create a systemEvent job via RPC
+		const addRes = await expectRpcOk(page, "cron.add", {
+			name: "e2e-edit-sys",
+			schedule: { kind: "every", every_ms: 60000 },
+			payload: { kind: "systemEvent", text: "hello from e2e" },
+			sessionTarget: "main",
+			enabled: false,
+		});
+		const jobId = addRes.payload?.id;
+
+		// Reload the page so the new job appears in the table
+		await navigateAndWait(page, "/settings/crons");
+		await waitForWsConnected(page);
+
+		// Click Edit on the created job row
+		const row = page.locator("tr", { hasText: "e2e-edit-sys" });
+		await expect(row).toBeVisible();
+		await row.getByRole("button", { name: "Edit", exact: true }).click();
+
+		// Assert modal fields match the job values
+		await expect(page.locator('[data-field="name"]')).toHaveValue("e2e-edit-sys");
+		await expect(page.locator('[data-field="schedKind"]')).toHaveValue("every");
+		await expect(page.locator('[data-field="payloadKind"]')).toHaveValue("systemEvent");
+		await expect(page.locator('[data-field="target"]')).toHaveValue("main");
+		await expect(page.locator('[data-field="message"]')).toHaveValue("hello from e2e");
+
+		// Clean up
+		if (jobId) await sendRpcFromPage(page, "cron.remove", { id: jobId });
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("edit modal populates fields from existing agentTurn job", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+		await waitForWsConnected(page);
+
+		// Create an agentTurn job via RPC
+		const addRes = await expectRpcOk(page, "cron.add", {
+			name: "e2e-edit-agent",
+			schedule: { kind: "cron", expr: "0 * * * *" },
+			payload: { kind: "agentTurn", message: "agent prompt text" },
+			sessionTarget: "isolated",
+			enabled: true,
+		});
+		const jobId = addRes.payload?.id;
+
+		await navigateAndWait(page, "/settings/crons");
+		await waitForWsConnected(page);
+
+		const row = page.locator("tr", { hasText: "e2e-edit-agent" });
+		await expect(row).toBeVisible();
+		await row.getByRole("button", { name: "Edit", exact: true }).click();
+
+		await expect(page.locator('[data-field="name"]')).toHaveValue("e2e-edit-agent");
+		await expect(page.locator('[data-field="schedKind"]')).toHaveValue("cron");
+		await expect(page.locator('[data-field="payloadKind"]')).toHaveValue("agentTurn");
+		await expect(page.locator('[data-field="target"]')).toHaveValue("isolated");
+		await expect(page.locator('[data-field="message"]')).toHaveValue("agent prompt text");
+
+		// Clean up
+		if (jobId) await sendRpcFromPage(page, "cron.remove", { id: jobId });
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("edit then add resets modal to defaults", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+		await waitForWsConnected(page);
+
+		// Create a job to edit
+		const addRes = await expectRpcOk(page, "cron.add", {
+			name: "e2e-reset-check",
+			schedule: { kind: "every", every_ms: 30000 },
+			payload: { kind: "agentTurn", message: "custom prompt" },
+			sessionTarget: "isolated",
+			enabled: false,
+		});
+		const jobId = addRes.payload?.id;
+
+		await navigateAndWait(page, "/settings/crons");
+		await waitForWsConnected(page);
+
+		// Open Edit modal
+		const row = page.locator("tr", { hasText: "e2e-reset-check" });
+		await expect(row).toBeVisible();
+		await row.getByRole("button", { name: "Edit", exact: true }).click();
+
+		// Verify it's populated
+		await expect(page.locator('[data-field="name"]')).toHaveValue("e2e-reset-check");
+
+		// Close modal
+		await page.keyboard.press("Escape");
+
+		// Open Add modal
+		await page.getByRole("button", { name: "+ Add Job", exact: true }).click();
+
+		// Fields should be reset to defaults
+		await expect(page.locator('[data-field="name"]')).toHaveValue("");
+		await expect(page.locator('[data-field="schedKind"]')).toHaveValue("cron");
+		await expect(page.locator('[data-field="payloadKind"]')).toHaveValue("systemEvent");
+		await expect(page.locator('[data-field="target"]')).toHaveValue("main");
+		await expect(page.locator('[data-field="message"]')).toHaveValue("");
+
+		// Clean up
+		if (jobId) await sendRpcFromPage(page, "cron.remove", { id: jobId });
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("page has no JS errors", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+		expect(pageErrors).toEqual([]);
+	});
+
+	// ── Schedule field persistence tests (fix: signals instead of uncontrolled inputs) ──
+
+	test("every interval persists when payload type changes", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+
+		await page.getByRole("button", { name: "+ Add Job", exact: true }).click();
+
+		// Select "Every" schedule and enter a value
+		await page.locator('[data-field="schedKind"]').selectOption("every");
+		await page.locator('[data-field="every"]').fill("900");
+		await expect(page.locator('[data-field="every"]')).toHaveValue("900");
+
+		// Change another field — payload type
+		await page.locator('[data-field="payloadKind"]').selectOption("agentTurn");
+
+		// Interval must survive the re-render
+		await expect(page.locator('[data-field="every"]')).toHaveValue("900");
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("run-once date persists when session target changes", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+
+		await page.getByRole("button", { name: "+ Add Job", exact: true }).click();
+
+		// Select "Run Once" schedule and pick a date
+		await page.locator('[data-field="schedKind"]').selectOption("at");
+		await page.locator('[data-field="at"]').fill("2026-12-25T12:00");
+		await expect(page.locator('[data-field="at"]')).toHaveValue("2026-12-25T12:00");
+
+		// Change another field — session target
+		await page.locator('[data-field="target"]').selectOption("isolated");
+
+		// Date must survive the re-render
+		await expect(page.locator('[data-field="at"]')).toHaveValue("2026-12-25T12:00");
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("cron expression persists when payload kind changes", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+
+		await page.getByRole("button", { name: "+ Add Job", exact: true }).click();
+
+		// Cron is the default schedule type — enter an expression
+		await page.locator('[data-field="cron"]').fill("*/5 * * * *");
+		await expect(page.locator('[data-field="cron"]')).toHaveValue("*/5 * * * *");
+
+		// Change another supported field to trigger re-render
+		await page.locator('[data-field="payloadKind"]').selectOption("agentTurn");
+
+		// Expression must survive the re-render
+		await expect(page.locator('[data-field="cron"]')).toHaveValue("*/5 * * * *");
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("empty schedule shows field-error class on Create", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+
+		await page.getByRole("button", { name: "+ Add Job", exact: true }).click();
+
+		// Fill only name and message, leave cron expression empty
+		await page.locator('[data-field="name"]').fill("error-test-job");
+		await page.locator('[data-field="message"]').fill("test message");
+
+		// Cron input should not have error class yet
+		await expect(page.locator('[data-field="cron"]')).not.toHaveClass(/field-error/);
+
+		// Click Create
+		await page.getByRole("button", { name: "Create", exact: true }).click();
+
+		// Red border (field-error class) should now appear on cron input
+		await expect(page.locator('[data-field="cron"]')).toHaveClass(/field-error/);
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("empty every interval shows field-error class on Create", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+
+		await page.getByRole("button", { name: "+ Add Job", exact: true }).click();
+
+		// Select Every, fill name and message, leave interval empty
+		await page.locator('[data-field="schedKind"]').selectOption("every");
+		await page.locator('[data-field="name"]').fill("every-error-test");
+		await page.locator('[data-field="message"]').fill("test message");
+
+		// Click Create
+		await page.getByRole("button", { name: "Create", exact: true }).click();
+
+		// field-error class on every input
+		await expect(page.locator('[data-field="every"]')).toHaveClass(/field-error/);
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("full form creates an every-interval job successfully", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await navigateAndWait(page, "/settings/crons");
+		await waitForWsConnected(page);
+
+		await page.getByRole("button", { name: "+ Add Job", exact: true }).click();
+
+		// Fill all required fields
+		await page.locator('[data-field="name"]').fill("e2e-create-every");
+		await page.locator('[data-field="schedKind"]').selectOption("every");
+		await page.locator('[data-field="every"]').fill("900");
+		await page.locator('[data-field="message"]').fill("e2e every job body");
+
+		// Create should succeed
+		await page.getByRole("button", { name: "Create", exact: true }).click();
+
+		// Modal should close
+		await expect(page.locator('[data-field="name"]')).not.toBeVisible();
+
+		// Job should appear in the table
+		const row = page.locator("tr", { hasText: "e2e-create-every" });
+		await expect(row).toBeVisible();
+		await expect(row).toContainText("Every 15m");
+
+		// Clean up
+		await row.getByRole("button", { name: "Delete", exact: true }).click();
+		await page.getByRole("button", { name: "Confirm", exact: true }).click();
+		await expect(page.locator("tr", { hasText: "e2e-create-every" })).not.toBeVisible();
+
+		expect(pageErrors).toEqual([]);
+	});
+});

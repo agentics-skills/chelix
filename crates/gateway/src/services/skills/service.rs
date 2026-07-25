@@ -1,0 +1,960 @@
+use {
+    async_trait::async_trait,
+    serde_json::Value,
+    std::{
+        collections::HashSet,
+        path::{Path, PathBuf},
+    },
+};
+
+#[cfg(feature = "bundled-skills")]
+use std::sync::Arc;
+
+use super::skills_helpers::*;
+
+// Pull in ServiceResult, ServiceError, security_audit, etc. from services module
+use super::super::*;
+
+// ── Skills (Noop — complex impl that depends on gateway-specific crates) ────
+
+pub struct NoopSkillsService;
+
+#[async_trait]
+impl SkillsService for NoopSkillsService {
+    async fn status(&self) -> ServiceResult {
+        Ok(serde_json::json!({ "installed": [] }))
+    }
+
+    async fn install(&self, params: Value) -> ServiceResult {
+        let source = params
+            .get("source")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "missing 'source' parameter (owner/repo format)".to_string())?;
+        let install_dir =
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        let skills = chelix_skills::install::install_skill(source, &install_dir)
+            .await
+            .map_err(ServiceError::message)?;
+        let installed: Vec<_> = skills
+            .iter()
+            .map(|m| {
+                serde_json::json!({
+                    "name": m.name,
+                    "description": m.description,
+                    "path": m.path.to_string_lossy(),
+                })
+            })
+            .collect();
+        security_audit(
+            "skills.install",
+            serde_json::json!({
+                "source": source,
+                "installed_count": installed.len(),
+            }),
+        );
+        Ok(serde_json::json!({ "installed": installed }))
+    }
+
+    async fn update(&self, _p: Value) -> ServiceResult {
+        Err("skills not available".into())
+    }
+
+    async fn list(&self) -> ServiceResult {
+        use chelix_skills::discover::{FsSkillDiscoverer, SkillDiscoverer};
+        let fs_discoverer = FsSkillDiscoverer::new(FsSkillDiscoverer::default_paths());
+
+        #[cfg(feature = "bundled-skills")]
+        let skills = {
+            let bundled = Arc::new(chelix_skills::bundled::BundledSkillStore::new());
+            let composite = chelix_skills::discover::CompositeSkillDiscoverer::new(
+                Box::new(fs_discoverer),
+                bundled,
+            );
+            composite.discover().await.map_err(ServiceError::message)?
+        };
+        #[cfg(not(feature = "bundled-skills"))]
+        let skills = fs_discoverer
+            .discover()
+            .await
+            .map_err(ServiceError::message)?;
+        let items: Vec<_> = skills
+            .iter()
+            .map(|s| {
+                let protected = matches!(
+                    s.source,
+                    Some(chelix_skills::types::SkillSource::Personal)
+                        | Some(chelix_skills::types::SkillSource::Project)
+                ) && is_protected_discovered_skill(&s.name);
+                serde_json::json!({
+                    "name": s.name,
+                    "description": s.description,
+                    "category": s.category,
+                    "license": s.license,
+                    "allowed_tools": s.allowed_tools,
+                    "path": s.path.to_string_lossy(),
+                    "source": s.source,
+                    "protected": protected,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!(items))
+    }
+
+    async fn remove(&self, params: Value) -> ServiceResult {
+        let source = params
+            .get("source")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "missing 'source' parameter".to_string())?;
+
+        let install_dir =
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        chelix_skills::install::remove_repo(source, &install_dir)
+            .await
+            .map_err(ServiceError::message)?;
+
+        security_audit("skills.remove", serde_json::json!({ "source": source }));
+
+        Ok(serde_json::json!({ "removed": source }))
+    }
+
+    async fn repos_list(&self) -> ServiceResult {
+        let install_dir =
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        let manifest_path = chelix_skills::manifest::ManifestStore::default_path()
+            .map_err(ServiceError::message)?;
+        let store = chelix_skills::manifest::ManifestStore::new(manifest_path);
+        let mut manifest = store.load().map_err(ServiceError::message)?;
+        let (drift_changed, drifted_sources) =
+            detect_and_mark_repo_drift(&mut manifest, &install_dir);
+        if drift_changed {
+            store.save(&manifest).map_err(ServiceError::message)?;
+        }
+
+        let repos: Vec<_> = manifest
+            .repos
+            .iter()
+            .map(|repo| {
+                // Deduplicate skills by name to avoid counting test fixtures.
+                let mut seen = HashSet::new();
+                let unique_skills: Vec<_> = repo
+                    .skills
+                    .iter()
+                    .filter(|s| seen.insert(s.name.clone()))
+                    .collect();
+                let enabled = unique_skills.iter().filter(|s| s.enabled).count();
+                let trusted = unique_skills.iter().filter(|s| s.trusted).count();
+                let skill_count = unique_skills.len();
+                // Re-detect format for repos that predate the formats module
+                let format = if repo.format == chelix_skills::formats::PluginFormat::Skill {
+                    let repo_dir = install_dir.join(&repo.repo_name);
+                    chelix_skills::formats::detect_format(&repo_dir)
+                } else {
+                    repo.format
+                };
+                serde_json::json!({
+                    "source": repo.source,
+                    "repo_name": repo.repo_name,
+                    "installed_at_ms": repo.installed_at_ms,
+                    "commit_sha": repo.commit_sha,
+                    "quarantined": repo.quarantined,
+                    "quarantine_reason": repo.quarantine_reason,
+                    "provenance": repo.provenance,
+                    "drifted": drifted_sources.contains(&repo.source),
+                    "format": format,
+                    "skill_count": skill_count,
+                    "enabled_count": enabled,
+                    "trusted_count": trusted,
+                })
+            })
+            .collect();
+
+        let mut repos = repos;
+        if let Ok(entries) = std::fs::read_dir(&install_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_dir() {
+                    continue;
+                }
+                let repo_name = entry.file_name().to_string_lossy().to_string();
+                if manifest.repos.iter().any(|r| r.repo_name == repo_name) {
+                    continue;
+                }
+                let format = chelix_skills::formats::detect_format(&path);
+                repos.push(serde_json::json!({
+                    "source": format!("orphan:{repo_name}"),
+                    "repo_name": repo_name,
+                    "installed_at_ms": 0,
+                    "commit_sha": null,
+                    "drifted": false,
+                    "orphaned": true,
+                    "format": format,
+                    "skill_count": 0,
+                    "enabled_count": 0,
+                }));
+            }
+        }
+
+        Ok(serde_json::json!(repos))
+    }
+
+    async fn repos_list_full(&self) -> ServiceResult {
+        let install_dir =
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        let manifest_path = chelix_skills::manifest::ManifestStore::default_path()
+            .map_err(ServiceError::message)?;
+        let store = chelix_skills::manifest::ManifestStore::new(manifest_path);
+        let mut manifest = store.load().map_err(ServiceError::message)?;
+        let (drift_changed, drifted_sources) =
+            detect_and_mark_repo_drift(&mut manifest, &install_dir);
+        if drift_changed {
+            store.save(&manifest).map_err(ServiceError::message)?;
+        }
+
+        let repos: Vec<_> = manifest
+            .repos
+            .iter()
+            .map(|repo| {
+                let repo_dir = install_dir.join(&repo.repo_name);
+                // Re-detect format for repos that predate the formats module
+                let format = if repo.format == chelix_skills::formats::PluginFormat::Skill {
+                    chelix_skills::formats::detect_format(&repo_dir)
+                } else {
+                    repo.format
+                };
+
+                // For non-SKILL.md formats, scan with adapter to get enriched metadata.
+                let adapter_entries = match format {
+                    chelix_skills::formats::PluginFormat::Skill => None,
+                    _ => chelix_skills::formats::scan_with_adapter(&repo_dir, format)
+                        .and_then(|r| r.ok()),
+                };
+
+                // Deduplicate skills by name — test fixtures or re-scans can
+                // produce duplicate entries with different relative_path.
+                // Keep the first (usually the real) entry for each name.
+                let mut seen_names = HashSet::new();
+                let skills: Vec<_> = repo
+                    .skills
+                    .iter()
+                    .filter(|s| seen_names.insert(s.name.clone()))
+                    .map(|s| {
+                        // If we have adapter entries, match by name for enriched data.
+                        if let Some(ref entries) = adapter_entries {
+                            let entry = entries.iter().find(|e| e.metadata.name == s.name);
+                            serde_json::json!({
+                                "name": s.name,
+                                "description": entry.map(|e| e.metadata.description.as_str()).unwrap_or(""),
+                                "display_name": entry.and_then(|e| e.display_name.as_deref()),
+                                "relative_path": s.relative_path,
+                                "trusted": s.trusted,
+                                "enabled": s.enabled,
+                                "drifted": drifted_sources.contains(&repo.source),
+                            })
+                        } else {
+                            // SKILL.md format: parse from disk.
+                            let skill_dir = install_dir.join(&s.relative_path);
+                            let skill_md = skill_dir.join("SKILL.md");
+                            let meta_json = chelix_skills::parse::read_meta_json(&skill_dir);
+                            let (description, display_name) =
+                                if let Ok(content) = std::fs::read_to_string(&skill_md) {
+                                    if let Ok(meta) = chelix_skills::parse::parse_metadata(
+                                        &content, &skill_dir,
+                                    ) {
+                                        let desc = if meta.description.is_empty() {
+                                            meta_json
+                                                .as_ref()
+                                                .and_then(|m| m.display_name.clone())
+                                                .unwrap_or_default()
+                                        } else {
+                                            meta.description
+                                        };
+                                        let dn = meta_json
+                                            .as_ref()
+                                            .and_then(|m| m.display_name.clone());
+                                        (desc, dn)
+                                    } else {
+                                        let dn = meta_json
+                                            .as_ref()
+                                            .and_then(|m| m.display_name.clone());
+                                        (dn.clone().unwrap_or_default(), dn)
+                                    }
+                                } else {
+                                    let dn =
+                                        meta_json.as_ref().and_then(|m| m.display_name.clone());
+                                    (dn.clone().unwrap_or_default(), dn)
+                                };
+                            serde_json::json!({
+                                "name": s.name,
+                                "description": description,
+                                "display_name": display_name,
+                                "relative_path": s.relative_path,
+                                "trusted": s.trusted,
+                                "enabled": s.enabled,
+                                "drifted": drifted_sources.contains(&repo.source),
+                            })
+                        }
+                    })
+                    .collect();
+
+                serde_json::json!({
+                    "source": repo.source,
+                    "repo_name": repo.repo_name,
+                    "installed_at_ms": repo.installed_at_ms,
+                    "commit_sha": repo.commit_sha,
+                    "quarantined": repo.quarantined,
+                    "quarantine_reason": repo.quarantine_reason,
+                    "provenance": repo.provenance,
+                    "drifted": drifted_sources.contains(&repo.source),
+                    "format": format,
+                    "skills": skills,
+                })
+            })
+            .collect();
+
+        let mut repos = repos;
+        if let Ok(entries) = std::fs::read_dir(&install_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_dir() {
+                    continue;
+                }
+                let repo_name = entry.file_name().to_string_lossy().to_string();
+                if manifest.repos.iter().any(|r| r.repo_name == repo_name) {
+                    continue;
+                }
+                let format = chelix_skills::formats::detect_format(&path);
+                repos.push(serde_json::json!({
+                    "source": format!("orphan:{repo_name}"),
+                    "repo_name": repo_name,
+                    "installed_at_ms": 0,
+                    "commit_sha": null,
+                    "drifted": false,
+                    "orphaned": true,
+                    "format": format,
+                    "skills": [],
+                }));
+            }
+        }
+
+        Ok(serde_json::json!(repos))
+    }
+
+    async fn repos_remove(&self, params: Value) -> ServiceResult {
+        let source = params
+            .get("source")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "missing 'source' parameter".to_string())?;
+
+        if let Some(repo_name) = source.strip_prefix("orphan:") {
+            let install_dir =
+                chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+            let dir = install_dir.join(repo_name);
+            if dir.exists() {
+                std::fs::remove_dir_all(&dir).map_err(ServiceError::message)?;
+            }
+            security_audit(
+                "skills.orphan.remove",
+                serde_json::json!({ "source": source, "repo_name": repo_name }),
+            );
+            return Ok(serde_json::json!({ "removed": source }));
+        }
+
+        let install_dir =
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        chelix_skills::install::remove_repo(source, &install_dir)
+            .await
+            .map_err(ServiceError::message)?;
+
+        security_audit(
+            "skills.repos.remove",
+            serde_json::json!({ "source": source }),
+        );
+
+        Ok(serde_json::json!({ "removed": source }))
+    }
+
+    async fn repos_export(&self, params: Value) -> ServiceResult {
+        let source = params
+            .get("source")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "missing 'source' parameter".to_string())?;
+        let output_path = params
+            .get("path")
+            .and_then(|v| v.as_str())
+            .map(PathBuf::from);
+        let install_dir =
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        let exported = chelix_skills::portability::export_repo_bundle(
+            source,
+            &install_dir,
+            output_path.as_deref(),
+        )
+        .await
+        .map_err(ServiceError::message)?;
+
+        security_audit(
+            "skills.repos.export",
+            serde_json::json!({
+                "source": source,
+                "path": exported.bundle_path,
+            }),
+        );
+
+        Ok(serde_json::json!({
+            "source": exported.repo.source,
+            "repo_name": exported.repo.repo_name,
+            "path": exported.bundle_path,
+        }))
+    }
+
+    async fn repos_import(&self, params: Value) -> ServiceResult {
+        let bundle_path = params
+            .get("path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "missing 'path' parameter".to_string())?;
+        let install_dir =
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        let imported =
+            chelix_skills::portability::import_repo_bundle(Path::new(bundle_path), &install_dir)
+                .await
+                .map_err(ServiceError::message)?;
+
+        security_audit(
+            "skills.repos.import",
+            serde_json::json!({
+                "source": imported.source,
+                "repo_name": imported.repo_name,
+                "path": imported.bundle_path,
+                "skill_count": imported.skills.len(),
+            }),
+        );
+
+        Ok(serde_json::json!({
+            "source": imported.source,
+            "repo_name": imported.repo_name,
+            "format": imported.format,
+            "path": imported.bundle_path,
+            "quarantined": true,
+            "skill_count": imported.skills.len(),
+            "skills": imported.skills.iter().map(|skill| serde_json::json!({
+                "name": skill.name,
+                "description": skill.description,
+                "path": skill.path.to_string_lossy(),
+            })).collect::<Vec<_>>(),
+        }))
+    }
+
+    async fn repos_unquarantine(&self, params: Value) -> ServiceResult {
+        let source = params
+            .get("source")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "missing 'source' parameter".to_string())?;
+
+        let manifest_path = chelix_skills::manifest::ManifestStore::default_path()
+            .map_err(ServiceError::message)?;
+        let store = chelix_skills::manifest::ManifestStore::new(manifest_path);
+        let mut manifest = store.load().map_err(ServiceError::message)?;
+        let repo = manifest
+            .find_repo_mut(source)
+            .ok_or_else(|| format!("repo '{source}' not found"))?;
+        repo.quarantined = false;
+        repo.quarantine_reason = None;
+        store.save(&manifest).map_err(ServiceError::message)?;
+
+        security_audit(
+            "skills.repos.unquarantine",
+            serde_json::json!({ "source": source }),
+        );
+
+        Ok(serde_json::json!({ "source": source, "quarantined": false }))
+    }
+
+    async fn emergency_disable(&self) -> ServiceResult {
+        let manifest_path = chelix_skills::manifest::ManifestStore::default_path()
+            .map_err(ServiceError::message)?;
+        let store = chelix_skills::manifest::ManifestStore::new(manifest_path);
+        let mut manifest = store.load().map_err(ServiceError::message)?;
+
+        let mut disabled = 0_u64;
+        for repo in &mut manifest.repos {
+            for skill in &mut repo.skills {
+                if skill.enabled {
+                    disabled += 1;
+                }
+                skill.enabled = false;
+            }
+        }
+        store.save(&manifest).map_err(ServiceError::message)?;
+
+        security_audit(
+            "skills.emergency_disable",
+            serde_json::json!({ "disabled": disabled }),
+        );
+
+        Ok(serde_json::json!({ "disabled": disabled }))
+    }
+
+    async fn skill_enable(&self, params: Value) -> ServiceResult {
+        let source = params.get("source").and_then(|v| v.as_str()).unwrap_or("");
+        if source == "bundled" {
+            return toggle_bundled_skill(&params, true);
+        }
+        toggle_skill(&params, true)
+    }
+
+    async fn skill_disable(&self, params: Value) -> ServiceResult {
+        let source = params.get("source").and_then(|v| v.as_str()).unwrap_or("");
+
+        // Personal/project skills live as files — delete the directory to disable.
+        if source == "personal" || source == "project" {
+            return delete_discovered_skill(source, &params);
+        }
+
+        if source == "bundled" {
+            return toggle_bundled_skill(&params, false);
+        }
+
+        toggle_skill(&params, false)
+    }
+
+    async fn skill_trust(&self, params: Value) -> ServiceResult {
+        set_skill_trusted(&params, true)
+    }
+
+    /// List bundled skill categories with skill counts and enabled state.
+    async fn bundled_categories(&self) -> ServiceResult {
+        #[cfg(feature = "bundled-skills")]
+        {
+            let store = chelix_skills::bundled::BundledSkillStore::new();
+            let skills = store.discover();
+            let config = chelix_config::discover_and_load().map_err(ServiceError::message)?;
+            let disabled = &config.skills.disabled_bundled_categories;
+
+            let mut cats: std::collections::BTreeMap<String, u32> =
+                std::collections::BTreeMap::new();
+            for s in &skills {
+                if let Some(cat) = &s.category {
+                    *cats.entry(cat.clone()).or_insert(0) += 1;
+                }
+            }
+
+            let categories: Vec<Value> = cats
+                .into_iter()
+                .map(|(name, count)| {
+                    let enabled = !disabled.iter().any(|d| d == &name);
+                    serde_json::json!({ "name": name, "count": count, "enabled": enabled })
+                })
+                .collect();
+
+            Ok(serde_json::json!({ "categories": categories, "total_skills": skills.len() }))
+        }
+        #[cfg(not(feature = "bundled-skills"))]
+        {
+            Ok(serde_json::json!({ "categories": [], "total_skills": 0 }))
+        }
+    }
+
+    /// Toggle a bundled skill category on or off.
+    async fn bundled_toggle_category(&self, params: Value) -> ServiceResult {
+        let category = params
+            .get("category")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "missing 'category' parameter".to_string())?;
+        let enabled = params
+            .get("enabled")
+            .and_then(|v| v.as_bool())
+            .ok_or_else(|| "missing 'enabled' parameter".to_string())?;
+
+        let category = category.to_string();
+        let cat_clone = category.clone();
+
+        if let Err(e) = chelix_config::update_config(|cfg| {
+            if enabled {
+                cfg.skills
+                    .disabled_bundled_categories
+                    .retain(|c| c != &cat_clone);
+            } else if !cfg
+                .skills
+                .disabled_bundled_categories
+                .iter()
+                .any(|c| c == &cat_clone)
+            {
+                cfg.skills
+                    .disabled_bundled_categories
+                    .push(cat_clone.clone());
+            }
+        }) {
+            return Err(format!("failed to save config: {e}").into());
+        }
+
+        Ok(serde_json::json!({ "category": category, "enabled": enabled }))
+    }
+
+    async fn skill_detail(&self, params: Value) -> ServiceResult {
+        let source = params
+            .get("source")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "missing 'source' parameter".to_string())?;
+        let skill_name = params
+            .get("skill")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "missing 'skill' parameter".to_string())?;
+
+        // Personal/project skills: look up directly by name in discovered paths.
+        if source == "personal" || source == "project" {
+            return skill_detail_discovered(source, skill_name);
+        }
+
+        // Bundled skills: read from the embedded store.
+        #[cfg(feature = "bundled-skills")]
+        if source == "bundled" {
+            return skill_detail_bundled(skill_name);
+        }
+
+        let install_dir =
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        let manifest_path = chelix_skills::manifest::ManifestStore::default_path()
+            .map_err(ServiceError::message)?;
+        let store = chelix_skills::manifest::ManifestStore::new(manifest_path);
+        let mut manifest = store.load().map_err(ServiceError::message)?;
+        let (drift_changed, drifted_sources) =
+            detect_and_mark_repo_drift(&mut manifest, &install_dir);
+        if drift_changed {
+            store.save(&manifest).map_err(ServiceError::message)?;
+        }
+
+        let repo = manifest
+            .repos
+            .iter()
+            .find(|r| r.source == source)
+            .ok_or_else(|| format!("repo '{source}' not found"))?;
+        let skill_state = repo
+            .skills
+            .iter()
+            .find(|s| s.name == skill_name)
+            .ok_or_else(|| format!("skill '{skill_name}' not found in repo '{source}'"))?;
+
+        let repo_dir = install_dir.join(&repo.repo_name);
+        let commit_sha = repo.commit_sha.clone();
+        let commit_url = commit_sha
+            .as_ref()
+            .and_then(|sha| commit_url_for_source(source, sha));
+        let commit_age_days = commit_age_days(local_repo_head_timestamp_ms(&repo_dir));
+
+        // Route by format: SKILL.md repos parse the file; others use format adapters.
+        match repo.format {
+            chelix_skills::formats::PluginFormat::Skill => {
+                let skill_dir = install_dir.join(&skill_state.relative_path);
+                let skill_md = skill_dir.join("SKILL.md");
+                let raw = std::fs::read_to_string(&skill_md)
+                    .map_err(|e| format!("failed to read SKILL.md: {e}"))?;
+                let content = chelix_skills::parse::parse_skill(&raw, &skill_dir)
+                    .map_err(|e| format!("failed to parse SKILL.md: {e}"))?;
+                let meta_json = chelix_skills::parse::read_meta_json(&skill_dir);
+                let display_name = meta_json.as_ref().and_then(|m| m.display_name.clone());
+                let author = meta_json.as_ref().and_then(|m| m.owner.clone());
+                let version = meta_json
+                    .as_ref()
+                    .and_then(|m| m.latest.as_ref())
+                    .and_then(|l| l.version.clone());
+                let license_url =
+                    license_url_for_source(source, content.metadata.license.as_deref());
+                let source_url: Option<String> = {
+                    let rel = &skill_state.relative_path;
+                    rel.strip_prefix(&repo.repo_name)
+                        .and_then(|p| p.strip_prefix('/'))
+                        .map(|path_in_repo| {
+                            if source.starts_with("https://") || source.starts_with("http://") {
+                                format!(
+                                    "{}/tree/main/{}",
+                                    source.trim_end_matches('/'),
+                                    path_in_repo
+                                )
+                            } else {
+                                format!("https://github.com/{}/tree/main/{}", source, path_in_repo)
+                            }
+                        })
+                };
+                Ok(serde_json::json!({
+                    "name": content.metadata.name,
+                    "display_name": display_name,
+                    "description": content.metadata.description,
+                    "author": author,
+                    "homepage": content.metadata.homepage,
+                    "version": version,
+                    "license": content.metadata.license,
+                    "license_url": license_url,
+                    "compatibility": content.metadata.compatibility,
+                    "allowed_tools": content.metadata.allowed_tools,
+                    "trusted": skill_state.trusted,
+                    "enabled": skill_state.enabled,
+                    "quarantined": repo.quarantined,
+                    "quarantine_reason": repo.quarantine_reason,
+                    "provenance": repo.provenance,
+                    "drifted": drifted_sources.contains(source),
+                    "commit_sha": commit_sha,
+                    "commit_url": commit_url,
+                    "commit_age_days": commit_age_days,
+                    "source_url": source_url,
+                    "body": content.body,
+                    "body_html": markdown_to_html(&content.body),
+                    "source": source,
+                }))
+            },
+            format => {
+                // Non-SKILL.md format: use adapter to scan for skill body + metadata.
+                let entries = chelix_skills::formats::scan_with_adapter(&repo_dir, format)
+                    .ok_or_else(|| format!("no adapter for format '{format}'"))?
+                    .map_err(|e| format!("scan error: {e}"))?;
+                let entry = entries
+                    .into_iter()
+                    .find(|e| e.metadata.name == skill_name)
+                    .ok_or_else(|| format!("skill '{skill_name}' not found on disk"))?;
+                let source_url: Option<String> = entry.source_file.as_ref().map(|file| {
+                    if source.starts_with("https://") || source.starts_with("http://") {
+                        format!("{}/blob/main/{}", source.trim_end_matches('/'), file)
+                    } else {
+                        format!("https://github.com/{}/blob/main/{}", source, file)
+                    }
+                });
+                let license_url = license_url_for_source(source, entry.metadata.license.as_deref());
+                Ok(serde_json::json!({
+                    "name": entry.metadata.name,
+                    "display_name": entry.display_name,
+                    "description": entry.metadata.description,
+                    "author": entry.author,
+                    "homepage": entry.metadata.homepage,
+                    "version": null,
+                    "license": entry.metadata.license,
+                    "license_url": license_url,
+                    "compatibility": entry.metadata.compatibility,
+                    "allowed_tools": entry.metadata.allowed_tools,
+                    "trusted": skill_state.trusted,
+                    "enabled": skill_state.enabled,
+                    "quarantined": repo.quarantined,
+                    "quarantine_reason": repo.quarantine_reason,
+                    "provenance": repo.provenance,
+                    "drifted": drifted_sources.contains(source),
+                    "commit_sha": commit_sha,
+                    "commit_url": commit_url,
+                    "commit_age_days": commit_age_days,
+                    "source_url": source_url,
+                    "body": entry.body,
+                    "body_html": markdown_to_html(&entry.body),
+                    "source": source,
+                }))
+            },
+        }
+    }
+
+    async fn skill_save(&self, params: Value) -> ServiceResult {
+        let name = params
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "missing 'name' parameter".to_string())?;
+        let description = params
+            .get("description")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "missing 'description' parameter".to_string())?;
+        let body = params
+            .get("body")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "missing 'body' parameter".to_string())?;
+        let allowed_tools: Vec<String> = params
+            .get("allowed_tools")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        if !chelix_skills::parse::validate_name(name) {
+            return Err(format!(
+                "invalid skill name '{name}': must be 1-64 lowercase alphanumeric/hyphen chars"
+            )
+            .into());
+        }
+
+        let skills_dir = chelix_config::data_dir().join("skills");
+        let skill_dir = skills_dir.join(name);
+
+        // Build SKILL.md content.
+        let mut content = format!("---\nname: {name}\ndescription: {description}\n");
+        if !allowed_tools.is_empty() {
+            content.push_str("allowed_tools:\n");
+            for tool in &allowed_tools {
+                content.push_str(&format!("  - {tool}\n"));
+            }
+        }
+        content.push_str("---\n\n");
+        content.push_str(body);
+        if !body.ends_with('\n') {
+            content.push('\n');
+        }
+
+        std::fs::create_dir_all(&skill_dir)
+            .map_err(|e| format!("failed to create skill directory: {e}"))?;
+        std::fs::write(skill_dir.join("SKILL.md"), &content)
+            .map_err(|e| format!("failed to write SKILL.md: {e}"))?;
+
+        // Determine if this was a create or update for the response.
+        Ok(serde_json::json!({
+            "saved": true,
+            "name": name,
+            "source": "personal",
+            "path": skill_dir.to_string_lossy(),
+        }))
+    }
+
+    async fn security_status(&self) -> ServiceResult {
+        let installed_dir =
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        let mcp_scan_available = command_available("mcp-scan").await;
+        let uvx_available = command_available("uvx").await;
+        Ok(serde_json::json!({
+            "mcp_scan_available": mcp_scan_available,
+            "uvx_available": uvx_available,
+            "supported": mcp_scan_available || uvx_available,
+            "installed_skills_dir": installed_dir,
+            "install_hint": "Install uv (https://docs.astral.sh/uv/) or mcp-scan to run skill security scans",
+        }))
+    }
+
+    async fn security_scan(&self) -> ServiceResult {
+        let installed_dir =
+            chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
+        if !installed_dir.exists() {
+            return Ok(serde_json::json!({
+                "ok": true,
+                "message": "No installed skills directory found",
+                "results": null,
+            }));
+        }
+
+        let status = self.security_status().await?;
+        let supported = status
+            .get("supported")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if !supported {
+            return Err("mcp-scan is not available. Install uvx or mcp-scan binary first".into());
+        }
+
+        let results = run_mcp_scan(&installed_dir)
+            .await
+            .map_err(ServiceError::message)?;
+        security_audit(
+            "skills.security.scan",
+            serde_json::json!({ "installed_dir": installed_dir, "status": "ok" }),
+        );
+        Ok(serde_json::json!({
+            "ok": true,
+            "installed_skills_dir": installed_dir,
+            "results": results,
+        }))
+    }
+
+    async fn recipe(&self, params: Value) -> ServiceResult {
+        let source = params
+            .get("source")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "missing 'source' parameter".to_string())?;
+        match chelix_skills::recipes::get_recipe(source) {
+            Some(recipe) => Ok(serde_json::json!({
+                "found": true,
+                "recipe": recipe,
+            })),
+            None => Ok(serde_json::json!({ "found": false })),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct ConfigDirGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl ConfigDirGuard {
+        fn new(config_dir: PathBuf) -> Self {
+            let lock = crate::config_override_test_lock();
+            chelix_config::set_config_dir(config_dir);
+            chelix_config::initialize_config()
+                .unwrap_or_else(|error| panic!("test config should be initialized: {error}"));
+            Self { _lock: lock }
+        }
+    }
+
+    impl Drop for ConfigDirGuard {
+        fn drop(&mut self) {
+            chelix_config::clear_config_dir();
+        }
+    }
+
+    #[cfg(feature = "bundled-skills")]
+    #[tokio::test]
+    async fn disabling_one_bundled_skill_does_not_disable_category() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let _guard = ConfigDirGuard::new(dir.path().to_path_buf());
+
+        let service = NoopSkillsService;
+        let result = service
+            .skill_disable(serde_json::json!({ "source": "bundled", "skill": "mcp-servers" }))
+            .await?;
+
+        assert_eq!(
+            result.get("skill").and_then(Value::as_str),
+            Some("mcp-servers")
+        );
+
+        let config = chelix_config::discover_and_load().expect("load updated config");
+        assert!(config.skills.disabled_bundled_categories.is_empty());
+        assert_eq!(config.skills.disabled_bundled_skills, vec![
+            "mcp-servers".to_string()
+        ]);
+        assert!(
+            !config
+                .skills
+                .is_bundled_skill_enabled("mcp-servers", Some("devops"))
+        );
+        Ok(())
+    }
+
+    #[cfg(feature = "bundled-skills")]
+    #[tokio::test]
+    async fn bundled_category_toggle_preserves_individual_disables() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let _guard = ConfigDirGuard::new(dir.path().to_path_buf());
+
+        let service = NoopSkillsService;
+        service
+            .skill_disable(serde_json::json!({ "source": "bundled", "skill": "mcp-servers" }))
+            .await?;
+        service
+            .bundled_toggle_category(serde_json::json!({ "category": "devops", "enabled": false }))
+            .await?;
+        let category_enabled = service
+            .bundled_toggle_category(serde_json::json!({ "category": "devops", "enabled": true }))
+            .await?;
+        assert_eq!(
+            category_enabled.get("enabled").and_then(Value::as_bool),
+            Some(true)
+        );
+
+        let config = chelix_config::discover_and_load().expect("load updated config");
+        assert!(config.skills.disabled_bundled_categories.is_empty());
+        assert_eq!(config.skills.disabled_bundled_skills, vec![
+            "mcp-servers".to_string()
+        ]);
+        assert!(
+            !config
+                .skills
+                .is_bundled_skill_enabled("mcp-servers", Some("devops"))
+        );
+        Ok(())
+    }
+}

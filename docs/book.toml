@@ -1,0 +1,46 @@
+[book]
+authors     = ["Chelix Team"]
+description = "Documentation for Chelix - Your AI coding assistant"
+language    = "en"
+src         = "src"
+title       = "Chelix Documentation"
+
+[build]
+build-dir      = "book"
+create-missing = false
+
+[output.html]
+additional-css       = ["theme/admonish.css", "theme/custom.css"]
+additional-js        = []
+copy-fonts           = true
+default-theme        = "light"
+edit-url-template    = "https://github.com/agentics-skills/chelix/edit/main/docs/src/{path}"
+git-repository-icon  = "fa-github"
+git-repository-url   = "https://github.com/agentics-skills/chelix"
+mathjax-support      = false
+no-section-label     = false
+preferred-dark-theme = "navy"
+smart-punctuation    = true
+
+[output.html.fold]
+enable = true
+level  = 1
+
+[output.html.playground]
+copy-js      = true
+copyable     = true
+editable     = false
+line-numbers = true
+
+[output.html.search]
+enable                    = true
+limit-results             = 30
+teaser-word-count         = 30
+use-hierarchical-sections = true
+
+[output.html.code.hidelines]
+rust = "# "
+
+[preprocessor.admonish]
+assets_version = "3.1.0" # do not edit: managed by `mdbook-admonish install`
+command        = "mdbook-admonish"

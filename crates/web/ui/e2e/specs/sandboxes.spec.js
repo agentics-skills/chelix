@@ -1,0 +1,571 @@
+const { expect, test } = require("../base-test");
+const { navigateAndWait, watchPageErrors } = require("../helpers");
+
+async function openSandboxContainersTab(page) {
+	await navigateAndWait(page, "/settings/sandboxes");
+	const tab = page.getByRole("tab", { name: "Containers & Images", exact: true });
+	await tab.click();
+	await expect(tab).toHaveAttribute("aria-selected", "true");
+}
+
+test.describe("Sandboxes page – Available backends", () => {
+	test("shows a read-only mode indicator and saves an isolated backend selection", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		let savedBody = null;
+		await mockSandboxAvailable(page);
+
+		await page.route("**/api/sandbox/available-backends", (route, request) => {
+			if (request.method() === "GET") {
+				return route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						backends: [
+							{ id: "docker", label: "Docker", kind: "local", available: true },
+							{ id: "podman", label: "Podman", kind: "local", available: true },
+						],
+						default: "auto",
+					}),
+				});
+			}
+			if (request.method() === "PUT") {
+				savedBody = request.postDataJSON();
+				return route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						ok: true,
+						restart_required: true,
+						config_path: "/test/chelix.toml",
+						config: {
+							backends: [
+								{ id: "docker", label: "Docker", kind: "local", available: true },
+								{ id: "podman", label: "Podman", kind: "local", available: true },
+							],
+							default: "docker",
+						},
+					}),
+				});
+			}
+			return route.continue();
+		});
+
+		await navigateAndWait(page, "/settings/sandboxes");
+
+		const tabs = page.getByRole("tab");
+		await expect(tabs).toHaveCount(2);
+		await expect(page.getByRole("tab", { name: "General", exact: true })).toBeVisible();
+		await expect(page.getByRole("tab", { name: "Containers & Images", exact: true })).toBeVisible();
+
+		const modeIndicator = page.getByRole("status", { name: "Sandbox mode", exact: true });
+		await expect(modeIndicator).toHaveText(/On/);
+		await expect(modeIndicator.locator("button, input")).toHaveCount(0);
+
+		await page.getByRole("button", { name: /Docker/ }).click();
+		await expect.poll(() => savedBody?.backend ?? null, { timeout: 10_000 }).toBe("docker");
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("shows explicit Off as direct host execution without a missing-runtime warning", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await mockSandboxState(page, { mode: "Off", backend: "none" });
+
+		await navigateAndWait(page, "/settings/sandboxes");
+
+		const modeIndicator = page.getByRole("status", { name: "Sandbox mode", exact: true });
+		await expect(modeIndicator).toHaveText("Off");
+		await expect(modeIndicator.locator("button, input")).toHaveCount(0);
+		await expect(
+			page.getByText(
+				'Sandbox mode is Off. Commands execute directly on the host. Set sandbox.mode = "On" and restart Chelix to use isolated execution.',
+				{ exact: true },
+			),
+		).toBeVisible();
+		await expect(page.getByText(/No .*runtime detected/)).toHaveCount(0);
+
+		expect(pageErrors).toEqual([]);
+	});
+});
+
+test.describe("Sandboxes page – Image tag truncation", () => {
+	test("long image hash tags are truncated in the cached images list", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		const longHash = "78e523c6835f0d509a9da736bea2cbaeac5983c8fe5468ed062b557b74518f66";
+		const fullTag = `chelix-sandbox:${longHash}`;
+
+		// Intercept cached images API to inject a long-hash image
+		await page.route("**/api/images/cached", (route, request) => {
+			if (request.method() === "GET") {
+				return route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						images: [
+							{ tag: fullTag, size: "764 MB", created: "2026-02-15T19:30:51Z", kind: "sandbox", skill_name: "sandbox" },
+						],
+					}),
+				});
+			}
+			return route.continue();
+		});
+
+		await openSandboxContainersTab(page);
+
+		// The displayed text should be truncated (first 6 + … + last 6 of hash)
+		const truncated = `chelix-sandbox:${longHash.slice(0, 6)}\u2026${longHash.slice(-6)}`;
+		const tagSpan = page.locator(".provider-item-name", { hasText: truncated });
+		await expect(tagSpan).toBeVisible();
+
+		// Full tag should be in the title attribute for hover
+		await expect(tagSpan).toHaveAttribute("title", fullTag);
+
+		// The full untruncated tag should NOT appear as visible text
+		await expect(page.getByText(fullTag, { exact: true })).not.toBeVisible();
+
+		expect(pageErrors).toEqual([]);
+	});
+});
+
+test.describe("Sandboxes page – Shared home settings", () => {
+	test("shows shared folder status and saves updates", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		let savedBody = null;
+
+		await page.route("**/api/sandbox/shared-home", (route, request) => {
+			if (request.method() === "GET") {
+				return route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						enabled: true,
+						mode: "shared",
+						path: "/tmp/chelix-shared",
+						configured_path: "/tmp/chelix-shared",
+					}),
+				});
+			}
+			if (request.method() === "PUT") {
+				savedBody = request.postDataJSON();
+				return route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						ok: true,
+						restart_required: true,
+						config: {
+							enabled: false,
+							mode: "off",
+							path: "/tmp/chelix-new-shared",
+							configured_path: "/tmp/chelix-new-shared",
+						},
+					}),
+				});
+			}
+			return route.continue();
+		});
+
+		await navigateAndWait(page, "/settings/sandboxes");
+		const sharedHomeSection = page.locator("div.max-w-form", {
+			has: page.getByText("Shared home folder", { exact: true }),
+		});
+
+		await expect(sharedHomeSection.getByText("Shared home folder", { exact: true })).toBeVisible();
+		await expect(sharedHomeSection.getByLabel("Enable shared home folder")).toBeChecked();
+		await expect(sharedHomeSection.getByLabel("Shared folder location")).toHaveValue("/tmp/chelix-shared");
+
+		await sharedHomeSection.getByLabel("Enable shared home folder").uncheck();
+		await sharedHomeSection.getByLabel("Shared folder location").fill("/tmp/chelix-new-shared");
+		const saveResponse = page.waitForResponse(
+			(r) => r.url().includes("/api/sandbox/shared-home") && r.request().method() === "PUT" && r.status() === 200,
+		);
+		await sharedHomeSection.getByRole("button", { name: "Save", exact: true }).click();
+		await saveResponse;
+
+		expect(savedBody).toEqual({
+			enabled: false,
+			path: "/tmp/chelix-new-shared",
+		});
+		await expect(
+			sharedHomeSection.getByText("Saved. Restart Chelix to apply shared folder changes.", { exact: true }),
+		).toBeVisible();
+		await expect(sharedHomeSection.getByText("disabled (off)")).toBeVisible();
+
+		expect(pageErrors).toEqual([]);
+	});
+});
+
+/**
+ * Make the sandbox runtime appear available in the e2e environment.
+ *
+ * CI has no container daemon so gon/bootstrap report `backend: "none"`,
+ * which disables buttons (changing their accessible name to a long hint).
+ * This helper patches three layers:
+ *   1. `window.__CHELIX__` (gon data embedded in HTML) — via addInitScript
+ *   2. `/api/gon` responses — via route interception
+ *   3. `/api/bootstrap` responses — via route interception
+ */
+async function mockSandboxState(page, sandboxState) {
+	await page.addInitScript((state) => {
+		var m = window.__CHELIX__ || {};
+		m.sandbox = Object.assign(m.sandbox || {}, state);
+		window.__CHELIX__ = m;
+	}, sandboxState);
+
+	await page.route("**/api/gon*", async (route) => {
+		var response = await route.fetch();
+		var json = await response.json();
+		json.sandbox = Object.assign(json.sandbox || {}, sandboxState);
+		return route.fulfill({ response, json });
+	});
+
+	await page.route("**/api/bootstrap*", async (route) => {
+		var response = await route.fetch();
+		var json = await response.json();
+		json.sandbox = Object.assign(json.sandbox || {}, sandboxState);
+		return route.fulfill({ response, json });
+	});
+}
+
+async function mockSandboxAvailable(page) {
+	await mockSandboxState(page, { mode: "On", backend: "docker" });
+}
+
+test.describe("Sandboxes page – Running Containers", () => {
+	test.beforeEach(async ({ page }) => {
+		await mockSandboxAvailable(page);
+	});
+
+	test.afterEach(async ({ page }) => {
+		await page.unrouteAll({ behavior: "ignoreErrors" }).catch(() => undefined);
+	});
+
+	test("running containers section renders with heading and refresh button", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+
+		// Mock container list so the button text resolves to "Refresh" quickly
+		// (the real endpoint can be slow with Apple Container).
+		await page.route("**/api/sandbox/containers", (route, request) => {
+			if (request.method() === "GET") {
+				return route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({ containers: [] }),
+				});
+			}
+			return route.continue();
+		});
+
+		await openSandboxContainersTab(page);
+
+		await expect(page.getByRole("heading", { name: "Sandboxes", exact: true })).toBeVisible();
+		await expect(page.getByText("Running Containers")).toBeVisible();
+		await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeVisible();
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("refresh button triggers container list fetch", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		let fetchCount = 0;
+
+		// Mock container list for fast initial load; tracks call count.
+		await page.route("**/api/sandbox/containers", (route, request) => {
+			if (request.method() === "GET") {
+				fetchCount++;
+				return route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({ containers: [] }),
+				});
+			}
+			return route.continue();
+		});
+
+		await openSandboxContainersTab(page);
+		await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeVisible();
+		const mountCount = fetchCount;
+
+		await page.getByRole("button", { name: "Refresh", exact: true }).click();
+		await expect.poll(() => fetchCount, { timeout: 10_000 }).toBeGreaterThan(mountCount);
+		expect(fetchCount).toBeGreaterThan(mountCount);
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("containers list fetches on page mount", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		var containersFetched = false;
+
+		// Track the containers fetch via route interceptor so it can't race
+		// with page.goto — the route is registered before navigation starts.
+		await page.route("**/api/sandbox/containers", (route, request) => {
+			if (request.method() === "GET") {
+				containersFetched = true;
+				return route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({ containers: [] }),
+				});
+			}
+			return route.continue();
+		});
+
+		await openSandboxContainersTab(page);
+		await expect.poll(() => containersFetched, { timeout: 10_000 }).toBe(true);
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("shows 'No containers found' when list is empty", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+
+		// Mock an empty container list to make the test deterministic.
+		await page.route("**/api/sandbox/containers", (route, request) => {
+			if (request.method() === "GET") {
+				return route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({ containers: [] }),
+				});
+			}
+			return route.continue();
+		});
+
+		await openSandboxContainersTab(page);
+		await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeVisible();
+		await expect(page.getByText("No containers found.")).toBeVisible({ timeout: 10_000 });
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("disk usage fetches on page mount", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		var diskUsageFetched = false;
+
+		// Fulfill directly so the test does not depend on the real runtime.
+		await page.route("**/api/sandbox/disk-usage", (route) => {
+			diskUsageFetched = true;
+			return route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({ size_bytes: 0, size_human: "0 B" }),
+			});
+		});
+
+		await openSandboxContainersTab(page);
+		await expect.poll(() => diskUsageFetched, { timeout: 10_000 }).toBe(true);
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("refresh button also fetches disk usage", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		var diskFetchCount = 0;
+
+		// Mock container list so the button resolves to "Refresh" quickly.
+		await page.route("**/api/sandbox/containers", (route, request) => {
+			if (request.method() === "GET") {
+				return route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({ containers: [] }),
+				});
+			}
+			return route.continue();
+		});
+
+		// Track disk-usage fetches so we can assert the refresh triggered one.
+		await page.route("**/api/sandbox/disk-usage", (route) => {
+			diskFetchCount++;
+			return route.continue();
+		});
+
+		await openSandboxContainersTab(page);
+		const refreshBtn = page.getByRole("button", { name: "Refresh", exact: true });
+		await expect(refreshBtn).toBeVisible();
+
+		// Page mount fires the first disk-usage fetch.
+		const mountCount = diskFetchCount;
+
+		await refreshBtn.click();
+		await expect.poll(() => diskFetchCount, { timeout: 10_000 }).toBeGreaterThan(mountCount);
+
+		expect(diskFetchCount).toBeGreaterThan(mountCount);
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("clean all endpoint responds correctly", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+
+		// Mock container list so the page loads quickly.
+		await page.route("**/api/sandbox/containers", (route, request) => {
+			if (request.method() === "GET") {
+				return route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({ containers: [] }),
+				});
+			}
+			return route.continue();
+		});
+
+		// Mock the clean endpoint — the real operation can be slow with
+		// Apple Container. We only verify the response shape here.
+		await page.route("**/api/sandbox/containers/clean", (route, request) => {
+			if (request.method() === "POST") {
+				return route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({ ok: true, removed: [] }),
+				});
+			}
+			return route.continue();
+		});
+
+		await openSandboxContainersTab(page);
+
+		// Call the clean all API via page.evaluate; the route mock intercepts it.
+		const result = await page.evaluate(async () => {
+			const r = await fetch("/api/sandbox/containers/clean", { method: "POST" });
+			return { status: r.status, data: await r.json() };
+		});
+		expect(result.status).toBe(200);
+		expect(result.data).toHaveProperty("ok", true);
+		expect(result.data).toHaveProperty("removed");
+
+		expect(pageErrors).toEqual([]);
+	});
+});
+
+test.describe("Sandboxes page – Container error handling", () => {
+	test.beforeEach(async ({ page }) => {
+		await mockSandboxAvailable(page);
+	});
+
+	test.afterEach(async ({ page }) => {
+		await page.unrouteAll({ behavior: "ignoreErrors" }).catch(() => undefined);
+	});
+
+	test("delete failure shows error message that clears on refresh", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		var containerListFetches = 0;
+
+		// Mock container list with one container
+		await page.route("**/api/sandbox/containers", (route, request) => {
+			if (request.method() === "GET") {
+				containerListFetches++;
+				return route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						containers: [
+							{
+								name: "chelix-sandbox-ghost",
+								image: "ubuntu:26.04",
+								state: "stopped",
+								backend: "apple-container",
+								cpus: null,
+								memory_mb: null,
+								started: null,
+								addr: null,
+							},
+						],
+					}),
+				});
+			}
+			return route.continue();
+		});
+
+		// Mock DELETE to return 500
+		await page.route("**/api/sandbox/containers/chelix-sandbox-ghost", (route, request) => {
+			if (request.method() === "DELETE") {
+				return route.fulfill({
+					status: 500,
+					contentType: "text/plain",
+					body: "container rm failed: ghost container",
+				});
+			}
+			return route.continue();
+		});
+
+		await openSandboxContainersTab(page);
+		await expect.poll(() => containerListFetches, { timeout: 10_000 }).toBeGreaterThan(0);
+
+		// Wait for the container row to render before clicking delete
+		await expect(page.getByText("chelix-sandbox-ghost")).toBeVisible({ timeout: 10_000 });
+		await page.getByRole("button", { name: "Delete", exact: true }).click();
+
+		// Error message should appear
+		const errorDiv = page.locator(".alert-error-text");
+		await expect(errorDiv).toBeVisible();
+		await expect(errorDiv).toContainText("Failed to delete chelix-sandbox-ghost");
+
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("error clears on successful container refresh", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		var callCount = 0;
+
+		// First call returns a container, subsequent calls return empty
+		await page.route("**/api/sandbox/containers", (route, request) => {
+			if (request.method() === "GET") {
+				callCount++;
+				if (callCount <= 1) {
+					return route.fulfill({
+						status: 200,
+						contentType: "application/json",
+						body: JSON.stringify({
+							containers: [
+								{
+									name: "chelix-sandbox-ghost",
+									image: "ubuntu:26.04",
+									state: "stopped",
+									backend: "apple-container",
+									cpus: null,
+									memory_mb: null,
+									started: null,
+									addr: null,
+								},
+							],
+						}),
+					});
+				}
+				return route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({ containers: [] }),
+				});
+			}
+			return route.continue();
+		});
+
+		// Mock DELETE to fail
+		await page.route("**/api/sandbox/containers/chelix-sandbox-ghost", (route, request) => {
+			if (request.method() === "DELETE") {
+				return route.fulfill({
+					status: 500,
+					contentType: "text/plain",
+					body: "ghost container",
+				});
+			}
+			return route.continue();
+		});
+
+		await openSandboxContainersTab(page);
+		await expect.poll(() => callCount, { timeout: 10_000 }).toBeGreaterThan(0);
+
+		// Click delete to trigger error (delete no longer auto-refreshes on failure)
+		await page.getByRole("button", { name: "Delete", exact: true }).click();
+		await expect(page.locator(".alert-error-text")).toBeVisible();
+
+		// Click Refresh to trigger a successful container fetch that clears the error.
+		// Second mock returns empty list, so fetchContainers succeeds and clears containerError.
+		await page.getByRole("button", { name: "Refresh", exact: true }).click();
+		await expect.poll(() => callCount, { timeout: 10_000 }).toBeGreaterThan(1);
+		await expect(page.locator(".alert-error-text")).not.toBeVisible();
+
+		expect(pageErrors).toEqual([]);
+	});
+});

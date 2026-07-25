@@ -1,0 +1,467 @@
+//! MCP client: manages the protocol handshake and tool interactions with a single MCP server.
+
+use std::{collections::HashMap, sync::Arc, time::Duration};
+
+use {
+    secrecy::Secret,
+    tracing::{debug, info, warn},
+};
+
+#[cfg(feature = "metrics")]
+use std::time::Instant;
+
+#[cfg(feature = "metrics")]
+use chelix_metrics::{counter, gauge, histogram, labels, mcp as mcp_metrics};
+
+use crate::{
+    auth::SharedAuthProvider,
+    error::{Context, Error, Result},
+    legacy_sse_transport::LegacySseTransport,
+    remote::ResolvedRemoteConfig,
+    sse_transport::SseTransport,
+    traits::{McpClientTrait, McpTransport},
+    transport::StdioTransport,
+    types::{
+        ClientCapabilities, ClientInfo, InitializeParams, InitializeResult, McpToolDef,
+        McpTransportError, PROTOCOL_VERSION, ToolsCallParams, ToolsCallResult, ToolsListResult,
+    },
+};
+
+/// State of an MCP client connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum McpClientState {
+    /// Transport spawned, not yet initialized.
+    Connected,
+    /// `initialize` completed, `initialized` notification sent.
+    Ready,
+    /// OAuth authentication in progress (waiting for browser).
+    Authenticating,
+    /// Server process exited or was shut down.
+    Closed,
+}
+
+/// An MCP client connected to a single server via stdio.
+pub struct McpClient {
+    server_name: String,
+    transport: Arc<dyn McpTransport>,
+    state: McpClientState,
+    server_info: Option<InitializeResult>,
+    tools: Vec<McpToolDef>,
+}
+
+impl McpClient {
+    /// Spawn the server process and perform the MCP handshake (initialize + initialized).
+    pub async fn connect(
+        server_name: &str,
+        command: &str,
+        args: &[String],
+        env: &HashMap<String, Secret<String>>,
+        request_timeout: Duration,
+    ) -> Result<Self> {
+        info!(server = %server_name, command = %command, args = ?args, "connecting to MCP server");
+        let transport =
+            StdioTransport::spawn_with_timeout(command, args, env, request_timeout).await?;
+
+        let mut client = Self {
+            server_name: server_name.into(),
+            transport,
+            state: McpClientState::Connected,
+            server_info: None,
+            tools: Vec::new(),
+        };
+
+        if let Err(e) = client.initialize().await {
+            warn!(server = %server_name, error = %e, "MCP initialize handshake failed");
+            return Err(e);
+        }
+
+        // Track MCP server connection
+        #[cfg(feature = "metrics")]
+        {
+            counter!(mcp_metrics::SERVER_CONNECTIONS_TOTAL, labels::SERVER => server_name.to_string())
+                .increment(1);
+            gauge!(mcp_metrics::SERVERS_CONNECTED).increment(1.0);
+        }
+
+        Ok(client)
+    }
+
+    /// Connect to a remote MCP server over HTTP/SSE or Streamable HTTP.
+    pub async fn connect_sse(
+        server_name: &str,
+        remote: &ResolvedRemoteConfig,
+        request_timeout: Duration,
+    ) -> Result<Self> {
+        info!(
+            server = %server_name,
+            url = %remote.display_url(),
+            "connecting to remote MCP server"
+        );
+        let transport = SseTransport::new_with_remote(remote.clone(), request_timeout)?;
+
+        let mut client = Self {
+            server_name: server_name.into(),
+            transport,
+            state: McpClientState::Connected,
+            server_info: None,
+            tools: Vec::new(),
+        };
+
+        if let Err(e) = client.initialize().await {
+            warn!(server = %server_name, error = %e, "remote MCP initialize handshake failed");
+            return Err(e);
+        }
+        Ok(client)
+    }
+
+    /// Connect to a remote MCP server using the legacy SSE transport.
+    ///
+    /// The legacy SSE protocol first GETs the SSE endpoint to discover the
+    /// message URL (with sessionId), then POSTs JSON-RPC messages to it.
+    pub async fn connect_legacy_sse(
+        server_name: &str,
+        remote: &ResolvedRemoteConfig,
+        request_timeout: Duration,
+    ) -> Result<Self> {
+        info!(
+            server = %server_name,
+            url = %remote.display_url(),
+            "connecting to MCP server via legacy SSE"
+        );
+        let transport = LegacySseTransport::new_with_remote(remote.clone(), request_timeout)?;
+
+        let mut client = Self {
+            server_name: server_name.into(),
+            transport,
+            state: McpClientState::Connected,
+            server_info: None,
+            tools: Vec::new(),
+        };
+
+        if let Err(e) = client.initialize().await {
+            warn!(server = %server_name, error = %e, "legacy SSE MCP initialize handshake failed");
+            return Err(e);
+        }
+
+        #[cfg(feature = "metrics")]
+        {
+            counter!(mcp_metrics::SERVER_CONNECTIONS_TOTAL, labels::SERVER => server_name.to_string())
+                .increment(1);
+            gauge!(mcp_metrics::SERVERS_CONNECTED).increment(1.0);
+        }
+
+        Ok(client)
+    }
+
+    /// Connect to a remote MCP server using the legacy SSE transport with an OAuth auth provider.
+    pub async fn connect_legacy_sse_with_auth(
+        server_name: &str,
+        remote: &ResolvedRemoteConfig,
+        auth: SharedAuthProvider,
+        request_timeout: Duration,
+    ) -> Result<Self> {
+        info!(
+            server = %server_name,
+            url = %remote.display_url(),
+            "connecting to MCP server via legacy SSE (with auth)"
+        );
+        let transport =
+            LegacySseTransport::with_auth_remote(remote.clone(), auth, request_timeout)?;
+
+        let mut client = Self {
+            server_name: server_name.into(),
+            transport,
+            state: McpClientState::Connected,
+            server_info: None,
+            tools: Vec::new(),
+        };
+
+        if let Err(e) = client.initialize().await {
+            warn!(server = %server_name, error = %e, "legacy SSE (auth) MCP initialize handshake failed");
+            return Err(e);
+        }
+
+        #[cfg(feature = "metrics")]
+        {
+            counter!(mcp_metrics::SERVER_CONNECTIONS_TOTAL, labels::SERVER => server_name.to_string())
+                .increment(1);
+            gauge!(mcp_metrics::SERVERS_CONNECTED).increment(1.0);
+        }
+
+        Ok(client)
+    }
+
+    /// Connect to a remote MCP server over HTTP/SSE or Streamable HTTP with an OAuth auth provider.
+    pub async fn connect_sse_with_auth(
+        server_name: &str,
+        remote: &ResolvedRemoteConfig,
+        auth: SharedAuthProvider,
+        request_timeout: Duration,
+    ) -> Result<Self> {
+        info!(
+            server = %server_name,
+            url = %remote.display_url(),
+            "connecting to remote MCP server (with auth)"
+        );
+        let transport = SseTransport::with_auth_remote(remote.clone(), auth, request_timeout)?;
+
+        let mut client = Self {
+            server_name: server_name.into(),
+            transport,
+            state: McpClientState::Connected,
+            server_info: None,
+            tools: Vec::new(),
+        };
+
+        if let Err(e) = client.initialize().await {
+            warn!(server = %server_name, error = %e, "MCP SSE (auth) initialize handshake failed");
+            return Err(e);
+        }
+
+        #[cfg(feature = "metrics")]
+        {
+            counter!(mcp_metrics::SERVER_CONNECTIONS_TOTAL, labels::SERVER => server_name.to_string())
+                .increment(1);
+            gauge!(mcp_metrics::SERVERS_CONNECTED).increment(1.0);
+        }
+
+        Ok(client)
+    }
+
+    async fn initialize(&mut self) -> Result<()> {
+        let params = InitializeParams {
+            protocol_version: PROTOCOL_VERSION.into(),
+            capabilities: ClientCapabilities::default(),
+            client_info: ClientInfo {
+                name: "chelix".into(),
+                version: chelix_config::VERSION.into(),
+            },
+        };
+
+        let resp = match self
+            .transport
+            .request("initialize", Some(serde_json::to_value(&params)?))
+            .await
+        {
+            Ok(r) => r,
+            // Preserve 401 so the manager can trigger the OAuth re-auth flow.
+            Err(e @ Error::Transport(McpTransportError::Unauthorized { .. })) => return Err(e),
+            Err(e) => {
+                return Err(Error::message(format!(
+                    "MCP initialize request failed: {e}"
+                )));
+            },
+        };
+
+        let result: InitializeResult =
+            serde_json::from_value(resp.result.context("MCP initialize returned no result")?)
+                .context("failed to parse MCP initialize result")?;
+
+        info!(
+            server = %self.server_name,
+            protocol = %result.protocol_version,
+            server_name = %result.server_info.name,
+            "MCP server initialized"
+        );
+
+        self.server_info = Some(result);
+
+        // Send `initialized` notification to complete handshake.
+        self.transport
+            .notify("notifications/initialized", None)
+            .await?;
+        self.state = McpClientState::Ready;
+
+        Ok(())
+    }
+
+    fn ensure_ready(&self) -> Result<()> {
+        if self.state != McpClientState::Ready {
+            return Err(Error::message(format!(
+                "MCP client for '{}' is not ready (state: {:?})",
+                self.server_name, self.state
+            )));
+        }
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl McpClientTrait for McpClient {
+    fn server_name(&self) -> &str {
+        &self.server_name
+    }
+
+    fn state(&self) -> McpClientState {
+        self.state
+    }
+
+    fn tools(&self) -> &[McpToolDef] {
+        &self.tools
+    }
+
+    async fn list_tools(&mut self) -> Result<&[McpToolDef]> {
+        self.ensure_ready()?;
+
+        let resp = self.transport.request("tools/list", None).await?;
+        let mut result: ToolsListResult =
+            serde_json::from_value(resp.result.context("tools/list returned no result")?)?;
+        result
+            .tools
+            .sort_by(|left, right| left.name.cmp(&right.name));
+
+        debug!(
+            server = %self.server_name,
+            count = result.tools.len(),
+            "fetched MCP tools"
+        );
+
+        self.tools = result.tools;
+        Ok(&self.tools)
+    }
+
+    async fn call_tool(&self, name: &str, arguments: serde_json::Value) -> Result<ToolsCallResult> {
+        self.ensure_ready()?;
+
+        #[cfg(feature = "metrics")]
+        let start = Instant::now();
+
+        let params = ToolsCallParams {
+            name: name.into(),
+            arguments,
+        };
+
+        let result = self
+            .transport
+            .request("tools/call", Some(serde_json::to_value(&params)?))
+            .await;
+
+        match result {
+            Ok(resp) => {
+                let result: ToolsCallResult =
+                    serde_json::from_value(resp.result.context("tools/call returned no result")?)?;
+
+                #[cfg(feature = "metrics")]
+                {
+                    let duration = start.elapsed().as_secs_f64();
+
+                    counter!(
+                        mcp_metrics::TOOL_CALLS_TOTAL,
+                        labels::SERVER => self.server_name.clone(),
+                        labels::TOOL => name.to_string()
+                    )
+                    .increment(1);
+
+                    histogram!(
+                        mcp_metrics::TOOL_CALL_DURATION_SECONDS,
+                        labels::SERVER => self.server_name.clone(),
+                        labels::TOOL => name.to_string()
+                    )
+                    .record(duration);
+                }
+
+                Ok(result)
+            },
+            Err(e) => {
+                #[cfg(feature = "metrics")]
+                {
+                    counter!(
+                        mcp_metrics::TOOL_CALL_ERRORS_TOTAL,
+                        labels::SERVER => self.server_name.clone(),
+                        labels::TOOL => name.to_string()
+                    )
+                    .increment(1);
+                }
+                Err(e)
+            },
+        }
+    }
+
+    async fn is_alive(&self) -> bool {
+        self.transport.is_alive().await
+    }
+
+    async fn shutdown(&mut self) {
+        self.state = McpClientState::Closed;
+        self.transport.kill().await;
+
+        // Decrement connected servers gauge
+        #[cfg(feature = "metrics")]
+        {
+            gauge!(mcp_metrics::SERVERS_CONNECTED).decrement(1.0);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, std::sync::Arc};
+
+    use {
+        async_trait::async_trait,
+        serde_json::{Value, json},
+    };
+
+    use crate::{error::Result, traits::McpTransport, types::JsonRpcResponse};
+
+    struct StubTransport {
+        result: Value,
+    }
+
+    #[async_trait]
+    impl McpTransport for StubTransport {
+        async fn request(&self, _method: &str, _params: Option<Value>) -> Result<JsonRpcResponse> {
+            Ok(JsonRpcResponse {
+                jsonrpc: "2.0".into(),
+                id: json!(1),
+                result: Some(self.result.clone()),
+                error: None,
+            })
+        }
+
+        async fn notify(&self, _method: &str, _params: Option<Value>) -> Result<()> {
+            Ok(())
+        }
+
+        async fn is_alive(&self) -> bool {
+            true
+        }
+
+        async fn kill(&self) {}
+    }
+
+    #[test]
+    fn test_client_state_debug() {
+        assert_eq!(format!("{:?}", McpClientState::Connected), "Connected");
+        assert_eq!(format!("{:?}", McpClientState::Ready), "Ready");
+        assert_eq!(
+            format!("{:?}", McpClientState::Authenticating),
+            "Authenticating"
+        );
+        assert_eq!(format!("{:?}", McpClientState::Closed), "Closed");
+    }
+
+    #[tokio::test]
+    async fn test_list_tools_sorts_by_name() {
+        let transport = Arc::new(StubTransport {
+            result: json!({
+                "tools": [
+                    {"name": "zeta", "description": "Z", "inputSchema": {"type": "object"}},
+                    {"name": "alpha", "description": "A", "inputSchema": {"type": "object"}},
+                    {"name": "mu", "description": "M", "inputSchema": {"type": "object"}}
+                ]
+            }),
+        });
+        let mut client = McpClient {
+            server_name: "test".into(),
+            transport,
+            state: McpClientState::Ready,
+            server_info: None,
+            tools: Vec::new(),
+        };
+
+        let tools = client.list_tools().await.unwrap();
+        let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_str()).collect();
+        assert_eq!(names, vec!["alpha", "mu", "zeta"]);
+    }
+}

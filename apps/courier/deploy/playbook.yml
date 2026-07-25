@@ -1,0 +1,7 @@
+---
+- name: Deploy chelix-courier push relay
+  hosts: courier
+  become: true
+
+  roles:
+    - courier

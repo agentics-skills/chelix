@@ -1,0 +1,177 @@
+use crate::broadcast::{BroadcastOpts, broadcast};
+
+use super::MethodRegistry;
+
+pub(super) fn register(reg: &mut MethodRegistry) {
+    // health
+    reg.register(
+        "health",
+        Box::new(|ctx| {
+            Box::pin(async move {
+                let count = ctx.state.client_count().await;
+                Ok(serde_json::json!({
+                    "status": "ok",
+                    "version": ctx.state.version,
+                    "connections": count,
+                }))
+            })
+        }),
+    );
+
+    // status
+    reg.register(
+        "status",
+        Box::new(|ctx| {
+            Box::pin(async move {
+                let client_count = ctx.state.client_count().await;
+                Ok(serde_json::json!({
+                    "version": ctx.state.version,
+                    "hostname": ctx.state.hostname,
+                    "connections": client_count,
+                    "uptimeMs": ctx.state.uptime_ms(),
+                }))
+            })
+        }),
+    );
+
+    // system-presence
+    reg.register(
+        "system-presence",
+        Box::new(|ctx| {
+            Box::pin(async move {
+                let client_list: Vec<_> = {
+                    let registry = ctx.state.client_registry.read().await;
+                    registry
+                        .clients
+                        .values()
+                        .map(|c| {
+                            serde_json::json!({
+                                "connId": c.conn_id,
+                                "clientId": c.connect_params.client.id,
+                                "role": c.role(),
+                                "platform": c.connect_params.client.platform,
+                                "connectedAt": c.connected_at.elapsed().as_secs(),
+                                "lastActivity": c.last_activity_elapsed().as_secs(),
+                            })
+                        })
+                        .collect()
+                };
+
+                Ok(serde_json::json!({
+                    "clients": client_list,
+                }))
+            })
+        }),
+    );
+
+    // system-event: broadcast an event to all operator clients
+    reg.register(
+        "system-event",
+        Box::new(|ctx| {
+            Box::pin(async move {
+                let event = ctx
+                    .params
+                    .get("event")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("system");
+                let payload = ctx
+                    .params
+                    .get("payload")
+                    .cloned()
+                    .unwrap_or(serde_json::json!({}));
+                broadcast(&ctx.state, event, payload, BroadcastOpts::default()).await;
+                Ok(serde_json::json!({}))
+            })
+        }),
+    );
+
+    // last-heartbeat
+    reg.register(
+        "last-heartbeat",
+        Box::new(|ctx| {
+            Box::pin(async move {
+                let registry = ctx.state.client_registry.read().await;
+                if let Some(client) = registry.clients.get(&ctx.client_conn_id) {
+                    Ok(serde_json::json!({
+                        "lastActivitySecs": client.last_activity_elapsed().as_secs(),
+                    }))
+                } else {
+                    Ok(serde_json::json!({ "lastActivitySecs": 0 }))
+                }
+            })
+        }),
+    );
+
+    // set-heartbeats (touch activity for the caller)
+    reg.register(
+        "set-heartbeats",
+        Box::new(|ctx| {
+            Box::pin(async move {
+                if let Some(client) = ctx
+                    .state
+                    .client_registry
+                    .write()
+                    .await
+                    .clients
+                    .get_mut(&ctx.client_conn_id)
+                {
+                    client.touch();
+                }
+                Ok(serde_json::json!({}))
+            })
+        }),
+    );
+
+    // system.describe: protocol schema discovery (v4)
+    reg.register(
+        "system.describe",
+        Box::new(|_ctx| {
+            Box::pin(async move {
+                let methods: Vec<serde_json::Value> = reg_method_names()
+                    .iter()
+                    .map(|name| {
+                        serde_json::json!({
+                            "name": name,
+                        })
+                    })
+                    .collect();
+
+                let event_descriptors: Vec<serde_json::Value> = chelix_protocol::KNOWN_EVENTS
+                    .iter()
+                    .map(|name| serde_json::json!({ "name": name }))
+                    .collect();
+
+                Ok(serde_json::json!({
+                    "protocol": chelix_protocol::PROTOCOL_VERSION,
+                    "methods": methods,
+                    "events": event_descriptors,
+                }))
+            })
+        }),
+    );
+}
+
+/// Core protocol method names for `system.describe`.
+///
+/// This is a static subset of methods registered in `gateway.rs`, `location.rs`,
+/// `subscribe.rs`, and `channel_mux.rs`. The full method list (including all
+/// service methods) is already available in `HelloOk.features.methods`.
+///
+/// TODO: store Arc<MethodRegistry> on GatewayState so this handler can query
+/// the live registry instead of maintaining a static list.
+fn reg_method_names() -> Vec<&'static str> {
+    vec![
+        "health",
+        "status",
+        "system-presence",
+        "system-event",
+        "last-heartbeat",
+        "set-heartbeats",
+        "system.describe",
+        "location.result",
+        "subscribe",
+        "unsubscribe",
+        "channel.join",
+        "channel.leave",
+    ]
+}

@@ -1,0 +1,24 @@
+[package]
+edition.workspace = true
+name              = "chelix-secret-store"
+version.workspace = true
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+thiserror  = { workspace = true }
+
+[dependencies.chelix-vault]
+optional  = true
+workspace = true
+
+[features]
+default = []
+vault   = ["dep:chelix-vault"]
+
+[dev-dependencies]
+sqlx  = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

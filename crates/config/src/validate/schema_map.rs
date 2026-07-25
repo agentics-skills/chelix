@@ -1,0 +1,924 @@
+use {super::*, std::collections::HashMap};
+
+/// Represents the expected shape of the configuration schema.
+pub(crate) enum KnownKeys {
+    /// A struct with fixed field names.
+    Struct(HashMap<&'static str, KnownKeys>),
+    /// A map with dynamic keys (providers, mcp.servers, etc.) whose values
+    /// have a known shape.
+    Map(Box<KnownKeys>),
+    /// A map with dynamic keys plus explicit static keys.
+    MapWithFields {
+        value: Box<KnownKeys>,
+        fields: HashMap<&'static str, KnownKeys>,
+    },
+    /// An array of typed items.
+    Array(Box<KnownKeys>),
+    /// Scalar value — stop recursion.
+    Leaf,
+}
+
+/// Build the full schema map mirroring every field in `schema.rs`.
+pub(crate) fn build_schema_map() -> KnownKeys {
+    use KnownKeys::{Array, Leaf, Map, MapWithFields, Struct};
+
+    let tool_policy_entry = || {
+        Struct(HashMap::from([
+            ("allow", Leaf),
+            ("deny", Leaf),
+            ("profile", Leaf),
+        ]))
+    };
+
+    let reasoning_metadata = || {
+        Struct(HashMap::from([
+            ("supported_efforts", Array(Box::new(Leaf))),
+            ("summary", Leaf),
+            ("include", Array(Box::new(Leaf))),
+        ]))
+    };
+
+    let model_metadata = || {
+        Struct(HashMap::from([
+            ("context_length", Leaf),
+            ("max_input_tokens", Leaf),
+            ("max_output_tokens", Leaf),
+            ("input_modalities", Array(Box::new(Leaf))),
+            ("output_modalities", Array(Box::new(Leaf))),
+            ("tool_calling", Leaf),
+            ("streaming", Leaf),
+            ("zeroDataRetentionEnabled", Leaf),
+            ("reasoning", reasoning_metadata()),
+        ]))
+    };
+
+    let provider_entry = || {
+        Struct(HashMap::from([
+            ("enabled", Leaf),
+            ("api_key", Leaf),
+            ("base_url", Leaf),
+            ("url", Leaf),
+            ("models", Map(Box::new(model_metadata()))),
+            ("fetch_models", Leaf),
+            ("stream_transport", Leaf),
+            ("wire_api", Leaf),
+            ("alias", Leaf),
+            ("tool_mode", Leaf),
+            ("cache_retention", Leaf),
+            ("policy", tool_policy_entry()),
+            ("probe_timeout_secs", Leaf),
+        ]))
+    };
+
+    let external_agent_entry = || {
+        Struct(HashMap::from([
+            ("binary", Leaf),
+            ("args", Array(Box::new(Leaf))),
+            ("env", Map(Box::new(Leaf))),
+            ("working_dir", Leaf),
+            ("timeout_secs", Leaf),
+            ("use_tmux", Leaf),
+        ]))
+    };
+
+    let resource_limits = || {
+        Struct(HashMap::from([
+            ("memory_limit", Leaf),
+            ("cpu_quota", Leaf),
+            ("pids_max", Leaf),
+        ]))
+    };
+
+    let sandbox = || {
+        Struct(HashMap::from([
+            ("mode", Leaf),
+            ("scope", Leaf),
+            ("workspace_sysmount", Leaf),
+            ("host_data_dir", Leaf),
+            ("home_persistence", Leaf),
+            ("shared_home_dir", Leaf),
+            ("image", Leaf),
+            ("container_prefix", Leaf),
+            ("network", Leaf),
+            ("backend", Leaf),
+            ("resource_limits", resource_limits()),
+            ("gpus", Leaf),
+            ("packages", Leaf),
+            ("tools_policy", tool_policy_entry()),
+            (
+                "mounts",
+                Array(Box::new(Struct(HashMap::from([
+                    ("host", Leaf),
+                    ("guest", Leaf),
+                    ("mode", Leaf),
+                ])))),
+            ),
+        ]))
+    };
+
+    let firecrawl = || {
+        Struct(HashMap::from([
+            ("enabled", Leaf),
+            ("api_key", Leaf),
+            ("base_url", Leaf),
+            ("only_main_content", Leaf),
+            ("timeout_seconds", Leaf),
+            ("cache_ttl_minutes", Leaf),
+        ]))
+    };
+
+    let execute_command = || {
+        Struct(HashMap::from([
+            ("default_timeout_secs", Leaf),
+            ("rewrite_timeout_secs", Leaf),
+            ("approval_mode", Leaf),
+            ("security_level", Leaf),
+            ("allowlist", Leaf),
+        ]))
+    };
+
+    let browser = || {
+        Struct(HashMap::from([
+            ("enabled", Leaf),
+            ("chrome_path", Leaf),
+            ("obscura_path", Leaf),
+            ("lightpanda_path", Leaf),
+            ("headless", Leaf),
+            ("viewport_width", Leaf),
+            ("viewport_height", Leaf),
+            ("device_scale_factor", Leaf),
+            ("max_instances", Leaf),
+            ("memory_limit_percent", Leaf),
+            ("idle_timeout_secs", Leaf),
+            ("navigation_timeout_ms", Leaf),
+            ("user_agent", Leaf),
+            ("chrome_args", Leaf),
+            ("sandbox_image", Leaf),
+            ("allowed_domains", Leaf),
+            ("low_memory_threshold_mb", Leaf),
+            ("persist_profile", Leaf),
+            ("profile_dir", Leaf),
+            ("container_host", Leaf),
+            ("browserless_api_version", Leaf),
+        ]))
+    };
+
+    let tools = || {
+        Struct(HashMap::from([
+            ("execute_command", execute_command()),
+            ("browser", browser()),
+            (
+                "policy",
+                Struct(HashMap::from([
+                    ("allow", Leaf),
+                    ("deny", Leaf),
+                    ("profile", Leaf),
+                ])),
+            ),
+            ("web", Struct(HashMap::from([("firecrawl", firecrawl())]))),
+            ("maps", Struct(HashMap::from([("provider", Leaf)]))),
+            (
+                "fs",
+                Struct(HashMap::from([
+                    ("workspace_root", Leaf),
+                    ("allow_paths", Array(Box::new(Leaf))),
+                    ("deny_paths", Array(Box::new(Leaf))),
+                    ("track_reads", Leaf),
+                    ("must_read_before_write", Leaf),
+                    ("require_approval", Leaf),
+                    ("max_read_bytes", Leaf),
+                    ("binary_policy", Leaf),
+                    ("respect_gitignore", Leaf),
+                    ("context_window_tokens", Leaf),
+                ])),
+            ),
+            ("agent_timeout_secs", Leaf),
+            ("agent_max_iterations", Leaf),
+            ("agent_max_auto_continues", Leaf),
+            ("agent_auto_continue_min_tool_calls", Leaf),
+            ("max_tool_result_bytes", Leaf),
+            ("registry_mode", Leaf),
+            ("agent_loop_detector_window", Leaf),
+            ("agent_loop_detector_strip_tools_on_second_fire", Leaf),
+        ]))
+    };
+
+    let mcp_oauth_override = || {
+        Struct(HashMap::from([
+            ("client_id", Leaf),
+            ("client_secret", Leaf),
+            ("auth_url", Leaf),
+            ("token_url", Leaf),
+            ("scopes", Leaf),
+        ]))
+    };
+
+    let mcp_server_entry = || {
+        Struct(HashMap::from([
+            ("command", Leaf),
+            ("args", Leaf),
+            ("env", Map(Box::new(Leaf))),
+            ("enabled", Leaf),
+            ("request_timeout_secs", Leaf),
+            ("transport", Leaf),
+            ("url", Leaf),
+            ("headers", Map(Box::new(Leaf))),
+            ("oauth", mcp_oauth_override()),
+            ("display_name", Leaf),
+        ]))
+    };
+
+    let shell_hook_entry = || {
+        Struct(HashMap::from([
+            ("name", Leaf),
+            ("command", Leaf),
+            ("events", Leaf),
+            ("timeout", Leaf),
+            ("env", Map(Box::new(Leaf))),
+        ]))
+    };
+
+    let active_hours = || {
+        Struct(HashMap::from([
+            ("start", Leaf),
+            ("end", Leaf),
+            ("timezone", Leaf),
+        ]))
+    };
+
+    let qmd_collection = || Struct(HashMap::from([("paths", Leaf), ("globs", Leaf)]));
+
+    let qmd = || {
+        Struct(HashMap::from([
+            ("command", Leaf),
+            ("collections", Map(Box::new(qmd_collection()))),
+            ("max_results", Leaf),
+            ("timeout_ms", Leaf),
+        ]))
+    };
+
+    let agent_preset = || {
+        Struct(HashMap::from([
+            (
+                "identity",
+                Struct(HashMap::from([
+                    ("name", Leaf),
+                    ("emoji", Leaf),
+                    ("theme", Leaf),
+                ])),
+            ),
+            ("model", Leaf),
+            (
+                "tools",
+                Struct(HashMap::from([
+                    ("allow", Leaf),
+                    ("deny", Leaf),
+                    ("preload", Leaf),
+                ])),
+            ),
+            ("delegate_only", Leaf),
+            (
+                "tool_controls",
+                Struct(HashMap::from([
+                    ("active_tools", Leaf),
+                    (
+                        "tool_choice",
+                        Struct(HashMap::from([("type", Leaf), ("name", Leaf)])),
+                    ),
+                ])),
+            ),
+            ("system_prompt_suffix", Leaf),
+            ("max_iterations", Leaf),
+            ("timeout_secs", Leaf),
+            ("max_tool_result_bytes", Leaf),
+            (
+                "sessions",
+                Struct(HashMap::from([
+                    ("key_prefix", Leaf),
+                    ("allowed_keys", Leaf),
+                    ("can_send", Leaf),
+                    ("cross_agent", Leaf),
+                ])),
+            ),
+            (
+                "memory",
+                Struct(HashMap::from([("scope", Leaf), ("max_lines", Leaf)])),
+            ),
+            ("reasoning_effort", Leaf),
+            (
+                "mcp",
+                Struct(HashMap::from([
+                    ("allow_servers", Leaf),
+                    ("deny_servers", Leaf),
+                ])),
+            ),
+            (
+                "skills",
+                Struct(HashMap::from([("allow", Leaf), ("deny", Leaf)])),
+            ),
+        ]))
+    };
+
+    let mode_preset = || {
+        Struct(HashMap::from([
+            ("name", Leaf),
+            ("description", Leaf),
+            ("prompt", Leaf),
+        ]))
+    };
+
+    Struct(HashMap::from([
+        (
+            "server",
+            Struct(HashMap::from([
+                ("bind", Leaf),
+                ("port", Leaf),
+                ("http_request_logs", Leaf),
+                ("ws_request_logs", Leaf),
+                ("log_buffer_size", Leaf),
+                ("update_releases_url", Leaf),
+                ("db_pool_max_connections", Leaf),
+                ("shiki_cdn_url", Leaf),
+                ("terminal_enabled", Leaf),
+                ("scrollback_lines", Leaf),
+                ("external_url", Leaf),
+            ])),
+        ),
+        ("providers", MapWithFields {
+            value: Box::new(provider_entry()),
+            fields: HashMap::from([
+                ("offered", Array(Box::new(Leaf))),
+                ("show_legacy_models", Leaf),
+            ]),
+        }),
+        (
+            "chat",
+            Struct(HashMap::from([
+                ("auto_title", Leaf),
+                ("message_queue_mode", Leaf),
+                ("prompt_memory_mode", Leaf),
+                ("workspace_file_max_chars", Leaf),
+                ("priority_models", Leaf),
+            ])),
+        ),
+        (
+            "agents",
+            Struct(HashMap::from([
+                ("default_preset", Leaf),
+                ("presets", Map(Box::new(agent_preset()))),
+            ])),
+        ),
+        (
+            "external_agents",
+            Struct(HashMap::from([
+                ("enabled", Leaf),
+                ("agents", Map(Box::new(external_agent_entry()))),
+            ])),
+        ),
+        (
+            "modes",
+            Struct(HashMap::from([("presets", Map(Box::new(mode_preset())))])),
+        ),
+        ("tools", tools()),
+        ("sandbox", sandbox()),
+        (
+            "skills",
+            Struct(HashMap::from([
+                ("enabled", Leaf),
+                ("search_paths", Leaf),
+                ("auto_load", Leaf),
+                ("enable_agent_sidecar_files", Leaf),
+                ("enable_self_improvement", Leaf),
+                ("disabled_bundled_categories", Leaf),
+                ("disabled_bundled_skills", Leaf),
+            ])),
+        ),
+        (
+            "mcp",
+            Struct(HashMap::from([
+                ("request_timeout_secs", Leaf),
+                ("servers", Map(Box::new(mcp_server_entry()))),
+            ])),
+        ),
+        ("channels", {
+            // Channel accounts are stored as serde_json::Value but we
+            // recognise a `tools` sub-key with typed group/sender policy.
+            let group_policy = || {
+                Struct(HashMap::from([
+                    ("allow", Leaf),
+                    ("deny", Leaf),
+                    ("by_sender", Map(Box::new(tool_policy_entry()))),
+                ]))
+            };
+            let channel_tools =
+                || Struct(HashMap::from([("groups", Map(Box::new(group_policy())))]));
+            let channel_account = || MapWithFields {
+                value: Box::new(Leaf),
+                fields: HashMap::from([("tools", channel_tools())]),
+            };
+            MapWithFields {
+                // Dynamic keys: extra channel types via #[serde(flatten)]
+                value: Box::new(Map(Box::new(channel_account()))),
+                fields: HashMap::from([
+                    ("offered", Array(Box::new(Leaf))),
+                    ("telegram", Map(Box::new(channel_account()))),
+                    ("whatsapp", Map(Box::new(channel_account()))),
+                    ("msteams", Map(Box::new(channel_account()))),
+                    ("discord", Map(Box::new(channel_account()))),
+                    ("slack", Map(Box::new(channel_account()))),
+                    ("matrix", Map(Box::new(channel_account()))),
+                    ("nostr", Map(Box::new(channel_account()))),
+                    ("signal", Map(Box::new(channel_account()))),
+                    ("telephony", Map(Box::new(channel_account()))),
+                ]),
+            }
+        }),
+        (
+            "tls",
+            Struct(HashMap::from([
+                ("enabled", Leaf),
+                ("auto_generate", Leaf),
+                ("cert_path", Leaf),
+                ("key_path", Leaf),
+                ("ca_cert_path", Leaf),
+                ("public_ip", Leaf),
+                ("http_redirect_port", Leaf),
+            ])),
+        ),
+        (
+            "auth",
+            Struct(HashMap::from([("disabled", Leaf), ("vault_enabled", Leaf)])),
+        ),
+        ("graphql", Struct(HashMap::from([("enabled", Leaf)]))),
+        (
+            "metrics",
+            Struct(HashMap::from([
+                ("enabled", Leaf),
+                ("prometheus_endpoint", Leaf),
+                ("history_points", Leaf),
+                ("labels", Map(Box::new(Leaf))),
+            ])),
+        ),
+        (
+            "identity",
+            Struct(HashMap::from([
+                ("name", Leaf),
+                ("emoji", Leaf),
+                ("theme", Leaf),
+            ])),
+        ),
+        (
+            "user",
+            Struct(HashMap::from([
+                ("name", Leaf),
+                ("timezone", Leaf),
+                (
+                    "location",
+                    Struct(HashMap::from([
+                        ("latitude", Leaf),
+                        ("longitude", Leaf),
+                        ("place", Leaf),
+                        ("updated_at", Leaf),
+                    ])),
+                ),
+            ])),
+        ),
+        (
+            "hooks",
+            Struct(HashMap::from([(
+                "hooks",
+                Array(Box::new(shell_hook_entry())),
+            )])),
+        ),
+        (
+            "memory",
+            Struct(HashMap::from([
+                ("style", Leaf),
+                ("agent_write_mode", Leaf),
+                ("user_profile_write_mode", Leaf),
+                ("backend", Leaf),
+                ("provider", Leaf),
+                ("embedding_provider", Leaf),
+                ("disable_rag", Leaf),
+                ("base_url", Leaf),
+                ("embedding_base_url", Leaf),
+                ("model", Leaf),
+                ("embedding_model", Leaf),
+                ("api_key", Leaf),
+                ("embedding_api_key", Leaf),
+                ("embedding_dimensions", Leaf),
+                ("citations", Leaf),
+                ("llm_reranking", Leaf),
+                ("search_merge_strategy", Leaf),
+                ("session_export", Leaf),
+                ("qmd", qmd()),
+                ("enable_prefetch", Leaf),
+                ("prefetch_limit", Leaf),
+                ("auto_extract_interval", Leaf),
+                ("enable_session_summary", Leaf),
+            ])),
+        ),
+        (
+            "heartbeat",
+            Struct(HashMap::from([
+                ("enabled", Leaf),
+                ("every", Leaf),
+                ("model", Leaf),
+                ("agent_id", Leaf),
+                ("prompt", Leaf),
+                ("ack_max_chars", Leaf),
+                ("active_hours", active_hours()),
+                ("deliver", Leaf),
+                ("channel", Leaf),
+                ("to", Leaf),
+                ("wake_cooldown", Leaf),
+            ])),
+        ),
+        (
+            "cron",
+            Struct(HashMap::from([
+                ("rate_limit_max", Leaf),
+                ("rate_limit_window_secs", Leaf),
+                ("session_retention_days", Leaf),
+                ("auto_prune_cron_containers", Leaf),
+            ])),
+        ),
+        ("env", Map(Box::new(Leaf))),
+        ("upstream_proxy", Leaf),
+        (
+            "caldav",
+            Struct(HashMap::from([
+                ("enabled", Leaf),
+                ("default_account", Leaf),
+                (
+                    "accounts",
+                    Map(Box::new(Struct(HashMap::from([
+                        ("url", Leaf),
+                        ("username", Leaf),
+                        ("password", Leaf),
+                        ("provider", Leaf),
+                        ("timeout_seconds", Leaf),
+                    ])))),
+                ),
+            ])),
+        ),
+        (
+            "home_assistant",
+            Struct(HashMap::from([
+                ("enabled", Leaf),
+                ("default_instance", Leaf),
+                (
+                    "instances",
+                    Map(Box::new(Struct(HashMap::from([
+                        ("url", Leaf),
+                        ("token", Leaf),
+                        ("timeout_seconds", Leaf),
+                    ])))),
+                ),
+            ])),
+        ),
+        (
+            "webhooks",
+            Struct(HashMap::from([(
+                "rate_limit",
+                Struct(HashMap::from([
+                    ("enabled", Leaf),
+                    ("requests_per_minute", Leaf),
+                    ("burst", Leaf),
+                    ("cleanup_interval_secs", Leaf),
+                ])),
+            )])),
+        ),
+        (
+            "auxiliary",
+            Struct(HashMap::from([
+                ("title_generation", Leaf),
+                ("vision", Leaf),
+            ])),
+        ),
+        (
+            "code_index",
+            Struct(HashMap::from([
+                ("enabled", Leaf),
+                ("extensions", Array(Box::new(Leaf))),
+                ("max_file_size", Leaf),
+                ("skip_binary", Leaf),
+                ("skip_paths", Array(Box::new(Leaf))),
+                ("data_dir", Leaf),
+            ])),
+        ),
+        (
+            "voice",
+            Struct(HashMap::from([
+                (
+                    "tts",
+                    Struct(HashMap::from([
+                        ("enabled", Leaf),
+                        ("provider", Leaf),
+                        ("providers", Leaf),
+                        (
+                            "elevenlabs",
+                            Struct(HashMap::from([
+                                ("enabled", Leaf),
+                                ("api_key", Leaf),
+                                ("voice_id", Leaf),
+                                ("model", Leaf),
+                            ])),
+                        ),
+                        (
+                            "openai",
+                            Struct(HashMap::from([
+                                ("enabled", Leaf),
+                                ("api_key", Leaf),
+                                ("base_url", Leaf),
+                                ("voice", Leaf),
+                                ("model", Leaf),
+                            ])),
+                        ),
+                        (
+                            "google",
+                            Struct(HashMap::from([
+                                ("enabled", Leaf),
+                                ("api_key", Leaf),
+                                ("language_code", Leaf),
+                                ("voice", Leaf),
+                                ("model", Leaf),
+                                ("speaking_rate", Leaf),
+                                ("pitch", Leaf),
+                            ])),
+                        ),
+                        (
+                            "piper",
+                            Struct(HashMap::from([
+                                ("enabled", Leaf),
+                                ("binary_path", Leaf),
+                                ("model_path", Leaf),
+                                ("config_path", Leaf),
+                                ("speaker_id", Leaf),
+                                ("length_scale", Leaf),
+                            ])),
+                        ),
+                        (
+                            "coqui",
+                            Struct(HashMap::from([
+                                ("enabled", Leaf),
+                                ("endpoint", Leaf),
+                                ("model", Leaf),
+                                ("speaker", Leaf),
+                                ("language", Leaf),
+                            ])),
+                        ),
+                    ])),
+                ),
+                (
+                    "stt",
+                    Struct(HashMap::from([
+                        ("enabled", Leaf),
+                        ("provider", Leaf),
+                        ("providers", Leaf),
+                        (
+                            "whisper",
+                            Struct(HashMap::from([
+                                ("enabled", Leaf),
+                                ("api_key", Leaf),
+                                ("base_url", Leaf),
+                                ("model", Leaf),
+                                ("language", Leaf),
+                            ])),
+                        ),
+                        (
+                            "deepgram",
+                            Struct(HashMap::from([
+                                ("enabled", Leaf),
+                                ("api_key", Leaf),
+                                ("model", Leaf),
+                                ("language", Leaf),
+                                ("smart_format", Leaf),
+                            ])),
+                        ),
+                        (
+                            "google",
+                            Struct(HashMap::from([
+                                ("enabled", Leaf),
+                                ("api_key", Leaf),
+                                ("service_account_json", Leaf),
+                                ("language", Leaf),
+                                ("model", Leaf),
+                            ])),
+                        ),
+                        (
+                            "elevenlabs",
+                            Struct(HashMap::from([
+                                ("enabled", Leaf),
+                                ("api_key", Leaf),
+                                ("model", Leaf),
+                                ("language", Leaf),
+                            ])),
+                        ),
+                        (
+                            "voxtral_local",
+                            Struct(HashMap::from([
+                                ("enabled", Leaf),
+                                ("model", Leaf),
+                                ("endpoint", Leaf),
+                                ("language", Leaf),
+                            ])),
+                        ),
+                        (
+                            "whisper_local",
+                            Struct(HashMap::from([
+                                ("enabled", Leaf),
+                                ("endpoint", Leaf),
+                                ("model", Leaf),
+                                ("language", Leaf),
+                            ])),
+                        ),
+                        (
+                            "whisper_cli",
+                            Struct(HashMap::from([
+                                ("enabled", Leaf),
+                                ("binary_path", Leaf),
+                                ("model_path", Leaf),
+                                ("language", Leaf),
+                            ])),
+                        ),
+                        (
+                            "sherpa_onnx",
+                            Struct(HashMap::from([
+                                ("enabled", Leaf),
+                                ("binary_path", Leaf),
+                                ("model_dir", Leaf),
+                                ("language", Leaf),
+                            ])),
+                        ),
+                    ])),
+                ),
+            ])),
+        ),
+        (
+            "phone",
+            Struct(HashMap::from([
+                ("enabled", Leaf),
+                ("provider", Leaf),
+                ("providers", Array(Box::new(Leaf))),
+                ("inbound_policy", Leaf),
+                ("allowlist", Array(Box::new(Leaf))),
+                ("max_duration_secs", Leaf),
+                (
+                    "twilio",
+                    Struct(HashMap::from([
+                        ("account_sid", Leaf),
+                        ("auth_token", Leaf),
+                        ("from_number", Leaf),
+                        ("webhook_url", Leaf),
+                    ])),
+                ),
+                (
+                    "telnyx",
+                    Struct(HashMap::from([
+                        ("api_key", Leaf),
+                        ("connection_id", Leaf),
+                        ("public_key", Leaf),
+                        ("from_number", Leaf),
+                        ("webhook_url", Leaf),
+                    ])),
+                ),
+                (
+                    "plivo",
+                    Struct(HashMap::from([
+                        ("auth_id", Leaf),
+                        ("auth_token", Leaf),
+                        ("from_number", Leaf),
+                        ("webhook_url", Leaf),
+                    ])),
+                ),
+            ])),
+        ),
+    ]))
+}
+
+// ── Levenshtein distance ────────────────────────────────────────────────────
+
+/// Compute the Levenshtein edit distance between two strings.
+fn levenshtein(a: &str, b: &str) -> usize {
+    let a_len = a.len();
+    let b_len = b.len();
+    if a_len == 0 {
+        return b_len;
+    }
+    if b_len == 0 {
+        return a_len;
+    }
+
+    let mut prev: Vec<usize> = (0..=b_len).collect();
+    let mut curr = vec![0; b_len + 1];
+
+    for (i, ca) in a.chars().enumerate() {
+        curr[0] = i + 1;
+        for (j, cb) in b.chars().enumerate() {
+            let cost = if ca == cb {
+                0
+            } else {
+                1
+            };
+            curr[j + 1] = (prev[j] + cost).min(prev[j + 1] + 1).min(curr[j] + 1);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    prev[b_len]
+}
+
+/// Find the best match for `needle` among `candidates` using Levenshtein
+/// distance. Returns `Some(best)` if the distance is <= `max_distance`.
+fn suggest<'a>(needle: &str, candidates: &[&'a str], max_distance: usize) -> Option<&'a str> {
+    let mut best: Option<(&'a str, usize)> = None;
+    for &candidate in candidates {
+        let d = levenshtein(needle, candidate);
+        if d > 0 && d <= max_distance && best.as_ref().is_none_or(|(_, bd)| d < *bd) {
+            best = Some((candidate, d));
+        }
+    }
+    best.map(|(s, _)| s)
+}
+
+// ── Core validation ─────────────────────────────────────────────────────────
+
+/// Walk a JSON-compatible config value tree and flag unknown keys.
+pub(crate) fn check_unknown_fields(
+    value: &serde_json::Value,
+    schema: &KnownKeys,
+    prefix: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match (value, schema) {
+        (serde_json::Value::Object(table), KnownKeys::Struct(fields)) => {
+            let known_keys: Vec<&str> = fields.keys().copied().collect();
+            for (key, child_value) in table {
+                let path = if prefix.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{prefix}.{key}")
+                };
+                if let Some(child_schema) = fields.get(key.as_str()) {
+                    check_unknown_fields(child_value, child_schema, &path, diagnostics);
+                } else {
+                    let level = if prefix.is_empty() {
+                        "at top level "
+                    } else {
+                        ""
+                    };
+                    let suggestion = suggest(key, &known_keys, 3);
+                    let msg = if let Some(s) = suggestion {
+                        format!("unknown field {level}(did you mean \"{s}\"?)")
+                    } else {
+                        format!("unknown field {level}")
+                    };
+                    diagnostics.push(Diagnostic {
+                        severity: Severity::Error,
+                        category: "unknown-field",
+                        path,
+                        message: msg.trim().to_string(),
+                    });
+                }
+            }
+        },
+        (serde_json::Value::Object(table), KnownKeys::Map(value_schema)) => {
+            for (key, child_value) in table {
+                let path = if prefix.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{prefix}.{key}")
+                };
+                check_unknown_fields(child_value, value_schema, &path, diagnostics);
+            }
+        },
+        (
+            serde_json::Value::Object(table),
+            KnownKeys::MapWithFields {
+                value: value_schema,
+                fields,
+            },
+        ) => {
+            for (key, child_value) in table {
+                let path = if prefix.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{prefix}.{key}")
+                };
+                if let Some(child_schema) = fields.get(key.as_str()) {
+                    check_unknown_fields(child_value, child_schema, &path, diagnostics);
+                } else {
+                    check_unknown_fields(child_value, value_schema, &path, diagnostics);
+                }
+            }
+        },
+        (serde_json::Value::Array(arr), KnownKeys::Array(item_schema)) => {
+            for (i, item) in arr.iter().enumerate() {
+                let path = format!("{prefix}[{i}]");
+                check_unknown_fields(item, item_schema, &path, diagnostics);
+            }
+        },
+        // Leaf or type mismatch — stop recursion (type errors caught later)
+        _ => {},
+    }
+}

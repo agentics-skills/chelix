@@ -1,0 +1,84 @@
+//! Gateway: core business logic, protocol dispatch, session/node registry.
+//!
+//! Lifecycle:
+//! 1. Load + validate config
+//! 2. Resolve auth, bind address
+//! 3. Build core gateway state (sessions, services, methods)
+//! 4. Spawn background tasks (cron, update checks, MCP health)
+//!
+//! HTTP transport (routes, middleware, WebSocket upgrade) lives in `chelix-httpd`.
+//! All domain logic (agents, channels, etc.) lives in other crates and is
+//! invoked through method handlers registered in `methods.rs`.
+
+pub mod a2ui;
+pub mod agent_persona;
+pub mod approval;
+pub mod auth;
+pub mod auth_webauthn;
+pub mod broadcast;
+pub mod channel;
+pub mod channel_agent_tools;
+pub mod channel_events;
+pub mod channel_store;
+pub mod channel_webhook_dedup;
+pub mod channel_webhook_middleware;
+pub mod channel_webhook_rate_limit;
+pub mod chat;
+pub mod chat_error;
+pub mod cron;
+pub mod external_agents;
+pub mod logs;
+pub mod mcp_agent_tools;
+pub mod mcp_health;
+pub mod mcp_service;
+#[cfg(feature = "mdns")]
+pub mod mdns;
+pub mod message_log_store;
+pub mod methods;
+pub mod onboarding;
+pub(crate) mod operation_progress;
+pub mod project;
+pub mod project_aware_tools;
+pub mod provider_setup;
+#[cfg(feature = "push-notifications")]
+pub mod push;
+pub mod server;
+pub mod services;
+pub mod session;
+pub mod session_reasoning;
+pub mod session_types;
+pub mod share_store;
+pub mod ssh_probe;
+pub mod state;
+#[cfg(feature = "msteams")]
+pub mod teams_agent_tools;
+pub mod tts_phrases;
+pub mod update_check;
+pub mod updater;
+#[cfg(feature = "vault")]
+pub mod vault_lifecycle;
+pub mod voice;
+pub mod voice_agent_tools;
+pub mod voice_persona;
+pub mod webhooks;
+
+#[cfg(test)]
+pub(crate) fn config_override_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+}
+
+/// Run database migrations for the gateway crate.
+///
+/// This creates the auth tables (auth_password, passkeys, api_keys, auth_sessions),
+/// env_variables, message_log, and channels tables. Should be called at application
+/// startup after the other crate migrations (projects, sessions, cron).
+pub async fn run_migrations(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
+    sqlx::migrate!("./migrations")
+        .set_ignore_missing(true)
+        .run(pool)
+        .await?;
+    Ok(())
+}

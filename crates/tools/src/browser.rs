@@ -1,0 +1,468 @@
+//! Browser automation tool for LLM agents.
+//!
+//! This tool provides full browser automation capabilities including:
+//! - Navigation with JavaScript execution
+//! - Screenshots of pages
+//! - DOM snapshots with numbered element references
+//! - Clicking, typing, scrolling on elements
+//! - JavaScript evaluation
+
+use {
+    async_trait::async_trait,
+    chelix_agents::tool_registry::AgentTool,
+    chelix_browser::{BrowserManager, BrowserRequest},
+    chelix_config::schema::SandboxMode,
+    std::{borrow::Cow, collections::HashMap, sync::Arc},
+    tokio::sync::{OnceCell, RwLock},
+    tracing::debug,
+};
+
+use crate::error::Error;
+
+/// Browser automation tool for interacting with web pages.
+///
+/// Supports clicking buttons, filling forms, taking screenshots, and
+/// executing JavaScript.
+///
+/// This tool automatically tracks and reuses browser session IDs. When
+/// the LLM doesn't provide a session_id (or provides empty string), the
+/// tool will reuse the most recently created browser session for the current
+/// chat session. This prevents pool exhaustion without leaking browser state
+/// across unrelated chats.
+pub struct BrowserTool {
+    config: chelix_browser::BrowserConfig,
+    sandbox_mode: SandboxMode,
+    manager: OnceCell<Arc<BrowserManager>>,
+    /// Track the most recent browser session ID per chat/session context.
+    /// This prevents pool exhaustion when the LLM forgets to pass session_id,
+    /// without reusing a stale browser across different chats.
+    /// Bounded to [`MAX_TRACKED_SESSIONS`] to prevent unbounded growth when
+    /// chats end without an explicit browser close action.
+    session_ids: RwLock<HashMap<String, String>>,
+}
+
+impl BrowserTool {
+    const DEFAULT_SESSION_KEY: &'static str = "main";
+    /// Maximum number of tracked browser sessions. When exceeded the oldest
+    /// entry (by insertion order, approximated by picking an arbitrary key) is
+    /// evicted to prevent unbounded memory growth from abandoned chats.
+    const MAX_TRACKED_SESSIONS: usize = 128;
+
+    fn new(config: chelix_browser::BrowserConfig, sandbox_mode: SandboxMode) -> Self {
+        Self {
+            config,
+            sandbox_mode,
+            manager: OnceCell::new(),
+            session_ids: RwLock::new(HashMap::new()),
+        }
+    }
+
+    /// Create from browser configuration and the canonical global sandbox policy.
+    pub fn from_config(
+        browser: &chelix_config::schema::BrowserConfig,
+        sandbox: &chelix_config::schema::SandboxConfig,
+    ) -> Option<Self> {
+        if !browser.enabled {
+            return None;
+        }
+        let mut browser_config = chelix_browser::BrowserConfig::from(browser);
+        browser_config.host_data_dir = sandbox.host_data_dir.as_ref().map(std::path::PathBuf::from);
+        Some(Self::new(browser_config, sandbox.mode))
+    }
+
+    fn cache_key(session_key: Option<&str>) -> Cow<'static, str> {
+        match session_key {
+            Some(k) => Cow::Owned(k.to_string()),
+            None => Cow::Borrowed(Self::DEFAULT_SESSION_KEY),
+        }
+    }
+
+    /// Clear the tracked browser session for the current chat/session context
+    /// (e.g., after explicit close).
+    async fn clear_session(&self, session_key: &str) {
+        let mut guard = self.session_ids.write().await;
+        guard.remove(session_key);
+    }
+
+    /// Save the browser session ID for future reuse in the same chat/session
+    /// context.
+    async fn save_session(&self, session_key: &str, session_id: &str) {
+        if !session_id.is_empty() {
+            let mut guard = self.session_ids.write().await;
+            // Evict an arbitrary entry when at capacity to bound memory.
+            if guard.len() >= Self::MAX_TRACKED_SESSIONS
+                && !guard.contains_key(session_key)
+                && let Some(evict_key) = guard.keys().next().cloned()
+            {
+                debug!(evicted = %evict_key, "browser session cache full, evicting entry");
+                guard.remove(&evict_key);
+            }
+            guard.insert(session_key.to_string(), session_id.to_string());
+        }
+    }
+
+    /// Get the tracked browser session ID for the current chat/session
+    /// context, if available.
+    async fn get_saved_session(&self, session_key: &str) -> Option<String> {
+        let guard = self.session_ids.read().await;
+        guard.get(session_key).cloned()
+    }
+
+    async fn manager(&self) -> Arc<BrowserManager> {
+        Arc::clone(
+            self.manager
+                .get_or_init(|| async {
+                    let config = self.config.clone();
+                    let sandbox_mode = self.sandbox_mode;
+                    match tokio::task::spawn_blocking(move || {
+                        // Browser detection/container cleanup can block.
+                        chelix_browser::detect::check_and_warn(config.chrome_path.as_deref());
+                        Arc::new(BrowserManager::new(config, sandbox_mode))
+                    })
+                    .await
+                    {
+                        Ok(manager) => manager,
+                        Err(error) => {
+                            tracing::warn!(
+                                %error,
+                                "browser tool warmup worker failed, falling back to inline initialization"
+                            );
+                            let config = self.config.clone();
+                            chelix_browser::detect::check_and_warn(config.chrome_path.as_deref());
+                            Arc::new(BrowserManager::new(config, self.sandbox_mode))
+                        },
+                    }
+                })
+                .await,
+        )
+    }
+}
+
+#[async_trait]
+impl AgentTool for BrowserTool {
+    fn name(&self) -> &str {
+        "browser"
+    }
+
+    fn description(&self) -> &str {
+        "Control a real browser to interact with web pages.\n\n\
+         USE THIS TOOL when the user says 'browse', 'browser', 'open in browser', \
+         or needs interaction (clicking, forms, screenshots, JavaScript-heavy pages).\n\n\
+         REQUIRED: You MUST specify an 'action' parameter. Example:\n\
+         {\"action\": \"navigate\", \"url\": \"https://example.com\"}\n\n\
+         Actions: navigate, screenshot, snapshot, click, type, scroll, evaluate, wait, close\n\n\
+         BROWSER CHOICE: optionally set \"browser\" to choose one (auto, chrome, chromium, \
+         edge, brave, opera, vivaldi, arc, obscura, lightpanda). If no browser is installed, Chelix will try \
+         to auto-install one.\n\n\
+         SESSION: The browser session is automatically tracked per chat session. \
+         After 'navigate', subsequent actions in the same chat will reuse the same \
+         browser. No need to pass session_id.\n\n\
+         WORKFLOW:\n\
+         1. {\"action\": \"navigate\", \"url\": \"...\"} - opens URL in browser\n\
+         2. {\"action\": \"snapshot\"} - get interactive elements with ref numbers\n\
+         3. {\"action\": \"click\", \"ref_\": N} - click element by ref number\n\
+         4. {\"action\": \"screenshot\"} - capture the current view\n\
+         5. {\"action\": \"close\"} - close the browser when done"
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["action"],
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["navigate", "screenshot", "snapshot", "click", "type", "scroll", "evaluate", "wait", "get_url", "get_title", "back", "forward", "refresh", "close"],
+                    "description": "REQUIRED. The browser action to perform. Use 'navigate' with 'url' to open a page, 'snapshot' to see elements, 'screenshot' to capture."
+                },
+                "session_id": {
+                    "type": "string",
+                    "description": "Browser session ID (omit to create new session, or reuse existing)"
+                },
+                "browser": {
+                    "type": "string",
+                    "enum": ["auto", "chrome", "chromium", "edge", "brave", "opera", "vivaldi", "arc", "obscura", "lightpanda"],
+                    "description": "Browser to use. Default: auto (first installed browser). Use 'obscura' or 'lightpanda' for lightweight headless browsing (no screenshots)."
+                },
+                "url": {
+                    "type": "string",
+                    "description": "URL to navigate to (for 'navigate' action)"
+                },
+                "ref_": {
+                    "type": "integer",
+                    "description": "Element reference number from snapshot (for click/type/scroll)"
+                },
+                "text": {
+                    "type": "string",
+                    "description": "Text to type (for 'type' action)"
+                },
+                "code": {
+                    "type": "string",
+                    "description": "JavaScript code to execute (for 'evaluate' action)"
+                },
+                "x": {
+                    "type": "integer",
+                    "description": "Horizontal scroll pixels (for 'scroll' action)"
+                },
+                "y": {
+                    "type": "integer",
+                    "description": "Vertical scroll pixels (for 'scroll' action)"
+                },
+                "full_page": {
+                    "type": "boolean",
+                    "description": "Capture full page screenshot vs viewport only"
+                },
+                "selector": {
+                    "type": "string",
+                    "description": "CSS selector to wait for (for 'wait' action)"
+                },
+                "timeout_ms": {
+                    "type": "integer",
+                    "description": "Timeout in milliseconds (default: 60000)"
+                }
+            }
+        })
+    }
+
+    async fn execute(&self, params: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        let mut params = params;
+
+        let session_key = Self::cache_key(params.get("_session_key").and_then(|v| v.as_str()));
+
+        // Inject saved session_id if LLM didn't provide one (or provided empty string)
+        if let Some(obj) = params.as_object_mut() {
+            obj.remove("_session_key");
+            let needs_session = match obj.get("session_id") {
+                None => true,
+                Some(serde_json::Value::String(s)) if s.is_empty() => true,
+                Some(serde_json::Value::Null) => true,
+                _ => false,
+            };
+
+            if needs_session && let Some(saved_sid) = self.get_saved_session(&session_key).await {
+                debug!(
+                    session_key = %session_key,
+                    session_id = %saved_sid,
+                    "injecting saved session_id (LLM didn't provide one)"
+                );
+                obj.insert("session_id".to_string(), serde_json::json!(saved_sid));
+            }
+        }
+
+        // Check if this is a "close" action - we'll clear saved session after
+        let is_close = params
+            .get("action")
+            .and_then(|a| a.as_str())
+            .is_some_and(|a| a == "close");
+
+        // Try to parse the request, defaulting to "navigate" if action is missing
+        let request: BrowserRequest = match serde_json::from_value(params.clone()) {
+            Ok(req) => req,
+            Err(e) if e.to_string().contains("missing field `action`") => {
+                // Default to navigate action if action is missing but url is present
+                if let Some(obj) = params.as_object_mut() {
+                    if obj.contains_key("url") {
+                        obj.insert("action".to_string(), serde_json::json!("navigate"));
+                        serde_json::from_value(params)?
+                    } else {
+                        // No URL either - return helpful error
+                        return Err(Error::message(
+                            "Missing required 'action' field. Use: \
+                             {\"action\": \"navigate\", \"url\": \"https://...\"} to open a page",
+                        )
+                        .into());
+                    }
+                } else {
+                    return Err(e.into());
+                }
+            },
+            Err(e) => return Err(e.into()),
+        };
+
+        let manager = self.manager().await;
+        let response = manager.handle_request(request).await;
+
+        // Track the session ID for future reuse
+        if response.success {
+            if is_close {
+                self.clear_session(&session_key).await;
+            } else {
+                self.save_session(&session_key, &response.session_id).await;
+            }
+        }
+
+        Ok(serde_json::to_value(&response)?)
+    }
+
+    async fn warmup(&self) -> anyhow::Result<()> {
+        let started = std::time::Instant::now();
+        let _ = self.manager().await;
+        debug!(
+            elapsed_ms = started.elapsed().as_millis(),
+            "browser tool warmup complete"
+        );
+        Ok(())
+    }
+}
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tool_name() {
+        let config = chelix_config::schema::BrowserConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let tool =
+            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
+                .unwrap();
+        assert_eq!(tool.name(), "browser");
+    }
+
+    #[test]
+    fn test_disabled_returns_none() {
+        let config = chelix_config::schema::BrowserConfig {
+            enabled: false,
+            ..Default::default()
+        };
+        assert!(
+            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default(),)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn from_config_carries_global_sandbox_settings() {
+        let browser = chelix_config::schema::BrowserConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let sandbox = chelix_config::schema::SandboxConfig {
+            host_data_dir: Some("/host/chelix-data".to_string()),
+            ..Default::default()
+        };
+
+        let tool = BrowserTool::from_config(&browser, &sandbox).unwrap();
+
+        assert_eq!(
+            tool.config.host_data_dir.as_deref(),
+            Some(std::path::Path::new("/host/chelix-data"))
+        );
+        assert_eq!(tool.sandbox_mode, SandboxMode::On);
+    }
+
+    #[test]
+    fn test_parameters_schema_has_required_action() {
+        let config = chelix_config::schema::BrowserConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let tool =
+            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
+                .unwrap();
+        let schema = tool.parameters_schema();
+        let required = schema["required"].as_array().unwrap();
+        assert!(
+            required.iter().any(|v| v == "action"),
+            "action should be in required fields"
+        );
+        let browser_values = schema["properties"]["browser"]["enum"].as_array().unwrap();
+        assert!(
+            browser_values.iter().any(|v| v == "lightpanda"),
+            "lightpanda should be a selectable browser"
+        );
+    }
+
+    #[tokio::test]
+    async fn saved_browser_sessions_are_scoped_by_chat_session() {
+        let config = chelix_config::schema::BrowserConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let tool =
+            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
+                .unwrap();
+
+        tool.save_session("web:session:one", "browser-session-one")
+            .await;
+        tool.save_session("web:session:two", "browser-session-two")
+            .await;
+
+        assert_eq!(
+            tool.get_saved_session("web:session:one").await,
+            Some("browser-session-one".to_string())
+        );
+        assert_eq!(
+            tool.get_saved_session("web:session:two").await,
+            Some("browser-session-two".to_string())
+        );
+        assert_eq!(tool.get_saved_session("web:session:three").await, None);
+    }
+
+    #[tokio::test]
+    async fn empty_session_id_is_not_saved() {
+        let config = chelix_config::schema::BrowserConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let tool =
+            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
+                .unwrap();
+        tool.save_session("web:session:one", "").await;
+        assert_eq!(tool.get_saved_session("web:session:one").await, None);
+    }
+
+    #[tokio::test]
+    async fn session_cache_evicts_when_full() {
+        let config = chelix_config::schema::BrowserConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let tool =
+            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
+                .unwrap();
+
+        // Fill the cache to capacity
+        for i in 0..BrowserTool::MAX_TRACKED_SESSIONS {
+            tool.save_session(&format!("session-{i}"), &format!("sid-{i}"))
+                .await;
+        }
+        assert_eq!(
+            tool.session_ids.read().await.len(),
+            BrowserTool::MAX_TRACKED_SESSIONS
+        );
+
+        // Adding one more should evict an entry and stay at capacity
+        tool.save_session("session-new", "sid-new").await;
+        let guard = tool.session_ids.read().await;
+        assert_eq!(guard.len(), BrowserTool::MAX_TRACKED_SESSIONS);
+        assert_eq!(guard.get("session-new"), Some(&"sid-new".to_string()));
+    }
+
+    #[tokio::test]
+    async fn clearing_one_chat_session_keeps_other_browser_sessions() {
+        let config = chelix_config::schema::BrowserConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let tool =
+            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
+                .unwrap();
+
+        tool.save_session("web:session:one", "browser-session-one")
+            .await;
+        tool.save_session("web:session:two", "browser-session-two")
+            .await;
+
+        tool.clear_session("web:session:one").await;
+
+        assert_eq!(tool.get_saved_session("web:session:one").await, None);
+        assert_eq!(
+            tool.get_saved_session("web:session:two").await,
+            Some("browser-session-two".to_string())
+        );
+    }
+}

@@ -1,0 +1,60 @@
+[package]
+edition.workspace = true
+name              = "chelix-memory"
+version.workspace = true
+
+[features]
+default = ["file-watcher"]
+# Re-export code-splitter features from chelix-splitter for downstream compatibility.
+code-splitter      = ["chelix-splitter/code-splitter"]
+code-splitter-base = ["chelix-splitter/code-splitter-base"]
+lang-bash          = ["chelix-splitter/lang-bash"]
+lang-c             = ["chelix-splitter/lang-c"]
+lang-cpp           = ["chelix-splitter/lang-cpp"]
+lang-css           = ["chelix-splitter/lang-css"]
+lang-go            = ["chelix-splitter/lang-go"]
+lang-html          = ["chelix-splitter/lang-html"]
+lang-java          = ["chelix-splitter/lang-java"]
+lang-javascript    = ["chelix-splitter/lang-javascript"]
+lang-json          = ["chelix-splitter/lang-json"]
+lang-markdown      = ["chelix-splitter/lang-markdown"]
+lang-python        = ["chelix-splitter/lang-python"]
+lang-ruby          = ["chelix-splitter/lang-ruby"]
+lang-rust          = ["chelix-splitter/lang-rust"]
+lang-toml          = ["chelix-splitter/lang-toml"]
+lang-typescript    = ["chelix-splitter/lang-typescript"]
+# Existing features.
+file-watcher     = ["dep:notify-debouncer-full"]
+local-embeddings = ["dep:chelix-protocol"]
+metrics          = ["dep:chelix-metrics"]
+
+[dependencies]
+anyhow                = { workspace = true }
+async-trait           = { workspace = true }
+bytemuck              = { workspace = true }
+chelix-agents         = { workspace = true }
+chelix-common         = { workspace = true }
+chelix-metrics        = { optional = true, workspace = true }
+chelix-protocol       = { optional = true, workspace = true }
+chelix-splitter       = { workspace = true }
+chrono                = { features = ["serde"], workspace = true }
+directories.workspace = true
+futures               = { workspace = true }
+notify-debouncer-full = { optional = true, workspace = true }
+reqwest               = { workspace = true }
+secrecy               = { workspace = true }
+serde                 = { workspace = true }
+serde_json            = { workspace = true }
+sha2                  = { workspace = true }
+sqlx                  = { workspace = true }
+thiserror             = { workspace = true }
+tokio                 = { workspace = true }
+tracing               = { workspace = true }
+walkdir               = { workspace = true }
+
+[dev-dependencies]
+mockito  = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

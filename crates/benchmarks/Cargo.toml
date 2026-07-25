@@ -1,0 +1,38 @@
+[package]
+edition.workspace    = true
+license.workspace    = true
+name                 = "benchmarks"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+chelix-agents     = { workspace = true }
+chelix-code-index = { workspace = true }
+chelix-common     = { workspace = true }
+chelix-config     = { workspace = true }
+chelix-providers  = { workspace = true }
+chelix-qmd        = { optional = true, workspace = true }
+chelix-sessions   = { workspace = true }
+grep-regex        = { workspace = true }
+grep-searcher     = { workspace = true }
+serde_json        = { workspace = true }
+tempfile          = { workspace = true }
+tokio             = { workspace = true }
+toml              = { workspace = true }
+
+[dev-dependencies]
+divan = { package = "codspeed-divan-compat", version = "4.3" }
+
+[[bench]]
+harness = false
+name    = "boot"
+
+[[bench]]
+harness = false
+name    = "code_index"
+
+[features]
+qmd = ["dep:chelix-qmd"]
+
+[lints]
+workspace = true

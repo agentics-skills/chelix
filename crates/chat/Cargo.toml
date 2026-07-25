@@ -1,0 +1,56 @@
+[package]
+edition.workspace    = true
+name                 = "chelix-chat"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+anyhow                = { workspace = true }
+async-trait           = { workspace = true }
+base64                = { workspace = true }
+chelix-agents         = { workspace = true }
+chelix-channels       = { workspace = true }
+chelix-common         = { workspace = true }
+chelix-config         = { workspace = true }
+chelix-memory         = { workspace = true }
+chelix-metrics        = { optional = true, workspace = true }
+chelix-plugins        = { workspace = true }
+chelix-projects       = { workspace = true }
+chelix-providers      = { workspace = true }
+chelix-service-traits = { workspace = true }
+chelix-sessions       = { workspace = true }
+chelix-skills         = { workspace = true }
+chelix-telegram       = { optional = true, workspace = true }
+chelix-tools          = { workspace = true }
+chelix-voice          = { workspace = true }
+chrono                = { features = ["serde"], optional = true, workspace = true }
+chrono-tz             = { workspace = true }
+futures               = { workspace = true }
+serde                 = { workspace = true }
+serde_json            = { workspace = true }
+thiserror             = { workspace = true }
+tokio                 = { workspace = true }
+tokio-stream          = { workspace = true }
+tokio-util            = { workspace = true }
+tracing               = { workspace = true }
+uuid                  = { workspace = true }
+
+[features]
+bundled-skills     = ["chelix-skills/bundled-skills"]
+metrics            = ["chelix-metrics/sqlite", "dep:chelix-metrics"]
+push-notifications = ["dep:chrono"]
+telegram           = ["dep:chelix-telegram"]
+web-ui             = ["dep:chrono"]
+
+default = []
+
+[dev-dependencies]
+async-stream    = { workspace = true }
+chelix-channels = { workspace = true }
+sqlx            = { workspace = true }
+tempfile        = { workspace = true }
+tokio           = { workspace = true }
+toml            = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,636 @@
+# Security Architecture
+
+Chelix is designed with a defense-in-depth security model. This document
+explains the key security features and provides guidance for production
+deployments.
+
+## Overview
+
+Chelix runs AI agents that can execute code and interact with external systems.
+This power requires multiple layers of protection:
+
+1. **Human-in-the-loop approval** for dangerous commands
+2. **Sandbox isolation** for command execution
+3. **Channel authorization** for external integrations
+4. **Rate limiting** to prevent resource abuse
+5. **Scope-based access control** for API authorization
+
+For marketplace-style skill/plugin hardening (trust gating, provenance pinning,
+drift re-trust, self-contained skill requirements, kill switch, audit log), see
+[Third-Party Skills Security](skills-security.md).
+
+## Command Execution Approval
+
+By default, Chelix requires explicit user approval before executing potentially
+dangerous commands. This "human-in-the-loop" design ensures the AI cannot take
+destructive actions without consent.
+
+### How It Works
+
+When the agent wants to run a command:
+
+1. The command is analyzed against approval policies
+2. If approval is required, the user sees a prompt in the UI. Channel-backed
+   sessions also receive a notification in the originating channel so the run
+   does not stall silently.
+3. The user can approve, deny, or modify the command
+4. Only approved commands execute
+
+For channel-backed sessions, operators can also use `/approvals` to list the
+pending requests for the current session, then `/approve N` or `/deny N`
+directly from Telegram or WhatsApp.
+
+### Approval Policies
+
+Configure approval behavior in `chelix.toml`:
+
+```toml
+[tools.execute_command]
+approval_mode = "never"    # default: do not request operator approval
+# approval_mode = "on-miss" # request approval for commands outside the safe list
+# approval_mode = "always"  # request approval for every command
+```
+
+The accepted values are exactly `"always"`, `"on-miss"`, and `"never"`.
+Unknown values cause configuration loading to fail.
+
+### Built-in Dangerous Command Blocklist
+
+Chelix maintains a safety floor: a hardcoded set of regex patterns for the most
+critical destructive commands (e.g. `rm -rf /`, `git reset --hard`,
+`DROP TABLE`, `mkfs`, `terraform destroy`). With `approval_mode = "on-miss"` or
+`"always"`, matching commands require approval. With `approval_mode = "never"`,
+matching commands are denied because no approval flow is enabled.
+
+Users can override specific patterns by adding matching entries to their
+`allowlist` in `chelix.toml`. Approval policy is evaluated before a command is
+routed to its configured tools service.
+
+### Destructive Command Guard (dcg)
+
+For broader coverage beyond the built-in blocklist, install the
+[Destructive Command Guard](https://github.com/Dicklesworthstone/destructive_command_guard)
+(dcg) as a hook. dcg adds 49+ pattern categories including heredoc/inline-script
+scanning, database, cloud, and infrastructure patterns.
+
+See
+[Hooks: Destructive Command Guard](hooks.md#recommended-destructive-command-guard-dcg)
+for setup instructions.
+
+dcg complements (does not replace) sandbox isolation and the approval system.
+
+## Sandbox Isolation
+
+The global `sandbox.mode` controls every command execution path. With `"On"`,
+Chelix starts only when it can select a filesystem-isolated Apple Container,
+Podman, or Docker runtime. With `"Off"`, commands execute directly on the
+host. There are no agent, session, heartbeat, project, chat, cron, skill, or
+browser sandbox overrides.
+
+Filesystem isolation protects your host system from:
+
+- Accidental file deletion or modification
+- Malicious code execution
+- Resource exhaustion (memory, CPU, disk)
+
+See [sandbox.md](sandbox.md) for backend configuration.
+
+Agent-facing `execute_command` runs through the managed tools service inside the
+selected execution environment. With sandboxing enabled, the RMUX PTY and its
+interactive shell stay inside that sandbox. The returned numeric `terminalId`
+can be passed to `read_terminal_output` for commands that outlive the initial
+timeout or run in background mode. Reusing a terminal also reuses its current
+directory, exported variables, shell functions, jobs, child processes, and
+retained output, so a terminal should be treated as persistent session state
+rather than an isolated one-shot command.
+
+### Terminal Output and Secret Redaction
+
+Terminal clients receive the original PTY byte stream so the web terminal can
+render the same output produced by the shell. Secret redaction is applied when
+`execute_command` or `read_terminal_output` converts a tools-service response
+into the agent-facing tool result. That redacted result is the value persisted
+in tool history and supplied to the model.
+
+Only values of enabled environment variables marked `secret = true` are
+replaced with `[REDACTED]`. Values marked `secret = false` remain unchanged.
+The `secret` flag therefore controls the agent/history boundary; it does not
+modify the terminal's PTY stream or the output shown by terminal clients.
+
+### Resource Limits
+
+```toml
+[sandbox.resource_limits]
+memory_limit = "512M"
+cpu_quota = 1.0
+pids_max = 256
+```
+
+### Network Isolation
+
+Docker and Podman sandboxes use `sandbox.network` as the container runtime
+network. The default is `bridge`, and Chelix passes the value to Docker/Podman
+as `--network=<name>`. Use runtime networks, firewall rules, or a dedicated
+network such as `none` when a sandbox must not reach external services.
+
+## Channel Authorization
+
+Channels (Telegram, Slack, etc.) allow external parties to interact with your
+Chelix agent. This requires careful access control.
+
+### Sender Allowlisting
+
+When a new sender contacts the agent through a channel, they are placed in a
+pending queue. You must explicitly approve or deny each sender before they can
+interact with the agent.
+
+```
+UI: Settings > Channels > Pending Senders
+```
+
+### Per-Channel Permissions
+
+Each channel can have different permission levels:
+
+- **Read-only**: Sender can ask questions, agent responds
+- **Execute**: Sender can trigger actions (with approval still required)
+- **Admin**: Full access including configuration changes
+
+### Channel Isolation
+
+Channels run in isolated sessions by default. A malicious message from one
+channel cannot affect another channel's session or the main UI session.
+
+## Cron Job Security
+
+Scheduled tasks (cron jobs) can run agent turns automatically. Security
+considerations:
+
+### Rate Limiting
+
+To prevent prompt injection attacks from rapidly creating many cron jobs:
+
+```toml
+[cron]
+rate_limit_max = 10           # max jobs per window
+rate_limit_window_secs = 60   # window duration (1 minute)
+```
+
+This limits job creation to 10 per minute by default. System jobs (like
+heartbeat) bypass this limit.
+
+### Job Notifications
+
+When cron jobs are created, updated, or removed, Chelix broadcasts events:
+
+- `cron.job.created` - A new job was created
+- `cron.job.updated` - An existing job was modified
+- `cron.job.removed` - A job was deleted
+
+Monitor these events to detect suspicious automated job creation.
+
+### Sandbox Policy for Cron Jobs
+
+Cron jobs use the same global sandbox policy as every other command execution
+path. A cron job cannot override the mode, backend, or image:
+
+```toml
+[sandbox]
+mode = "On"
+```
+
+With `"On"`, cron command execution uses the selected filesystem-isolated
+runtime. With `"Off"`, it executes directly on the host.
+
+## Identity Protection
+
+The agent's identity fields (name, emoji, creature, vibe) are stored in
+`IDENTITY.md` YAML frontmatter at the workspace root (`data_dir`). User profile
+fields are stored in `USER.md` YAML frontmatter at the same location. The
+personality text is stored separately in `SOUL.md` at the workspace root
+(`data_dir`). Tool guidance is stored in `TOOLS.md` at the workspace root
+(`data_dir`) and is injected as workspace context in the system prompt.
+Modifying identity requires the `operator.write` scope, not just
+`operator.read`.
+
+This prevents prompt injection attacks from subtly modifying the agent's
+personality to make it more compliant with malicious requests.
+
+## API Authorization
+
+The gateway API uses role-based access control with scopes:
+
+| Scope                | Permissions                                      |
+| -------------------- | ------------------------------------------------ |
+| `operator.read`      | View status, list jobs, read history             |
+| `operator.write`     | Send messages, create jobs, modify configuration |
+| `operator.admin`     | All permissions (includes all other scopes)      |
+| `operator.approvals` | Handle command approval requests                 |
+| `operator.pairing`   | Manage device/node pairing                       |
+
+### API Keys
+
+API keys authenticate external tools and scripts connecting to Chelix. Keys
+**must specify at least one scope** — keys without scopes are denied access
+(least-privilege by default).
+
+#### Creating API Keys
+
+**Web UI**: Settings > Security > API Keys
+
+1. Enter a label describing the key's purpose
+2. Select the required scopes
+3. Click "Generate key"
+4. **Copy the key immediately** — it's only shown once
+
+**CLI**:
+
+```bash
+# Scoped key (comma-separated scopes)
+chelix auth create-api-key --label "Monitor" --scopes "operator.read"
+chelix auth create-api-key --label "Automation" --scopes "operator.read,operator.write"
+chelix auth create-api-key --label "CI pipeline" --scopes "operator.admin"
+```
+
+#### Using API Keys
+
+Pass the key in the `connect` handshake over WebSocket:
+
+```json
+{
+  "method": "connect",
+  "params": {
+    "client": { "id": "my-tool", "version": "1.0.0" },
+    "auth": { "api_key": "mk_abc123..." }
+  }
+}
+```
+
+Or use Bearer authentication for REST API calls:
+
+```
+Authorization: Bearer mk_abc123...
+```
+
+#### Scope Recommendations
+
+| Use Case             | Recommended Scopes                    |
+| -------------------- | ------------------------------------- |
+| Read-only monitoring | `operator.read`                       |
+| Automated workflows  | `operator.read`, `operator.write`     |
+| Approval handling    | `operator.read`, `operator.approvals` |
+| Full automation      | `operator.admin`                      |
+
+**Best practice**: Use the minimum necessary scopes. If a key only needs to read
+status and logs, don't grant `operator.write`.
+
+#### Backward Compatibility
+
+Existing API keys created without scopes will be **denied access** until scopes
+are added. Re-create keys with explicit scopes to restore access.
+
+## Encryption at Rest
+
+Sensitive data in the SQLite database (environment variables containing API
+keys, tokens, etc.) is encrypted at rest using XChaCha20-Poly1305. The
+encryption key is derived from the user's password via Argon2id.
+
+The vault initializes when a first password is set (during setup or later in
+Settings > Authentication), unseals automatically on login, and re-seals on
+server restart. A recovery key is provided at initialization for emergency
+access.
+
+When the vault is sealed, a middleware layer blocks vault-protected API requests
+with `423 Locked`. Session history and bootstrap endpoints remain available
+because those payloads are not yet encrypted at rest.
+
+For full details on the key hierarchy, vault states, API endpoints, and
+cryptographic parameters, see [Encryption at Rest (Vault)](vault.md).
+
+## Network Security
+
+### TLS Encryption
+
+HTTPS is enabled by default with auto-generated certificates:
+
+```toml
+[tls]
+enabled = true
+auto_generate = true
+```
+
+For production, use certificates from a trusted CA or configure custom
+certificates. The auto-generated certificate is intended for localhost and
+private-network access; importing the generated CA does not make the certificate
+valid for public IP addresses or domains that are not listed in its SANs. IP
+address URLs require a certificate with that address as an IP SAN; set
+`tls.public_ip` to include a direct-access VPS IP in Chelix's auto-generated
+certificate. Regular public TLS deployments should use a domain name. For VPS
+and other internet-facing deployments, terminate TLS at a reverse proxy or
+configure `tls.cert_path` and `tls.key_path` with a certificate issued for your
+public hostname.
+
+### Origin Validation
+
+WebSocket connections validate the `Origin` header to prevent cross-site
+WebSocket hijacking (CSWSH). Connections from untrusted origins are rejected.
+
+## Authentication
+
+Chelix uses a unified auth gate that applies a single `check_auth()` function to
+every request. This prevents split-brain bugs where different code paths
+disagree on auth status.
+
+For full details — including the decision matrix, credential types, API key
+scopes, session management endpoints, and WebSocket auth — see the dedicated
+[Authentication](authentication.md) page.
+
+### Three-Tier Model (summary)
+
+| Tier  | Condition                                  | Behaviour                             |
+| ----- | ------------------------------------------ | ------------------------------------- |
+| **1** | Password/passkey is configured             | Auth **always** required (any IP)     |
+| **2** | No credentials + direct local connection   | Full access (dev convenience)         |
+| **3** | No credentials + remote/proxied connection | Onboarding only (setup code required) |
+
+## HTTP Endpoint Throttling
+
+Chelix includes built-in per-IP endpoint throttling to reduce brute force
+attempts and traffic spikes, but only when auth is required for the current
+request.
+
+Throttling is bypassed when a request is already authenticated, when auth is
+explicitly disabled, or when setup is incomplete and local Tier-2 access is
+allowed.
+
+### Default Limits
+
+| Scope                  | Default                     |
+| ---------------------- | --------------------------- |
+| `POST /api/auth/login` | 5 requests per 60 seconds   |
+| Other `/api/auth/*`    | 120 requests per 60 seconds |
+| Other `/api/*`         | 180 requests per 60 seconds |
+| `/ws/chat` upgrade     | 30 requests per 60 seconds  |
+| `/ws` upgrade          | 30 requests per 60 seconds  |
+
+### When Limits Are Hit
+
+- API endpoints return `429 Too Many Requests`
+- Responses include `Retry-After`
+- JSON responses include `retry_after_seconds`
+
+### Reverse Proxy Behavior
+
+When `CHELIX_BEHIND_PROXY=true`, throttling is keyed by forwarded client IP
+headers (`X-Forwarded-For`, `X-Real-IP`, `CF-Connecting-IP`) instead of the
+direct socket address.
+
+### Production Guidance
+
+Built-in throttling is the first layer. For internet-facing deployments, add
+edge rate limits at your reverse proxy or WAF as a second layer (IP reputation,
+burst controls, geo rules, bot filtering).
+
+## Reverse Proxy Deployments
+
+Running Chelix behind a reverse proxy (Caddy, nginx, Traefik, etc.) requires
+understanding how authentication interacts with loopback connections.
+
+### The problem
+
+When Chelix binds to `127.0.0.1` and a proxy on the same machine forwards
+traffic to it, **every** incoming TCP connection appears to originate from
+`127.0.0.1` — including requests from the public internet. A naive "trust all
+loopback connections" check would bypass authentication for all proxied traffic.
+
+This is the same class of vulnerability as authentication token exfiltration and
+cross-site WebSocket hijacking attacks that can turn a trusted local service
+into a remote execution target.
+
+### How Chelix handles it
+
+Chelix uses the per-request `is_local_connection()` check described above. Most
+reverse proxies add forwarding headers or change the `Host` header, which
+automatically triggers the "remote" classification.
+
+For proxies that **strip all signals** (e.g. a bare nginx `proxy_pass` that
+rewrites `Host` to the upstream address and adds no `X-Forwarded-For`), use the
+`CHELIX_BEHIND_PROXY` environment variable as a hard override:
+
+```bash
+CHELIX_BEHIND_PROXY=true chelix
+```
+
+When this variable is set, **all** connections are treated as remote — no
+loopback bypass, no exceptions.
+
+### Deploying behind a proxy
+
+1. **Set `CHELIX_BEHIND_PROXY=true`** if your proxy does not add forwarding
+   headers (safest option — eliminates any ambiguity).
+
+2. **Set a password or register a passkey** during initial setup. Once a
+   password is configured (Tier 1), authentication is required for all traffic
+   regardless of `is_local_connection()`.
+
+3. **WebSocket proxying** must preserve browser origin host info (`Host`, or
+   `X-Forwarded-Host` if `Host` is rewritten). Chelix validates same-origin on
+   WebSocket upgrades to prevent cross-site WebSocket hijacking (CSWSH).
+
+4. **TLS termination** should happen at the proxy. Run Chelix with `--no-tls`
+   (or `CHELIX_NO_TLS=true`) in this mode.
+
+   If your browser is being redirected to `https://<domain>:13131`, Chelix TLS
+   is still enabled while your proxy upstream is plain HTTP.
+
+5. **Advanced TLS upstream mode** (optional): if your proxy connects to Chelix
+   using HTTPS upstream (or TCP TLS passthrough), you may keep Chelix TLS
+   enabled. Set `CHELIX_ALLOW_TLS_BEHIND_PROXY=true` to acknowledge this
+   non-default setup.
+
+### Nginx (direct config example)
+
+If HTTP works but WebSockets fail, make sure your location block includes
+`proxy_http_version 1.1;` and upgrade headers.
+
+```nginx
+location / {
+    proxy_pass http://172.17.0.1:13131;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Host $http_host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Real-IP $remote_addr;
+
+    # WebSocket upgrade support
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+}
+```
+
+If you use `$connection_upgrade`, define it once in the `http {}` block:
+
+```nginx
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+```
+
+### Nginx Proxy Manager (known-good headers)
+
+If WebSockets fail behind NPM while HTTP works, ensure:
+
+- Chelix runs with `CHELIX_BEHIND_PROXY=true`
+- For standard edge TLS termination, Chelix runs with `--no-tls`
+- NPM preserves browser host/origin context
+
+Use this in NPM's **Advanced** field:
+
+```nginx
+proxy_set_header Host $http_host;
+proxy_set_header X-Forwarded-Host $http_host;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection "upgrade";
+```
+
+**Why `$http_host` instead of `$host`?** Nginx's `$host` strips the port, while
+`$http_host` preserves it. Chelix validates that the WebSocket `Origin` header
+matches the `Host` header (including port). On non-standard ports (e.g., `:444`
+instead of `:443`), using `$host` causes a mismatch and WebSocket connections
+are rejected with "cross-origin WebSocket upgrade".
+
+Upstream scheme guidance:
+
+- **Edge TLS termination (most setups)**: proxy to `http://<chelix-host>:13131`
+  with Chelix started using `--no-tls`
+- **HTTPS upstream / TLS passthrough**: proxy to `https://<chelix-host>:13131`
+  and set `CHELIX_ALLOW_TLS_BEHIND_PROXY=true`
+
+### Passkeys Behind Proxies (Host Changes)
+
+WebAuthn passkeys are bound to an RP ID (domain identity), not just the server
+process. In practice:
+
+- If users move from one hostname to another, old passkeys for the old host will
+  not authenticate on the new host.
+- If a proxy rewrites `Host` and does not preserve browser host context, passkey
+  routes can fail with "no passkey config for this hostname".
+
+For stable proxy deployments, set your public URL in `chelix.toml`:
+
+```toml
+[server]
+external_url = "https://chat.example.com"
+```
+
+Chelix derives the WebAuthn RP ID (domain) and origin from this URL
+automatically. The `CHELIX_EXTERNAL_URL` environment variable takes precedence
+over the config field, which is useful for container deployments:
+
+```bash
+CHELIX_BEHIND_PROXY=true
+CHELIX_NO_TLS=true
+CHELIX_EXTERNAL_URL=https://chat.example.com
+```
+
+For fine-grained control (e.g. when the RP ID differs from the URL host), the
+existing env vars still work and take precedence after `external_url`:
+
+```bash
+CHELIX_WEBAUTHN_RP_ID=chat.example.com
+CHELIX_WEBAUTHN_ORIGIN=https://chat.example.com
+```
+
+Migration guidance when changing host/domain:
+
+1. Keep password login enabled during migration.
+2. Deploy with the new `server.external_url` (or env var equivalent).
+3. Ask users to register a new passkey on the new host.
+4. Remove old passkeys after new-host login is confirmed.
+
+## Production Recommendations
+
+### 1. Enable Authentication
+
+By default, Chelix requires a password when accessed from non-localhost:
+
+```toml
+[auth]
+disabled = false  # keep this false in production
+```
+
+### 2. Use Sandbox Isolation
+
+Always run with sandbox enabled in production:
+
+```toml
+[sandbox]
+mode = "On"
+backend = "auto"  # uses strongest available
+```
+
+### 3. Limit Rate Limits
+
+Tighten rate limits for untrusted environments:
+
+```toml
+[cron]
+rate_limit_max = 5
+rate_limit_window_secs = 300  # 5 per 5 minutes
+```
+
+### 4. Review Channel Senders
+
+Regularly audit approved senders and revoke access for unknown parties.
+
+### 5. Monitor Events
+
+Watch for these suspicious patterns:
+
+- Rapid cron job creation
+- Identity modification attempts
+- Unusual command patterns in approval requests
+- New channel senders from unexpected sources
+
+### 6. Network Segmentation
+
+Run Chelix on a private network or behind a reverse proxy with:
+
+- IP allowlisting
+- Rate limiting
+- Web Application Firewall (WAF) rules
+
+### 7. Keep Software Updated
+
+Subscribe to security advisories and update promptly when vulnerabilities are
+disclosed.
+
+## Release Signing and Verification
+
+All release artifacts are signed with three independent methods:
+
+1. **[GitHub artifact attestations](https://github.com/agentics-skills/chelix/attestations)**
+   (automated in CI) — cryptographic provenance records tied to the repository,
+   workflow, and commit SHA; provides SLSA v1.0 Build Level 2 guarantees;
+   verifiable with `gh attestation verify`
+2. **Sigstore keyless signing** (automated in CI) — proves the artifact was
+   built by the `agentics-skills/chelix` GitHub Actions pipeline; recorded in
+   Sigstore's Rekor transparency log
+3. **GPG signing** (maintainer's YubiKey hardware key) — proves a specific
+   maintainer authorized the release
+
+Checksums (SHA-256 and SHA-512) are generated for every artifact.
+
+See [Release Verification](release-verification.md) for detailed verification
+instructions, artifact file extensions, and maintainer signing workflow.
+
+## Reporting Security Issues
+
+Report security vulnerabilities privately to the maintainers. Do not open public
+issues for security bugs.
+
+See the repository's SECURITY.md for contact information.

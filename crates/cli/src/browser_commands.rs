@@ -1,0 +1,78 @@
+//! CLI subcommands for browser configuration management.
+
+use {anyhow::Result, clap::Subcommand};
+
+#[derive(Subcommand)]
+pub enum BrowserAction {
+    /// Show current browser configuration status.
+    Status,
+    /// Enable browser support.
+    Enable,
+    /// Disable browser support.
+    Disable,
+}
+
+pub fn handle_browser(action: BrowserAction) -> Result<()> {
+    match action {
+        BrowserAction::Status => status(),
+        BrowserAction::Enable => enable(),
+        BrowserAction::Disable => disable(),
+    }
+}
+
+fn status() -> Result<()> {
+    let config = chelix_config::discover_and_load()?;
+    let browser = &config.tools.browser;
+
+    println!("Browser configuration:");
+    println!("  enabled:        {}", browser.enabled);
+    println!("  headless:       {}", browser.headless);
+    println!(
+        "  viewport:       {}x{}",
+        browser.viewport_width, browser.viewport_height
+    );
+    println!("  max_instances:  {}", browser.max_instances);
+
+    if let Some(ref path) = browser.chrome_path {
+        println!("  chrome_path:    {}", path);
+    } else {
+        println!("  chrome_path:    (auto-detect)");
+    }
+
+    let detected = chelix_browser::detect::detect_browsers(browser.chrome_path.as_deref());
+    if detected.is_empty() {
+        println!("  detected:       none");
+    } else {
+        let labels = chelix_browser::detect::installed_browser_labels(&detected);
+        println!("  detected:       {}", labels.join(", "));
+    }
+
+    println!("  sandbox_image:  {}", browser.sandbox_image);
+    println!("  sandbox_mode:   {}", config.sandbox.mode);
+
+    if !browser.allowed_domains.is_empty() {
+        println!("  allowed_domains: {:?}", browser.allowed_domains);
+    }
+
+    Ok(())
+}
+
+fn enable() -> Result<()> {
+    let path = chelix_config::update_config(|config| {
+        config.tools.browser.enabled = true;
+    })?;
+    println!("Browser support enabled.");
+    println!("Config saved to: {}", path.display());
+    println!("\nRestart the gateway for changes to take effect.");
+    Ok(())
+}
+
+fn disable() -> Result<()> {
+    let path = chelix_config::update_config(|config| {
+        config.tools.browser.enabled = false;
+    })?;
+    println!("Browser support disabled.");
+    println!("Config saved to: {}", path.display());
+    println!("\nRestart the gateway for changes to take effect.");
+    Ok(())
+}

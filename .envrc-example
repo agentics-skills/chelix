@@ -1,0 +1,32 @@
+# Copy to .envrc and fill in your values, then run `direnv allow`.
+# Variables use the CHELIX_<SECTION>__<FIELD> override convention
+# which maps directly to chelix.toml config sections.
+
+# ── Identity (skip onboarding name prompts) ──────────────────────
+export CHELIX_IDENTITY__NAME="chelix"          # bot display name
+export CHELIX_IDENTITY__EMOJI=""               # bot emoji
+export CHELIX_USER__NAME=""                    # your name
+
+# ── LLM Provider API keys ────────────────────────────────────────
+export ANTHROPIC_API_KEY=""
+export OPENAI_API_KEY=""
+export GEMINI_API_KEY=""                       # Google Gemini (or use GOOGLE_API_KEY)
+export XAI_API_KEY=""
+export OPENROUTER_API_KEY=""
+
+# ── Voice: TTS ───────────────────────────────────────────────────
+export ELEVENLABS_API_KEY=""
+# export CHELIX_VOICE__TTS__PROVIDER="elevenlabs"
+# export CHELIX_VOICE__TTS__ELEVENLABS__VOICE_ID=""
+
+# ── Voice: STT ───────────────────────────────────────────────────
+export DEEPGRAM_API_KEY=""
+# export CHELIX_VOICE__STT__PROVIDER="deepgram"   # default is "whisper" (local)
+
+# ── Web search ───────────────────────────────────────────────────
+
+# ── Restrict offered providers (optional) ────────────────────────
+# export CHELIX_PROVIDERS__OFFERED='["anthropic","openai","gemini"]'
+
+# ── Skip onboarding entirely (optional) ─────────────────────────
+# export SKIP_ONBOARDING=1

@@ -1,0 +1,54 @@
+# Chelix Docker Compose example
+#
+# Usage:
+#   docker compose up -d
+#   open https://localhost:13131
+#
+# For an unattended first boot, set CHELIX_PASSWORD, CHELIX_PROVIDER, and
+# CHELIX_API_KEY in the service environment below.
+#
+# On first launch, a setup code is printed to the logs:
+#   docker compose logs chelix
+#
+# Configuration and data are stored in local directories:
+#   ./config - chelix.toml, credentials.json, mcp-servers.json
+#   ./data   - databases, sessions, memory files
+#
+# For Podman, see the rootless/rootful socket paths below.
+
+services:
+  chelix:
+    image: ghcr.io/agentics-skills/chelix:latest
+    container_name: chelix
+    restart: unless-stopped
+    ports:
+      - "13131:13131"
+      - "13132:13132"
+      - "1455:1455"   # OAuth callback (OpenAI Codex, etc.)
+    environment:
+      # Uncomment for unattended setup.
+      # CHELIX_PASSWORD: change-me
+      # CHELIX_PROVIDER: openai
+      # CHELIX_API_KEY: sk-...
+    volumes:
+      # Configuration files (editable from host)
+      - ./config:/home/chelix/.config/chelix
+
+      # Data directory (databases, sessions, memory)
+      - ./data:/home/chelix/.chelix
+
+      # Docker socket for sandbox command execution
+      # Without this, the agent cannot run shell commands in isolated containers
+      - /var/run/docker.sock:/var/run/docker.sock
+
+      # For Podman rootless, use:
+      # - /run/user/1000/podman/podman.sock:/var/run/docker.sock
+      #
+      # For Podman rootful, use:
+      # - /run/podman/podman.sock:/var/run/docker.sock
+    healthcheck:
+      test: curl -Ssf http://localhost:13131/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

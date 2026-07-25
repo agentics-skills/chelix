@@ -1,0 +1,115 @@
+[package]
+edition.workspace    = true
+name                 = "chelix-httpd"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+anyhow                = { workspace = true }
+async-graphql         = { optional = true, workspace = true }
+async-graphql-axum    = { optional = true, workspace = true }
+async-trait           = { workspace = true }
+axum                  = { workspace = true }
+axum-extra            = { features = ["cookie"], workspace = true }
+base64                = { workspace = true }
+bytes                 = { workspace = true }
+chelix-agents         = { workspace = true }
+chelix-auth           = { workspace = true }
+chelix-browser        = { workspace = true }
+chelix-channels       = { workspace = true }
+chelix-common         = { workspace = true }
+chelix-config         = { workspace = true }
+chelix-cron           = { workspace = true }
+chelix-gateway        = { workspace = true }
+chelix-graphql        = { optional = true, workspace = true }
+chelix-matrix         = { optional = true, workspace = true }
+chelix-metrics        = { optional = true, workspace = true }
+chelix-msteams        = { optional = true, workspace = true }
+chelix-portable       = { workspace = true }
+chelix-protocol       = { workspace = true }
+chelix-service-traits = { workspace = true }
+chelix-sessions       = { workspace = true }
+chelix-skills         = { workspace = true }
+chelix-slack          = { optional = true, workspace = true }
+chelix-telephony      = { optional = true, workspace = true }
+chelix-tls            = { optional = true, workspace = true }
+chelix-tools          = { workspace = true }
+chelix-vault          = { optional = true, workspace = true }
+chelix-webhooks       = { workspace = true }
+chrono                = { features = ["serde"], optional = true, workspace = true }
+chrono-tz             = { workspace = true }
+dashmap               = { workspace = true }
+futures               = { workspace = true }
+hostname              = { workspace = true }
+ipnet                 = { workspace = true }
+rand                  = { workspace = true }
+reqwest               = { workspace = true }
+rustls                = { optional = true, workspace = true }
+secrecy               = { workspace = true }
+serde                 = { workspace = true }
+serde_json            = { workspace = true }
+sysinfo               = { workspace = true }
+tempfile              = { workspace = true }
+thiserror             = { workspace = true }
+time                  = { workspace = true }
+tokio                 = { workspace = true }
+tokio-tungstenite     = { workspace = true }
+tokio-util            = { workspace = true }
+toml                  = { workspace = true }
+tower-http            = { features = ["catch-panic", "compression-gzip", "compression-zstd", "cors", "limit", "request-id", "sensitive-headers", "set-header", "trace"], workspace = true }
+tracing               = { workspace = true }
+url                   = { workspace = true }
+urlencoding           = { workspace = true }
+uuid                  = { workspace = true }
+webauthn-rs           = { features = ["danger-allow-state-serialisation"], workspace = true }
+
+[features]
+default = [
+  "discord",
+  "graphql",
+  "matrix",
+  "mdns",
+  "metrics",
+  "msteams",
+  "nostr",
+  "prometheus",
+  "push-notifications",
+  "signal",
+  "slack",
+  "telephony",
+  "tls",
+  "vault",
+  "voice",
+  "web-ui",
+]
+discord = ["chelix-gateway/discord"]
+graphql = [
+  "chelix-gateway/graphql",
+  "dep:async-graphql",
+  "dep:async-graphql-axum",
+  "dep:chelix-graphql",
+]
+matrix = ["chelix-gateway/matrix", "dep:chelix-matrix"]
+mdns = ["chelix-gateway/mdns"]
+metrics = ["chelix-gateway/metrics", "dep:chelix-metrics"]
+msteams = ["chelix-gateway/msteams", "dep:chelix-msteams"]
+nostr = ["chelix-gateway/nostr"]
+prometheus = ["chelix-gateway/prometheus", "metrics"]
+push-notifications = ["chelix-gateway/push-notifications", "dep:chrono"]
+signal = ["chelix-gateway/signal"]
+slack = ["chelix-gateway/slack", "dep:chelix-slack"]
+telephony = ["chelix-gateway/telephony", "dep:chelix-telephony"]
+tls = ["chelix-gateway/tls", "dep:chelix-tls", "dep:rustls"]
+vault = ["chelix-gateway/vault", "dep:chelix-vault"]
+voice = ["chelix-gateway/voice"]
+web-ui = ["chelix-gateway/web-ui"]
+
+[dev-dependencies]
+chelix-code-index.workspace = true
+chelix-providers            = { workspace = true }
+chelix-web                  = { workspace = true }
+serial_test                 = { workspace = true }
+sqlx                        = { workspace = true }
+
+[lints]
+workspace = true

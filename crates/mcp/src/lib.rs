@@ -1,0 +1,37 @@
+//! MCP (Model Context Protocol) client support for chelix.
+//!
+//! This crate provides:
+//! - JSON-RPC 2.0 over stdio transport (`transport`)
+//! - MCP client for protocol handshake and tool interactions (`client`)
+//! - Tool bridge adapting MCP tools to the agent tool interface (`tool_bridge`)
+//! - Server lifecycle management (`manager`)
+//! - Persisted server registry (`registry`)
+//!
+//! Remote HTTP/SSE servers keep secret-bearing values (URLs, header values)
+//! in secret-aware types and only expose sanitized display projections.
+
+pub mod auth;
+pub mod client;
+pub mod config_parsing;
+pub mod error;
+pub mod legacy_sse_transport;
+pub mod manager;
+pub mod registry;
+pub mod remote;
+pub mod sse_transport;
+pub mod tool_bridge;
+pub mod traits;
+pub mod transport;
+pub mod types;
+
+pub use {
+    auth::{McpAuthProvider, McpAuthState, McpOAuthOverride, McpOAuthProvider, SharedAuthProvider},
+    client::{McpClient, McpClientState},
+    config_parsing::{merge_env_overrides, parse_server_config},
+    error::{Context, Error, Result},
+    manager::McpManager,
+    registry::{McpOAuthConfig, McpRegistry, McpServerConfig, TransportType},
+    tool_bridge::{McpAgentTool, McpToolBridge},
+    traits::{McpClientTrait, McpTransport},
+    types::{McpManagerError, McpTransportError},
+};

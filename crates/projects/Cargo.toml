@@ -1,0 +1,26 @@
+[package]
+edition.workspace = true
+name              = "chelix-projects"
+version.workspace = true
+
+[dependencies]
+async-trait    = { workspace = true }
+chelix-metrics = { optional = true, workspace = true }
+serde          = { workspace = true }
+serde_json     = { workspace = true }
+sqlx           = { workspace = true }
+thiserror      = { workspace = true }
+tokio          = { workspace = true }
+toml           = { workspace = true }
+tracing        = { workspace = true }
+uuid           = { workspace = true }
+
+[features]
+default = []
+metrics = ["dep:chelix-metrics"]
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

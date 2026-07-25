@@ -1,0 +1,32 @@
+[package]
+edition.workspace    = true
+name                 = "chelix-provider-setup"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+async-trait           = { workspace = true }
+chelix-agents         = { workspace = true }
+chelix-config         = { workspace = true }
+chelix-oauth          = { workspace = true }
+chelix-providers      = { workspace = true }
+chelix-service-traits = { workspace = true }
+chelix-vault          = { optional = true, workspace = true }
+reqwest               = { workspace = true }
+secrecy               = { workspace = true }
+serde                 = { workspace = true }
+serde_json            = { workspace = true }
+thiserror             = { workspace = true }
+tokio                 = { workspace = true }
+tracing               = { workspace = true }
+url                   = { workspace = true }
+
+[features]
+vault = ["dep:chelix-vault"]
+
+[dev-dependencies]
+axum     = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

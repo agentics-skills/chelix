@@ -1,0 +1,31 @@
+[package]
+description       = "Metrics collection and export for chelix"
+edition.workspace = true
+name              = "chelix-metrics"
+version.workspace = true
+
+[dependencies]
+async-trait                 = { workspace = true }
+metrics                     = { workspace = true }
+metrics-exporter-prometheus = { optional = true, workspace = true }
+metrics-tracing-context     = { optional = true, workspace = true }
+once_cell                   = { workspace = true }
+serde                       = { workspace = true }
+serde_json                  = { workspace = true }
+sqlx                        = { optional = true, workspace = true }
+thiserror                   = { workspace = true }
+tokio                       = { workspace = true }
+tracing                     = { workspace = true }
+tracing-subscriber          = { features = ["env-filter"], optional = true, workspace = true }
+
+[features]
+default    = []
+prometheus = ["dep:metrics-exporter-prometheus"]
+sqlite     = ["dep:sqlx"]
+tracing    = ["dep:metrics-tracing-context", "dep:tracing-subscriber"]
+
+[dev-dependencies]
+tokio = { features = ["macros", "rt-multi-thread"], workspace = true }
+
+[lints]
+workspace = true

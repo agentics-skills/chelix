@@ -1,0 +1,797 @@
+/* ══ Mobile Responsive Styles ══ */
+/* Mobile-first approach: base styles are for mobile, md: prefix for desktop */
+
+/* ── Safe Area Insets ── */
+
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --mobile-viewport-height: 100vh;
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --mobile-viewport-height: 100dvh;
+  }
+}
+
+/* Adjust body padding for safe areas */
+body {
+  padding-top: var(--safe-top);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+/* Disable double-tap-to-zoom (pinch-zoom is blocked via the viewport meta). */
+html {
+  touch-action: manipulation;
+}
+
+/* ── Navigation Panel Mobile Styles ── */
+
+@media (max-width: 767px) {
+  html,
+  body {
+    height: var(--mobile-viewport-height);
+    min-height: var(--mobile-viewport-height);
+  }
+
+  /* Navigation as slide-out drawer on mobile */
+  .nav-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 100;
+    width: 260px;
+    transform: translateX(-100%);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+    pointer-events: none;
+  }
+
+  .nav-panel.open {
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+
+  /* Navigation overlay */
+  .nav-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.25s, visibility 0.25s;
+  }
+
+  .nav-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  /* Larger touch targets for nav links */
+  .nav-link {
+    padding: 14px 18px;
+    min-height: 48px;
+  }
+
+  /* Show burger button on mobile */
+  .burger-btn {
+    display: flex;
+  }
+}
+
+@media (min-width: 768px) {
+  /* Desktop: nav panel visible by default */
+  .nav-panel {
+    transform: translateX(0);
+    position: relative;
+  }
+
+  .nav-panel.hidden {
+    display: none;
+  }
+
+  /* Hide overlay on desktop */
+  .nav-overlay {
+    display: none;
+  }
+
+  /* Optional: hide burger on desktop if nav is always visible */
+  /* .burger-btn { display: none; } */
+}
+
+/* ── Sessions Panel Mobile Styles ── */
+
+@media (max-width: 767px) {
+  /* Sessions as bottom sheet on mobile */
+  #sessionsPanel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 70vh;
+    max-height: calc(100vh - 60px - var(--safe-top));
+    z-index: 90;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 16px 16px 0 0;
+    border-right: none;
+    border-top: 1px solid var(--border);
+    padding-bottom: var(--safe-bottom);
+    pointer-events: none;
+    visibility: hidden;
+  }
+
+  #sessionsPanel.open {
+    transform: translateY(0);
+    pointer-events: auto;
+    visibility: visible;
+  }
+
+  /* Bottom sheet drag handle */
+  #sessionsPanel::before {
+    content: "";
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 36px;
+    height: 4px;
+    background: var(--border-strong);
+    border-radius: 2px;
+  }
+
+  /* Sessions overlay */
+  .sessions-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 89;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.25s, visibility 0.25s;
+  }
+
+  .sessions-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  /* Larger session items on mobile */
+  .session-item {
+    padding: 12px 14px;
+    min-height: 56px;
+  }
+
+  /* Session actions always visible on touch */
+  .session-actions {
+    opacity: 1;
+  }
+}
+
+@media (min-width: 768px) {
+  #sessionsPanel {
+    position: relative;
+    transform: translateY(0);
+    height: auto;
+    max-height: none;
+    border-radius: 0;
+  }
+
+  #sessionsPanel::before {
+    display: none;
+  }
+
+  .sessions-overlay {
+    display: none;
+  }
+}
+
+/* ── Header Mobile Adjustments ── */
+
+@media (max-width: 767px) {
+  body > header {
+    /* Super low top bar to save vertical space. */
+    padding-top: calc(1px + var(--safe-top)) !important;
+    padding-bottom: 1px !important;
+    padding-left: calc(6px + var(--safe-left));
+    padding-right: calc(6px + var(--safe-right));
+    gap: 3px !important;
+  }
+
+  header #titleLink {
+    font-size: 0.75rem !important;
+  }
+
+  /* Hide bot name on mobile, keep emoji only */
+  #titleName {
+    display: none;
+  }
+
+  #memoryInfo,
+  #statusText {
+    display: none;
+  }
+
+  /* Hide theme toggle on mobile */
+  .theme-toggle {
+    display: none;
+  }
+
+  /* Replace desktop header actions with a compact mobile menu. */
+  .header-actions,
+  #logoutBtn {
+    display: none;
+  }
+
+  #mobileMenuBtn {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--muted);
+    width: 21px;
+    height: 15px;
+    min-height: 0;
+    padding: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+  }
+
+  #mobileMenuBtn:hover {
+    color: var(--text);
+    border-color: var(--border-strong);
+    background: var(--bg-hover);
+  }
+
+  .mobile-menu-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 92;
+    background: rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s, visibility 0.2s;
+  }
+
+  .mobile-menu-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .mobile-menu-panel {
+    position: fixed;
+    top: calc(var(--safe-top) + 48px);
+    right: calc(6px + var(--safe-right));
+    z-index: 93;
+    min-width: 160px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .mobile-menu-panel.open {
+    display: flex;
+  }
+
+  .mobile-menu-item {
+    border: none;
+    border-bottom: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+    padding: 10px 12px;
+    font-size: 0.82rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+  }
+
+  .mobile-menu-item:last-child {
+    border-bottom: none;
+  }
+
+  .mobile-menu-panel.logout-hidden #mobileMenuSettingsBtn {
+    border-bottom: none;
+  }
+
+  .mobile-menu-item:hover {
+    background: var(--bg-hover);
+  }
+
+  .mobile-menu-item-danger {
+    color: var(--error);
+  }
+}
+
+/* ── Chat Area Mobile Styles ── */
+
+@media (max-width: 767px) {
+  /* Messages take more width on mobile */
+  .msg {
+    max-width: 92%;
+  }
+
+  /* Agent markdown messages span the full width (no left-squeeze). */
+  .msg.assistant {
+    max-width: 100%;
+    align-self: stretch;
+  }
+
+  /* Shell tool cards span the full width on mobile too. */
+  .msg.command-card {
+    max-width: 100%;
+    align-self: stretch;
+  }
+
+  /* Approval cards full width on mobile */
+  .approval-card {
+    max-width: 100%;
+  }
+
+  .chat-toolbar {
+    /* Single non-wrapping row; overflow is reachable via horizontal scroll. */
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    column-gap: 4px;
+    min-width: 0;
+    height: auto !important;
+    min-height: 0 !important;
+    align-items: center;
+    padding-top: 1px !important;
+    padding-bottom: 1px !important;
+    padding-left: calc(6px + var(--safe-left)) !important;
+    padding-right: calc(6px + var(--safe-right)) !important;
+    border-radius: 0 !important;
+  }
+
+  .chat-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Every toolbar item keeps its size — never shrink, never wrap. */
+  .chat-toolbar > * {
+    flex: 0 0 auto !important;
+  }
+
+  /* Session name must not push actions away (no auto margin on a scroll row). */
+  .chat-toolbar #sessionNameMount {
+    margin-left: 0 !important;
+    flex: 0 0 auto !important;
+  }
+
+  .chat-toolbar #sessionHeaderToolbarMount > div,
+  .chat-toolbar #sessionActionsMount > div,
+  .chat-toolbar #sessionActionsMount > div > div {
+    flex-wrap: nowrap !important;
+  }
+
+  .chat-toolbar > * {
+    flex-shrink: 0;
+  }
+
+  .chat-toolbar #modelComboBtn {
+    width: 100%;
+    max-width: none;
+    justify-content: space-between;
+  }
+
+  .chat-toolbar #promptMemoryToolbar {
+    min-width: 0;
+  }
+
+  .chat-toolbar #promptMemoryStatusBtn,
+  .chat-toolbar #promptMemoryRefreshBtn {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .chat-toolbar #promptMemoryStatusLabel {
+    display: none;
+  }
+
+  .chat-input-row {
+    /* Compact composer glued to the viewport edge; only the safe-area inset
+       keeps the status strip above the home indicator. */
+    padding: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  .chat-composer {
+    border-radius: 0;
+    /* Left/right safe insets keep controls clear of rounded screen corners. */
+    padding: 0 var(--safe-left) 0 var(--safe-right);
+  }
+
+  /* Keep only a tiny visual gap; the full safe-area inset creates dead space. */
+  .chat-composer-status {
+    padding-bottom: 4px;
+  }
+
+  .chat-composer-status .model-combo-btn {
+    max-width: 60vw;
+  }
+
+  #queuedMessages {
+    display: none !important;
+  }
+
+}
+
+/* ── Settings Sidebar Mobile ── */
+
+@media (max-width: 767px) {
+  .settings-layout {
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .settings-layout.settings-layout-mobile-collapsed .settings-sidebar {
+    display: none;
+  }
+
+  .settings-mobile-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+
+  .settings-mobile-chat-btn {
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--muted);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+
+  .settings-mobile-chat-btn:hover {
+    color: var(--text);
+    border-color: var(--border-strong);
+    background: var(--bg-hover);
+  }
+
+  .settings-mobile-menu-btn {
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--muted);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+
+  .settings-mobile-menu-btn:hover {
+    color: var(--text);
+    border-color: var(--border-strong);
+    background: var(--bg-hover);
+  }
+
+  .settings-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .settings-sidebar-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px;
+    align-content: flex-start;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(8px + var(--safe-bottom));
+  }
+
+  .settings-group-label {
+    display: none;
+  }
+
+  .settings-nav-item {
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--surface2);
+    flex: 0 0 auto;
+  }
+}
+
+/* ── Tables Mobile Styles ── */
+
+@media (max-width: 767px) {
+  /* Cron table horizontal scroll */
+  .cron-table {
+    display: block;
+    overflow-x: auto;
+  }
+
+  /* Logs horizontal scroll */
+  .logs-area {
+    overflow-x: auto;
+  }
+
+  .logs-row {
+    min-width: 600px;
+  }
+}
+
+/* ── Forms Mobile Styles ── */
+
+@media (max-width: 767px) {
+  .max-w-form {
+    max-width: 100%;
+  }
+
+  .terminal-toolbar {
+    padding: 10px 12px;
+  }
+
+  .terminal-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .terminal-output-wrap {
+    padding: 10px 12px 6px;
+  }
+
+  .terminal-tabs-bar {
+    padding: 8px 12px 0;
+  }
+
+  .terminal-tab {
+    font-size: 0.68rem;
+    padding: 4px 7px;
+  }
+
+  .terminal-output {
+    min-height: 220px;
+  }
+
+  .chat-terminal-modal {
+    width: 99vw;
+    max-width: 99vw;
+    height: 94vh;
+    max-height: 94vh;
+  }
+
+  .chat-terminal-output-wrap {
+    padding: 2px;
+  }
+
+  .chat-terminal-output {
+    min-height: 0;
+  }
+
+  .chat-terminal-tabs-bar {
+    padding: 2px 2px 0;
+  }
+
+  .terminal-hint {
+    padding: 0 12px 12px;
+  }
+
+  .terminal-hint-actions {
+    padding: 0 12px 12px;
+  }
+
+  .terminal-hint-code {
+    width: 100%;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .project-form-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .skills-install-box {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .skills-install-input {
+    max-width: 100%;
+  }
+}
+
+/* ── Modal Mobile Styles ── */
+
+@media (max-width: 767px) {
+  .provider-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100vh - var(--safe-top) - var(--safe-bottom));
+    border-radius: 16px 16px 0 0;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    margin-bottom: var(--safe-bottom);
+  }
+
+  .provider-modal-backdrop {
+    align-items: flex-end;
+  }
+
+  .auth-card {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding-bottom: calc(2rem + var(--safe-bottom));
+  }
+}
+
+/* ── Touch-Friendly Buttons ── */
+
+@media (max-width: 767px) {
+  /* Minimum touch target size */
+  button,
+  .provider-btn,
+  .cron-action-btn,
+  .logs-btn,
+  [role="button"] {
+    min-height: 44px;
+  }
+
+  select,
+  input[type="text"],
+  input[type="password"],
+  input[type="email"],
+  textarea {
+    min-height: 44px;
+    font-size: 16px; /* Prevents iOS zoom on focus */
+  }
+
+  /* The compact chat composer intentionally opts out of the generic 44px
+     mobile touch-target rule; otherwise the textarea and icon buttons cannot
+     shrink below 44px even when chat.css requests a compact row. */
+  .chat-composer button,
+  .chat-composer [role="button"],
+  .chat-composer textarea {
+    min-height: 0;
+  }
+
+  .chat-composer-input-line {
+    min-height: 30px;
+  }
+
+  .msg-action-btn {
+    min-height: 0;
+  }
+
+  .chat-composer-textarea {
+    min-height: 30px;
+    font-size: 16px;
+    line-height: 1.2;
+    padding-top: 5px;
+    padding-bottom: 5px;
+  }
+}
+
+/* ── Banners Mobile Adjustment ── */
+
+@media (max-width: 767px) {
+  .auth-disabled-banner,
+  .info-banner {
+    flex-wrap: wrap;
+    text-align: center;
+    padding: 8px 16px;
+    gap: 6px;
+  }
+}
+
+/* ── Mobile Sessions Toggle Button ── */
+
+@media (min-width: 768px) {
+  #mobileMenuBtn,
+  .mobile-menu-overlay,
+  .mobile-menu-panel {
+    display: none;
+  }
+
+}
+
+.sessions-toggle-btn {
+  display: none !important;
+}
+
+@media (max-width: 767px) {
+  .sessions-toggle-btn {
+    display: none !important;
+  }
+}
+
+/* ── Compact chat toolbar controls on mobile ── */
+
+@media (max-width: 767px) {
+  .chat-toolbar #sandboxIndicator,
+  .chat-toolbar button.chat-badge-desktop-only,
+  .chat-toolbar .chat-badge-desktop-only > button,
+  .chat-toolbar #sessionHeaderToolbarMount button,
+  .chat-toolbar #sessionActionsMount button {
+    font-size: 0.7rem !important;
+    padding: 2px 6px !important;
+    gap: 2px !important;
+    min-height: 0 !important;
+    line-height: 1.2 !important;
+  }
+
+  .chat-toolbar #sandboxIndicator .icon,
+  .chat-toolbar #sessionActionsMount .icon {
+    width: 12px !important;
+    height: 12px !important;
+  }
+}
+
+/* ── Scrollbar on Mobile ── */
+
+@media (max-width: 767px) {
+  /* Thinner scrollbars on mobile */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+}
+
+/* ── PWA Standalone Mode Adjustments ── */
+
+html.pwa-standalone body {
+  padding-top: 0;
+}
+
+html.pwa-standalone header {
+  padding-top: calc(1px + var(--safe-top)) !important;
+}
+
+@media (display-mode: standalone) {
+  body {
+    padding-top: 0;
+  }
+
+  header {
+    padding-top: calc(1px + var(--safe-top)) !important;
+  }
+}

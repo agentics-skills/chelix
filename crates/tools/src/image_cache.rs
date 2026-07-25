@@ -1,0 +1,391 @@
+//! On-demand Dockerfile-based tool image caching.
+//!
+//! Skills can declare a `dockerfile` field pointing to a Dockerfile in their
+//! directory. When a skill with a Dockerfile is invoked, the image is built
+//! (if not already cached) and used as the sandbox container image.
+//!
+//! Images are tagged as `chelix-cache/<skill-name>:<content-hash>` where
+//! the hash is the first 12 hex chars of the SHA-256 of the Dockerfile contents.
+
+use std::path::Path;
+
+use {
+    async_trait::async_trait,
+    serde::{Deserialize, Serialize},
+    tracing::{debug, info, warn},
+};
+
+use crate::{
+    Result,
+    error::{Context, Error},
+};
+
+/// Metadata about a cached tool image.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachedImage {
+    pub tag: String,
+    pub skill_name: String,
+    pub size: String,
+    pub created: String,
+}
+
+/// Trait for building and managing cached tool images.
+///
+/// Trait-based so alternative backends (e.g. Apple Container) can provide
+/// their own implementation.
+#[async_trait]
+pub trait ImageBuilder: Send + Sync {
+    /// Ensure an image exists for the given skill. Builds from the Dockerfile
+    /// if not already cached. Returns the full image tag.
+    async fn ensure_image(
+        &self,
+        skill_name: &str,
+        dockerfile: &Path,
+        context: &Path,
+    ) -> Result<String>;
+
+    /// List all cached tool images.
+    async fn list_cached(&self) -> Result<Vec<CachedImage>>;
+
+    /// Remove a single cached image by tag.
+    async fn remove_cached(&self, tag: &str) -> Result<()>;
+
+    /// Remove all cached tool images.
+    async fn prune_all(&self) -> Result<usize>;
+}
+
+/// Docker-based image builder using `docker build`.
+///
+/// Auto-detects whether to use `podman` or `docker` at construction time.
+/// Prefers podman (daemonless) when available; falls back to docker.
+pub struct DockerImageBuilder {
+    cli: &'static str,
+}
+
+impl DockerImageBuilder {
+    pub fn new() -> Self {
+        Self {
+            cli: crate::sandbox::container_cli(),
+        }
+    }
+
+    /// Create with an explicit CLI binary name.
+    pub fn with_cli(cli: &'static str) -> Self {
+        Self { cli }
+    }
+
+    /// Create for a specific sandbox backend configuration value.
+    pub fn for_backend(backend: chelix_config::schema::SandboxBackend) -> Self {
+        use chelix_config::schema::SandboxBackend;
+
+        let cli = match backend {
+            SandboxBackend::AppleContainer | SandboxBackend::Docker => "docker",
+            SandboxBackend::Podman => "podman",
+            SandboxBackend::Auto => crate::sandbox::container_cli(),
+        };
+        Self { cli }
+    }
+
+    /// Return the container CLI name (e.g. "docker" or "podman").
+    pub fn cli_name(&self) -> &'static str {
+        self.cli
+    }
+
+    /// Compute the image tag for a skill's Dockerfile.
+    /// Format: `chelix-cache/<skill-name>:<first-12-of-sha256>`
+    pub fn image_tag(skill_name: &str, dockerfile_contents: &[u8]) -> String {
+        use std::hash::Hasher;
+        // Use a simple hash for the tag — not cryptographic, just for cache keying.
+        // We use two rounds of DefaultHasher to get enough bits for 12 hex chars.
+        let mut h1 = std::hash::DefaultHasher::new();
+        h1.write(dockerfile_contents);
+        let hash1 = h1.finish();
+        let mut h2 = std::hash::DefaultHasher::new();
+        h2.write(&hash1.to_le_bytes());
+        h2.write(dockerfile_contents);
+        let hash2 = h2.finish();
+        let combined = format!("{:016x}{:016x}", hash1, hash2);
+        let short = &combined[..12];
+        format!("chelix-cache/{skill_name}:{short}")
+    }
+
+    /// Check whether a container image exists locally.
+    async fn image_exists(&self, tag: &str) -> bool {
+        tokio::process::Command::new(self.cli)
+            .args(["image", "inspect", tag])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .is_ok_and(|s| s.success())
+    }
+
+    /// Run a build with the configured CLI.
+    async fn try_build(
+        &self,
+        tag: &str,
+        dockerfile: &Path,
+        context: &Path,
+    ) -> Result<std::process::Output> {
+        Self::run_build(self.cli, tag, dockerfile, context).await
+    }
+
+    /// Run a `<cli> build` command and return the output.
+    async fn run_build(
+        cli: &str,
+        tag: &str,
+        dockerfile: &Path,
+        context: &Path,
+    ) -> Result<std::process::Output> {
+        debug!(cli, tag, context = %context.display(), "spawning image build");
+        tokio::process::Command::new(cli)
+            .args([
+                "build",
+                "-t",
+                tag,
+                "-f",
+                &dockerfile.display().to_string(),
+                &context.display().to_string(),
+            ])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await
+            .with_context(|| {
+                format!("failed to run `{cli} build` — is {cli} installed and in PATH?")
+            })
+    }
+}
+
+impl Default for DockerImageBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl ImageBuilder for DockerImageBuilder {
+    async fn ensure_image(
+        &self,
+        skill_name: &str,
+        dockerfile: &Path,
+        context: &Path,
+    ) -> Result<String> {
+        let contents = tokio::fs::read(dockerfile)
+            .await
+            .with_context(|| format!("reading Dockerfile at {}", dockerfile.display()))?;
+
+        let tag = Self::image_tag(skill_name, &contents);
+
+        if self.image_exists(&tag).await {
+            debug!(tag, "image cache hit");
+            return Ok(tag);
+        }
+
+        info!(tag, dockerfile = %dockerfile.display(), "building tool image");
+
+        // Try the configured CLI first. If it fails with a daemon connection
+        // error, try the alternative CLI (docker ↔ podman).
+        let output = self.try_build(&tag, dockerfile, context).await?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let is_daemon_error = stderr.contains("Cannot connect")
+                || stderr.contains("connect to the Docker daemon")
+                || stderr.contains("unable to connect")
+                || stderr.contains("connection refused");
+
+            if is_daemon_error {
+                let alt_cli = if self.cli == "podman" {
+                    "docker"
+                } else {
+                    "podman"
+                };
+                if crate::sandbox::containers::is_cli_available(alt_cli) {
+                    info!(
+                        primary = self.cli,
+                        fallback = alt_cli,
+                        "primary CLI daemon not available, trying fallback"
+                    );
+                    let alt_output = Self::run_build(alt_cli, &tag, dockerfile, context).await?;
+                    if alt_output.status.success() {
+                        info!(
+                            tag,
+                            cli = alt_cli,
+                            "tool image built successfully (via fallback)"
+                        );
+                        return Ok(tag);
+                    }
+                    let alt_stderr = String::from_utf8_lossy(&alt_output.stderr);
+                    warn!(
+                        cli = alt_cli,
+                        tag,
+                        exit_code = alt_output.status.code().unwrap_or(-1),
+                        stderr = %alt_stderr.trim(),
+                        "fallback image build also failed"
+                    );
+                }
+            }
+
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            warn!(
+                cli = self.cli,
+                tag,
+                exit_code = output.status.code().unwrap_or(-1),
+                stderr = %stderr.trim(),
+                stdout = %stdout.chars().take(200).collect::<String>(),
+                "image build failed"
+            );
+            return Err(Error::message(format!(
+                "{} build failed for {tag}: {}",
+                self.cli,
+                stderr.trim()
+            )));
+        }
+
+        info!(tag, "tool image built successfully");
+        Ok(tag)
+    }
+
+    async fn list_cached(&self) -> Result<Vec<CachedImage>> {
+        let output = tokio::process::Command::new(self.cli)
+            .args([
+                "images",
+                "--filter",
+                "reference=chelix-cache/*",
+                "--format",
+                "{{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}",
+            ])
+            .output()
+            .await
+            .with_context(|| format!("failed to list {} images", self.cli))?;
+
+        if !output.status.success() {
+            return Ok(Vec::new());
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let images = stdout
+            .lines()
+            .filter(|l| !l.is_empty())
+            .filter_map(|line| {
+                let parts: Vec<&str> = line.split('\t').collect();
+                if parts.len() < 3 {
+                    return None;
+                }
+                // Podman prefixes local repos with "localhost/", normalize
+                // so tags are always "chelix-cache/<skill>:<hash>".
+                let tag = parts[0]
+                    .strip_prefix("localhost/")
+                    .unwrap_or(parts[0])
+                    .to_string();
+                // Extract skill name from "chelix-cache/<skill-name>:<hash>"
+                let skill_name = tag
+                    .strip_prefix("chelix-cache/")
+                    .and_then(|s| s.split(':').next())
+                    .unwrap_or("")
+                    .to_string();
+                Some(CachedImage {
+                    tag,
+                    skill_name,
+                    size: parts[1].to_string(),
+                    created: parts[2].to_string(),
+                })
+            })
+            .collect();
+
+        Ok(images)
+    }
+
+    async fn remove_cached(&self, tag: &str) -> Result<()> {
+        // Only allow removing chelix-cache images.
+        if !tag.starts_with("chelix-cache/") {
+            return Err(Error::message(format!(
+                "refusing to remove non-cache image: {tag}"
+            )));
+        }
+
+        let output = tokio::process::Command::new(self.cli)
+            .args(["rmi", tag])
+            .output()
+            .await
+            .with_context(|| format!("failed to run {} rmi", self.cli))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(Error::message(format!(
+                "{} rmi failed for {tag}: {}",
+                self.cli,
+                stderr.trim()
+            )));
+        }
+
+        info!(tag, "removed cached image");
+        Ok(())
+    }
+
+    async fn prune_all(&self) -> Result<usize> {
+        let images = self.list_cached().await?;
+        let count = images.len();
+        for img in &images {
+            if let Err(e) = self.remove_cached(&img.tag).await {
+                tracing::warn!(tag = img.tag, "failed to prune: {e}");
+            }
+        }
+        Ok(count)
+    }
+}
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_image_tag_format() {
+        let tag =
+            DockerImageBuilder::image_tag("my-skill", b"FROM ubuntu:26.04\nRUN apt-get update\n");
+        assert!(tag.starts_with("chelix-cache/my-skill:"));
+        // Hash portion is 12 hex chars
+        let hash_part = tag.strip_prefix("chelix-cache/my-skill:").unwrap();
+        assert_eq!(hash_part.len(), 12);
+        assert!(hash_part.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_image_tag_deterministic() {
+        let a = DockerImageBuilder::image_tag("skill", b"FROM alpine\n");
+        let b = DockerImageBuilder::image_tag("skill", b"FROM alpine\n");
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_image_tag_different_content() {
+        let a = DockerImageBuilder::image_tag("skill", b"FROM alpine\n");
+        let b = DockerImageBuilder::image_tag("skill", b"FROM ubuntu\n");
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn test_image_tag_different_skill() {
+        let a = DockerImageBuilder::image_tag("skill-a", b"FROM alpine\n");
+        let b = DockerImageBuilder::image_tag("skill-b", b"FROM alpine\n");
+        // Same hash, different skill name prefix
+        assert_ne!(a, b);
+        assert!(a.starts_with("chelix-cache/skill-a:"));
+        assert!(b.starts_with("chelix-cache/skill-b:"));
+    }
+
+    #[test]
+    fn test_cached_image_serde() {
+        let img = CachedImage {
+            tag: "chelix-cache/my-skill:abc123def456".into(),
+            skill_name: "my-skill".into(),
+            size: "150MB".into(),
+            created: "2 hours ago".into(),
+        };
+        let json = serde_json::to_string(&img).unwrap();
+        let back: CachedImage = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.tag, img.tag);
+        assert_eq!(back.skill_name, img.skill_name);
+    }
+}

@@ -1,0 +1,822 @@
+//! Prompt persona, memory management, and runtime context building.
+
+use std::sync::Arc;
+
+use {serde_json::Value, tracing::warn};
+
+use {
+    chelix_agents::{
+        prompt::{
+            PromptBuildLimits, PromptHostRuntimeContext, PromptModeRuntimeContext,
+            PromptRuntimeContext, PromptSandboxRuntimeContext,
+        },
+        tool_registry::ToolSource,
+    },
+    chelix_config::{AgentMemoryWriteMode, LoadedWorkspaceMarkdown, MemoryStyle, PromptMemoryMode},
+    chelix_sessions::{metadata::SessionEntry, state_store::SessionStateStore},
+    chelix_tools::policy::{PolicyContext, resolve_effective_policy},
+};
+
+use crate::{
+    runtime::ChatRuntime,
+    types::{
+        PromptMemoryStatus, PromptPersona, detect_host_sudo_access, detect_runtime_shell,
+        memory_style_allows_prompt, normalized_iana_timezone, refresh_runtime_prompt_time,
+        server_prompt_timezone,
+    },
+};
+
+pub(crate) const PROMPT_MEMORY_NAMESPACE: &str = "__prompt_memory";
+
+pub(crate) fn prompt_memory_snapshot_key(agent_id: &str) -> String {
+    format!("snapshot:{agent_id}")
+}
+
+pub(crate) async fn clear_prompt_memory_snapshot(
+    session_key: &str,
+    agent_id: &str,
+    state_store: Option<&SessionStateStore>,
+) -> bool {
+    let Some(store) = state_store else {
+        return false;
+    };
+    let key = prompt_memory_snapshot_key(agent_id);
+    match store
+        .delete(session_key, PROMPT_MEMORY_NAMESPACE, &key)
+        .await
+    {
+        Ok(deleted) => deleted,
+        Err(error) => {
+            warn!(
+                session = %session_key,
+                agent_id,
+                error = %error,
+                "failed to clear prompt memory snapshot"
+            );
+            false
+        },
+    }
+}
+
+pub(crate) fn prompt_memory_status(
+    style: MemoryStyle,
+    mode: PromptMemoryMode,
+    write_mode: AgentMemoryWriteMode,
+    snapshot_active: bool,
+    memory: Option<&LoadedWorkspaceMarkdown>,
+) -> PromptMemoryStatus {
+    PromptMemoryStatus {
+        style,
+        mode,
+        write_mode,
+        snapshot_active,
+        present: memory.is_some(),
+        chars: memory.map_or(0, |entry| entry.content.chars().count()),
+        path: memory.map(|entry| entry.path.to_string_lossy().into_owned()),
+        file_source: memory.map(|entry| entry.source),
+    }
+}
+
+pub(crate) fn resolve_prompt_agent_id(session_entry: Option<&SessionEntry>) -> String {
+    let Some(entry) = session_entry else {
+        return "main".to_string();
+    };
+    let Some(agent_id) = entry
+        .agent_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return "main".to_string();
+    };
+    if chelix_config::agent_workspace_dir(agent_id).exists() {
+        return agent_id.to_string();
+    }
+    warn!(
+        session = %entry.key,
+        agent_id,
+        "session references unknown agent workspace, falling back to main prompt persona"
+    );
+    "main".to_string()
+}
+
+pub(crate) fn resolve_prompt_mode_context(
+    config: &chelix_config::ChelixConfig,
+    session_entry: Option<&SessionEntry>,
+) -> Option<PromptModeRuntimeContext> {
+    let mode_id = session_entry?
+        .mode_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    let mode = config.modes.get_preset(mode_id)?;
+    let prompt = mode.prompt.trim();
+    if prompt.is_empty() {
+        return None;
+    }
+    Some(PromptModeRuntimeContext {
+        id: mode_id.to_string(),
+        name: mode.name.clone().unwrap_or_else(|| mode_id.to_string()),
+        prompt: prompt.to_string(),
+    })
+}
+
+/// Load identity, user profile, soul, and workspace text for one agent.
+pub(crate) fn load_prompt_persona_base_for_agent(
+    config: &chelix_config::ChelixConfig,
+    agent_id: &str,
+) -> PromptPersona {
+    let prompt_memory_mode = config.chat.prompt_memory_mode;
+    let agent_write_mode = config.memory.agent_write_mode;
+    let memory_style = config.memory.style;
+    let identity =
+        chelix_config::load_identity_for_agent(agent_id).unwrap_or_else(|| config.identity.clone());
+    let user = chelix_config::resolve_user_profile_from_config(config);
+    PromptPersona {
+        config: config.clone(),
+        identity,
+        user,
+        soul_text: chelix_config::load_soul_for_agent(agent_id),
+        boot_text: chelix_config::load_boot_md_for_agent(agent_id),
+        agents_text: chelix_config::load_agents_md_for_agent(agent_id),
+        tools_text: chelix_config::load_tools_md_for_agent(agent_id),
+        guidelines_text: chelix_config::load_guidelines_md_for_agent(agent_id),
+        memory_text: None,
+        memory_status: prompt_memory_status(
+            memory_style,
+            prompt_memory_mode,
+            agent_write_mode,
+            false,
+            None,
+        ),
+    }
+}
+
+pub(crate) async fn load_prompt_memory_for_session(
+    session_key: &str,
+    agent_id: &str,
+    mode: PromptMemoryMode,
+    state_store: Option<&SessionStateStore>,
+) -> (Option<LoadedWorkspaceMarkdown>, bool) {
+    let live_memory = || chelix_config::load_memory_md_for_agent_with_source(agent_id);
+
+    if !matches!(mode, PromptMemoryMode::FrozenAtSessionStart) {
+        return (live_memory(), false);
+    }
+
+    let Some(store) = state_store else {
+        return (live_memory(), false);
+    };
+
+    let key = prompt_memory_snapshot_key(agent_id);
+    match store.get(session_key, PROMPT_MEMORY_NAMESPACE, &key).await {
+        Ok(Some(raw)) => match serde_json::from_str::<Option<LoadedWorkspaceMarkdown>>(&raw) {
+            Ok(snapshot) => return (snapshot, true),
+            Err(error) => warn!(
+                session = %session_key,
+                agent_id,
+                error = %error,
+                "failed to deserialize prompt memory snapshot, rebuilding"
+            ),
+        },
+        Ok(None) => {},
+        Err(error) => warn!(
+            session = %session_key,
+            agent_id,
+            error = %error,
+            "failed to read prompt memory snapshot, falling back to live memory"
+        ),
+    }
+
+    let memory = live_memory();
+    match serde_json::to_string(&memory) {
+        Ok(serialized) => {
+            if let Err(error) = store
+                .set(session_key, PROMPT_MEMORY_NAMESPACE, &key, &serialized)
+                .await
+            {
+                warn!(
+                    session = %session_key,
+                    agent_id,
+                    error = %error,
+                    "failed to persist prompt memory snapshot"
+                );
+                return (memory, false);
+            }
+            (memory, true)
+        },
+        Err(error) => {
+            warn!(
+                session = %session_key,
+                agent_id,
+                error = %error,
+                "failed to serialize prompt memory snapshot"
+            );
+            (memory, false)
+        },
+    }
+}
+
+pub(crate) async fn load_prompt_persona_for_session(
+    config: &chelix_config::ChelixConfig,
+    session_key: &str,
+    session_entry: Option<&SessionEntry>,
+    state_store: Option<&SessionStateStore>,
+) -> PromptPersona {
+    let agent_id = resolve_prompt_agent_id(session_entry);
+    let mut persona = load_prompt_persona_base_for_agent(config, &agent_id);
+    let style = persona.config.memory.style;
+    let mode = persona.config.chat.prompt_memory_mode;
+    let write_mode = persona.config.memory.agent_write_mode;
+    let (memory, snapshot_active) = if memory_style_allows_prompt(style) {
+        load_prompt_memory_for_session(session_key, &agent_id, mode, state_store).await
+    } else {
+        (None, false)
+    };
+    persona.memory_text = memory.as_ref().map(|entry| entry.content.clone());
+    persona.memory_status =
+        prompt_memory_status(style, mode, write_mode, snapshot_active, memory.as_ref());
+    persona
+}
+
+pub(crate) fn prompt_build_limits_from_config(
+    config: &chelix_config::ChelixConfig,
+) -> PromptBuildLimits {
+    PromptBuildLimits {
+        workspace_file_max_chars: config.chat.workspace_file_max_chars,
+        enable_skill_self_improvement: config.skills.enable_self_improvement,
+    }
+}
+
+/// Discover skills from the default filesystem paths, honoring `[skills] enabled`.
+///
+/// Returns an empty list when `config.skills.enabled` is `false`, so callers can
+/// unconditionally feed the result into prompt building / tool filtering without
+/// injecting skills into the LLM context when the operator has disabled them.
+pub(crate) async fn discover_skills_if_enabled(
+    config: &chelix_config::ChelixConfig,
+) -> Vec<chelix_skills::types::SkillMetadata> {
+    if !config.skills.enabled {
+        return Vec::new();
+    }
+    let fs_discoverer = chelix_skills::discover::FsSkillDiscoverer::new(
+        chelix_skills::discover::FsSkillDiscoverer::default_paths(),
+    );
+
+    #[cfg(feature = "bundled-skills")]
+    let skills = {
+        use chelix_skills::discover::SkillDiscoverer;
+        let bundled = Arc::new(chelix_skills::bundled::BundledSkillStore::new());
+        let composite = chelix_skills::discover::CompositeSkillDiscoverer::new(
+            Box::new(fs_discoverer),
+            bundled,
+        );
+        composite.discover().await
+    };
+    #[cfg(not(feature = "bundled-skills"))]
+    let skills = {
+        use chelix_skills::discover::SkillDiscoverer;
+        fs_discoverer.discover().await
+    };
+
+    let has_bundled_disables = !config.skills.disabled_bundled_categories.is_empty()
+        || !config.skills.disabled_bundled_skills.is_empty();
+
+    match skills {
+        Ok(skills) if !has_bundled_disables => skills,
+        Ok(skills) => skills
+            .into_iter()
+            .filter(|s| {
+                // Only filter bundled skills; non-bundled skills pass through.
+                if s.source != Some(chelix_skills::types::SkillSource::Bundled) {
+                    return true;
+                }
+                config
+                    .skills
+                    .is_bundled_skill_enabled(&s.name, s.category.as_deref())
+            })
+            .collect(),
+        Err(e) => {
+            warn!("failed to discover skills: {e}");
+            Vec::new()
+        },
+    }
+}
+
+/// Apply per-agent skill policy to a discovered skill list.
+///
+/// When the agent preset has a `skills.allow` list, only skills matching
+/// by name or category are kept. Skills in `skills.deny` are then removed.
+pub(crate) fn filter_skills_for_agent(
+    skills: Vec<chelix_skills::types::SkillMetadata>,
+    policy: &chelix_config::schema::PresetSkillPolicy,
+) -> Vec<chelix_skills::types::SkillMetadata> {
+    if policy.is_empty() {
+        return skills;
+    }
+    skills
+        .into_iter()
+        .filter(|s| {
+            // If allow is Some, must match by name or category.
+            // Some(vec![]) means "no skills allowed" — filters everything.
+            if let Some(ref allow) = policy.allow
+                && !allow
+                    .iter()
+                    .any(|a| a == &s.name || s.category.as_deref().is_some_and(|cat| a == cat))
+            {
+                return false;
+            }
+            // Deny by name or category (if present).
+            if let Some(ref deny) = policy.deny
+                && deny
+                    .iter()
+                    .any(|d| d == &s.name || s.category.as_deref().is_some_and(|cat| d == cat))
+            {
+                return false;
+            }
+            true
+        })
+        .collect()
+}
+
+pub(crate) fn resolve_channel_runtime_context(
+    session_key: &str,
+    session_entry: Option<&SessionEntry>,
+) -> chelix_common::hooks::ChannelBinding {
+    match chelix_channels::resolve_session_channel_binding(
+        session_key,
+        session_entry.and_then(|entry| entry.channel_binding.as_deref()),
+    ) {
+        Ok(binding) => binding,
+        Err(error) => {
+            warn!(
+                error = %error,
+                session = %session_key,
+                "failed to parse channel_binding JSON; falling back to web"
+            );
+            chelix_channels::web_session_channel_binding()
+        },
+    }
+}
+
+pub(crate) fn channel_binding_from_runtime_context(
+    runtime_context: Option<&PromptRuntimeContext>,
+) -> Option<chelix_common::hooks::ChannelBinding> {
+    let host = &runtime_context?.host;
+    let binding = chelix_common::hooks::ChannelBinding {
+        surface: host.surface.clone(),
+        session_kind: host.session_kind.clone(),
+        channel_type: host.channel_type.clone(),
+        account_id: host.channel_account_id.clone(),
+        chat_id: host.channel_chat_id.clone(),
+        chat_type: host.channel_chat_type.clone(),
+        sender_id: host.channel_sender_id.clone(),
+    };
+    (!binding.is_empty()).then_some(binding)
+}
+
+pub(crate) fn build_tool_context(
+    session_key: &str,
+    accept_language: Option<&str>,
+    conn_id: Option<&str>,
+    runtime_context: Option<&PromptRuntimeContext>,
+) -> Value {
+    let mut tool_context = serde_json::json!({
+        "_session_key": session_key,
+    });
+    if let Some(channel_binding) = channel_binding_from_runtime_context(runtime_context)
+        && let Ok(channel_value) = serde_json::to_value(channel_binding)
+    {
+        tool_context["_channel"] = channel_value;
+    }
+    if let Some(lang) = accept_language {
+        tool_context["_accept_language"] = serde_json::json!(lang);
+    }
+    if let Some(cid) = conn_id {
+        tool_context["_conn_id"] = serde_json::json!(cid);
+    }
+    tool_context
+}
+
+pub(crate) async fn build_prompt_runtime_context(
+    state: &Arc<dyn ChatRuntime>,
+    config: &chelix_config::ChelixConfig,
+    provider: &Arc<dyn chelix_agents::model::LlmProvider>,
+    session_key: &str,
+    session_entry: Option<&SessionEntry>,
+) -> PromptRuntimeContext {
+    let data_dir = chelix_config::data_dir();
+    let data_dir_display = data_dir.display().to_string();
+    let docs_reference =
+        chelix_agents::docs::cached_chelix_docs_reference(&data_dir, config.server.port);
+
+    let sudo_fut = detect_host_sudo_access();
+    let sandbox_fut = async {
+        let router = state.sandbox_router();
+        // Omit sandbox context when the global policy is Off so the LLM
+        // does not hallucinate sandbox usage (see #360).
+        if !router.enabled() {
+            return None;
+        }
+        let config = router.config();
+        Some(PromptSandboxRuntimeContext {
+            backend: Some(router.backend_id().to_string()),
+            scope: Some(config.scope.to_string()),
+            image: Some(router.default_image().await),
+            home: Some("/home/sandbox".to_string()),
+            workspace_path: Some(data_dir_display.clone()),
+            network: Some(config.network.clone()),
+        })
+    };
+
+    let ((sudo_non_interactive, sudo_status), sandbox_ctx) = tokio::join!(sudo_fut, sandbox_fut);
+
+    let configured_timezone = state.sandbox_router().config().timezone.clone();
+    let timezone = Some(server_prompt_timezone(configured_timezone.as_deref()));
+
+    let location = state
+        .cached_location()
+        .await
+        .as_ref()
+        .map(|loc| loc.to_string());
+    let channel_context = resolve_channel_runtime_context(session_key, session_entry);
+
+    let mut host_ctx = PromptHostRuntimeContext {
+        host: Some(state.hostname().to_string()),
+        os: Some(std::env::consts::OS.to_string()),
+        arch: Some(std::env::consts::ARCH.to_string()),
+        shell: detect_runtime_shell(),
+        time: None,
+        provider: Some(provider.name().to_string()),
+        model: Some(provider.id().to_string()),
+        session_key: Some(session_key.to_string()),
+        surface: channel_context.surface,
+        session_kind: channel_context.session_kind,
+        channel_type: channel_context.channel_type,
+        channel_account_id: channel_context.account_id,
+        channel_chat_id: channel_context.chat_id,
+        channel_chat_type: channel_context.chat_type,
+        data_dir: Some(data_dir_display),
+        docs_path: docs_reference
+            .as_ref()
+            .map(|reference| reference.docs_dir.display().to_string()),
+        config_template_path: docs_reference
+            .as_ref()
+            .and_then(|reference| reference.config_template_path.as_ref())
+            .map(|path| path.display().to_string()),
+        sudo_non_interactive,
+        sudo_status,
+        timezone,
+        location,
+        ..Default::default()
+    };
+    refresh_runtime_prompt_time(&mut host_ctx);
+
+    PromptRuntimeContext {
+        host: host_ctx,
+        sandbox: sandbox_ctx,
+        mode: None,
+    }
+}
+
+pub(crate) fn apply_request_runtime_context(
+    host: &mut PromptHostRuntimeContext,
+    params: &Value,
+    default_timezone: Option<&str>,
+) {
+    host.accept_language = params
+        .get("_accept_language")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    host.remote_ip = params
+        .get("_remote_ip")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    // Extract sender_id from channel metadata (set by channel handlers).
+    if host.channel_sender_id.is_none() {
+        host.channel_sender_id = params
+            .get("channel")
+            .and_then(|ch| ch.get("sender_id"))
+            .and_then(|v| v.as_str())
+            .map(String::from);
+    }
+
+    if let Some(timezone) =
+        normalized_iana_timezone(params.get("_timezone").and_then(|v| v.as_str()))
+            .or_else(|| normalized_iana_timezone(default_timezone))
+    {
+        host.timezone = Some(timezone);
+    }
+
+    refresh_runtime_prompt_time(host);
+}
+
+pub(crate) fn apply_runtime_tool_filters(
+    base: &chelix_agents::tool_registry::ToolRegistry,
+    config: &chelix_config::ChelixConfig,
+    _skills: &[chelix_skills::types::SkillMetadata],
+    mcp_disabled: bool,
+    policy_context: &PolicyContext,
+) -> chelix_agents::tool_registry::ToolRegistry {
+    let base_registry = if mcp_disabled {
+        base.clone_without_mcp()
+    } else {
+        base.clone_without(&[])
+    };
+
+    let policy = resolve_effective_policy(config, policy_context);
+
+    // Resolve MCP allow-list: if the agent preset uses Allow mode, only
+    // tools from listed servers pass through. This is handled here (not
+    // in the policy deny layer) because ToolPolicy's deny-wins-over-allow
+    // semantics can't express "deny all MCP except these servers".
+    let mcp_allow: Option<&[chelix_config::schema::McpServerId]> = config
+        .agents
+        .get_preset(&policy_context.agent_id)
+        .and_then(|p| match &p.mcp {
+            chelix_config::schema::PresetMcpPolicy::Allow(servers) => Some(servers.as_slice()),
+            _ => None,
+        });
+
+    base_registry.clone_allowed_entries(|name, source| {
+        if !policy.is_allowed(name) {
+            return false;
+        }
+        if let (Some(allowed_servers), ToolSource::Mcp { server }) = (mcp_allow, source) {
+            return allowed_servers.iter().any(|allowed| allowed == server);
+        }
+        true
+    })
+}
+
+/// Prepare the per-run tool registry shared by the live agent loop and the
+/// debug/UI prompt surfaces (`chat.context`, `chat.raw_prompt`,
+/// `chat.full_context`).
+///
+/// The steps mirror the live loop exactly so every surface sees the same tools:
+/// 1. apply allow/deny/runtime filters (or a bare clone when tools are off);
+/// 2. swap in agent-scoped memory tools when a memory manager is available;
+/// 3. in lazy mode, wrap the registry so `get_tool`, preset-preloaded schemas,
+///    and schemas revealed by session history are visible, while the full
+///    catalog stays advertised.
+///
+/// Fails only when lazy wrapping hits the reserved-`get_tool` name collision.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prepare_run_registry(
+    base: &chelix_agents::tool_registry::ToolRegistry,
+    config: &chelix_config::ChelixConfig,
+    skills: &[chelix_skills::types::SkillMetadata],
+    mcp_disabled: bool,
+    policy_context: &PolicyContext,
+    tools_enabled: bool,
+    agent_id: &str,
+    memory: Option<(
+        &chelix_memory::runtime::DynMemoryRuntime,
+        Arc<dyn chelix_agents::model::LlmProvider>,
+    )>,
+    history_raw: &[Value],
+) -> anyhow::Result<chelix_agents::tool_registry::ToolRegistry> {
+    let mut registry = if tools_enabled {
+        apply_runtime_tool_filters(base, config, skills, mcp_disabled, policy_context)
+    } else {
+        base.clone_without(&[])
+    };
+
+    if tools_enabled && let Some((manager, provider)) = memory {
+        crate::memory_tools::install_agent_scoped_memory_tools(
+            &mut registry,
+            manager,
+            provider,
+            agent_id,
+            config.memory.style,
+            config.memory.agent_write_mode,
+        );
+    }
+
+    if tools_enabled
+        && matches!(
+            config.tools.registry_mode,
+            chelix_config::ToolRegistryMode::Lazy
+        )
+    {
+        let mut visible = chelix_agents::lazy_tools::visible_tool_names_from_history(history_raw);
+        if let Some(preset) = config.agents.get_preset(&policy_context.agent_id) {
+            visible.extend(preset.tools.preload.iter().cloned());
+        }
+        registry = chelix_agents::lazy_tools::wrap_registry_lazy_with_visible(registry, visible)?;
+    }
+
+    Ok(registry)
+}
+
+/// Build a `PolicyContext` from runtime context and request parameters.
+pub(crate) fn build_policy_context(
+    agent_id: &str,
+    runtime_context: Option<&PromptRuntimeContext>,
+    params: Option<&Value>,
+) -> PolicyContext {
+    let host = runtime_context.map(|rc| &rc.host);
+    // sender_id: prefer params["channel"]["sender_id"] (fresh from channel
+    // dispatch), fall back to host.channel_sender_id (set by
+    // apply_request_runtime_context earlier in the call chain).
+    let sender_id = params
+        .and_then(|p| p.get("channel"))
+        .and_then(|ch| ch.get("sender_id"))
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .or_else(|| host.and_then(|h| h.channel_sender_id.clone()));
+    PolicyContext {
+        agent_id: agent_id.to_string(),
+        provider: host.and_then(|h| h.provider.clone()),
+        channel: host.and_then(|h| h.channel_type.clone()),
+        channel_account_id: host.and_then(|h| h.channel_account_id.clone()),
+        group_id: host.and_then(|h| h.channel_chat_type.clone()),
+        sender_id,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct DummyTool(&'static str);
+
+    #[async_trait::async_trait]
+    impl chelix_agents::tool_registry::AgentTool for DummyTool {
+        fn name(&self) -> &str {
+            self.0
+        }
+
+        fn description(&self) -> &str {
+            "test tool"
+        }
+
+        fn parameters_schema(&self) -> Value {
+            serde_json::json!({ "type": "object", "properties": {} })
+        }
+
+        async fn execute(&self, _params: Value) -> anyhow::Result<Value> {
+            Ok(serde_json::json!({}))
+        }
+    }
+
+    fn registry_with_mcp_tools() -> chelix_agents::tool_registry::ToolRegistry {
+        let mut registry = chelix_agents::tool_registry::ToolRegistry::new();
+        registry.register(Box::new(DummyTool("execute_command")));
+        registry.register(Box::new(DummyTool("mcp__github__builtin_named_like_mcp")));
+        registry.register_mcp(Box::new(DummyTool("mcp__github__search")), "github".into());
+        registry.register_mcp(Box::new(DummyTool("mcp__memory__store")), "memory".into());
+        registry
+    }
+
+    fn unrestricted_policy_context(agent_id: &str) -> PolicyContext {
+        PolicyContext {
+            agent_id: agent_id.to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn mcp_allow_empty_denies_all_mcp_tools_only() {
+        let mut config = chelix_config::ChelixConfig::default();
+        config.tools.policy.allow = vec!["*".into()];
+        config
+            .agents
+            .presets
+            .insert("locked".into(), chelix_config::schema::AgentPreset {
+                mcp: chelix_config::schema::PresetMcpPolicy::Allow(vec![]),
+                ..Default::default()
+            });
+
+        let filtered = apply_runtime_tool_filters(
+            &registry_with_mcp_tools(),
+            &config,
+            &[],
+            false,
+            &unrestricted_policy_context("locked"),
+        );
+
+        assert!(filtered.get("execute_command").is_some());
+        assert!(
+            filtered
+                .get("mcp__github__builtin_named_like_mcp")
+                .is_some()
+        );
+        assert!(filtered.get("mcp__github__search").is_none());
+        assert!(filtered.get("mcp__memory__store").is_none());
+    }
+
+    #[test]
+    fn mcp_allow_keeps_only_listed_mcp_server() {
+        let mut config = chelix_config::ChelixConfig::default();
+        config.tools.policy.allow = vec!["*".into()];
+        config
+            .agents
+            .presets
+            .insert("github-only".into(), chelix_config::schema::AgentPreset {
+                mcp: chelix_config::schema::PresetMcpPolicy::Allow(vec!["github".into()]),
+                ..Default::default()
+            });
+
+        let filtered = apply_runtime_tool_filters(
+            &registry_with_mcp_tools(),
+            &config,
+            &[],
+            false,
+            &unrestricted_policy_context("github-only"),
+        );
+
+        assert!(filtered.get("execute_command").is_some());
+        assert!(filtered.get("mcp__github__search").is_some());
+        assert!(filtered.get("mcp__memory__store").is_none());
+    }
+
+    #[test]
+    fn lazy_registry_preloads_only_tools_allowed_by_effective_policy() {
+        let mut config = chelix_config::ChelixConfig::default();
+        config.tools.registry_mode = chelix_config::ToolRegistryMode::Lazy;
+        config
+            .agents
+            .presets
+            .insert("preloaded".into(), chelix_config::schema::AgentPreset {
+                tools: chelix_config::schema::PresetToolPolicy {
+                    allow: vec![
+                        "execute_command".into(),
+                        "mcp__github__builtin_named_like_mcp".into(),
+                        "mcp__github__search".into(),
+                    ],
+                    deny: vec!["mcp__github__search".into()],
+                    preload: vec![
+                        "execute_command".into(),
+                        "mcp__github__search".into(),
+                        "mcp__memory__store".into(),
+                        "unknown_tool".into(),
+                    ],
+                },
+                ..Default::default()
+            });
+        let history = [serde_json::json!({
+            "role": "assistant",
+            "tool_calls": [{
+                "id": "call-1",
+                "type": "function",
+                "function": {
+                    "name": "mcp__github__builtin_named_like_mcp",
+                    "arguments": "{}"
+                }
+            }]
+        })];
+
+        let registry = prepare_run_registry(
+            &registry_with_mcp_tools(),
+            &config,
+            &[],
+            false,
+            &unrestricted_policy_context("preloaded"),
+            true,
+            "preloaded",
+            None,
+            &history,
+        )
+        .unwrap();
+
+        assert_eq!(registry.list_names(), vec![
+            "execute_command".to_string(),
+            "get_tool".to_string(),
+            "mcp__github__builtin_named_like_mcp".to_string(),
+        ]);
+        assert!(registry.get("mcp__github__search").is_none());
+        assert!(registry.get("mcp__memory__store").is_none());
+    }
+
+    #[test]
+    fn skill_policy_allows_then_denies_by_name_or_category() {
+        let skills = vec![
+            chelix_skills::types::SkillMetadata {
+                name: "web-search".into(),
+                category: Some("research".into()),
+                ..Default::default()
+            },
+            chelix_skills::types::SkillMetadata {
+                name: "games".into(),
+                category: Some("gaming".into()),
+                ..Default::default()
+            },
+            chelix_skills::types::SkillMetadata {
+                name: "writer".into(),
+                category: Some("creative".into()),
+                ..Default::default()
+            },
+        ];
+        let policy = chelix_config::schema::PresetSkillPolicy {
+            allow: Some(vec!["research".into(), "writer".into()]),
+            deny: Some(vec!["writer".into()]),
+        };
+
+        let filtered = filter_skills_for_agent(skills, &policy);
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "web-search");
+    }
+}

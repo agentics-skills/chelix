@@ -1,0 +1,26 @@
+[package]
+edition.workspace = true
+name              = "chelix-sessions"
+version.workspace = true
+
+[features]
+default = ["metrics"]
+metrics = ["dep:chelix-metrics"]
+
+[dependencies]
+chelix-common  = { workspace = true }
+chelix-metrics = { optional = true, workspace = true }
+fd-lock        = { workspace = true }
+serde          = { workspace = true }
+serde_json     = { workspace = true }
+sqlx           = { workspace = true }
+thiserror      = { workspace = true }
+tokio          = { workspace = true }
+tracing        = { workspace = true }
+uuid           = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

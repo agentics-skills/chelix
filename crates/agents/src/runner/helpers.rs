@@ -1,0 +1,854 @@
+//! Shared types, constants, and utility functions for the agent runner.
+
+use std::{borrow::Cow, sync::Arc};
+
+use tracing::{info, warn};
+
+use {
+    chelix_common::hooks::{ChannelBinding, HookAction, HookPayload, HookRegistry},
+    chelix_sessions::message::ContextBudgetMetadata,
+};
+
+use crate::{
+    model::{
+        ChatMessage, ToolCall, ToolCallArgumentDiagnostic, ToolCallArgumentSource, Usage,
+        UserContent, provider_values_to_chat_messages,
+    },
+    response_sanitizer::clean_response,
+    tool_loop_detector::{
+        LoopDetectorAction, ToolLoopDetector, format_intervention_message,
+        format_strip_tools_message,
+    },
+};
+
+// ── Constants ───────────────────────────────────────────────────────────
+
+pub(crate) const AUTO_COMPACTION_RATIO: usize = 85;
+
+pub(crate) const MALFORMED_TOOL_RETRY_PROMPT: &str = "Your tool call was malformed. Retry with exact format:\n\
+     ```tool_call\n{\"tool\": \"name\", \"arguments\": {...}}\n```";
+pub(crate) const EMPTY_TOOL_NAME_RETRY_PROMPT: &str = "Your structured tool call had an empty tool name. Retry the same tool call using the intended tool's exact name and the same arguments.";
+
+/// Nudge sent to the model when auto-continue fires after it stopped mid-task
+/// without emitting a substantive final answer.
+///
+/// Deliberately avoids phrasing like "provide a brief final answer" because
+/// that invites the model to overwrite an already-emitted long response with
+/// a terse summary (see GH #628).
+pub(crate) const AUTO_CONTINUE_NUDGE: &str = "Your previous response ended without tool calls and without a final answer. \
+     If there are still steps to run, continue executing them. \
+     Otherwise reply with exactly: done";
+
+/// Minimum character count (after trimming) that qualifies an assistant text
+/// response as a "substantive final answer" — at or above this length the
+/// auto-continue nudge is suppressed because the model has clearly finished
+/// talking and nudging it risks losing the answer (GH #628).
+pub(crate) const AUTO_CONTINUE_SUBSTANTIVE_TEXT_THRESHOLD: usize = 40;
+
+// ── Typed errors and result ─────────────────────────────────────────────
+
+/// Typed errors from the agent loop.
+#[derive(Debug, thiserror::Error)]
+pub enum AgentRunError {
+    /// The prompt reached the automatic checkpoint threshold.
+    #[error("automatic context compaction required")]
+    ContextCompactionRequired(Box<ContextCompactionRequest>),
+    /// Any other error.
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+}
+
+/// Exact paused provider request used to create an automatic checkpoint.
+#[derive(Debug)]
+pub struct ContextCompactionRequest {
+    pub metadata: ContextBudgetMetadata,
+    /// Byte-identical paused-request prefix covered by the summary.
+    pub summary_messages: Vec<ChatMessage>,
+    /// Unsummarized current user message or latest tool round to replay after
+    /// the checkpoint, matching the reference continuation boundary.
+    pub continuation_messages: Vec<ChatMessage>,
+    pub tool_schemas: Vec<serde_json::Value>,
+    pub completed_iterations: usize,
+    pub tool_calls_made: usize,
+    pub usage: Usage,
+    pub raw_llm_responses: Vec<serde_json::Value>,
+}
+
+pub(crate) fn split_context_for_compaction(
+    mut messages: Vec<ChatMessage>,
+    continuation_start: usize,
+) -> (Vec<ChatMessage>, Vec<ChatMessage>) {
+    if continuation_start <= 1 || continuation_start >= messages.len() {
+        return (messages, Vec::new());
+    }
+    let continuation = messages.split_off(continuation_start);
+    (messages, continuation)
+}
+
+pub(crate) fn should_trigger_automatic_checkpoint(
+    limits: &AgentLoopLimits,
+    iteration: usize,
+    context_budget: &ContextBudgetMetadata,
+) -> bool {
+    let safe_checkpoint_resume = limits.resume_after_checkpoint
+        && iteration == 1
+        && context_budget.prompt_tokens < context_budget.available_input_tokens;
+    limits.automatic_checkpointing && context_budget.compaction_required && !safe_checkpoint_resume
+}
+
+/// Result of running the agent loop.
+#[derive(Debug)]
+pub struct AgentRunResult {
+    pub text: String,
+    /// Whether terminal text is new output or already belongs to the
+    /// assistant message that introduced tool calls.
+    pub final_text_source: FinalTextSource,
+    pub iterations: usize,
+    pub tool_calls_made: usize,
+    /// Sum of usage across all LLM requests in this run.
+    pub usage: Usage,
+    /// Usage for the final LLM request in this run.
+    pub request_usage: Usage,
+    pub raw_llm_responses: Vec<serde_json::Value>,
+}
+
+/// Ownership of terminal text in an agent run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FinalTextSource {
+    /// The final LLM iteration generated a new assistant segment.
+    NewSegment,
+    /// The final LLM iteration was empty, so a preceding tool-call segment
+    /// already owns the terminal text.
+    ToolCallSegment { tool_call_id: String },
+}
+
+/// A caller-visible tool call from one assistant iteration.
+#[derive(Debug, Clone)]
+pub struct RunnerToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: serde_json::Value,
+    pub metadata: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+impl From<&ToolCall> for RunnerToolCall {
+    fn from(tool_call: &ToolCall) -> Self {
+        Self {
+            id: tool_call.id.clone(),
+            name: tool_call.name.clone(),
+            arguments: tool_call.arguments.clone(),
+            metadata: tool_call.metadata.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AgentLoopLimits {
+    pub max_iterations: Option<usize>,
+    /// Per-agent override for the in-context tool result byte budget.
+    /// Falls back to `tools.max_tool_result_bytes` when `None`.
+    pub max_tool_result_bytes: Option<usize>,
+    /// Allow the runner to pause at 85% for a session-backed checkpoint.
+    pub automatic_checkpointing: bool,
+    /// Resume from history that already includes the current user turn.
+    pub resume_from_history: bool,
+    /// Allow the first provider call after a checkpoint through once when the
+    /// preserved tail remains above the 85% checkpoint trigger.
+    pub resume_after_checkpoint: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct UsageAccumulator {
+    total: Usage,
+    request: Usage,
+}
+
+impl UsageAccumulator {
+    pub(crate) fn record_request(&mut self, usage: Usage) {
+        self.total.saturating_add_assign(&usage);
+        self.request = usage;
+    }
+
+    pub(crate) fn total(&self) -> Usage {
+        self.total.clone()
+    }
+
+    pub(crate) fn request(&self) -> Usage {
+        self.request.clone()
+    }
+}
+
+/// Callback for streaming events out of the runner.
+pub type OnEvent = Box<dyn Fn(RunnerEvent) + Send + Sync>;
+
+/// Events emitted during the agent run.
+#[derive(Debug, Clone)]
+pub enum RunnerEvent {
+    /// LLM is processing (show a "thinking" indicator).
+    Thinking,
+    /// LLM finished thinking (hide the indicator).
+    ThinkingDone,
+    ToolCallStart {
+        id: String,
+        name: String,
+        arguments: serde_json::Value,
+        metadata: Option<serde_json::Map<String, serde_json::Value>>,
+        /// Full tool-call batch belonging to the same assistant message.
+        iteration_tool_calls: Arc<[RunnerToolCall]>,
+        /// Exact provider usage for the LLM iteration that emitted the batch.
+        iteration_usage: Usage,
+    },
+    ToolCallEnd {
+        id: String,
+        name: String,
+        success: bool,
+        error: Option<String>,
+        /// Exact result content passed to the LLM, UI, and session history.
+        result: Option<String>,
+        /// Raw structured result, available only for media/location/channel
+        /// side effects and never persisted as conversational context.
+        raw_result: Option<serde_json::Value>,
+        /// Exact context-budget calculation used before this LLM iteration.
+        context_budget: ContextBudgetMetadata,
+    },
+    /// LLM returned reasoning/status text alongside tool calls.
+    ThinkingText(String),
+    TextDelta(String),
+    /// Text from an iteration that continued into tool calls.
+    ProgressText(String),
+    /// Text from the final iteration of the run.
+    FinalText(String),
+    Iteration(usize),
+    SubAgentStart {
+        task: String,
+        model: String,
+        depth: u64,
+    },
+    SubAgentEnd {
+        task: String,
+        model: String,
+        depth: u64,
+        iterations: usize,
+        tool_calls_made: usize,
+    },
+    /// A transient LLM error occurred and the runner will retry.
+    RetryingAfterError {
+        error: String,
+        delay_ms: u64,
+    },
+    /// The model stopped without tool calls but iteration budget remains;
+    /// the runner is automatically re-prompting.
+    AutoContinue {
+        iteration: usize,
+        max_iterations: usize,
+    },
+    /// A tool call was rejected by pre-dispatch schema validation before the
+    /// tool's `execute` method ran. Used in place of the usual
+    /// `ToolCallStart`/`ToolCallEnd` pair for rejected calls so the UI does
+    /// not render a misleading "executing" status for a call that never
+    /// actually executed.
+    ToolCallRejected {
+        id: String,
+        name: String,
+        arguments: serde_json::Value,
+        error: String,
+        /// Full tool-call batch belonging to the same assistant message. The
+        /// forwarder needs it to persist the canonical assistant frame so a
+        /// rejected call survives a page reload exactly like an executed one.
+        iteration_tool_calls: Arc<[RunnerToolCall]>,
+        /// Exact provider usage for the LLM iteration that emitted the batch.
+        iteration_usage: Usage,
+    },
+    /// The loop detector fired after equivalent tool failures repeated across
+    /// distinct model rounds. `stage` is 1 for the nudge/directive intervention
+    /// and 2 for the stronger tool-stripping escalation.
+    LoopInterventionFired {
+        stage: u8,
+        tool_name: String,
+    },
+}
+
+// ── Shared helper functions ─────────────────────────────────────────────
+
+/// Sanitize a tool name from model output.
+///
+/// Handles quirks from various LLM providers:
+/// 1. Trims whitespace
+/// 2. Strips surrounding double quotes (some models quote tool names)
+/// 3. Strips `functions_` prefix (OpenAI legacy artifact from some models)
+/// 4. Strips trailing `_\d+` suffix (parallel-call indexing from some models,
+///    e.g. Kimi K2.5 via OpenRouter sends `execute_command_2`, `browser_4`)
+pub(crate) fn sanitize_tool_name(name: &str) -> Cow<'_, str> {
+    let trimmed = name.trim();
+    let unquoted = trimmed
+        .strip_prefix('"')
+        .and_then(|s| s.strip_suffix('"'))
+        .unwrap_or(trimmed);
+
+    // Strip `functions_` prefix (OpenAI legacy artifact from some models).
+    // INVARIANT: no registered tool name starts with "functions_".
+    let without_prefix = unquoted.strip_prefix("functions_").unwrap_or(unquoted);
+
+    // Strip trailing `_\d+` suffix (parallel-call indexing from some models).
+    // INVARIANT: no registered tool name ends with `_\d+` (a purely numeric segment after the last underscore).
+    let cleaned = without_prefix
+        .rfind('_')
+        .and_then(|pos| {
+            let suffix = &without_prefix[pos + 1..];
+            if !suffix.is_empty() && suffix.bytes().all(|b| b.is_ascii_digit()) && pos > 0 {
+                Some(&without_prefix[..pos])
+            } else {
+                None
+            }
+        })
+        .unwrap_or(without_prefix);
+
+    if cleaned == name {
+        Cow::Borrowed(name)
+    } else {
+        Cow::Owned(cleaned.to_string())
+    }
+}
+
+/// Produce the tool arguments that are safe to surface to observers (UI event
+/// stream, transcripts).
+///
+/// The runner enriches each tool call's arguments with an internal execution
+/// context (session key, channel binding, connection id, accept-language)
+/// before dispatch. Those keys are all `_`-prefixed by convention (mirroring
+/// the MCP bridge contract in `chelix-mcp`'s `tool_bridge`) and are meant only
+/// for tool implementations, never for humans. Emitting them in
+/// `RunnerEvent::ToolCallStart` leaks browser/session metadata into the UI
+/// tool-call bubble title, so strip every `_`-prefixed key here.
+///
+/// Non-object values are returned unchanged (a defensive no-op).
+pub(crate) fn public_tool_arguments(args: &serde_json::Value) -> serde_json::Value {
+    match args.as_object() {
+        Some(obj) => {
+            let cleaned: serde_json::Map<String, serde_json::Value> = obj
+                .iter()
+                .filter(|(key, _)| !key.starts_with('_'))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect();
+            serde_json::Value::Object(cleaned)
+        },
+        None => args.clone(),
+    }
+}
+
+pub(crate) fn enrich_tool_arguments(
+    args: &mut serde_json::Value,
+    tool_context: Option<&serde_json::Value>,
+    tool_call_id: &str,
+) {
+    let Some(args_object) = args.as_object_mut() else {
+        return;
+    };
+    if let Some(context_object) = tool_context.and_then(serde_json::Value::as_object) {
+        for (key, value) in context_object {
+            args_object.insert(key.clone(), value.clone());
+        }
+    }
+    args_object.insert(
+        "_tool_call_id".to_string(),
+        serde_json::Value::String(tool_call_id.to_string()),
+    );
+}
+
+fn build_after_llm_call_payload(
+    session_key: &str,
+    provider: &str,
+    model: &str,
+    text: Option<String>,
+    tool_calls: &[ToolCall],
+    usage: &Usage,
+    iteration: usize,
+) -> HookPayload {
+    let tool_calls = tool_calls
+        .iter()
+        .map(|tc| {
+            serde_json::json!({
+                "id": tc.id,
+                "name": tc.name,
+                "arguments": tc.arguments,
+            })
+        })
+        .collect();
+
+    HookPayload::AfterLLMCall {
+        session_key: session_key.to_string(),
+        provider: provider.to_string(),
+        model: model.to_string(),
+        text,
+        tool_calls,
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        iteration,
+    }
+}
+
+pub(crate) fn log_tool_argument_diagnostic(
+    tool_name: &str,
+    diagnostic: Option<&ToolCallArgumentDiagnostic>,
+) {
+    let Some(diagnostic) = diagnostic else {
+        return;
+    };
+    match diagnostic.source {
+        ToolCallArgumentSource::RepairedString => tracing::debug!(
+            tool = %tool_name,
+            raw_len = diagnostic.raw_len,
+            raw_preview = diagnostic.raw_preview.as_deref().unwrap_or(""),
+            parse_error = diagnostic.parse_error.as_deref().unwrap_or(""),
+            "tool call arguments repaired before dispatch"
+        ),
+        ToolCallArgumentSource::NullOrMissing => tracing::debug!(
+            tool = %tool_name,
+            summary = %diagnostic.short_summary(),
+            "tool call arguments were absent before dispatch"
+        ),
+        ToolCallArgumentSource::EmptyString | ToolCallArgumentSource::MalformedString => warn!(
+            tool = %tool_name,
+            raw_len = diagnostic.raw_len,
+            raw_preview = diagnostic.raw_preview.as_deref().unwrap_or(""),
+            parse_error = diagnostic.parse_error.as_deref().unwrap_or(""),
+            summary = %diagnostic.short_summary(),
+            "tool call arguments decoded with diagnostics"
+        ),
+    }
+}
+
+pub(crate) fn apply_before_llm_call_modify_payload(
+    messages: &mut Vec<ChatMessage>,
+    modified_payload: serde_json::Value,
+) {
+    let Some(modified_messages) = modified_payload
+        .get("messages")
+        .and_then(serde_json::Value::as_array)
+        .or_else(|| modified_payload.as_array())
+    else {
+        warn!("BeforeLLMCall ModifyPayload missing messages array");
+        return;
+    };
+
+    let parsed = provider_values_to_chat_messages(modified_messages);
+    if parsed.is_empty() {
+        warn!("BeforeLLMCall ModifyPayload produced no valid messages; keeping original");
+        return;
+    }
+
+    *messages = parsed;
+    tracing::debug!(
+        messages_count = messages.len(),
+        "BeforeLLMCall ModifyPayload applied"
+    );
+}
+
+pub(crate) async fn dispatch_after_llm_call_hook(
+    hook_registry: Option<&Arc<HookRegistry>>,
+    session_key: &str,
+    provider: &str,
+    model: &str,
+    text: Option<String>,
+    tool_calls: &[ToolCall],
+    usage: &Usage,
+    iteration: usize,
+) -> Result<(), AgentRunError> {
+    let Some(hooks) = hook_registry else {
+        return Ok(());
+    };
+
+    let payload = build_after_llm_call_payload(
+        session_key,
+        provider,
+        model,
+        text,
+        tool_calls,
+        usage,
+        iteration,
+    );
+
+    match hooks.dispatch(&payload).await {
+        Ok(HookAction::Block(reason)) => {
+            warn!(reason = %reason, "LLM response blocked by AfterLLMCall hook");
+            Err(AgentRunError::Other(anyhow::anyhow!(
+                "blocked by AfterLLMCall hook: {reason}"
+            )))
+        },
+        Ok(HookAction::ModifyPayload(_)) => {
+            tracing::debug!("AfterLLMCall ModifyPayload ignored (response is typed)");
+            Ok(())
+        },
+        Ok(HookAction::Continue) => Ok(()),
+        Err(e) => {
+            warn!(error = %e, "AfterLLMCall hook dispatch failed");
+            Ok(())
+        },
+    }
+}
+
+pub(crate) async fn dispatch_before_agent_start_hook(
+    hook_registry: Option<&Arc<HookRegistry>>,
+    session_key: &str,
+    model: &str,
+) -> Result<(), AgentRunError> {
+    let Some(hooks) = hook_registry else {
+        return Ok(());
+    };
+
+    let payload = HookPayload::BeforeAgentStart {
+        session_key: session_key.to_string(),
+        model: model.to_string(),
+    };
+
+    match hooks.dispatch(&payload).await {
+        Ok(HookAction::Block(reason)) => {
+            warn!(reason = %reason, "agent start blocked by BeforeAgentStart hook");
+            Err(AgentRunError::Other(anyhow::anyhow!(
+                "blocked by BeforeAgentStart hook: {reason}"
+            )))
+        },
+        Ok(HookAction::ModifyPayload(_)) => {
+            warn!("BeforeAgentStart ModifyPayload ignored (startup state is typed)");
+            Ok(())
+        },
+        Ok(HookAction::Continue) => Ok(()),
+        Err(e) => {
+            warn!(error = %e, "BeforeAgentStart hook dispatch failed");
+            Ok(())
+        },
+    }
+}
+
+pub(crate) fn finish_agent_run(
+    final_text: String,
+    final_text_source: FinalTextSource,
+    iterations: usize,
+    tool_calls_made: usize,
+    usage_accumulator: &UsageAccumulator,
+    raw_llm_responses: Vec<serde_json::Value>,
+) -> AgentRunResult {
+    AgentRunResult {
+        text: clean_response(&final_text),
+        final_text_source,
+        iterations,
+        tool_calls_made,
+        usage: usage_accumulator.total(),
+        request_usage: usage_accumulator.request(),
+        raw_llm_responses,
+    }
+}
+
+pub(crate) fn resolve_tool_lookup<'a>(
+    tools: &crate::tool_registry::ToolRegistry,
+    name: &'a str,
+) -> (
+    Option<Arc<dyn crate::tool_registry::AgentTool>>,
+    Cow<'a, str>,
+) {
+    (tools.get(name), Cow::Borrowed(name))
+}
+
+/// Detect an explicit shell command in the latest user turn.
+///
+/// Only `/sh ...` commands are treated as explicit shell execution requests.
+/// This keeps normal chat turns (`hey`, `hello`, etc.) out of the forced-command path.
+///
+/// Supported forms:
+/// - `/sh pwd`
+/// - `/sh@mybot uname -a`
+pub(crate) fn explicit_shell_command_from_user_content(
+    user_content: &UserContent,
+) -> Option<String> {
+    let text = match user_content {
+        UserContent::Text(text) => text.trim(),
+        UserContent::Multimodal(_) => return None,
+    };
+
+    if text.is_empty() || text.len() > 4096 || text.contains('\n') || text.contains('\r') {
+        return None;
+    }
+
+    let rest = text.strip_prefix('/')?;
+    let split_idx = rest.find(char::is_whitespace)?;
+    let head = &rest[..split_idx];
+    let command = rest[split_idx..].trim_start();
+    if command.is_empty() {
+        return None;
+    }
+
+    let head_lower = head.to_ascii_lowercase();
+    let is_sh_prefix = if head_lower == "sh" {
+        true
+    } else {
+        head_lower
+            .strip_prefix("sh@")
+            .is_some_and(|mention| !mention.is_empty())
+    };
+
+    if !is_sh_prefix {
+        return None;
+    }
+
+    Some(command.to_string())
+}
+
+/// Returns `true` if `text` (trimmed) is long enough to be considered a real
+/// final answer rather than an empty/terse pause.
+#[must_use]
+pub(crate) fn is_substantive_answer_text(text: &str) -> bool {
+    text.trim().chars().count() >= AUTO_CONTINUE_SUBSTANTIVE_TEXT_THRESHOLD
+}
+
+pub(crate) fn find_empty_tool_name_call(tool_calls: &[ToolCall]) -> Option<&ToolCall> {
+    tool_calls
+        .iter()
+        .find(|tc| sanitize_tool_name(&tc.name).is_empty())
+}
+
+pub(crate) fn has_named_tool_call(tool_calls: &[ToolCall]) -> bool {
+    tool_calls
+        .iter()
+        .any(|tc| !sanitize_tool_name(&tc.name).is_empty())
+}
+
+pub(crate) fn empty_tool_name_retry_prompt(tool_call: &ToolCall) -> String {
+    format!(
+        "{EMPTY_TOOL_NAME_RETRY_PROMPT}\nExact arguments JSON:\n{}",
+        tool_call.arguments
+    )
+}
+
+pub(crate) fn record_answer_text(
+    last_answer_text: &mut String,
+    last_answer_tool_call_id: &mut Option<String>,
+    text: Option<&str>,
+    tool_calls: &[ToolCall],
+) {
+    let Some(text) = text.filter(|text| !text.is_empty()) else {
+        return;
+    };
+
+    last_answer_text.clear();
+    last_answer_text.push_str(text);
+    *last_answer_tool_call_id = tool_calls.first().map(|tool_call| tool_call.id.clone());
+}
+
+pub(crate) fn fallback_final_text_source(
+    last_answer_tool_call_id: Option<String>,
+) -> FinalTextSource {
+    last_answer_tool_call_id
+        .map(|tool_call_id| FinalTextSource::ToolCallSegment { tool_call_id })
+        .unwrap_or(FinalTextSource::NewSegment)
+}
+
+pub(crate) fn streaming_tool_call_message_content(
+    last_answer_text: &mut String,
+    last_answer_tool_call_id: &mut Option<String>,
+    accumulated_text: &str,
+    accumulated_reasoning: &str,
+) -> Option<String> {
+    *last_answer_tool_call_id = None;
+    if !accumulated_reasoning.is_empty() {
+        Some(accumulated_reasoning.to_string())
+    } else if !accumulated_text.is_empty() {
+        last_answer_text.clear();
+        last_answer_text.push_str(accumulated_text);
+        Some(accumulated_text.to_string())
+    } else {
+        None
+    }
+}
+
+#[must_use]
+pub(crate) fn estimate_prompt_text_tokens(text: &str) -> usize {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return 0;
+    }
+    trimmed.len().div_ceil(4).max(1)
+}
+
+#[must_use]
+pub(crate) fn estimate_message_tokens(message: &ChatMessage) -> usize {
+    estimate_prompt_text_tokens(&message.to_openai_value().to_string())
+}
+
+#[must_use]
+pub(crate) fn estimate_prompt_tokens(messages: &[ChatMessage]) -> usize {
+    messages.iter().map(estimate_message_tokens).sum()
+}
+
+#[must_use]
+pub(crate) fn estimate_tool_schema_tokens(tool_schemas: &[serde_json::Value]) -> usize {
+    tool_schemas
+        .iter()
+        .map(|schema| estimate_prompt_text_tokens(&schema.to_string()))
+        .sum()
+}
+
+pub(crate) fn evaluate_context_budget(
+    messages: &[ChatMessage],
+    tool_schemas: &[serde_json::Value],
+    context_window: u32,
+    max_input_tokens: u32,
+    max_output_tokens: u32,
+) -> ContextBudgetMetadata {
+    let prompt_tokens = estimate_prompt_tokens(messages);
+    let tool_schema_tokens = estimate_tool_schema_tokens(tool_schemas);
+    let available_input_tokens = (max_input_tokens as usize).saturating_sub(tool_schema_tokens);
+    let compaction_budget = available_input_tokens.saturating_mul(AUTO_COMPACTION_RATIO) / 100;
+    ContextBudgetMetadata {
+        context_window,
+        max_input_tokens,
+        max_output_tokens,
+        compaction_ratio: AUTO_COMPACTION_RATIO,
+        prompt_tokens,
+        tool_schema_tokens,
+        available_input_tokens,
+        compaction_budget,
+        usage_percent: if compaction_budget == 0 {
+            0
+        } else {
+            prompt_tokens.saturating_mul(100) / compaction_budget
+        },
+        compaction_required: prompt_tokens >= compaction_budget,
+    }
+}
+
+pub(crate) fn channel_binding_from_tool_context(
+    session_key: &str,
+    tool_context: Option<&serde_json::Value>,
+) -> Option<ChannelBinding> {
+    let channel_value = tool_context.and_then(|ctx| ctx.get("_channel"))?;
+    match serde_json::from_value(channel_value.clone()) {
+        Ok(binding) => Some(binding),
+        Err(error) => {
+            warn!(
+                error = %error,
+                session = %session_key,
+                "failed to parse _channel tool context for hooks; ignoring channel provenance"
+            );
+            None
+        },
+    }
+}
+
+/// Apply one action already computed atomically for a complete model round:
+/// push the directive user message into `messages`, emit the
+/// `LoopInterventionFired` UI event, and set `strip_tools_next_iter` when
+/// stage 2 fires. Shared by the streaming and non-streaming loops.
+pub(crate) fn apply_loop_detector_intervention(
+    loop_detector: &ToolLoopDetector,
+    action: LoopDetectorAction,
+    messages: &mut Vec<ChatMessage>,
+    strip_tools_next_iter: &mut bool,
+    on_event: Option<&OnEvent>,
+) {
+    match action {
+        LoopDetectorAction::None => {},
+        LoopDetectorAction::InjectNudge => {
+            let window = loop_detector.window_snapshot();
+            let stuck_tool = window
+                .first()
+                .map(|fp| fp.tool_name.clone())
+                .unwrap_or_default();
+            let intervention = format_intervention_message(&window);
+            info!(
+                tool = %stuck_tool,
+                "loop detector fired (stage 1): injecting directive intervention"
+            );
+            if let Some(cb) = on_event {
+                cb(RunnerEvent::LoopInterventionFired {
+                    stage: 1,
+                    tool_name: stuck_tool,
+                });
+            }
+            messages.push(ChatMessage::user(intervention));
+        },
+        LoopDetectorAction::StripTools => {
+            let stuck_tool = loop_detector
+                .window_snapshot()
+                .first()
+                .map(|fp| fp.tool_name.clone())
+                .unwrap_or_default();
+            info!(
+                tool = %stuck_tool,
+                "loop detector fired (stage 2): stripping tools for next iteration"
+            );
+            if let Some(cb) = on_event {
+                cb(RunnerEvent::LoopInterventionFired {
+                    stage: 2,
+                    tool_name: stuck_tool,
+                });
+            }
+            messages.push(ChatMessage::user(format_strip_tools_message()));
+            *strip_tools_next_iter = true;
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::{
+            FinalTextSource, fallback_final_text_source, public_tool_arguments,
+            streaming_tool_call_message_content,
+        },
+        serde_json::json,
+    };
+
+    #[test]
+    fn public_tool_arguments_strips_internal_context_keys() {
+        let enriched = json!({
+            "query": "execute_command",
+            "name": "execute_command",
+            "_session_key": "session:abc",
+            "_channel": { "session_kind": "web", "surface": "web" },
+            "_conn_id": "c3a84311",
+            "_accept_language": "en-US,en;q=0.9",
+        });
+
+        let cleaned = public_tool_arguments(&enriched);
+        let Some(obj) = cleaned.as_object() else {
+            panic!("cleaned args stay an object");
+        };
+
+        // Internal execution context must not surface to observers.
+        assert!(obj.keys().all(|k| !k.starts_with('_')));
+        // Genuine LLM-provided arguments are preserved verbatim.
+        assert_eq!(obj.get("query"), Some(&json!("execute_command")));
+        assert_eq!(obj.get("name"), Some(&json!("execute_command")));
+        assert_eq!(obj.len(), 2);
+    }
+
+    #[test]
+    fn public_tool_arguments_passes_through_non_objects() {
+        let scalar = json!("just a string");
+        assert_eq!(public_tool_arguments(&scalar), scalar);
+
+        let array = json!([1, 2, 3]);
+        assert_eq!(public_tool_arguments(&array), array);
+    }
+
+    #[test]
+    fn streaming_empty_tool_name_retry_clears_stale_tool_segment_owner() {
+        let mut last_answer_text = "previous tool answer".to_string();
+        let mut last_answer_tool_call_id = Some("previous-tool-call".to_string());
+
+        let retry_message = streaming_tool_call_message_content(
+            &mut last_answer_text,
+            &mut last_answer_tool_call_id,
+            "retry text",
+            "",
+        );
+
+        assert_eq!(retry_message.as_deref(), Some("retry text"));
+        assert_eq!(last_answer_text, "retry text");
+        assert_eq!(last_answer_tool_call_id, None);
+        assert_eq!(
+            fallback_final_text_source(last_answer_tool_call_id),
+            FinalTextSource::NewSegment
+        );
+    }
+}

@@ -1,0 +1,192 @@
+[package]
+edition.workspace    = true
+name                 = "chelix-gateway"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+anyhow                  = { workspace = true }
+async-trait             = { workspace = true }
+base64                  = { workspace = true }
+bytes                   = { workspace = true }
+chelix-agents           = { workspace = true }
+chelix-auth             = { workspace = true }
+chelix-browser          = { workspace = true }
+chelix-caldav           = { optional = true, workspace = true }
+chelix-canvas           = { workspace = true }
+chelix-channels         = { workspace = true }
+chelix-chat             = { workspace = true }
+chelix-claude-import    = { optional = true, workspace = true }
+chelix-code-index       = { workspace = true }
+chelix-codex-import     = { optional = true, workspace = true }
+chelix-common           = { workspace = true }
+chelix-config           = { workspace = true }
+chelix-cron             = { workspace = true }
+chelix-discord          = { optional = true, workspace = true }
+chelix-external-agents  = { workspace = true }
+chelix-home-assistant   = { optional = true, workspace = true }
+chelix-matrix           = { optional = true, workspace = true }
+chelix-mcp              = { workspace = true }
+chelix-mcp-agent-bridge = { workspace = true }
+chelix-media            = { workspace = true }
+chelix-memory           = { workspace = true }
+chelix-metrics          = { optional = true, workspace = true }
+chelix-msteams          = { optional = true, workspace = true }
+chelix-nostr            = { optional = true, workspace = true }
+chelix-oauth            = { workspace = true }
+chelix-onboarding       = { workspace = true }
+chelix-plugins          = { workspace = true }
+chelix-projects         = { workspace = true }
+chelix-protocol         = { workspace = true }
+chelix-provider-setup   = { workspace = true }
+chelix-providers        = { workspace = true }
+chelix-qmd              = { optional = true, workspace = true }
+chelix-routing          = { workspace = true }
+chelix-secret-store     = { workspace = true }
+chelix-service-traits   = { workspace = true }
+chelix-sessions         = { workspace = true }
+chelix-signal           = { optional = true, workspace = true }
+chelix-skills           = { workspace = true }
+chelix-slack            = { optional = true, workspace = true }
+chelix-telegram         = { optional = true, workspace = true }
+chelix-telephony        = { optional = true, workspace = true }
+chelix-tools            = { workspace = true }
+chelix-vault            = { optional = true, workspace = true }
+chelix-voice            = { optional = true, workspace = true }
+chelix-webhooks         = { workspace = true }
+chelix-whatsapp         = { optional = true, workspace = true }
+chrono                  = { features = ["serde"], optional = true, workspace = true }
+chrono-tz               = { workspace = true }
+dashmap                 = { workspace = true }
+ed25519-dalek           = { workspace = true }
+flate2                  = { workspace = true }
+futures                 = { workspace = true }
+gix                     = { workspace = true }
+hostname                = { workspace = true }
+http                    = { workspace = true }
+include_dir             = { optional = true, workspace = true }
+mdns-sd                 = { optional = true, workspace = true }
+p256                    = { features = ["ecdsa"], optional = true, workspace = true }
+portable-pty            = { optional = true, workspace = true }
+pulldown-cmark          = { features = ["html"], workspace = true }
+qrcode                  = { optional = true, workspace = true }
+rand                    = { workspace = true }
+reqwest                 = { workspace = true }
+secrecy                 = { workspace = true }
+serde                   = { workspace = true }
+serde_json              = { workspace = true }
+sha2                    = { workspace = true }
+sqlx                    = { workspace = true }
+sysinfo                 = { workspace = true }
+tar                     = { workspace = true }
+tempfile                = { workspace = true }
+thiserror               = { workspace = true }
+time                    = { workspace = true }
+tokio                   = { workspace = true }
+tokio-stream            = { workspace = true }
+tokio-util              = { workspace = true }
+toml                    = { workspace = true }
+tracing                 = { workspace = true }
+tracing-subscriber      = { workspace = true }
+url                     = { workspace = true }
+urlencoding             = { workspace = true }
+uuid                    = { workspace = true }
+web-push                = { optional = true, workspace = true }
+webauthn-rs             = { features = ["danger-allow-state-serialisation"], workspace = true }
+which                   = { optional = true, workspace = true }
+
+[features]
+agent = []
+bundled-skills = [
+  "chelix-chat/bundled-skills",
+  "chelix-skills/bundled-skills",
+  "chelix-tools/bundled-skills",
+]
+caldav = ["dep:chelix-caldav"]
+claude-import = ["dep:chelix-claude-import"]
+code-index-builtin = ["chelix-code-index/builtin"]
+codex-import = ["dep:chelix-codex-import"]
+default = [
+  "agent",
+  "bundled-skills",
+  "caldav",
+  "claude-import",
+  "code-index-builtin",
+  "codex-import",
+  "discord",
+  "file-watcher",
+  "firecrawl",
+  "fs-tools",
+  "graphql",
+  "home-assistant",
+  "matrix",
+  "mdns",
+  "metrics",
+  "msteams",
+  "nostr",
+  "prometheus",
+  "provider-openai-codex",
+  "push-notifications",
+  "qmd",
+  "signal",
+  "slack",
+  "telegram",
+  "telephony",
+  "tls",
+  "vault",
+  "voice",
+  "web-ui",
+  "whatsapp",
+]
+discord = ["dep:chelix-discord"]
+file-watcher = [
+  "chelix-code-index/file-watcher",
+  "chelix-memory/file-watcher",
+  "chelix-skills/file-watcher",
+]
+firecrawl = ["chelix-tools/firecrawl"]
+fs-tools = ["chelix-tools/fs-tools"]
+graphql = []
+home-assistant = ["dep:chelix-home-assistant"]
+local-embeddings = ["chelix-memory/local-embeddings"]
+matrix = ["dep:chelix-matrix"]
+mdns = ["dep:mdns-sd"]
+metrics = [
+  "chelix-chat/metrics",
+  "chelix-discord?/metrics",
+  "chelix-matrix/metrics",
+  "chelix-metrics/sqlite",
+  "chelix-msteams?/metrics",
+  "chelix-nostr?/metrics",
+  "chelix-signal?/metrics",
+  "dep:chelix-metrics",
+]
+msteams = ["dep:chelix-msteams"]
+nostr = ["dep:chelix-nostr"]
+prometheus = ["chelix-metrics/prometheus", "metrics"]
+provider-openai-codex = [
+  "chelix-providers/provider-openai-codex",
+  "chelix-tools/provider-openai-codex",
+]
+push-notifications = ["chelix-chat/push-notifications", "dep:chrono", "dep:p256", "dep:web-push"]
+qmd = ["chelix-code-index/qmd", "dep:chelix-qmd"]
+signal = ["dep:chelix-signal"]
+slack = ["chelix-slack/metrics", "dep:chelix-slack"]
+telegram = ["chelix-chat/telegram", "dep:chelix-telegram"]
+telephony = ["dep:chelix-telephony"]
+tls = []
+vault = [
+  "chelix-auth/vault",
+  "chelix-provider-setup/vault",
+  "chelix-secret-store/vault",
+  "dep:chelix-vault",
+]
+voice = ["dep:chelix-voice"]
+web-ui = ["chelix-chat/web-ui", "dep:include_dir", "dep:portable-pty", "dep:which"]
+whatsapp = ["chelix-whatsapp/metrics", "dep:chelix-whatsapp", "dep:qrcode"]
+
+[dev-dependencies]
+serial_test = { workspace = true }
+
+[lints]
+workspace = true

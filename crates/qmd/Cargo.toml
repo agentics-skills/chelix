@@ -1,0 +1,24 @@
+[package]
+description       = "QMD memory backend for chelix - optional sidecar-based hybrid search"
+edition.workspace = true
+name              = "chelix-qmd"
+version.workspace = true
+
+[dependencies]
+anyhow        = { workspace = true }
+async-trait   = { workspace = true }
+chelix-agents = { workspace = true }
+chelix-memory = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+thiserror     = { workspace = true }
+tokio         = { workspace = true }
+tracing       = { workspace = true }
+
+[dev-dependencies]
+sha2     = { workspace = true }
+sqlx     = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

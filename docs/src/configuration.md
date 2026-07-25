@@ -1,0 +1,515 @@
+# Configuration
+
+Chelix uses a **layered config model** with two files:
+
+| File            | Owner      | Purpose                                        |
+| --------------- | ---------- | ---------------------------------------------- |
+| `defaults.toml` | **Chelix** | Shipped defaults, regenerated on every startup |
+| `chelix.toml`   | **You**    | Your overrides only                            |
+
+On first run, both files are created in `~/.config/chelix/`. Your `chelix.toml`
+starts nearly empty — only the installation-specific port is set. All other
+settings inherit from `defaults.toml` automatically.
+
+## Merge Order
+
+Settings are resolved in this order (later wins):
+
+1. **Built-in defaults** — compiled into Chelix (`ChelixConfig::default()`)
+2. **`defaults.toml`** — Chelix-managed, refreshed on every startup
+3. **`chelix.toml`** — your overrides (additive deep merge)
+4. **`CHELIX_*` environment variables** — highest precedence
+
+This means you only need to put values in `chelix.toml` that you intentionally
+want to differ from the shipped defaults. When Chelix upgrades and improves a
+default, your installation picks it up automatically — unless you've overridden
+that specific setting.
+
+```admonish tip title="Don't copy defaults into chelix.toml"
+Copying a built-in default into `chelix.toml` "freezes" it — future built-in
+improvements for that setting won't apply. The Settings UI shows **Built-in**,
+**Overridden**, and **Custom** badges so you can see which values are yours
+and which are inherited.
+```
+
+## Configuration File Location
+
+| Platform    | Default Path                                  |
+| ----------- | --------------------------------------------- |
+| macOS/Linux | `~/.config/chelix/chelix.toml`                |
+| Custom      | Set via `--config-dir` or `CHELIX_CONFIG_DIR` |
+
+The `defaults.toml` file lives in the same directory. Do not edit it — your
+changes will be overwritten on the next startup.
+
+## Strict Loading
+
+Chelix creates a default user config only during explicit startup
+initialization and only when no user config file exists. Runtime reloads are
+read-only: a missing config file is an error and is not recreated implicitly.
+
+Existing user config is never replaced with defaults when loading fails.
+Malformed values, type errors, and unknown fields in TOML, YAML, YML, or JSON
+cause startup or the requested config operation to fail. Config updates and
+onboarding also refuse to overwrite an invalid existing file; correct the
+reported error in that file and retry.
+
+Config environment overrides use `CHELIX_SECTION__FIELD` paths, for example
+`CHELIX_AUTH__DISABLED=true`. Unknown config paths are rejected instead of
+being ignored. Single-segment `CHELIX_*` variables are runtime or CLI controls,
+not config paths.
+
+## Checking Config
+
+`chelix config check` validates your override file (`chelix.toml`) against the
+known config schema. It also checks that Chelix-managed `defaults.toml` exists
+and can be parsed, but it does not treat `defaults.toml` as user-authored input.
+
+New config fields should be added to the Rust config schema and its `Default`
+implementation. Chelix regenerates `defaults.toml` from those built-in defaults
+on startup, while `chelix.toml` should contain only values you intentionally
+override.
+
+## Agent-Readable Docs
+
+Chelix packages the documentation as local markdown files with release artifacts
+that support external share files. Agents are pointed at those local files
+through the system prompt so they can read setup, configuration, channel, and
+troubleshooting docs without needing web access.
+
+Resolution order is `CHELIX_DOCS_DIR`, the packaged share docs directory
+(`<share>/docs`), the source checkout docs in development, then an embedded
+fallback copied to `~/.chelix/docs/chelix/`. Chelix also writes a generated
+`config-template.md` under `~/.chelix/docs/chelix/` for the current server port
+and points agents at it separately.
+
+## Basic Settings
+
+```toml
+[server]
+port = 13131                    # HTTP/WebSocket port
+bind = "0.0.0.0"               # Listen address
+
+[identity]
+name = "Chelix"                 # Agent display name
+
+[tools]
+agent_timeout_secs = 600        # Agent run timeout (seconds, 0 = no timeout)
+agent_max_iterations = 25       # Max tool call iterations per run
+```
+
+## LLM Providers
+
+Configure providers through the web UI or directly in `chelix.toml`. API keys
+can be set via environment variables (e.g. `ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY`, `GEMINI_API_KEY`) or in the config file.
+
+```toml
+[providers]
+offered = ["anthropic", "openai", "gemini"]
+
+[providers.anthropic]
+enabled = true
+
+[providers.openai]
+enabled = true
+stream_transport = "sse"        # "sse", "websocket", or "auto"
+
+[providers.openai.models."gpt-5.3"]
+[providers.openai.models."gpt-5.2"]
+
+[providers.gemini]
+enabled = true
+
+[providers.gemini.models."gemini-2.5-flash"]
+[providers.gemini.models."gemini-2.5-pro"]
+
+[chat]
+priority_models = ["gpt-5.2"]
+```
+
+Selected models use one TOML form:
+`[providers.<name>.models."<raw-model-id>"]`. These tables form an ordered
+allowlist. Configuration wins field by field, `/models` discovery supplements
+missing metadata, and optional defaults apply last. Chelix excludes a model
+unless `context_length`,
+`max_input_tokens`, `max_output_tokens`, and
+`reasoning.supported_efforts` resolve to a valid record. Use
+`chat.priority_models` only for cross-provider selector ordering.
+
+See [Providers](providers.md) for the full list of supported providers and
+configuration options.
+
+## SSH Management
+
+SSH deploy keys and named targets are managed in **Settings → SSH**. Target
+authentication supports two modes:
+
+- **System OpenSSH**: reuse your existing host aliases, agent forwarding policy,
+  and `~/.ssh/config`.
+- **Managed targets**: create or import a deploy key in **Settings → SSH**, then
+  bind that key to a named target. Chelix stores the private key in its
+  credential store and encrypts it with the vault whenever the vault is
+  unsealed. Imported keys may be passphrase-protected, Chelix strips the
+  passphrase during import so runtime execution can stay non-interactive.
+
+For stricter SSH verification, managed targets also accept a pasted
+`known_hosts` line from `ssh-keyscan -H host`. The SSH settings page can scan
+that for you, and saved targets can refresh or clear their stored pin later.
+When present, Chelix uses that pin instead of your global OpenSSH known-host
+policy for that target.
+
+The SSH settings page provides target connectivity tests and actions to scan,
+refresh, or clear a saved host-key pin. Keys, targets, default-target selection,
+and pins are persisted in Chelix storage rather than `chelix.toml`.
+
+`Settings -> Tools` shows the effective tool inventory for the active session
+and model, including tool-calling support, MCP server state, skills/plugins, and
+the execution runtime. It is session-aware by design: switching the model or
+disabling MCP for a session changes what appears there.
+
+## Sandbox Configuration
+
+Commands run inside isolated containers for security:
+
+```toml
+[sandbox]
+mode = "On"                     # Global policy: exactly "On" or "Off"
+scope = "session"               # "session", "agent", or "shared"
+workspace_sysmount = "ro"       # "ro" keeps rootfs/cap-drop hardening, "rw" relaxes both
+# host_data_dir = "/host/path/data"  # Optional override if auto-detection cannot resolve the host path
+home_persistence = "shared"     # "off", "session", or "shared" (default: "shared")
+# shared_home_dir = "/path/to/shared-home"  # Optional path for shared mode
+backend = "auto"                # "auto", "docker", or "apple-container"
+network = "bridge"              # Docker/Podman network passed as --network=<name>
+
+# Packages installed in the sandbox image
+packages = [
+    "curl",
+    "git",
+    "jq",
+    "tmux",
+    "python3",
+    "python3-pip",
+    "nodejs",
+    "npm",
+    "golang-go",
+]
+
+[[sandbox.mounts]]
+host = "/srv/reference"
+guest = "/mnt/reference"
+mode = "ro"
+```
+
+Chelix always mounts `data_dir()` read-write at the identical absolute path
+inside the sandbox. This mount cannot be disabled or redirected. Additional
+mounts are optional; do not use them to expose secret-bearing config files.
+
+If Chelix runs inside Docker and also mounts the host container socket
+(`/var/run/docker.sock`), Chelix now auto-detects the host path backing
+`/home/chelix/.chelix` from the parent container's mount table. If that
+inspection cannot resolve the correct path, set `host_data_dir` explicitly.
+
+```admonish info
+When you modify the packages list and restart, Chelix automatically rebuilds the sandbox image with a new tag.
+```
+
+## Skills
+
+Configure skill discovery and agent-managed personal skills:
+
+```toml
+[skills]
+enabled = true
+auto_load = ["commit"]
+enable_agent_sidecar_files = false  # Opt-in: allow agents to write sidecar text files in personal skills
+enable_self_improvement = true     # System prompt guidance for autonomous skill creation/update
+```
+
+`enable_agent_sidecar_files` is disabled by default. When enabled, Chelix
+registers the `write_skill_files` tool so agents can write supplementary files
+such as `script.sh`, `Dockerfile`, templates, or `_meta.json` inside
+`<data_dir>/skills/<name>/`. Writes stay confined to that personal skill
+directory, reject path traversal and symlink escapes, and are recorded in
+`~/.chelix/logs/security-audit.jsonl`.
+
+`enable_self_improvement` (default: true) injects system prompt guidance that
+encourages the agent to proactively create and update skills after complex tasks
+(5+ tool calls), tricky error fixes, or non-obvious workflows. The `patch_skill`
+tool allows surgical find/replace updates without rewriting the entire skill
+body.
+
+## Chat Message Queue
+
+When a new message arrives while an agent run is already active, Chelix can
+either replay queued messages one-by-one or merge them into a single follow-up
+message.
+
+```toml
+[chat]
+message_queue_mode = "followup"  # Default: one-by-one replay
+prompt_memory_mode = "live-reload"
+
+# Options:
+#   "followup" - Queue each message and run them sequentially
+#   "collect"  - Merge queued text and run once after the active run
+#   "live-reload" - Re-read MEMORY.md before each turn
+#   "frozen-at-session-start" - Keep the first MEMORY.md snapshot for the session
+```
+
+## Memory System
+
+Long-term memory uses embeddings for semantic search:
+
+```toml
+[memory]
+style = "hybrid"              # Or "prompt-only", "search-only", "off"
+agent_write_mode = "hybrid"   # Or "prompt-only", "search-only", "off"
+user_profile_write_mode = "explicit-and-auto" # Or "explicit-only", "off"
+backend = "builtin"             # Or "qmd"
+provider = "openai"             # Or "local", "custom"
+model = "text-embedding-3-small"
+citations = "auto"              # "on", "off", or "auto"
+llm_reranking = false
+search_merge_strategy = "rrf"   # Or "linear"
+session_export = "on-new-or-reset" # Or "off"
+```
+
+See [Memory Surfaces](memory-surfaces.md) for the boundary between
+`session_state`, prompt memory, searchable memory, and sandbox persistence.
+`memory.style` chooses the high-level behavior, while `chat.prompt_memory_mode`
+only affects prompt-visible `MEMORY.md`. `memory.agent_write_mode` controls
+where agent-authored writes are allowed to land.
+`memory.user_profile_write_mode` controls whether Chelix writes the managed
+`USER.md` surface, and whether browser/channel timezone or location signals may
+update it silently. `memory.session_export` controls whether session rollover
+exports are written at all.
+
+## Authentication
+
+Authentication is **only required when accessing Chelix from a non-localhost
+address**. When running on `localhost` or `127.0.0.1`, no authentication is
+needed by default.
+
+When you access Chelix from a network address (e.g.,
+`http://192.168.1.100:13131`), a one-time setup code is printed to the terminal.
+Use it to set up a password or passkey.
+
+```toml
+[auth]
+disabled = false                # Set true to disable auth entirely
+```
+
+```admonish warning
+Only set `disabled = true` if Chelix is running on a trusted private network. Never expose an unauthenticated instance to the internet.
+```
+
+## Hooks
+
+Configure lifecycle hooks:
+
+```toml
+[hooks]
+[[hooks.hooks]]
+name = "my-hook"
+command = "./hooks/my-hook.sh"
+events = ["BeforeToolCall", "AfterToolCall"]
+timeout = 5                     # Timeout in seconds
+
+[hooks.hooks.env]
+MY_VAR = "value"               # Environment variables for the hook
+```
+
+See [Hooks](hooks.md) for the full hook system documentation.
+
+## MCP Servers
+
+Connect to Model Context Protocol servers:
+
+```toml
+[mcp]
+request_timeout_secs = 30
+                                    # Default timeout for MCP requests (seconds)
+
+[mcp.servers.filesystem]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed"]
+request_timeout_secs = 90        # Optional override for this server
+
+[mcp.servers.github]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+env = { GITHUB_TOKEN = "ghp_..." }
+
+[mcp.servers.remote_api]
+transport = "sse"
+url = "https://mcp.example.com/mcp?api_key=$REMOTE_MCP_KEY"
+headers = { Authorization = "Bearer ${REMOTE_MCP_TOKEN}" }
+
+[mcp.servers.remote_http]
+transport = "streamable-http"
+url = "https://mcp.example.com/mcp"
+headers = { Authorization = "Bearer ${API_KEY}" }
+```
+
+Remote MCP URLs and headers support `$NAME` or `${NAME}` placeholders. For live
+remote servers, values resolve from Chelix-managed env overrides, either `[env]`
+in config or **Settings** → **Environment Variables**.
+
+## Telegram Integration
+
+```toml
+[channels.telegram.my-bot]
+token = "123456:ABC..."
+dm_policy = "allowlist"
+allowlist = ["123456789"]       # Telegram user IDs or usernames (strings)
+```
+
+See [Telegram](telegram.md) for full configuration reference and setup
+instructions.
+
+## Discord Integration
+
+```toml
+[channels]
+offered = ["telegram", "discord"]
+
+[channels.discord.my-bot]
+token = "MTIzNDU2Nzg5.example.bot-token"
+dm_policy = "allowlist"
+mention_mode = "mention"
+allowlist = ["your_username"]
+```
+
+See [Discord](discord.md) for full configuration reference and setup
+instructions.
+
+## Slack Integration
+
+```toml
+[channels]
+offered = ["slack"]
+
+[channels.slack.my-bot]
+bot_token = "xoxb-..."
+app_token = "xapp-..."
+dm_policy = "allowlist"
+allowlist = ["U123456789"]
+```
+
+See [Slack](slack.md) for full configuration reference and setup instructions.
+
+## TLS / HTTPS
+
+```toml
+[tls]
+enabled = true
+cert_path = "~/.config/chelix/cert.pem"
+key_path = "~/.config/chelix/key.pem"
+# If custom paths are not set and auto_generate is true, Chelix generates a
+# local CA and server certificate for localhost/private-network names. Public
+# VPS IP access should set public_ip; public domains should use a reverse proxy
+# or custom CA-issued certificates.
+# public_ip = "203.0.113.10"
+
+# Port for the plain-HTTP redirect / CA-download server.
+# Defaults to the server port + 1 when not set.
+# http_redirect_port = 13132
+```
+
+Override via environment variable: `CHELIX_TLS__HTTP_REDIRECT_PORT=8080`.
+
+## Observability
+
+```toml
+[metrics]
+enabled = true
+prometheus_endpoint = true
+```
+
+## Process Environment Variables (`[env]`)
+
+The `[env]` section injects variables into the Chelix process at startup. This
+is useful in Docker deployments where passing individual `-e` flags is
+inconvenient, or when you want API keys stored in the config file rather than
+the host environment.
+
+```toml
+[env]
+FIRECRAWL_API_KEY = "fc-..."
+OPENROUTER_API_KEY = "sk-or-..."
+ELEVENLABS_API_KEY = "..."
+```
+
+**Precedence**: existing process environment variables are never overwritten. If
+`FIRECRAWL_API_KEY` is already set via `docker -e` or the host shell, the `[env]`
+value is skipped. This means `docker -e` always wins.
+
+```admonish info title="Settings UI vs [env]"
+Environment variables configured through the Settings UI (Settings >
+Environment) are also injected into the Chelix process at startup.
+Precedence: host/`docker -e` > config `[env]` > Settings UI.
+```
+
+## Environment Variables
+
+All settings can be overridden via environment variables:
+
+| Variable                             | Description                       |
+| ------------------------------------ | --------------------------------- |
+| `CHELIX_CONFIG_DIR`                  | Configuration directory           |
+| `CHELIX_DATA_DIR`                    | Data directory                    |
+| `CHELIX_SERVER__PORT`                | Server port override              |
+| `CHELIX_SERVER__BIND`                | Server bind address override      |
+| `CHELIX_TOOLS__AGENT_TIMEOUT_SECS`   | Agent run timeout override        |
+| `CHELIX_TOOLS__AGENT_MAX_ITERATIONS` | Agent loop iteration cap override |
+
+## CLI Flags
+
+```bash
+chelix --config-dir /path/to/config --data-dir /path/to/data
+```
+
+## Complete Example
+
+```toml
+[server]
+port = 13131
+bind = "0.0.0.0"
+
+[identity]
+name = "Atlas"
+
+[tools]
+agent_timeout_secs = 600
+agent_max_iterations = 25
+
+[providers]
+offered = ["anthropic", "openai", "gemini"]
+
+[sandbox]
+mode = "On"
+scope = "session"
+workspace_sysmount = "ro"
+home_persistence = "session"
+# shared_home_dir = "/path/to/shared-home"
+backend = "auto"
+network = "bridge"
+packages = ["curl", "git", "jq", "python3", "nodejs", "golang-go"]
+
+[memory]
+backend = "builtin"
+provider = "openai"
+model = "text-embedding-3-small"
+
+[auth]
+disabled = false
+
+[hooks]
+[[hooks.hooks]]
+name = "audit-log"
+command = "./hooks/audit.sh"
+events = ["BeforeToolCall"]
+timeout = 5
+```

@@ -1,0 +1,1411 @@
+//! Full gateway preparation: config loading, migration, service wiring,
+//! background task spawning, and the composed axum application.
+
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
+
+#[cfg(any(feature = "msteams", feature = "telephony"))]
+use chelix_channels::ChannelPlugin;
+
+use {
+    axum::{
+        extract::ConnectInfo,
+        http::StatusCode,
+        response::{IntoResponse, Json},
+    },
+    chelix_gateway::server::{PreparedGatewayCore, prepare_gateway_core},
+    chelix_sessions::session_events::SessionEventBus,
+};
+
+use super::{
+    PreparedGateway, RouteEnhancer,
+    builder::{build_gateway_base, finalize_gateway_app},
+    runtime::FinalizeGatewayArgs,
+};
+
+#[cfg(feature = "telephony")]
+fn header_value(headers: &axum::http::HeaderMap, name: &str) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(',').next())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+#[cfg(feature = "telephony")]
+fn telephony_webhook_url(
+    account_id: &str,
+    endpoint: &str,
+    headers: &axum::http::HeaderMap,
+    account_config: Option<serde_json::Value>,
+    config: &chelix_config::schema::ChelixConfig,
+) -> Option<String> {
+    let base_url = account_config
+        .as_ref()
+        .and_then(|value| value["webhook_url"].as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| config.server.effective_external_url())
+        .or_else(|| {
+            let host = header_value(headers, "x-forwarded-host")
+                .or_else(|| header_value(headers, "host"))?;
+            let proto = header_value(headers, "x-forwarded-proto").unwrap_or_else(|| {
+                if config.tls.enabled {
+                    "https".to_string()
+                } else {
+                    "http".to_string()
+                }
+            });
+            Some(format!("{proto}://{host}"))
+        })?;
+
+    Some(format!(
+        "{}/api/channels/telephony/{account_id}/{endpoint}",
+        base_url.trim_end_matches('/')
+    ))
+}
+
+#[cfg(feature = "telephony")]
+fn telnyx_payload_string(payload: &serde_json::Value, field: &str) -> Option<String> {
+    payload[field]
+        .as_str()
+        .or_else(|| payload[field]["phone_number"].as_str())
+        .map(ToOwned::to_owned)
+}
+
+#[cfg(feature = "telephony")]
+fn telnyx_call_fields(body: &[u8]) -> (String, String, String) {
+    let payload = serde_json::from_slice::<serde_json::Value>(body)
+        .ok()
+        .and_then(|value| value["data"]["payload"].as_object().cloned())
+        .map(serde_json::Value::Object)
+        .unwrap_or_default();
+
+    let call_control_id = payload["call_control_id"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    let from = telnyx_payload_string(&payload, "from").unwrap_or_else(|| "unknown".to_string());
+    let to = telnyx_payload_string(&payload, "to").unwrap_or_else(|| "unknown".to_string());
+    (call_control_id, from, to)
+}
+
+/// Prepare the full gateway: load config, run migrations, wire services,
+/// spawn background tasks, and return the composed axum application.
+///
+/// This is the HTTP layer on top of [`prepare_gateway_core`]. Embedded callers
+/// can call this directly and manage their own TCP listener + graceful shutdown.
+///
+/// `extra_routes` is an optional callback that returns additional routes
+/// (e.g. the web-UI) to merge before finalization.
+#[allow(clippy::expect_used)]
+pub async fn prepare_gateway(
+    bind: &str,
+    port: u16,
+    no_tls: bool,
+    log_buffer: Option<chelix_gateway::logs::LogBuffer>,
+    config_dir: Option<PathBuf>,
+    data_dir: Option<PathBuf>,
+    extra_routes: Option<RouteEnhancer>,
+    session_event_bus: Option<SessionEventBus>,
+) -> crate::error::Result<PreparedGateway> {
+    // Install a process-level rustls CryptoProvider early, before any channel
+    // plugin (Slack, Discord, etc.) creates outbound TLS connections via
+    // hyper-rustls.  Without this, `--no-tls` deployments skip the TLS cert
+    // setup path where `install_default()` previously lived, causing a panic
+    // the first time an outbound HTTPS request is made (see #329).
+    #[cfg(feature = "tls")]
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
+    let core = prepare_gateway_core(
+        bind,
+        port,
+        no_tls,
+        log_buffer,
+        config_dir,
+        data_dir,
+        session_event_bus,
+    )
+    .await
+    .map_err(|e| crate::Error::Config(e.to_string()))?;
+
+    let PreparedGatewayCore {
+        state,
+        methods,
+        webauthn_registry,
+        #[cfg(feature = "msteams")]
+        msteams_webhook_plugin,
+        #[cfg(feature = "slack")]
+        slack_webhook_plugin,
+        #[cfg(feature = "telephony")]
+        telephony_webhook_plugin,
+        #[cfg(feature = "push-notifications")]
+        push_service,
+        sandbox_router,
+        browser_for_lifecycle,
+        browser_tool_for_warmup,
+        cron_service,
+        log_buffer,
+        config,
+        data_dir,
+        provider_summary,
+        mcp_configured_count,
+        setup_code_display,
+        port,
+        tls_enabled: tls_enabled_for_gateway,
+        ..
+    } = core;
+
+    #[cfg(feature = "push-notifications")]
+    let (router, app_state) = build_gateway_base(
+        Arc::clone(&state),
+        Arc::clone(&methods),
+        push_service,
+        webauthn_registry.clone(),
+    );
+    #[cfg(not(feature = "push-notifications"))]
+    let (router, app_state) = build_gateway_base(
+        Arc::clone(&state),
+        Arc::clone(&methods),
+        webauthn_registry.clone(),
+    );
+
+    // Merge caller-provided routes (e.g. web-UI) before finalization.
+    let router = if let Some(enhance) = extra_routes {
+        router.merge(enhance())
+    } else {
+        router
+    };
+
+    let mut app = finalize_gateway_app(router, app_state, config.server.http_request_logs);
+
+    #[cfg(feature = "msteams")]
+    {
+        let teams_plugin_for_webhook = Arc::clone(&msteams_webhook_plugin);
+        let state_for_teams_webhook = Arc::clone(&state);
+        app = app.route(
+            "/api/channels/msteams/{account_id}/webhook",
+            axum::routing::post(
+                move |axum::extract::Path(account_id): axum::extract::Path<String>,
+                      axum::extract::Query(query): axum::extract::Query<HashMap<String, String>>,
+                      headers: axum::http::HeaderMap,
+                      body: axum::body::Bytes| {
+                    let teams_plugin = Arc::clone(&teams_plugin_for_webhook);
+                    let gw_state = Arc::clone(&state_for_teams_webhook);
+                    async move {
+                        // JWT pre-validation: if a JWT validator is configured,
+                        // the Authorization header is mandatory and must be valid.
+                        // A missing header is treated as an auth failure (not skipped).
+                        let jwt_validator = {
+                            let plugin = teams_plugin.read().await;
+                            plugin.jwt_validator(&account_id)
+                        };
+                        if let Some(validator) = jwt_validator {
+                            let header_str = headers
+                                .get("authorization")
+                                .and_then(|v| v.to_str().ok())
+                                .unwrap_or("");
+                            if !validator.validate(header_str).await {
+                                return (
+                                    StatusCode::UNAUTHORIZED,
+                                    Json(serde_json::json!({ "ok": false, "error": "invalid JWT" })),
+                                )
+                                    .into_response();
+                            }
+                        }
+
+                        // Get the verifier from the plugin.
+                        let verifier = {
+                            let plugin = teams_plugin.read().await;
+                            plugin.channel_webhook_verifier(&account_id)
+                        };
+                        let Some(verifier) = verifier else {
+                            return (
+                                StatusCode::NOT_FOUND,
+                                Json(serde_json::json!({ "ok": false, "error": "unknown Teams account" })),
+                            )
+                                .into_response();
+                        };
+
+                        // Inject query-param secret as header for the verifier.
+                        let mut merged_headers = headers;
+                        if let Some(secret) = query.get("secret")
+                            && let Ok(val) = secret.parse()
+                        {
+                            merged_headers.insert("x-chelix-webhook-secret", val);
+                        }
+
+                        // Run the middleware pipeline.
+                        match chelix_gateway::channel_webhook_middleware::channel_webhook_gate(
+                            verifier.as_ref(),
+                            &gw_state.channel_webhook_dedup,
+                            &gw_state.channel_webhook_rate_limiter,
+                            &account_id,
+                            &merged_headers,
+                            &body,
+                        ) {
+                            Err(rejection) => {
+                                crate::channel_webhook_middleware::rejection_into_response(
+                                    rejection,
+                                )
+                            },
+                            Ok((_, chelix_channels::ChannelWebhookDedupeResult::Duplicate)) => (
+                                StatusCode::OK,
+                                Json(serde_json::json!({ "ok": true, "deduplicated": true })),
+                            )
+                                .into_response(),
+                            Ok((verified, chelix_channels::ChannelWebhookDedupeResult::New)) => {
+                                // Parse verified body.
+                                let payload: serde_json::Value =
+                                    match serde_json::from_slice(&verified.body) {
+                                        Ok(v) => v,
+                                        Err(e) => {
+                                            return (
+                                                StatusCode::BAD_REQUEST,
+                                                Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
+                                            )
+                                                .into_response();
+                                        },
+                                    };
+
+                                // Spawn processing asynchronously and return 202
+                                // immediately. This prevents Teams from retrying
+                                // when LLM processing takes longer than ~15 seconds.
+                                let account_id_owned = account_id.clone();
+                                let teams_plugin_for_spawn = Arc::clone(&teams_plugin);
+                                tokio::spawn(async move {
+                                    let plugin = teams_plugin_for_spawn.read().await;
+                                    if let Err(e) = plugin
+                                        .ingest_verified_activity(&account_id_owned, payload)
+                                        .await
+                                    {
+                                        tracing::warn!(
+                                            account_id = account_id_owned,
+                                            "Teams webhook processing failed: {e}"
+                                        );
+                                    }
+                                });
+
+                                (
+                                    StatusCode::ACCEPTED,
+                                    Json(serde_json::json!({ "ok": true })),
+                                )
+                                    .into_response()
+                            },
+                        }
+                    }
+                },
+            ),
+        );
+    }
+    #[cfg(feature = "slack")]
+    {
+        // Slack Events API webhook
+        let slack_events_plugin = Arc::clone(&slack_webhook_plugin);
+        let state_for_slack_events = Arc::clone(&state);
+        app = app.route(
+            "/api/channels/slack/{account_id}/events",
+            axum::routing::post(
+                move |axum::extract::Path(account_id): axum::extract::Path<String>,
+                      headers: axum::http::HeaderMap,
+                      body: axum::body::Bytes| {
+                    let plugin = Arc::clone(&slack_events_plugin);
+                    let gw_state = Arc::clone(&state_for_slack_events);
+                    async move {
+                        // Get the verifier from the plugin.
+                        let verifier = {
+                            let p = plugin.read().await;
+                            p.channel_webhook_verifier(&account_id)
+                        };
+                        let Some(verifier) = verifier else {
+                            return (
+                                StatusCode::NOT_FOUND,
+                                Json(serde_json::json!({ "ok": false, "error": "unknown Slack account" })),
+                            )
+                                .into_response();
+                        };
+
+                        // Run the middleware pipeline.
+                        match chelix_gateway::channel_webhook_middleware::channel_webhook_gate(
+                            verifier.as_ref(),
+                            &gw_state.channel_webhook_dedup,
+                            &gw_state.channel_webhook_rate_limiter,
+                            &account_id,
+                            &headers,
+                            &body,
+                        ) {
+                            Err(rejection) => {
+                                crate::channel_webhook_middleware::rejection_into_response(
+                                    rejection,
+                                )
+                            },
+                            Ok((_, chelix_channels::ChannelWebhookDedupeResult::Duplicate)) => (
+                                StatusCode::OK,
+                                Json(serde_json::json!({ "ok": true, "deduplicated": true })),
+                            )
+                                .into_response(),
+                            Ok((verified, chelix_channels::ChannelWebhookDedupeResult::New)) => {
+                                // Dispatch to Slack plugin with verified body.
+                                let result = {
+                                    let p = plugin.read().await;
+                                    p.ingest_verified_webhook(&account_id, &verified.body)
+                                        .await
+                                };
+                                match result {
+                                    Ok(Some(challenge)) => (
+                                        StatusCode::OK,
+                                        Json(serde_json::json!({ "challenge": challenge })),
+                                    )
+                                        .into_response(),
+                                    Ok(None) => (
+                                        StatusCode::OK,
+                                        Json(serde_json::json!({ "ok": true })),
+                                    )
+                                        .into_response(),
+                                    Err(e) => {
+                                        let msg = e.to_string();
+                                        if msg.contains("unknown") {
+                                            (
+                                                StatusCode::NOT_FOUND,
+                                                Json(serde_json::json!({ "ok": false, "error": msg })),
+                                            )
+                                                .into_response()
+                                        } else {
+                                            (
+                                                StatusCode::BAD_REQUEST,
+                                                Json(serde_json::json!({ "ok": false, "error": msg })),
+                                            )
+                                                .into_response()
+                                        }
+                                    },
+                                }
+                            },
+                        }
+                    }
+                },
+            ),
+        );
+
+        // Slack interaction webhook -- receives button click payloads.
+        let slack_interact_plugin = Arc::clone(&slack_webhook_plugin);
+        let state_for_slack_interact = Arc::clone(&state);
+        app = app.route(
+            "/api/channels/slack/{account_id}/interactions",
+            axum::routing::post(
+                move |axum::extract::Path(account_id): axum::extract::Path<String>,
+                      headers: axum::http::HeaderMap,
+                      body: axum::body::Bytes| {
+                    let plugin = Arc::clone(&slack_interact_plugin);
+                    let gw_state = Arc::clone(&state_for_slack_interact);
+                    async move {
+                        // Get the verifier from the plugin.
+                        let verifier = {
+                            let p = plugin.read().await;
+                            p.channel_webhook_verifier(&account_id)
+                        };
+                        let Some(verifier) = verifier else {
+                            return (
+                                StatusCode::NOT_FOUND,
+                                Json(serde_json::json!({ "ok": false, "error": "unknown Slack account" })),
+                            )
+                                .into_response();
+                        };
+
+                        // Run the middleware pipeline.
+                        match chelix_gateway::channel_webhook_middleware::channel_webhook_gate(
+                            verifier.as_ref(),
+                            &gw_state.channel_webhook_dedup,
+                            &gw_state.channel_webhook_rate_limiter,
+                            &account_id,
+                            &headers,
+                            &body,
+                        ) {
+                            Err(rejection) => {
+                                crate::channel_webhook_middleware::rejection_into_response(
+                                    rejection,
+                                )
+                            },
+                            Ok((_, chelix_channels::ChannelWebhookDedupeResult::Duplicate)) => (
+                                StatusCode::OK,
+                                Json(serde_json::json!({ "ok": true, "deduplicated": true })),
+                            )
+                                .into_response(),
+                            Ok((verified, chelix_channels::ChannelWebhookDedupeResult::New)) => {
+                                // Dispatch to Slack plugin with verified body.
+                                let result = {
+                                    let p = plugin.read().await;
+                                    p.ingest_verified_interaction_webhook(
+                                        &account_id,
+                                        &verified.body,
+                                    )
+                                    .await
+                                };
+                                match result {
+                                    Ok(()) => (
+                                        StatusCode::OK,
+                                        Json(serde_json::json!({ "ok": true })),
+                                    )
+                                        .into_response(),
+                                    Err(e) => (
+                                        StatusCode::BAD_REQUEST,
+                                        Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
+                                    )
+                                        .into_response(),
+                                }
+                            },
+                        }
+                    }
+                },
+            ),
+        );
+
+        // Slack slash command webhook -- receives /command payloads.
+        let slack_cmd_plugin = Arc::clone(&slack_webhook_plugin);
+        let state_for_slack_cmd = Arc::clone(&state);
+        app = app.route(
+            "/api/channels/slack/{account_id}/commands",
+            axum::routing::post(
+                move |axum::extract::Path(account_id): axum::extract::Path<String>,
+                      headers: axum::http::HeaderMap,
+                      body: axum::body::Bytes| {
+                    let plugin = Arc::clone(&slack_cmd_plugin);
+                    let gw_state = Arc::clone(&state_for_slack_cmd);
+                    async move {
+                        // Get the verifier from the plugin.
+                        let verifier = {
+                            let p = plugin.read().await;
+                            p.channel_webhook_verifier(&account_id)
+                        };
+                        let Some(verifier) = verifier else {
+                            return (
+                                StatusCode::NOT_FOUND,
+                                Json(serde_json::json!({ "ok": false, "error": "unknown Slack account" })),
+                            )
+                                .into_response();
+                        };
+
+                        // Run the middleware pipeline.
+                        match chelix_gateway::channel_webhook_middleware::channel_webhook_gate(
+                            verifier.as_ref(),
+                            &gw_state.channel_webhook_dedup,
+                            &gw_state.channel_webhook_rate_limiter,
+                            &account_id,
+                            &headers,
+                            &body,
+                        ) {
+                            Err(rejection) => {
+                                crate::channel_webhook_middleware::rejection_into_response(
+                                    rejection,
+                                )
+                            },
+                            Ok((_, chelix_channels::ChannelWebhookDedupeResult::Duplicate)) => {
+                                // Slash commands display the response body in
+                                // Slack, so return an empty 200 for deduped
+                                // requests instead of JSON the user would see.
+                                StatusCode::OK.into_response()
+                            },
+                            Ok((verified, chelix_channels::ChannelWebhookDedupeResult::New)) => {
+                                // Dispatch to Slack plugin with verified body.
+                                let result = {
+                                    let p = plugin.read().await;
+                                    p.ingest_verified_command_webhook(
+                                        &account_id,
+                                        &verified.body,
+                                    )
+                                    .await
+                                };
+                                match result {
+                                    Ok(response_text) => (
+                                        StatusCode::OK,
+                                        response_text,
+                                    )
+                                        .into_response(),
+                                    Err(e) => (
+                                        StatusCode::BAD_REQUEST,
+                                        Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
+                                    )
+                                        .into_response(),
+                                }
+                            },
+                        }
+                    }
+                },
+            ),
+        );
+    }
+
+    #[cfg(feature = "telephony")]
+    {
+        let telephony_plugin_for_webhook = Arc::clone(&telephony_webhook_plugin);
+        let telephony_config_for_status = config.clone();
+
+        // Status callback — Twilio posts call status updates here
+        app = app.route(
+            "/api/channels/telephony/{account_id}/status",
+            axum::routing::post(
+                move |axum::extract::Path(account_id): axum::extract::Path<String>,
+                      headers: axum::http::HeaderMap,
+                      body: axum::body::Bytes| {
+                    let plugin = Arc::clone(&telephony_plugin_for_webhook);
+                    async move {
+                        let plugin_guard = plugin.read().await;
+                        let mgr = match plugin_guard.call_manager(&account_id) {
+                            Some(m) => m,
+                            None => {
+                                return (
+                                    StatusCode::NOT_FOUND,
+                                    Json(serde_json::json!({"ok": false, "error": "unknown telephony account"})),
+                                )
+                                    .into_response();
+                            },
+                        };
+
+                        let manager = mgr.read().await;
+                        let provider = manager.provider().read().await;
+
+                        // Verify webhook signature before processing.
+                        let webhook_url = match telephony_webhook_url(
+                            &account_id,
+                            "status",
+                            &headers,
+                            plugin_guard.account_config_json(&account_id),
+                            &telephony_config_for_status,
+                        ) {
+                            Some(url) => url,
+                            None => {
+                                return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok": false, "error": "missing public webhook URL"}))).into_response();
+                            },
+                        };
+                        if let Err(e) = provider.verify_webhook(&webhook_url, &headers, &body) {
+                            tracing::warn!(account_id = %account_id, "telephony status webhook verification failed: {e}");
+                            return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"ok": false, "error": "signature verification failed"}))).into_response();
+                        }
+
+                        match provider.parse_webhook_event(&headers, &body) {
+                            Ok(event) => {
+                                drop(provider);
+                                manager.handle_event(&event);
+                                (
+                                    StatusCode::OK,
+                                    Json(serde_json::json!({"ok": true})),
+                                )
+                                    .into_response()
+                            },
+                            Err(e) => {
+                                tracing::warn!(account_id = %account_id, "telephony webhook parse error: {e}");
+                                (
+                                    StatusCode::BAD_REQUEST,
+                                    Json(serde_json::json!({"ok": false, "error": e.to_string()})),
+                                )
+                                    .into_response()
+                            },
+                        }
+                    }
+                },
+            ),
+        );
+
+        // Answer URL — providers fetch call instructions here when a call connects.
+        let telephony_answer_plugin = Arc::clone(&telephony_webhook_plugin);
+        let telephony_config_for_answer = config.clone();
+        app = app.route(
+            "/api/channels/telephony/{account_id}/answer",
+            axum::routing::post(
+                move |axum::extract::Path(account_id): axum::extract::Path<String>,
+                      headers: axum::http::HeaderMap,
+                      body: axum::body::Bytes| {
+                    let plugin = Arc::clone(&telephony_answer_plugin);
+                    async move {
+                        let plugin_guard = plugin.read().await;
+                        let mgr = match plugin_guard.call_manager(&account_id) {
+                            Some(m) => m,
+                            None => {
+                                return (StatusCode::NOT_FOUND, "unknown account").into_response();
+                            },
+                        };
+
+                        let manager = mgr.read().await;
+
+                        // Verify webhook signature.
+                        {
+                            let provider = manager.provider().read().await;
+                            let webhook_url = match telephony_webhook_url(
+                                &account_id,
+                                "answer",
+                                &headers,
+                                plugin_guard.account_config_json(&account_id),
+                                &telephony_config_for_answer,
+                            ) {
+                                Some(url) => url,
+                                None => {
+                                    return (StatusCode::BAD_REQUEST, "missing public webhook URL").into_response();
+                                },
+                            };
+                            if let Err(e) = provider.verify_webhook(&webhook_url, &headers, &body) {
+                                tracing::warn!(account_id = %account_id, "telephony answer webhook verification failed: {e}");
+                                return (StatusCode::UNAUTHORIZED, "signature verification failed").into_response();
+                            }
+                        }
+
+                        if manager.provider().read().await.id() == "telnyx" {
+                            let provider = manager.provider().read().await;
+                            let event = match provider.parse_webhook_event(&headers, &body) {
+                                Ok(event) => event,
+                                Err(e) => {
+                                    tracing::warn!(account_id = %account_id, "telephony Telnyx answer webhook parse error: {e}");
+                                    return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"ok": false, "error": e.to_string()}))).into_response();
+                                },
+                            };
+
+                            match event {
+                                chelix_telephony::types::CallEvent::Initiated {
+                                    ref provider_call_id,
+                                } => {
+                                    let (_, caller, called) = telnyx_call_fields(&body);
+                                    let existing_call = manager
+                                        .resolve_call_id(provider_call_id)
+                                        .and_then(|call_id| manager.get_call(&call_id));
+                                    if let Some(config_view) = plugin_guard.account_config(&account_id)
+                                    {
+                                        let policy = config_view.dm_policy();
+                                        let rejected = match policy {
+                                            chelix_channels::gating::DmPolicy::Disabled => true,
+                                            chelix_channels::gating::DmPolicy::Allowlist => {
+                                                !chelix_channels::gating::is_allowed(
+                                                    &caller,
+                                                    config_view.allowlist(),
+                                                )
+                                            },
+                                            chelix_channels::gating::DmPolicy::Open => false,
+                                        };
+                                        if rejected {
+                                            tracing::info!(account_id = %account_id, caller = %caller, "rejecting Telnyx inbound call");
+                                            let _ = provider.hangup_call(provider_call_id).await;
+                                            return (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response();
+                                        }
+                                    }
+
+                                    if existing_call.is_none() {
+                                        manager.register_inbound(
+                                            provider_call_id,
+                                            &caller,
+                                            &called,
+                                            &account_id,
+                                        );
+                                    }
+
+                                    let is_conversation = existing_call
+                                        .as_ref()
+                                        .map(|call| {
+                                            matches!(
+                                                call.mode,
+                                                chelix_telephony::types::CallMode::Conversation
+                                            )
+                                        })
+                                        .unwrap_or(true);
+                                    let greeting = existing_call
+                                        .as_ref()
+                                        .and_then(|call| call.initial_message.as_deref())
+                                        .unwrap_or(
+                                            "Hello, you've reached the AI assistant. How can I help you?",
+                                        );
+
+                                    if let Err(e) = provider.answer_call(provider_call_id).await {
+                                        tracing::warn!(account_id = %account_id, provider_call_id = %provider_call_id, "failed to answer Telnyx call: {e}");
+                                    }
+                                    if let Err(e) = provider.play_tts(provider_call_id, greeting, None, None).await {
+                                        tracing::warn!(account_id = %account_id, provider_call_id = %provider_call_id, "failed to greet Telnyx call: {e}");
+                                    }
+                                    if is_conversation && let Err(e) = provider.start_transcription(provider_call_id).await {
+                                        tracing::warn!(account_id = %account_id, provider_call_id = %provider_call_id, "failed to start Telnyx transcription: {e}");
+                                    }
+                                },
+                                chelix_telephony::types::CallEvent::Speech {
+                                    ref provider_call_id,
+                                    ref text,
+                                    ..
+                                } => {
+                                    drop(provider);
+                                    manager.handle_event(&event);
+                                    let call_id = manager
+                                        .resolve_call_id(provider_call_id)
+                                        .unwrap_or_default();
+                                    if call_id.is_empty() {
+                                        tracing::warn!(account_id = %account_id, provider_call_id = %provider_call_id, "Telnyx transcription for unknown call");
+                                        return (StatusCode::OK, Json(serde_json::json!({"ok": true}))).into_response();
+                                    }
+                                    let caller = manager
+                                        .get_call(&call_id)
+                                        .map(|r| r.from.clone())
+                                        .unwrap_or_default();
+                                    let account_id_owned = account_id.clone();
+                                    let call_id_owned = call_id.clone();
+                                    let text_owned = text.clone();
+                                    let plugin_for_dispatch = Arc::clone(&plugin);
+                                    tokio::spawn(async move {
+                                        let pg = plugin_for_dispatch.read().await;
+                                        pg.dispatch_speech(
+                                            &account_id_owned,
+                                            &call_id_owned,
+                                            &caller,
+                                            &text_owned,
+                                        )
+                                        .await;
+                                    });
+                                },
+                                ref other => {
+                                    tracing::debug!(account_id = %account_id, event = ?other, "handling Telnyx telephony event");
+                                    manager.handle_event(other);
+                                },
+                            }
+
+                            return (StatusCode::OK, Json(serde_json::json!({"ok": true})))
+                                .into_response();
+                        }
+
+                        // Parse inbound call info from body
+                        let body_str = match std::str::from_utf8(&body) {
+                            Ok(value) => value,
+                            Err(e) => {
+                                tracing::warn!(account_id = %account_id, "telephony answer body is not valid utf-8: {e}");
+                                return (StatusCode::BAD_REQUEST, "invalid webhook body").into_response();
+                            },
+                        };
+                        let params: HashMap<String, String> =
+                            url::form_urlencoded::parse(body_str.as_bytes())
+                                .map(|(k, v)| (k.to_string(), v.to_string()))
+                                .collect();
+
+                        let caller = params.get("From").map(|s| s.as_str()).unwrap_or("unknown");
+                        let called = params.get("To").map(|s| s.as_str()).unwrap_or("unknown");
+                        let call_sid = params.get("CallSid").map(|s| s.as_str()).unwrap_or("");
+
+                        // Check if this is an existing outbound call (already
+                        // registered by manager.initiate()).
+                        let existing_call = if !call_sid.is_empty() {
+                            manager.resolve_call_id(call_sid).and_then(|cid| manager.get_call(&cid))
+                        } else {
+                            None
+                        };
+
+                        let provider = manager.provider().read().await;
+                        let gather_url = match telephony_webhook_url(
+                            &account_id,
+                            "gather",
+                            &headers,
+                            plugin_guard.account_config_json(&account_id),
+                            &telephony_config_for_answer,
+                        ) {
+                            Some(url) => url,
+                            None => {
+                                return (StatusCode::BAD_REQUEST, "missing public webhook URL")
+                                    .into_response();
+                            },
+                        };
+
+                        if let Some(call) = existing_call {
+                            // Outbound call we initiated — use its mode and message.
+                            let msg = call.initial_message.as_deref();
+                            let twiml = match call.mode {
+                                chelix_telephony::types::CallMode::Notify => {
+                                    // Speak the message, then hang up.
+                                    let say_msg = msg.unwrap_or("This is a notification.");
+                                    provider.build_answer_response(Some(say_msg), None)
+                                },
+                                chelix_telephony::types::CallMode::Conversation => {
+                                    let greeting = msg.unwrap_or(
+                                        "Hello, you've reached the AI assistant. How can I help you?",
+                                    );
+                                    provider.build_answer_response(Some(greeting), Some(&gather_url))
+                                },
+                            };
+                            return (
+                                StatusCode::OK,
+                                [(axum::http::header::CONTENT_TYPE, "text/xml")],
+                                twiml,
+                            )
+                                .into_response();
+                        }
+
+                        // New inbound call — enforce access policy.
+                        {
+                            use chelix_channels::ChannelPlugin as _;
+                            if let Some(config_view) = plugin_guard.account_config(&account_id) {
+                                let policy = config_view.dm_policy();
+                                match policy {
+                                    chelix_channels::gating::DmPolicy::Disabled => {
+                                        tracing::info!(account_id = %account_id, caller = %caller, "rejecting inbound call: inbound_policy=disabled");
+                                        let twiml = provider.build_hangup_response();
+                                        return (StatusCode::OK, [(axum::http::header::CONTENT_TYPE, "text/xml")], twiml).into_response();
+                                    },
+                                    chelix_channels::gating::DmPolicy::Allowlist => {
+                                        if !chelix_channels::gating::is_allowed(caller, config_view.allowlist()) {
+                                            tracing::info!(account_id = %account_id, caller = %caller, "rejecting inbound call: not on allowlist");
+                                            let twiml = provider.build_hangup_response();
+                                            return (StatusCode::OK, [(axum::http::header::CONTENT_TYPE, "text/xml")], twiml).into_response();
+                                        }
+                                    },
+                                    chelix_channels::gating::DmPolicy::Open => {},
+                                }
+                            }
+                        }
+
+                        // Register the new inbound call and start conversation.
+                        if !call_sid.is_empty() {
+                            drop(provider);
+                            manager.register_inbound(call_sid, caller, called, &account_id);
+
+                            let greeting = "Hello, you've reached the AI assistant. How can I help you?";
+                            let provider = manager.provider().read().await;
+                            let twiml = provider.build_answer_response(Some(greeting), Some(&gather_url));
+                            return (
+                                StatusCode::OK,
+                                [(axum::http::header::CONTENT_TYPE, "text/xml")],
+                                twiml,
+                            )
+                                .into_response();
+                        }
+
+                        let twiml = provider.build_hangup_response();
+                        (
+                            StatusCode::OK,
+                            [(axum::http::header::CONTENT_TYPE, "text/xml")],
+                            twiml,
+                        )
+                            .into_response()
+                    }
+                },
+            ),
+        );
+
+        // Gather URL — receives speech/DTMF results from Twilio and dispatches
+        // to the agent loop via the plugin's ChannelEventSink.
+        let telephony_gather_plugin = Arc::clone(&telephony_webhook_plugin);
+        let telephony_config_for_gather = config.clone();
+        app = app.route(
+            "/api/channels/telephony/{account_id}/gather",
+            axum::routing::post(
+                move |axum::extract::Path(account_id): axum::extract::Path<String>,
+                      headers: axum::http::HeaderMap,
+                      body: axum::body::Bytes| {
+                    let plugin = Arc::clone(&telephony_gather_plugin);
+                    async move {
+                        let plugin_guard = plugin.read().await;
+                        let mgr = match plugin_guard.call_manager(&account_id) {
+                            Some(m) => m,
+                            None => {
+                                return (StatusCode::NOT_FOUND, "unknown account").into_response();
+                            },
+                        };
+
+                        let manager = mgr.read().await;
+                        let provider = manager.provider().read().await;
+
+                        // Verify webhook signature.
+                        let webhook_url = match telephony_webhook_url(
+                            &account_id,
+                            "gather",
+                            &headers,
+                            plugin_guard.account_config_json(&account_id),
+                            &telephony_config_for_gather,
+                        ) {
+                            Some(url) => url,
+                            None => {
+                                return (StatusCode::BAD_REQUEST, "missing public webhook URL")
+                                    .into_response();
+                            },
+                        };
+                        if let Err(e) =
+                            provider.verify_webhook(&webhook_url, &headers, &body)
+                        {
+                            tracing::warn!(account_id = %account_id, "telephony gather webhook verification failed: {e}");
+                            return (StatusCode::UNAUTHORIZED, "signature verification failed")
+                                .into_response();
+                        }
+
+                        match provider.parse_webhook_event(&headers, &body) {
+                            Ok(event) => {
+                                match &event {
+                                    chelix_telephony::types::CallEvent::Speech {
+                                        provider_call_id,
+                                        text,
+                                        confidence,
+                                    } => tracing::debug!(
+                                        account_id = %account_id,
+                                        provider_call_id = %provider_call_id,
+                                        speech_len = text.len(),
+                                        confidence = ?confidence,
+                                        "telephony gather received speech"
+                                    ),
+                                    chelix_telephony::types::CallEvent::Dtmf {
+                                        provider_call_id,
+                                        ..
+                                    } => tracing::debug!(
+                                        account_id = %account_id,
+                                        provider_call_id = %provider_call_id,
+                                        "telephony gather received DTMF"
+                                    ),
+                                    other => tracing::debug!(
+                                        account_id = %account_id,
+                                        event = ?other,
+                                        "telephony gather parsed non-input event"
+                                    ),
+                                }
+
+                                drop(provider);
+                                manager.handle_event(&event);
+
+                                // If speech was recognized, dispatch to the agent loop.
+                                if let chelix_telephony::types::CallEvent::Speech {
+                                    ref provider_call_id,
+                                    ref text,
+                                    ..
+                                } = event
+                                {
+                                    let call_id = manager
+                                        .resolve_call_id(provider_call_id)
+                                        .unwrap_or_default();
+
+                                    if call_id.is_empty() {
+                                        tracing::warn!(
+                                            account_id = %account_id,
+                                            provider_call_id = %provider_call_id,
+                                            "telephony gather speech for unknown call"
+                                        );
+                                        let provider = manager.provider().read().await;
+                                        let twiml = provider.build_gather_response(None, &webhook_url);
+                                        return (
+                                            StatusCode::OK,
+                                            [(axum::http::header::CONTENT_TYPE, "text/xml")],
+                                            twiml,
+                                        )
+                                            .into_response();
+                                    }
+
+                                    tracing::debug!(
+                                        account_id = %account_id,
+                                        provider_call_id = %provider_call_id,
+                                        call_id = %call_id,
+                                        "telephony gather dispatching speech"
+                                    );
+
+                                    // Look up the caller from the call record.
+                                    let caller = manager
+                                        .get_call(&call_id)
+                                        .map(|r| r.from.clone())
+                                        .unwrap_or_default();
+
+                                    // Dispatch via the plugin's event sink (async, non-blocking).
+                                    let account_id_owned = account_id.clone();
+                                    let call_id_owned = call_id.clone();
+                                    let caller_owned = caller;
+                                    let text_owned = text.clone();
+                                    let plugin_for_dispatch = Arc::clone(&plugin);
+                                    tokio::spawn(async move {
+                                        let pg = plugin_for_dispatch.read().await;
+                                        pg.dispatch_speech(
+                                            &account_id_owned,
+                                            &call_id_owned,
+                                            &caller_owned,
+                                            &text_owned,
+                                        )
+                                        .await;
+                                    });
+                                }
+
+                                // Continue gathering for the next input.
+                                let provider = manager.provider().read().await;
+                                let twiml = provider.build_gather_response(None, &webhook_url);
+                                (
+                                    StatusCode::OK,
+                                    [(axum::http::header::CONTENT_TYPE, "text/xml")],
+                                    twiml,
+                                )
+                                    .into_response()
+                            },
+                            Err(e) => {
+                                tracing::warn!(account_id = %account_id, "telephony gather parse error: {e}");
+                                let twiml = provider.build_hangup_response();
+                                (
+                                    StatusCode::OK,
+                                    [(axum::http::header::CONTENT_TYPE, "text/xml")],
+                                    twiml,
+                                )
+                                    .into_response()
+                            },
+                        }
+                    }
+                },
+            ),
+        );
+    }
+
+    // -- Generic webhook ingress ------------------------------------------------
+    {
+        fn webhook_cors_headers(mut resp: axum::response::Response) -> axum::response::Response {
+            use axum::http::HeaderValue;
+            let h = resp.headers_mut();
+            h.insert(
+                axum::http::header::ACCESS_CONTROL_ALLOW_ORIGIN,
+                HeaderValue::from_static("*"),
+            );
+            h.insert(
+                axum::http::header::ACCESS_CONTROL_ALLOW_METHODS,
+                HeaderValue::from_static("POST, OPTIONS"),
+            );
+            h.insert(axum::http::header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("Content-Type, Authorization, X-Hub-Signature-256, X-GitHub-Event, X-GitHub-Delivery, X-Gitlab-Token, X-Gitlab-Event, Stripe-Signature, X-Webhook-Secret, X-Event-Type, X-Delivery-Id, Idempotency-Key, Linear-Signature, X-PagerDuty-Signature, Sentry-Hook-Signature"));
+            h.insert(
+                axum::http::header::ACCESS_CONTROL_MAX_AGE,
+                HeaderValue::from_static("86400"),
+            );
+            resp
+        }
+
+        // OPTIONS preflight handler.
+        app = app.route(
+            "/api/webhooks/ingest/{public_id}",
+            axum::routing::options(move |_: axum::extract::Path<String>| async move {
+                webhook_cors_headers(StatusCode::NO_CONTENT.into_response())
+            }),
+        );
+
+        let state_for_webhook_ingest = Arc::clone(&state);
+        app = app.route(
+            "/api/webhooks/ingest/{public_id}",
+            axum::routing::post(
+                move |axum::extract::Path(public_id): axum::extract::Path<String>,
+                      ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+                      headers: axum::http::HeaderMap,
+                      body: axum::body::Bytes| {
+                    let gw = Arc::clone(&state_for_webhook_ingest);
+                    async move {
+                        // Extract remote IP. Behind a proxy, trust forwarded
+                        // headers; otherwise use the real TCP peer address.
+                        let remote_ip = if gw.behind_proxy {
+                            headers
+                                .get("x-forwarded-for")
+                                .and_then(|v| v.to_str().ok())
+                                .and_then(|v| v.split(',').next())
+                                .map(|s| s.trim().to_string())
+                                .or_else(|| {
+                                    headers
+                                        .get("x-real-ip")
+                                        .and_then(|v| v.to_str().ok())
+                                        .map(|s| s.trim().to_string())
+                                })
+                                .or_else(|| Some(peer.ip().to_string()))
+                        } else {
+                            Some(peer.ip().to_string())
+                        };
+
+                        let resp = async {
+                            let Some(store) = gw.webhook_store.get() else {
+                                return (
+                                    StatusCode::NOT_FOUND,
+                                    Json(serde_json::json!({ "error": "webhooks not configured" })),
+                                )
+                                    .into_response();
+                            };
+
+                            // Look up webhook by public_id.
+                            let webhook = match store.get_webhook_by_public_id(&public_id).await {
+                                Ok(w) if w.enabled => w,
+                                Ok(_) => {
+                                    return (
+                                        StatusCode::NOT_FOUND,
+                                        Json(serde_json::json!({ "error": "webhook not found" })),
+                                    )
+                                        .into_response();
+                                },
+                                Err(_) => {
+                                    return (
+                                        StatusCode::NOT_FOUND,
+                                        Json(serde_json::json!({ "error": "webhook not found" })),
+                                    )
+                                        .into_response();
+                                },
+                            };
+
+                            #[allow(unused_mut)]
+                            // Secret decryption mutates the webhook only when the vault feature is enabled.
+                            let mut webhook = webhook;
+
+                            #[cfg(feature = "vault")]
+                            if let Err(error) = chelix_gateway::webhooks::decrypt_webhook_secrets(
+                                &mut webhook,
+                                gw.vault.as_ref(),
+                            )
+                            .await
+                            {
+                                tracing::warn!(
+                                    public_id = %webhook.public_id,
+                                    error = %error,
+                                    "webhook secrets unavailable for runtime verification"
+                                );
+                                return (
+                                    StatusCode::SERVICE_UNAVAILABLE,
+                                    Json(serde_json::json!({
+                                        "error": "webhook secrets unavailable",
+                                    })),
+                                )
+                                    .into_response();
+                            }
+
+                            // Check CIDR allowlist (before auth to avoid timing side-channels).
+                            if !webhook.allowed_cidrs.is_empty() {
+                                let allowed = match &remote_ip {
+                                    Some(ip) => {
+                                        if let Ok(addr) = ip.parse::<std::net::IpAddr>() {
+                                            webhook.allowed_cidrs.iter().any(|cidr| {
+                                                cidr.parse::<ipnet::IpNet>()
+                                                    .map(|net| net.contains(&addr))
+                                                    .unwrap_or_else(|_| {
+                                                        // Fall back to exact string match.
+                                                        cidr == ip
+                                                    })
+                                            })
+                                        } else {
+                                            // IP couldn't be parsed -- no match.
+                                            false
+                                        }
+                                    },
+                                    None => false, // No IP available -- can't match allowlist.
+                                };
+                                if !allowed {
+                                    return (
+                                        StatusCode::FORBIDDEN,
+                                        Json(serde_json::json!({ "error": "IP not in allowlist" })),
+                                    )
+                                        .into_response();
+                                }
+                            }
+
+                            // Check body size limit.
+                            if body.len() > webhook.max_body_bytes {
+                                return (
+                                    StatusCode::PAYLOAD_TOO_LARGE,
+                                    Json(serde_json::json!({
+                                        "error": "payload too large",
+                                        "maxBytes": webhook.max_body_bytes,
+                                    })),
+                                )
+                                    .into_response();
+                            }
+
+                            // Verify authentication.
+                            if let Err(e) = chelix_webhooks::auth::verify(
+                                &webhook.auth_mode,
+                                webhook.auth_config.as_ref(),
+                                &headers,
+                                &body,
+                            ) {
+                                tracing::warn!(
+                                    webhook_id = webhook.id,
+                                    public_id = %webhook.public_id,
+                                    error = %e,
+                                    "webhook auth verification failed"
+                                );
+                                return (
+                                    StatusCode::UNAUTHORIZED,
+                                    Json(serde_json::json!({ "error": "authentication failed" })),
+                                )
+                                    .into_response();
+                            }
+
+                            // Parse event type and delivery key from source profile.
+                            let profile_registry =
+                                chelix_webhooks::profiles::ProfileRegistry::new();
+                            let profile = profile_registry.get(&webhook.source_profile);
+                            let event_type =
+                                profile.and_then(|p| p.parse_event_type(&headers, &body));
+                            let delivery_key =
+                                profile.and_then(|p| p.parse_delivery_key(&headers, &body));
+
+                            // Check event filter.
+                            if let Some(ref et) = event_type
+                                && !webhook.event_filter.accepts(et)
+                            {
+                                return (
+                                    StatusCode::OK,
+                                    Json(serde_json::json!({
+                                        "status": "filtered",
+                                        "eventType": et,
+                                    })),
+                                )
+                                    .into_response();
+                            }
+
+                            // Check rate limit.
+                            if !gw
+                                .webhook_rate_limiter
+                                .check(webhook.id, webhook.rate_limit_per_minute)
+                            {
+                                return (
+                                    StatusCode::TOO_MANY_REQUESTS,
+                                    Json(serde_json::json!({ "error": "rate limited" })),
+                                )
+                                    .into_response();
+                            }
+
+                            // Dedup check.
+                            if let Some(ref dk) = delivery_key {
+                                match chelix_webhooks::dedup::check_duplicate(
+                                    store.as_ref(),
+                                    webhook.id,
+                                    Some(dk.as_str()),
+                                )
+                                .await
+                                {
+                                    Ok(Some(existing_id)) => {
+                                        return (
+                                            StatusCode::OK,
+                                            Json(serde_json::json!({
+                                                "status": "deduplicated",
+                                                "existingDeliveryId": existing_id,
+                                            })),
+                                        )
+                                            .into_response();
+                                    },
+                                    Ok(None) => { /* new delivery, continue */ },
+                                    Err(e) => {
+                                        tracing::error!(
+                                            webhook_id = webhook.id,
+                                            error = %e,
+                                            "dedup check failed"
+                                        );
+                                        // Continue despite dedup error -- better to
+                                        // accept a potential duplicate than reject.
+                                    },
+                                }
+                            }
+
+                            // Build timestamp.
+                            let received_at = time::OffsetDateTime::now_utc()
+                                .format(&time::format_description::well_known::Rfc3339)
+                                .unwrap_or_else(|_| "1970-01-01T00:00:00Z".into());
+
+                            // Extract entity key.
+                            let entity_key = if let (Some(p), Some(et)) = (profile, &event_type) {
+                                let body_val: serde_json::Value =
+                                    serde_json::from_slice(&body).unwrap_or_default();
+                                p.entity_key(et, &body_val)
+                            } else {
+                                None
+                            };
+
+                            // Extract safe headers for audit logging.
+                            let safe_headers =
+                                chelix_webhooks::normalize::extract_safe_headers(&headers);
+                            let headers_json = serde_json::to_string(&safe_headers).ok();
+
+                            let content_type = headers
+                                .get("content-type")
+                                .and_then(|v| v.to_str().ok())
+                                .map(String::from);
+
+                            // Persist delivery.
+                            let delivery = chelix_webhooks::store::NewDelivery {
+                                webhook_id: webhook.id,
+                                received_at: received_at.clone(),
+                                status: chelix_webhooks::types::DeliveryStatus::Queued,
+                                event_type: event_type.clone(),
+                                entity_key,
+                                delivery_key,
+                                http_method: Some("POST".into()),
+                                content_type,
+                                remote_ip: remote_ip.clone(),
+                                headers_json,
+                                body_size: body.len(),
+                                body_blob: Some(body.to_vec()),
+                                rejection_reason: None,
+                            };
+
+                            let delivery_id = match store.insert_delivery(&delivery).await {
+                                Ok(id) => id,
+                                Err(e) => {
+                                    tracing::error!(
+                                        webhook_id = webhook.id,
+                                        error = %e,
+                                        "failed to persist webhook delivery"
+                                    );
+                                    return (
+                                        StatusCode::INTERNAL_SERVER_ERROR,
+                                        Json(serde_json::json!({
+                                            "error": "failed to persist delivery"
+                                        })),
+                                    )
+                                        .into_response();
+                                },
+                            };
+
+                            // Update denormalized delivery count.
+                            if let Err(e) = store
+                                .increment_delivery_count(webhook.id, &received_at)
+                                .await
+                            {
+                                tracing::warn!(
+                                    webhook_id = webhook.id,
+                                    error = %e,
+                                    "failed to increment delivery count"
+                                );
+                            }
+
+                            // Queue for async processing.
+                            if let Some(tx) = gw.webhook_worker_tx.get()
+                                && let Err(e) = tx.send(delivery_id).await
+                            {
+                                tracing::error!(
+                                    delivery_id,
+                                    error = %e,
+                                    "failed to queue webhook delivery for processing"
+                                );
+                            }
+
+                            (
+                                StatusCode::ACCEPTED,
+                                Json(serde_json::json!({
+                                    "deliveryId": delivery_id,
+                                    "status": "queued",
+                                    "webhookId": webhook.public_id,
+                                    "eventType": event_type,
+                                    "receivedAt": received_at,
+                                })),
+                            )
+                                .into_response()
+                        }
+                        .await;
+                        webhook_cors_headers(resp)
+                    }
+                },
+            ),
+        );
+    }
+
+    let method_count = methods.method_names().len();
+
+    super::runtime::finalize_prepared_gateway(FinalizeGatewayArgs {
+        bind,
+        port,
+        tls_enabled_for_gateway,
+        state,
+        browser_for_lifecycle,
+        browser_tool_for_warmup,
+        sandbox_router,
+        cron_service,
+        log_buffer,
+        config,
+        data_dir,
+        provider_summary,
+        mcp_configured_count,
+        method_count,
+        setup_code_display,
+        webauthn_registry,
+        app,
+    })
+    .await
+}
+
+#[cfg(all(test, feature = "telephony"))]
+mod tests;

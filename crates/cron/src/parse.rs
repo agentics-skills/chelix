@@ -1,0 +1,122 @@
+//! Parsing utilities for durations and absolute timestamps.
+
+use crate::{Error, Result};
+
+/// Parse a human-friendly duration string into milliseconds.
+///
+/// Supported suffixes: `s` (seconds), `m` (minutes), `h` (hours), `d` (days).
+/// A bare `"0"` is accepted as a disable sentinel that returns `0`.
+/// Examples: `"30s"`, `"5m"`, `"2h"`, `"1d"`, `"0"`.
+pub fn parse_duration_ms(input: &str) -> Result<u64> {
+    let input = input.trim();
+    if input.is_empty() {
+        return Err(Error::message("empty duration string"));
+    }
+
+    // Bare "0" is the disable sentinel.
+    if input == "0" {
+        return Ok(0);
+    }
+
+    let (num_str, suffix) = match input.find(|c: char| c.is_alphabetic()) {
+        Some(i) => (&input[..i], &input[i..]),
+        None => {
+            return Err(Error::message(format!(
+                "duration missing unit suffix (s/m/h/d): {input}"
+            )));
+        },
+    };
+
+    let value: u64 = num_str
+        .parse()
+        .map_err(|_| Error::message(format!("invalid number in duration: {num_str}")))?;
+
+    if value == 0 {
+        return Err(Error::message("duration must be > 0"));
+    }
+
+    let ms = match suffix {
+        "s" => value * 1_000,
+        "m" => value * 60_000,
+        "h" => value * 3_600_000,
+        "d" => value * 86_400_000,
+        _ => {
+            return Err(Error::message(format!(
+                "unknown duration suffix: {suffix} (expected s/m/h/d)"
+            )));
+        },
+    };
+
+    Ok(ms)
+}
+
+/// Parse an ISO 8601 timestamp string into epoch milliseconds.
+///
+/// Accepts formats like `"2026-01-12T18:00:00Z"` or with timezone offset.
+pub fn parse_absolute_time_ms(input: &str) -> Result<u64> {
+    use chrono::{DateTime, Utc};
+
+    let dt: DateTime<Utc> = input.parse::<DateTime<Utc>>().map_err(|source| {
+        Error::external(format!("invalid ISO 8601 timestamp: {source}"), source)
+    })?;
+
+    let ms = dt.timestamp_millis();
+    if ms < 0 {
+        return Err(Error::message("timestamp is before epoch"));
+    }
+    Ok(ms as u64)
+}
+
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    #[case("30s", 30_000)]
+    #[case("5m", 300_000)]
+    #[case("2h", 7_200_000)]
+    #[case("1d", 86_400_000)]
+    #[case("  10m  ", 600_000)]
+    #[case("0", 0)]
+    #[case("  0  ", 0)]
+    fn test_parse_duration_ok(#[case] input: &str, #[case] expected: u64) {
+        assert_eq!(parse_duration_ms(input).unwrap(), expected);
+    }
+
+    #[rstest]
+    #[case("")]
+    #[case("100")]
+    #[case("0s")]
+    #[case("10x")]
+    fn test_parse_duration_err(#[case] input: &str) {
+        assert!(parse_duration_ms(input).is_err());
+    }
+
+    #[test]
+    fn test_parse_iso_utc() {
+        let ms = parse_absolute_time_ms("2026-01-12T18:00:00Z").unwrap();
+        assert!(ms > 0);
+        // Verify round-trip via chrono.
+        let dt = chrono::DateTime::from_timestamp_millis(ms as i64).unwrap();
+        assert_eq!(
+            dt.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            "2026-01-12T18:00:00Z"
+        );
+    }
+
+    #[test]
+    fn test_parse_iso_with_offset() {
+        let ms_utc = parse_absolute_time_ms("2026-01-12T18:00:00Z").unwrap();
+        let ms_offset = parse_absolute_time_ms("2026-01-12T19:00:00+01:00").unwrap();
+        // Same instant.
+        assert_eq!(ms_utc, ms_offset);
+    }
+
+    #[test]
+    fn test_parse_iso_invalid() {
+        assert!(parse_absolute_time_ms("not a date").is_err());
+    }
+}

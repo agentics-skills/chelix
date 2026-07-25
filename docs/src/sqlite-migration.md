@@ -1,0 +1,285 @@
+# SQLite Database Migrations
+
+Chelix uses [sqlx](https://github.com/launchbadge/sqlx) for database access and
+its built-in migration system for schema management. Each crate owns its
+migrations, keeping schema definitions close to the code that uses them.
+
+## Architecture
+
+Each crate that uses SQLite has its own `migrations/` directory and exposes a
+`run_migrations()` function. The gateway orchestrates running all migrations at
+startup in the correct dependency order.
+
+```
+crates/
+├── projects/
+│   ├── migrations/
+│   │   └── 20240205100000_init.sql   # projects table
+│   └── src/lib.rs                     # run_migrations()
+├── sessions/
+│   ├── migrations/
+│   │   └── 20240205100001_init.sql   # sessions, channel_sessions, session_state
+│   └── src/lib.rs                     # run_migrations()
+├── cron/
+│   ├── migrations/
+│   │   └── 20240205100002_init.sql   # cron_jobs, cron_runs
+│   └── src/lib.rs                     # run_migrations()
+├── gateway/
+│   ├── migrations/
+│   │   └── 20240205100003_init.sql   # auth, message_log, channels, agents, ...
+│   └── src/server/
+│       └── prepare_core.rs            # orchestrates chelix.db migrations
+├── webhooks/
+│   ├── migrations/
+│   │   └── 20260407000000_initial.sql # webhooks, webhook_deliveries, ...
+│   └── src/lib.rs                     # run_migrations()
+├── vault/
+│   ├── migrations/
+│   │   └── 20260214000001_vault_metadata.sql  # vault_metadata
+│   └── src/lib.rs                     # run_migrations() (feature-gated)
+└── memory/
+    ├── migrations/
+    │   └── 20240205100004_init.sql   # files, chunks, embedding_cache, FTS
+    └── src/lib.rs                     # run_migrations() (separate memory.db)
+```
+
+## How It Works
+
+### Migration Ownership
+
+Each crate is autonomous and owns its schema:
+
+| Crate             | Database    | Tables                                                                                                                                                                  | Migration File                                      |
+| ----------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `chelix-projects` | `chelix.db` | `projects`                                                                                                                                                              | `20240205100000_init.sql`                           |
+| `chelix-sessions` | `chelix.db` | `sessions`, `channel_sessions`, `session_state`                                                                                                                         | `20240205100001_init.sql` + 9 migrations            |
+| `chelix-cron`     | `chelix.db` | `cron_jobs`, `cron_runs`                                                                                                                                                | `20240205100002_init.sql` + 1 migration             |
+| `chelix-gateway`  | `chelix.db` | `auth_*`, `passkeys`, `api_keys`, `env_variables`, `message_log`, `channels`, `agents`, `session_shares`, `device_pairing`, `ssh_keys`, `ssh_targets`, `auth_audit_log` | `20240205100003_init.sql` + 12 migrations           |
+| `chelix-webhooks` | `chelix.db` | `webhooks`, `webhook_deliveries`, `webhook_response_actions`                                                                                                            | `20260407000000_initial.sql` + 1 migration          |
+| `chelix-vault`    | `chelix.db` | `vault_metadata`                                                                                                                                                        | `20260214000001_vault_metadata.sql` (feature-gated) |
+| `chelix-memory`   | `memory.db` | `files`, `chunks`, `embedding_cache`, `chunks_fts`                                                                                                                      | `20240205100004_init.sql`                           |
+
+### Startup Sequence
+
+The gateway runs migrations in dependency order via
+`crates/gateway/src/server/prepare_core.rs`:
+
+```rust
+chelix_projects::run_migrations(&db_pool).await?;    // 1. projects first
+chelix_sessions::run_migrations(&db_pool).await?;    // 2. sessions (FK → projects)
+chelix_cron::run_migrations(&db_pool).await?;        // 3. cron (independent)
+chelix_webhooks::run_migrations(&db_pool).await?;    // 4. webhooks (independent)
+crate::run_migrations(&db_pool).await?;              // 5. gateway tables
+#[cfg(feature = "vault")]
+chelix_vault::run_migrations(&db_pool).await?;      // 6. vault (feature-gated)
+```
+
+Sessions depends on projects due to a foreign key (`sessions.project_id`
+references `projects.id`), so projects must migrate first. Memory runs
+separately against its own `memory.db` pool.
+
+### Version Tracking
+
+sqlx tracks applied migrations in the `_sqlx_migrations` table:
+
+```sql
+SELECT version, description, installed_on, success FROM _sqlx_migrations;
+```
+
+Migrations are identified by their timestamp prefix (e.g., `20240205100000`),
+which must be globally unique across all crates.
+
+## Database Files
+
+| Database    | Location              | Crates                                             |
+| ----------- | --------------------- | -------------------------------------------------- |
+| `chelix.db` | `~/.chelix/chelix.db` | projects, sessions, cron, gateway, webhooks, vault |
+| `memory.db` | `~/.chelix/memory.db` | memory (separate, managed internally)              |
+
+## Adding New Migrations
+
+### Adding a Column to an Existing Table
+
+1. Create a new migration file in the owning crate:
+
+```bash
+# Example: adding tags to sessions
+touch crates/sessions/migrations/20240301120000_add_tags.sql
+```
+
+1. Write the migration SQL:
+
+```sql
+-- 20240301120000_add_tags.sql
+ALTER TABLE sessions ADD COLUMN tags TEXT;
+CREATE INDEX IF NOT EXISTS idx_sessions_tags ON sessions(tags);
+```
+
+1. Rebuild to embed the migration:
+
+```bash
+cargo build
+```
+
+### Adding a New Table to an Existing Crate
+
+1. Create the migration file with a new timestamp:
+
+```bash
+touch crates/sessions/migrations/20240302100000_session_bookmarks.sql
+```
+
+1. Write the CREATE TABLE statement:
+
+```sql
+-- 20240302100000_session_bookmarks.sql
+CREATE TABLE IF NOT EXISTS session_bookmarks (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_key TEXT NOT NULL,
+    name       TEXT NOT NULL,
+    message_id INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);
+```
+
+### Adding Tables to a New Crate
+
+1. Create the migrations directory:
+
+```bash
+mkdir -p crates/new-feature/migrations
+```
+
+1. Create the migration file with a globally unique timestamp:
+
+```bash
+touch crates/new-feature/migrations/20240401100000_init.sql
+```
+
+1. Add `run_migrations()` to the crate's `lib.rs`:
+
+```rust
+pub async fn run_migrations(pool: &sqlx::SqlitePool) -> anyhow::Result<()> {
+    sqlx::migrate!("./migrations").run(pool).await?;
+    Ok(())
+}
+```
+
+1. Call it from `prepare_core.rs` in the appropriate order:
+
+```rust
+chelix_new_feature::run_migrations(&db_pool).await?;
+```
+
+## Timestamp Convention
+
+Use `YYYYMMDDHHMMSS` format for migration filenames:
+
+- `YYYY` - 4-digit year
+- `MM` - 2-digit month
+- `DD` - 2-digit day
+- `HH` - 2-digit hour (24h)
+- `MM` - 2-digit minute
+- `SS` - 2-digit second
+
+This ensures global uniqueness across crates. When adding migrations, use the
+current timestamp to avoid collisions.
+
+## SQLite Limitations
+
+### ALTER TABLE
+
+SQLite has limited `ALTER TABLE` support:
+
+- **ADD COLUMN**: Supported ✓
+- **DROP COLUMN**: SQLite 3.35+ only
+- **Rename column**: Requires table recreation
+- **Change column type**: Requires table recreation
+
+For complex schema changes, use the table recreation pattern:
+
+```sql
+-- Create new table with desired schema
+CREATE TABLE sessions_new (
+    -- new schema
+);
+
+-- Copy data (map old columns to new)
+INSERT INTO sessions_new SELECT ... FROM sessions;
+
+-- Swap tables
+DROP TABLE sessions;
+ALTER TABLE sessions_new RENAME TO sessions;
+
+-- Recreate indexes
+CREATE INDEX idx_sessions_created_at ON sessions(created_at);
+```
+
+### Foreign Keys
+
+SQLite foreign keys are checked at insert/update time, not migration time.
+Ensure migrations run in dependency order (parent table first).
+
+## Testing
+
+Unit tests use in-memory databases with the crate's `init()` method:
+
+```rust
+#[tokio::test]
+async fn test_session_operations() {
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+
+    // Create schema for tests (init() retained for this purpose)
+    SqliteSessionMetadata::init(&pool).await.unwrap();
+
+    let meta = SqliteSessionMetadata::new(pool);
+    // ... test code
+}
+```
+
+The `init()` methods are retained (marked `#[doc(hidden)]`) specifically for
+tests. In production, migrations handle schema creation.
+
+## Troubleshooting
+
+### "failed to run migrations"
+
+1. Check file permissions on `~/.chelix/`
+2. Ensure the database file isn't locked by another process
+3. Check for syntax errors in migration SQL files
+
+### Migration Order Issues
+
+If you see foreign key errors, verify the migration order in `prepare_core.rs`.
+Parent tables must be created before child tables with FK references.
+
+### Checking Migration Status
+
+```bash
+sqlite3 ~/.chelix/chelix.db "SELECT version, description, success FROM _sqlx_migrations ORDER BY version"
+```
+
+### Resetting Migrations (Development Only)
+
+```bash
+# Backup first!
+rm ~/.chelix/chelix.db
+cargo run  # Creates fresh database with all migrations
+```
+
+## Best Practices
+
+### DO
+
+- Use timestamp-based version numbers for global uniqueness
+- Keep each crate's migrations in its own directory
+- Use `IF NOT EXISTS` for idempotent initial migrations
+- Test migrations on a copy of production data before deploying
+- Keep migrations small and focused
+
+### DON'T
+
+- Modify existing migration files after deployment
+- Reuse timestamps across crates
+- Put multiple crates' tables in one migration file
+- Skip the dependency order in `prepare_core.rs`

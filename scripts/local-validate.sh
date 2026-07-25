@@ -1,0 +1,604 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+ACTIVE_PIDS=()
+CURRENT_PID=""
+RUN_CHECK_ASYNC_PID=""
+STATUS_PUBLISH_ENABLED=1
+
+remove_active_pid() {
+  local target="$1"
+  local -a kept=()
+  local pid
+  for pid in "${ACTIVE_PIDS[@]}"; do
+    if [[ "$pid" != "$target" ]]; then
+      kept+=("$pid")
+    fi
+  done
+  if [[ "${#kept[@]}" -gt 0 ]]; then
+    ACTIVE_PIDS=("${kept[@]}")
+  else
+    ACTIVE_PIDS=()
+  fi
+}
+
+handle_interrupt() {
+  echo "Interrupted: stopping local validation..." >&2
+
+  if [[ -n "$CURRENT_PID" ]]; then
+    kill -TERM "$CURRENT_PID" 2>/dev/null || true
+  fi
+
+  local pid
+  for pid in "${ACTIVE_PIDS[@]}"; do
+    kill -TERM "$pid" 2>/dev/null || true
+  done
+
+  sleep 1
+
+  if [[ -n "$CURRENT_PID" ]]; then
+    kill -KILL "$CURRENT_PID" 2>/dev/null || true
+  fi
+
+  for pid in "${ACTIVE_PIDS[@]}"; do
+    kill -KILL "$pid" 2>/dev/null || true
+  done
+
+  exit 130
+}
+
+trap handle_interrupt INT TERM
+
+# Detect local-only mode: no PR argument and no current PR on this branch.
+LOCAL_ONLY=0
+PR_NUMBER="${1:-}"
+
+if [[ -z "$PR_NUMBER" ]]; then
+  if command -v gh >/dev/null 2>&1 && PR_NUMBER="$(gh pr view --json number -q .number 2>/dev/null)"; then
+    : # found a PR for the current branch
+  else
+    LOCAL_ONLY=1
+  fi
+fi
+
+if [[ "$LOCAL_ONLY" -eq 0 ]]; then
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "gh CLI is required for PR mode" >&2
+    exit 1
+  fi
+
+  if [[ -z "${GH_TOKEN:-}" ]]; then
+    if GH_TOKEN="$(gh auth token 2>/dev/null)"; then
+      export GH_TOKEN
+    else
+      echo "GH_TOKEN is required (repo:status or equivalent access)" >&2
+      echo "Tip: run 'gh auth login' or export GH_TOKEN with proper scopes." >&2
+      exit 1
+    fi
+  fi
+
+  BASE_REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
+  SHA="$(gh pr view "$PR_NUMBER" --repo "$BASE_REPO" --json headRefOid -q .headRefOid)"
+  HEAD_OWNER="$(gh pr view "$PR_NUMBER" --repo "$BASE_REPO" --json headRepositoryOwner -q .headRepositoryOwner.login)"
+  HEAD_REPO_NAME="$(gh pr view "$PR_NUMBER" --repo "$BASE_REPO" --json headRepository -q .headRepository.name)"
+
+  if [[ -n "$HEAD_OWNER" && -n "$HEAD_REPO_NAME" ]]; then
+    REPO="${HEAD_OWNER}/${HEAD_REPO_NAME}"
+  else
+    REPO="$BASE_REPO"
+  fi
+
+  if [[ "$(git rev-parse HEAD)" != "$SHA" ]]; then
+    cat >&2 <<EOF
+Current checkout does not match PR head commit.
+  local HEAD: $(git rev-parse --short HEAD)
+  PR head:    ${SHA:0:7}
+
+Check out the PR head commit before running local validation.
+EOF
+    exit 1
+  fi
+else
+  SHA="$(git rev-parse HEAD)"
+fi
+
+# Auto-sync Cargo.lock if stale (common after merging main).
+# Uses `cargo fetch` (without --locked) to resolve deps without compiling
+# or upgrading existing dependency versions.
+if ! cargo fetch --locked 2>/dev/null; then
+  echo "Cargo.lock is out of sync — running cargo fetch to update..."
+  if cargo fetch 2>/dev/null; then
+    if ! git diff --quiet -- Cargo.lock 2>/dev/null; then
+      git add Cargo.lock
+      git commit -m "chore: sync Cargo.lock"
+      SHA="$(git rev-parse HEAD)"
+      echo "Auto-committed Cargo.lock sync (new HEAD: ${SHA:0:7})"
+      if [[ "$LOCAL_ONLY" -eq 0 ]]; then
+        echo "Push this commit so CI sees the updated lockfile."
+      fi
+    else
+      echo "cargo fetch --locked failed but Cargo.lock is unchanged." >&2
+      echo "Run 'cargo fetch' manually to diagnose." >&2
+      exit 1
+    fi
+  else
+    echo "cargo fetch failed — check your network or Cargo.toml for errors." >&2
+    exit 1
+  fi
+fi
+
+# Reject dirty working trees in PR mode. Validating with uncommitted changes
+# publishes statuses for the wrong content. In local-only mode (no PR) we
+# allow a dirty tree so developers can lint/test without committing first.
+if [[ "$LOCAL_ONLY" -eq 0 ]]; then
+  if ! git diff --quiet --ignore-submodules -- || \
+     ! git diff --cached --quiet --ignore-submodules -- || \
+     [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+    cat >&2 <<EOF
+Working tree is not clean.
+
+Commit or stash all local changes (including untracked files) before running
+local validation with a PR number.
+EOF
+    exit 1
+  fi
+fi
+
+detect_nightly_toolchain() {
+  if [[ -n "${LOCAL_VALIDATE_NIGHTLY_TOOLCHAIN:-}" ]]; then
+    printf '%s' "$LOCAL_VALIDATE_NIGHTLY_TOOLCHAIN"
+    return
+  fi
+
+  if [[ -f rust-toolchain.toml ]]; then
+    local toml_toolchain
+    toml_toolchain="$(sed -nE 's/^channel[[:space:]]*=[[:space:]]*"([^"]+)"/\1/p' rust-toolchain.toml | head -n1)"
+    if [[ -n "$toml_toolchain" ]]; then
+      printf '%s' "$toml_toolchain"
+      return
+    fi
+  fi
+
+  printf '%s' "nightly"
+}
+
+nightly_toolchain="$(detect_nightly_toolchain)"
+
+if [[ -n "${LOCAL_VALIDATE_FMT_CMD:-}" ]]; then
+  fmt_cmd="$LOCAL_VALIDATE_FMT_CMD"
+elif command -v just >/dev/null 2>&1 && [[ -f justfile ]]; then
+  fmt_cmd="just format-check"
+else
+  fmt_cmd="cargo +${nightly_toolchain} fmt --all -- --check"
+fi
+biome_cmd="${LOCAL_VALIDATE_BIOME_CMD:-biome ci --diagnostic-level=error crates/web/ui/src/ crates/web/ui/e2e/}"
+tsc_cmd="${LOCAL_VALIDATE_TSC_CMD:-bash -c 'cd crates/web/ui && if [ ! -d node_modules ]; then npm ci; fi && npx tsc --noEmit'}"
+i18n_cmd="${LOCAL_VALIDATE_I18N_CMD:-./scripts/i18n-check.sh}"
+zizmor_cmd="${LOCAL_VALIDATE_ZIZMOR_CMD:-./scripts/run-zizmor-resilient.sh . --min-severity high}"
+if [[ -n "${LOCAL_VALIDATE_LINT_CMD:-}" ]]; then
+  lint_cmd="$LOCAL_VALIDATE_LINT_CMD"
+elif command -v just >/dev/null 2>&1 && [[ -f justfile ]]; then
+  lint_cmd="just lint"
+else
+  lint_cmd="cargo +${nightly_toolchain} clippy -Z unstable-options --workspace --all-features --all-targets --timings -- -D warnings"
+fi
+if [[ -n "${LOCAL_VALIDATE_TEST_CMD:-}" ]]; then
+  test_cmd="$LOCAL_VALIDATE_TEST_CMD"
+elif command -v just >/dev/null 2>&1 && [[ -f justfile ]]; then
+  test_cmd="just test"
+else
+  test_cmd="cargo +${nightly_toolchain} nextest run --all-features --profile ci"
+fi
+e2e_cmd="${LOCAL_VALIDATE_E2E_CMD:-cd crates/web/ui && if [ ! -d node_modules ]; then npm ci; fi && npm run e2e:install && npm run e2e}"
+coverage_cmd="${LOCAL_VALIDATE_COVERAGE_CMD:-cargo +${nightly_toolchain} llvm-cov --workspace --all-features --html}"
+build_cmd="${LOCAL_VALIDATE_BUILD_CMD:-cargo +${nightly_toolchain} build --workspace --all-features --all-targets}"
+
+strip_all_features_flag() {
+  local cmd="$1"
+  cmd="${cmd// --all-features / }"
+  cmd="${cmd// --all-features/}"
+  cmd="${cmd//--all-features /}"
+  cmd="${cmd//--all-features/}"
+  printf '%s' "$cmd"
+}
+
+if [[ "$(uname -s)" == "Darwin" ]] && ! command -v nvcc >/dev/null 2>&1; then
+  if [[ -z "${LOCAL_VALIDATE_LINT_CMD:-}" ]]; then
+    if command -v just >/dev/null 2>&1 && [[ -f justfile ]]; then
+      lint_cmd="just lint"
+    else
+      lint_cmd="cargo +${nightly_toolchain} clippy -Z unstable-options --workspace --all-targets --timings -- -D warnings"
+    fi
+  fi
+  if [[ -z "${LOCAL_VALIDATE_TEST_CMD:-}" ]]; then
+    if command -v just >/dev/null 2>&1 && [[ -f justfile ]]; then
+      test_cmd="just test"
+    else
+      test_cmd="cargo +${nightly_toolchain} nextest run --workspace"
+    fi
+  fi
+  if [[ -z "${LOCAL_VALIDATE_BUILD_CMD:-}" ]]; then
+    build_cmd="cargo +${nightly_toolchain} build --workspace --all-targets"
+  fi
+  if [[ -z "${LOCAL_VALIDATE_COVERAGE_CMD:-}" ]]; then
+    coverage_cmd="cargo +${nightly_toolchain} llvm-cov --workspace --html"
+  fi
+  build_cmd="$(strip_all_features_flag "$build_cmd")"
+  coverage_cmd="$(strip_all_features_flag "$coverage_cmd")"
+  echo "Detected macOS without nvcc; using Darwin-native validation commands without Linux CUDA features." >&2
+  echo "CI still covers the Linux/CUDA all-features path. Override with LOCAL_VALIDATE_* if you need a different split." >&2
+fi
+
+ensure_zizmor() {
+  if command -v zizmor >/dev/null 2>&1; then
+    return 0
+  fi
+
+  case "$(uname -s)" in
+    Darwin)
+      if command -v brew >/dev/null 2>&1; then
+        echo "zizmor not found; installing with Homebrew..." >&2
+        brew install zizmor
+      fi
+      ;;
+    Linux)
+      if command -v apt-get >/dev/null 2>&1; then
+        echo "zizmor not found; installing with apt..." >&2
+        sudo apt-get update
+        sudo apt-get install -y zizmor
+      fi
+      ;;
+  esac
+
+  if ! command -v zizmor >/dev/null 2>&1; then
+    echo "zizmor CLI not found. Install it or set LOCAL_VALIDATE_ZIZMOR_CMD." >&2
+    exit 1
+  fi
+}
+
+if [[ -z "${LOCAL_VALIDATE_ZIZMOR_CMD:-}" ]]; then
+  ensure_zizmor
+fi
+
+repair_stale_llama_build_dirs() {
+  shopt -s nullglob
+  for dir in target/*/build/llama-cpp-sys-2-* target/*/build/llama-cpp-2-*; do
+    if [[ -d "$dir" ]]; then
+      echo "Removing cached llama build dir: $dir"
+      rm -rf "$dir"
+    fi
+  done
+  shopt -u nullglob
+}
+
+cleanup_e2e_ports() {
+  if ! command -v lsof >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local ports=(
+    "${CHELIX_E2E_PORT:-18789}"
+    "${CHELIX_E2E_ONBOARDING_PORT:-18790}"
+    "${CHELIX_E2E_ONBOARDING_AUTH_PORT:-18791}"
+    "${CHELIX_E2E_OAUTH_PORT:-18792}"
+    "${CHELIX_E2E_ONBOARDING_ANTHROPIC_PORT:-18793}"
+    "${CHELIX_E2E_OPENAI_LIVE_PORT:-18794}"
+  )
+
+  local port
+  for port in "${ports[@]}"; do
+    local pids
+    pids="$(lsof -ti "tcp:${port}" -sTCP:LISTEN 2>/dev/null || true)"
+    if [[ -z "$pids" ]]; then
+      continue
+    fi
+
+    echo "Stopping stale process(es) on TCP ${port}: ${pids//$'\n'/ }"
+    while IFS= read -r pid; do
+      [[ -n "$pid" ]] && kill -TERM "$pid" 2>/dev/null || true
+    done <<<"$pids"
+
+    sleep 1
+
+    local remaining
+    remaining="$(lsof -ti "tcp:${port}" -sTCP:LISTEN 2>/dev/null || true)"
+    if [[ -n "$remaining" ]]; then
+      while IFS= read -r pid; do
+        [[ -n "$pid" ]] && kill -KILL "$pid" 2>/dev/null || true
+      done <<<"$remaining"
+    fi
+  done
+}
+
+set_status() {
+  local state="$1"
+  local context="$2"
+  local description="$3"
+
+  if [[ "$LOCAL_ONLY" -eq 1 ]]; then
+    return 0
+  fi
+
+  if [[ "$STATUS_PUBLISH_ENABLED" -eq 0 ]]; then
+    return 0
+  fi
+
+  if ! gh api "repos/$REPO/statuses/$SHA" \
+    -f state="$state" \
+    -f context="$context" \
+    -f description="$description" \
+    -f target_url="https://github.com/$BASE_REPO/pull/$PR_NUMBER" >/dev/null; then
+    cat >&2 <<EOF
+Failed to publish status '$context' to $REPO@$SHA.
+Check that your token can write commit statuses for that repository.
+
+Expected token access:
+- classic PAT: repo:status (or repo)
+- fine-grained PAT: Commit statuses (Read and write)
+
+If this is an org with SSO enforcement, authorize the token for the org.
+If GH_TOKEN is set in your shell, try unsetting it to use your gh auth token:
+  unset GH_TOKEN
+EOF
+    STATUS_PUBLISH_ENABLED=0
+    echo "Disabling further status publication for this run; continuing local checks." >&2
+    return 0
+  fi
+}
+
+run_check() {
+  local context="$1"
+  local cmd="$2"
+  local start
+  local end
+  local duration
+  local log_file=""
+  local monitor_pid=""
+
+  start="$(date +%s)"
+  set_status pending "$context" "Running locally"
+
+  if [[ "$context" == "local/test" && -z "${LOCAL_VALIDATE_TEST_VERBOSE:-}" ]]; then
+    log_file="$(mktemp -t local-validate-test.XXXXXX.log)"
+    echo "[$context] running with captured output (set LOCAL_VALIDATE_TEST_VERBOSE=1 to stream test logs)."
+    bash -lc "$cmd" >"$log_file" 2>&1 &
+  else
+    bash -lc "$cmd" &
+  fi
+
+  CURRENT_PID="$!"
+  if [[ -n "$log_file" ]]; then
+    (
+      local interval
+      local now
+      local elapsed
+      interval="${LOCAL_VALIDATE_PROGRESS_INTERVAL:-30}"
+      while kill -0 "$CURRENT_PID" 2>/dev/null; do
+        sleep "$interval"
+        if kill -0 "$CURRENT_PID" 2>/dev/null; then
+          now="$(date +%s)"
+          elapsed="$((now - start))"
+          echo "[$context] still running (${elapsed}s)."
+        fi
+      done
+    ) &
+    monitor_pid="$!"
+  fi
+
+  if wait "$CURRENT_PID"; then
+    end="$(date +%s)"
+    duration="$((end - start))"
+    if [[ -n "$monitor_pid" ]]; then
+      kill "$monitor_pid" 2>/dev/null || true
+      wait "$monitor_pid" 2>/dev/null || true
+    fi
+    CURRENT_PID=""
+    if [[ -n "$log_file" ]]; then
+      rm -f "$log_file"
+    fi
+    set_status success "$context" "Passed locally"
+    echo "[$context] passed in ${duration}s"
+  else
+    end="$(date +%s)"
+    duration="$((end - start))"
+    if [[ -n "$monitor_pid" ]]; then
+      kill "$monitor_pid" 2>/dev/null || true
+      wait "$monitor_pid" 2>/dev/null || true
+    fi
+    CURRENT_PID=""
+    if [[ -n "$log_file" ]]; then
+      echo "[$context] failed; showing captured output:" >&2
+      cat "$log_file" >&2
+      rm -f "$log_file"
+    fi
+    set_status failure "$context" "Failed locally"
+    echo "[$context] failed in ${duration}s" >&2
+    return 1
+  fi
+}
+
+run_check_async() {
+  local context="$1"
+  local cmd="$2"
+  local safe_context
+  safe_context="${context//\//_}"
+
+  (
+    local started
+    local ended
+    local duration
+    started="$(date +%s)"
+    if run_check "$context" "$cmd" >&2; then
+      ended="$(date +%s)"
+      duration="$((ended - started))"
+      printf 'ok %s\n' "$duration" >"/tmp/local-validate-${safe_context}.result"
+      exit 0
+    fi
+    ended="$(date +%s)"
+    duration="$((ended - started))"
+    printf 'fail %s\n' "$duration" >"/tmp/local-validate-${safe_context}.result"
+    exit 1
+  ) &
+  local pid="$!"
+  ACTIVE_PIDS+=("$pid")
+  RUN_CHECK_ASYNC_PID="$pid"
+}
+
+report_async_result() {
+  local context="$1"
+  local pid="$2"
+  local safe_context
+  local result_file
+  local status_word
+  local duration
+  safe_context="${context//\//_}"
+  result_file="/tmp/local-validate-${safe_context}.result"
+
+  if [[ -f "$result_file" ]]; then
+    read -r status_word duration <"$result_file"
+    rm -f "$result_file"
+    remove_active_pid "$pid"
+    echo "[$context] total ${duration}s"
+    [[ "$status_word" == "ok" ]]
+    return
+  fi
+
+  # Rare race fallback: if the child already exited and `wait` has already
+  # observed the status, treat missing timing metadata as non-fatal.
+  if ! kill -0 "$pid" 2>/dev/null; then
+    remove_active_pid "$pid"
+    echo "[$context] total unavailable (timing result missing)"
+    return 0
+  fi
+
+  echo "[$context] missing timing result" >&2
+  return 1
+}
+
+if [[ "$LOCAL_ONLY" -eq 1 ]]; then
+  echo "Local-only validation (${SHA:0:7}) — no statuses will be published"
+else
+  echo "Validating PR #$PR_NUMBER ($SHA) in $BASE_REPO"
+  echo "Publishing commit statuses to: $REPO"
+
+  PR_CHECKS_URL="https://github.com/$BASE_REPO/pull/$PR_NUMBER/checks"
+  RUN_URL="$(gh api "repos/$BASE_REPO/actions/runs?head_sha=$SHA&event=pull_request&per_page=1" --jq '.workflow_runs[0].html_url // empty' 2>/dev/null || true)"
+  if [[ -n "$RUN_URL" ]]; then
+    echo "Current CI workflow: $RUN_URL"
+  else
+    echo "Current CI checks: $PR_CHECKS_URL"
+  fi
+fi
+
+# Skip validation if this exact commit already passed.
+VALIDATE_MARKER=".local-validate-ok"
+if [[ -f "$VALIDATE_MARKER" ]] && [[ "$(cat "$VALIDATE_MARKER" 2>/dev/null)" == "$SHA" ]]; then
+  echo "Commit ${SHA:0:7} already validated — skipping."
+  exit 0
+fi
+
+# macOS local builds can leave stale cmake output dirs where configure was skipped
+# but no generator files remain. Clean those up before lint/test.
+repair_stale_llama_build_dirs
+
+# Run fast independent checks in parallel.
+run_check_async "local/fmt" "$fmt_cmd"
+fmt_pid="$RUN_CHECK_ASYNC_PID"
+run_check_async "local/biome" "$biome_cmd"
+biome_pid="$RUN_CHECK_ASYNC_PID"
+run_check_async "local/tsc" "$tsc_cmd"
+tsc_pid="$RUN_CHECK_ASYNC_PID"
+run_check_async "local/i18n" "$i18n_cmd"
+i18n_pid="$RUN_CHECK_ASYNC_PID"
+run_check_async "local/zizmor" "$zizmor_cmd"
+zizmor_pid="$RUN_CHECK_ASYNC_PID"
+run_check_async "local/install-names" "./scripts/check-install-package-names.sh"
+install_names_pid="$RUN_CHECK_ASYNC_PID"
+run_check_async "local/install-docs" "./scripts/check-install-docs.sh"
+install_docs_pid="$RUN_CHECK_ASYNC_PID"
+run_check_async "local/file-size" "./scripts/check-file-size.sh"
+file_size_pid="$RUN_CHECK_ASYNC_PID"
+
+parallel_failed=0
+if ! wait "$fmt_pid"; then parallel_failed=1; fi
+if ! report_async_result "local/fmt" "$fmt_pid"; then parallel_failed=1; fi
+if ! wait "$biome_pid"; then parallel_failed=1; fi
+if ! report_async_result "local/biome" "$biome_pid"; then parallel_failed=1; fi
+if ! wait "$tsc_pid"; then parallel_failed=1; fi
+if ! report_async_result "local/tsc" "$tsc_pid"; then parallel_failed=1; fi
+if ! wait "$i18n_pid"; then parallel_failed=1; fi
+if ! report_async_result "local/i18n" "$i18n_pid"; then parallel_failed=1; fi
+if ! wait "$install_names_pid"; then parallel_failed=1; fi
+if ! report_async_result "local/install-names" "$install_names_pid"; then parallel_failed=1; fi
+if ! wait "$install_docs_pid"; then parallel_failed=1; fi
+if ! report_async_result "local/install-docs" "$install_docs_pid"; then parallel_failed=1; fi
+if ! wait "$file_size_pid"; then parallel_failed=1; fi
+if ! report_async_result "local/file-size" "$file_size_pid"; then parallel_failed=1; fi
+
+if [[ "$parallel_failed" -ne 0 ]]; then
+  echo "One or more parallel local checks failed." >&2
+  exit 1
+fi
+
+# Verify Cargo.lock is in sync (same as CI's `cargo fetch --locked`).
+run_check "local/lockfile" "cargo fetch --locked"
+
+# Ensure generated web assets exist (not committed; worktrees and fresh clones
+# won't have them).
+if [[ ! -f crates/web/src/assets/style.css || ! -f crates/web/src/assets/dist/main.js || ! -f crates/web/src/assets/sw.js ]]; then
+  echo "Web assets missing — building with just build-web-assets..."
+  run_check "local/build-web-assets" "just build-web-assets"
+fi
+
+# Lint runs first to warm the cargo build cache (clippy compiles all targets).
+# These do not wait on local/zizmor, but local/zizmor remains required.
+run_check "local/lint" "$lint_cmd"
+
+# Compile all workspace targets (bin + test harnesses) using the same nightly
+# toolchain as clippy. After clippy this is near-instant (shared build cache)
+# and means both nextest and E2E reuse these artifacts without recompilation.
+run_check "local/build" "$build_cmd"
+
+# Keep test checks sequential to avoid overloading local machines.
+run_check "local/test" "$test_cmd"
+
+# Gateway web UI e2e tests.
+if [[ "${LOCAL_VALIDATE_SKIP_E2E:-0}" != "1" ]]; then
+  cleanup_e2e_ports
+  run_check "local/e2e" "$e2e_cmd"
+else
+  echo "Skipping E2E checks (LOCAL_VALIDATE_SKIP_E2E=1)."
+fi
+
+# Coverage (optional — requires cargo-llvm-cov).
+# Skipped silently when the tool is not installed. Disable explicitly with
+# LOCAL_VALIDATE_SKIP_COVERAGE=1.
+if [[ "${LOCAL_VALIDATE_SKIP_COVERAGE:-0}" != "1" ]] && cargo llvm-cov --version >/dev/null 2>&1; then
+  run_check "local/coverage" "$coverage_cmd"
+  echo "Coverage report: target/llvm-cov/html/index.html"
+elif [[ "${LOCAL_VALIDATE_SKIP_COVERAGE:-0}" != "1" ]]; then
+  echo "Skipping coverage (cargo-llvm-cov not installed). Install with: cargo install cargo-llvm-cov"
+fi
+
+# Collect local/zizmor result at the end and fail if it found issues.
+zizmor_failed=0
+if ! wait "$zizmor_pid"; then
+  zizmor_failed=1
+fi
+if ! report_async_result "local/zizmor" "$zizmor_pid"; then
+  zizmor_failed=1
+fi
+if [[ "$zizmor_failed" -ne 0 ]]; then
+  echo "local/zizmor failed." >&2
+  exit 1
+fi
+
+# Record successful validation for this commit.
+printf '%s' "$SHA" > "$VALIDATE_MARKER"
+
+if [[ "$LOCAL_ONLY" -eq 1 ]]; then
+  echo "All local checks passed."
+else
+  echo "All local validation statuses published successfully."
+fi

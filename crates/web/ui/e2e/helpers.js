@@ -1,0 +1,422 @@
+const { expect } = require("@playwright/test");
+
+/**
+ * Wait until the SPA has mounted visible content into #pageContent.
+ * This is a stable cross-route readiness signal for the app shell.
+ */
+async function expectPageContentMounted(page) {
+	await expect
+		.poll(
+			async () => {
+				try {
+					return await page.evaluate(() => {
+						const el = document.getElementById("pageContent");
+						if (!el) return 0;
+						return el.childElementCount;
+					});
+				} catch (error) {
+					if (isRetryableNavigationError(error)) return 0;
+					throw error;
+				}
+			},
+			{
+				timeout: 30_000,
+			},
+		)
+		.toBeGreaterThan(0);
+}
+
+/**
+ * Collect uncaught page errors for later assertion.
+ * Returns an array that fills as errors occur.
+ *
+ * Usage:
+ *   const pageErrors = watchPageErrors(page);
+ *   // ... interact with page ...
+ *   expect(pageErrors).toEqual([]);
+ */
+function watchPageErrors(page) {
+	const pageErrors = [];
+	page.on("pageerror", (err) => pageErrors.push(err.message));
+	return pageErrors;
+}
+
+/** Build one complete canonical model registry record for UI tests. */
+function modelRecord({
+	id,
+	provider,
+	displayName = id,
+	createdAt = null,
+	recommended = false,
+	preferred = false,
+	disabled = false,
+	unsupported = false,
+	unsupportedReason = null,
+	unsupportedProvider = null,
+	unsupportedUpdatedAt = null,
+	contextLength = 128_000,
+	maxInputTokens = 96_000,
+	maxOutputTokens = 32_000,
+	inputModalities = ["text"],
+	outputModalities = ["text"],
+	toolCalling = true,
+	streaming = true,
+	zeroDataRetentionEnabled = true,
+	supportedEfforts = [],
+	reasoningSummary,
+	reasoningInclude = [],
+}) {
+	const reasoning = {
+		supported_efforts: supportedEfforts,
+		include: reasoningInclude,
+	};
+	if (reasoningSummary !== undefined) reasoning.summary = reasoningSummary;
+
+	return {
+		id,
+		provider,
+		display_name: displayName,
+		created_at: createdAt,
+		recommended,
+		preferred,
+		disabled,
+		unsupported,
+		unsupported_reason: unsupportedReason,
+		unsupported_provider: unsupportedProvider,
+		unsupported_updated_at: unsupportedUpdatedAt,
+		context_length: contextLength,
+		max_input_tokens: maxInputTokens,
+		max_output_tokens: maxOutputTokens,
+		input_modalities: inputModalities,
+		output_modalities: outputModalities,
+		tool_calling: toolCalling,
+		streaming,
+		zeroDataRetentionEnabled,
+		reasoning,
+	};
+}
+
+/**
+ * Wait for the WebSocket connection status dot to reach "connected".
+ * Note: #statusText is intentionally set to "" when connected, so we
+ * only check the dot's CSS class.
+ */
+async function waitForWsConnected(page, timeoutMs = 10_000) {
+	await expect
+		.poll(
+			async () => {
+				const statusDotConnected = await page
+					.locator("#statusDot")
+					.getAttribute("class")
+					.then((cls) => /connected/.test(cls || ""))
+					.catch(() => false);
+				if (!statusDotConnected) return false;
+				return page
+					.evaluate(() => {
+						const state = window.__chelix_state;
+						return Boolean(state?.connected && state?.subscribed && state?.ws?.readyState === WebSocket.OPEN);
+					})
+					.catch(() => false);
+			},
+			{ timeout: timeoutMs },
+		)
+		.toBe(true);
+}
+
+function isRetryableNavigationError(error) {
+	var message = error?.message || String(error || "");
+	return (
+		message.includes("net::ERR_ABORTED") ||
+		message.includes("page.goto: Timeout") ||
+		message.includes("Execution context was destroyed") ||
+		message.includes("Target page, context or browser has been closed")
+	);
+}
+
+/**
+ * Navigate to a path, wait for SPA content to mount, and assert no errors.
+ * Returns the pageErrors array for further assertions.
+ */
+async function navigateAndWait(page, path) {
+	const pageErrors = watchPageErrors(page);
+	let lastError = null;
+	const gotoTimeoutMs = 10_000;
+	for (let attempt = 0; attempt < 3; attempt++) {
+		try {
+			// Navigate to about:blank first to release any pending connections
+			// from previous navigations (HTTP/1.1 has a 6-connection-per-host limit).
+			if (attempt > 0) {
+				await page.goto("about:blank").catch(() => undefined);
+			}
+			await page.goto(path, { waitUntil: "commit", timeout: gotoTimeoutMs });
+			await expectPageContentMounted(page);
+			return pageErrors;
+		} catch (error) {
+			lastError = error;
+			if (isRetryableNavigationError(error)) {
+				const mountedAfterError = await expectPageContentMounted(page)
+					.then(() => true)
+					.catch(() => false);
+				if (mountedAfterError) return pageErrors;
+			}
+			if (!isRetryableNavigationError(error) || attempt === 2) {
+				// Capture diagnostic info when navigation fails
+				try {
+					var testInfo = require("@playwright/test").test.info();
+					var responses = [];
+					var consoleMessages = [];
+					page.on("response", (r) => responses.push(`${r.status()} ${r.url()}`));
+					page.on("console", (m) => consoleMessages.push(`[${m.type()}] ${m.text()}`));
+					// Try one more goto with a short timeout to capture what happens
+					await page.goto(path, { waitUntil: "commit", timeout: gotoTimeoutMs }).catch(() => undefined);
+					// Check server health to see if it's alive
+					var healthOk = "unknown";
+					try {
+						var baseURL = testInfo.project.use?.baseURL || "http://127.0.0.1";
+						// Use http module directly — page.request dies when test timeout kills the context
+						var http = require("node:http");
+						healthOk = await new Promise((resolve) => {
+							var req = http.get(`${baseURL}/health`, { timeout: 3000 }, (res) => {
+								var body = "";
+								res.on("data", (d) => (body += d));
+								res.on("end", () => resolve(`${res.statusCode} ${body.slice(0, 200)}`));
+							});
+							req.on("error", (e) => resolve(`error: ${e.message}`));
+							req.on("timeout", () => {
+								req.destroy();
+								resolve("timeout");
+							});
+						});
+					} catch (he) {
+						healthOk = `error: ${he.message?.slice(0, 100)}`;
+					}
+					// Also try fetching the SPA page directly to see if server responds
+					var pageHttpOk = "unknown";
+					try {
+						pageHttpOk = await new Promise((resolve) => {
+							var req = http.get(`${baseURL}${path}`, { timeout: 3000 }, (res) => {
+								resolve(`${res.statusCode} content-length=${res.headers["content-length"] || "?"}`);
+								res.resume();
+							});
+							req.on("error", (e) => resolve(`error: ${e.message}`));
+							req.on("timeout", () => {
+								req.destroy();
+								resolve("timeout");
+							});
+						});
+					} catch (pe) {
+						pageHttpOk = `exception: ${pe.message?.slice(0, 100)}`;
+					}
+					var diag = [
+						`navigateAndWait failed for ${path} after ${attempt + 1} attempts`,
+						`page.url(): ${page.url()}`,
+						`health: ${healthOk}`,
+						`page-http: ${pageHttpOk}`,
+						`responses: ${JSON.stringify(responses.slice(0, 5))}`,
+						`console: ${JSON.stringify(consoleMessages.slice(0, 10))}`,
+						`error: ${error.message?.slice(0, 200)}`,
+					].join("\n");
+					if (testInfo) {
+						await testInfo.attach("navigation-debug", {
+							body: Buffer.from(diag, "utf-8"),
+							contentType: "text/plain",
+						});
+						var screenshot = await page.screenshot({ fullPage: true }).catch(() => null);
+						if (screenshot) {
+							await testInfo.attach("navigation-failure-screenshot", {
+								body: screenshot,
+								contentType: "image/png",
+							});
+						}
+					}
+				} catch {
+					// diagnostic collection failed
+				}
+				break;
+			}
+		}
+	}
+	if (lastError) throw lastError;
+	return pageErrors;
+}
+
+/**
+ * Create a new session by clicking the new-session button.
+ * Waits for the active key to change, URL to update, and content to mount.
+ *
+ * Note: we intentionally do NOT wait for the session to appear in the
+ * sessions list (store.getByKey). The list is populated asynchronously
+ * by the sessions.switch RPC and can be slow under heavy test load.
+ * The key change + URL match + page mount are sufficient to prove the
+ * session was created; individual tests can wait for store indexing
+ * if their assertions require it.
+ */
+async function createSession(page) {
+	const timeoutMs = 10_000;
+	const previousActiveKey = await page.evaluate(() => {
+		return window.__chelix_stores?.sessionStore?.activeSessionKey?.value || "";
+	});
+
+	await page.locator("#newSessionBtn").click();
+	await expect
+		.poll(
+			() =>
+				page.evaluate(() => {
+					return window.__chelix_stores?.sessionStore?.activeSessionKey?.value || "";
+				}),
+			{ timeout: timeoutMs },
+		)
+		.not.toBe(previousActiveKey);
+
+	await expect
+		.poll(
+			() =>
+				page.evaluate(() => {
+					const key = window.__chelix_stores?.sessionStore?.activeSessionKey?.value || "";
+					if (!key) return false;
+					return window.location.pathname === `/chats/${key.replace(/:/g, "/")}`;
+				}),
+			{ timeout: timeoutMs },
+		)
+		.toBe(true);
+
+	await expectPageContentMounted(page);
+	await waitForChatSessionReady(page);
+}
+
+async function waitForChatSessionReady(page) {
+	await page.waitForFunction(
+		async () => {
+			var store = window.__chelix_stores?.sessionStore;
+			var activeKey = store?.activeSessionKey?.value || "";
+			if (!(activeKey && store?.getByKey?.(activeKey))) return false;
+			if (store?.switchInProgress?.value) return false;
+			if (document.getElementById("sessionLoadIndicator")) return false;
+			if (document.querySelector(`.session-item.active.loading[data-session-key="${CSS.escape(activeKey)}"]`))
+				return false;
+			var appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
+			if (!appScript) return false;
+			var appUrl = new URL(appScript.src, window.location.origin);
+			var prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
+			var state = await import(`${prefix}js/state.js`);
+			return state.subscribed && !(state.sessionSwitchInProgress || state.chatBatchLoading);
+		},
+		{ timeout: 5_000 },
+	);
+}
+
+function isRetryableRpcError(message) {
+	if (typeof message !== "string") return false;
+	return message.includes("WebSocket not connected") || message.includes("WebSocket disconnected");
+}
+
+/**
+ * Send an RPC from the page context with retry logic for transient WS errors.
+ * Retries a few transient WS disconnects with WS state diagnostics on failure.
+ */
+async function sendRpcFromPage(page, method, params) {
+	let lastResponse = null;
+	for (let attempt = 0; attempt < 3; attempt++) {
+		if (attempt > 0) {
+			const wsState = await page
+				.evaluate(() => {
+					var s = window.__chelix_state;
+					return {
+						connected: s?.connected,
+						subscribed: s?.subscribed,
+						wsExists: !!s?.ws,
+						readyState: s?.ws?.readyState,
+						pendingCount: s?.pending ? Object.keys(s.pending).length : -1,
+					};
+				})
+				.catch(() => ({}));
+			console.log(
+				`[sendRpc] ${method} retry #${attempt} ws=${JSON.stringify(wsState)} err=${lastResponse?.error?.message?.slice(0, 60)}`,
+			);
+			await waitForWsConnected(page, 1_000).catch(() => undefined);
+		}
+		lastResponse = await page
+			.evaluate(
+				async ({ methodName, methodParams }) => {
+					var appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
+					if (!appScript) throw new Error("app module script not found");
+					var appUrl = new URL(appScript.src, window.location.origin);
+					var prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
+					var helpers = await import(`${prefix}js/helpers.js`);
+					return helpers.sendRpc(methodName, methodParams);
+				},
+				{
+					methodName: method,
+					methodParams: params,
+				},
+			)
+			.catch((error) => ({ ok: false, error: { message: error?.message || String(error) } }));
+
+		if (lastResponse?.ok) return lastResponse;
+		if (!isRetryableRpcError(lastResponse?.error?.message)) return lastResponse;
+	}
+	console.log(`[sendRpc] ${method} FAILED after 3 attempts, last: ${lastResponse?.error?.message?.slice(0, 100)}`);
+	return lastResponse;
+}
+
+async function expectRpcOk(page, method, params) {
+	const response = await sendRpcFromPage(page, method, params);
+	expect(response?.ok, `RPC ${method} failed: ${response?.error?.message || "unknown error"}`).toBeTruthy();
+	return response;
+}
+
+async function expectNoPageHorizontalOverflow(page, label = "page", testInfo = null) {
+	const overflow = await page.evaluate(() => {
+		const doc = document.documentElement;
+		const viewportWidth = window.innerWidth;
+		const tolerance = 1;
+		const overflowingElements = Array.from(document.body.querySelectorAll("*"))
+			.map((el) => {
+				const rect = el.getBoundingClientRect();
+				return {
+					tag: el.tagName.toLowerCase(),
+					id: el.id || "",
+					className: typeof el.className === "string" ? el.className : "",
+					scrollWidth: Math.round(el.scrollWidth * 100) / 100,
+					clientWidth: Math.round(el.clientWidth * 100) / 100,
+					left: Math.round(rect.left * 100) / 100,
+					right: Math.round(rect.right * 100) / 100,
+				};
+			})
+			.filter((item) => item.scrollWidth > item.clientWidth + tolerance || item.right > viewportWidth + tolerance)
+			.slice(0, 20);
+
+		return {
+			documentScrollWidth: doc.scrollWidth,
+			documentClientWidth: doc.clientWidth,
+			viewportWidth,
+			overflowingElements,
+		};
+	});
+
+	if (overflow.documentScrollWidth > overflow.documentClientWidth + 1 && testInfo) {
+		await testInfo.attach(`horizontal-overflow-${label}`, {
+			body: Buffer.from(JSON.stringify(overflow, null, 2), "utf-8"),
+			contentType: "application/json",
+		});
+	}
+
+	expect(
+		overflow.documentScrollWidth,
+		`${label} has horizontal overflow: ${JSON.stringify(overflow.overflowingElements)}`,
+	).toBeLessThanOrEqual(overflow.documentClientWidth + 1);
+	return overflow;
+}
+
+module.exports = {
+	expectPageContentMounted,
+	watchPageErrors,
+	modelRecord,
+	waitForWsConnected,
+	waitForChatSessionReady,
+	navigateAndWait,
+	createSession,
+	sendRpcFromPage,
+	expectRpcOk,
+	expectNoPageHorizontalOverflow,
+};

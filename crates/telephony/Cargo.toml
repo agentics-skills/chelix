@@ -1,0 +1,42 @@
+[package]
+edition.workspace = true
+name              = "chelix-telephony"
+version.workspace = true
+
+[dependencies]
+anyhow          = { workspace = true }
+async-trait     = { workspace = true }
+base64          = { workspace = true }
+bytes           = { workspace = true }
+chelix-agents   = { workspace = true }
+chelix-channels = { workspace = true }
+chelix-common   = { workspace = true }
+chelix-metrics  = { optional = true, workspace = true }
+chelix-voice    = { workspace = true }
+dashmap         = { workspace = true }
+hex             = { workspace = true }
+hmac            = { workspace = true }
+http            = { workspace = true }
+reqwest         = { workspace = true }
+ring            = { workspace = true }
+secrecy         = { workspace = true }
+serde           = { workspace = true }
+serde_json      = { workspace = true }
+sha1            = { workspace = true }
+sha2            = { workspace = true }
+thiserror       = { workspace = true }
+time            = { workspace = true }
+tokio           = { workspace = true }
+tracing         = { workspace = true }
+url             = { workspace = true }
+uuid            = { workspace = true }
+
+[features]
+default = []
+metrics = ["dep:chelix-metrics"]
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+[lints]
+workspace = true

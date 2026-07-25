@@ -1,0 +1,23 @@
+//! LLM agent runtime: model selection, prompt building, tool execution, streaming.
+
+pub mod auth_profiles;
+pub mod docs;
+pub mod json_repair;
+pub mod memory_writer;
+pub mod model;
+pub mod multimodal;
+pub mod prompt;
+pub mod runner;
+pub mod tool_parsing;
+pub use {
+    model::{ChatMessage, ContentPart, UserContent},
+    runner::AgentRunError,
+};
+pub mod lazy_tools;
+pub mod response_sanitizer;
+pub mod silent_turn;
+pub mod skills;
+pub mod title;
+pub mod tool_arg_validator;
+pub mod tool_loop_detector;
+pub mod tool_registry;

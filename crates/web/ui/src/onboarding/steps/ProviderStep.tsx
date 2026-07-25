@@ -1,0 +1,870 @@
+// ── Provider step (provider config, model selection) ─────────
+
+import type { VNode } from "preact";
+import { useEffect, useRef, useState } from "preact/hooks";
+import { sendRpc } from "../../helpers";
+import { t } from "../../i18n";
+import { providerApiKeyHelp } from "../../provider-key-help";
+import { completeProviderOAuth, startProviderOAuth } from "../../provider-oauth";
+import {
+	humanizeProbeError,
+	isModelServiceNotConfigured,
+	providerBaseUrlError,
+	saveProviderKey,
+	testModel,
+	validateProviderKey,
+} from "../../provider-validation";
+import { targetValue } from "../../typed-events";
+import { modelConfigMapFromSelection, selectedModelIdsFromConfig } from "../../types/model";
+import { ErrorPanel } from "../shared";
+import type {
+	KeyHelp,
+	ModelSelectorRow,
+	OAuthInfo,
+	ProbeResult,
+	ProviderInfo,
+	RawModelRow,
+	ValidationResult,
+} from "../types";
+
+// ── Constants ───────────────────────────────────────────────
+
+const OPENAI_COMPATIBLE = ["openai", "openrouter", "moonshot"];
+const RECOMMENDED_PROVIDERS = new Set(["anthropic", "openai", "gemini", "zai"]);
+
+const WS_RETRY_LIMIT = 75;
+const WS_RETRY_DELAY_MS = 200;
+
+// ── Helper functions ────────────────────────────────────────
+
+export function sortProviders(list: ProviderInfo[]): ProviderInfo[] {
+	list.sort((a, b) => {
+		const aOrder = Number.isFinite(a.uiOrder) ? (a.uiOrder as number) : Number.MAX_SAFE_INTEGER;
+		const bOrder = Number.isFinite(b.uiOrder) ? (b.uiOrder as number) : Number.MAX_SAFE_INTEGER;
+		if (aOrder !== bOrder) return aOrder - bOrder;
+		return a.displayName.localeCompare(b.displayName);
+	});
+	return list;
+}
+
+function modelBelongsToProvider(providerName: string, mdl: ModelSelectorRow): boolean {
+	return mdl.provider === providerName;
+}
+
+function toModelSelectorRow(modelRow: RawModelRow): ModelSelectorRow {
+	return modelRow;
+}
+
+// ── ModelSelectCard ─────────────────────────────────────────
+
+export function ModelSelectCard({
+	model,
+	selected,
+	probe,
+	onToggle,
+}: {
+	model: ModelSelectorRow;
+	selected: boolean;
+	probe: string | ProbeResult | undefined;
+	onToggle: () => void;
+}): VNode {
+	const probeError = probe && probe !== "ok" && probe !== "probing" ? (probe as ProbeResult).error || "" : "";
+	return (
+		<div className={`model-card ${selected ? "selected" : ""}`} onClick={onToggle}>
+			<div className="flex flex-wrap items-center justify-between gap-2">
+				<span className="text-sm font-medium text-[var(--text)]">{model.display_name}</span>
+				<div className="flex flex-wrap gap-2 justify-end">
+					{model.tool_calling ? <span className="recommended-badge">Tools</span> : null}
+					{probe === "probing" ? <span className="tier-badge">Probing{"\u2026"}</span> : null}
+					{probeError ? <span className="provider-item-badge warning">Unsupported</span> : null}
+				</div>
+			</div>
+			<div className="text-xs text-[var(--muted)] mt-1 font-mono">{model.id}</div>
+			{probeError ? <div className="text-xs font-medium text-[var(--danger,#ef4444)] mt-0.5">{probeError}</div> : null}
+			{model.created_at ? (
+				<time
+					className="text-xs text-[var(--muted)] mt-0.5 opacity-60 block"
+					data-epoch-ms={model.created_at * 1000}
+					data-format="year-month"
+				/>
+			) : null}
+		</div>
+	);
+}
+
+// ── OnboardingProviderRow ───────────────────────────────────
+
+interface OnboardingProviderRowProps {
+	provider: ProviderInfo;
+	configuring: string | null;
+	phase: string;
+	providerModels: ModelSelectorRow[];
+	selectedModels: Set<string>;
+	probeResults: Map<string, string | ProbeResult>;
+	modelSearch: string;
+	setModelSearch: (v: string) => void;
+	oauthProvider: string | null;
+	oauthInfo: OAuthInfo | null;
+	oauthCallbackInput: string;
+	setOauthCallbackInput: (v: string) => void;
+	oauthSubmitting: boolean;
+	apiKey: string;
+	setApiKey: (v: string) => void;
+	endpoint: string;
+	setEndpoint: (v: string) => void;
+	savingModels: boolean;
+	error: string | null;
+	validationResult: ValidationResult | null;
+	onStartConfigure: (name: string) => void;
+	onCancelConfigure: () => void;
+	onSaveKey: (e: Event) => void;
+	onToggleModel: (id: string) => void;
+	onSaveModels: () => void;
+	onSubmitOAuthCallback: (name: string) => void;
+	onCancelOAuth: () => void;
+}
+
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: provider row renders inline config forms for api-key and oauth flows
+export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode {
+	const {
+		provider,
+		configuring,
+		phase,
+		providerModels,
+		selectedModels,
+		probeResults,
+		modelSearch,
+		setModelSearch,
+		oauthProvider,
+		oauthInfo,
+		oauthCallbackInput,
+		setOauthCallbackInput,
+		oauthSubmitting,
+		apiKey,
+		setApiKey,
+		endpoint,
+		setEndpoint,
+		savingModels,
+		error,
+		validationResult,
+		onStartConfigure,
+		onCancelConfigure,
+		onSaveKey,
+		onToggleModel,
+		onSaveModels,
+		onSubmitOAuthCallback,
+		onCancelOAuth,
+	} = props;
+
+	const isApiKeyForm = configuring === provider.name && (phase === "form" || phase === "validating");
+	const isModelSelect = configuring === provider.name && phase === "selectModel";
+	const isOAuth = oauthProvider === provider.name;
+	const isExpanded = isApiKeyForm || isModelSelect || isOAuth;
+	const keyInputRef = useRef<HTMLInputElement>(null);
+	const rowRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		if (isApiKeyForm && keyInputRef.current) keyInputRef.current.focus();
+	}, [isApiKeyForm]);
+
+	useEffect(() => {
+		if (isExpanded && rowRef.current) rowRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+	}, [isExpanded]);
+
+	const supportsEndpoint = OPENAI_COMPATIBLE.includes(provider.name);
+	const keyHelp = providerApiKeyHelp(provider) as KeyHelp | null;
+
+	const [showAllModels, setShowAllModels] = useState(false);
+	const DEFAULT_VISIBLE = 3;
+
+	const sortedModels = (providerModels || []).slice().sort((a, b) => {
+		const aRec = a.recommended ? 1 : 0;
+		const bRec = b.recommended ? 1 : 0;
+		if (aRec !== bRec) return bRec - aRec;
+		const aTime = a.created_at || 0;
+		const bTime = b.created_at || 0;
+		if (aTime !== bTime) return bTime - aTime;
+		return a.display_name.localeCompare(b.display_name);
+	});
+
+	const filteredModels = sortedModels.filter(
+		(m) =>
+			!modelSearch ||
+			m.display_name.toLowerCase().includes(modelSearch.toLowerCase()) ||
+			m.id.toLowerCase().includes(modelSearch.toLowerCase()),
+	);
+
+	const hasMoreModels = filteredModels.length > DEFAULT_VISIBLE && !modelSearch;
+	const visibleModels = showAllModels || modelSearch ? filteredModels : filteredModels.slice(0, DEFAULT_VISIBLE);
+	const hiddenModelCount = filteredModels.length - DEFAULT_VISIBLE;
+
+	return (
+		<div ref={rowRef} className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-3">
+			<div className="flex items-center gap-3">
+				<div className="flex-1 min-w-0 flex flex-col gap-0.5">
+					<div className="flex items-center gap-2 flex-wrap">
+						<span className="text-sm font-medium text-[var(--text-strong)]">{provider.displayName}</span>
+						{provider.configured ? <span className="provider-item-badge configured">configured</span> : null}
+						{validationResult?.ok === true ? (
+							<span className="icon icon-md icon-check-circle inline-block" style={{ color: "var(--ok)" }} />
+						) : null}
+						<span className={`provider-item-badge ${provider.authType}`}>
+							{provider.authType === "oauth" ? "OAuth" : provider.authType === "local" ? "Local" : "API Key"}
+						</span>
+					</div>
+				</div>
+				<div className="shrink-0">
+					{isExpanded ? null : (
+						<button
+							className="provider-btn provider-btn-secondary provider-btn-sm"
+							onClick={() => onStartConfigure(provider.name)}
+						>
+							{provider.configured ? "Choose Model" : "Configure"}
+						</button>
+					)}
+				</div>
+			</div>
+			{validationResult?.ok === false && !isExpanded ? (
+				<div className="text-xs text-[var(--warning)] mt-1">{validationResult.message}</div>
+			) : null}
+			{isApiKeyForm ? (
+				<form onSubmit={onSaveKey} className="flex flex-col gap-2 mt-3 border-t border-[var(--border)] pt-3">
+					<div>
+						<label className="text-xs text-[var(--muted)] mb-1 block">API Key</label>
+						<input
+							type="password"
+							className="provider-key-input w-full"
+							ref={keyInputRef}
+							value={apiKey}
+							onInput={(e) => setApiKey(targetValue(e))}
+							placeholder={provider.keyOptional ? "(optional)" : "sk-..."}
+						/>
+						{keyHelp ? (
+							<div className="text-xs text-[var(--muted)] mt-1">
+								{keyHelp.url ? (
+									<>
+										{keyHelp.text}{" "}
+										<a
+											href={keyHelp.url}
+											target="_blank"
+											rel="noopener noreferrer"
+											className="text-[var(--accent)] underline"
+										>
+											{keyHelp.label || keyHelp.url}
+										</a>
+									</>
+								) : (
+									keyHelp.text
+								)}
+							</div>
+						) : null}
+					</div>
+					{supportsEndpoint ? (
+						<div>
+							<label className="text-xs text-[var(--muted)] mb-1 block">Endpoint (optional)</label>
+							<input
+								type="text"
+								className="provider-key-input w-full"
+								value={endpoint}
+								onInput={(e) => setEndpoint(targetValue(e))}
+								placeholder={provider.defaultBaseUrl || "https://api.example.com/v1"}
+							/>
+							<div className="text-xs text-[var(--muted)] mt-1">Leave empty to use the default endpoint.</div>
+						</div>
+					) : null}
+					{error ? <ErrorPanel message={error} /> : null}
+					<div className="flex items-center gap-2 mt-1">
+						<button
+							key={`prov-${phase}`}
+							type="submit"
+							className="provider-btn provider-btn-sm"
+							disabled={phase === "validating"}
+						>
+							{phase === "validating" ? "Saving\u2026" : "Save"}
+						</button>
+						<button
+							type="button"
+							className="provider-btn provider-btn-secondary provider-btn-sm"
+							onClick={onCancelConfigure}
+							disabled={phase === "validating"}
+						>
+							Cancel
+						</button>
+					</div>
+					{phase === "validating" ? (
+						<div className="text-xs text-[var(--muted)] mt-1">Discovering available models{"\u2026"}</div>
+					) : null}
+				</form>
+			) : null}
+			{isModelSelect ? (
+				<div className="flex flex-col gap-2 mt-3 border-t border-[var(--border)] pt-3">
+					<div className="text-xs font-medium text-[var(--text-strong)]">Select preferred models</div>
+					<div className="text-xs text-[var(--muted)]">Selected models appear first in the session model selector.</div>
+					{(providerModels || []).length > 5 ? (
+						<input
+							type="text"
+							className="provider-key-input w-full text-xs"
+							placeholder={"Search models\u2026"}
+							value={modelSearch}
+							onInput={(e) => setModelSearch(targetValue(e))}
+						/>
+					) : null}
+					<div className="flex flex-col gap-1">
+						{visibleModels.length === 0 ? (
+							<div className="text-xs text-[var(--muted)] py-4 text-center">No models match your search.</div>
+						) : (
+							visibleModels.map((m) => (
+								<ModelSelectCard
+									key={m.id}
+									model={m}
+									selected={selectedModels.has(m.id)}
+									probe={probeResults.get(m.id)}
+									onToggle={() => onToggleModel(m.id)}
+								/>
+							))
+						)}
+						{hasMoreModels ? (
+							<button
+								className="text-xs text-[var(--accent)] cursor-pointer bg-transparent border-none py-1 text-left hover:underline"
+								onClick={() => setShowAllModels(!showAllModels)}
+							>
+								{showAllModels
+									? t("providers:showFewerModels")
+									: t("providers:showAllModels", { count: hiddenModelCount })}
+							</button>
+						) : null}
+					</div>
+					<div className="text-xs text-[var(--muted)]">
+						{selectedModels.size === 0
+							? "No models selected"
+							: `${selectedModels.size} model${selectedModels.size > 1 ? "s" : ""} selected`}
+					</div>
+					{error ? <ErrorPanel message={error} /> : null}
+					<div className="flex items-center gap-2 mt-1">
+						<button
+							type="button"
+							className="provider-btn provider-btn-sm"
+							disabled={selectedModels.size === 0 || savingModels}
+							onClick={onSaveModels}
+						>
+							{savingModels ? "Saving\u2026" : "Save"}
+						</button>
+						<button
+							type="button"
+							className="provider-btn provider-btn-secondary provider-btn-sm"
+							onClick={onCancelConfigure}
+							disabled={savingModels}
+						>
+							Cancel
+						</button>
+					</div>
+					{savingModels ? (
+						<div className="text-xs text-[var(--muted)] mt-1">
+							Saving credentials and validating selected models{"\u2026"}
+						</div>
+					) : null}
+				</div>
+			) : null}
+			{isOAuth ? (
+				<div className="flex flex-col gap-2 mt-3 border-t border-[var(--border)] pt-3">
+					{oauthInfo?.status === "device" ? (
+						<div className="text-sm text-[var(--text)]">
+							Open{" "}
+							<a href={oauthInfo.uri} target="_blank" className="text-[var(--accent)] underline">
+								{oauthInfo.uri}
+							</a>{" "}
+							and enter code:<strong className="font-mono ml-1">{oauthInfo.code}</strong>
+						</div>
+					) : (
+						<div className="text-sm text-[var(--muted)]">Waiting for authentication{"\u2026"}</div>
+					)}
+					{oauthInfo?.status === "device" ? null : (
+						<>
+							<div className="text-xs text-[var(--muted)]">
+								If localhost callback fails, paste the redirect URL (or code#state) below.
+							</div>
+							<input
+								type="text"
+								className="provider-key-input w-full"
+								placeholder="http://localhost:1455/auth/callback?code=...&state=..."
+								value={oauthCallbackInput}
+								onInput={(event) => setOauthCallbackInput((event.target as HTMLInputElement).value)}
+								disabled={oauthSubmitting}
+							/>
+							<button
+								className="provider-btn provider-btn-secondary provider-btn-sm self-start"
+								onClick={() => onSubmitOAuthCallback(provider.name)}
+								disabled={oauthSubmitting}
+							>
+								{oauthSubmitting ? "Submitting..." : "Submit Callback"}
+							</button>
+						</>
+					)}
+					{error ? <ErrorPanel message={error} /> : null}
+					<button className="provider-btn provider-btn-secondary provider-btn-sm self-start" onClick={onCancelOAuth}>
+						Cancel
+					</button>
+				</div>
+			) : null}
+		</div>
+	);
+}
+
+// ── ProviderStep ─────────────────────────────────────────────
+
+export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: (() => void) | null }): VNode {
+	const [providers, setProviders] = useState<ProviderInfo[]>([]);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+	const [showAllProviders, setShowAllProviders] = useState(false);
+	const [configuring, setConfiguring] = useState<string | null>(null);
+	const [oauthProvider, setOauthProvider] = useState<string | null>(null);
+	const [phase, setPhase] = useState("form");
+	const [providerModels, setProviderModels] = useState<ModelSelectorRow[]>([]);
+	const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
+	const [probeResults, setProbeResults] = useState<Map<string, string | ProbeResult>>(new Map());
+	const [modelSearch, setModelSearch] = useState("");
+	const [savingModels, setSavingModels] = useState(false);
+	const [modelSelectProvider, setModelSelectProvider] = useState<string | null>(null);
+	const [apiKey, setApiKey] = useState("");
+	const [endpoint, setEndpoint] = useState("");
+	const [validationResults, setValidationResults] = useState<Record<string, ValidationResult>>({});
+	const [oauthInfo, setOauthInfo] = useState<OAuthInfo | null>(null);
+	const [oauthCallbackInput, setOauthCallbackInput] = useState("");
+	const [oauthSubmitting, setOauthSubmitting] = useState(false);
+	const oauthTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+	function refreshProviders(): Promise<unknown> {
+		return sendRpc<ProviderInfo[]>("providers.available", {}).then((res) => {
+			if (res?.ok) setProviders(sortProviders(res.payload || []));
+			return res;
+		});
+	}
+
+	useEffect(() => {
+		let cancelled = false;
+		let attempts = 0;
+		function loadProviders(): void {
+			if (cancelled) return;
+			sendRpc<ProviderInfo[]>("providers.available", {}).then((res) => {
+				if (cancelled) return;
+				if (res?.ok) {
+					setProviders(sortProviders(res.payload || []));
+					setLoading(false);
+					return;
+				}
+				if (
+					((res?.error as { code?: string })?.code === "UNAVAILABLE" ||
+						(res?.error as { message?: string })?.message === "WebSocket not connected") &&
+					attempts < WS_RETRY_LIMIT
+				) {
+					attempts += 1;
+					window.setTimeout(loadProviders, WS_RETRY_DELAY_MS);
+					return;
+				}
+				setLoading(false);
+			});
+		}
+		loadProviders();
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	useEffect(() => {
+		return () => {
+			if (oauthTimerRef.current) {
+				clearInterval(oauthTimerRef.current);
+				oauthTimerRef.current = null;
+			}
+		};
+	}, []);
+
+	function closeAll(): void {
+		setConfiguring(null);
+		setOauthProvider(null);
+		setModelSelectProvider(null);
+		setPhase("form");
+		setProviderModels([]);
+		setSelectedModels(new Set());
+		setProbeResults(new Map());
+		setModelSearch("");
+		setSavingModels(false);
+		setApiKey("");
+		setEndpoint("");
+		setError(null);
+		setOauthInfo(null);
+		setOauthCallbackInput("");
+		setOauthSubmitting(false);
+		if (oauthTimerRef.current) {
+			clearInterval(oauthTimerRef.current);
+			oauthTimerRef.current = null;
+		}
+	}
+
+	async function loadModelsForProvider(providerName: string): Promise<ModelSelectorRow[]> {
+		const modelsRes = await sendRpc<RawModelRow[]>("models.list", {});
+		const allModels = modelsRes?.ok ? modelsRes.payload || [] : [];
+		return allModels.filter((m) => modelBelongsToProvider(providerName, toModelSelectorRow(m))).map(toModelSelectorRow);
+	}
+
+	async function openModelSelectForConfiguredApiProvider(provider: ProviderInfo): Promise<boolean> {
+		if (provider.authType !== "api-key" || !provider.configured) return false;
+		const existingModels = await loadModelsForProvider(provider.name);
+		if (existingModels.length === 0) return false;
+		const saved = selectedModelIdsFromConfig(existingModels, provider.models);
+		setModelSelectProvider(provider.name);
+		setConfiguring(provider.name);
+		setProviderModels(existingModels);
+		setSelectedModels(saved);
+		setPhase("selectModel");
+		return true;
+	}
+
+	async function onStartConfigure(name: string): Promise<void> {
+		closeAll();
+		const p = providers.find((pr) => pr.name === name);
+		if (!p) return;
+		if (p.authType === "api-key") {
+			setEndpoint(p.baseUrl || "");
+			if (await openModelSelectForConfiguredApiProvider(p)) return;
+			setConfiguring(name);
+			setPhase("form");
+		} else if (p.authType === "oauth") {
+			startOAuth(p);
+		}
+	}
+
+	function onSaveKey(e: Event): void {
+		e.preventDefault();
+		const p = providers.find((pr) => pr.name === configuring);
+		if (!p) return;
+		if (!(apiKey.trim() || p.keyOptional)) {
+			setError("API key is required.");
+			return;
+		}
+		setError(null);
+		setPhase("validating");
+		const keyVal = apiKey.trim() || p.name;
+		const endpointVal = endpoint.trim() || null;
+		const endpointError = providerBaseUrlError(endpointVal);
+		if (endpointError) {
+			setPhase("form");
+			setError(endpointError);
+			return;
+		}
+
+		validateProviderKey(p.name, keyVal, endpointVal)
+			.then(async (result: { valid: boolean; error?: string; models?: ModelSelectorRow[] }) => {
+				if (!result.valid) {
+					setPhase("form");
+					setError(result.error || "Validation failed.");
+					return;
+				}
+				const saveRes = await saveProviderKey(p.name, keyVal, endpointVal);
+				if (!saveRes?.ok) {
+					setPhase("form");
+					setError((saveRes?.error as { message?: string })?.message || "Failed to save credentials.");
+					return;
+				}
+				setProviderModels(result.models || []);
+				setPhase("selectModel");
+			})
+			.catch((err: Error) => {
+				setPhase("form");
+				setError(err?.message || "Validation failed.");
+			});
+	}
+
+	function probeModelAsync(modelId: string): void {
+		setProbeResults((prev) => {
+			const next = new Map(prev);
+			next.set(modelId, "probing");
+			return next;
+		});
+		testModel(modelId).then((result: { ok: boolean; error?: string }) => {
+			setProbeResults((prev) => {
+				const next = new Map(prev);
+				if (isModelServiceNotConfigured(result.error || "")) next.delete(modelId);
+				else
+					next.set(
+						modelId,
+						result.ok ? "ok" : { error: humanizeProbeError(result.error || "Unsupported") as string | undefined },
+					);
+				return next;
+			});
+		});
+	}
+
+	function onToggleModel(modelId: string): void {
+		setSelectedModels((prev) => {
+			const next = new Set(prev);
+			if (next.has(modelId)) next.delete(modelId);
+			else {
+				next.add(modelId);
+				probeModelAsync(modelId);
+			}
+			return next;
+		});
+	}
+
+	async function onSaveSelectedModels(): Promise<boolean> {
+		const providerName = modelSelectProvider || configuring;
+		if (!providerName) return false;
+		const modelIds = Array.from(selectedModels);
+		const modelsForSave = modelConfigMapFromSelection(providerModels, selectedModels);
+		setSavingModels(true);
+		setError(null);
+		try {
+			if (!modelSelectProvider) {
+				const p = providers.find((pr) => pr.name === providerName);
+				const keyVal = apiKey.trim() || p?.name || "";
+				const endpointVal = endpoint.trim() || null;
+				const res = await saveProviderKey(providerName, keyVal, endpointVal);
+				if (!res?.ok) {
+					setSavingModels(false);
+					setError((res?.error as { message?: string })?.message || "Failed to save credentials.");
+					return false;
+				}
+			}
+			const res = await sendRpc("providers.save_models", { provider: providerName, models: modelsForSave });
+			if (!res?.ok) {
+				setSavingModels(false);
+				setError((res?.error as { message?: string })?.message || "Failed to save model preferences.");
+				return false;
+			}
+			if (modelIds.length > 0) localStorage.setItem("chelix-model", modelIds[0]);
+			setValidationResults((prev) => ({ ...prev, [providerName]: { ok: true, message: null } }));
+			closeAll();
+			refreshProviders();
+			return true;
+		} catch (err) {
+			setSavingModels(false);
+			setError((err as Error)?.message || "Failed to save credentials.");
+			return false;
+		}
+	}
+
+	async function onContinue(): Promise<void> {
+		const hasPendingModelSelection =
+			phase === "selectModel" && (configuring || modelSelectProvider) && selectedModels.size > 0;
+		if (hasPendingModelSelection) {
+			const saved = await onSaveSelectedModels();
+			if (!saved) return;
+		}
+		onNext();
+	}
+
+	function startOAuth(p: ProviderInfo): void {
+		setOauthProvider(p.name);
+		setOauthInfo({ status: "starting" });
+		setOauthCallbackInput("");
+		setOauthSubmitting(false);
+		startProviderOAuth(p.name).then(
+			(result: { status: string; authUrl?: string; verificationUrl?: string; userCode?: string; error?: string }) => {
+				if (result.status === "already") onOAuthAuthenticated(p.name);
+				else if (result.status === "browser") {
+					window.open(result.authUrl, "_blank");
+					setOauthInfo({ status: "waiting" });
+					pollOAuth(p);
+				} else if (result.status === "device") {
+					setOauthInfo({ status: "device", uri: result.verificationUrl, code: result.userCode });
+					pollOAuth(p);
+				} else {
+					setError(result.error || "Failed to start OAuth");
+					setOauthProvider(null);
+					setOauthInfo(null);
+					setOauthCallbackInput("");
+					setOauthSubmitting(false);
+				}
+			},
+		);
+	}
+
+	async function onOAuthAuthenticated(providerName: string): Promise<void> {
+		const provModels = await loadModelsForProvider(providerName);
+		setOauthProvider(null);
+		setOauthInfo(null);
+		setOauthCallbackInput("");
+		setOauthSubmitting(false);
+		if (provModels.length > 0) {
+			setModelSelectProvider(providerName);
+			setConfiguring(providerName);
+			setProviderModels(provModels);
+			setSelectedModels(new Set());
+			setPhase("selectModel");
+		} else setValidationResults((prev) => ({ ...prev, [providerName]: { ok: true, message: null } }));
+		refreshProviders();
+	}
+
+	function pollOAuth(p: ProviderInfo): void {
+		let attempts = 0;
+		if (oauthTimerRef.current) clearInterval(oauthTimerRef.current);
+		oauthTimerRef.current = setInterval(() => {
+			attempts++;
+			if (attempts > 60) {
+				clearInterval(oauthTimerRef.current!);
+				oauthTimerRef.current = null;
+				setError("OAuth timed out.");
+				setOauthProvider(null);
+				setOauthInfo(null);
+				setOauthCallbackInput("");
+				setOauthSubmitting(false);
+				return;
+			}
+			sendRpc<{ authenticated?: boolean }>("providers.oauth.status", { provider: p.name }).then((res) => {
+				if (res?.ok && res.payload?.authenticated) {
+					clearInterval(oauthTimerRef.current!);
+					oauthTimerRef.current = null;
+					onOAuthAuthenticated(p.name);
+				}
+			});
+		}, 2000);
+	}
+
+	function cancelOAuth(): void {
+		if (oauthTimerRef.current) {
+			clearInterval(oauthTimerRef.current);
+			oauthTimerRef.current = null;
+		}
+		setOauthProvider(null);
+		setOauthInfo(null);
+		setOauthCallbackInput("");
+		setOauthSubmitting(false);
+		setError(null);
+	}
+
+	function submitOAuthCallback(providerName: string): void {
+		const callback = oauthCallbackInput.trim();
+		if (!callback) {
+			setError("Paste the callback URL (or code#state) to continue.");
+			return;
+		}
+		setOauthSubmitting(true);
+		setError(null);
+		completeProviderOAuth(providerName, callback)
+			.then((res: { ok?: boolean; error?: { message?: string } } | null) => {
+				if (res?.ok) {
+					if (oauthTimerRef.current) {
+						clearInterval(oauthTimerRef.current);
+						oauthTimerRef.current = null;
+					}
+					onOAuthAuthenticated(providerName);
+					return;
+				}
+				setError(res?.error?.message || "Failed to complete OAuth callback.");
+			})
+			.catch((err: Error) => {
+				setError(err?.message || "Failed to complete OAuth callback.");
+			})
+			.finally(() => {
+				setOauthSubmitting(false);
+			});
+	}
+
+	if (loading) return <div className="text-sm text-[var(--muted)]">{t("onboarding:provider.loadingLlms")}</div>;
+
+	const configuredProviders = providers.filter((p) => p.configured);
+	const recommendedProviders = providers.filter((p) => p.configured || RECOMMENDED_PROVIDERS.has(p.name));
+	const otherProviders = providers.filter((p) => !(p.configured || RECOMMENDED_PROVIDERS.has(p.name)));
+	const otherIsActive = otherProviders.some((p) => configuring === p.name || oauthProvider === p.name);
+	const showOther = showAllProviders || otherIsActive;
+
+	function renderProviderRow(p: ProviderInfo): VNode {
+		return (
+			<OnboardingProviderRow
+				key={p.name}
+				provider={p}
+				configuring={configuring}
+				phase={configuring === p.name ? phase : "form"}
+				providerModels={configuring === p.name ? providerModels : []}
+				selectedModels={configuring === p.name ? selectedModels : new Set()}
+				probeResults={configuring === p.name ? probeResults : new Map()}
+				modelSearch={configuring === p.name ? modelSearch : ""}
+				setModelSearch={setModelSearch}
+				oauthProvider={oauthProvider}
+				oauthInfo={oauthInfo}
+				oauthCallbackInput={oauthCallbackInput}
+				setOauthCallbackInput={setOauthCallbackInput}
+				oauthSubmitting={oauthSubmitting}
+				apiKey={apiKey}
+				setApiKey={setApiKey}
+				endpoint={endpoint}
+				setEndpoint={setEndpoint}
+				savingModels={savingModels}
+				error={configuring === p.name || oauthProvider === p.name ? error : null}
+				validationResult={validationResults[p.name] || null}
+				onStartConfigure={onStartConfigure}
+				onCancelConfigure={closeAll}
+				onSaveKey={onSaveKey}
+				onToggleModel={onToggleModel}
+				onSaveModels={onSaveSelectedModels}
+				onSubmitOAuthCallback={submitOAuthCallback}
+				onCancelOAuth={cancelOAuth}
+			/>
+		);
+	}
+
+	return (
+		<div className="flex flex-col gap-4">
+			<div className="flex items-baseline justify-between gap-2">
+				<h2 className="text-lg font-medium text-[var(--text-strong)]">{t("onboarding:provider.addLlms")}</h2>
+				<a
+					href="https://github.com/agentics-skills/chelix/blob/master/docs/src/choosing-a-provider.md"
+					target="_blank"
+					rel="noopener noreferrer"
+					className="text-xs text-[var(--accent)] hover:underline shrink-0"
+				>
+					Help me choose
+				</a>
+			</div>
+			<p className="text-xs text-[var(--muted)] leading-relaxed">
+				Configure one or more LLM providers to power your agent. You can add more later in Settings.
+			</p>
+			{configuredProviders.length > 0 ? (
+				<div className="rounded-md border border-[var(--border)] bg-[var(--surface2)] p-3 flex flex-col gap-2">
+					<div className="text-xs text-[var(--muted)]">Detected LLM providers</div>
+					<div className="flex flex-wrap gap-2">
+						{configuredProviders.map((p) => (
+							<span key={p.name} className="provider-item-badge configured">
+								{p.displayName}
+							</span>
+						))}
+					</div>
+				</div>
+			) : null}
+			<div className="flex flex-col gap-2">
+				<div className="text-xs font-medium text-[var(--text)] uppercase tracking-wide">Recommended</div>
+				{recommendedProviders.map(renderProviderRow)}
+			</div>
+			{otherProviders.length > 0 ? (
+				<div className="flex flex-col gap-2">
+					<button
+						type="button"
+						className="text-xs text-[var(--muted)] hover:text-[var(--text)] cursor-pointer bg-transparent border-none text-left flex items-center gap-1"
+						onClick={() => setShowAllProviders((v) => !v)}
+					>
+						<span className={`inline-block transition-transform ${showOther ? "rotate-90" : ""}`}>{"\u25B6"}</span>
+						All providers ({otherProviders.length} more)
+					</button>
+					{showOther ? otherProviders.map(renderProviderRow) : null}
+				</div>
+			) : null}
+			{error && !configuring && !oauthProvider ? <ErrorPanel message={error} /> : null}
+			<div className="flex flex-wrap items-center gap-3 mt-1">
+				<button className="provider-btn provider-btn-secondary" onClick={onBack || undefined}>
+					{t("common:actions.back")}
+				</button>
+				<button className="provider-btn" onClick={onContinue} disabled={phase === "validating" || savingModels}>
+					{t("common:actions.continue")}
+				</button>
+				<button
+					className="text-xs text-[var(--muted)] cursor-pointer bg-transparent border-none underline"
+					onClick={onNext}
+				>
+					{t("common:actions.skip")}
+				</button>
+			</div>
+		</div>
+	);
+}

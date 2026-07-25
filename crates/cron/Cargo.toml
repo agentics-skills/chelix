@@ -1,0 +1,32 @@
+[package]
+edition.workspace = true
+name              = "chelix-cron"
+version.workspace = true
+
+[dependencies]
+async-trait    = { workspace = true }
+chelix-agents  = { workspace = true }
+chelix-common  = { workspace = true }
+chelix-config  = { workspace = true }
+chelix-metrics = { optional = true, workspace = true }
+chrono         = { workspace = true }
+chrono-tz      = { workspace = true }
+cron           = { workspace = true }
+serde          = { workspace = true }
+serde_json     = { workspace = true }
+sqlx           = { workspace = true }
+thiserror      = { workspace = true }
+tokio          = { workspace = true }
+tracing        = { workspace = true }
+uuid           = { workspace = true }
+
+[features]
+default = []
+metrics = ["dep:chelix-metrics"]
+
+[dev-dependencies]
+rstest   = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

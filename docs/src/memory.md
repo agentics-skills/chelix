@@ -1,0 +1,471 @@
+# Memory System
+
+Chelix provides a powerful memory system that enables the agent to recall past
+conversations, notes, and context across sessions. This document explains the
+available backends, features, and configuration options.
+
+If you are trying to understand the difference between short-term session state,
+long-term memory files, and sandbox persistence, start with
+[Memory Surfaces](memory-surfaces.md).
+
+## Backends
+
+Chelix supports two memory backends:
+
+| Feature                 | Built-in                          | QMD                                    |
+| ----------------------- | --------------------------------- | -------------------------------------- |
+| **Search Type**         | Hybrid (vector + FTS5 keyword)    | Hybrid (BM25 + vector + LLM reranking) |
+| **Local Embeddings**    | GGUF via a managed llama-cpp sidecar | GGUF models                         |
+| **Remote Embeddings**   | OpenAI and custom endpoints       | Built-in                               |
+| **Embedding Cache**     | SQLite with LRU eviction          | Built-in                               |
+| **Batch API**           | OpenAI batch (50% cost saving)    | No                                     |
+| **Circuit Breaker**     | Fallback chain with auto-recovery | No                                     |
+| **LLM Reranking**       | Optional (configurable)           | Built-in with `query` command          |
+| **File Watching**       | Real-time sync via notify         | Built-in                               |
+| **External Dependency** | Bundled managed sidecar for local GGUF | Requires QMD binary (Node.js/Bun)  |
+| **Offline Support**     | Yes (with local embeddings)       | Yes                                    |
+
+### Built-in Backend
+
+The default backend uses SQLite for storage with FTS5 for keyword search and
+optional vector embeddings for semantic search. Key advantages:
+
+- **Managed local inference**: Chelix starts and stops the separately built
+  `chelix-embedding-service` sidecar when the local provider is selected
+- **Fallback chain**: Automatically switches between embedding providers if one
+  fails
+- **Batch embedding**: Reduces OpenAI API costs by 50% for large sync operations
+- **Embedding cache**: Avoids re-embedding unchanged content
+
+### QMD Backend
+
+QMD is an optional external sidecar that provides enhanced search capabilities:
+
+- **BM25 keyword search**: Fast, instant results (similar to Elasticsearch)
+- **Vector search**: Semantic similarity using local GGUF models
+- **Hybrid search with LLM reranking**: Combines both methods with an LLM pass
+  for optimal relevance
+
+To use QMD:
+
+1. Install the QMD CLI from [github.com/tobi/qmd](https://github.com/tobi/qmd):
+   `npm install -g @tobilu/qmd` or `bun install -g @tobilu/qmd`
+2. Verify the binary is on your `PATH`: `qmd --version`
+3. Enable it in Settings > Memory > Backend
+
+Chelix invokes the `qmd` CLI directly for indexing and search, so the memory
+backend does not require a separate background daemon.
+
+## Features
+
+### Citations
+
+Citations append source file and line number information to search results:
+
+```
+Some important content from your notes.
+
+Source: memory/notes.md#42
+```
+
+**Configuration options:**
+
+- `auto` (default): Include citations when results come from multiple files
+- `on`: Always include citations
+- `off`: Never include citations
+
+### Session Export
+
+Session transcripts can be exported into searchable memory on `/new` and
+`/reset`. This allows the agent to remember past conversations even after
+restarts.
+
+Exported sessions are:
+
+- Stored in `memory/sessions/` as markdown files
+- Sanitized to remove sensitive tool results and system messages
+- Automatically cleaned up based on age/count limits
+
+### LLM Reranking
+
+LLM reranking uses the configured language model to re-score and reorder search
+results based on semantic relevance to the query. This provides better results
+than keyword or vector matching alone, at the cost of additional latency.
+
+**How it works:**
+
+1. Initial search returns candidate results
+2. LLM evaluates each result's relevance (0.0-1.0 score)
+3. Results are reordered by combined score (70% LLM, 30% original)
+
+## Configuration
+
+Memory settings can be configured in `chelix.toml`:
+
+```toml
+[memory]
+# Orchestration style: "hybrid", "prompt-only", "search-only", or "off"
+style = "hybrid"
+
+# Agent-authored write target policy: "hybrid", "prompt-only", "search-only", or "off"
+agent_write_mode = "hybrid"
+
+# Managed USER.md write policy: "explicit-and-auto", "explicit-only", or "off"
+user_profile_write_mode = "explicit-and-auto"
+
+# Backend: "builtin" (default) or "qmd"
+backend = "builtin"
+
+# Embedding provider for the built-in backend: "local", "openai", "custom", or auto-detect
+# Ignored while backend = "qmd", but preserved for switching back later
+# Omit this field for the real default, which is auto-detect
+provider = "auto"
+
+# Disable RAG embeddings and force keyword-only search
+disable_rag = false
+
+# Embedding API base URL (host, /v1, or full /embeddings endpoint)
+base_url = "https://embeddings.example.com/v1"
+
+# Citation mode: "on", "off", or "auto"
+citations = "auto"
+
+# Enable LLM reranking for hybrid search
+llm_reranking = false
+
+# Merge vector and keyword results with "rrf" or "linear"
+search_merge_strategy = "rrf"
+
+# Export sessions to memory for cross-run recall: "on-new-or-reset" or "off"
+session_export = "on-new-or-reset"
+
+# QMD-specific settings (only used when backend = "qmd")
+[memory.qmd]
+command = "qmd"
+max_results = 10
+timeout_ms = 30000
+```
+
+Real defaults, if you leave the fields unset:
+
+- `style = "hybrid"`
+- `agent_write_mode = "hybrid"`
+- `user_profile_write_mode = "explicit-and-auto"`
+- `backend = "builtin"`
+- `provider = auto-detect` (unset, not hardcoded `local`)
+- `disable_rag = false`
+- `citations = "auto"`
+- `llm_reranking = false`
+- `search_merge_strategy = "rrf"`
+- `session_export = "on-new-or-reset"`
+- `[chat].prompt_memory_mode = "live-reload"`
+
+`style` is separate from `[chat].prompt_memory_mode`. Style controls whether
+`MEMORY.md` is injected and whether memory tools are exposed. Prompt memory mode
+controls whether prompt-visible `MEMORY.md` is live-reloaded or frozen per
+session.
+
+The web settings page exposes both knobs in the Memory section so you can
+experiment without hand-editing `chelix.toml`.
+
+`agent_write_mode` is a separate axis again. It controls where agent-authored
+memory writes may land:
+
+- `hybrid` allows both `MEMORY.md` and `memory/*.md`
+- `prompt-only` allows only `MEMORY.md`
+- `search-only` allows only `memory/*.md`
+- `off` disables agent-authored memory mutations, including `memory_save`,
+  `memory_forget`, and `memory_delete`
+
+`user_profile_write_mode` is about the managed `USER.md` surface, not agent
+memory files:
+
+- `explicit-and-auto` mirrors explicit settings saves to `USER.md` and also
+  allows silent browser/channel timezone or location capture
+- `explicit-only` mirrors explicit settings saves to `USER.md`, but disables
+  silent browser/channel capture
+- `off` stops Chelix from writing `USER.md`; the canonical user profile remains
+  in `chelix.toml [user]`
+
+`citations` and `search_merge_strategy` are typed config enums too:
+
+- `citations = "auto" | "on" | "off"`
+- `search_merge_strategy = "rrf" | "linear"`
+
+Interaction rules that matter in practice:
+
+- `provider`, `base_url`, `model`, and `api_key` only apply to
+  `backend = "builtin"`. QMD ignores them.
+- `[chat].prompt_memory_mode` only matters when `style` still allows prompt
+  memory, `hybrid` or `prompt-only`.
+- `llm_reranking` is only meaningful when RAG is enabled. If
+  `disable_rag = true`, memory falls back to keyword search.
+- `session_export` exports transcripts into searchable memory files. It does not
+  inject those transcripts into the prompt directly.
+
+Or via the web UI: **Settings > Memory**
+
+## Recipes
+
+Common combinations:
+
+| Goal                                  | Settings                                                                        |
+| ------------------------------------- | ------------------------------------------------------------------------------- |
+| Default everyday setup                | `style = "hybrid"`, `backend = "builtin"`, `prompt_memory_mode = "live-reload"` |
+| Deterministic prompt memory           | `style = "hybrid"`, `prompt_memory_mode = "frozen-at-session-start"`            |
+| Search-only long-term memory          | `style = "search-only"`                                                         |
+| Prompt-only memory, no recall tools   | `style = "prompt-only"`                                                         |
+| Disable agent memory writes           | `agent_write_mode = "off"`                                                      |
+| Keep `USER.md` from silent enrichment | `user_profile_write_mode = "explicit-only"`                                     |
+| Keep user profile only in config      | `user_profile_write_mode = "off"`                                               |
+| QMD backend experiment                | `backend = "qmd"`                                                               |
+
+## Embedding Providers
+
+The built-in backend supports multiple embedding providers:
+
+| Provider     | Model                  | Dimensions | Notes                      |
+| ------------ | ---------------------- | ---------- | -------------------------- |
+| Local (GGUF) | EmbeddingGemma-300M    | 768        | Offline, managed sidecar   |
+| OpenAI       | text-embedding-3-small | 1536       | Requires API key           |
+| Custom       | Configurable           | Varies     | OpenAI-compatible endpoint |
+
+The system auto-detects available providers and creates a fallback chain:
+
+1. Try configured provider first
+2. Fall back to other available providers if it fails
+3. Use keyword-only search if no embedding provider is available
+
+### Local GGUF sidecar
+
+`llama-cpp-2` and `llama-cpp-sys-2` are linked only into
+`chelix-embedding-service`; they are not part of the `chelix` binary dependency
+graph. Chelix launches the sidecar on a random loopback HTTP port, reads model
+metadata during startup, and stops the process with the gateway. The loopback
+API has no authentication and is not exposed on non-loopback interfaces.
+
+Build the two binaries separately:
+
+```bash
+cargo build -p chelix --no-default-features --features full
+cargo build -p chelix-embedding-service
+```
+
+Place `chelix-embedding-service` next to `chelix`. For custom layouts, set
+`CHELIX_EMBEDDING_SERVICE` to the sidecar path. Existing `memory.model`
+selection, model download/cache behavior, chunking, context-window handling,
+and mean-pooling behavior are unchanged.
+
+## Memory Directories
+
+By default, chelix indexes markdown files from:
+
+- `~/.chelix/MEMORY.md` - Main long-term memory file
+- `~/.chelix/memory/*.md` - Additional memory files
+- `~/.chelix/memory/sessions/*.md` - Exported session transcripts
+
+Prompt injection from `MEMORY.md` is controlled separately via
+`[chat].prompt_memory_mode`. Use `live-reload` to reread `MEMORY.md` before each
+turn, or `frozen-at-session-start` to keep a stable prompt-memory snapshot for
+the lifetime of a session.
+
+When sandboxing is enabled, Chelix mounts `data_dir()` at the identical absolute
+path in read-write mode, so sandboxed commands can read and write memory files
+directly. Durable memory mutations should still use `memory_save`,
+`memory_forget`, or `memory_delete` to preserve the memory system's intended
+semantics and safeguards.
+
+## Tools
+
+The memory system exposes five agent tools:
+
+### memory_search
+
+Search memory with a natural language query. Returns relevant chunks ranked by
+hybrid (vector + keyword) similarity.
+
+```json
+{
+  "query": "what did we discuss about the API design?",
+  "limit": 5
+}
+```
+
+### memory_get
+
+Retrieve a specific memory chunk by ID. Useful for reading the full text of a
+result found via `memory_search`.
+
+```json
+{
+  "chunk_id": "memory/notes.md:42"
+}
+```
+
+### memory_save
+
+Save content to long-term memory files. The agent uses this tool when you ask it
+to remember something ("remember that I prefer dark mode") or when it decides
+certain information is worth persisting. This is the preferred long-term write
+path even when memory files are visible through a read-only sandbox mount.
+
+```json
+{
+  "content": "User prefers dark mode and Vim keybindings.",
+  "file": "MEMORY.md",
+  "append": true
+}
+```
+
+**Parameters:**
+
+| Parameter | Type    | Default      | Description                                                  |
+| --------- | ------- | ------------ | ------------------------------------------------------------ |
+| `content` | string  | _(required)_ | The content to save                                          |
+| `file`    | string  | `MEMORY.md`  | Target file: `MEMORY.md`, `memory.md`, or `memory/<name>.md` |
+| `append`  | boolean | `true`       | Append to existing file (`true`) or overwrite (`false`)      |
+
+If `memory.agent_write_mode = "search-only"` and `file` is omitted,
+`memory_save` defaults to `memory/notes.md`. The write mode can also reject
+targets that are otherwise valid paths.
+
+**Path validation:** The tool enforces a strict allowlist of write targets to
+prevent path traversal attacks. Only these patterns are accepted:
+
+- `MEMORY.md` or `memory.md` (root memory files)
+- `memory/<name>.md` (files in the memory subdirectory, one level deep)
+
+Absolute paths, `..` traversal, non-`.md` extensions, spaces in filenames, and
+nested subdirectories (`memory/a/b.md`) are all rejected. Content is limited to
+50 KB per write.
+
+**Auto-reindex:** After writing, the memory system automatically re-indexes the
+affected file so the new content is immediately searchable via `memory_search`.
+
+### memory_forget
+
+Forget saved memory using natural language. This tool searches memory, asks the
+configured LLM to choose which chunk or chunks match the forget request, then
+deletes the exact stored text through the same deterministic file mutation path
+used by `memory_delete`.
+
+```json
+{
+  "request": "Forget that I prefer dark mode",
+  "dry_run": true
+}
+```
+
+If the request is ambiguous, stale, or the exact text is not uniquely removable,
+`memory_forget` returns a preview with `needs_confirmation = true` instead of
+mutating files.
+
+**Parameters:**
+
+| Parameter | Type    | Default      | Description                                                  |
+| --------- | ------- | ------------ | ------------------------------------------------------------ |
+| `request` | string  | _(required)_ | Natural-language description of what saved memory to forget  |
+| `dry_run` | boolean | `false`      | Preview planned deletions without mutating files             |
+| `limit`   | integer | `6`          | Maximum number of candidate chunks inspected before planning |
+
+Use `memory_forget` for normal "forget X" requests. Use `memory_delete` only
+when you already know the exact file and exact snippet to remove.
+
+### memory_delete
+
+Forget saved memory by removing an exact snippet from a memory file or deleting
+the whole file. This mutates the backing Markdown file, not just the index.
+
+```json
+{
+  "file": "MEMORY.md",
+  "text": "User prefers dark mode and Vim keybindings.\n"
+}
+```
+
+To delete an entire memory note instead:
+
+```json
+{
+  "file": "memory/obsolete-note.md",
+  "delete_file": true
+}
+```
+
+**Parameters:**
+
+| Parameter         | Type    | Default      | Description                                                        |
+| ----------------- | ------- | ------------ | ------------------------------------------------------------------ |
+| `file`            | string  | _(required)_ | Target file: `MEMORY.md`, `memory.md`, or `memory/<name>.md`       |
+| `text`            | string  | _(none)_     | Exact text snippet to remove. Required unless `delete_file = true` |
+| `delete_file`     | boolean | `false`      | Delete the whole file instead of removing exact text               |
+| `all_matches`     | boolean | `false`      | Remove every exact match of `text` instead of only the first       |
+| `delete_if_empty` | boolean | `true`       | Delete the file if removing `text` leaves only whitespace          |
+
+`memory_delete` uses the same path validation rules as `memory_save`, updates
+the search index immediately, and can clean up stale index entries when a file
+is removed. It is the low-level exact-delete primitive that powers
+`memory_forget`.
+
+- Technical setup details (tools, languages, frameworks)
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                       Memory Manager                             │
+│               (implements MemoryWriter trait)                     │
+├──────────────────────────────────────────────────────────────────┤
+│                         Read Path                                │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐      │
+│  │   Chunker   │  │   Search    │  │  Session Export     │      │
+│  │ (markdown)  │  │  (hybrid)   │  │  (transcripts)      │      │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘      │
+├──────────────────────────────────────────────────────────────────┤
+│                        Write Path                                │
+│  ┌─────────────────┐  ┌──────────────────┐  ┌────────────────┐  │
+│  │ memory_save /   │  │  Silent Turn     │  │  Path          │  │
+│  │ memory_delete   │  │  (pre-compact)   │  │  Validation    │  │
+│  │  (agent tools)  │  │                  │  │                │  │
+│  └─────────────────┘  └──────────────────┘  └────────────────┘  │
+├──────────────────────────────────────────────────────────────────┤
+│                      Storage Backend                             │
+│  ┌────────────────────────┐  ┌────────────────────────┐         │
+│  │   Built-in (SQLite)    │  │   QMD (sidecar)        │         │
+│  │  - FTS5 keyword        │  │  - BM25 keyword        │         │
+│  │  - Vector similarity   │  │  - Vector similarity   │         │
+│  │  - Embedding cache     │  │  - LLM reranking       │         │
+│  └────────────────────────┘  └────────────────────────┘         │
+├──────────────────────────────────────────────────────────────────┤
+│                    Embedding Providers                            │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌───────────────┐      │
+│  │  Local  │  │ OpenAI  │  │ Custom  │  │ Batch/Fallback│      │
+│  │  (GGUF) │  │         │  │         │  │               │      │
+│  └─────────┘  └─────────┘  └─────────┘  └───────────────┘      │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+## Troubleshooting
+
+### Memory not working
+
+1. Check status in Settings > Memory
+2. Ensure at least one embedding provider is available:
+   - Local: Requires the `local-embeddings` client feature and the separately
+     built `chelix-embedding-service` binary
+   - OpenAI: Requires `OPENAI_API_KEY` environment variable
+   - Custom: Requires a configured OpenAI-compatible embedding endpoint
+
+### Search returns no results
+
+1. Check that memory files exist in the expected directories
+2. Trigger a manual sync by restarting chelix
+3. Check logs for sync errors
+
+### QMD not available
+
+1. Install QMD if needed: `npm install -g @tobilu/qmd` or
+   `bun install -g @tobilu/qmd`
+2. Verify QMD is installed: `qmd --version`
+3. Check that the path is correct in settings
+4. Ensure QMD can see its index and collections: `qmd status`

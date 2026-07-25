@@ -1,0 +1,621 @@
+#[cfg(all(
+    feature = "jemalloc",
+    not(target_os = "windows"),
+    not(all(target_os = "linux", target_arch = "aarch64"))
+))]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+/// Tune jemalloc to return unused pages to the OS faster, reducing RSS for
+/// long-running processes. `dirty_decay_ms` and `muzzy_decay_ms` control how
+/// aggressively freed pages are purged (lower = faster return to OS).
+/// `background_thread:true` enables jemalloc's background thread for
+/// asynchronous page purging without stalling allocation.
+///
+/// SAFETY: `export_name` overrides the well-known jemalloc configuration
+/// symbol. There is exactly one definition in the program and the value is a
+/// valid NUL-terminated C string.
+#[cfg(all(
+    feature = "jemalloc",
+    not(target_os = "windows"),
+    not(all(target_os = "linux", target_arch = "aarch64"))
+))]
+#[allow(unsafe_code, non_upper_case_globals)]
+#[unsafe(export_name = "malloc_conf")]
+static malloc_conf: &[u8] = b"dirty_decay_ms:1000,muzzy_decay_ms:1000,background_thread:true\0";
+
+mod auth_commands;
+mod browser_commands;
+mod channel_commands;
+mod config_commands;
+mod data_commands;
+mod db_commands;
+mod doctor_commands;
+mod hooks_commands;
+mod import_commands;
+mod memory_commands;
+mod sandbox_commands;
+mod service_commands;
+mod voicecall_commands;
+
+use {
+    anyhow::anyhow,
+    chelix_gateway::logs::{EnabledLogLevels, LogBroadcastLayer, LogBuffer},
+    clap::{Parser, Subcommand},
+    tracing::info,
+    tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt},
+};
+
+#[derive(Parser)]
+#[command(
+    name = "chelix",
+    about = "Chelix — personal AI gateway",
+    version = chelix_config::VERSION
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
+    /// Log level (trace, debug, info, warn, error).
+    #[arg(long, global = true, default_value = "info")]
+    log_level: String,
+
+    /// Output logs as JSON instead of human-readable.
+    #[arg(long, global = true, default_value_t = false)]
+    json_logs: bool,
+
+    // Gateway arguments (used when no subcommand is provided, or with `gateway` subcommand)
+    /// Address to bind to (overrides config value).
+    #[arg(long, global = true)]
+    bind: Option<String>,
+    /// Port to listen on (overrides config value).
+    #[arg(long, global = true)]
+    port: Option<u16>,
+    /// Custom config directory (overrides default ~/.config/chelix/).
+    #[arg(long, global = true, env = "CHELIX_CONFIG_DIR")]
+    config_dir: Option<std::path::PathBuf>,
+    /// Custom data directory (overrides default data dir).
+    #[arg(long, global = true, env = "CHELIX_DATA_DIR")]
+    data_dir: Option<std::path::PathBuf>,
+    /// Custom share directory for external web assets (overrides default discovery).
+    #[arg(long, global = true, env = "CHELIX_SHARE_DIR")]
+    share_dir: Option<std::path::PathBuf>,
+    /// Disable TLS (for cloud deployments where the provider handles TLS).
+    #[cfg(feature = "tls")]
+    #[arg(long, global = true, env = "CHELIX_NO_TLS")]
+    no_tls: bool,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Start the gateway server (default when no subcommand is provided).
+    Gateway,
+    /// Invoke an agent directly.
+    Agent {
+        #[arg(short, long)]
+        message: String,
+        #[arg(long)]
+        thinking: Option<String>,
+    },
+    /// Channel management.
+    Channels {
+        #[command(subcommand)]
+        action: channel_commands::ChannelAction,
+    },
+    /// Send a message.
+    Send {
+        #[arg(long)]
+        to: String,
+        #[arg(short, long)]
+        message: String,
+    },
+    /// Session management.
+    Sessions {
+        #[command(subcommand)]
+        action: SessionAction,
+    },
+    /// Configuration management.
+    Config {
+        #[command(subcommand)]
+        action: config_commands::ConfigAction,
+    },
+    /// List available models.
+    Models,
+    /// Interactive onboarding wizard.
+    Onboard,
+    /// Config validation and migration.
+    Doctor,
+    /// Authentication management for OAuth providers.
+    Auth {
+        #[command(subcommand)]
+        action: auth_commands::AuthAction,
+    },
+    /// Skill management.
+    Skills {
+        #[command(subcommand)]
+        action: SkillAction,
+    },
+    /// Hook management.
+    Hooks {
+        #[command(subcommand)]
+        action: hooks_commands::HookAction,
+    },
+    /// Sandbox image management.
+    Sandbox {
+        #[command(subcommand)]
+        action: sandbox_commands::SandboxAction,
+    },
+    /// Browser configuration management.
+    Browser {
+        #[command(subcommand)]
+        action: browser_commands::BrowserAction,
+    },
+    /// Export and import Chelix data archives.
+    Data {
+        #[command(subcommand)]
+        action: data_commands::DataAction,
+    },
+    /// Database management (reset, clear, migrate).
+    Db {
+        #[command(subcommand)]
+        action: db_commands::DbAction,
+    },
+    /// Memory search and status.
+    Memory {
+        #[command(subcommand)]
+        action: memory_commands::MemoryAction,
+    },
+    /// Install or manage chelix as an OS service.
+    Service {
+        #[command(subcommand)]
+        action: service_commands::ServiceAction,
+    },
+    /// Import data from supported external AI tools.
+    Import {
+        #[command(subcommand)]
+        action: import_commands::ImportAction,
+    },
+    /// Voice call management (initiate, status, end).
+    VoiceCall {
+        #[command(subcommand)]
+        action: voicecall_commands::VoiceCallAction,
+    },
+    /// Install the Chelix CA certificate into the system trust store.
+    #[cfg(feature = "tls")]
+    TrustCa,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReadOnlyDiagnostic {
+    ConfigCheck { verbose: bool },
+    Doctor,
+}
+
+fn read_only_diagnostic(command: Option<&Commands>) -> Option<ReadOnlyDiagnostic> {
+    match command {
+        Some(Commands::Config {
+            action: config_commands::ConfigAction::Check { verbose },
+        }) => Some(ReadOnlyDiagnostic::ConfigCheck { verbose: *verbose }),
+        Some(Commands::Doctor) => Some(ReadOnlyDiagnostic::Doctor),
+        _ => None,
+    }
+}
+
+#[derive(Subcommand)]
+enum SessionAction {
+    List,
+    Clear { key: String },
+    History { key: String },
+}
+
+#[derive(Subcommand)]
+enum SkillAction {
+    /// List all discovered skills.
+    List,
+    /// Install a skill from a GitHub repository (owner/repo format).
+    Add {
+        /// Source in owner/repo format (e.g. vercel-labs/agent-skills).
+        source: String,
+    },
+    /// Remove an installed repo and all its skills.
+    Remove {
+        /// Source in owner/repo format.
+        source: String,
+    },
+    /// Export an installed repo as a portable bundle.
+    Export {
+        /// Source in owner/repo format.
+        source: String,
+        /// Output file or directory. Defaults to ~/.chelix/skill-exports/.
+        #[arg(long)]
+        output: Option<String>,
+    },
+    /// Import a portable skill bundle into the local registry in quarantine.
+    Import {
+        /// Path to a .tar.gz bundle created by `chelix skills export`.
+        path: String,
+    },
+    /// Show details about a skill.
+    Info {
+        /// Skill name.
+        name: String,
+    },
+}
+
+fn default_telemetry_filter(log_level: &str) -> EnvFilter {
+    let mut filter = EnvFilter::new(log_level);
+    for directive in [
+        "chromiumoxide=off",
+        "matrix_sdk=warn",
+        "matrix_sdk_base=warn",
+        "matrix_sdk_crypto=error",
+    ] {
+        if let Ok(directive) = directive.parse() {
+            filter = filter.add_directive(directive);
+        }
+    }
+    filter
+}
+
+/// Initialise tracing and optionally attach a [`LogBroadcastLayer`] that
+/// captures events into an in-memory ring buffer for the web UI.
+fn init_telemetry(cli: &Cli, log_buffer: Option<LogBuffer>) {
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| default_telemetry_filter(&cli.log_level));
+
+    if let Some(ref buffer) = log_buffer {
+        let levels = EnabledLogLevels::from_max_level_hint(filter.max_level_hint());
+        buffer.set_enabled_levels(levels);
+    }
+
+    let registry = tracing_subscriber::registry().with(filter);
+
+    // Optionally attach the in-memory capture layer.
+    let log_layer = log_buffer.map(LogBroadcastLayer::new);
+
+    if cli.json_logs {
+        registry
+            .with(fmt::layer().json().with_target(true).with_thread_ids(false))
+            .with(log_layer)
+            .init();
+    } else {
+        registry
+            .with(
+                fmt::layer()
+                    .with_target(true)
+                    .with_thread_ids(false)
+                    .with_ansi(true),
+            )
+            .with(log_layer)
+            .init();
+    }
+}
+
+#[cfg(feature = "tls")]
+async fn trust_ca() -> anyhow::Result<()> {
+    let cert_dir = chelix_httpd::tls::cert_dir()?;
+    let ca_path = cert_dir.join("ca.pem");
+
+    if !ca_path.exists() {
+        eprintln!(
+            "CA certificate not found at {}. Start the gateway first to generate certificates.",
+            ca_path.display()
+        );
+        return Ok(());
+    }
+
+    eprintln!("Installing CA certificate: {}", ca_path.display());
+
+    #[cfg(target_os = "macos")]
+    {
+        let status = std::process::Command::new("security")
+            .args([
+                "add-trusted-cert",
+                "-r",
+                "trustRoot",
+                "-k",
+                &format!(
+                    "{}/Library/Keychains/login.keychain-db",
+                    std::env::var("HOME").unwrap_or_default()
+                ),
+            ])
+            .arg(&ca_path)
+            .status()?;
+        if status.success() {
+            eprintln!(
+                "CA certificate installed successfully. Restart your browser to pick up the change."
+            );
+        } else {
+            eprintln!("Failed to install CA certificate (exit code: {})", status);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let dest = std::path::PathBuf::from("/usr/local/share/ca-certificates/chelix-ca.crt");
+        eprintln!("Copying CA to {} (may require sudo)", dest.display());
+        let status = std::process::Command::new("sudo")
+            .args(["cp"])
+            .arg(&ca_path)
+            .arg(&dest)
+            .status()?;
+        if status.success() {
+            let update = std::process::Command::new("sudo")
+                .arg("update-ca-certificates")
+                .status()?;
+            if update.success() {
+                eprintln!("CA certificate installed successfully.");
+            } else {
+                eprintln!("update-ca-certificates failed (exit code: {})", update);
+            }
+        } else {
+            eprintln!("Failed to copy CA certificate (exit code: {})", status);
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        eprintln!(
+            "Automatic trust installation is not supported on this OS.\n\
+             Manually import the CA certificate from: {}",
+            ca_path.display()
+        );
+    }
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    dotenvy::dotenv().ok();
+    let cli = Cli::parse();
+
+    // Create the log buffer only for the gateway command so the web UI can
+    // display captured log entries. Default capacity (1000) can be overridden
+    // via `server.log_buffer_size` in chelix.toml.
+    let log_buffer = if matches!(cli.command, None | Some(Commands::Gateway)) {
+        Some(LogBuffer::default())
+    } else {
+        None
+    };
+
+    init_telemetry(&cli, log_buffer.clone());
+
+    info!(version = chelix_config::VERSION, "chelix starting");
+
+    // Apply directory overrides before any command so all subcommands
+    // (config check, db, sandbox, etc.) respect --config-dir / --data-dir.
+    if let Some(ref dir) = cli.config_dir {
+        chelix_config::set_config_dir(dir.clone());
+    }
+    if let Some(ref dir) = cli.data_dir {
+        chelix_config::set_data_dir(dir.clone());
+    }
+    if let Some(ref dir) = cli.share_dir {
+        chelix_config::set_share_dir(dir.clone());
+    }
+
+    // Ensure config/data directories exist for every command path. This is a
+    // hard requirement for startup; fail fast if directory initialization fails.
+    let config_dir =
+        chelix_config::config_dir().ok_or_else(|| anyhow!("unable to resolve config directory"))?;
+    std::fs::create_dir_all(&config_dir).unwrap_or_else(|e| {
+        panic!(
+            "failed to create config directory {}: {e}",
+            config_dir.display()
+        )
+    });
+
+    let data_dir = chelix_config::data_dir();
+    std::fs::create_dir_all(&data_dir).unwrap_or_else(|e| {
+        panic!(
+            "failed to create data directory {}: {e}",
+            data_dir.display()
+        )
+    });
+
+    // Read-only diagnostics must remain reachable when the effective config is
+    // invalid. They validate and report the existing config without creating,
+    // compacting, or replacing it.
+    if let Some(diagnostic) = read_only_diagnostic(cli.command.as_ref()) {
+        return match diagnostic {
+            ReadOnlyDiagnostic::ConfigCheck { verbose } => config_commands::check(verbose),
+            ReadOnlyDiagnostic::Doctor => doctor_commands::handle_doctor().await,
+        };
+    }
+
+    // Initialize config directory once for all service and mutation commands
+    // (write defaults.toml, compact, persist random port).
+    let config = chelix_config::initialize_config()?;
+
+    match cli.command {
+        // Default: start gateway when no subcommand is provided
+        None | Some(Commands::Gateway) => {
+            // CLI args override config values
+            let bind = cli.bind.unwrap_or(config.server.bind);
+            let port = cli.port.unwrap_or(config.server.port);
+
+            #[cfg(feature = "tls")]
+            let no_tls = cli.no_tls;
+            #[cfg(not(feature = "tls"))]
+            let no_tls = false;
+            #[cfg(feature = "web-ui")]
+            let extra_routes: Option<chelix_httpd::RouteEnhancer> = Some(chelix_web::web_routes);
+            #[cfg(not(feature = "web-ui"))]
+            let extra_routes: Option<chelix_httpd::RouteEnhancer> = None;
+
+            chelix_httpd::start_gateway(
+                &bind,
+                port,
+                no_tls,
+                log_buffer,
+                cli.config_dir,
+                cli.data_dir,
+                extra_routes,
+            )
+            .await
+            .map_err(Into::into)
+        },
+        Some(Commands::Agent { message, .. }) => {
+            let result = chelix_agents::runner::run_agent("default", "main", &message).await?;
+            println!("{result}");
+            Ok(())
+        },
+        Some(Commands::Onboard) => {
+            chelix_onboarding::wizard::run_onboarding().await?;
+            Ok(())
+        },
+        Some(Commands::Channels { action }) => channel_commands::handle_channels(action).await,
+        Some(Commands::Auth { action }) => auth_commands::handle_auth(action).await,
+        Some(Commands::Sandbox { action }) => sandbox_commands::handle_sandbox(action).await,
+        Some(Commands::Browser { action }) => browser_commands::handle_browser(action),
+        Some(Commands::Data { action }) => data_commands::handle_data(action).await,
+        Some(Commands::Db { action }) => db_commands::handle_db(action).await,
+        Some(Commands::Memory { action }) => memory_commands::handle_memory(action).await,
+        Some(Commands::Service { action }) => service_commands::handle_service(action),
+        Some(Commands::Import { action }) => import_commands::handle_import(action).await,
+        Some(Commands::Skills { action }) => handle_skills(action).await,
+        Some(Commands::Config { action }) => config_commands::handle_config(action).await,
+        Some(Commands::Doctor) => doctor_commands::handle_doctor().await,
+        Some(Commands::Hooks { action }) => hooks_commands::handle_hooks(action).await,
+        Some(Commands::VoiceCall { action }) => voicecall_commands::handle_voicecall(action).await,
+        #[cfg(feature = "tls")]
+        Some(Commands::TrustCa) => trust_ca().await,
+        Some(_) => {
+            eprintln!("command not yet implemented");
+            Ok(())
+        },
+    }
+}
+
+async fn handle_skills(action: SkillAction) -> anyhow::Result<()> {
+    use chelix_skills::{
+        discover::FsSkillDiscoverer,
+        install,
+        registry::{InMemoryRegistry, SkillRegistry},
+    };
+
+    let search_paths = FsSkillDiscoverer::default_paths();
+    let discoverer = FsSkillDiscoverer::new(search_paths);
+
+    match action {
+        SkillAction::List => {
+            let registry = InMemoryRegistry::from_discoverer(&discoverer).await?;
+            let skills = registry.list_skills().await?;
+            if skills.is_empty() {
+                println!("No skills found.");
+            } else {
+                for skill in &skills {
+                    let source = skill
+                        .source
+                        .as_ref()
+                        .map(|s| format!("{s:?}"))
+                        .unwrap_or_default();
+                    println!("  {} — {} [{}]", skill.name, skill.description, source);
+                }
+            }
+        },
+        SkillAction::Add { source } => {
+            let install_dir = install::default_install_dir()?;
+            let skills = install::install_skill(&source, &install_dir).await?;
+            for meta in &skills {
+                println!("Installed skill '{}': {}", meta.name, meta.description);
+            }
+        },
+        SkillAction::Remove { source } => {
+            let install_dir = install::default_install_dir()?;
+            install::remove_repo(&source, &install_dir).await?;
+            println!("Removed repo '{source}' and all its skills.");
+        },
+        SkillAction::Export { source, output } => {
+            let install_dir = install::default_install_dir()?;
+            let exported = chelix_skills::portability::export_repo_bundle(
+                &source,
+                &install_dir,
+                output.as_deref().map(std::path::Path::new),
+            )
+            .await?;
+            println!(
+                "Exported repo '{}' to {}",
+                exported.repo.source,
+                exported.bundle_path.display()
+            );
+        },
+        SkillAction::Import { path } => {
+            let install_dir = install::default_install_dir()?;
+            let imported = chelix_skills::portability::import_repo_bundle(
+                std::path::Path::new(&path),
+                &install_dir,
+            )
+            .await?;
+            println!(
+                "Imported repo '{}' as '{}' ({} skills, quarantined)",
+                imported.source,
+                imported.repo_name,
+                imported.skills.len()
+            );
+        },
+        SkillAction::Info { name } => {
+            let registry = InMemoryRegistry::from_discoverer(&discoverer).await?;
+            let content = registry.load_skill(&name).await?;
+            let meta = &content.metadata;
+            println!("Name:        {}", meta.name);
+            println!("Description: {}", meta.description);
+            if let Some(ref license) = meta.license {
+                println!("License:     {license}");
+            }
+            if !meta.allowed_tools.is_empty() {
+                println!("Tools:       {}", meta.allowed_tools.join(", "));
+            }
+            println!("Path:        {}", meta.path.display());
+            println!("Source:      {:?}", meta.source);
+            println!("\n{}", content.body);
+        },
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        Commands, ReadOnlyDiagnostic, config_commands::ConfigAction, default_telemetry_filter,
+        read_only_diagnostic,
+    };
+
+    #[test]
+    fn default_telemetry_filter_quiets_noisy_targets() {
+        let filter = default_telemetry_filter("info").to_string();
+        assert!(filter.contains("info"));
+        assert!(filter.contains("chromiumoxide=off"));
+        assert!(filter.contains("matrix_sdk=warn"));
+        assert!(filter.contains("matrix_sdk_base=warn"));
+        assert!(filter.contains("matrix_sdk_crypto=error"));
+    }
+
+    #[test]
+    fn read_only_diagnostics_bypass_strict_startup_initialization() {
+        assert_eq!(
+            read_only_diagnostic(Some(&Commands::Doctor)),
+            Some(ReadOnlyDiagnostic::Doctor)
+        );
+        assert_eq!(
+            read_only_diagnostic(Some(&Commands::Config {
+                action: ConfigAction::Check { verbose: true },
+            })),
+            Some(ReadOnlyDiagnostic::ConfigCheck { verbose: true })
+        );
+    }
+
+    #[test]
+    fn config_mutations_remain_on_strict_startup_path() {
+        assert_eq!(
+            read_only_diagnostic(Some(&Commands::Config {
+                action: ConfigAction::Compact,
+            })),
+            None
+        );
+        assert_eq!(read_only_diagnostic(Some(&Commands::Gateway)), None);
+        assert_eq!(read_only_diagnostic(None), None);
+    }
+}
