@@ -25,15 +25,24 @@ use {
 #[cfg(test)]
 use axum::serve;
 
-use crate::{interactive_terminal, list_directory, process, ripgrep, terminal::TerminalManager};
+use crate::{
+    interactive_terminal, list_directory, process,
+    ripgrep::{self, RipgrepRuntime},
+    terminal::TerminalManager,
+};
 
 #[derive(Clone)]
 struct ApiState {
     token: Arc<str>,
     terminal_manager: Arc<TerminalManager>,
+    ripgrep_runtime: Arc<RipgrepRuntime>,
 }
 
-pub fn router(token: String, terminal_manager: Arc<TerminalManager>) -> Router {
+pub fn router(
+    token: String,
+    terminal_manager: Arc<TerminalManager>,
+    ripgrep_runtime: Arc<RipgrepRuntime>,
+) -> Router {
     Router::new()
         .route(TOOLS_SERVICE_HEALTH_PATH, get(health))
         .route(TOOLS_SERVICE_LIST_DIRECTORY_PATH, post(run_list_directory))
@@ -55,6 +64,7 @@ pub fn router(token: String, terminal_manager: Arc<TerminalManager>) -> Router {
         .with_state(ApiState {
             token: Arc::from(token),
             terminal_manager,
+            ripgrep_runtime,
         })
 }
 
@@ -95,7 +105,7 @@ async fn run_ripgrep(
         return unauthorized_response();
     }
 
-    match ripgrep::run_tool(request.params).await {
+    match ripgrep::run_tool(request.params, &state.ripgrep_runtime).await {
         Ok(result) => Json(RipgrepResponse { result }).into_response(),
         Err(error) => tool_error_response(error),
     }
@@ -257,11 +267,19 @@ mod tests {
             .local_addr()
             .unwrap_or_else(|error| panic!("local address failed: {error}"));
         tokio::spawn(async move {
+            let working_dir = std::env::temp_dir();
             let terminal_manager = Arc::new(
-                TerminalManager::new(std::env::temp_dir())
+                TerminalManager::new(working_dir.clone())
                     .unwrap_or_else(|error| panic!("terminal manager failed: {error}")),
             );
-            if let Err(error) = serve(listener, router("test-token".into(), terminal_manager)).await
+            let ripgrep_runtime = RipgrepRuntime::initialize(working_dir)
+                .await
+                .unwrap_or_else(|error| panic!("ripgrep runtime failed: {error}"));
+            if let Err(error) = serve(
+                listener,
+                router("test-token".into(), terminal_manager, ripgrep_runtime),
+            )
+            .await
             {
                 panic!("test server failed: {error}");
             }
@@ -494,13 +512,13 @@ mod tests {
         let response = reqwest::Client::new()
             .post(format!("{base_url}{TOOLS_SERVICE_RIPGREP_PATH}"))
             .bearer_auth("test-token")
-            .json(&RipgrepRequest {
-                params: serde_json::json!({
+            .json(&serde_json::json!({
+                "params": {
                     "pattern": "service-needle",
                     "fixedStrings": true,
                     "cwd": dir.path(),
-                }),
-            })
+                }
+            }))
             .send()
             .await
             .unwrap_or_else(|error| panic!("request failed: {error}"));
@@ -510,8 +528,28 @@ mod tests {
             .json::<RipgrepResponse>()
             .await
             .unwrap_or_else(|error| panic!("response decode failed: {error}"));
-        assert_eq!(body.result["found"], true);
-        assert_eq!(body.result["summary"]["matchCount"], 1);
+        assert!(body.result.found);
+        assert_eq!(body.result.summary.match_count, 1);
+    }
+
+    #[tokio::test]
+    async fn ripgrep_rejects_null_and_unknown_parameters() {
+        let base_url = spawn_api().await;
+        let client = reqwest::Client::new();
+        for params in [
+            serde_json::json!({ "pattern": "needle", "cwd": null }),
+            serde_json::json!({ "pattern": "needle", "obsolete": true }),
+        ] {
+            let response = client
+                .post(format!("{base_url}{TOOLS_SERVICE_RIPGREP_PATH}"))
+                .bearer_auth("test-token")
+                .json(&serde_json::json!({ "params": params }))
+                .send()
+                .await
+                .unwrap_or_else(|error| panic!("request failed: {error}"));
+
+            assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        }
     }
 
     #[tokio::test]

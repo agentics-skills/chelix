@@ -2,9 +2,9 @@
 
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
-pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 7;
+pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 8;
 pub const TOOLS_SERVICE_CONTAINER_PORT: u16 = 43_271;
 pub const TOOLS_SERVICE_HEALTH_PATH: &str = "/v1/health";
 pub const TOOLS_SERVICE_LIST_DIRECTORY_PATH: &str = "/v1/list-directory";
@@ -18,6 +18,11 @@ pub const TOOLS_SERVICE_AUTH_HEADER: &str = "authorization";
 pub const TOOLS_SERVICE_TOKEN_ENV: &str = "CHELIX_TOOLS_SERVICE_TOKEN";
 pub const TOOLS_SERVICE_BINARY_ENV: &str = "CHELIX_TOOLS_SERVICE_BINARY";
 pub const TOOLS_SERVICE_LINUX_BINARY_ENV: &str = "CHELIX_TOOLS_SERVICE_LINUX_BINARY";
+
+pub const RIPGREP_DEFAULT_MAX_MATCHES: usize = 2000;
+pub const RIPGREP_DEFAULT_MAX_FILES: usize = 200;
+pub const RIPGREP_DEFAULT_MAX_OUTPUT_CHARS: usize = 200_000;
+pub const RIPGREP_DEFAULT_TIMEOUT_MS: u64 = 10_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,14 +48,221 @@ pub struct ListDirectoryResponse {
     pub result: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RipgrepCaseMode {
+    Sensitive,
+    Ignore,
+    Smart,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RipgrepDetail {
+    #[serde(rename = "summary")]
+    Summary,
+    #[serde(rename = "files")]
+    Files,
+    #[default]
+    #[serde(rename = "lines")]
+    Lines,
+    #[serde(rename = "lines+submatches")]
+    LinesSubmatches,
+}
+
+fn ripgrep_default_max_matches() -> usize {
+    RIPGREP_DEFAULT_MAX_MATCHES
+}
+
+fn ripgrep_default_max_files() -> usize {
+    RIPGREP_DEFAULT_MAX_FILES
+}
+
+fn ripgrep_default_max_output_chars() -> usize {
+    RIPGREP_DEFAULT_MAX_OUTPUT_CHARS
+}
+
+fn ripgrep_default_timeout_ms() -> u64 {
+    RIPGREP_DEFAULT_TIMEOUT_MS
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn ripgrep_default_unrestricted() -> u8 {
+    3
+}
+
+fn deserialize_present_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RipgrepInput {
+    pub pattern: String,
+    #[serde(default)]
+    pub paths: Vec<String>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub fixed_strings: bool,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub case_mode: Option<RipgrepCaseMode>,
+    #[serde(default)]
+    pub detail: RipgrepDetail,
+    #[serde(default)]
+    pub glob: Vec<String>,
+    #[serde(default, rename = "type")]
+    pub include_types: Vec<String>,
+    #[serde(default)]
+    pub type_not: Vec<String>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub context_lines: Option<u64>,
+    #[serde(default = "ripgrep_default_max_matches")]
+    pub max_matches: usize,
+    #[serde(default = "ripgrep_default_max_files")]
+    pub max_files: usize,
+    #[serde(default = "ripgrep_default_max_output_chars")]
+    pub max_output_chars: usize,
+    #[serde(default = "ripgrep_default_timeout_ms")]
+    pub timeout_ms: u64,
+    #[serde(default = "default_true")]
+    pub include_hidden: bool,
+    #[serde(default = "ripgrep_default_unrestricted")]
+    pub unrestricted: u8,
+    #[serde(default)]
+    pub follow_symlinks: bool,
+}
+
+impl RipgrepInput {
+    /// Validate numeric and semantic constraints not expressible in serde.
+    pub fn validate(&self) -> Result<(), RipgrepInputValidationError> {
+        if self.pattern.is_empty() {
+            return Err(RipgrepInputValidationError::EmptyPattern);
+        }
+        if self.max_matches == 0 {
+            return Err(RipgrepInputValidationError::ZeroMaxMatches);
+        }
+        if self.max_files == 0 {
+            return Err(RipgrepInputValidationError::ZeroMaxFiles);
+        }
+        if self.max_output_chars == 0 {
+            return Err(RipgrepInputValidationError::ZeroMaxOutputChars);
+        }
+        if self.unrestricted > 3 {
+            return Err(RipgrepInputValidationError::InvalidUnrestricted(
+                self.unrestricted,
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum RipgrepInputValidationError {
+    #[error("'pattern' must not be empty")]
+    EmptyPattern,
+    #[error("'maxMatches' must be at least 1")]
+    ZeroMaxMatches,
+    #[error("'maxFiles' must be at least 1")]
+    ZeroMaxFiles,
+    #[error("'maxOutputChars' must be at least 1")]
+    ZeroMaxOutputChars,
+    #[error("'unrestricted' must be between 0 and 3, got {0}")]
+    InvalidUnrestricted(u8),
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RipgrepRequest {
-    pub params: serde_json::Value,
+    pub params: RipgrepInput,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RipgrepResponse {
-    pub result: serde_json::Value,
+    pub result: RipgrepResult,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RipgrepSubmatch {
+    #[serde(rename = "match")]
+    pub matched: String,
+    pub start: u64,
+    pub end: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RipgrepMatch {
+    pub path: String,
+    pub line_number: u64,
+    pub lines: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub submatches: Option<Vec<RipgrepSubmatch>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RipgrepContextLine {
+    pub path: String,
+    pub line_number: u64,
+    pub lines: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RipgrepLimits {
+    pub max_matches: usize,
+    pub max_files: usize,
+    pub max_output_chars: usize,
+    pub timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RipgrepSummary {
+    pub files_with_matches: usize,
+    pub match_count: usize,
+    pub elapsed: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stats: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RipgrepResult {
+    pub tool: String,
+    pub detail: RipgrepDetail,
+    pub found: bool,
+    pub timed_out: bool,
+    pub truncated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub truncated_reason: Option<String>,
+    pub limits: RipgrepLimits,
+    pub summary: RipgrepSummary,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub files: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matches: Option<Vec<RipgrepMatch>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<Vec<RipgrepContextLine>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stderr: Option<String>,
+    pub exit_code: Option<i32>,
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -279,6 +491,73 @@ mod tests {
         let decoded_response: ListDirectoryResponse = serde_json::from_str(&response_json)
             .unwrap_or_else(|error| panic!("response decode failed: {error}"));
         assert_eq!(decoded_response, response);
+    }
+
+    #[test]
+    fn ripgrep_input_applies_explicit_defaults() {
+        let input: RipgrepInput = serde_json::from_value(serde_json::json!({
+            "pattern": "needle"
+        }))
+        .unwrap_or_else(|error| panic!("ripgrep input decode failed: {error}"));
+
+        assert!(input.paths.is_empty());
+        assert!(input.cwd.is_none());
+        assert_eq!(input.detail, RipgrepDetail::Lines);
+        assert_eq!(input.max_matches, RIPGREP_DEFAULT_MAX_MATCHES);
+        assert_eq!(input.max_files, RIPGREP_DEFAULT_MAX_FILES);
+        assert_eq!(input.max_output_chars, RIPGREP_DEFAULT_MAX_OUTPUT_CHARS);
+        assert_eq!(input.timeout_ms, RIPGREP_DEFAULT_TIMEOUT_MS);
+        assert!(input.include_hidden);
+        assert_eq!(input.unrestricted, 3);
+        assert!(input.validate().is_ok());
+    }
+
+    #[test]
+    fn ripgrep_input_rejects_null_and_unknown_fields() {
+        for invalid in [
+            serde_json::json!({ "pattern": "needle", "cwd": null }),
+            serde_json::json!({ "pattern": "needle", "paths": null }),
+            serde_json::json!({ "pattern": "needle", "maxMatches": null }),
+            serde_json::json!({ "pattern": "needle", "obsolete": true }),
+        ] {
+            assert!(serde_json::from_value::<RipgrepInput>(invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn ripgrep_input_validation_rejects_out_of_range_values() {
+        let cases = [
+            (
+                serde_json::json!({ "pattern": "" }),
+                "'pattern' must not be empty",
+            ),
+            (
+                serde_json::json!({ "pattern": "x", "maxMatches": 0 }),
+                "'maxMatches' must be at least 1",
+            ),
+            (
+                serde_json::json!({ "pattern": "x", "maxFiles": 0 }),
+                "'maxFiles' must be at least 1",
+            ),
+            (
+                serde_json::json!({ "pattern": "x", "maxOutputChars": 0 }),
+                "'maxOutputChars' must be at least 1",
+            ),
+            (
+                serde_json::json!({ "pattern": "x", "unrestricted": 4 }),
+                "'unrestricted' must be between 0 and 3, got 4",
+            ),
+        ];
+
+        for (value, expected) in cases {
+            let input: RipgrepInput = serde_json::from_value(value)
+                .unwrap_or_else(|error| panic!("ripgrep input decode failed: {error}"));
+            let error = match input.validate() {
+                Ok(()) => panic!("expected validation error"),
+                Err(error) => error,
+            };
+            assert_eq!(error.to_string(), expected);
+        }
     }
 
     #[test]

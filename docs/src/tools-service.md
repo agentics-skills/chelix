@@ -149,7 +149,7 @@ migrated tool
 ## Protocol and authentication
 
 The shared wire types live in `chelix-protocol`. The current protocol version is
-`7`.
+`8`.
 
 | Method | Path          | Purpose                                      |
 | ------ | ------------- | -------------------------------------------- |
@@ -163,6 +163,58 @@ body.
 
 The gateway checks both HTTP success and `protocolVersion` before accepting a
 host or sandbox endpoint.
+
+### Ripgrep execution contract
+
+`POST /v1/ripgrep` accepts a typed `RipgrepRequest` whose `params` object is
+strict. Unknown public fields and explicit `null` values for optional fields are
+rejected instead of being removed or replaced with defaults. The agent-facing
+client removes only internal `_...` invocation metadata before constructing the
+request.
+
+When `cwd` is omitted, `rg` always runs in the service's required
+`--working-dir`; the service never relies on its inherited process directory.
+Relative `paths` are resolved by `rg` from that effective working directory. An
+effective working directory that does not exist or is not a directory is an
+explicit tool error.
+
+Before emitting its readiness record, the service validates the working
+directory and loads the installed ripgrep type registry with `rg --type-list`.
+Startup fails if the directory, executable, command, output encoding, or type
+registry is invalid. There is no hard-coded fallback type list. The special
+`all` type is added explicitly because ripgrep supports it but does not include
+it in `--type-list`. Known names use `--type`/`--type-not`; common JS/TS
+extensions are normalized to their ripgrep types, and unknown extension-like
+values become include or exclusion globs.
+
+Stdout and stderr are read concurrently in bounded chunks. `maxOutputChars`
+is one shared budget for both streams, measured as UTF-16 code units after
+UTF-8 decoding to match the source tool's string-length contract. A chunk that
+would exceed the budget is not buffered or parsed. `maxMatches` and `maxFiles`
+are enforced while parsing ripgrep's JSONL stream.
+
+`timeoutMs` covers the spawned process through exit. Normal searches wait for
+the process to exit naturally; the service requests termination only for a
+timeout, an explicit result limit, or an output-processing failure. The gateway
+sets the HTTP request timeout to `timeoutMs` plus a fixed 10-second transport
+grace, so there is no unrelated hidden 120-second cutoff.
+
+The typed result contains `tool`, `detail`, `found`, `timedOut`, `truncated`,
+the applied `limits`, `summary`, and `exitCode`. Depending on `detail`, it also
+contains `files` or typed `matches` and `context`; `lines+submatches` includes
+typed byte-offset submatches. `truncatedReason`, `stderr`, and ripgrep `stats`
+are emitted only when present. The obsolete process `signal` field is not part
+of protocol version 8.
+
+Malformed JSONL, invalid base64, and invalid UTF-8 JSON output are explicit tool
+errors rather than silently skipped data. Match and context rows without a
+numeric `line_number` are omitted from row-level output; a match still counts
+toward the summary and limits, matching ripgrep event semantics.
+
+Per-invocation cancellation is not exposed by the current `AgentTool` runner,
+so protocol version 8 does not invent a cancellation flag or fake cancellation
+state. Cancellation parity requires a real runner cancellation token and is
+deferred until that API exists.
 
 ## Container sandbox lifecycle
 
@@ -198,7 +250,7 @@ Chelix then obtains two transport classes from the OCI runtime:
 Candidates are discovered once for each container generation and tried in that
 order. Readiness retries repeat only the authenticated `/v1/health` probes;
 they do not respawn `docker port` or `docker inspect` on every attempt. Chelix
-selects the first endpoint whose health response reports protocol version `1`.
+selects the first endpoint whose health response reports protocol version `8`.
 
 This supports both gateway topologies:
 

@@ -24,6 +24,8 @@ struct Args {
 pub async fn run() -> Result<()> {
     let args = Args::parse();
     crate::rmux::verify_runtime(&args.working_dir).await?;
+    let ripgrep_runtime =
+        crate::ripgrep::RipgrepRuntime::initialize(args.working_dir.clone()).await?;
     let token = args.token.unwrap_or_else(generate_token);
     let listener = tokio::net::TcpListener::bind(args.listen)
         .await
@@ -45,7 +47,7 @@ pub async fn run() -> Result<()> {
     );
     let serve_result = axum::serve(
         listener,
-        crate::api::router(token, Arc::clone(&terminal_manager)),
+        crate::api::router(token, Arc::clone(&terminal_manager), ripgrep_runtime),
     )
     .with_graceful_shutdown(async move {
         if shutdown_on_stdin_eof {

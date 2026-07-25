@@ -5,7 +5,10 @@ use std::sync::Arc;
 use {
     async_trait::async_trait,
     chelix_agents::tool_registry::AgentTool,
-    chelix_protocol::RipgrepRequest,
+    chelix_protocol::{
+        RIPGREP_DEFAULT_MAX_FILES, RIPGREP_DEFAULT_MAX_MATCHES, RIPGREP_DEFAULT_MAX_OUTPUT_CHARS,
+        RIPGREP_DEFAULT_TIMEOUT_MS, RipgrepInput, RipgrepRequest,
+    },
     serde_json::{Value, json},
 };
 
@@ -13,11 +16,6 @@ use {
 use chelix_metrics::{counter, labels, tools as tools_metrics};
 
 use crate::tools_service::ManagedToolsService;
-
-const DEFAULT_MAX_MATCHES: usize = 2000;
-const DEFAULT_MAX_FILES: usize = 200;
-const DEFAULT_MAX_OUTPUT_CHARS: usize = 200_000;
-const DEFAULT_TIMEOUT_MS: u64 = 10_000;
 
 pub struct RipgrepTool {
     service: Arc<ManagedToolsService>,
@@ -43,6 +41,7 @@ impl AgentTool for RipgrepTool {
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
+            "additionalProperties": false,
             "required": ["pattern"],
             "properties": {
                 "pattern": {
@@ -98,25 +97,25 @@ impl AgentTool for RipgrepTool {
                 "maxMatches": {
                     "type": "integer",
                     "minimum": 1,
-                    "default": DEFAULT_MAX_MATCHES,
+                    "default": RIPGREP_DEFAULT_MAX_MATCHES,
                     "description": "Maximum number of match records to return."
                 },
                 "maxFiles": {
                     "type": "integer",
                     "minimum": 1,
-                    "default": DEFAULT_MAX_FILES,
+                    "default": RIPGREP_DEFAULT_MAX_FILES,
                     "description": "Maximum number of files with matches to include."
                 },
                 "maxOutputChars": {
                     "type": "integer",
                     "minimum": 1,
-                    "default": DEFAULT_MAX_OUTPUT_CHARS,
-                    "description": "Maximum rg stdout characters to process."
+                    "default": RIPGREP_DEFAULT_MAX_OUTPUT_CHARS,
+                    "description": "Maximum combined rg stdout/stderr characters to process."
                 },
                 "timeoutMs": {
                     "type": "integer",
                     "minimum": 0,
-                    "default": DEFAULT_TIMEOUT_MS,
+                    "default": RIPGREP_DEFAULT_TIMEOUT_MS,
                     "description": "Timeout in milliseconds for the search."
                 },
                 "includeHidden": {
@@ -139,16 +138,20 @@ impl AgentTool for RipgrepTool {
         })
     }
 
-    async fn execute(&self, mut params: Value) -> anyhow::Result<Value> {
+    fn validate(&self, params: &Value) -> anyhow::Result<()> {
+        parse_input(params.clone()).map(|_| ())
+    }
+
+    async fn execute(&self, params: Value) -> anyhow::Result<Value> {
         let session_key = params
             .get("_session_key")
             .and_then(Value::as_str)
             .unwrap_or("main")
             .to_string();
-        strip_internal_and_null_params(&mut params);
+        let input = parse_input(params)?;
         let result = self
             .service
-            .ripgrep(&session_key, RipgrepRequest { params })
+            .ripgrep(&session_key, RipgrepRequest { params: input })
             .await;
         #[cfg(feature = "metrics")]
         match &result {
@@ -168,20 +171,21 @@ impl AgentTool for RipgrepTool {
                 .increment(1);
             },
         }
-        Ok(result?.result)
+        Ok(serde_json::to_value(result?.result)?)
     }
 }
 
-fn strip_internal_and_null_params(value: &mut Value) {
-    if let Some(map) = value.as_object_mut() {
-        map.retain(|key, child| {
-            if key.starts_with('_') || child.is_null() {
-                return false;
-            }
-            strip_internal_and_null_params(child);
-            !child.as_object().is_some_and(serde_json::Map::is_empty)
-        });
-    }
+fn parse_input(mut params: Value) -> anyhow::Result<RipgrepInput> {
+    let map = params
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("ripgrep parameters must be an object"))?;
+    map.retain(|key, _| !key.starts_with('_'));
+    let input: RipgrepInput = serde_json::from_value(params)
+        .map_err(|error| anyhow::anyhow!("invalid ripgrep parameters: {error}"))?;
+    input
+        .validate()
+        .map_err(|error| anyhow::anyhow!("invalid ripgrep parameters: {error}"))?;
+    Ok(input)
 }
 
 #[cfg(test)]
@@ -197,17 +201,57 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn execute_routes_session_and_strips_internal_context() {
+    async fn execute_routes_session_and_strips_only_internal_context() {
         let mut server = mockito::Server::new_async().await;
         let call = server
             .mock("POST", chelix_protocol::TOOLS_SERVICE_RIPGREP_PATH)
             .match_header("authorization", "Bearer rg-token")
             .match_body(mockito::Matcher::Json(json!({
-                "params": { "pattern": "needle" }
+                "params": {
+                    "pattern": "needle",
+                    "paths": [],
+                    "fixedStrings": false,
+                    "detail": "lines",
+                    "glob": [],
+                    "type": [],
+                    "typeNot": [],
+                    "maxMatches": 2000,
+                    "maxFiles": 200,
+                    "maxOutputChars": 200000,
+                    "timeoutMs": 10000,
+                    "includeHidden": true,
+                    "unrestricted": 3,
+                    "followSymlinks": false
+                }
             })))
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body("{\"result\":{\"found\":true}}")
+            .with_body(
+                serde_json::json!({
+                    "result": {
+                        "tool": "ripgrep",
+                        "detail": "lines",
+                        "found": true,
+                        "timedOut": false,
+                        "truncated": false,
+                        "limits": {
+                            "maxMatches": 2000,
+                            "maxFiles": 200,
+                            "maxOutputChars": 200000,
+                            "timeoutMs": 10000
+                        },
+                        "summary": {
+                            "filesWithMatches": 1,
+                            "matchCount": 1,
+                            "elapsed": null
+                        },
+                        "matches": [],
+                        "context": [],
+                        "exitCode": 0
+                    }
+                })
+                .to_string(),
+            )
             .expect(1)
             .create_async()
             .await;
@@ -215,7 +259,6 @@ mod tests {
         let result = tool
             .execute(json!({
                 "pattern": "needle",
-                "cwd": null,
                 "_session_key": "session:test",
                 "_channel": { "surface": "web" }
             }))
@@ -224,6 +267,29 @@ mod tests {
 
         assert_eq!(result["found"], true);
         call.assert_async().await;
+    }
+
+    #[test]
+    fn parse_input_rejects_null_and_unknown_public_fields() {
+        for invalid in [
+            json!({ "pattern": "needle", "cwd": null }),
+            json!({ "pattern": "needle", "maxMatches": null }),
+            json!({ "pattern": "needle", "obsolete": true }),
+        ] {
+            assert!(parse_input(invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn parse_input_ignores_enriched_internal_fields() {
+        let input = parse_input(json!({
+            "pattern": "needle",
+            "_session_key": "session:test",
+            "_channel": { "surface": "web" }
+        }))
+        .unwrap_or_else(|error| panic!("parse failed: {error}"));
+
+        assert_eq!(input.pattern, "needle");
     }
 
     #[tokio::test]
@@ -237,10 +303,13 @@ mod tests {
             .expect(1)
             .create_async()
             .await;
-        let error = RipgrepTool::new(client(server.url(), "test-token"))
+        let result = RipgrepTool::new(client(server.url(), "test-token"))
             .execute(json!({ "pattern": "needle" }))
-            .await
-            .unwrap_err();
+            .await;
+        let error = match result {
+            Ok(_) => panic!("expected tools service failure"),
+            Err(error) => error,
+        };
 
         assert!(
             error

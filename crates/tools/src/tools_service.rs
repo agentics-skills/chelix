@@ -33,6 +33,7 @@ use crate::{
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 const EXECUTE_COMMAND_RESPONSE_GRACE: Duration = Duration::from_secs(10);
+const RIPGREP_RESPONSE_GRACE: Duration = Duration::from_secs(10);
 
 #[derive(Debug)]
 enum ToolsServiceCallError {
@@ -335,13 +336,10 @@ impl ManagedToolsService {
         session_key: &str,
         request: RipgrepRequest,
     ) -> Result<RipgrepResponse> {
-        self.call_tool(
-            session_key,
-            TOOLS_SERVICE_RIPGREP_PATH,
-            &request,
-            DEFAULT_REQUEST_TIMEOUT,
-        )
-        .await
+        let timeout =
+            Duration::from_millis(request.params.timeout_ms).saturating_add(RIPGREP_RESPONSE_GRACE);
+        self.call_tool(session_key, TOOLS_SERVICE_RIPGREP_PATH, &request, timeout)
+            .await
     }
 
     pub async fn execute_command(
@@ -706,6 +704,38 @@ mod tests {
         async_trait::async_trait,
     };
 
+    fn ripgrep_input(pattern: &str) -> chelix_protocol::RipgrepInput {
+        serde_json::from_value(serde_json::json!({ "pattern": pattern }))
+            .unwrap_or_else(|error| panic!("ripgrep input failed: {error}"))
+    }
+
+    fn successful_ripgrep_response() -> String {
+        serde_json::json!({
+            "result": {
+                "tool": "ripgrep",
+                "detail": "lines",
+                "found": true,
+                "timedOut": false,
+                "truncated": false,
+                "limits": {
+                    "maxMatches": 2000,
+                    "maxFiles": 200,
+                    "maxOutputChars": 200000,
+                    "timeoutMs": 10000
+                },
+                "summary": {
+                    "filesWithMatches": 1,
+                    "matchCount": 1,
+                    "elapsed": null
+                },
+                "matches": [],
+                "context": [],
+                "exitCode": 0
+            }
+        })
+        .to_string()
+    }
+
     struct EmptyEnvProvider;
 
     #[async_trait]
@@ -840,7 +870,7 @@ mod tests {
             .match_header("authorization", "Bearer fresh-token")
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body("{\"result\":{\"found\":true}}")
+            .with_body(successful_ripgrep_response())
             .expect(1)
             .create_async()
             .await;
@@ -858,12 +888,12 @@ mod tests {
 
         let result = service
             .ripgrep("session:recovery", RipgrepRequest {
-                params: serde_json::json!({ "pattern": "needle" }),
+                params: ripgrep_input("needle"),
             })
             .await
             .unwrap_or_else(|error| panic!("sandbox recovery failed: {error}"));
 
-        assert_eq!(result.result["found"], true);
+        assert!(result.result.found);
         assert_eq!(backend.ensure_ready_calls.load(Ordering::SeqCst), 2);
         stale_call.assert_async().await;
         recovered_call.assert_async().await;
@@ -890,7 +920,7 @@ mod tests {
 
         let error = match service
             .ripgrep("session:tool-error", RipgrepRequest {
-                params: serde_json::json!({ "pattern": "[" }),
+                params: ripgrep_input("["),
             })
             .await
         {

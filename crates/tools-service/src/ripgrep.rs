@@ -1,67 +1,132 @@
-//! `ripgrep` execution for the managed tools service.
+//! Typed `ripgrep` execution for the managed tools service.
 //!
-//! Spawns `rg --json`, streams the JSON-lines protocol, and enforces
-//! match/file/output/timeout limits by killing the child process as soon as a
-//! limit is exceeded. A spawn failure or a non-search rg failure is returned to
-//! the API layer.
+//! The service validates its `rg` runtime during startup, streams the JSONL
+//! protocol under one combined stdout/stderr budget, and terminates the child
+//! only for an explicit limit, timeout, or processing error.
 
 use {
-    anyhow::Result,
+    anyhow::{Context, Result, bail},
     base64::Engine as _,
-    serde::{Deserialize, Serialize, de::IgnoredAny},
+    chelix_protocol::{
+        RipgrepCaseMode, RipgrepContextLine, RipgrepDetail, RipgrepInput, RipgrepLimits,
+        RipgrepMatch, RipgrepResult, RipgrepSubmatch, RipgrepSummary,
+    },
+    serde::Deserialize,
     serde_json::Value,
-    std::{collections::HashSet, process::Stdio, time::Duration},
+    std::{
+        collections::HashSet,
+        path::{Path, PathBuf},
+        process::{ExitStatus, Stdio},
+        sync::Arc,
+        time::Duration,
+    },
     tokio::{
-        io::{AsyncBufReadExt, AsyncReadExt, BufReader},
+        io::{AsyncRead, AsyncReadExt},
         process::{ChildStderr, ChildStdout, Command},
+        sync::mpsc,
+        time::{Instant, sleep_until},
     },
     tracing::instrument,
 };
 
-struct Error;
+const STDERR_MAX_CHARS: usize = 2000;
+const OUTPUT_CHUNK_BYTES: usize = 8192;
 
-impl Error {
-    fn message(message: impl Into<String>) -> anyhow::Error {
-        anyhow::anyhow!(message.into())
+#[derive(Debug)]
+pub(crate) struct RipgrepRuntime {
+    working_dir: PathBuf,
+    known_type_names: HashSet<String>,
+}
+
+impl RipgrepRuntime {
+    pub(crate) async fn initialize(working_dir: PathBuf) -> Result<Arc<Self>> {
+        validate_working_directory(&working_dir).await?;
+        let known_type_names = load_type_names(&working_dir).await?;
+        Ok(Arc::new(Self {
+            working_dir,
+            known_type_names,
+        }))
+    }
+
+    #[cfg(test)]
+    fn for_test(working_dir: PathBuf, known_type_names: HashSet<String>) -> Self {
+        Self {
+            working_dir,
+            known_type_names,
+        }
     }
 }
 
-const DEFAULT_MAX_MATCHES: usize = 2000;
-const DEFAULT_MAX_FILES: usize = 200;
-const DEFAULT_MAX_OUTPUT_CHARS: usize = 200_000;
-const DEFAULT_TIMEOUT_MS: u64 = 10_000;
-const STDERR_MAX_CHARS: usize = 2000;
+async fn validate_working_directory(path: &Path) -> Result<()> {
+    let metadata = match tokio::fs::metadata(path).await {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            bail!(
+                "ripgrep working directory does not exist: {}",
+                path.display()
+            );
+        },
+        Err(error) => {
+            bail!(
+                "failed to inspect ripgrep working directory {}: {error}",
+                path.display()
+            );
+        },
+    };
+    if !metadata.is_dir() {
+        bail!(
+            "ripgrep working directory is not a directory: {}",
+            path.display()
+        );
+    }
+    Ok(())
+}
 
-/// rg file type names accepted as-is (subset of `rg --type-list`).
-const KNOWN_TYPE_NAMES: &[&str] = &[
-    "all",
-    "c",
-    "cpp",
-    "cs",
-    "css",
-    "go",
-    "h",
-    "html",
-    "java",
-    "js",
-    "json",
-    "markdown",
-    "md",
-    "php",
-    "py",
-    "python",
-    "ruby",
-    "rust",
-    "sh",
-    "toml",
-    "ts",
-    "txt",
-    "typescript",
-    "xml",
-    "yaml",
-];
+async fn load_type_names(working_dir: &Path) -> Result<HashSet<String>> {
+    let output = Command::new("rg")
+        .arg("--type-list")
+        .current_dir(working_dir)
+        .stdin(Stdio::null())
+        .output()
+        .await
+        .map_err(|error| anyhow::anyhow!("ripgrep executable is unavailable: {error}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!(
+            "rg --type-list failed with status {}: {}",
+            output.status,
+            stderr.trim()
+        );
+    }
+    let stdout = String::from_utf8(output.stdout)
+        .context("rg --type-list returned output that is not UTF-8")?;
+    let mut names = parse_type_list(&stdout);
+    // `all` is a supported rg pseudo-type but is intentionally omitted from
+    // `rg --type-list` because it represents every registered type.
+    names.insert("all".to_string());
+    if names.len() == 1 {
+        bail!("rg --type-list returned no file type definitions");
+    }
+    Ok(names)
+}
 
-/// Extension spellings normalized to canonical rg type names.
+fn parse_type_list(output: &str) -> HashSet<String> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let (name, _) = line.split_once(':')?;
+            let normalized = name.trim().to_ascii_lowercase();
+            (!normalized.is_empty()).then_some(normalized)
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TypeFilter {
+    Type(String),
+    Glob(String),
+}
+
 const EXTENSION_TYPE_ALIASES: &[(&str, &str)] = &[
     ("cjs", "js"),
     ("cts", "ts"),
@@ -71,132 +136,22 @@ const EXTENSION_TYPE_ALIASES: &[(&str, &str)] = &[
     ("tsx", "ts"),
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum CaseMode {
-    Sensitive,
-    Ignore,
-    Smart,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
-enum Detail {
-    #[serde(rename = "summary")]
-    Summary,
-    #[serde(rename = "files")]
-    Files,
-    #[default]
-    #[serde(rename = "lines")]
-    Lines,
-    #[serde(rename = "lines+submatches")]
-    LinesSubmatches,
-}
-
-impl Detail {
-    fn wants_rows(self) -> bool {
-        matches!(self, Self::Lines | Self::LinesSubmatches)
-    }
-}
-
-fn default_max_matches() -> usize {
-    DEFAULT_MAX_MATCHES
-}
-
-fn default_max_files() -> usize {
-    DEFAULT_MAX_FILES
-}
-
-fn default_max_output_chars() -> usize {
-    DEFAULT_MAX_OUTPUT_CHARS
-}
-
-fn default_timeout_ms() -> u64 {
-    DEFAULT_TIMEOUT_MS
-}
-
-fn default_true() -> bool {
-    true
-}
-
-fn default_unrestricted() -> u8 {
-    3
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RipgrepInput {
-    pattern: String,
-    #[serde(default)]
-    paths: Vec<String>,
-    cwd: Option<String>,
-    #[serde(default)]
-    fixed_strings: bool,
-    case_mode: Option<CaseMode>,
-    #[serde(default)]
-    detail: Detail,
-    #[serde(default)]
-    glob: Vec<String>,
-    #[serde(default, rename = "type")]
-    include_types: Vec<String>,
-    #[serde(default)]
-    type_not: Vec<String>,
-    context_lines: Option<u64>,
-    #[serde(default = "default_max_matches")]
-    max_matches: usize,
-    #[serde(default = "default_max_files")]
-    max_files: usize,
-    #[serde(default = "default_max_output_chars")]
-    max_output_chars: usize,
-    #[serde(default = "default_timeout_ms")]
-    timeout_ms: u64,
-    #[serde(default = "default_true")]
-    include_hidden: bool,
-    #[serde(default = "default_unrestricted")]
-    unrestricted: u8,
-    #[serde(default)]
-    follow_symlinks: bool,
-}
-
-fn validate_input(input: &RipgrepInput) -> Result<()> {
-    if input.pattern.is_empty() {
-        return Err(Error::message("'pattern' must not be empty"));
-    }
-    if input.max_matches == 0 {
-        return Err(Error::message("'maxMatches' must be at least 1"));
-    }
-    if input.max_files == 0 {
-        return Err(Error::message("'maxFiles' must be at least 1"));
-    }
-    if input.max_output_chars == 0 {
-        return Err(Error::message("'maxOutputChars' must be at least 1"));
-    }
-    if input.unrestricted > 3 {
-        return Err(Error::message("'unrestricted' must be between 0 and 3"));
-    }
-    Ok(())
-}
-
-/// A resolved `type`/`typeNot` entry: either a real rg type name or a glob.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum TypeFilter {
-    Type(String),
-    Glob(String),
-}
-
-/// True when the raw value looks like a bare file extension (`ts`, `.tsx`).
 fn is_extension_like(raw: &str) -> bool {
     let rest = raw.strip_prefix('.').unwrap_or(raw);
     let mut chars = rest.chars();
-    chars.next().is_some_and(|c| c.is_ascii_alphanumeric())
-        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    chars
+        .next()
+        .is_some_and(|character| character.is_ascii_alphanumeric())
+        && chars.all(|character| {
+            character.is_ascii_alphanumeric() || character == '_' || character == '-'
+        })
 }
 
-/// Resolve one raw type entry into a `--type`/`--type-not` name or a glob.
-///
-/// Aliases and known type names pass through as rg types. Other
-/// extension-like values become glob filters. Anything else is handed to rg
-/// verbatim so that rg itself rejects unknown types.
-fn resolve_type_filter(raw: &str, exclude: bool) -> Option<TypeFilter> {
+fn resolve_type_filter(
+    raw: &str,
+    known_type_names: &HashSet<String>,
+    exclude: bool,
+) -> Option<TypeFilter> {
     let trimmed = raw.trim();
     let normalized = trimmed
         .strip_prefix('.')
@@ -207,11 +162,11 @@ fn resolve_type_filter(raw: &str, exclude: bool) -> Option<TypeFilter> {
     }
     if let Some((_, alias)) = EXTENSION_TYPE_ALIASES
         .iter()
-        .find(|(ext, _)| *ext == normalized)
+        .find(|(extension, _)| *extension == normalized)
     {
         return Some(TypeFilter::Type((*alias).to_string()));
     }
-    if KNOWN_TYPE_NAMES.contains(&normalized.as_str()) {
+    if known_type_names.contains(&normalized) {
         return Some(TypeFilter::Type(normalized));
     }
     if is_extension_like(trimmed) {
@@ -225,35 +180,37 @@ fn resolve_type_filter(raw: &str, exclude: bool) -> Option<TypeFilter> {
     Some(TypeFilter::Type(trimmed.to_string()))
 }
 
-fn collect_type_filters(raw_names: &[String], exclude: bool) -> (Vec<String>, Vec<String>) {
+fn collect_type_filters(
+    raw_names: &[String],
+    known_type_names: &HashSet<String>,
+    exclude: bool,
+) -> (Vec<String>, Vec<String>) {
     let mut type_names = Vec::new();
     let mut globs = Vec::new();
     for raw in raw_names {
-        match resolve_type_filter(raw, exclude) {
-            Some(TypeFilter::Type(name)) => {
-                if !type_names.contains(&name) {
-                    type_names.push(name);
-                }
-            },
+        match resolve_type_filter(raw, known_type_names, exclude) {
+            Some(TypeFilter::Type(name)) if !type_names.contains(&name) => type_names.push(name),
+            Some(TypeFilter::Type(_)) | None => {},
             Some(TypeFilter::Glob(glob)) => globs.push(glob),
-            None => {},
         }
     }
     (type_names, globs)
 }
 
-fn build_args(input: &RipgrepInput) -> Vec<String> {
-    let (include_types, include_globs) = collect_type_filters(&input.include_types, false);
-    let (exclude_types, exclude_globs) = collect_type_filters(&input.type_not, true);
+fn build_args(input: &RipgrepInput, known_type_names: &HashSet<String>) -> Vec<String> {
+    let (include_types, include_globs) =
+        collect_type_filters(&input.include_types, known_type_names, false);
+    let (exclude_types, exclude_globs) =
+        collect_type_filters(&input.type_not, known_type_names, true);
 
     let mut args = vec!["--json".to_string()];
     if input.fixed_strings {
         args.push("-F".to_string());
     }
     match input.case_mode {
-        Some(CaseMode::Ignore) => args.push("-i".to_string()),
-        Some(CaseMode::Smart) => args.push("-S".to_string()),
-        Some(CaseMode::Sensitive) | None => {},
+        Some(RipgrepCaseMode::Ignore) => args.push("-i".to_string()),
+        Some(RipgrepCaseMode::Smart) => args.push("-S".to_string()),
+        Some(RipgrepCaseMode::Sensitive) | None => {},
     }
     if input.include_hidden {
         args.push("--hidden".to_string());
@@ -293,7 +250,6 @@ fn build_args(input: &RipgrepInput) -> Vec<String> {
     args
 }
 
-/// rg `--json` text payload: plain UTF-8 or base64-encoded bytes.
 #[derive(Debug, Deserialize)]
 struct RgText {
     text: Option<String>,
@@ -308,10 +264,10 @@ impl RgText {
         let bytes = self
             .bytes
             .as_deref()
-            .ok_or_else(|| Error::message("rg JSON payload has neither 'text' nor 'bytes'"))?;
+            .ok_or_else(|| anyhow::anyhow!("rg JSON payload has neither 'text' nor 'bytes'"))?;
         let decoded = base64::engine::general_purpose::STANDARD
             .decode(bytes)
-            .map_err(|e| Error::message(format!("invalid base64 in rg JSON output: {e}")))?;
+            .context("invalid base64 in rg JSON output")?;
         Ok(String::from_utf8_lossy(&decoded).into_owned())
     }
 }
@@ -345,81 +301,14 @@ struct RgSummaryData {
     stats: Option<Value>,
 }
 
-/// One line of the rg `--json` stream.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", content = "data", rename_all = "lowercase")]
 enum RgMessage {
-    Begin(IgnoredAny),
+    Begin(serde::de::IgnoredAny),
     Match(RgMatchData),
     Context(RgContextData),
-    End(IgnoredAny),
+    End(serde::de::IgnoredAny),
     Summary(RgSummaryData),
-}
-
-#[derive(Debug, Serialize)]
-struct SubmatchRow {
-    #[serde(rename = "match")]
-    matched: String,
-    start: u64,
-    end: u64,
-}
-
-#[derive(Debug, Serialize)]
-struct MatchRow {
-    path: String,
-    line_number: Option<u64>,
-    lines: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    submatches: Option<Vec<SubmatchRow>>,
-}
-
-#[derive(Debug, Serialize)]
-struct ContextRow {
-    path: String,
-    line_number: Option<u64>,
-    lines: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LimitsOut {
-    max_matches: usize,
-    max_files: usize,
-    max_output_chars: usize,
-    timeout_ms: u64,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SummaryOut {
-    files_with_matches: usize,
-    match_count: usize,
-    elapsed: Option<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    stats: Option<Value>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct RipgrepResult {
-    tool: &'static str,
-    detail: Detail,
-    found: bool,
-    timed_out: bool,
-    truncated: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    truncated_reason: Option<&'static str>,
-    limits: LimitsOut,
-    summary: SummaryOut,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    files: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    matches: Option<Vec<MatchRow>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    context: Option<Vec<ContextRow>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    stderr: Option<String>,
-    exit_code: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -428,19 +317,16 @@ enum Flow {
     Stop,
 }
 
-/// Accumulated state while streaming rg's JSON output.
 struct ScanState {
-    detail: Detail,
+    detail: RipgrepDetail,
     max_matches: usize,
     max_files: usize,
-    max_output_chars: usize,
-    stdout_chars: usize,
     seen_files: HashSet<String>,
     files: Vec<String>,
-    matches: Vec<MatchRow>,
-    context: Vec<ContextRow>,
+    matches: Vec<RipgrepMatch>,
+    context: Vec<RipgrepContextLine>,
     match_count: usize,
-    truncated_reason: Option<&'static str>,
+    truncated_reason: Option<String>,
     stats: Option<Value>,
 }
 
@@ -450,8 +336,6 @@ impl ScanState {
             detail: input.detail,
             max_matches: input.max_matches,
             max_files: input.max_files,
-            max_output_chars: input.max_output_chars,
-            stdout_chars: 0,
             seen_files: HashSet::new(),
             files: Vec::new(),
             matches: Vec::new(),
@@ -462,33 +346,27 @@ impl ScanState {
         }
     }
 
-    fn truncate(&mut self, reason: &'static str) -> Flow {
-        self.truncated_reason = Some(reason);
+    fn wants_rows(&self) -> bool {
+        matches!(
+            self.detail,
+            RipgrepDetail::Lines | RipgrepDetail::LinesSubmatches
+        )
+    }
+
+    fn truncate(&mut self, reason: &str) -> Flow {
+        self.truncated_reason = Some(reason.to_string());
         Flow::Stop
     }
 
     fn process_line(&mut self, line: &str) -> Result<Flow> {
-        self.stdout_chars += line.len() + 1;
-        if self.stdout_chars > self.max_output_chars {
-            return Ok(self.truncate("maxOutputChars"));
-        }
         if line.trim().is_empty() {
             return Ok(Flow::Continue);
         }
         let message: RgMessage = serde_json::from_str(line)
-            .map_err(|e| Error::message(format!("rg JSON parse error: {e}")))?;
+            .with_context(|| format!("rg JSON parse error for line {line:?}"))?;
         match message {
             RgMessage::Match(data) => self.process_match(&data),
-            RgMessage::Context(data) => {
-                if self.detail.wants_rows() {
-                    self.context.push(ContextRow {
-                        path: data.path.decode()?,
-                        line_number: data.line_number,
-                        lines: data.lines.decode()?,
-                    });
-                }
-                Ok(Flow::Continue)
-            },
+            RgMessage::Context(data) => self.process_context(&data),
             RgMessage::Summary(data) => {
                 self.stats = data.stats;
                 Ok(Flow::Continue)
@@ -504,21 +382,24 @@ impl ScanState {
                 return Ok(self.truncate("maxFiles"));
             }
             self.seen_files.insert(path.clone());
-            if self.detail == Detail::Files {
+            if self.detail == RipgrepDetail::Files {
                 self.files.push(path.clone());
             }
         }
+
         self.match_count += 1;
-        if self.detail.wants_rows() {
-            let submatches = if self.detail == Detail::LinesSubmatches {
+        if self.wants_rows()
+            && let Some(line_number) = data.line_number
+        {
+            let submatches = if self.detail == RipgrepDetail::LinesSubmatches {
                 let rows = data
                     .submatches
                     .iter()
-                    .map(|sm| {
-                        Ok(SubmatchRow {
-                            matched: sm.matched.decode()?,
-                            start: sm.start,
-                            end: sm.end,
+                    .map(|submatch| {
+                        Ok(RipgrepSubmatch {
+                            matched: submatch.matched.decode()?,
+                            start: submatch.start,
+                            end: submatch.end,
                         })
                     })
                     .collect::<Result<Vec<_>>>()?;
@@ -526,9 +407,9 @@ impl ScanState {
             } else {
                 None
             };
-            self.matches.push(MatchRow {
+            self.matches.push(RipgrepMatch {
                 path,
-                line_number: data.line_number,
+                line_number,
                 lines: data.lines.decode()?,
                 submatches,
             });
@@ -538,205 +419,372 @@ impl ScanState {
         }
         Ok(Flow::Continue)
     }
+
+    fn process_context(&mut self, data: &RgContextData) -> Result<Flow> {
+        if !self.wants_rows() {
+            return Ok(Flow::Continue);
+        }
+        let Some(line_number) = data.line_number else {
+            return Ok(Flow::Continue);
+        };
+        self.context.push(RipgrepContextLine {
+            path: data.path.decode()?,
+            line_number,
+            lines: data.lines.decode()?,
+        });
+        Ok(Flow::Continue)
+    }
 }
 
-/// Drain rg's stderr, keeping at most [`STDERR_MAX_CHARS`] characters.
-///
-/// Keeps reading past the cap so the child never blocks on a full pipe.
-async fn collect_stderr(stderr: ChildStderr) -> std::io::Result<String> {
-    let mut reader = BufReader::new(stderr);
-    let mut collected = String::new();
-    let mut truncated = false;
-    let mut buf = [0_u8; 4096];
+#[derive(Debug, Clone, Copy)]
+enum OutputStream {
+    Stdout,
+    Stderr,
+}
+
+struct OutputChunk {
+    stream: OutputStream,
+    bytes: Vec<u8>,
+}
+
+async fn pump_output<R>(
+    mut reader: R,
+    stream: OutputStream,
+    sender: mpsc::Sender<OutputChunk>,
+) -> std::io::Result<()>
+where
+    R: AsyncRead + Unpin,
+{
+    let mut buffer = vec![0_u8; OUTPUT_CHUNK_BYTES];
     loop {
-        let read = reader.read(&mut buf).await?;
+        let read = reader.read(&mut buffer).await?;
         if read == 0 {
-            break;
+            return Ok(());
         }
-        if collected.len() < STDERR_MAX_CHARS {
-            let chunk = String::from_utf8_lossy(&buf[..read]);
-            let remaining = STDERR_MAX_CHARS - collected.len();
-            if chunk.len() <= remaining {
-                collected.push_str(&chunk);
-            } else {
-                collected.push_str(&chunk[..chunk.floor_char_boundary(remaining)]);
-                truncated = true;
+        if sender
+            .send(OutputChunk {
+                stream,
+                bytes: buffer[..read].to_vec(),
+            })
+            .await
+            .is_err()
+        {
+            return Ok(());
+        }
+    }
+}
+
+struct OutputCollector {
+    max_output_chars: usize,
+    output_chars: usize,
+    stdout_buffer: Vec<u8>,
+    stderr: String,
+    stderr_truncated: bool,
+}
+
+impl OutputCollector {
+    fn new(max_output_chars: usize) -> Self {
+        Self {
+            max_output_chars,
+            output_chars: 0,
+            stdout_buffer: Vec::new(),
+            stderr: String::new(),
+            stderr_truncated: false,
+        }
+    }
+
+    fn process_chunk(&mut self, chunk: OutputChunk, state: &mut ScanState) -> Result<Flow> {
+        let chunk_chars = String::from_utf8_lossy(&chunk.bytes).encode_utf16().count();
+        if self.output_chars.saturating_add(chunk_chars) > self.max_output_chars {
+            return Ok(state.truncate("maxOutputChars"));
+        }
+        self.output_chars += chunk_chars;
+
+        match chunk.stream {
+            OutputStream::Stdout => self.process_stdout(&chunk.bytes, state),
+            OutputStream::Stderr => {
+                self.append_stderr(&chunk.bytes);
+                Ok(Flow::Continue)
+            },
+        }
+    }
+
+    fn process_stdout(&mut self, bytes: &[u8], state: &mut ScanState) -> Result<Flow> {
+        self.stdout_buffer.extend_from_slice(bytes);
+        while let Some(index) = self.stdout_buffer.iter().position(|byte| *byte == b'\n') {
+            let mut raw_line = self.stdout_buffer.drain(..=index).collect::<Vec<_>>();
+            raw_line.pop();
+            if raw_line.last() == Some(&b'\r') {
+                raw_line.pop();
+            }
+            let line = std::str::from_utf8(&raw_line).context("rg JSON output is not UTF-8")?;
+            if state.process_line(line)? == Flow::Stop {
+                self.stdout_buffer.clear();
+                return Ok(Flow::Stop);
             }
         }
+        Ok(Flow::Continue)
     }
-    if truncated {
-        collected.push('…');
-    }
-    Ok(collected)
-}
 
-async fn scan_stdout(stdout: ChildStdout, state: &mut ScanState) -> Result<()> {
-    let mut lines = BufReader::new(stdout).lines();
-    while let Some(line) = lines
-        .next_line()
-        .await
-        .map_err(|e| Error::message(format!("failed to read rg stdout: {e}")))?
-    {
-        if state.process_line(&line)? == Flow::Stop {
-            break;
+    fn finish_stdout(&mut self, state: &mut ScanState) -> Result<Flow> {
+        if self.stdout_buffer.is_empty() {
+            return Ok(Flow::Continue);
         }
+        let raw_line = std::mem::take(&mut self.stdout_buffer);
+        let line = std::str::from_utf8(&raw_line).context("rg JSON output is not UTF-8")?;
+        state.process_line(line)
     }
-    Ok(())
+
+    fn append_stderr(&mut self, bytes: &[u8]) {
+        let text = String::from_utf8_lossy(bytes);
+        let current_chars = self.stderr.encode_utf16().count();
+        if current_chars >= STDERR_MAX_CHARS {
+            self.stderr_truncated = true;
+            return;
+        }
+        let remaining = STDERR_MAX_CHARS - current_chars;
+        let mut appended = String::new();
+        let mut used = 0;
+        for character in text.chars() {
+            let width = character.len_utf16();
+            if used + width > remaining {
+                self.stderr_truncated = true;
+                break;
+            }
+            appended.push(character);
+            used += width;
+        }
+        if used < text.encode_utf16().count() {
+            self.stderr_truncated = true;
+        }
+        self.stderr.push_str(&appended);
+    }
+
+    fn stderr_text(&self) -> Option<String> {
+        if self.stderr.is_empty() {
+            return None;
+        }
+        Some(if self.stderr_truncated {
+            format!("{}…", self.stderr)
+        } else {
+            self.stderr.clone()
+        })
+    }
 }
 
-#[instrument(skip(input), fields(pattern = %input.pattern))]
-async fn run_search(input: &RipgrepInput) -> Result<RipgrepResult> {
-    let args = build_args(input);
-    let mut command = Command::new("rg");
-    command
+async fn effective_working_directory(
+    input: &RipgrepInput,
+    runtime: &RipgrepRuntime,
+) -> Result<PathBuf> {
+    let working_dir = input
+        .cwd
+        .as_deref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| runtime.working_dir.clone());
+    validate_working_directory(&working_dir).await?;
+    Ok(working_dir)
+}
+
+async fn join_reader(name: &str, task: tokio::task::JoinHandle<std::io::Result<()>>) -> Result<()> {
+    task.await
+        .with_context(|| format!("rg {name} reader task failed"))?
+        .with_context(|| format!("failed to read rg {name}"))
+}
+
+async fn terminate_and_wait(child: &mut tokio::process::Child) -> Result<ExitStatus> {
+    if let Some(status) = child
+        .try_wait()
+        .context("failed to inspect rg process before termination")?
+    {
+        return Ok(status);
+    }
+    if let Err(kill_error) = child.start_kill() {
+        if let Some(status) = child
+            .try_wait()
+            .context("failed to inspect rg process after termination race")?
+        {
+            return Ok(status);
+        }
+        return Err(kill_error).context("failed to terminate rg process");
+    }
+    child.wait().await.context("failed to wait for rg process")
+}
+
+fn finish_process_cleanup(
+    processing_error: Option<anyhow::Error>,
+    status_result: Result<ExitStatus>,
+    stdout_result: Result<()>,
+    stderr_result: Result<()>,
+) -> Result<ExitStatus> {
+    let mut status = None;
+    let mut errors = Vec::new();
+    if let Some(error) = processing_error {
+        errors.push(format!("{error:#}"));
+    }
+    match status_result {
+        Ok(value) => status = Some(value),
+        Err(error) => errors.push(format!("rg process cleanup failed: {error:#}")),
+    }
+    if let Err(error) = stdout_result {
+        errors.push(format!("stdout cleanup failed: {error:#}"));
+    }
+    if let Err(error) = stderr_result {
+        errors.push(format!("stderr cleanup failed: {error:#}"));
+    }
+    if !errors.is_empty() {
+        bail!(errors.join("; "));
+    }
+    status.ok_or_else(|| anyhow::anyhow!("rg process cleanup completed without an exit status"))
+}
+
+#[instrument(skip(input, runtime), fields(pattern = %input.pattern))]
+async fn run_search(input: &RipgrepInput, runtime: &RipgrepRuntime) -> Result<RipgrepResult> {
+    input
+        .validate()
+        .map_err(|error| anyhow::anyhow!("invalid ripgrep parameters: {error}"))?;
+    let working_dir = effective_working_directory(input, runtime).await?;
+    let args = build_args(input, &runtime.known_type_names);
+    let mut child = Command::new("rg")
         .args(&args)
+        .current_dir(&working_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    if let Some(cwd) = &input.cwd {
-        command.current_dir(cwd);
-    }
-
-    let mut child = command
+        .kill_on_drop(true)
         .spawn()
-        .map_err(|e| Error::message(format!("failed to start rg: {e}")))?;
-    let stdout = child
+        .map_err(|error| anyhow::anyhow!("failed to start rg executable: {error}"))?;
+    let stdout: ChildStdout = child
         .stdout
         .take()
-        .ok_or_else(|| Error::message("rg stdout pipe missing"))?;
-    let stderr = child
+        .ok_or_else(|| anyhow::anyhow!("rg stdout pipe missing"))?;
+    let stderr: ChildStderr = child
         .stderr
         .take()
-        .ok_or_else(|| Error::message("rg stderr pipe missing"))?;
+        .ok_or_else(|| anyhow::anyhow!("rg stderr pipe missing"))?;
 
-    let stderr_task = tokio::spawn(collect_stderr(stderr));
+    let (sender, mut receiver) = mpsc::channel(8);
+    let stdout_task = tokio::spawn(pump_output(stdout, OutputStream::Stdout, sender.clone()));
+    let stderr_task = tokio::spawn(pump_output(stderr, OutputStream::Stderr, sender));
+    let deadline = Instant::now()
+        .checked_add(Duration::from_millis(input.timeout_ms))
+        .ok_or_else(|| anyhow::anyhow!("ripgrep timeout is too large"))?;
+    let timeout = sleep_until(deadline);
+    tokio::pin!(timeout);
 
     let mut state = ScanState::new(input);
-    let scan_result = tokio::time::timeout(
-        Duration::from_millis(input.timeout_ms),
-        scan_stdout(stdout, &mut state),
-    )
-    .await;
-
-    // Kill unconditionally: a no-op when rg already exited on its own, and
-    // required when scanning stopped early (limit hit, timeout, parse error).
-    let _ = child.start_kill();
-    let status = child
-        .wait()
-        .await
-        .map_err(|e| Error::message(format!("failed to wait for rg: {e}")))?;
-    let stderr_text = stderr_task
-        .await
-        .map_err(|e| Error::message(format!("rg stderr reader task failed: {e}")))?
-        .map_err(|e| Error::message(format!("failed to read rg stderr: {e}")))?;
-
-    let timed_out = scan_result.is_err();
-    match scan_result {
-        Ok(inner) => inner?,
-        Err(_) => {
-            state.truncated_reason = Some("timeout");
-        },
+    let mut output = OutputCollector::new(input.max_output_chars);
+    let mut stop_requested = false;
+    let mut timed_out = false;
+    let mut processing_error = None;
+    loop {
+        tokio::select! {
+            biased;
+            () = &mut timeout => {
+                timed_out = true;
+                state.truncate("timeout");
+                stop_requested = true;
+                break;
+            },
+            chunk = receiver.recv() => {
+                let Some(chunk) = chunk else {
+                    break;
+                };
+                match output.process_chunk(chunk, &mut state) {
+                    Ok(Flow::Continue) => {},
+                    Ok(Flow::Stop) => {
+                        stop_requested = true;
+                        break;
+                    },
+                    Err(error) => {
+                        processing_error = Some(error);
+                        stop_requested = true;
+                        break;
+                    },
+                }
+            },
+        }
     }
-    let truncated = state.truncated_reason.is_some();
 
+    drop(receiver);
+    let status_result = if stop_requested {
+        terminate_and_wait(&mut child).await
+    } else {
+        match tokio::time::timeout_at(deadline, child.wait()).await {
+            Ok(status) => status.context("failed to wait for rg process"),
+            Err(_) => {
+                timed_out = true;
+                state.truncate("timeout");
+                terminate_and_wait(&mut child).await
+            },
+        }
+    };
+    drop(child);
+    let stdout_result = join_reader("stdout", stdout_task).await;
+    let stderr_result = join_reader("stderr", stderr_task).await;
+    let status = finish_process_cleanup(
+        processing_error,
+        status_result,
+        stdout_result,
+        stderr_result,
+    )?;
+
+    if !stop_requested && !timed_out {
+        output.finish_stdout(&mut state)?;
+    }
+
+    let truncated = state.truncated_reason.is_some();
     if !truncated {
         match status.code() {
             Some(0 | 1) => {},
             Some(code) => {
-                let suffix = if stderr_text.is_empty() {
-                    String::new()
-                } else {
-                    format!(" stderr: {stderr_text}")
-                };
-                return Err(Error::message(format!(
-                    "rg failed with exit code {code}.{suffix}"
-                )));
+                let suffix = output
+                    .stderr_text()
+                    .map(|stderr| format!(" stderr: {stderr}"))
+                    .unwrap_or_default();
+                bail!("rg failed with exit code {code}.{suffix}");
             },
-            None => {
-                return Err(Error::message("rg terminated by a signal"));
-            },
+            None => bail!("rg terminated without an exit code"),
         }
     }
 
-    let ScanState {
-        detail,
-        seen_files,
-        files,
-        matches,
-        context,
-        match_count,
-        truncated_reason,
-        stats,
-        ..
-    } = state;
-    let elapsed = stats.as_ref().and_then(|s| s.get("elapsed")).cloned();
-    let wants_rows = detail.wants_rows();
-
+    let elapsed = state
+        .stats
+        .as_ref()
+        .and_then(|stats| stats.get("elapsed"))
+        .cloned();
+    let wants_rows = state.wants_rows();
     Ok(RipgrepResult {
-        tool: "ripgrep",
-        detail,
-        found: match_count > 0,
+        tool: "ripgrep".to_string(),
+        detail: state.detail,
+        found: state.match_count > 0,
         timed_out,
         truncated,
-        truncated_reason,
-        limits: LimitsOut {
+        truncated_reason: state.truncated_reason,
+        limits: RipgrepLimits {
             max_matches: input.max_matches,
             max_files: input.max_files,
             max_output_chars: input.max_output_chars,
             timeout_ms: input.timeout_ms,
         },
-        summary: SummaryOut {
-            files_with_matches: seen_files.len(),
-            match_count,
+        summary: RipgrepSummary {
+            files_with_matches: state.seen_files.len(),
+            match_count: state.match_count,
             elapsed,
-            stats,
+            stats: state.stats,
         },
-        files: (detail == Detail::Files).then_some(files),
-        matches: wants_rows.then_some(matches),
-        context: wants_rows.then_some(context),
-        stderr: (!stderr_text.is_empty()).then_some(stderr_text),
+        files: (state.detail == RipgrepDetail::Files).then_some(state.files),
+        matches: wants_rows.then_some(state.matches),
+        context: wants_rows.then_some(state.context),
+        stderr: output.stderr_text(),
         exit_code: status.code(),
     })
 }
 
-pub(crate) async fn run_tool(params: Value) -> Result<Value> {
-    let input: RipgrepInput = serde_json::from_value(without_null_params(params))
-        .map_err(|e| Error::message(format!("invalid ripgrep parameters: {e}")))?;
-    validate_input(&input)?;
-    let result = run_search(&input).await?;
-    Ok(serde_json::to_value(result)?)
-}
-
-fn without_null_params(mut params: Value) -> Value {
-    prune_null_entries(&mut params);
-    params
-}
-
-fn prune_null_entries(value: &mut Value) {
-    if let Some(map) = value.as_object_mut() {
-        map.retain(|_, child| {
-            if child.is_null() {
-                return false;
-            }
-            prune_null_entries(child);
-            !child.as_object().is_some_and(serde_json::Map::is_empty)
-        });
-    }
-}
-
-#[cfg(test)]
-struct RipgrepTool;
-
-#[cfg(test)]
-impl RipgrepTool {
-    fn new() -> Self {
-        Self
-    }
-
-    async fn execute(&self, params: Value) -> Result<Value> {
-        run_tool(params).await
-    }
+pub(crate) async fn run_tool(
+    input: RipgrepInput,
+    runtime: &RipgrepRuntime,
+) -> Result<RipgrepResult> {
+    run_search(&input, runtime).await
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -744,21 +792,62 @@ impl RipgrepTool {
 mod tests {
     use {super::*, serde_json::json};
 
-    fn input_from(params: Value) -> RipgrepInput {
-        serde_json::from_value(params).unwrap()
+    fn input(value: Value) -> RipgrepInput {
+        serde_json::from_value(value).unwrap()
+    }
+
+    fn known_type_names(names: &[&str]) -> HashSet<String> {
+        names.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    fn runtime(path: &Path) -> RipgrepRuntime {
+        RipgrepRuntime::for_test(
+            path.to_path_buf(),
+            known_type_names(&["all", "docker", "js", "rust", "ts"]),
+        )
     }
 
     #[test]
-    fn build_args_defaults() {
-        let input = input_from(json!({ "pattern": "needle" }));
-        assert_eq!(build_args(&input), vec![
-            "--json", "--hidden", "-uuu", "--", "needle"
-        ]);
+    fn parses_dynamic_type_list() {
+        let names = parse_type_list("docker: Dockerfile\njsonl: *.jsonl\nsvelte: *.svelte\n");
+        assert_eq!(names.len(), 3);
+        assert!(names.contains("docker"));
+        assert!(names.contains("jsonl"));
+        assert!(names.contains("svelte"));
     }
 
     #[test]
-    fn build_args_full_flags() {
-        let input = input_from(json!({
+    fn build_args_uses_runtime_types_and_extension_fallbacks() {
+        let input = input(json!({
+            "pattern": "needle",
+            "type": ["docker", "tsx", "customext"],
+            "typeNot": ["jsx", "otherext"]
+        }));
+        assert_eq!(
+            build_args(&input, &known_type_names(&["all", "docker", "js", "ts"])),
+            vec![
+                "--json",
+                "--hidden",
+                "-uuu",
+                "--glob",
+                "*.customext",
+                "--glob",
+                "!*.otherext",
+                "--type",
+                "docker",
+                "--type",
+                "ts",
+                "--type-not",
+                "js",
+                "--",
+                "needle",
+            ]
+        );
+    }
+
+    #[test]
+    fn build_args_preserves_all_flags() {
+        let input = input(json!({
             "pattern": "needle",
             "paths": ["src", "docs"],
             "fixedStrings": true,
@@ -769,465 +858,482 @@ mod tests {
             "contextLines": 2,
             "glob": ["*.rs", ""]
         }));
-        assert_eq!(build_args(&input), vec![
-            "--json", "-F", "-i", "-u", "--follow", "-C", "2", "--glob", "*.rs", "--", "needle",
-            "src", "docs"
-        ]);
-    }
-
-    #[test]
-    fn build_args_smart_case_and_no_unrestricted() {
-        let input = input_from(json!({
-            "pattern": "needle",
-            "caseMode": "smart",
-            "unrestricted": 0
-        }));
-        assert_eq!(build_args(&input), vec![
-            "--json", "-S", "--hidden", "--", "needle"
-        ]);
-    }
-
-    #[test]
-    fn build_args_type_filters() {
-        let input = input_from(json!({
-            "pattern": "needle",
-            "type": ["tsx", "rust", "customext", "ts"],
-            "typeNot": ["jsx", "otherext"]
-        }));
-        assert_eq!(build_args(&input), vec![
-            "--json",
-            "--hidden",
-            "-uuu",
-            "--glob",
-            "*.customext",
-            "--glob",
-            "!*.otherext",
-            "--type",
-            "ts",
-            "--type",
-            "rust",
-            "--type-not",
-            "js",
-            "--",
-            "needle"
-        ]);
-    }
-
-    #[test]
-    fn resolve_type_filter_variants() {
         assert_eq!(
-            resolve_type_filter("tsx", false),
-            Some(TypeFilter::Type("ts".to_string()))
-        );
-        assert_eq!(
-            resolve_type_filter(".RUST", false),
-            Some(TypeFilter::Type("rust".to_string()))
-        );
-        assert_eq!(
-            resolve_type_filter("myext", false),
-            Some(TypeFilter::Glob("*.myext".to_string()))
-        );
-        assert_eq!(
-            resolve_type_filter("myext", true),
-            Some(TypeFilter::Glob("!*.myext".to_string()))
-        );
-        assert_eq!(
-            resolve_type_filter("not a type", false),
-            Some(TypeFilter::Type("not a type".to_string()))
-        );
-        assert_eq!(resolve_type_filter("  ", false), None);
-        assert_eq!(resolve_type_filter(".", false), None);
-    }
-
-    #[test]
-    fn is_extension_like_cases() {
-        assert!(is_extension_like("ts"));
-        assert!(is_extension_like(".tsx"));
-        assert!(is_extension_like("my-ext_2"));
-        assert!(!is_extension_like("-bad"));
-        assert!(!is_extension_like("a.b"));
-        assert!(!is_extension_like(""));
-    }
-
-    #[test]
-    fn rg_text_decodes_text_and_bytes() {
-        let text = RgText {
-            text: Some("hello".to_string()),
-            bytes: None,
-        };
-        assert_eq!(text.decode().unwrap(), "hello");
-
-        let bytes = RgText {
-            text: None,
-            bytes: Some(base64::engine::general_purpose::STANDARD.encode("world")),
-        };
-        assert_eq!(bytes.decode().unwrap(), "world");
-
-        let invalid = RgText {
-            text: None,
-            bytes: Some("!!!".to_string()),
-        };
-        assert!(invalid.decode().unwrap_err().to_string().contains("base64"));
-
-        let empty = RgText {
-            text: None,
-            bytes: None,
-        };
-        assert!(
-            empty
-                .decode()
-                .unwrap_err()
-                .to_string()
-                .contains("neither 'text' nor 'bytes'")
+            build_args(&input, &known_type_names(&["all", "rust"])),
+            vec![
+                "--json", "-F", "-i", "-u", "--follow", "-C", "2", "--glob", "*.rs", "--",
+                "needle", "src", "docs",
+            ]
         );
     }
 
     #[test]
-    fn parses_rg_json_messages() {
-        let matched: RgMessage = serde_json::from_str(
-            r#"{"type":"match","data":{"path":{"text":"a.rs"},"lines":{"text":"fn main() {}\n"},"line_number":3,"absolute_offset":10,"submatches":[{"match":{"text":"main"},"start":3,"end":7}]}}"#,
-        )
-        .unwrap();
-        let RgMessage::Match(data) = matched else {
-            panic!("expected match message");
-        };
-        assert_eq!(data.path.decode().unwrap(), "a.rs");
-        assert_eq!(data.line_number, Some(3));
-        assert_eq!(data.submatches.len(), 1);
-        assert_eq!(data.submatches[0].matched.decode().unwrap(), "main");
-
-        let context: RgMessage = serde_json::from_str(
-            r#"{"type":"context","data":{"path":{"text":"a.rs"},"lines":{"text":"// hi\n"},"line_number":2,"absolute_offset":4,"submatches":[]}}"#,
-        )
-        .unwrap();
-        assert!(matches!(context, RgMessage::Context(_)));
-
-        let summary: RgMessage = serde_json::from_str(
-            r#"{"type":"summary","data":{"elapsed_total":{"secs":0,"nanos":100,"human":"0.0s"},"stats":{"matches":1,"elapsed":{"secs":0,"nanos":50,"human":"0.0s"}}}}"#,
-        )
-        .unwrap();
-        let RgMessage::Summary(data) = summary else {
-            panic!("expected summary message");
-        };
-        assert_eq!(data.stats.unwrap()["matches"], 1);
-    }
-
-    fn match_line(path: &str, line_number: u64) -> String {
-        json!({
+    fn scan_state_enforces_match_and_file_limits() {
+        let mut state = ScanState::new(&input(json!({ "pattern": "x", "maxMatches": 1 })));
+        let line = json!({
             "type": "match",
             "data": {
-                "path": { "text": path },
-                "lines": { "text": "match line\n" },
-                "line_number": line_number,
-                "absolute_offset": 0,
-                "submatches": [{ "match": { "text": "match" }, "start": 0, "end": 5 }]
+                "path": { "text": "a.rs" },
+                "lines": { "text": "x\n" },
+                "line_number": 1,
+                "submatches": []
             }
         })
-        .to_string()
-    }
+        .to_string();
+        assert_eq!(state.process_line(&line).unwrap(), Flow::Stop);
+        assert_eq!(state.truncated_reason.as_deref(), Some("maxMatches"));
+        assert_eq!(state.match_count, 1);
 
-    #[test]
-    fn scan_state_enforces_max_matches() {
-        let input = input_from(json!({ "pattern": "x", "maxMatches": 2 }));
-        let mut state = ScanState::new(&input);
-        assert_eq!(
-            state.process_line(&match_line("a.rs", 1)).unwrap(),
-            Flow::Continue
-        );
-        assert_eq!(
-            state.process_line(&match_line("a.rs", 2)).unwrap(),
-            Flow::Stop
-        );
-        assert_eq!(state.truncated_reason, Some("maxMatches"));
-        assert_eq!(state.match_count, 2);
-        assert_eq!(state.matches.len(), 2);
-    }
-
-    #[test]
-    fn scan_state_enforces_max_files() {
-        let input = input_from(json!({ "pattern": "x", "maxFiles": 1 }));
-        let mut state = ScanState::new(&input);
-        assert_eq!(
-            state.process_line(&match_line("a.rs", 1)).unwrap(),
-            Flow::Continue
-        );
-        assert_eq!(
-            state.process_line(&match_line("b.rs", 1)).unwrap(),
-            Flow::Stop
-        );
-        assert_eq!(state.truncated_reason, Some("maxFiles"));
-        assert_eq!(state.seen_files.len(), 1);
+        let mut state = ScanState::new(&input(json!({ "pattern": "x", "maxFiles": 1 })));
+        let first = line;
+        let second = json!({
+            "type": "match",
+            "data": {
+                "path": { "text": "b.rs" },
+                "lines": { "text": "x\n" },
+                "line_number": 1,
+                "submatches": []
+            }
+        })
+        .to_string();
+        assert_eq!(state.process_line(&first).unwrap(), Flow::Continue);
+        assert_eq!(state.process_line(&second).unwrap(), Flow::Stop);
+        assert_eq!(state.truncated_reason.as_deref(), Some("maxFiles"));
         assert_eq!(state.match_count, 1);
     }
 
     #[test]
-    fn scan_state_enforces_max_output_chars() {
-        let input = input_from(json!({ "pattern": "x", "maxOutputChars": 10 }));
+    fn output_collector_enforces_combined_budget_before_buffering() {
+        let input = input(json!({ "pattern": "x", "maxOutputChars": 5 }));
         let mut state = ScanState::new(&input);
+        let mut collector = OutputCollector::new(input.max_output_chars);
         assert_eq!(
-            state.process_line(&match_line("a.rs", 1)).unwrap(),
+            collector
+                .process_chunk(
+                    OutputChunk {
+                        stream: OutputStream::Stderr,
+                        bytes: b"abc".to_vec(),
+                    },
+                    &mut state,
+                )
+                .unwrap(),
+            Flow::Continue
+        );
+        assert_eq!(
+            collector
+                .process_chunk(
+                    OutputChunk {
+                        stream: OutputStream::Stdout,
+                        bytes: b"def".to_vec(),
+                    },
+                    &mut state,
+                )
+                .unwrap(),
             Flow::Stop
         );
-        assert_eq!(state.truncated_reason, Some("maxOutputChars"));
-        assert_eq!(state.match_count, 0);
+        assert!(collector.stdout_buffer.is_empty());
+        assert_eq!(state.truncated_reason.as_deref(), Some("maxOutputChars"));
     }
 
     #[test]
-    fn scan_state_rejects_malformed_json() {
-        let input = input_from(json!({ "pattern": "x" }));
+    fn output_collector_processes_final_unterminated_json_line() {
+        let input = input(json!({ "pattern": "x" }));
         let mut state = ScanState::new(&input);
-        let err = state.process_line("{not json").unwrap_err();
-        assert!(err.to_string().contains("rg JSON parse error"));
-    }
-
-    #[test]
-    fn scan_state_skips_submatches_in_lines_mode() {
-        let input = input_from(json!({ "pattern": "x", "detail": "lines" }));
-        let mut state = ScanState::new(&input);
-        state.process_line(&match_line("a.rs", 1)).unwrap();
-        assert!(state.matches[0].submatches.is_none());
-
-        let input = input_from(json!({ "pattern": "x", "detail": "lines+submatches" }));
-        let mut state = ScanState::new(&input);
-        state.process_line(&match_line("a.rs", 1)).unwrap();
-        let submatches = state.matches[0].submatches.as_ref().unwrap();
-        assert_eq!(submatches[0].matched, "match");
-        assert_eq!(submatches[0].start, 0);
-        assert_eq!(submatches[0].end, 5);
-    }
-
-    #[test]
-    fn validate_input_rejects_bad_values() {
-        let empty_pattern = input_from(json!({ "pattern": "" }));
-        assert!(validate_input(&empty_pattern).is_err());
-
-        let zero_matches = input_from(json!({ "pattern": "x", "maxMatches": 0 }));
-        assert!(validate_input(&zero_matches).is_err());
-
-        let zero_files = input_from(json!({ "pattern": "x", "maxFiles": 0 }));
-        assert!(validate_input(&zero_files).is_err());
-
-        let zero_output = input_from(json!({ "pattern": "x", "maxOutputChars": 0 }));
-        assert!(validate_input(&zero_output).is_err());
-
-        let bad_unrestricted = input_from(json!({ "pattern": "x", "unrestricted": 4 }));
-        assert!(validate_input(&bad_unrestricted).is_err());
-
-        let ok = input_from(json!({ "pattern": "x" }));
-        assert!(validate_input(&ok).is_ok());
-    }
-
-    #[test]
-    fn input_tolerates_session_key_and_nulls() {
-        let input = input_from(without_null_params(json!({
-            "pattern": "x",
-            "_session_key": "session:test",
-            "cwd": null,
-            "paths": null
-        })));
-        assert_eq!(input.pattern, "x");
-        assert!(input.cwd.is_none());
-        assert!(input.paths.is_empty());
+        let mut collector = OutputCollector::new(input.max_output_chars);
+        let summary = json!({
+            "type": "summary",
+            "data": { "stats": { "matches": 0 } }
+        })
+        .to_string();
+        collector
+            .process_stdout(summary.as_bytes(), &mut state)
+            .unwrap();
+        collector.finish_stdout(&mut state).unwrap();
+        assert_eq!(state.stats.unwrap()["matches"], 0);
     }
 
     async fn setup_tree() -> tempfile::TempDir {
-        let dir = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
         tokio::fs::write(
-            dir.path().join("alpha.txt"),
+            directory.path().join("alpha.txt"),
             "first line\nripgrep-needle here\nlast line\n",
         )
         .await
         .unwrap();
         tokio::fs::write(
-            dir.path().join("beta.txt"),
+            directory.path().join("beta.txt"),
             "ripgrep-needle one\nripgrep-needle two\n",
         )
         .await
         .unwrap();
-        tokio::fs::write(dir.path().join("gamma.rs"), "fn empty() {}\n")
+        tokio::fs::write(directory.path().join("Dockerfile"), "ripgrep-needle\n")
             .await
             .unwrap();
-        dir
+        directory
     }
 
     #[tokio::test]
-    async fn execute_finds_matches_with_lines_detail() {
-        let dir = setup_tree().await;
-        let tool = RipgrepTool::new();
-        let value = tool
-            .execute(json!({
+    async fn initialize_loads_real_rg_type_names() {
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = RipgrepRuntime::initialize(directory.path().to_path_buf())
+            .await
+            .unwrap();
+        assert!(runtime.known_type_names.contains("docker"));
+        assert!(runtime.known_type_names.contains("jsonl"));
+        assert!(runtime.known_type_names.contains("all"));
+    }
+
+    #[tokio::test]
+    async fn search_uses_explicit_default_working_directory() {
+        let directory = setup_tree().await;
+        let result = run_tool(
+            input(json!({
                 "pattern": "ripgrep-needle",
                 "fixedStrings": true,
-                "cwd": dir.path().to_str().unwrap()
-            }))
-            .await
-            .unwrap();
+                "detail": "summary"
+            })),
+            &runtime(directory.path()),
+        )
+        .await
+        .unwrap();
 
-        assert_eq!(value["tool"], "ripgrep");
-        assert_eq!(value["detail"], "lines");
-        assert_eq!(value["found"], true);
-        assert_eq!(value["timedOut"], false);
-        assert_eq!(value["truncated"], false);
-        assert_eq!(value["exitCode"], 0);
-        assert_eq!(value["summary"]["matchCount"], 3);
-        assert_eq!(value["summary"]["filesWithMatches"], 2);
-        assert_eq!(value["matches"].as_array().unwrap().len(), 3);
-        assert!(value["matches"][0]["submatches"].is_null());
-        assert!(value.get("files").is_none());
+        assert!(result.found);
+        assert_eq!(result.summary.match_count, 4);
+        assert_eq!(result.summary.files_with_matches, 3);
+        assert!(result.files.is_none());
+        assert!(result.matches.is_none());
+        assert!(result.context.is_none());
+        assert_eq!(result.exit_code, Some(0));
     }
 
     #[tokio::test]
-    async fn execute_files_detail_lists_paths() {
-        let dir = setup_tree().await;
-        let tool = RipgrepTool::new();
-        let value = tool
-            .execute(json!({
-                "pattern": "ripgrep-needle",
+    async fn search_resolves_paths_relative_to_explicit_cwd() {
+        let directory = setup_tree().await;
+        let nested = directory.path().join("nested");
+        tokio::fs::create_dir(&nested).await.unwrap();
+        tokio::fs::write(nested.join("sample.txt"), "relative-needle\n")
+            .await
+            .unwrap();
+        let result = run_tool(
+            input(json!({
+                "pattern": "relative-needle",
                 "fixedStrings": true,
                 "detail": "files",
-                "cwd": dir.path().to_str().unwrap()
-            }))
-            .await
-            .unwrap();
+                "cwd": directory.path(),
+                "paths": ["nested/sample.txt"]
+            })),
+            &runtime(directory.path()),
+        )
+        .await
+        .unwrap();
 
-        let files = value["files"].as_array().unwrap();
-        assert_eq!(files.len(), 2);
-        assert!(value.get("matches").is_none());
-        assert!(value.get("context").is_none());
+        assert_eq!(result.files.unwrap(), vec!["nested/sample.txt"]);
     }
 
     #[tokio::test]
-    async fn execute_summary_detail_omits_rows() {
-        let dir = setup_tree().await;
-        let tool = RipgrepTool::new();
-        let value = tool
-            .execute(json!({
-                "pattern": "ripgrep-needle",
-                "fixedStrings": true,
-                "detail": "summary",
-                "cwd": dir.path().to_str().unwrap()
-            }))
-            .await
-            .unwrap();
-
-        assert_eq!(value["found"], true);
-        assert_eq!(value["summary"]["matchCount"], 3);
-        assert!(value.get("files").is_none());
-        assert!(value.get("matches").is_none());
-        assert!(value.get("context").is_none());
-    }
-
-    #[tokio::test]
-    async fn execute_reports_no_match() {
-        let dir = setup_tree().await;
-        let tool = RipgrepTool::new();
-        let value = tool
-            .execute(json!({
-                "pattern": "definitely-not-present-anywhere",
-                "fixedStrings": true,
-                "cwd": dir.path().to_str().unwrap()
-            }))
-            .await
-            .unwrap();
-
-        assert_eq!(value["found"], false);
-        assert_eq!(value["exitCode"], 1);
-        assert_eq!(value["summary"]["matchCount"], 0);
-    }
-
-    #[tokio::test]
-    async fn execute_truncates_on_max_matches() {
-        let dir = setup_tree().await;
-        let tool = RipgrepTool::new();
-        let value = tool
-            .execute(json!({
-                "pattern": "ripgrep-needle",
-                "fixedStrings": true,
-                "maxMatches": 1,
-                "cwd": dir.path().to_str().unwrap()
-            }))
-            .await
-            .unwrap();
-
-        assert_eq!(value["truncated"], true);
-        assert_eq!(value["truncatedReason"], "maxMatches");
-        assert_eq!(value["summary"]["matchCount"], 1);
-    }
-
-    #[tokio::test]
-    async fn execute_returns_context_and_submatches() {
-        let dir = setup_tree().await;
-        let tool = RipgrepTool::new();
-        let value = tool
-            .execute(json!({
+    async fn search_accepts_one_absolute_file_path() {
+        let directory = setup_tree().await;
+        let result = run_tool(
+            input(json!({
                 "pattern": "ripgrep-needle here",
                 "fixedStrings": true,
-                "detail": "lines+submatches",
-                "contextLines": 1,
-                "paths": [dir.path().join("alpha.txt").to_str().unwrap()]
-            }))
-            .await
-            .unwrap();
+                "paths": [directory.path().join("alpha.txt")]
+            })),
+            &runtime(directory.path()),
+        )
+        .await
+        .unwrap();
 
-        let matches = value["matches"].as_array().unwrap();
-        assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0]["line_number"], 2);
-        assert_eq!(matches[0]["submatches"][0]["match"], "ripgrep-needle here");
-        let context = value["context"].as_array().unwrap();
-        assert_eq!(context.len(), 2);
+        assert_eq!(result.summary.match_count, 1);
+        let matches = result.matches.unwrap();
+        assert_eq!(matches[0].line_number, 2);
+        assert!(matches[0].submatches.is_none());
     }
 
     #[tokio::test]
-    async fn execute_glob_filters_files() {
-        let dir = setup_tree().await;
-        let tool = RipgrepTool::new();
-        let value = tool
-            .execute(json!({
+    async fn lines_with_submatches_returns_typed_submatch_rows() {
+        let directory = setup_tree().await;
+        let result = run_tool(
+            input(json!({
+                "pattern": "ripgrep-needle",
+                "fixedStrings": true,
+                "detail": "lines+submatches",
+                "paths": ["alpha.txt"]
+            })),
+            &runtime(directory.path()),
+        )
+        .await
+        .unwrap();
+
+        let matches = result.matches.unwrap();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].path, "alpha.txt");
+        assert_eq!(matches[0].line_number, 2);
+        assert_eq!(matches[0].lines, "ripgrep-needle here\n");
+        assert_eq!(
+            matches[0].submatches.as_deref(),
+            Some(
+                [RipgrepSubmatch {
+                    matched: "ripgrep-needle".into(),
+                    start: 0,
+                    end: 14,
+                }]
+                .as_slice()
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn lines_detail_returns_context_rows() {
+        let directory = setup_tree().await;
+        let result = run_tool(
+            input(json!({
+                "pattern": "ripgrep-needle",
+                "fixedStrings": true,
+                "detail": "lines",
+                "contextLines": 1,
+                "paths": ["alpha.txt"]
+            })),
+            &runtime(directory.path()),
+        )
+        .await
+        .unwrap();
+
+        let context = result.context.unwrap();
+        assert_eq!(context.len(), 2);
+        assert_eq!(context[0].line_number, 1);
+        assert_eq!(context[0].lines, "first line\n");
+        assert_eq!(context[1].line_number, 3);
+        assert_eq!(context[1].lines, "last line\n");
+    }
+
+    #[tokio::test]
+    async fn dynamic_docker_type_finds_dockerfile() {
+        let directory = setup_tree().await;
+        let runtime = RipgrepRuntime::initialize(directory.path().to_path_buf())
+            .await
+            .unwrap();
+        let result = run_tool(
+            input(json!({
                 "pattern": "ripgrep-needle",
                 "fixedStrings": true,
                 "detail": "files",
-                "glob": ["alpha.*"],
-                "cwd": dir.path().to_str().unwrap()
-            }))
+                "type": ["docker"]
+            })),
+            &runtime,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.files.unwrap(), vec!["Dockerfile"]);
+    }
+
+    #[tokio::test]
+    async fn dynamic_extension_types_find_jsonl_and_svelte_files() {
+        let directory = setup_tree().await;
+        tokio::fs::write(
+            directory.path().join("events.jsonl"),
+            "dynamic-type-needle\n",
+        )
+        .await
+        .unwrap();
+        tokio::fs::write(
+            directory.path().join("Widget.svelte"),
+            "dynamic-type-needle\n",
+        )
+        .await
+        .unwrap();
+        let runtime = RipgrepRuntime::initialize(directory.path().to_path_buf())
             .await
             .unwrap();
 
-        let files = value["files"].as_array().unwrap();
-        assert_eq!(files.len(), 1);
-        assert!(files[0].as_str().unwrap().contains("alpha.txt"));
-    }
-
-    #[tokio::test]
-    async fn execute_fails_on_invalid_regex() {
-        let dir = setup_tree().await;
-        let tool = RipgrepTool::new();
-        let err = tool
-            .execute(json!({
-                "pattern": "(unbalanced",
-                "cwd": dir.path().to_str().unwrap()
-            }))
+        for (type_name, expected_file) in [("jsonl", "events.jsonl"), ("svelte", "Widget.svelte")] {
+            let result = run_tool(
+                input(json!({
+                    "pattern": "dynamic-type-needle",
+                    "fixedStrings": true,
+                    "detail": "files",
+                    "type": [type_name]
+                })),
+                &runtime,
+            )
             .await
-            .unwrap_err();
-        assert!(err.to_string().contains("exit code 2"));
+            .unwrap();
+            assert_eq!(result.files.unwrap(), vec![expected_file]);
+        }
     }
 
     #[tokio::test]
-    async fn execute_fails_on_missing_cwd() {
-        let tool = RipgrepTool::new();
-        let err = tool
-            .execute(json!({
-                "pattern": "x",
-                "cwd": "/definitely/not/a/real/ripgrep/cwd"
-            }))
+    async fn type_not_excludes_runtime_file_type() {
+        let directory = setup_tree().await;
+        let runtime = RipgrepRuntime::initialize(directory.path().to_path_buf())
             .await
-            .unwrap_err();
-        assert!(err.to_string().contains("failed to start rg"));
+            .unwrap();
+        let result = run_tool(
+            input(json!({
+                "pattern": "ripgrep-needle",
+                "fixedStrings": true,
+                "detail": "files",
+                "typeNot": ["docker"]
+            })),
+            &runtime,
+        )
+        .await
+        .unwrap();
+
+        let mut files = result.files.unwrap();
+        files.sort();
+        assert_eq!(files, vec!["alpha.txt", "beta.txt"]);
     }
 
     #[tokio::test]
-    async fn execute_rejects_missing_pattern() {
-        let tool = RipgrepTool::new();
-        let err = tool.execute(json!({})).await.unwrap_err();
-        assert!(err.to_string().contains("invalid ripgrep parameters"));
+    async fn search_reports_no_match_without_error() {
+        let directory = setup_tree().await;
+        let result = run_tool(
+            input(json!({
+                "pattern": "definitely-absent",
+                "fixedStrings": true
+            })),
+            &runtime(directory.path()),
+        )
+        .await
+        .unwrap();
+
+        assert!(!result.found);
+        assert_eq!(result.exit_code, Some(1));
+        assert_eq!(result.summary.match_count, 0);
+    }
+
+    #[tokio::test]
+    async fn search_rejects_file_valued_working_directory_precisely() {
+        let directory = setup_tree().await;
+        let file = directory.path().join("alpha.txt");
+        let error = run_tool(
+            input(json!({ "pattern": "x", "cwd": file })),
+            &runtime(directory.path()),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("working directory is not a directory")
+        );
+        assert!(error.to_string().contains("alpha.txt"));
+    }
+
+    #[tokio::test]
+    async fn search_rejects_missing_working_directory_precisely() {
+        let directory = setup_tree().await;
+        let missing = directory.path().join("missing-directory");
+        let error = run_tool(
+            input(json!({ "pattern": "x", "cwd": missing })),
+            &runtime(directory.path()),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("working directory does not exist")
+        );
+        assert!(error.to_string().contains("missing-directory"));
+    }
+
+    #[tokio::test]
+    async fn search_returns_real_match_limit_state() {
+        let directory = setup_tree().await;
+        let result = run_tool(
+            input(json!({
+                "pattern": "ripgrep-needle",
+                "fixedStrings": true,
+                "paths": ["beta.txt"],
+                "maxMatches": 1
+            })),
+            &runtime(directory.path()),
+        )
+        .await
+        .unwrap();
+
+        assert!(result.found);
+        assert!(result.truncated);
+        assert_eq!(result.truncated_reason.as_deref(), Some("maxMatches"));
+        assert_eq!(result.summary.match_count, 1);
+        assert_eq!(result.matches.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn search_returns_real_file_limit_state() {
+        let directory = setup_tree().await;
+        let result = run_tool(
+            input(json!({
+                "pattern": "ripgrep-needle",
+                "fixedStrings": true,
+                "detail": "files",
+                "paths": ["alpha.txt", "Dockerfile"],
+                "maxFiles": 1
+            })),
+            &runtime(directory.path()),
+        )
+        .await
+        .unwrap();
+
+        assert!(result.found);
+        assert!(result.truncated);
+        assert_eq!(result.truncated_reason.as_deref(), Some("maxFiles"));
+        assert_eq!(result.summary.files_with_matches, 1);
+        assert_eq!(result.summary.match_count, 1);
+        assert_eq!(result.files.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn search_returns_real_combined_output_limit_state() {
+        let directory = setup_tree().await;
+        let result = run_tool(
+            input(json!({
+                "pattern": "ripgrep-needle",
+                "fixedStrings": true,
+                "paths": ["alpha.txt"],
+                "maxOutputChars": 1
+            })),
+            &runtime(directory.path()),
+        )
+        .await
+        .unwrap();
+
+        assert!(result.truncated);
+        assert_eq!(result.truncated_reason.as_deref(), Some("maxOutputChars"));
+        assert_eq!(result.summary.match_count, 0);
+    }
+
+    #[tokio::test]
+    async fn search_surfaces_invalid_regex() {
+        let directory = setup_tree().await;
+        let error = run_tool(
+            input(json!({ "pattern": "(unbalanced" })),
+            &runtime(directory.path()),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.to_string().contains("exit code 2"));
+        assert!(error.to_string().contains("regex parse error"));
+    }
+
+    #[tokio::test]
+    async fn zero_timeout_returns_real_timeout_state() {
+        let directory = setup_tree().await;
+        let result = run_tool(
+            input(json!({ "pattern": "needle", "timeoutMs": 0 })),
+            &runtime(directory.path()),
+        )
+        .await
+        .unwrap();
+
+        assert!(result.timed_out);
+        assert!(result.truncated);
+        assert_eq!(result.truncated_reason.as_deref(), Some("timeout"));
     }
 }
