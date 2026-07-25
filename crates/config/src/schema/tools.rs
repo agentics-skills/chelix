@@ -15,7 +15,7 @@ pub struct ToolsConfig {
     pub web: WebConfig,
     pub maps: MapsConfig,
     pub browser: BrowserConfig,
-    /// Native filesystem tools (Read/Write/Edit/MultiEdit/Glob/Grep).
+    /// Native filesystem tools (Read/Write/Edit/MultiEdit/Glob).
     /// See agentics-skills/chelix#657.
     #[serde(default)]
     pub fs: FsToolsConfig,
@@ -79,16 +79,16 @@ impl Default for ToolsConfig {
 }
 
 /// Configuration for the native filesystem tools
-/// (Read / Write / Edit / MultiEdit / Glob / Grep).
+/// (Read / Write / Edit / MultiEdit / Glob).
 ///
 /// Tracks GH agentics-skills/chelix#657. Every field is optional and conservative
 /// by default — fs tools work out of the box with no configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FsToolsConfig {
-    /// Default search root used by `Glob` and `Grep` when the LLM call
-    /// omits the `path` argument. Must be an absolute path. When unset,
-    /// calls without an explicit `path` are rejected.
+    /// Default search root used by `Glob` when the LLM call omits the
+    /// `path` argument. Must be an absolute path. When unset, calls without
+    /// an explicit `path` are rejected.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_root: Option<String>,
 
@@ -129,8 +129,8 @@ pub struct FsToolsConfig {
     #[serde(default)]
     pub binary_policy: FsBinaryPolicy,
 
-    /// Whether `Glob` and `Grep` respect `.gitignore` / `.ignore` files
-    /// and `.git/info/exclude` while walking. Default `true`.
+    /// Whether `Glob` respects `.gitignore` / `.ignore` files and
+    /// `.git/info/exclude` while walking. Default `true`.
     #[serde(default = "default_fs_respect_gitignore")]
     pub respect_gitignore: bool,
 

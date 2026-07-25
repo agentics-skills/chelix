@@ -8,18 +8,11 @@ bundled-skills        = ["chelix-skills/bundled-skills"]
 default               = ["firecrawl", "fs-tools", "metrics", "provider-openai-codex"]
 firecrawl             = []
 provider-openai-codex = ["chelix-providers/provider-openai-codex"]
-# Native filesystem tools (Read, Write, Edit, MultiEdit, Glob, Grep).
+# Native filesystem tools (Read, Write, Edit, MultiEdit, Glob).
 # See agentics-skills/chelix#657. Default-on; build with
 # --no-default-features to omit them from minimal builds.
-fs-tools = [
-  "dep:globset",
-  "dep:grep-matcher",
-  "dep:grep-regex",
-  "dep:grep-searcher",
-  "dep:ignore",
-  "dep:pdf-extract",
-]
-metrics = ["dep:chelix-metrics"]
+fs-tools = ["dep:globset", "dep:ignore", "dep:pdf-extract"]
+metrics  = ["dep:chelix-metrics"]
 
 [dependencies]
 anyhow                = { workspace = true }
@@ -33,17 +26,14 @@ chelix-config         = { workspace = true }
 chelix-cron           = { workspace = true }
 chelix-media          = { workspace = true }
 chelix-metrics        = { optional = true, workspace = true }
-chelix-providers      = { workspace = true }
 chelix-protocol       = { workspace = true }
+chelix-providers      = { workspace = true }
 chelix-service-traits = { workspace = true }
 chelix-sessions       = { workspace = true }
 chelix-skills         = { workspace = true }
 flate2                = { workspace = true }
 futures               = { workspace = true }
 globset               = { optional = true, workspace = true }
-grep-matcher          = { optional = true, workspace = true }
-grep-regex            = { optional = true, workspace = true }
-grep-searcher         = { optional = true, workspace = true }
 ignore                = { optional = true, workspace = true }
 image                 = { workspace = true }
 pdf-extract           = { optional = true, workspace = true }

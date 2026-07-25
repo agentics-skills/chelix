@@ -137,7 +137,7 @@ const PRESET_TOML_PLACEHOLDER = `model = "haiku"
 timeout_secs = 30
 
 [tools]
-allow = ["read_file", "grep", "glob"]
+allow = ["read_file", "ripgrep", "glob"]
 deny = ["execute_command"]
 
 # MCP server access: allow_servers OR deny_servers (not both)
@@ -761,7 +761,7 @@ function PresetForm({ preset, onSave, onCancel }: PresetFormProps): VNode {
 					className="provider-key-input"
 					value={toolsAllow}
 					onInput={(e) => setToolsAllow(targetValue(e))}
-					placeholder="Read, Glob, Grep, ripgrep"
+					placeholder="Read, Glob, ripgrep"
 				/>
 			</label>
 			<label className="flex flex-col gap-1">

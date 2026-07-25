@@ -450,10 +450,10 @@ mod tests {
     #[test]
     fn same_round_different_args_same_error_does_not_fire() {
         let mut detector = ToolLoopDetector::new(2, true);
-        let error = Some("Grep requires an absolute 'path' argument");
+        let error = Some("command execution failed");
         let action = detector.record_round(&[
-            failure("Grep", json!({"pattern": "alpha", "path": null}), error),
-            failure("Grep", json!({"pattern": "beta", "path": null}), error),
+            failure("execute_command", json!({"command": "first"}), error),
+            failure("execute_command", json!({"command": "second"}), error),
         ]);
 
         assert_eq!(action, LoopDetectorAction::None);
@@ -472,19 +472,19 @@ mod tests {
     #[test]
     fn equivalent_failure_in_next_round_fires_nudge() {
         let mut detector = ToolLoopDetector::new(2, true);
-        let error = Some("Grep requires an absolute 'path' argument");
+        let error = Some("command execution failed");
         assert_eq!(
             detector.record_round(&[
-                failure("Grep", json!({"pattern": "alpha", "path": null}), error),
-                failure("Grep", json!({"pattern": "beta", "path": null}), error),
+                failure("execute_command", json!({"command": "first"}), error),
+                failure("execute_command", json!({"command": "second"}), error),
             ]),
             LoopDetectorAction::None
         );
 
         assert_eq!(
             detector.record_round(&[failure(
-                "Grep",
-                json!({"pattern": "gamma", "path": null}),
+                "execute_command",
+                json!({"command": "third"}),
                 error,
             )]),
             LoopDetectorAction::InjectNudge
@@ -513,10 +513,10 @@ mod tests {
 
     #[test]
     fn mixed_batch_is_order_independent() {
-        let error = Some("Grep requires an absolute 'path' argument");
+        let error = Some("command execution failed");
         let success = success("memory_search", json!({"query": "preferences"}));
-        let fail_a = failure("Grep", json!({"pattern": "alpha", "path": null}), error);
-        let fail_b = failure("Grep", json!({"pattern": "beta", "path": null}), error);
+        let fail_a = failure("execute_command", json!({"command": "first"}), error);
+        let fail_b = failure("execute_command", json!({"command": "second"}), error);
         let mut forward = ToolLoopDetector::new(2, true);
         let mut reverse = ToolLoopDetector::new(2, true);
 
@@ -684,7 +684,11 @@ mod tests {
     #[test]
     fn sibling_identity_that_did_not_reach_window_cannot_trigger_stage_two() {
         let mut detector = ToolLoopDetector::new(2, true);
-        let established = failure("Grep", json!({"pattern": "stable"}), Some("missing path"));
+        let established = failure(
+            "execute_command",
+            json!({"command": "stable"}),
+            Some("command execution failed"),
+        );
         let sibling = failure("browser", json!({"action": "open"}), Some("offline"));
 
         let _ = detector.record_round(std::slice::from_ref(&established));
@@ -772,8 +776,16 @@ mod tests {
     #[test]
     fn intervention_message_describes_equivalent_failed_rounds() {
         let rounds = vec![
-            failure("Grep", json!({"pattern": "alpha"}), Some("missing path")),
-            failure("Grep", json!({"pattern": "beta"}), Some("missing path")),
+            failure(
+                "execute_command",
+                json!({"command": "first"}),
+                Some("command execution failed"),
+            ),
+            failure(
+                "execute_command",
+                json!({"command": "second"}),
+                Some("command execution failed"),
+            ),
         ];
         let message = format_intervention_message(&rounds);
 

@@ -90,7 +90,7 @@ Agent presets (used by `spawn_agent`) can restrict their sub-agent's tools.
 ```toml
 [agents.presets.researcher]
 model = "anthropic/claude-haiku-3-5-20241022"
-tools.allow = ["read_file", "glob", "grep", "ripgrep"]
+tools.allow = ["read_file", "glob", "ripgrep"]
 tools.deny  = ["execute_command", "write_file"]
 ```
 
@@ -205,7 +205,7 @@ tool (nothing was denied at the group layer, so nothing accumulates).
 
 ```toml
 [agents.presets.researcher]
-tools.allow = ["read_file", "glob", "grep"]
+tools.allow = ["read_file", "glob", "ripgrep"]
 tools.deny  = ["execute_command"]
 ```
 

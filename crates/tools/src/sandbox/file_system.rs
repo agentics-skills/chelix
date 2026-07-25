@@ -140,27 +140,6 @@ impl SandboxListFilesResult {
     }
 }
 
-/// Output-mode discriminator for sandbox grep.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SandboxGrepMode {
-    Content,
-    FilesWithMatches,
-    Count,
-}
-
-/// Options for sandbox grep.
-#[derive(Debug, Clone)]
-pub struct SandboxGrepOptions {
-    pub pattern: String,
-    pub path: String,
-    pub mode: SandboxGrepMode,
-    pub case_insensitive: bool,
-    pub include_globs: Vec<String>,
-    pub offset: usize,
-    pub head_limit: Option<usize>,
-    pub match_cap: Option<usize>,
-}
-
 /// Abstract filesystem access for a prepared sandbox session.
 #[async_trait]
 pub trait SandboxFileSystem: Send + Sync {
@@ -169,8 +148,6 @@ pub trait SandboxFileSystem: Send + Sync {
     async fn write_file(&self, file_path: &str, content: &[u8]) -> Result<Option<Value>>;
 
     async fn list_files(&self, root: &str) -> Result<SandboxListFilesResult>;
-
-    async fn grep(&self, opts: SandboxGrepOptions) -> Result<Value>;
 }
 
 /// Command-based [`SandboxFileSystem`] implementation backed by `Sandbox::run_command`.
@@ -326,133 +303,6 @@ pub async fn command_list_files<S: Sandbox + ?Sized>(
     Ok(parse_listed_files(&result.stdout, MAX_SANDBOX_LIST_FILES))
 }
 
-/// Default command-based sandbox grep implementation used by the file service
-/// and by `Sandbox` trait default methods.
-pub async fn command_grep<S: Sandbox + ?Sized>(
-    backend: &S,
-    id: &SandboxId,
-    opts: SandboxGrepOptions,
-) -> Result<Value> {
-    let pattern_q = shell_single_quote(&opts.pattern);
-    let path_q = shell_single_quote(&opts.path);
-    let mut flags: Vec<&str> = vec!["-r", "-P"];
-    if opts.case_insensitive {
-        flags.push("-i");
-    }
-    match opts.mode {
-        SandboxGrepMode::Content => {
-            flags.push("-n");
-            flags.push("-H");
-        },
-        SandboxGrepMode::FilesWithMatches => {
-            flags.push("-l");
-        },
-        SandboxGrepMode::Count => {
-            flags.push("-c");
-            flags.push("-H");
-        },
-    }
-    let include_args = if opts.include_globs.is_empty() {
-        String::new()
-    } else {
-        opts.include_globs
-            .iter()
-            .map(|glob| format!("--include={}", shell_single_quote(glob)))
-            .collect::<Vec<_>>()
-            .join(" ")
-    };
-    let flags_str = flags.join(" ");
-    let flags_str_ere = flags_str.replace("-P", "-E");
-    let script = format!(
-        "grep {flags_str} {include_args} -- {pattern_q} {path_q} 2>/dev/null; \
-         rc=$?; \
-         if [ $rc -eq 2 ]; then \
-           grep {flags_str_ere} {include_args} -- {pattern_q} {path_q} 2>/dev/null; \
-           rc=$?; \
-         fi; \
-         if [ $rc -eq 1 ]; then exit 0; else exit $rc; fi"
-    );
-    let result = backend.run_command(id, &script, &default_opts()).await?;
-    if result.exit_code != 0 {
-        let detail = if result.stderr.trim().is_empty() {
-            format!("grep exited with code {}", result.exit_code)
-        } else {
-            result.stderr.trim().to_string()
-        };
-        return Err(Error::message(format!("sandbox grep failed: {detail}")));
-    }
-
-    let lines: Vec<&str> = result
-        .stdout
-        .lines()
-        .map(str::trim_end)
-        .filter(|line| !line.is_empty())
-        .collect();
-
-    match opts.mode {
-        SandboxGrepMode::FilesWithMatches => {
-            let files = lines
-                .iter()
-                .map(|line| line.to_string())
-                .collect::<Vec<_>>();
-            let (files, truncated) = apply_head_offset(files, opts.offset, opts.head_limit);
-            Ok(json!({
-                "mode": "files_with_matches",
-                "files": files,
-                "truncated": truncated,
-            }))
-        },
-        SandboxGrepMode::Count => {
-            let mut counts = Vec::new();
-            for line in &lines {
-                if let Some((path, count_str)) = line.rsplit_once(':')
-                    && let Ok(count) = count_str.parse::<usize>()
-                    && count > 0
-                {
-                    counts.push(json!({
-                        "path": path,
-                        "count": count,
-                    }));
-                }
-            }
-            let (counts, truncated) = apply_head_offset(counts, opts.offset, opts.head_limit);
-            Ok(json!({
-                "mode": "count",
-                "counts": counts,
-                "truncated": truncated,
-            }))
-        },
-        SandboxGrepMode::Content => {
-            let mut matches = Vec::new();
-            for line in &lines {
-                let mut parts = line.splitn(3, ':');
-                let (Some(path), Some(lineno_str), Some(text)) =
-                    (parts.next(), parts.next(), parts.next())
-                else {
-                    continue;
-                };
-                let Ok(lineno) = lineno_str.parse::<usize>() else {
-                    continue;
-                };
-                matches.push(json!({
-                    "path": path,
-                    "line": lineno,
-                    "match": text,
-                    "block": vec![format!("{lineno}:{text}")],
-                }));
-            }
-            let (matches, cap_truncated) = apply_match_cap(matches, opts.match_cap);
-            let (matches, page_truncated) =
-                apply_head_offset(matches, opts.offset, opts.head_limit);
-            Ok(json!({
-                "mode": "content",
-                "matches": matches,
-                "truncated": cap_truncated || page_truncated,
-            }))
-        },
-    }
-}
-
 #[async_trait]
 impl SandboxFileSystem for CommandSandboxFileSystem {
     async fn read_file(&self, file_path: &str, max_bytes: u64) -> Result<SandboxReadResult> {
@@ -466,35 +316,6 @@ impl SandboxFileSystem for CommandSandboxFileSystem {
     async fn list_files(&self, root: &str) -> Result<SandboxListFilesResult> {
         self.backend.list_files(&self.id, root).await
     }
-
-    async fn grep(&self, opts: SandboxGrepOptions) -> Result<Value> {
-        self.backend.grep(&self.id, opts).await
-    }
-}
-
-fn apply_match_cap<T>(mut rows: Vec<T>, match_cap: Option<usize>) -> (Vec<T>, bool) {
-    match match_cap {
-        Some(limit) if rows.len() > limit => {
-            rows.truncate(limit);
-            (rows, true)
-        },
-        _ => (rows, false),
-    }
-}
-
-fn apply_head_offset<T: Clone>(
-    rows: Vec<T>,
-    offset: usize,
-    head_limit: Option<usize>,
-) -> (Vec<T>, bool) {
-    let total = rows.len();
-    let start = offset.min(total);
-    let slice = &rows[start..];
-    let (capped, truncated) = match head_limit {
-        Some(limit) if slice.len() > limit => (&slice[..limit], true),
-        _ => (slice, false),
-    };
-    (capped.to_vec(), truncated)
 }
 
 enum NativeHostWriteOutcome {
@@ -1422,36 +1243,6 @@ mod tests {
         assert_eq!(result.files, vec!["/data/a.rs", "/data/b.rs"]);
         assert!(result.truncated);
         assert_eq!(result.limit, Some(2));
-    }
-
-    #[tokio::test]
-    async fn grep_content_applies_paging() {
-        let mock = MockSandbox::new(vec![CommandOutput {
-            stdout: "/data/lib.rs:3:fn alpha()\n/data/lib.rs:9:fn beta()\n".to_string(),
-            stderr: String::new(),
-            exit_code: 0,
-        }]);
-        let fs = CommandSandboxFileSystem::new(mock, test_id());
-
-        let value = fs
-            .grep(SandboxGrepOptions {
-                pattern: "fn".to_string(),
-                path: "/data".to_string(),
-                mode: SandboxGrepMode::Content,
-                case_insensitive: false,
-                include_globs: Vec::new(),
-                offset: 1,
-                head_limit: Some(1),
-                match_cap: None,
-            })
-            .await
-            .unwrap();
-
-        assert_eq!(value["mode"], "content");
-        assert_eq!(value["truncated"], false);
-        let matches = value["matches"].as_array().unwrap();
-        assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0]["line"], 9);
     }
 
     #[test]

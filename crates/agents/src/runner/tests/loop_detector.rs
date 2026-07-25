@@ -16,8 +16,7 @@ use {
     tokio_stream::Stream,
 };
 
-const GREP_ERROR: &str =
-    "Grep requires an absolute 'path' argument (no workspace root is configured)";
+const EXECUTE_COMMAND_ERROR: &str = "sandbox is unavailable";
 
 struct IncidentMemorySearchTool;
 
@@ -46,31 +45,30 @@ impl AgentTool for IncidentMemorySearchTool {
     }
 }
 
-struct IncidentGrepTool;
+struct IncidentExecuteCommandTool;
 
 #[async_trait]
-impl AgentTool for IncidentGrepTool {
+impl AgentTool for IncidentExecuteCommandTool {
     fn name(&self) -> &str {
-        "Grep"
+        "execute_command"
     }
 
     fn description(&self) -> &str {
-        "Search file contents"
+        "Execute a command"
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "object",
             "properties": {
-                "pattern": { "type": "string" },
-                "path": {}
+                "command": { "type": "string" }
             },
-            "required": ["pattern"]
+            "required": ["command"]
         })
     }
 
     async fn execute(&self, _params: serde_json::Value) -> Result<serde_json::Value> {
-        anyhow::bail!(GREP_ERROR)
+        anyhow::bail!(EXECUTE_COMMAND_ERROR)
     }
 }
 
@@ -106,8 +104,8 @@ impl RoundAwareLoopProvider {
                     3,
                     "all first-round results must be visible to the model"
                 );
-                ProviderRound::Tools(vec![grep_call(
-                    "grep_round_2",
+                ProviderRound::Tools(vec![execute_command_call(
+                    "execute_round_2",
                     "language service diagnostics",
                 )])
             },
@@ -126,7 +124,10 @@ impl RoundAwareLoopProvider {
                     )),
                     "the nudge must appear only after the second failed model round"
                 );
-                ProviderRound::Tools(vec![grep_call("grep_round_3", "tsserver diagnostics")])
+                ProviderRound::Tools(vec![execute_command_call(
+                    "execute_round_3",
+                    "tsserver diagnostics",
+                )])
             },
             3 => {
                 assert!(tools.is_empty(), "stage 2 must strip tool schemas");
@@ -141,7 +142,7 @@ impl RoundAwareLoopProvider {
                     "the forced-text turn must include the stage-2 message"
                 );
                 ProviderRound::Text(
-                    "Recovered after the forced text turn. The repeated Grep failures came from a missing absolute path, so I stopped retrying the same operation and will ask the user for the workspace root before using that tool again."
+                    "Recovered after the forced text turn. The repeated execute_command failures came from an unavailable sandbox, so I stopped retrying the same operation and will report the sandbox failure."
                         .to_string(),
                 )
             },
@@ -231,19 +232,19 @@ fn incident_batch() -> Vec<ToolCall> {
             argument_diagnostic: None,
             metadata: None,
         },
-        grep_call("grep_round_1_a", "code_checker|code checker|codeChecker"),
-        grep_call(
-            "grep_round_1_b",
+        execute_command_call("execute_round_1_a", "code_checker|code checker|codeChecker"),
+        execute_command_call(
+            "execute_round_1_b",
             "diagnostic|lsp|language service|tsserver|eslint|ruff|mypy|cargo check",
         ),
     ]
 }
 
-fn grep_call(id: &str, pattern: &str) -> ToolCall {
+fn execute_command_call(id: &str, command: &str) -> ToolCall {
     ToolCall {
         id: id.to_string(),
-        name: "Grep".to_string(),
-        arguments: serde_json::json!({"pattern": pattern, "path": null}),
+        name: "execute_command".to_string(),
+        arguments: serde_json::json!({"command": command}),
         argument_diagnostic: None,
         metadata: None,
     }
@@ -279,7 +280,7 @@ fn stream_events(round: ProviderRound) -> Vec<StreamEvent> {
 fn incident_tools() -> ToolRegistry {
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(IncidentMemorySearchTool));
-    tools.register(Box::new(IncidentGrepTool));
+    tools.register(Box::new(IncidentExecuteCommandTool));
     tools
 }
 

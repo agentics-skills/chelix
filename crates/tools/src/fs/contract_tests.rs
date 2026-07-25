@@ -161,9 +161,10 @@ fn build_registry_with_policy(policy: FsPathPolicy) -> ToolRegistry {
 }
 
 #[test]
-fn register_fs_tools_adds_all_six_names() {
+fn register_fs_tools_adds_all_five_names() {
     let registry = build_registry(None);
     let names = registry.list_names();
+    assert_eq!(names.len(), FS_TOOL_NAMES.len());
     for expected in FS_TOOL_NAMES {
         assert!(
             names.iter().any(|n| n == expected),
@@ -249,7 +250,7 @@ async fn read_write_edit_multi_edit_via_registry() {
 }
 
 #[tokio::test]
-async fn glob_and_grep_via_registry_with_workspace_root() {
+async fn glob_via_registry_with_workspace_root() {
     let dir = tempfile::tempdir().unwrap();
     tokio::fs::write(dir.path().join("one.rs"), "fn alpha() {}")
         .await
@@ -264,14 +265,6 @@ async fn glob_and_grep_via_registry_with_workspace_root() {
     let g = glob.execute(json!({ "pattern": "*.rs" })).await.unwrap();
     let paths = g["paths"].as_array().unwrap();
     assert_eq!(paths.len(), 2);
-
-    let grep = registry.get("Grep").unwrap();
-    let gr = grep
-        .execute(json!({ "pattern": "alpha", "output_mode": "content", "-n": true }))
-        .await
-        .unwrap();
-    let matches = gr["matches"].as_array().unwrap();
-    assert!(!matches.is_empty());
 }
 
 #[tokio::test]
@@ -673,101 +666,6 @@ async fn adaptive_read_cap_shrinks_output_for_small_context_window() {
     );
     // Must render *some* lines — small cap should still be usable.
     assert!(value["rendered_lines"].as_u64().unwrap() > 0);
-}
-
-#[tokio::test]
-async fn sandbox_grep_via_registry_dispatches_through_bridge() {
-    use {
-        crate::{
-            command::CommandOutput,
-            fs::sandbox_bridge::test_helpers::MockSandbox,
-            sandbox::{Sandbox, SandboxConfig, SandboxRouter},
-        },
-        std::sync::Arc,
-    };
-
-    let mock = MockSandbox::new(vec![CommandOutput {
-        stdout: "/data/lib.rs:3:fn alpha()\n/data/lib.rs:9:fn beta()\n".to_string(),
-        stderr: String::new(),
-        exit_code: 0,
-    }]);
-    let backend: Arc<dyn Sandbox> = mock.clone();
-    let router = Arc::new(SandboxRouter::with_backend(
-        SandboxConfig::default(),
-        backend,
-    ));
-
-    let mut registry = ToolRegistry::new();
-    register_fs_tools(&mut registry, FsToolsContext {
-        sandbox_router: router,
-        ..FsToolsContext::default()
-    });
-
-    let grep = registry.get("Grep").unwrap();
-    let value = grep
-        .execute(json!({
-            "pattern": "fn",
-            "path": "/data",
-            "output_mode": "content",
-            "type": "rust",
-            "_session_key": "sandboxed",
-        }))
-        .await
-        .unwrap();
-
-    assert_eq!(value["mode"], "content");
-    let matches = value["matches"].as_array().unwrap();
-    assert_eq!(matches.len(), 2);
-    assert_eq!(matches[0]["line"], 3);
-    let cmd = mock.last_command().unwrap();
-    assert!(cmd.contains("-n"));
-    // `type=rust` → `--include='*.rs'`.
-    assert!(cmd.contains("--include="));
-}
-
-#[tokio::test]
-async fn sandbox_grep_type_filter_expands_multi_extension_languages() {
-    use {
-        crate::{
-            command::CommandOutput,
-            fs::sandbox_bridge::test_helpers::MockSandbox,
-            sandbox::{Sandbox, SandboxConfig, SandboxRouter},
-        },
-        std::sync::Arc,
-    };
-
-    let mock = MockSandbox::new(vec![CommandOutput {
-        stdout: "/data/app.ts:3:const x = 1\n".to_string(),
-        stderr: String::new(),
-        exit_code: 0,
-    }]);
-    let backend: Arc<dyn Sandbox> = mock.clone();
-    let router = Arc::new(SandboxRouter::with_backend(
-        SandboxConfig::default(),
-        backend,
-    ));
-
-    let mut registry = ToolRegistry::new();
-    register_fs_tools(&mut registry, FsToolsContext {
-        sandbox_router: router,
-        ..FsToolsContext::default()
-    });
-
-    let grep = registry.get("Grep").unwrap();
-    let _ = grep
-        .execute(json!({
-            "pattern": "const",
-            "path": "/data",
-            "output_mode": "content",
-            "type": "ts",
-            "_session_key": "sandboxed",
-        }))
-        .await
-        .unwrap();
-
-    let cmd = mock.last_command().unwrap();
-    assert!(cmd.contains("--include='*.ts'"));
-    assert!(cmd.contains("--include='*.tsx'"));
 }
 
 #[tokio::test]

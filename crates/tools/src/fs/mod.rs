@@ -1,4 +1,4 @@
-//! Native filesystem tools: `Read`, `Write`, `Edit`, `MultiEdit`, `Glob`, `Grep`.
+//! Native filesystem tools: `Read`, `Write`, `Edit`, `MultiEdit`, `Glob`.
 //!
 //! These are the structured, typed alternative to shell-based file I/O via
 //! `execute_command`. They match Claude Code's tool schemas exactly so LLMs trained on
@@ -12,7 +12,6 @@
 
 pub mod edit;
 pub mod glob;
-pub mod grep;
 pub mod multi_edit;
 pub mod read;
 pub mod sandbox_bridge;
@@ -25,7 +24,6 @@ pub use {
     context::*,
     edit::EditTool,
     glob::GlobTool,
-    grep::GrepTool,
     multi_edit::MultiEditTool,
     read::ReadTool,
     shared::{BinaryPolicy, FsPathPolicy, FsState, new_fs_state},

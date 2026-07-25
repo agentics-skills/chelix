@@ -33,7 +33,7 @@ use {
 use {
     super::{
         containers::is_apple_container_corruption_error,
-        file_system::{SandboxGrepOptions, SandboxListFilesResult, SandboxReadResult},
+        file_system::{SandboxListFilesResult, SandboxReadResult},
         types::{BuildImageResult, ToolsServiceEndpoint},
     },
     crate::command::{CommandOptions, CommandOutput},
@@ -297,13 +297,6 @@ impl Sandbox for FailoverSandbox {
             return self.fallback.list_files(id, root).await;
         }
         self.primary.list_files(id, root).await
-    }
-
-    async fn grep(&self, id: &SandboxId, opts: SandboxGrepOptions) -> Result<serde_json::Value> {
-        if self.fallback_enabled().await {
-            return self.fallback.grep(id, opts).await;
-        }
-        self.primary.grep(id, opts).await
     }
 
     async fn build_image(

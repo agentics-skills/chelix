@@ -13,8 +13,8 @@ use crate::{
     command::{CommandOptions, CommandOutput},
     error::Result,
     sandbox::file_system::{
-        SandboxGrepOptions, SandboxListFilesResult, SandboxReadResult, command_grep,
-        command_list_files, command_read_file, command_write_file,
+        SandboxListFilesResult, SandboxReadResult, command_list_files, command_read_file,
+        command_write_file,
     },
 };
 
@@ -383,11 +383,6 @@ pub trait Sandbox: Send + Sync {
     /// List regular files inside the sandbox.
     async fn list_files(&self, id: &SandboxId, root: &str) -> Result<SandboxListFilesResult> {
         command_list_files(self, id, root).await
-    }
-
-    /// Run grep inside the sandbox.
-    async fn grep(&self, id: &SandboxId, opts: SandboxGrepOptions) -> Result<serde_json::Value> {
-        command_grep(self, id, opts).await
     }
 
     /// Clean up sandbox resources.

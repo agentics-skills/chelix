@@ -6,8 +6,7 @@
 //! transport stays hidden behind a reusable Rust service.
 
 pub use crate::sandbox::file_system::{
-    MAX_SANDBOX_WRITE_BYTES, SandboxFileSystem, SandboxGrepMode, SandboxGrepOptions,
-    SandboxListFilesResult, SandboxReadResult,
+    MAX_SANDBOX_WRITE_BYTES, SandboxFileSystem, SandboxListFilesResult, SandboxReadResult,
 };
 
 #[cfg(test)]
@@ -64,16 +63,5 @@ pub async fn sandbox_list_files(
 ) -> Result<SandboxListFilesResult> {
     CommandSandboxFileSystem::new(Arc::clone(backend), id.clone())
         .list_files(root)
-        .await
-}
-
-/// Compatibility wrapper for direct backend/id grep calls.
-pub async fn sandbox_grep(
-    backend: &Arc<dyn Sandbox>,
-    id: &SandboxId,
-    opts: SandboxGrepOptions,
-) -> Result<serde_json::Value> {
-    CommandSandboxFileSystem::new(Arc::clone(backend), id.clone())
-        .grep(opts)
         .await
 }

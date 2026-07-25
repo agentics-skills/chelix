@@ -10,8 +10,7 @@ use {
 };
 
 use super::{
-    BinaryPolicy, EditTool, FsPathPolicy, FsState, GlobTool, GrepTool, MultiEditTool, ReadTool,
-    WriteTool,
+    BinaryPolicy, EditTool, FsPathPolicy, FsState, GlobTool, MultiEditTool, ReadTool, WriteTool,
 };
 
 /// Aggregated configuration for fs tool registration.
@@ -21,7 +20,7 @@ use super::{
 /// context struct.
 #[derive(Clone)]
 pub struct FsToolsContext {
-    /// Default search root for `Glob`/`Grep` when the LLM omits `path`.
+    /// Default search root for `Glob` when the LLM omits `path`.
     /// Must be absolute. When `None`, calls without explicit `path` error.
     pub workspace_root: Option<PathBuf>,
     /// Shared per-session state for read tracking, loop detection, and
@@ -31,8 +30,7 @@ pub struct FsToolsContext {
     pub path_policy: Option<FsPathPolicy>,
     /// Binary-file handling strategy for `Read`. Default is `Reject`.
     pub binary_policy: BinaryPolicy,
-    /// Whether `Glob`/`Grep` honor `.gitignore` while walking. Default
-    /// `true`.
+    /// Whether `Glob` honors `.gitignore` while walking. Default `true`.
     pub respect_gitignore: bool,
     /// Shared global [`SandboxRouter`]. Its immutable mode selects sandbox or host execution.
     pub sandbox_router: Arc<SandboxRouter>,
@@ -162,8 +160,7 @@ pub fn register_fs_tools(registry: &mut ToolRegistry, context: FsToolsContext) {
     }
     registry.register(Box::new(multi_edit));
 
-    let mut glob = GlobTool::from_router(Arc::clone(&sandbox_router))
-        .with_respect_gitignore(respect_gitignore);
+    let mut glob = GlobTool::from_router(sandbox_router).with_respect_gitignore(respect_gitignore);
     if let Some(ref root) = workspace_root {
         glob = glob.with_workspace_root(root.clone());
     }
@@ -171,16 +168,7 @@ pub fn register_fs_tools(registry: &mut ToolRegistry, context: FsToolsContext) {
         glob = glob.with_path_policy(p.clone());
     }
     registry.register(Box::new(glob));
-
-    let mut grep = GrepTool::from_router(sandbox_router).with_respect_gitignore(respect_gitignore);
-    if let Some(root) = workspace_root {
-        grep = grep.with_workspace_root(root);
-    }
-    if let Some(p) = path_policy {
-        grep = grep.with_path_policy(p);
-    }
-    registry.register(Box::new(grep));
 }
 
 /// Canonical list of tool names registered by [`register_fs_tools`].
-pub const FS_TOOL_NAMES: &[&str] = &["Read", "Write", "Edit", "MultiEdit", "Glob", "Grep"];
+pub const FS_TOOL_NAMES: &[&str] = &["Read", "Write", "Edit", "MultiEdit", "Glob"];

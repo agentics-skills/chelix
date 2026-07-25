@@ -6,7 +6,7 @@
 //! [`chelix_sessions::ToolResultStore`] before it enters LLM context. When the
 //! in-context copy exceeds the configured byte budget it is truncated and a
 //! marker pointing at the persisted `content.txt`/`content.json` file is
-//! appended, so the agent can re-read the full result with Read/Grep. Modeled
+//! appended, so the agent can re-read the full result with Read/ripgrep. Modeled
 //! on VS Code Copilot Chat's large-tool-results-to-disk mechanism.
 
 use std::fmt::Write;

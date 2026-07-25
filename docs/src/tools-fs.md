@@ -1,15 +1,16 @@
 # Filesystem Tools
 
-Chelix ships six native filesystem tools that agents use for structured, typed
-file I/O: `Read`, `Write`, `Edit`, `MultiEdit`, `Glob`, and `Grep`. Their
+Chelix ships five native filesystem tools that agents use for structured, typed
+file I/O: `Read`, `Write`, `Edit`, `MultiEdit`, and `Glob`. Their
 schemas match Claude Code exactly so LLMs trained on those tools work without
 adaptation. See
 [GitHub #657](https://github.com/agentics-skills/chelix/issues/657) for
 background.
 
-Prefer these over shelling out via the `execute_command` tool running `cat` /
-`sed` / `rg` — the native tools give the model line-numbered reads, uniqueness-
-enforced edits, typed error payloads, and structured audit logs.
+Prefer these over shelling out via the `execute_command` tool running `cat` or
+`sed`. Use the managed `ripgrep` tool for content search. The structured tools
+give the model line-numbered reads, uniqueness-enforced edits, typed error
+payloads, and structured audit logs.
 
 ## Tools
 
@@ -117,26 +118,6 @@ Respects `.gitignore` by default.
 `path` is required unless `[tools.fs].workspace_root` is configured. A relative
 `path` is rejected.
 
-### `Grep`
-
-Regex content search. Walks with the same ignore rules as `Glob`.
-
-```json
-{
-  "pattern": "fn\\s+main",
-  "path": "/absolute/path/to/project",
-  "output_mode": "content",
-  "glob": "**/*.rs",
-  "-n": true,
-  "-C": 2
-}
-```
-
-Parameters: `pattern` (regex, required), `path`, `glob`, `type` (`rust` / `py` /
-`ts` / etc.), `output_mode` (`files_with_matches` / `content` / `count`), `-i`
-(case-insensitive), `-n` (line numbers), `-A` / `-B` / `-C` (context lines),
-`multiline`, `head_limit`, `offset`.
-
 ## Configuration
 
 All fs tools are configured under a single `[tools.fs]` section. Every field is
@@ -145,7 +126,7 @@ configuration.
 
 ```toml
 [tools.fs]
-# Default search root for Glob/Grep when `path` is omitted. Absolute.
+# Default search root for Glob when `path` is omitted. Absolute.
 # workspace_root = "/home/user/projects/my-app"
 
 # Absolute path globs the fs tools may touch. Empty = no allowlist.
@@ -175,7 +156,7 @@ max_read_bytes = 10485760  # 10 MB
 #   "base64" — include base64-encoded bytes in the payload
 binary_policy = "reject"
 
-# Whether Glob/Grep respect .gitignore / .ignore / .git/info/exclude.
+# Whether Glob respects .gitignore / .ignore / .git/info/exclude.
 respect_gitignore = true
 
 # Adaptive read sizing: when set, Read caps per-call output so a single
@@ -198,7 +179,7 @@ path. You can make an agent read-only without touching fs-level policy:
 deny = ["Write", "Edit", "MultiEdit"]
 ```
 
-The agent retains `Read`, `Glob`, and `Grep` — no need to deny the shell tool
+The agent retains `Read`, `Glob`, and `ripgrep` — no need to deny the shell tool
 wholesale and lose every other capability.
 
 File-path allow/deny lives in `[tools.fs]`. Layer both for fine-grained control.
@@ -207,7 +188,7 @@ anything outside it:
 
 ```toml
 [tools.policy]
-allow = ["execute_command", "browser", "memory", "Read", "Glob", "Grep"]
+allow = ["execute_command", "browser", "memory", "Read", "Glob", "ripgrep"]
 
 [tools.fs]
 workspace_root = "/home/user/project"
@@ -230,6 +211,8 @@ second big win (alongside model-quality improvements) that motivated
 
 ## Related
 
+- [Tool Registry](tool-registry.md#ripgrep-tool) — managed `ripgrep` content
+  search.
 - [Hooks](hooks.md) — `BeforeToolCall` and `ToolResultPersist` receive
   structured payloads for each fs tool call, so policy hooks can inspect typed
   parameters instead of parsing shell strings.

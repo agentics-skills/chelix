@@ -1,4 +1,4 @@
-//! Shared helpers for the native filesystem tools (Read/Write/Edit/MultiEdit/Glob/Grep).
+//! Shared helpers for the native filesystem tools (Read/Write/Edit/MultiEdit/Glob).
 //!
 //! Kept deliberately small: path canonicalization, binary detection, and the
 //! `cat -n` style line-number formatter that callers use to render file
@@ -577,7 +577,7 @@ impl FsPathPolicy {
     ///
     /// Returns `None` on permit and `Some(reason)` on reject. Used for
     /// individual file accesses (Read, Write, Edit, MultiEdit, single
-    /// Glob/Grep entries).
+    /// Glob entries).
     pub fn check(&self, path: &Path) -> Option<&'static str> {
         if let Some(ref deny) = self.deny
             && deny.is_match(path)
@@ -594,7 +594,7 @@ impl FsPathPolicy {
 
     /// Check whether `path` is blocked by the deny list only.
     ///
-    /// Used for directory walk roots (Glob/Grep) where the root itself
+    /// Used for directory walk roots (Glob) where the root itself
     /// typically won't match a file-granular allow list but its children
     /// might — so the allow list filters results rather than gating the
     /// whole call. Deny-list matches still reject the entire call.
@@ -637,7 +637,7 @@ pub fn enforce_path_policy(policy: &FsPathPolicy, path: &Path) -> Option<Value> 
 
 /// Variant of [`enforce_path_policy`] that only considers the deny list.
 ///
-/// Directory walk roots (Glob/Grep) use this because the root typically
+/// Directory walk roots (Glob) use this because the root typically
 /// won't match a file-granular allow list, but its children can. Per-
 /// file filtering still applies the full policy.
 #[must_use]

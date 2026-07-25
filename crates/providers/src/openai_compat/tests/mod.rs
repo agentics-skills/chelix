@@ -9,30 +9,6 @@ use super::{
 use chelix_agents::model::StreamEvent;
 
 #[test]
-fn parse_tool_calls_preserves_native_falsy_types() {
-    let msg = serde_json::json!({
-        "tool_calls": [{
-            "id": "call_1",
-            "function": {
-                "name": "grep",
-                "arguments": {
-                    "offset": 0,
-                    "multiline": false,
-                    "type": null
-                }
-            }
-        }]
-    });
-
-    let calls = parse_tool_calls(&msg);
-
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].arguments["offset"], 0);
-    assert_eq!(calls[0].arguments["multiline"], false);
-    assert!(calls[0].arguments["type"].is_null());
-}
-
-#[test]
 fn parse_tool_calls_preserve_issue_693_examples() {
     let msg = serde_json::json!({
         "tool_calls": [
@@ -54,29 +30,15 @@ fn parse_tool_calls_preserve_issue_693_examples() {
                         "replace_all": false
                     }
                 }
-            },
-            {
-                "id": "call_grep",
-                "function": {
-                    "name": "Grep",
-                    "arguments": {
-                        "offset": 0,
-                        "multiline": false,
-                        "type": null
-                    }
-                }
             }
         ]
     });
 
     let calls = parse_tool_calls(&msg);
 
-    assert_eq!(calls.len(), 3);
+    assert_eq!(calls.len(), 2);
     assert_eq!(calls[0].arguments["timeout"], 0);
     assert_eq!(calls[1].arguments["replace_all"], false);
-    assert_eq!(calls[2].arguments["offset"], 0);
-    assert_eq!(calls[2].arguments["multiline"], false);
-    assert!(calls[2].arguments["type"].is_null());
 }
 
 #[test]

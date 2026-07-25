@@ -34,9 +34,9 @@ identity.name = "scout"
 identity.emoji = "🔍"
 identity.theme = "thorough and methodical"
 model = "anthropic/claude-haiku-3-5-20241022"
-tools.allow = ["Read", "Glob", "Grep", "ripgrep"]
+tools.allow = ["Read", "Glob", "ripgrep"]
 tools.deny = ["execute_command", "Write"]
-tools.preload = ["Read", "Glob", "Grep"]
+tools.preload = ["Read", "Glob", "ripgrep"]
 system_prompt_suffix = "Gather facts and report clearly."
 
 [agents.presets.coordinator]
@@ -193,8 +193,8 @@ Example `~/.chelix/agents/reviewer.md`:
 ```markdown
 ---
 name: reviewer
-tools: Read, Grep, Glob
-preload_tools: Read, Grep
+tools: Read, ripgrep, Glob
+preload_tools: Read, ripgrep
 model: sonnet
 emoji: 🔍
 theme: focused and efficient

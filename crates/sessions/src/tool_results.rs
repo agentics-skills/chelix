@@ -3,7 +3,7 @@
 //! Every tool call's complete output is written to
 //! `<sessions_dir>/tool-results/<session>/<call>/content.txt` (line-oriented
 //! text) or `content.json` + `schema.json` (structured JSON), so agents can
-//! re-read full results with Read/Grep after the in-context copy is truncated.
+//! re-read full results with Read/ripgrep after the in-context copy is truncated.
 //!
 //! Modeled on VS Code Copilot Chat's `ChatDiskSessionResources` and its
 //! large-tool-results-to-disk mechanism (`toJsonSchema.ts`,
