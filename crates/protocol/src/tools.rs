@@ -4,9 +4,10 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 12;
+pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 13;
 pub const TOOLS_SERVICE_CONTAINER_PORT: u16 = 43_271;
 pub const TOOLS_SERVICE_HEALTH_PATH: &str = "/v1/health";
+pub const TOOLS_SERVICE_EDIT_FILE_PATH: &str = "/v1/edit-file";
 pub const TOOLS_SERVICE_LIST_DIRECTORY_PATH: &str = "/v1/list-directory";
 pub const TOOLS_SERVICE_OVERWRITE_FILE_PATH: &str = "/v1/overwrite-file";
 pub const TOOLS_SERVICE_READ_FILE_PATH: &str = "/v1/read-file";
@@ -49,6 +50,104 @@ pub struct ListDirectoryRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ListDirectoryResponse {
     pub result: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EditFileRequest {
+    pub file_path: String,
+    pub edit: EditFileOperation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum EditFileOperation {
+    Unique(EditFileUniqueOperation),
+    WithReplaceAll(EditFileReplaceAllOperation),
+}
+
+impl EditFileOperation {
+    #[must_use]
+    pub fn old_string(&self) -> &str {
+        match self {
+            Self::Unique(edit) => &edit.old_string,
+            Self::WithReplaceAll(edit) => &edit.old_string,
+        }
+    }
+
+    #[must_use]
+    pub fn new_string(&self) -> &str {
+        match self {
+            Self::Unique(edit) => &edit.new_string,
+            Self::WithReplaceAll(edit) => &edit.new_string,
+        }
+    }
+
+    #[must_use]
+    pub fn replace_all(&self) -> bool {
+        match self {
+            Self::Unique(_) => false,
+            Self::WithReplaceAll(edit) => edit.replace_all,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EditFileUniqueOperation {
+    pub old_string: String,
+    pub new_string: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EditFileReplaceAllOperation {
+    pub old_string: String,
+    pub new_string: String,
+    pub replace_all: bool,
+}
+
+impl EditFileRequest {
+    /// Validate constraints that cannot be represented by serde alone.
+    pub fn validate(&self) -> Result<(), EditFileRequestValidationError> {
+        if self.file_path.trim().is_empty() {
+            return Err(EditFileRequestValidationError::EmptyFilePath);
+        }
+        if self.edit.old_string().is_empty() {
+            return Err(EditFileRequestValidationError::EmptyOldString);
+        }
+        if self.edit.old_string() == self.edit.new_string() {
+            return Err(EditFileRequestValidationError::IdenticalStrings);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum EditFileRequestValidationError {
+    #[error("filePath must be a non-empty string.")]
+    EmptyFilePath,
+    #[error("oldString must not be empty.")]
+    EmptyOldString,
+    #[error("newString must differ from oldString.")]
+    IdenticalStrings,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EditFileRecovery {
+    Crlf,
+    SmartQuotes,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditFileResponse {
+    pub file_path: String,
+    pub replacements: usize,
+    pub replace_all: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<EditFileRecovery>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -708,6 +807,152 @@ mod tests {
         let decoded_response: ListDirectoryResponse = serde_json::from_str(&response_json)
             .unwrap_or_else(|error| panic!("response decode failed: {error}"));
         assert_eq!(decoded_response, response);
+    }
+
+    #[test]
+    fn edit_file_messages_round_trip_with_camel_case_fields() {
+        let unique_request = EditFileRequest {
+            file_path: "/workspace/src/main.rs".into(),
+            edit: EditFileOperation::Unique(EditFileUniqueOperation {
+                old_string: "fn old() {}".into(),
+                new_string: "fn new() {}".into(),
+            }),
+        };
+        let json = serde_json::to_value(&unique_request)
+            .unwrap_or_else(|error| panic!("edit file request encode failed: {error}"));
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "filePath": "/workspace/src/main.rs",
+                "edit": {
+                    "oldString": "fn old() {}",
+                    "newString": "fn new() {}"
+                }
+            })
+        );
+        let decoded: EditFileRequest = serde_json::from_value(json)
+            .unwrap_or_else(|error| panic!("edit file request decode failed: {error}"));
+        assert_eq!(decoded, unique_request);
+        assert!(decoded.validate().is_ok());
+
+        let explicit_request = EditFileRequest {
+            file_path: "/workspace/src/main.rs".into(),
+            edit: EditFileOperation::WithReplaceAll(EditFileReplaceAllOperation {
+                old_string: "old".into(),
+                new_string: "new".into(),
+                replace_all: false,
+            }),
+        };
+        let json = serde_json::to_value(&explicit_request)
+            .unwrap_or_else(|error| panic!("explicit edit request encode failed: {error}"));
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "filePath": "/workspace/src/main.rs",
+                "edit": {
+                    "oldString": "old",
+                    "newString": "new",
+                    "replaceAll": false
+                }
+            })
+        );
+        let decoded: EditFileRequest = serde_json::from_value(json)
+            .unwrap_or_else(|error| panic!("explicit edit request decode failed: {error}"));
+        assert_eq!(decoded, explicit_request);
+
+        let response = EditFileResponse {
+            file_path: "/workspace/src/main.rs".into(),
+            replacements: 1,
+            replace_all: false,
+            recovery: Some(EditFileRecovery::SmartQuotes),
+        };
+        let json = serde_json::to_value(&response)
+            .unwrap_or_else(|error| panic!("edit file response encode failed: {error}"));
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "filePath": "/workspace/src/main.rs",
+                "replacements": 1,
+                "replaceAll": false,
+                "recovery": "smart_quotes"
+            })
+        );
+
+        let literal_response = EditFileResponse {
+            recovery: None,
+            ..response
+        };
+        let json = serde_json::to_value(literal_response)
+            .unwrap_or_else(|error| panic!("literal edit response encode failed: {error}"));
+        assert!(json.get("recovery").is_none());
+    }
+
+    #[test]
+    fn edit_file_request_rejects_unknown_missing_null_and_invalid_fields() {
+        for invalid in [
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "edit": {
+                    "oldString": "old",
+                    "newString": "new",
+                    "replaceAll": null
+                }
+            }),
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "edit": { "oldString": "old" }
+            }),
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "edit": {
+                    "oldString": "old",
+                    "newString": "new"
+                },
+                "obsolete": true
+            }),
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "oldString": "old",
+                "newString": "new"
+            }),
+        ] {
+            assert!(serde_json::from_value::<EditFileRequest>(invalid).is_err());
+        }
+
+        for (request, expected_error) in [
+            (
+                EditFileRequest {
+                    file_path: " ".into(),
+                    edit: EditFileOperation::Unique(EditFileUniqueOperation {
+                        old_string: "old".into(),
+                        new_string: "new".into(),
+                    }),
+                },
+                "filePath must be a non-empty string.",
+            ),
+            (
+                EditFileRequest {
+                    file_path: "/tmp/file".into(),
+                    edit: EditFileOperation::Unique(EditFileUniqueOperation {
+                        old_string: String::new(),
+                        new_string: "new".into(),
+                    }),
+                },
+                "oldString must not be empty.",
+            ),
+            (
+                EditFileRequest {
+                    file_path: "/tmp/file".into(),
+                    edit: EditFileOperation::Unique(EditFileUniqueOperation {
+                        old_string: "same".into(),
+                        new_string: "same".into(),
+                    }),
+                },
+                "newString must differ from oldString.",
+            ),
+        ] {
+            assert_eq!(request.validate().unwrap_err().to_string(), expected_error);
+        }
     }
 
     #[test]

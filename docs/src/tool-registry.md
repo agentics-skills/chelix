@@ -100,12 +100,54 @@ that is current at creation time.
 
 ## Managed filesystem tools
 
-The `read_file`, `read_media`, `list_directory`, `overwrite_file`, and `ripgrep`
-tools execute exclusively through the managed `chelix-tools-service`. With
-sandbox mode enabled, the service runs in the sandbox container selected for
-the session. With sandbox mode disabled, Chelix starts the service as a host
-sidecar. Service and filesystem errors are returned to the tool caller; these
-tools never fall back from the sandbox to the gateway host.
+The `edit_file`, `read_file`, `read_media`, `list_directory`, `overwrite_file`,
+and `ripgrep` tools execute exclusively through the managed
+`chelix-tools-service`. With sandbox mode enabled, the service runs in the
+sandbox container selected for the session. With sandbox mode disabled, Chelix
+starts the service as a host sidecar. Service and filesystem errors are returned
+to the tool caller; these tools never fall back from the sandbox to the gateway
+host.
+
+### `edit_file`
+
+`edit_file` requires an absolute `filePath` and a nested `edit` object. The
+unique form contains required `oldString` and `newString` fields. The explicit
+form additionally requires boolean `replaceAll`. Both forms are strict
+`oneOf` branches with no additional fields; no root-level default is applied.
+The tool edits an existing regular UTF-8 file and rejects symbolic links.
+
+```json
+{
+  "filePath": "/workspace/file.txt",
+  "edit": {
+    "oldString": "old",
+    "newString": "new"
+  }
+}
+```
+
+```json
+{
+  "filePath": "/workspace/file.txt",
+  "edit": {
+    "oldString": "old",
+    "newString": "new",
+    "replaceAll": true
+  }
+}
+```
+
+When a literal match is absent, the tool preserves the original `Edit`
+recovery behavior: LF input can match CRLF file content, and straight quotes
+can match Unicode smart quotes. The structured result reports `filePath`, the
+number of `replacements`, the applied `replaceAll` value, and an optional
+`recovery` value of `crlf` or `smart_quotes`.
+
+Same-file calls are serialized in the service and successful changes are
+persisted atomically. Relative paths, unknown or invalid parameters, missing or
+non-UTF-8 files, non-unique matches, absent matches, and persistence failures
+are explicit errors. A failed edit does not modify the file, and the gateway
+does not provide a local fallback implementation.
 
 ### `read_file`
 

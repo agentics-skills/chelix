@@ -1,5 +1,6 @@
 mod api;
 mod app;
+mod edit_file;
 mod interactive_terminal;
 mod list_directory;
 mod overwrite_file;

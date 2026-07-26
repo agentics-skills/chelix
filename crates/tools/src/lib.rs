@@ -14,6 +14,7 @@ pub mod command;
 #[cfg(test)]
 pub mod contract;
 pub mod cron_tool;
+pub mod edit_file;
 pub mod error;
 pub mod file_io;
 #[cfg(feature = "firecrawl")]

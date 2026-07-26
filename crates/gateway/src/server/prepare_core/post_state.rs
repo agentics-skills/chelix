@@ -541,6 +541,9 @@ pub(super) async fn complete_startup(
         tool_registry.register(Box::new(
             chelix_tools::terminal_command::ReadTerminalOutputTool::new(Arc::clone(&tools_service)),
         ));
+        tool_registry.register(Box::new(chelix_tools::edit_file::EditFileTool::new(
+            Arc::clone(&tools_service),
+        )));
         tool_registry.register(Box::new(
             chelix_tools::list_directory::ListDirectoryTool::new(Arc::clone(&tools_service)),
         ));

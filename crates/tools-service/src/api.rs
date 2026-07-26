@@ -10,10 +10,10 @@ use {
         routing::{get, post},
     },
     chelix_protocol::{
-        CreateToolsServiceTerminalRequest, CreateToolsServiceTerminalResponse,
+        CreateToolsServiceTerminalRequest, CreateToolsServiceTerminalResponse, EditFileRequest,
         ExecuteCommandRequest, ListDirectoryRequest, ListDirectoryResponse, OverwriteFileRequest,
         ProcessRequest, ReadFileRequest, ReadFileResponse, ReadMediaRequest,
-        ReadTerminalOutputRequest, RipgrepRequest, RipgrepResponse,
+        ReadTerminalOutputRequest, RipgrepRequest, RipgrepResponse, TOOLS_SERVICE_EDIT_FILE_PATH,
         TOOLS_SERVICE_EXECUTE_COMMAND_PATH, TOOLS_SERVICE_HEALTH_PATH,
         TOOLS_SERVICE_LIST_DIRECTORY_PATH, TOOLS_SERVICE_OVERWRITE_FILE_PATH,
         TOOLS_SERVICE_PROCESS_PATH, TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_READ_FILE_PATH,
@@ -28,6 +28,7 @@ use {
 use axum::serve;
 
 use crate::{
+    edit_file::{self, EditFileRuntime},
     interactive_terminal, list_directory, overwrite_file, process, read_file, read_media,
     ripgrep::{self, RipgrepRuntime},
     terminal::TerminalManager,
@@ -36,6 +37,7 @@ use crate::{
 #[derive(Clone)]
 struct ApiState {
     token: Arc<str>,
+    edit_file_runtime: Arc<EditFileRuntime>,
     terminal_manager: Arc<TerminalManager>,
     ripgrep_runtime: Arc<RipgrepRuntime>,
 }
@@ -47,6 +49,7 @@ pub fn router(
 ) -> Router {
     Router::new()
         .route(TOOLS_SERVICE_HEALTH_PATH, get(health))
+        .route(TOOLS_SERVICE_EDIT_FILE_PATH, post(run_edit_file))
         .route(TOOLS_SERVICE_LIST_DIRECTORY_PATH, post(run_list_directory))
         .route(TOOLS_SERVICE_OVERWRITE_FILE_PATH, post(run_overwrite_file))
         .route(TOOLS_SERVICE_READ_FILE_PATH, post(run_read_file))
@@ -68,6 +71,7 @@ pub fn router(
         .route(TOOLS_SERVICE_TERMINAL_WS_PATH, get(attach_terminal))
         .with_state(ApiState {
             token: Arc::from(token),
+            edit_file_runtime: Arc::new(EditFileRuntime::default()),
             terminal_manager,
             ripgrep_runtime,
         })
@@ -82,6 +86,22 @@ async fn health(State(state): State<ApiState>, headers: HeaderMap) -> Response {
         protocol_version: TOOLS_SERVICE_PROTOCOL_VERSION,
     })
     .into_response()
+}
+
+#[tracing::instrument(skip_all)]
+async fn run_edit_file(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Json(request): Json<EditFileRequest>,
+) -> Response {
+    if !is_authorized(&state, &headers) {
+        return unauthorized_response();
+    }
+
+    match edit_file::run_tool(request, &state.edit_file_runtime).await {
+        Ok(response) => Json(response).into_response(),
+        Err(error) => tool_error_response(error),
+    }
 }
 
 #[tracing::instrument(skip_all)]
@@ -307,8 +327,8 @@ mod tests {
     use std::net::Ipv4Addr;
 
     use chelix_protocol::{
-        ExecuteCommandResponse, OverwriteFileResponse, ProcessAction, ProcessResponse,
-        ReadMediaResponse, ReadTerminalOutputResponse,
+        EditFileResponse, ExecuteCommandResponse, OverwriteFileResponse, ProcessAction,
+        ProcessResponse, ReadMediaResponse, ReadTerminalOutputResponse,
     };
 
     use super::*;
@@ -389,6 +409,25 @@ mod tests {
         let response = reqwest::Client::new()
             .post(format!("{base_url}{TOOLS_SERVICE_LIST_DIRECTORY_PATH}"))
             .json(&ListDirectoryRequest { path: "/".into() })
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("request failed: {error}"));
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn edit_file_requires_authorization() {
+        let base_url = spawn_api().await;
+        let response = reqwest::Client::new()
+            .post(format!("{base_url}{TOOLS_SERVICE_EDIT_FILE_PATH}"))
+            .json(&serde_json::json!({
+                "filePath": "/tmp/file.txt",
+                "edit": {
+                    "oldString": "old",
+                    "newString": "new"
+                }
+            }))
             .send()
             .await
             .unwrap_or_else(|error| panic!("request failed: {error}"));
@@ -748,6 +787,73 @@ mod tests {
             .await
             .unwrap_or_else(|error| panic!("response decode failed: {error}"));
         assert!(body.error.contains("failed to open file"));
+    }
+
+    #[tokio::test]
+    async fn edit_file_runs_with_authorization_and_surfaces_errors() {
+        let directory =
+            tempfile::tempdir().unwrap_or_else(|error| panic!("tempdir failed: {error}"));
+        let path = directory.path().join("sample.txt");
+        tokio::fs::write(&path, "old value and old value")
+            .await
+            .unwrap_or_else(|error| panic!("write failed: {error}"));
+        let base_url = spawn_api().await;
+        let client = reqwest::Client::new();
+        let response = client
+            .post(format!("{base_url}{TOOLS_SERVICE_EDIT_FILE_PATH}"))
+            .bearer_auth("test-token")
+            .json(&serde_json::json!({
+                "filePath": path,
+                "edit": {
+                    "oldString": "old value and old value",
+                    "newString": "new value"
+                }
+            }))
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("request failed: {error}"));
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response
+            .json::<EditFileResponse>()
+            .await
+            .unwrap_or_else(|error| panic!("response decode failed: {error}"));
+        assert_eq!(body.replacements, 1);
+        assert_eq!(
+            tokio::fs::read_to_string(&path)
+                .await
+                .unwrap_or_else(|error| panic!("read failed: {error}")),
+            "new value"
+        );
+
+        tokio::fs::write(&path, "duplicate duplicate")
+            .await
+            .unwrap_or_else(|error| panic!("write failed: {error}"));
+        let response = client
+            .post(format!("{base_url}{TOOLS_SERVICE_EDIT_FILE_PATH}"))
+            .bearer_auth("test-token")
+            .json(&serde_json::json!({
+                "filePath": path,
+                "edit": {
+                    "oldString": "duplicate",
+                    "newString": "replacement"
+                }
+            }))
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("request failed: {error}"));
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let body = response
+            .json::<ToolsServiceError>()
+            .await
+            .unwrap_or_else(|error| panic!("response decode failed: {error}"));
+        assert!(body.error.contains("matches 2 locations"));
+        assert_eq!(
+            tokio::fs::read_to_string(&path)
+                .await
+                .unwrap_or_else(|error| panic!("read failed: {error}")),
+            "duplicate duplicate"
+        );
     }
 
     #[tokio::test]

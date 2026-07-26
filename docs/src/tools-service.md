@@ -21,9 +21,9 @@ For every tool migrated to `chelix-tools-service`:
 - service unavailability is an explicit error and never triggers local
   fallback execution.
 
-The currently migrated tools are `read_file`, `read_media`, `list_directory`,
-`overwrite_file`, `ripgrep`, `execute_command`, `read_terminal_output`, and
-`process`.
+The currently migrated tools are `edit_file`, `read_file`, `read_media`,
+`list_directory`, `overwrite_file`, `ripgrep`, `execute_command`,
+`read_terminal_output`, and `process`.
 
 `execute_command`, `read_terminal_output`, and `process` exclusively use the
 same terminal pool managed by `chelix-tools-service`. `read_terminal_output`
@@ -150,11 +150,12 @@ migrated tool
 ## Protocol and authentication
 
 The shared wire types live in `chelix-protocol`. The current protocol version is
-`12`.
+`13`.
 
 | Method | Path                 | Purpose                                         |
 | ------ | -------------------- | ----------------------------------------------- |
 | `GET`  | `/v1/health`         | Return the tools-service protocol version       |
+| `POST` | `/v1/edit-file`      | Replace exact text in one existing UTF-8 file   |
 | `POST` | `/v1/list-directory` | List one directory                              |
 | `POST` | `/v1/overwrite-file` | Atomically create or replace one complete file  |
 | `POST` | `/v1/read-file`      | Read text or binary file content                |
@@ -168,6 +169,68 @@ body.
 
 The gateway checks both HTTP success and `protocolVersion` before accepting a
 host or sandbox endpoint.
+
+### Tool contract structure
+
+Tool parameter schemas must keep the root as one strict object containing only
+fields shared by every request form. Behavioral variants must be represented
+under a required nested property with `oneOf`, `anyOf`, `allOf`, `if`, or `not`
+as appropriate. Every object variant must declare its own `required` fields and
+set `additionalProperties: false`.
+
+Do not model a request variant as an optional root-level field with a hidden
+default. A default annotation does not create a reliable optional tool-call
+signature and can make the advertised schema, generated call interface, and
+wire decoder disagree. The nested schema, Rust enum, agent-facing schema, and
+HTTP payload must describe the same physical JSON forms. Root-level composite
+keywords are not supported by the provider schema normalizer; nested
+compositions are preserved.
+
+### Edit file execution contract
+
+`POST /v1/edit-file` requires `filePath` and a nested `edit` object. The `edit`
+object uses two strict `oneOf` forms:
+
+```json
+{
+  "filePath": "/workspace/file.txt",
+  "edit": {
+    "oldString": "old",
+    "newString": "new"
+  }
+}
+```
+
+The form without `replaceAll` requires a unique match. The explicit form adds a
+required boolean:
+
+```json
+{
+  "filePath": "/workspace/file.txt",
+  "edit": {
+    "oldString": "old",
+    "newString": "new",
+    "replaceAll": true
+  }
+}
+```
+
+Unknown fields, explicit `null`, an empty path or `oldString`, and identical old
+and new strings are rejected. The path must be absolute and identify an
+existing regular UTF-8 file. Symbolic links are rejected.
+
+A literal `oldString` match is used first. Without `replaceAll`, more than one
+match is an error; with `replaceAll`, every match is replaced. If no literal
+match exists, the service preserves the original `Edit` behavior by trying LF
+input against CRLF file content and then matching straight quotes against
+Unicode smart quotes. A successful recovery is reported explicitly as `crlf`
+or `smart_quotes` in the optional `recovery` response field.
+
+Edits for the same resolved path are serialized inside the service. The file
+is read, matched, and atomically replaced through a temporary sibling file
+within one service call. Validation, read, match, and persistence failures are
+explicit tool errors and leave the target unchanged. The gateway has no local
+implementation or fallback path.
 
 ### Ripgrep execution contract
 
@@ -209,7 +272,7 @@ the applied `limits`, `summary`, and `exitCode`. Depending on `detail`, it also
 contains `files` or typed `matches` and `context`; `lines+submatches` includes
 typed byte-offset submatches. `truncatedReason`, `stderr`, and ripgrep `stats`
 are emitted only when present. The obsolete process `signal` field is not part
-of protocol version 12.
+of protocol version 13.
 
 Malformed JSONL, invalid base64, and invalid UTF-8 JSON output are explicit tool
 errors rather than silently skipped data. Match and context rows without a
@@ -217,7 +280,7 @@ numeric `line_number` are omitted from row-level output; a match still counts
 toward the summary and limits, matching ripgrep event semantics.
 
 Per-invocation cancellation is not exposed by the current `AgentTool` runner,
-so protocol version 12 does not invent a cancellation flag or fake cancellation
+so protocol version 13 does not invent a cancellation flag or fake cancellation
 state. Cancellation parity requires a real runner cancellation token and is
 deferred until that API exists.
 
@@ -255,7 +318,7 @@ Chelix then obtains two transport classes from the OCI runtime:
 Candidates are discovered once for each container generation and tried in that
 order. Readiness retries repeat only the authenticated `/v1/health` probes;
 they do not respawn `docker port` or `docker inspect` on every attempt. Chelix
-selects the first endpoint whose health response reports protocol version `12`.
+selects the first endpoint whose health response reports protocol version `13`.
 
 This supports both gateway topologies:
 
