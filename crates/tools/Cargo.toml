@@ -5,13 +5,9 @@ version.workspace = true
 
 [features]
 bundled-skills        = ["chelix-skills/bundled-skills"]
-default               = ["firecrawl", "fs-tools", "metrics", "provider-openai-codex"]
+default               = ["firecrawl", "metrics", "provider-openai-codex"]
 firecrawl             = []
 provider-openai-codex = ["chelix-providers/provider-openai-codex"]
-# Native filesystem tools (Read, Write, Edit, MultiEdit, Glob).
-# See agentics-skills/chelix#657. Default-on; build with
-# --no-default-features to omit them from minimal builds.
-fs-tools = ["dep:globset", "dep:ignore", "dep:pdf-extract"]
 metrics  = ["dep:chelix-metrics"]
 
 [dependencies]
@@ -31,12 +27,8 @@ chelix-providers      = { workspace = true }
 chelix-service-traits = { workspace = true }
 chelix-sessions       = { workspace = true }
 chelix-skills         = { workspace = true }
-flate2                = { workspace = true }
 futures               = { workspace = true }
-globset               = { optional = true, workspace = true }
-ignore                = { optional = true, workspace = true }
 image                 = { workspace = true }
-pdf-extract           = { optional = true, workspace = true }
 regex                 = { workspace = true }
 reqwest               = { workspace = true }
 secrecy               = { workspace = true }
@@ -45,7 +37,6 @@ serde_json            = { workspace = true }
 sha2                  = { workspace = true }
 shell-words           = { workspace = true }
 sqlx                  = { workspace = true }
-tar                   = { workspace = true }
 tempfile              = { workspace = true }
 thiserror             = { workspace = true }
 time                  = { workspace = true }

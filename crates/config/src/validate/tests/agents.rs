@@ -173,7 +173,7 @@ fn preset_tools_preload_is_valid_config_key() {
     let result = validate_toml_str(
         r#"
 [agents.presets.quick.tools]
-preload = ["Read", "ripgrep"]
+preload = ["read_file", "ripgrep"]
 "#,
     );
     assert!(

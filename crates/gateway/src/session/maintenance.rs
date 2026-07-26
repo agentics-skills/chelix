@@ -140,14 +140,6 @@ impl LiveSessionService {
             tracing::warn!(session = %key, error = %e, "session memory export cleanup failed");
         }
 
-        #[cfg(feature = "fs-tools")]
-        if let Some(ref fs_state) = self.fs_state {
-            let mut guard = fs_state
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            guard.remove_session(key);
-        }
-
         self.metadata.remove(key).await;
 
         // Dispatch SessionEnd hook (read-only).

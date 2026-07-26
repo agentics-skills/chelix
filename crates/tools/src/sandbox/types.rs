@@ -12,10 +12,6 @@ pub use chelix_config::schema::{SandboxBackend, SandboxMode};
 use crate::{
     command::{CommandOptions, CommandOutput},
     error::Result,
-    sandbox::file_system::{
-        SandboxListFilesResult, SandboxReadResult, command_list_files, command_read_file,
-        command_write_file,
-    },
 };
 
 pub(crate) fn truncate_output_for_display(output: &mut String, max_output_bytes: usize) {
@@ -360,31 +356,6 @@ pub trait Sandbox: Send + Sync {
         opts: &CommandOptions,
     ) -> Result<CommandOutput>;
 
-    /// Read a file inside the sandbox.
-    async fn read_file(
-        &self,
-        id: &SandboxId,
-        file_path: &str,
-        max_bytes: u64,
-    ) -> Result<SandboxReadResult> {
-        command_read_file(self, id, file_path, max_bytes).await
-    }
-
-    /// Write a file inside the sandbox.
-    async fn write_file(
-        &self,
-        id: &SandboxId,
-        file_path: &str,
-        content: &[u8],
-    ) -> Result<Option<serde_json::Value>> {
-        command_write_file(self, id, file_path, content).await
-    }
-
-    /// List regular files inside the sandbox.
-    async fn list_files(&self, id: &SandboxId, root: &str) -> Result<SandboxListFilesResult> {
-        command_list_files(self, id, root).await
-    }
-
     /// Clean up sandbox resources.
     async fn cleanup(&self, id: &SandboxId) -> Result<()>;
 
@@ -408,62 +379,10 @@ pub trait Sandbox: Send + Sync {
 
     /// The default workspace/home directory inside this backend.
     ///
-    /// Used by workspace sync to determine where to extract files.
-    /// Defaults to `/home/sandbox`. Backends with a different internal
-    /// workspace layout override this.
+    /// Used as the managed tools service working directory. Defaults to
+    /// `/home/sandbox`.
     fn workspace_dir(&self) -> &str {
         SANDBOX_HOME_DIR
-    }
-
-    /// Workspace directory for a specific prepared session.
-    ///
-    /// Most backends use a fixed directory and can rely on the default.
-    /// Backends whose API returns a per-session project directory override
-    /// this so workspace sync uses the same path as command execution.
-    async fn workspace_dir_for(&self, _id: &SandboxId) -> String {
-        self.workspace_dir().to_string()
-    }
-
-    /// Whether this backend manages an isolated filesystem that requires
-    /// workspace sync (copy-in on setup, patch extraction on cleanup).
-    ///
-    /// Defaults to `false`. Local bind-mount backends (Docker, Podman, Apple
-    /// Container) mount the host workspace directly. Backends that maintain a
-    /// separate workspace copy return `true` so the host workspace can be
-    /// synchronized in and out.
-    fn is_isolated(&self) -> bool {
-        false
-    }
-
-    /// Install packages inside the sandbox.
-    ///
-    /// Default implementation uses `apt-get` (Ubuntu/Debian). Backends with
-    /// a different package manager override this method.
-    ///
-    /// Called once per session after `ensure_ready()` for isolated backends
-    /// that don't have packages pre-baked into the image.
-    async fn provision_packages(&self, id: &SandboxId, packages: &[String]) -> Result<()> {
-        if packages.is_empty() {
-            return Ok(());
-        }
-        let pkg_list = packages.join(" ");
-        let cmd = format!(
-            "apt-get update -qq && apt-get install -y -qq --no-install-recommends {pkg_list}"
-        );
-        let opts = CommandOptions {
-            timeout: std::time::Duration::from_secs(600),
-            ..Default::default()
-        };
-        let result = self.run_command(id, &cmd, &opts).await?;
-        if result.exit_code != 0 {
-            tracing::warn!(
-                %id,
-                exit_code = result.exit_code,
-                stderr = result.stderr.trim(),
-                "package provisioning failed (non-fatal)"
-            );
-        }
-        Ok(())
     }
 
     /// Pre-build a container image with packages baked in.

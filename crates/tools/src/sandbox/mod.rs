@@ -7,11 +7,9 @@ pub(crate) mod apple;
 pub(crate) mod containers;
 pub(crate) mod docker;
 pub mod env;
-pub(crate) mod file_system;
 pub(crate) mod paths;
 pub(crate) mod provision;
 pub mod router;
-pub(crate) mod sync;
 pub(crate) mod types;
 
 #[cfg(test)]

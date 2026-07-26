@@ -290,54 +290,6 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         });
     }
 
-    // tools.fs: must_read_before_write requires track_reads
-    if config.tools.fs.must_read_before_write && !config.tools.fs.track_reads {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Error,
-            category: "invalid-value",
-            path: "tools.fs".into(),
-            message: "must_read_before_write=true requires track_reads=true".into(),
-        });
-    }
-
-    // tools.fs.workspace_root must be absolute when set
-    if let Some(ref root) = config.tools.fs.workspace_root
-        && !Path::new(root).is_absolute()
-    {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Error,
-            category: "invalid-value",
-            path: "tools.fs.workspace_root".into(),
-            message: format!("workspace_root must be an absolute path (got '{root}')"),
-        });
-    }
-
-    // tools.fs.allow_paths / deny_paths entries should be absolute
-    for (idx, entry) in config.tools.fs.allow_paths.iter().enumerate() {
-        if !entry.starts_with('/') && !entry.starts_with("**") {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Warning,
-                category: "invalid-value",
-                path: format!("tools.fs.allow_paths[{idx}]"),
-                message: format!(
-                    "allow_paths entries should be absolute path globs starting with '/' (got '{entry}')"
-                ),
-            });
-        }
-    }
-    for (idx, entry) in config.tools.fs.deny_paths.iter().enumerate() {
-        if !entry.starts_with('/') && !entry.starts_with("**") {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Warning,
-                category: "invalid-value",
-                path: format!("tools.fs.deny_paths[{idx}]"),
-                message: format!(
-                    "deny_paths entries should be absolute path globs starting with '/' (got '{entry}')"
-                ),
-            });
-        }
-    }
-
     // server.external_url: must use http:// or https:// scheme.
     if let Some(ref url) = config.server.external_url {
         if !url.starts_with("http://") && !url.starts_with("https://") {

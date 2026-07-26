@@ -450,14 +450,14 @@ mod tests {
             }),
         )
         .unwrap_err();
-        let msg = err.to_llm_error_message("Read");
+        let msg = err.to_llm_error_message("read_file");
         assert_eq!(
             msg,
-            "Tool call rejected before execution by `Read`.\n\
+            "Tool call rejected before execution by `read_file`.\n\
              Field `offset` has wrong type: expected `integer`, got `string`.\n\
              Do not retry with the same arguments. You MUST call \
-             `get_tool {\"name\":\"Read\"}` next to retrieve the exact parameter schema before \
-             retrying `Read`."
+             `get_tool {\"name\":\"read_file\"}` next to retrieve the exact parameter schema before \
+             retrying `read_file`."
         );
         assert!(!msg.contains("private.rs"));
         assert!(!msg.contains("session:secret"));

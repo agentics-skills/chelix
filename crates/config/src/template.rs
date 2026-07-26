@@ -282,7 +282,7 @@ port = {port}                           # Port number (auto-generated for this i
 # [agents.presets.research]
 # identity.name = "Researcher"
 # identity.theme = "thorough, skeptical, and evidence-oriented"
-# tools.preload = ["Read", "Glob", "ripgrep"] # Schemas sent immediately when tools.registry_mode = "lazy"; allow/deny still apply
+# tools.preload = ["read_file", "list_directory", "ripgrep"] # Schemas sent immediately when tools.registry_mode = "lazy"; allow/deny still apply
 # system_prompt_suffix = "..."
 # max_iterations = 16
 # max_tool_result_bytes = 100000   # Per-agent override of tools.max_tool_result_bytes
@@ -382,21 +382,6 @@ port = {port}                           # Port number (auto-generated for this i
 
 # [tools.maps]
 # provider = "google_maps"          # "google_maps" | "apple_maps" | "openstreetmap"
-
-# ── Native filesystem tools (Read/Write/Edit/MultiEdit/Glob) ─────────────────
-# All fields are optional. Defaults are conservative — the fs tools work
-# out of the box with no configuration.
-
-# [tools.fs]
-# workspace_root = "/home/user/projects/my-app"  # Default search root for Glob
-# allow_paths = []                  # Absolute path globs the fs tools are allowed to access
-# deny_paths = []                   # Absolute path globs the fs tools must refuse
-# track_reads = false               # Record per-session Read history
-# must_read_before_write = false    # Refuse Write/Edit targeting unread files (needs track_reads)
-# require_approval = true           # Pause Write/Edit for operator approval
-# max_read_bytes = 10485760         # Max bytes per Read (10 MB)
-# binary_policy = "reject"          # "reject" or "base64"
-# respect_gitignore = true          # Skip .gitignored files in Glob
 
 # ── Command Execution ─────────────────────────────────────────────────────────
 

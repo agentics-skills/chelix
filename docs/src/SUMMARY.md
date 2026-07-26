@@ -48,7 +48,6 @@
 - [Modes](modes.md)
 - [Session Branching](session-branching.md)
 - [Compaction](compaction.md)
-- [Filesystem Tools](tools-fs.md)
 - [Scheduling (Cron Jobs)](scheduling.md)
 - [Webhooks](webhooks.md)
 - [Skill Self-Extension](skill-tools.md)

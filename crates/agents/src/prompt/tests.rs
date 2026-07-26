@@ -1341,28 +1341,28 @@ fn test_skill_self_improvement_omitted_when_disabled() {
 
 #[test]
 fn test_native_available_tools_uses_json_name_labels() {
-    let tools = registry_with_tools(&["Edit", "Glob"]);
+    let tools = registry_with_tools(&["edit_file", "ripgrep"]);
     let prompt = build_system_prompt(&tools, true, None);
     assert!(prompt.contains("## Available Tools"));
-    assert!(prompt.contains("- `{\"name\":\"Edit\"}`: stub"));
-    assert!(prompt.contains("- `{\"name\":\"Glob\"}`: stub"));
+    assert!(prompt.contains("- `{\"name\":\"edit_file\"}`: stub"));
+    assert!(prompt.contains("- `{\"name\":\"ripgrep\"}`: stub"));
     // Native mode sends schemas via API — no embedded Tool Schemas block.
     assert!(!prompt.contains("## Tool Schemas"));
 }
 
 #[test]
 fn test_text_available_tools_and_schemas_use_json_name_labels() {
-    let tools = registry_with_tools(&["Edit"]);
+    let tools = registry_with_tools(&["edit_file"]);
     let prompt = build_system_prompt(&tools, false, None);
     assert!(prompt.contains("## Available Tools"));
-    assert!(prompt.contains("- `{\"name\":\"Edit\"}`: stub"));
+    assert!(prompt.contains("- `{\"name\":\"edit_file\"}`: stub"));
     assert!(prompt.contains("## Tool Schemas"));
-    assert!(prompt.contains("### {\"name\":\"Edit\"}"));
+    assert!(prompt.contains("### {\"name\":\"edit_file\"}"));
 }
 
 #[test]
 fn test_full_mode_catalog_and_schemas_share_public_tool_set() {
-    let tools = registry_with_tools(&["Read", "Glob", "memory_search"]);
+    let tools = registry_with_tools(&["read_file", "ripgrep", "memory_search"]);
     let catalog: Vec<String> = tools.list_catalog().into_iter().map(|e| e.name).collect();
     let schema_names: Vec<String> = tools
         .list_schemas()
@@ -1374,11 +1374,11 @@ fn test_full_mode_catalog_and_schemas_share_public_tool_set() {
 
 #[test]
 fn test_lazy_native_catalog_lists_all_tools_plus_get_tool() {
-    let tools = registry_with_tools(&["Read", "memory_search"]);
+    let tools = registry_with_tools(&["read_file", "memory_search"]);
     let lazy = crate::lazy_tools::wrap_registry_lazy(tools).unwrap();
     let prompt = build_system_prompt(&lazy, true, None);
     // The full catalog is advertised even though schemas are lazy-hidden.
-    assert!(prompt.contains("- `{\"name\":\"Read\"}`"));
+    assert!(prompt.contains("- `{\"name\":\"read_file\"}`"));
     assert!(prompt.contains("- `{\"name\":\"memory_search\"}`"));
     assert!(prompt.contains("- `{\"name\":\"get_tool\"}`"));
     // Only get_tool's schema is visible through the API surface.
@@ -1391,17 +1391,17 @@ fn test_lazy_native_catalog_lists_all_tools_plus_get_tool() {
 
 #[test]
 fn test_lazy_text_mode_tool_schemas_only_carry_visible() {
-    let tools = registry_with_tools(&["Read", "memory_search"]);
+    let tools = registry_with_tools(&["read_file", "memory_search"]);
     let lazy = crate::lazy_tools::wrap_registry_lazy(tools).unwrap();
     let prompt = build_system_prompt(&lazy, false, None);
     // Catalog lists everything…
-    assert!(prompt.contains("- `{\"name\":\"Read\"}`"));
+    assert!(prompt.contains("- `{\"name\":\"read_file\"}`"));
     assert!(prompt.contains("- `{\"name\":\"memory_search\"}`"));
     assert!(prompt.contains("- `{\"name\":\"get_tool\"}`"));
     // …but the embedded schemas only carry get_tool until others are revealed.
     assert!(prompt.contains("## Tool Schemas"));
     assert!(prompt.contains("### {\"name\":\"get_tool\"}"));
-    assert!(!prompt.contains("### {\"name\":\"Read\"}"));
+    assert!(!prompt.contains("### {\"name\":\"read_file\"}"));
     assert!(!prompt.contains("### {\"name\":\"memory_search\"}"));
 }
 

@@ -16,11 +16,8 @@ pub mod contract;
 pub mod cron_tool;
 pub mod edit_file;
 pub mod error;
-pub mod file_io;
 #[cfg(feature = "firecrawl")]
 pub mod firecrawl;
-#[cfg(feature = "fs-tools")]
-pub mod fs;
 pub mod image_cache;
 #[cfg(feature = "provider-openai-codex")]
 pub mod image_generation;
@@ -37,8 +34,6 @@ pub mod read_media;
 pub mod ripgrep;
 pub mod sandbox;
 pub mod sandbox_packages;
-pub mod send_document;
-pub mod send_image;
 pub mod session_model_override;
 pub mod session_state;
 pub mod sessions_communicate;

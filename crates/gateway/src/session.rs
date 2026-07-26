@@ -26,10 +26,6 @@ use {
 };
 
 #[allow(unused_imports)]
-#[cfg(feature = "fs-tools")]
-use chelix_tools::fs::FsState;
-
-#[allow(unused_imports)]
 use crate::{
     agent_persona::AgentPersonaStore,
     services::{ServiceError, ServiceResult, SessionService, TtsService},

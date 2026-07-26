@@ -478,9 +478,9 @@ Body.
 
     #[test]
     fn test_allowed_tools_hyphenated() {
-        let content = "---\nname: git-skill\ndescription: Git helper\nallowed-tools:\n  - Bash(git:*)\n  - Read\n---\nBody.\n";
+        let content = "---\nname: git-skill\ndescription: Git helper\nallowed-tools:\n  - Bash(git:*)\n  - read_file\n---\nBody.\n";
         let meta = parse_metadata(content, Path::new("/tmp/git-skill")).unwrap();
-        assert_eq!(meta.allowed_tools, vec!["Bash(git:*)", "Read"]);
+        assert_eq!(meta.allowed_tools, vec!["Bash(git:*)", "read_file"]);
     }
 
     #[test]

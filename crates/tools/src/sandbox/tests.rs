@@ -10,152 +10,13 @@ use std::{
 
 #[cfg(target_os = "macos")]
 use super::apple::*;
-#[cfg(target_os = "macos")]
-use crate::sandbox::file_system::{
-    oci_container_list_files, oci_container_read_file, oci_container_write_file,
-};
-#[cfg(target_os = "macos")]
-use std::env;
 use {
     super::{containers::*, docker::*, router::*, types::*},
     crate::{
         command::{CommandOptions, CommandOutput},
         error::{Error, Result},
-        sandbox::file_system::SandboxReadResult,
     },
 };
-
-#[cfg(target_os = "macos")]
-const OCI_RUNTIME_E2E_ENV: &str = "CHELIX_SANDBOX_RUNTIME_E2E";
-#[cfg(target_os = "macos")]
-const OCI_RUNTIME_E2E_IMAGE: &str = "alpine:3.21";
-
-#[cfg(target_os = "macos")]
-fn runtime_container_e2e_enabled(cli: &str) -> bool {
-    let requested = env::var(OCI_RUNTIME_E2E_ENV)
-        .map(|value| {
-            let normalized = value.trim().to_ascii_lowercase();
-            matches!(normalized.as_str(), "1" | "true" | "yes")
-        })
-        .unwrap_or(false);
-    if !requested || !is_cli_available(cli) {
-        return false;
-    }
-    std::process::Command::new(cli)
-        .arg("info")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
-}
-
-#[cfg(target_os = "macos")]
-struct RuntimeContainerGuard {
-    cli: String,
-    name: String,
-}
-
-#[cfg(target_os = "macos")]
-impl RuntimeContainerGuard {
-    async fn start(cli: &str) -> Result<Self> {
-        let name = format!("chelix-runtime-e2e-{}", uuid::Uuid::new_v4().simple());
-        let output = tokio::process::Command::new(cli)
-            .args([
-                "run",
-                "-d",
-                "--rm",
-                "--name",
-                &name,
-                OCI_RUNTIME_E2E_IMAGE,
-                "sleep",
-                "600",
-            ])
-            .output()
-            .await?;
-        if !output.status.success() {
-            return Err(Error::message(format!(
-                "{cli} run failed for runtime e2e container '{name}': {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            )));
-        }
-        Ok(Self {
-            cli: cli.to_string(),
-            name,
-        })
-    }
-
-    async fn run_command(&self, command: &str) -> Result<String> {
-        let output = tokio::process::Command::new(&self.cli)
-            .args(["exec", &self.name, "bash", "-c", command])
-            .output()
-            .await?;
-        if !output.status.success() {
-            return Err(Error::message(format!(
-                "{} command failed in runtime e2e container '{}': {}",
-                self.cli,
-                self.name,
-                String::from_utf8_lossy(&output.stderr).trim()
-            )));
-        }
-        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-    }
-}
-
-#[cfg(target_os = "macos")]
-impl Drop for RuntimeContainerGuard {
-    fn drop(&mut self) {
-        let _ = std::process::Command::new(&self.cli)
-            .args(["rm", "-f", &self.name])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-    }
-}
-
-#[cfg(target_os = "macos")]
-async fn assert_runtime_oci_file_transfers(cli: &str) -> Result<()> {
-    let container = RuntimeContainerGuard::start(cli).await?;
-    container
-        .run_command(
-            "mkdir -p /tmp/chelix-e2e/list && \
-             printf 'hello runtime\\n' > /tmp/chelix-e2e/read.txt && \
-             printf 'alpha\\n' > /tmp/chelix-e2e/list/a.txt && \
-             printf 'beta\\n' > /tmp/chelix-e2e/list/b.txt",
-        )
-        .await?;
-
-    let read_result =
-        oci_container_read_file(cli, &container.name, "/tmp/chelix-e2e/read.txt", 1024).await?;
-    match read_result {
-        SandboxReadResult::Ok(bytes) => assert_eq!(bytes, b"hello runtime\n"),
-        other => panic!("expected Ok from runtime OCI read, got {other:?}"),
-    }
-
-    assert!(
-        oci_container_write_file(
-            cli,
-            &container.name,
-            "/tmp/chelix-e2e/write.txt",
-            b"written from host"
-        )
-        .await?
-        .is_none()
-    );
-    let written = container
-        .run_command("cat /tmp/chelix-e2e/write.txt")
-        .await?;
-    assert_eq!(written, "written from host");
-
-    let files = oci_container_list_files(cli, &container.name, "/tmp/chelix-e2e/list").await?;
-    assert_eq!(files.files, vec![
-        "/tmp/chelix-e2e/list/a.txt".to_string(),
-        "/tmp/chelix-e2e/list/b.txt".to_string(),
-    ]);
-    assert!(!files.truncated);
-
-    Ok(())
-}
 
 struct TestSandbox {
     backend: SandboxBackendId,
@@ -249,4 +110,3 @@ mod docker_router;
 mod network;
 mod resolve_env;
 mod selection;
-mod skills;

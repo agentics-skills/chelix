@@ -130,18 +130,6 @@ pub fn shared_home_dir_path(config: &SandboxConfig) -> PathBuf {
         .unwrap_or_else(|| host_visible_data_dir(config, cli))
 }
 
-pub(crate) fn sandbox_home_persistence_host_dir(
-    config: &SandboxConfig,
-    cli: Option<&str>,
-    id: &SandboxId,
-) -> Option<PathBuf> {
-    resolved_sandbox_mount_plan(config, cli, id)
-        .ok()?
-        .into_iter()
-        .find(|mount| mount.guest == FsPath::new(SANDBOX_HOME_DIR))
-        .map(|mount| mount.host)
-}
-
 fn mount_plan_config(
     config: &SandboxConfig,
     include_host_data_dir: bool,

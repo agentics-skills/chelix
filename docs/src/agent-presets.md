@@ -34,9 +34,9 @@ identity.name = "scout"
 identity.emoji = "🔍"
 identity.theme = "thorough and methodical"
 model = "anthropic/claude-haiku-3-5-20241022"
-tools.allow = ["Read", "Glob", "ripgrep"]
-tools.deny = ["execute_command", "Write"]
-tools.preload = ["Read", "Glob", "ripgrep"]
+tools.allow = ["read_file", "list_directory", "ripgrep"]
+tools.deny = ["execute_command", "overwrite_file"]
+tools.preload = ["read_file", "list_directory", "ripgrep"]
 system_prompt_suffix = "Gather facts and report clearly."
 
 [agents.presets.coordinator]

@@ -25,7 +25,7 @@ fn parse_tool_calls_preserve_issue_693_examples() {
             {
                 "id": "call_edit",
                 "function": {
-                    "name": "Edit",
+                    "name": "sample_tool",
                     "arguments": {
                         "replace_all": false
                     }

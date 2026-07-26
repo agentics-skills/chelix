@@ -1,8 +1,8 @@
 //! `generate_image` tool backed by OpenAI Codex OAuth image generation.
 //!
 //! The chat runner treats a `screenshot` data URI in a tool result as native
-//! image media for channel delivery, so this returns generated images using the
-//! same contract as `send_image` and browser/map screenshots.
+//! image media for channel delivery, so generated images use the same delivery
+//! path as browser and map screenshots.
 
 use {
     async_trait::async_trait,

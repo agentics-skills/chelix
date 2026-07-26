@@ -1,10 +1,6 @@
 //! Sandbox orchestration: backend selection, failover, routing.
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashSet, sync::Arc};
 
 use {
     tokio::sync::RwLock,
@@ -22,8 +18,8 @@ use {
         docker::{DockerSandbox, NoSandbox},
         env::ExecEnv,
         types::{
-            DEFAULT_SANDBOX_IMAGE, Sandbox, SandboxBackend, SandboxBackendId, SandboxConfig,
-            SandboxId, SandboxMode, SharedSandboxImage, ToolsServiceInstance, shared_sandbox_image,
+            Sandbox, SandboxBackend, SandboxBackendId, SandboxConfig, SandboxId, SandboxMode,
+            SharedSandboxImage, ToolsServiceInstance, shared_sandbox_image,
         },
     },
     crate::error::{Error, Result},
@@ -33,7 +29,6 @@ use {
 use {
     super::{
         containers::is_apple_container_corruption_error,
-        file_system::{SandboxListFilesResult, SandboxReadResult},
         types::{BuildImageResult, ToolsServiceEndpoint},
     },
     crate::command::{CommandOptions, CommandOutput},
@@ -147,27 +142,6 @@ impl Sandbox for FailoverSandbox {
         }
     }
 
-    async fn workspace_dir_for(&self, id: &SandboxId) -> String {
-        if self.fallback_enabled().await {
-            self.fallback.workspace_dir_for(id).await
-        } else {
-            self.primary.workspace_dir_for(id).await
-        }
-    }
-
-    fn is_isolated(&self) -> bool {
-        if self
-            .use_fallback
-            .try_read()
-            .map(|guard| *guard)
-            .unwrap_or(true)
-        {
-            self.fallback.is_isolated()
-        } else {
-            self.primary.is_isolated()
-        }
-    }
-
     async fn ensure_ready(&self, id: &SandboxId) -> Result<()> {
         if self.fallback_enabled().await {
             return self.fallback.ensure_ready(id).await;
@@ -264,39 +238,6 @@ impl Sandbox for FailoverSandbox {
         }
 
         self.primary.cleanup(id).await
-    }
-
-    // Delegate file operations to the active backend's own implementations.
-
-    async fn read_file(
-        &self,
-        id: &SandboxId,
-        file_path: &str,
-        max_bytes: u64,
-    ) -> Result<SandboxReadResult> {
-        if self.fallback_enabled().await {
-            return self.fallback.read_file(id, file_path, max_bytes).await;
-        }
-        self.primary.read_file(id, file_path, max_bytes).await
-    }
-
-    async fn write_file(
-        &self,
-        id: &SandboxId,
-        file_path: &str,
-        content: &[u8],
-    ) -> Result<Option<serde_json::Value>> {
-        if self.fallback_enabled().await {
-            return self.fallback.write_file(id, file_path, content).await;
-        }
-        self.primary.write_file(id, file_path, content).await
-    }
-
-    async fn list_files(&self, id: &SandboxId, root: &str) -> Result<SandboxListFilesResult> {
-        if self.fallback_enabled().await {
-            return self.fallback.list_files(id, root).await;
-        }
-        self.primary.list_files(id, root).await
     }
 
     async fn build_image(
@@ -597,12 +538,6 @@ pub struct SandboxRouter {
     /// Session keys that have already completed sandbox initialization.
     /// Used to avoid repeating first-run preparation banners on every command.
     prepared_sessions: RwLock<HashSet<String>>,
-    /// Session keys where workspace sync-in has completed.
-    /// Subsequent command calls wait until sync_in finishes before proceeding.
-    synced_sessions: RwLock<HashSet<String>>,
-    /// Per-session first-run failures that should unblock waiters without
-    /// allowing them to run against an incomplete sandbox workspace.
-    sync_failures: RwLock<HashMap<String, String>>,
 }
 
 impl SandboxRouter {
@@ -617,8 +552,6 @@ impl SandboxRouter {
             effective_image,
             event_tx,
             prepared_sessions: RwLock::new(HashSet::new()),
-            synced_sessions: RwLock::new(HashSet::new()),
-            sync_failures: RwLock::new(HashMap::new()),
         })
     }
 
@@ -644,8 +577,6 @@ impl SandboxRouter {
             effective_image,
             event_tx,
             prepared_sessions: RwLock::new(HashSet::new()),
-            synced_sessions: RwLock::new(HashSet::new()),
-            sync_failures: RwLock::new(HashMap::new()),
         }
     }
 
@@ -662,15 +593,10 @@ impl SandboxRouter {
     /// Mark a session as preparing for sandbox first-run work.
     /// Returns `true` only the first time for a session key.
     pub async fn mark_preparing_once(&self, session_key: &str) -> bool {
-        let inserted = self
-            .prepared_sessions
+        self.prepared_sessions
             .write()
             .await
-            .insert(session_key.to_string());
-        if inserted {
-            self.clear_synced_session(session_key).await;
-        }
-        inserted
+            .insert(session_key.to_string())
     }
 
     /// Clear preparation marker for a session (used on cleanup or prepare failure).
@@ -678,47 +604,9 @@ impl SandboxRouter {
         self.prepared_sessions.write().await.remove(session_key);
     }
 
-    /// Mark a session as having completed workspace sync-in.
-    pub async fn mark_synced(&self, session_key: &str) {
-        self.sync_failures.write().await.remove(session_key);
-        self.synced_sessions
-            .write()
-            .await
-            .insert(session_key.to_string());
-    }
-
-    /// Mark a session as unblocked after first-run preparation failed.
-    pub async fn mark_sync_failed(&self, session_key: &str, error: String) {
-        self.sync_failures
-            .write()
-            .await
-            .insert(session_key.to_string(), error);
-        self.synced_sessions
-            .write()
-            .await
-            .insert(session_key.to_string());
-    }
-
-    /// Check whether workspace sync has completed for a session.
-    pub async fn is_synced(&self, session_key: &str) -> bool {
-        self.synced_sessions.read().await.contains(session_key)
-    }
-
-    /// Return the first-run preparation failure for a session, if any.
-    pub async fn sync_failure(&self, session_key: &str) -> Option<String> {
-        self.sync_failures.read().await.get(session_key).cloned()
-    }
-
-    /// Clear sync marker for a session (used on cleanup).
-    pub async fn clear_synced_session(&self, session_key: &str) {
-        self.synced_sessions.write().await.remove(session_key);
-        self.sync_failures.write().await.remove(session_key);
-    }
-
     /// Clear per-session lifecycle markers after its global-backend runtime is removed.
     pub async fn clear_runtime_state(&self, session_key: &str) {
         self.clear_prepared_session(session_key).await;
-        self.clear_synced_session(session_key).await;
     }
 
     /// Return whether the global sandbox policy is enabled.
@@ -777,37 +665,16 @@ impl SandboxRouter {
     }
 
     /// Clean up sandbox resources for a session.
-    ///
-    /// For isolated backends, syncs workspace changes back to the host
-    /// before destroying the sandbox.
     pub async fn cleanup_session(&self, session_key: &str) -> Result<()> {
         let id = self.sandbox_id_for(session_key);
         let backend = Arc::clone(&self.backend);
 
-        // Sync workspace changes back to host for isolated backends.
-        if backend.is_isolated()
-            && let Some(host_workspace) = super::sync::resolve_sync_workspace(&self.config, &id)
-        {
-            let sandbox_workspace = backend.workspace_dir_for(&id).await;
-            if let Err(e) =
-                super::sync::sync_out(&*backend, &id, &host_workspace, &sandbox_workspace).await
-            {
-                warn!(
-                    session = session_key,
-                    %id,
-                    error = %e,
-                    "workspace sync-out failed, changes in sandbox may be lost"
-                );
-            }
-        }
-
         backend.cleanup(&id).await?;
         self.clear_prepared_session(session_key).await;
-        self.clear_synced_session(session_key).await;
         Ok(())
     }
 
-    /// Prepare the sandbox for command execution, including first-run workspace sync.
+    /// Prepare the sandbox for command execution.
     pub async fn prepare_command_session(
         &self,
         session_key: &str,
@@ -835,9 +702,6 @@ impl SandboxRouter {
         if let Err(error) = backend.ensure_ready(&id).await {
             if announce_prepare {
                 self.clear_prepared_session(session_key).await;
-                if backend.is_isolated() {
-                    self.mark_sync_failed(session_key, error.to_string()).await;
-                }
                 self.emit_event(SandboxEvent::PrepareFailed {
                     session_key: session_key.to_string(),
                     backend: backend.backend_id(),
@@ -854,71 +718,6 @@ impl SandboxRouter {
                 backend: backend.backend_id(),
                 image: image.clone(),
             });
-
-            if backend.is_isolated() {
-                let sync_ok = if let Some(host_workspace) =
-                    super::sync::resolve_sync_workspace(&self.config, &id)
-                {
-                    let sandbox_workspace = backend.workspace_dir_for(&id).await;
-                    match super::sync::sync_in(&*backend, &id, &host_workspace, &sandbox_workspace)
-                        .await
-                    {
-                        Ok(()) => true,
-                        Err(error) => {
-                            let message = error.to_string();
-                            warn!(
-                                session = session_key,
-                                sandbox_id = %id,
-                                error = %message,
-                                "workspace sync-in failed"
-                            );
-                            self.clear_prepared_session(session_key).await;
-                            self.mark_sync_failed(session_key, message.clone()).await;
-                            return Err(Error::message(format!(
-                                "workspace sync-in failed: {message}"
-                            )));
-                        },
-                    }
-                } else {
-                    true
-                };
-
-                if sync_ok {
-                    let has_prebuilt = image != DEFAULT_SANDBOX_IMAGE && !image.is_empty();
-                    let packages = &self.config.packages;
-                    if !has_prebuilt
-                        && !packages.is_empty()
-                        && let Err(error) = backend.provision_packages(&id, packages).await
-                    {
-                        warn!(
-                            session = session_key,
-                            sandbox_id = %id,
-                            error = %error,
-                            "package provisioning failed (non-fatal)"
-                        );
-                    }
-                }
-
-                self.mark_synced(session_key).await;
-            }
-        } else if backend.is_isolated() && !self.is_synced(session_key).await {
-            let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
-            while !self.is_synced(session_key).await {
-                if tokio::time::Instant::now() >= deadline {
-                    warn!(
-                        session = session_key,
-                        "timed out waiting for workspace sync-in"
-                    );
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(200)).await;
-            }
-        }
-
-        if let Some(error) = self.sync_failure(session_key).await {
-            return Err(Error::message(format!(
-                "sandbox preparation failed: {error}"
-            )));
         }
 
         Ok((backend, id))

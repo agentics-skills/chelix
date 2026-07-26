@@ -34,11 +34,6 @@ use super::types::{
 use crate::command::{CommandOptions, CommandOutput};
 #[cfg(target_os = "macos")]
 use crate::error::{Error, Result};
-#[cfg(target_os = "macos")]
-use crate::sandbox::file_system::{
-    SandboxListFilesResult, SandboxReadResult, command_list_files, command_read_file,
-    command_write_file,
-};
 
 /// Apple Container sandbox using the `container` CLI (macOS 26+, Apple Silicon).
 #[cfg(target_os = "macos")]
@@ -863,28 +858,6 @@ impl Sandbox for AppleContainerSandbox {
                 )));
             },
         }
-    }
-
-    async fn read_file(
-        &self,
-        id: &SandboxId,
-        file_path: &str,
-        max_bytes: u64,
-    ) -> Result<SandboxReadResult> {
-        command_read_file(self, id, file_path, max_bytes).await
-    }
-
-    async fn write_file(
-        &self,
-        id: &SandboxId,
-        file_path: &str,
-        content: &[u8],
-    ) -> Result<Option<serde_json::Value>> {
-        command_write_file(self, id, file_path, content).await
-    }
-
-    async fn list_files(&self, id: &SandboxId, root: &str) -> Result<SandboxListFilesResult> {
-        command_list_files(self, id, root).await
     }
 
     async fn build_image(

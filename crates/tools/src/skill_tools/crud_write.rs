@@ -32,7 +32,7 @@ async fn test_create_with_allowed_tools() {
         "name": "git-skill",
         "description": "Git helper",
         "body": "Help with git.",
-        "allowed_tools": ["Bash(git:*)", "Read"]
+        "allowed_tools": ["Bash(git:*)", "read_file"]
     }))
     .await
     .unwrap();

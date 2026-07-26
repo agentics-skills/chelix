@@ -33,11 +33,6 @@ use {
     crate::{
         command::{CommandOptions, CommandOutput, run_shell_command},
         error::{Error, Result},
-        sandbox::file_system::{
-            SandboxListFilesResult, SandboxReadResult, native_host_list_files,
-            native_host_read_file, native_host_write_file, oci_container_list_files,
-            oci_container_read_file, oci_container_write_file,
-        },
     },
 };
 
@@ -939,31 +934,6 @@ impl Sandbox for DockerSandbox {
         }
     }
 
-    async fn read_file(
-        &self,
-        id: &SandboxId,
-        file_path: &str,
-        max_bytes: u64,
-    ) -> Result<SandboxReadResult> {
-        let container_name = self.container_name(id);
-        oci_container_read_file(self.cli, &container_name, file_path, max_bytes).await
-    }
-
-    async fn write_file(
-        &self,
-        id: &SandboxId,
-        file_path: &str,
-        content: &[u8],
-    ) -> Result<Option<serde_json::Value>> {
-        let container_name = self.container_name(id);
-        oci_container_write_file(self.cli, &container_name, file_path, content).await
-    }
-
-    async fn list_files(&self, id: &SandboxId, root: &str) -> Result<SandboxListFilesResult> {
-        let container_name = self.container_name(id);
-        oci_container_list_files(self.cli, &container_name, root).await
-    }
-
     async fn cleanup(&self, id: &SandboxId) -> Result<()> {
         let name = self.container_name(id);
         self.provisioned.lock().await.remove(&name);
@@ -1013,28 +983,6 @@ impl Sandbox for NoSandbox {
         opts: &CommandOptions,
     ) -> Result<CommandOutput> {
         run_shell_command(command, opts).await
-    }
-
-    async fn read_file(
-        &self,
-        _id: &SandboxId,
-        file_path: &str,
-        max_bytes: u64,
-    ) -> Result<SandboxReadResult> {
-        native_host_read_file(file_path, max_bytes).await
-    }
-
-    async fn write_file(
-        &self,
-        _id: &SandboxId,
-        file_path: &str,
-        content: &[u8],
-    ) -> Result<Option<serde_json::Value>> {
-        native_host_write_file(file_path, content).await
-    }
-
-    async fn list_files(&self, _id: &SandboxId, root: &str) -> Result<SandboxListFilesResult> {
-        native_host_list_files(root).await
     }
 
     async fn cleanup(&self, _id: &SandboxId) -> Result<()> {

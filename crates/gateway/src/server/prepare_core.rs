@@ -1084,15 +1084,6 @@ pub async fn prepare_gateway_core(
     let (hook_registry, discovered_hooks_info) =
         crate::server::discover_and_build_hooks(&persisted_disabled, Some(&session_store)).await?;
 
-    #[cfg(feature = "fs-tools")]
-    let shared_fs_state = if config.tools.fs.track_reads {
-        Some(chelix_tools::fs::new_fs_state(
-            config.tools.fs.must_read_before_write,
-        ))
-    } else {
-        None
-    };
-
     // ── Memory system initialization ─────────────────────────────────────
     let memory_manager = init_memory::init_memory_system(
         &config,
@@ -1120,10 +1111,6 @@ pub async fn prepare_gateway_core(
         .with_browser_service(Arc::clone(&services.browser));
         if let Some(ref manager) = memory_manager {
             session_svc = session_svc.with_memory_manager(Arc::clone(manager));
-        }
-        #[cfg(feature = "fs-tools")]
-        if let Some(ref fs_state) = shared_fs_state {
-            session_svc = session_svc.with_fs_state(Arc::clone(fs_state));
         }
         if let Some(ref hooks) = hook_registry {
             session_svc = session_svc.with_hooks(Arc::clone(hooks));

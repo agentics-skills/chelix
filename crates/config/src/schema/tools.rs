@@ -15,10 +15,6 @@ pub struct ToolsConfig {
     pub web: WebConfig,
     pub maps: MapsConfig,
     pub browser: BrowserConfig,
-    /// Native filesystem tools (Read/Write/Edit/MultiEdit/Glob).
-    /// See agentics-skills/chelix#657.
-    #[serde(default)]
-    pub fs: FsToolsConfig,
     /// Maximum wall-clock seconds for an agent run (0 = no timeout). Default 600.
     #[serde(default = "default_agent_timeout_secs")]
     pub agent_timeout_secs: u64,
@@ -64,7 +60,6 @@ impl Default for ToolsConfig {
             web: WebConfig::default(),
             maps: MapsConfig::default(),
             browser: BrowserConfig::default(),
-            fs: FsToolsConfig::default(),
             agent_timeout_secs: default_agent_timeout_secs(),
             agent_max_iterations: default_agent_max_iterations(),
             agent_max_auto_continues: default_agent_max_auto_continues(),
@@ -76,111 +71,6 @@ impl Default for ToolsConfig {
             ),
         }
     }
-}
-
-/// Configuration for the native filesystem tools
-/// (Read / Write / Edit / MultiEdit / Glob).
-///
-/// Tracks GH agentics-skills/chelix#657. Every field is optional and conservative
-/// by default — fs tools work out of the box with no configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct FsToolsConfig {
-    /// Default search root used by `Glob` when the LLM call omits the
-    /// `path` argument. Must be an absolute path. When unset, calls without
-    /// an explicit `path` are rejected.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workspace_root: Option<String>,
-
-    /// Absolute path globs the tools are allowed to access. Empty list
-    /// means "all paths allowed". Evaluated after canonicalization, so
-    /// symlinks can't be used to escape the allowlist.
-    #[serde(default)]
-    pub allow_paths: Vec<String>,
-
-    /// Absolute path globs the tools must refuse. Deny wins over allow.
-    /// Evaluated after canonicalization.
-    #[serde(default)]
-    pub deny_paths: Vec<String>,
-
-    /// Whether to track per-session read history (files read, re-read
-    /// loop detection). Required for `must_read_before_write`. Default `false`.
-    #[serde(default)]
-    pub track_reads: bool,
-
-    /// Reject Write/Edit/MultiEdit calls targeting files the session has
-    /// not previously Read. Requires `track_reads = true`. Default `false`.
-    #[serde(default)]
-    pub must_read_before_write: bool,
-
-    /// Whether Write/Edit/MultiEdit must pause for explicit operator
-    /// approval before mutating a file. Default `false` for backward
-    /// compatibility with existing installs; the generated config
-    /// template enables it for new installs.
-    #[serde(default)]
-    pub require_approval: bool,
-
-    /// Maximum bytes a single `Read` call can return before the file is
-    /// rejected with a typed `too_large` payload. Default 10 MB.
-    #[serde(default = "default_fs_max_read_bytes")]
-    pub max_read_bytes: u64,
-
-    /// What to do with binary files encountered by `Read`.
-    #[serde(default)]
-    pub binary_policy: FsBinaryPolicy,
-
-    /// Whether `Glob` respects `.gitignore` / `.ignore` files and
-    /// `.git/info/exclude` while walking. Default `true`.
-    #[serde(default = "default_fs_respect_gitignore")]
-    pub respect_gitignore: bool,
-
-    /// Model context window in tokens. When set, `Read`'s per-call
-    /// byte cap scales adaptively so a single Read call can't consume
-    /// more than ~20% of the model's working set. Clamped to
-    /// `[50 KB, 512 KB]`. When unset, Read uses a fixed 256 KB cap.
-    ///
-    /// Typical values: 200000 for Claude 3.5/4 Sonnet, 1000000 for
-    /// Claude Opus 4.6 1M context, 128000 for GPT-4 Turbo.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub context_window_tokens: Option<u64>,
-}
-
-impl Default for FsToolsConfig {
-    fn default() -> Self {
-        Self {
-            workspace_root: None,
-            allow_paths: Vec::new(),
-            deny_paths: Vec::new(),
-            track_reads: false,
-            must_read_before_write: false,
-            require_approval: false,
-            max_read_bytes: default_fs_max_read_bytes(),
-            binary_policy: FsBinaryPolicy::default(),
-            respect_gitignore: default_fs_respect_gitignore(),
-            context_window_tokens: None,
-        }
-    }
-}
-
-fn default_fs_max_read_bytes() -> u64 {
-    10 * 1024 * 1024
-}
-
-const fn default_fs_respect_gitignore() -> bool {
-    true
-}
-
-/// Strategy for handling binary files when encountered by `Read`.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum FsBinaryPolicy {
-    /// Return a typed `{kind: "binary", bytes: N}` marker without content.
-    #[default]
-    Reject,
-    /// Return `{kind: "binary", bytes: N, base64: "..."}` so the LLM can
-    /// access the raw bytes (useful for small images, hashes, etc.).
-    /// Still capped by `max_read_bytes`.
-    Base64,
 }
 
 pub const DEFAULT_AGENT_TIMEOUT_SECS: u64 = 600;

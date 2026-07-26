@@ -426,7 +426,7 @@ async fn test_read_skill_surfaces_frontmatter_metadata_fields() {
     seed_personal_skill_full(
         tmp.path(),
         "metadata-demo",
-        "license: MIT\nhomepage: https://example.com/demo\ncompatibility: requires claude-sonnet\nallowed_tools:\n  - Read\n  - Bash(git:*)\n",
+        "license: MIT\nhomepage: https://example.com/demo\ncompatibility: requires claude-sonnet\nallowed_tools:\n  - read_file\n  - Bash(git:*)\n",
         "# Full-metadata demo\n",
     );
     let tool = read_tool_for(tmp.path());
@@ -443,7 +443,7 @@ async fn test_read_skill_surfaces_frontmatter_metadata_fields() {
         .iter()
         .map(|v| v.as_str().unwrap())
         .collect();
-    assert!(tools.contains(&"Read"));
+    assert!(tools.contains(&"read_file"));
     assert!(tools.contains(&"Bash(git:*)"));
 }
 

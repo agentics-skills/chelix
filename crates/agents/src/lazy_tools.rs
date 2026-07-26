@@ -696,12 +696,12 @@ mod tests {
             "success": true,
             "result": {
                 "schema_visible": true,
-                "name": "Glob"
+                "name": "ripgrep"
             }
         })];
 
         let visible = visible_tool_names_from_history(&history);
-        assert!(visible.contains("Glob"));
+        assert!(visible.contains("ripgrep"));
         assert!(!visible.contains(GET_TOOL_NAME));
     }
 
@@ -713,11 +713,11 @@ mod tests {
             "success": false,
             "result": {
                 "schema_visible": true,
-                "name": "Glob"
+                "name": "ripgrep"
             }
         })];
 
-        assert!(!visible_tool_names_from_history(&history).contains("Glob"));
+        assert!(!visible_tool_names_from_history(&history).contains("ripgrep"));
     }
 
     #[test]
@@ -728,11 +728,11 @@ mod tests {
             "success": true,
             "result": {
                 "schema_visible": false,
-                "name": "Glob"
+                "name": "ripgrep"
             }
         })];
 
-        assert!(!visible_tool_names_from_history(&history).contains("Glob"));
+        assert!(!visible_tool_names_from_history(&history).contains("ripgrep"));
     }
 
     #[test]
@@ -743,13 +743,13 @@ mod tests {
                 "id": "call_1",
                 "type": "function",
                 "function": {
-                    "name": "Glob",
+                    "name": "ripgrep",
                     "arguments": "{\"pattern\":\"**/*.rs\"}"
                 }
             }]
         })];
 
-        assert!(visible_tool_names_from_history(&history).contains("Glob"));
+        assert!(visible_tool_names_from_history(&history).contains("ripgrep"));
     }
 
     #[test]
@@ -760,16 +760,16 @@ mod tests {
             "role": "tool_result",
             "tool_name": GET_TOOL_NAME,
             "success": true,
-            "result": { "result": { "schema_visible": true, "name": "Glob" } }
+            "result": { "result": { "schema_visible": true, "name": "ripgrep" } }
         })];
-        assert!(!visible_tool_names_from_history(&nested).contains("Glob"));
+        assert!(!visible_tool_names_from_history(&nested).contains("ripgrep"));
 
         let stringified = vec![serde_json::json!({
             "role": "tool_result",
             "tool_name": GET_TOOL_NAME,
             "success": true,
-            "result": "{\"schema_visible\":true,\"name\":\"Glob\"}"
+            "result": "{\"schema_visible\":true,\"name\":\"ripgrep\"}"
         })];
-        assert!(!visible_tool_names_from_history(&stringified).contains("Glob"));
+        assert!(!visible_tool_names_from_history(&stringified).contains("ripgrep"));
     }
 }

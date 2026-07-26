@@ -562,54 +562,6 @@ pub(super) async fn complete_startup(
         tool_registry.register(Box::new(chelix_tools::ripgrep::RipgrepTool::new(
             Arc::clone(&tools_service),
         )));
-        #[cfg(feature = "fs-tools")]
-        {
-            use chelix_config::schema::FsBinaryPolicy;
-            let fs_cfg = &config.tools.fs;
-            let path_policy = match chelix_tools::fs::FsPathPolicy::new(
-                &fs_cfg.allow_paths,
-                &fs_cfg.deny_paths,
-            ) {
-                Ok(p) => {
-                    if p.is_empty() {
-                        None
-                    } else {
-                        Some(p)
-                    }
-                },
-                Err(e) => {
-                    warn!(error = %e, "invalid tools.fs path policy — fs tools will run without path allow/deny");
-                    None
-                },
-            };
-            let workspace_root = fs_cfg.workspace_root.as_ref().map(PathBuf::from);
-            let binary_policy = match fs_cfg.binary_policy {
-                FsBinaryPolicy::Reject => chelix_tools::fs::BinaryPolicy::Reject,
-                FsBinaryPolicy::Base64 => chelix_tools::fs::BinaryPolicy::Base64,
-            };
-            let shared_fs_state = if fs_cfg.track_reads {
-                Some(chelix_tools::fs::new_fs_state(
-                    fs_cfg.must_read_before_write,
-                ))
-            } else {
-                None
-            };
-            let ctx = chelix_tools::fs::FsToolsContext {
-                workspace_root,
-                fs_state: shared_fs_state.clone(),
-                path_policy,
-                binary_policy,
-                respect_gitignore: fs_cfg.respect_gitignore,
-                sandbox_router: Arc::clone(&sandbox_router),
-                approval_manager: fs_cfg
-                    .require_approval
-                    .then(|| Arc::clone(&approval_manager)),
-                broadcaster: fs_cfg.require_approval.then(|| Arc::clone(&broadcaster)),
-                max_read_bytes: Some(fs_cfg.max_read_bytes),
-                context_window_tokens: fs_cfg.context_window_tokens,
-            };
-            chelix_tools::fs::register_fs_tools(&mut tool_registry, ctx);
-        }
         tool_registry.register(Box::new(process_tool));
         tool_registry.register(Box::new(sandbox_packages_tool));
         tool_registry.register(Box::new(cron_tool));
@@ -669,19 +621,12 @@ pub(super) async fn complete_startup(
                 state.services.channel_store.clone(),
             ),
         ));
-        tool_registry.register(Box::new(chelix_tools::send_image::SendImageTool::new(
-            Arc::clone(&sandbox_router),
-        )));
         #[cfg(feature = "provider-openai-codex")]
         if chelix_providers::openai_codex::has_stored_tokens() {
             tool_registry.register(Box::new(
                 chelix_tools::image_generation::GenerateImageTool::new(),
             ));
         }
-        tool_registry.register(Box::new(
-            chelix_tools::send_document::SendDocumentTool::new(Arc::clone(&sandbox_router))
-                .with_session_store(Arc::clone(&session_store)),
-        ));
         #[cfg(feature = "firecrawl")]
         if let Some(t) =
             chelix_tools::firecrawl::FirecrawlScrapeTool::from_config(&config.tools.web.firecrawl)

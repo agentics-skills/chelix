@@ -79,32 +79,6 @@ fn test_select_backend_explicit_choices() {
     }
 }
 
-#[tokio::test]
-async fn test_runtime_oci_file_transfers_with_docker() {
-    if !runtime_container_e2e_enabled("docker") {
-        eprintln!(
-            "skipping Docker OCI runtime e2e test, set {}=1 and ensure docker is available",
-            OCI_RUNTIME_E2E_ENV
-        );
-        return;
-    }
-
-    assert_runtime_oci_file_transfers("docker").await.unwrap();
-}
-
-#[tokio::test]
-async fn test_runtime_oci_file_transfers_with_podman() {
-    if !runtime_container_e2e_enabled("podman") {
-        eprintln!(
-            "skipping Podman OCI runtime e2e test, set {}=1 and ensure podman is available",
-            OCI_RUNTIME_E2E_ENV
-        );
-        return;
-    }
-
-    assert_runtime_oci_file_transfers("podman").await.unwrap();
-}
-
 #[test]
 fn test_is_apple_container_service_error() {
     assert!(is_apple_container_service_error(

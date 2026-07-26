@@ -222,10 +222,10 @@ existing regular UTF-8 file. Symbolic links are rejected.
 
 A literal `oldString` match is used first. Without `replaceAll`, more than one
 match is an error; with `replaceAll`, every match is replaced. If no literal
-match exists, the service preserves the original `Edit` behavior by trying LF
-input against CRLF file content and then matching straight quotes against
-Unicode smart quotes. A successful recovery is reported explicitly as `crlf`
-or `smart_quotes` in the optional `recovery` response field.
+match exists, the service tries LF input against CRLF file content and then
+matches straight quotes against Unicode smart quotes. A successful recovery is
+reported explicitly as `crlf` or `smart_quotes` in the optional `recovery`
+response field.
 
 Edits for the same resolved path are serialized inside the service. The file
 is read, matched, and atomically replaced through a temporary sibling file

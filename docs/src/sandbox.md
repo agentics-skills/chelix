@@ -153,9 +153,8 @@ workspace_sysmount = "rw"   # default: "ro"
 ```
 
 The `/sys` tmpfs overlays prevent host hardware metadata (serial numbers, disk
-models, LUKS UUIDs) from being visible inside the container. Note that
-`tools.fs.deny_paths` only restricts Chelix file-access tools — these kernel
-filesystem masks prevent leakage via shell commands as well.
+models, LUKS UUIDs) from being visible inside the container, including through
+shell commands.
 
 > **Podman note:** The sysfs tmpfs overlays are applied on Docker only. Podman's
 > OCI runtime performs "tmpcopyup" when mounting tmpfs over sysfs paths, which

@@ -9,7 +9,7 @@
 //! ```markdown
 //! ---
 //! name: code-reviewer
-//! tools: Read, ripgrep, Glob
+//! tools: read_file, ripgrep, list_directory
 //! model: sonnet
 //! ---
 //! System prompt body here...
@@ -332,7 +332,7 @@ mod tests {
     fn test_parse_agent_def_with_frontmatter() {
         let content = r#"---
 name: reviewer
-tools: Read, ripgrep
+tools: read_file, ripgrep
 model: sonnet
 ---
 You are a code reviewer. Focus on correctness.
@@ -341,7 +341,7 @@ You are a code reviewer. Focus on correctness.
         let (name, preset) = parse_agent_md(content).unwrap();
         assert_eq!(name, "reviewer");
         assert_eq!(preset.model, Some("sonnet".into()));
-        assert_eq!(preset.tools.allow, vec!["Read", "ripgrep"]);
+        assert_eq!(preset.tools.allow, vec!["read_file", "ripgrep"]);
         assert_eq!(
             preset.system_prompt_suffix.as_deref(),
             Some("You are a code reviewer. Focus on correctness.")
@@ -352,9 +352,9 @@ You are a code reviewer. Focus on correctness.
     fn test_parse_full_frontmatter() {
         let content = r#"---
 name: scout
-tools: Read, ripgrep, Glob
+tools: read_file, ripgrep, list_directory
 deny_tools: execute_command
-preload_tools: Read, ripgrep
+preload_tools: read_file, ripgrep
 model: haiku
 emoji: 🦉
 theme: focused and efficient
@@ -367,9 +367,13 @@ Search thoroughly.
 
         let (name, preset) = parse_agent_md(content).unwrap();
         assert_eq!(name, "scout");
-        assert_eq!(preset.tools.allow, vec!["Read", "ripgrep", "Glob"]);
+        assert_eq!(preset.tools.allow, vec![
+            "read_file",
+            "ripgrep",
+            "list_directory"
+        ]);
         assert_eq!(preset.tools.deny, vec!["execute_command"]);
-        assert_eq!(preset.tools.preload, vec!["Read", "ripgrep"]);
+        assert_eq!(preset.tools.preload, vec!["read_file", "ripgrep"]);
         assert_eq!(preset.identity.emoji.as_deref(), Some("🦉"));
         assert_eq!(
             preset.identity.theme.as_deref(),
@@ -425,7 +429,7 @@ Search thoroughly.
 
     #[test]
     fn test_missing_name_error() {
-        let content = "---\ntools: Read\n---\nbody";
+        let content = "---\ntools: read_file\n---\nbody";
         let result = parse_agent_md(content);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("missing required"));
@@ -444,7 +448,7 @@ Search thoroughly.
         .unwrap();
         std::fs::write(
             agents_dir.join("scout.md"),
-            "---\nname: scout\ntools: Read\n---\nSearch.",
+            "---\nname: scout\ntools: read_file\n---\nSearch.",
         )
         .unwrap();
         // Non-md file should be ignored.
@@ -548,9 +552,9 @@ Search thoroughly.
             },
             model: Some("haiku".into()),
             tools: PresetToolPolicy {
-                allow: vec!["Read".into(), "ripgrep".into()],
+                allow: vec!["read_file".into(), "ripgrep".into()],
                 deny: vec!["execute_command".into()],
-                preload: vec!["Read".into()],
+                preload: vec!["read_file".into()],
             },
             system_prompt_suffix: Some("Review for correctness.".into()),
             delegate_only: true,
@@ -565,9 +569,9 @@ Search thoroughly.
         assert_eq!(parsed.identity.name.as_deref(), Some("Code Reviewer"));
         assert_eq!(parsed.identity.emoji.as_deref(), Some("🔎"));
         assert_eq!(parsed.model.as_deref(), Some("haiku"));
-        assert_eq!(parsed.tools.allow, vec!["Read", "ripgrep"]);
+        assert_eq!(parsed.tools.allow, vec!["read_file", "ripgrep"]);
         assert_eq!(parsed.tools.deny, vec!["execute_command"]);
-        assert_eq!(parsed.tools.preload, vec!["Read"]);
+        assert_eq!(parsed.tools.preload, vec!["read_file"]);
         assert!(parsed.delegate_only);
         assert_eq!(parsed.timeout_secs, Some(45));
         assert_eq!(

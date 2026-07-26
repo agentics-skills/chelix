@@ -579,7 +579,7 @@ mod tests {
     #[test]
     fn tool_controls_parse_from_tool_context() {
         let context = serde_json::json!({
-            "active_tools": ["classify_destination", "send_document"],
+            "active_tools": ["classify_destination", "overwrite_file"],
             "tool_choice": { "type": "tool", "name": "classify_destination" }
         });
 
@@ -589,7 +589,7 @@ mod tests {
             controls.active_tools,
             Some(vec![
                 "classify_destination".to_string(),
-                "send_document".to_string(),
+                "overwrite_file".to_string(),
             ])
         );
         assert_eq!(

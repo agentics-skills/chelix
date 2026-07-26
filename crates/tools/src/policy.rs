@@ -302,8 +302,8 @@ mod tests {
 
         let coding = profile_tools("coding");
         assert!(coding.is_allowed("execute_command"));
-        assert!(!coding.is_allowed("Read"));
-        assert!(!coding.is_allowed("Write"));
+        assert!(!coding.is_allowed("read_file"));
+        assert!(!coding.is_allowed("overwrite_file"));
 
         let full = profile_tools("full");
         assert!(full.is_allowed("anything"));

@@ -605,24 +605,24 @@ mod tests {
         // semantics and trust the log at runtime.
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(DummyTool {
-            name: "Read".to_string(),
+            name: "read_file".to_string(),
         }));
         // Same name again — should overwrite, warn logged.
         registry.register(Box::new(DummyTool {
-            name: "Read".to_string(),
+            name: "read_file".to_string(),
         }));
-        assert_eq!(registry.list_names(), vec!["Read".to_string()]);
+        assert_eq!(registry.list_names(), vec!["read_file".to_string()]);
     }
 
     #[test]
     fn test_register_mcp_overwriting_builtin_warns() {
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(DummyTool {
-            name: "Read".to_string(),
+            name: "read_file".to_string(),
         }));
         registry.register_mcp(
             Box::new(DummyTool {
-                name: "Read".to_string(),
+                name: "read_file".to_string(),
             }),
             McpServerId::from("filesystem"),
         );
@@ -630,7 +630,9 @@ mod tests {
         let schema = registry
             .list_schemas()
             .into_iter()
-            .find(|schema| schema.get("name").and_then(serde_json::Value::as_str) == Some("Read"))
+            .find(|schema| {
+                schema.get("name").and_then(serde_json::Value::as_str) == Some("read_file")
+            })
             .unwrap();
         assert_eq!(
             schema.get("source").and_then(serde_json::Value::as_str),

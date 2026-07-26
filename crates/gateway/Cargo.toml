@@ -116,7 +116,6 @@ default = [
   "discord",
   "file-watcher",
   "firecrawl",
-  "fs-tools",
   "graphql",
   "home-assistant",
   "matrix",
@@ -145,7 +144,6 @@ file-watcher = [
   "chelix-skills/file-watcher",
 ]
 firecrawl = ["chelix-tools/firecrawl"]
-fs-tools = ["chelix-tools/fs-tools"]
 graphql = []
 home-assistant = ["dep:chelix-home-assistant"]
 local-embeddings = ["chelix-memory/local-embeddings"]

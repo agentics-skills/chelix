@@ -191,8 +191,8 @@ own tool controls:
 }
 // Turn 2: scoped generation (parent reads classifier result, spawns again)
 {
-  "task": "Generate the report and send it as a document.",
-  "active_tools": ["write_file", "send_document"],
+  "task": "Generate the report in a file.",
+  "active_tools": ["overwrite_file"],
   "tool_choice": { "type": "auto" }
 }
 ```
@@ -213,8 +213,8 @@ Example scheduled agent turn:
 ```json
 {
   "kind": "agentTurn",
-  "message": "Generate the report and send it as a document.",
-  "active_tools": ["write_file", "send_document"],
+  "message": "Generate the report in a file.",
+  "active_tools": ["overwrite_file"],
   "tool_choice": { "type": "any" }
 }
 ```

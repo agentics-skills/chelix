@@ -78,7 +78,6 @@ full = [
   "discord",
   "file-watcher",
   "firecrawl",
-  "fs-tools",
   "graphql",
   "home-assistant",
   "jemalloc",
@@ -125,7 +124,6 @@ discord            = ["chelix-httpd/discord"]
 embedded-assets    = ["chelix-web?/embedded-assets"]
 file-watcher       = ["chelix-gateway/file-watcher"]
 firecrawl          = ["chelix-gateway/firecrawl"]
-fs-tools           = ["chelix-gateway/fs-tools"]
 graphql            = ["chelix-httpd/graphql", "chelix-web?/graphql"]
 jemalloc           = ["dep:tikv-jemallocator"]
 lang-bash          = ["chelix-memory/lang-bash"]

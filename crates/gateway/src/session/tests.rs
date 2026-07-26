@@ -1591,39 +1591,4 @@ mod tests {
         assert!(removed_paths.contains(&transcript_export));
         assert!(!removed_paths.contains(&unrelated_export));
     }
-
-    #[cfg(feature = "fs-tools")]
-    #[tokio::test]
-    async fn delete_clears_fs_state_for_session() {
-        use std::path::{Path, PathBuf};
-
-        let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
-        let pool = sqlite_pool().await;
-        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        metadata
-            .upsert("side", Some("Test".to_string()))
-            .await
-            .unwrap();
-
-        let fs_state = chelix_tools::fs::new_fs_state(false);
-        {
-            let mut guard = fs_state
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let _ = guard.record_read("side", PathBuf::from("/tmp/demo.txt"), 0, 25, None);
-            assert!(guard.has_been_read("side", Path::new("/tmp/demo.txt")));
-        }
-
-        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
-            .with_fs_state(Arc::clone(&fs_state));
-
-        let result = svc.delete(serde_json::json!({ "key": "side" })).await;
-        assert!(result.is_ok());
-
-        let guard = fs_state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        assert!(!guard.has_been_read("side", Path::new("/tmp/demo.txt")));
-    }
 }

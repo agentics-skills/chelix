@@ -137,11 +137,10 @@ The tool edits an existing regular UTF-8 file and rejects symbolic links.
 }
 ```
 
-When a literal match is absent, the tool preserves the original `Edit`
-recovery behavior: LF input can match CRLF file content, and straight quotes
-can match Unicode smart quotes. The structured result reports `filePath`, the
-number of `replacements`, the applied `replaceAll` value, and an optional
-`recovery` value of `crlf` or `smart_quotes`.
+When a literal match is absent, LF input can match CRLF file content and
+straight quotes can match Unicode smart quotes. The structured result reports
+`filePath`, the number of `replacements`, the applied `replaceAll` value, and
+an optional `recovery` value of `crlf` or `smart_quotes`.
 
 Same-file calls are serialized in the service and successful changes are
 persisted atomically. Relative paths, unknown or invalid parameters, missing or
@@ -233,10 +232,8 @@ children. The plain-text result uses the following format:
   `image.png (binary, 12.4 KB)`;
 - an empty directory returns `Folder is empty`.
 
-A missing, relative, non-directory, or unreadable path is a tool error. The
-tool intentionally does not apply the workspace root or allow/deny rules from
-`[tools.fs]`; access is limited by the filesystem visible to the managed
-service runtime.
+A missing, relative, non-directory, or unreadable path is a tool error. Access
+is limited by the filesystem visible to the managed service runtime.
 
 ## Ripgrep tool
 
@@ -280,8 +277,8 @@ identifier is unambiguous:
 ```text
 ## Available Tools
 
-- `{"name":"Edit"}`: Exact-match string replacement in a file...
-- `{"name":"Glob"}`: Find files matching a glob pattern...
+- `{"name":"edit_file"}`: Exact-match string replacement in a file...
+- `{"name":"ripgrep"}`: Search files with ripgrep...
 - `{"name":"get_tool"}`: Fetch the full parameter schema...
 ```
 
