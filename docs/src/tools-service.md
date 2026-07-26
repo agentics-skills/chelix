@@ -21,8 +21,8 @@ For every tool migrated to `chelix-tools-service`:
 - service unavailability is an explicit error and never triggers local
   fallback execution.
 
-The currently migrated tools are `edit_file`, `read_file`, `read_media`,
-`list_directory`, `overwrite_file`, `ripgrep`, `execute_command`,
+The currently migrated tools are `edit_file`, `multiedit_file`, `read_file`,
+`read_media`, `list_directory`, `overwrite_file`, `ripgrep`, `execute_command`,
 `read_terminal_output`, and `process`.
 
 `execute_command`, `read_terminal_output`, and `process` exclusively use the
@@ -150,17 +150,18 @@ migrated tool
 ## Protocol and authentication
 
 The shared wire types live in `chelix-protocol`. The current protocol version is
-`13`.
+`14`.
 
-| Method | Path                 | Purpose                                         |
-| ------ | -------------------- | ----------------------------------------------- |
-| `GET`  | `/v1/health`         | Return the tools-service protocol version       |
-| `POST` | `/v1/edit-file`      | Replace exact text in one existing UTF-8 file   |
-| `POST` | `/v1/list-directory` | List one directory                              |
-| `POST` | `/v1/overwrite-file` | Atomically create or replace one complete file  |
-| `POST` | `/v1/read-file`      | Read text or binary file content                |
-| `POST` | `/v1/read-media`     | Read an image or PDF                            |
-| `POST` | `/v1/ripgrep`        | Execute the `ripgrep` tool request and reply    |
+| Method | Path                  | Purpose                                           |
+| ------ | --------------------- | ------------------------------------------------- |
+| `GET`  | `/v1/health`          | Return the tools-service protocol version         |
+| `POST` | `/v1/edit-file`       | Replace exact text in one existing UTF-8 file     |
+| `POST` | `/v1/multiedit-file`  | Atomically apply ordered edits to one UTF-8 file  |
+| `POST` | `/v1/list-directory`  | List one directory                                |
+| `POST` | `/v1/overwrite-file`  | Atomically create or replace one complete file    |
+| `POST` | `/v1/read-file`       | Read text or binary file content                  |
+| `POST` | `/v1/read-media`      | Read an image or PDF                              |
+| `POST` | `/v1/ripgrep`         | Execute the `ripgrep` tool request and reply      |
 
 All routes require an exact `Authorization: Bearer <token>` header. An invalid
 or missing token returns `401 Unauthorized`. A valid `ripgrep` request that
@@ -232,6 +233,48 @@ within one service call. Validation, read, match, and persistence failures are
 explicit tool errors and leave the target unchanged. The gateway has no local
 implementation or fallback path.
 
+### Multiedit file execution contract
+
+`POST /v1/multiedit-file` requires an absolute `filePath` and a non-empty
+ordered `edits` array. Every item uses the same two strict forms as the nested
+`edit` object accepted by `edit_file`: the unique form requires `oldString` and
+`newString`; the replace-all form additionally requires boolean `replaceAll`.
+
+```json
+{
+  "filePath": "/workspace/file.txt",
+  "edits": [
+    {
+      "oldString": "old name",
+      "newString": "intermediate name"
+    },
+    {
+      "oldString": "intermediate name",
+      "newString": "new name",
+      "replaceAll": true
+    }
+  ]
+}
+```
+
+The service reads the existing regular UTF-8 file once and applies every edit
+to one in-memory buffer in array order. Each edit therefore sees the output of
+all preceding edits. The service persists the final buffer after every edit
+succeeds. An error identifies the failing edit by its one-based index and
+leaves the target unchanged.
+
+The successful response contains `filePath`, `editsApplied`,
+`replacementsPerEdit`, and `recoveriesPerEdit`. The two arrays preserve request
+order; each recovery entry is `null`, `crlf`, or `smart_quotes`. Unknown fields,
+explicit `null`, invalid edit forms, empty arrays or strings, identical old and
+new strings, relative paths, symbolic links, non-regular targets, and non-UTF-8
+files are explicit errors.
+
+`edit_file` and `multiedit_file` share the service-owned lock for the resolved
+target and the same exact-match, recovery, and atomic-persistence primitives.
+The `multiedit_file` implementation and state live only in
+`chelix-tools-service`; the gateway performs one authenticated API call.
+
 ### Ripgrep execution contract
 
 `POST /v1/ripgrep` accepts a typed `RipgrepRequest` whose `params` object is
@@ -271,18 +314,12 @@ The typed result contains `tool`, `detail`, `found`, `timedOut`, `truncated`,
 the applied `limits`, `summary`, and `exitCode`. Depending on `detail`, it also
 contains `files` or typed `matches` and `context`; `lines+submatches` includes
 typed byte-offset submatches. `truncatedReason`, `stderr`, and ripgrep `stats`
-are emitted only when present. The obsolete process `signal` field is not part
-of protocol version 13.
+are emitted only when present.
 
 Malformed JSONL, invalid base64, and invalid UTF-8 JSON output are explicit tool
 errors rather than silently skipped data. Match and context rows without a
 numeric `line_number` are omitted from row-level output; a match still counts
 toward the summary and limits, matching ripgrep event semantics.
-
-Per-invocation cancellation is not exposed by the current `AgentTool` runner,
-so protocol version 13 does not invent a cancellation flag or fake cancellation
-state. Cancellation parity requires a real runner cancellation token and is
-deferred until that API exists.
 
 ## Container sandbox lifecycle
 
@@ -318,7 +355,7 @@ Chelix then obtains two transport classes from the OCI runtime:
 Candidates are discovered once for each container generation and tried in that
 order. Readiness retries repeat only the authenticated `/v1/health` probes;
 they do not respawn `docker port` or `docker inspect` on every attempt. Chelix
-selects the first endpoint whose health response reports protocol version `13`.
+selects the first endpoint whose health response reports protocol version `14`.
 
 This supports both gateway topologies:
 

@@ -100,8 +100,8 @@ that is current at creation time.
 
 ## Managed filesystem tools
 
-The `edit_file`, `read_file`, `read_media`, `list_directory`, `overwrite_file`,
-and `ripgrep` tools execute exclusively through the managed
+The `edit_file`, `multiedit_file`, `read_file`, `read_media`, `list_directory`,
+`overwrite_file`, and `ripgrep` tools execute exclusively through the managed
 `chelix-tools-service`. With sandbox mode enabled, the service runs in the
 sandbox container selected for the session. With sandbox mode disabled, Chelix
 starts the service as a host sidecar. Service and filesystem errors are returned
@@ -146,8 +146,43 @@ number of `replacements`, the applied `replaceAll` value, and an optional
 Same-file calls are serialized in the service and successful changes are
 persisted atomically. Relative paths, unknown or invalid parameters, missing or
 non-UTF-8 files, non-unique matches, absent matches, and persistence failures
-are explicit errors. A failed edit does not modify the file, and the gateway
-does not provide a local fallback implementation.
+are explicit errors. A failed edit leaves the file unchanged.
+
+### `multiedit_file`
+
+`multiedit_file` requires an absolute `filePath` and a non-empty ordered
+`edits` array. Each item uses one of the strict `edit_file` operation forms:
+the unique form requires `oldString` and `newString`; the replace-all form
+additionally requires boolean `replaceAll`.
+
+```json
+{
+  "filePath": "/workspace/file.txt",
+  "edits": [
+    {
+      "oldString": "old",
+      "newString": "intermediate"
+    },
+    {
+      "oldString": "intermediate",
+      "newString": "new",
+      "replaceAll": true
+    }
+  ]
+}
+```
+
+Edits run sequentially against one in-memory buffer, so each item sees all
+preceding results. The service writes only after the complete batch succeeds;
+any failure reports the one-based edit index and leaves the file unchanged.
+The structured response reports `filePath`, `editsApplied`,
+`replacementsPerEdit`, and ordered `recoveriesPerEdit` entries (`null`, `crlf`,
+or `smart_quotes`).
+
+The service serializes `edit_file` and `multiedit_file` calls that resolve to
+the same target and atomically persists successful results. Invalid parameters,
+relative paths, symbolic links, missing or non-regular files, non-UTF-8 content,
+match failures, and persistence failures are explicit errors.
 
 ### `read_file`
 

@@ -11,12 +11,13 @@ use {
     },
     chelix_protocol::{
         CreateToolsServiceTerminalRequest, CreateToolsServiceTerminalResponse, EditFileRequest,
-        ExecuteCommandRequest, ListDirectoryRequest, ListDirectoryResponse, OverwriteFileRequest,
-        ProcessRequest, ReadFileRequest, ReadFileResponse, ReadMediaRequest,
+        ExecuteCommandRequest, ListDirectoryRequest, ListDirectoryResponse, MultieditFileRequest,
+        OverwriteFileRequest, ProcessRequest, ReadFileRequest, ReadFileResponse, ReadMediaRequest,
         ReadTerminalOutputRequest, RipgrepRequest, RipgrepResponse, TOOLS_SERVICE_EDIT_FILE_PATH,
         TOOLS_SERVICE_EXECUTE_COMMAND_PATH, TOOLS_SERVICE_HEALTH_PATH,
-        TOOLS_SERVICE_LIST_DIRECTORY_PATH, TOOLS_SERVICE_OVERWRITE_FILE_PATH,
-        TOOLS_SERVICE_PROCESS_PATH, TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_READ_FILE_PATH,
+        TOOLS_SERVICE_LIST_DIRECTORY_PATH, TOOLS_SERVICE_MULTIEDIT_FILE_PATH,
+        TOOLS_SERVICE_OVERWRITE_FILE_PATH, TOOLS_SERVICE_PROCESS_PATH,
+        TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_READ_FILE_PATH,
         TOOLS_SERVICE_READ_MEDIA_PATH, TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH,
         TOOLS_SERVICE_RIPGREP_PATH, TOOLS_SERVICE_TERMINAL_WS_PATH, TOOLS_SERVICE_TERMINALS_PATH,
         ToolsServiceError, ToolsServiceHealth, ToolsServiceTerminalAttachQuery,
@@ -28,8 +29,10 @@ use {
 use axum::serve;
 
 use crate::{
-    edit_file::{self, EditFileRuntime},
-    interactive_terminal, list_directory, overwrite_file, process, read_file, read_media,
+    edit_file,
+    file_edit::FileEditRuntime,
+    interactive_terminal, list_directory, multiedit_file, overwrite_file, process, read_file,
+    read_media,
     ripgrep::{self, RipgrepRuntime},
     terminal::TerminalManager,
 };
@@ -37,7 +40,7 @@ use crate::{
 #[derive(Clone)]
 struct ApiState {
     token: Arc<str>,
-    edit_file_runtime: Arc<EditFileRuntime>,
+    file_edit_runtime: Arc<FileEditRuntime>,
     terminal_manager: Arc<TerminalManager>,
     ripgrep_runtime: Arc<RipgrepRuntime>,
 }
@@ -50,6 +53,7 @@ pub fn router(
     Router::new()
         .route(TOOLS_SERVICE_HEALTH_PATH, get(health))
         .route(TOOLS_SERVICE_EDIT_FILE_PATH, post(run_edit_file))
+        .route(TOOLS_SERVICE_MULTIEDIT_FILE_PATH, post(run_multiedit_file))
         .route(TOOLS_SERVICE_LIST_DIRECTORY_PATH, post(run_list_directory))
         .route(TOOLS_SERVICE_OVERWRITE_FILE_PATH, post(run_overwrite_file))
         .route(TOOLS_SERVICE_READ_FILE_PATH, post(run_read_file))
@@ -71,7 +75,7 @@ pub fn router(
         .route(TOOLS_SERVICE_TERMINAL_WS_PATH, get(attach_terminal))
         .with_state(ApiState {
             token: Arc::from(token),
-            edit_file_runtime: Arc::new(EditFileRuntime::default()),
+            file_edit_runtime: Arc::new(FileEditRuntime::default()),
             terminal_manager,
             ripgrep_runtime,
         })
@@ -98,7 +102,23 @@ async fn run_edit_file(
         return unauthorized_response();
     }
 
-    match edit_file::run_tool(request, &state.edit_file_runtime).await {
+    match edit_file::run_tool(request, &state.file_edit_runtime).await {
+        Ok(response) => Json(response).into_response(),
+        Err(error) => tool_error_response(error),
+    }
+}
+
+#[tracing::instrument(skip_all)]
+async fn run_multiedit_file(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Json(request): Json<MultieditFileRequest>,
+) -> Response {
+    if !is_authorized(&state, &headers) {
+        return unauthorized_response();
+    }
+
+    match multiedit_file::run_tool(request, &state.file_edit_runtime).await {
         Ok(response) => Json(response).into_response(),
         Err(error) => tool_error_response(error),
     }
@@ -327,8 +347,8 @@ mod tests {
     use std::net::Ipv4Addr;
 
     use chelix_protocol::{
-        EditFileResponse, ExecuteCommandResponse, OverwriteFileResponse, ProcessAction,
-        ProcessResponse, ReadMediaResponse, ReadTerminalOutputResponse,
+        EditFileResponse, ExecuteCommandResponse, MultieditFileResponse, OverwriteFileResponse,
+        ProcessAction, ProcessResponse, ReadMediaResponse, ReadTerminalOutputResponse,
     };
 
     use super::*;
@@ -427,6 +447,22 @@ mod tests {
                     "oldString": "old",
                     "newString": "new"
                 }
+            }))
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("request failed: {error}"));
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn multiedit_file_requires_authorization() {
+        let base_url = spawn_api().await;
+        let response = reqwest::Client::new()
+            .post(format!("{base_url}{TOOLS_SERVICE_MULTIEDIT_FILE_PATH}"))
+            .json(&serde_json::json!({
+                "filePath": "/tmp/file.txt",
+                "edits": [{ "oldString": "old", "newString": "new" }]
             }))
             .send()
             .await
@@ -853,6 +889,76 @@ mod tests {
                 .await
                 .unwrap_or_else(|error| panic!("read failed: {error}")),
             "duplicate duplicate"
+        );
+    }
+
+    #[tokio::test]
+    async fn multiedit_file_runs_atomically_and_surfaces_indexed_errors() {
+        let directory =
+            tempfile::tempdir().unwrap_or_else(|error| panic!("tempdir failed: {error}"));
+        let path = directory.path().join("sample.txt");
+        tokio::fs::write(&path, "alpha beta beta")
+            .await
+            .unwrap_or_else(|error| panic!("write failed: {error}"));
+        let base_url = spawn_api().await;
+        let client = reqwest::Client::new();
+        let response = client
+            .post(format!("{base_url}{TOOLS_SERVICE_MULTIEDIT_FILE_PATH}"))
+            .bearer_auth("test-token")
+            .json(&serde_json::json!({
+                "filePath": path,
+                "edits": [
+                    { "oldString": "alpha", "newString": "ALPHA" },
+                    { "oldString": "beta", "newString": "BETA", "replaceAll": true }
+                ]
+            }))
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("request failed: {error}"));
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response
+            .json::<MultieditFileResponse>()
+            .await
+            .unwrap_or_else(|error| panic!("response decode failed: {error}"));
+        assert_eq!(body.edits_applied, 2);
+        assert_eq!(body.replacements_per_edit, vec![1, 2]);
+        assert_eq!(body.recoveries_per_edit, vec![None, None]);
+        assert_eq!(
+            tokio::fs::read_to_string(&path)
+                .await
+                .unwrap_or_else(|error| panic!("read failed: {error}")),
+            "ALPHA BETA BETA"
+        );
+
+        tokio::fs::write(&path, "alpha beta")
+            .await
+            .unwrap_or_else(|error| panic!("write failed: {error}"));
+        let response = client
+            .post(format!("{base_url}{TOOLS_SERVICE_MULTIEDIT_FILE_PATH}"))
+            .bearer_auth("test-token")
+            .json(&serde_json::json!({
+                "filePath": path,
+                "edits": [
+                    { "oldString": "alpha", "newString": "ALPHA" },
+                    { "oldString": "missing", "newString": "value" }
+                ]
+            }))
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("request failed: {error}"));
+
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let body = response
+            .json::<ToolsServiceError>()
+            .await
+            .unwrap_or_else(|error| panic!("error response decode failed: {error}"));
+        assert!(body.error.contains("edit #2"));
+        assert_eq!(
+            tokio::fs::read_to_string(&path)
+                .await
+                .unwrap_or_else(|error| panic!("read failed: {error}")),
+            "alpha beta"
         );
     }
 

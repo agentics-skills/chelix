@@ -27,6 +27,7 @@ pub mod image_generation;
 pub mod list_directory;
 pub mod location;
 pub mod map;
+pub mod multiedit_file;
 pub mod overwrite_file;
 pub mod params;
 pub mod policy;

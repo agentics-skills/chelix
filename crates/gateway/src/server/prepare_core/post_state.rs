@@ -545,6 +545,9 @@ pub(super) async fn complete_startup(
             Arc::clone(&tools_service),
         )));
         tool_registry.register(Box::new(
+            chelix_tools::multiedit_file::MultieditFileTool::new(Arc::clone(&tools_service)),
+        ));
+        tool_registry.register(Box::new(
             chelix_tools::list_directory::ListDirectoryTool::new(Arc::clone(&tools_service)),
         ));
         tool_registry.register(Box::new(

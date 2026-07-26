@@ -4,10 +4,11 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 13;
+pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 14;
 pub const TOOLS_SERVICE_CONTAINER_PORT: u16 = 43_271;
 pub const TOOLS_SERVICE_HEALTH_PATH: &str = "/v1/health";
 pub const TOOLS_SERVICE_EDIT_FILE_PATH: &str = "/v1/edit-file";
+pub const TOOLS_SERVICE_MULTIEDIT_FILE_PATH: &str = "/v1/multiedit-file";
 pub const TOOLS_SERVICE_LIST_DIRECTORY_PATH: &str = "/v1/list-directory";
 pub const TOOLS_SERVICE_OVERWRITE_FILE_PATH: &str = "/v1/overwrite-file";
 pub const TOOLS_SERVICE_READ_FILE_PATH: &str = "/v1/read-file";
@@ -148,6 +149,55 @@ pub struct EditFileResponse {
     pub replace_all: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovery: Option<EditFileRecovery>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MultieditFileRequest {
+    pub file_path: String,
+    pub edits: Vec<EditFileOperation>,
+}
+
+impl MultieditFileRequest {
+    /// Validate constraints that cannot be represented by serde alone.
+    pub fn validate(&self) -> Result<(), MultieditFileRequestValidationError> {
+        if self.file_path.trim().is_empty() {
+            return Err(MultieditFileRequestValidationError::EmptyFilePath);
+        }
+        if self.edits.is_empty() {
+            return Err(MultieditFileRequestValidationError::EmptyEdits);
+        }
+        for (index, edit) in self.edits.iter().enumerate() {
+            if edit.old_string().is_empty() {
+                return Err(MultieditFileRequestValidationError::EmptyOldString(index));
+            }
+            if edit.old_string() == edit.new_string() {
+                return Err(MultieditFileRequestValidationError::IdenticalStrings(index));
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum MultieditFileRequestValidationError {
+    #[error("filePath must be a non-empty string.")]
+    EmptyFilePath,
+    #[error("edits must contain at least one edit.")]
+    EmptyEdits,
+    #[error("edits[{0}].oldString must not be empty.")]
+    EmptyOldString(usize),
+    #[error("edits[{0}].newString must differ from oldString.")]
+    IdenticalStrings(usize),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MultieditFileResponse {
+    pub file_path: String,
+    pub edits_applied: usize,
+    pub replacements_per_edit: Vec<usize>,
+    pub recoveries_per_edit: Vec<Option<EditFileRecovery>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -949,6 +999,146 @@ mod tests {
                     }),
                 },
                 "newString must differ from oldString.",
+            ),
+        ] {
+            assert_eq!(request.validate().unwrap_err().to_string(), expected_error);
+        }
+    }
+
+    #[test]
+    fn multiedit_file_messages_round_trip_with_camel_case_fields() {
+        let request = MultieditFileRequest {
+            file_path: "/workspace/src/main.rs".into(),
+            edits: vec![
+                EditFileOperation::Unique(EditFileUniqueOperation {
+                    old_string: "fn old() {}".into(),
+                    new_string: "fn intermediate() {}".into(),
+                }),
+                EditFileOperation::WithReplaceAll(EditFileReplaceAllOperation {
+                    old_string: "intermediate".into(),
+                    new_string: "new".into(),
+                    replace_all: true,
+                }),
+            ],
+        };
+        let json = serde_json::to_value(&request)
+            .unwrap_or_else(|error| panic!("multiedit file request encode failed: {error}"));
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "filePath": "/workspace/src/main.rs",
+                "edits": [
+                    {
+                        "oldString": "fn old() {}",
+                        "newString": "fn intermediate() {}"
+                    },
+                    {
+                        "oldString": "intermediate",
+                        "newString": "new",
+                        "replaceAll": true
+                    }
+                ]
+            })
+        );
+        let decoded: MultieditFileRequest = serde_json::from_value(json)
+            .unwrap_or_else(|error| panic!("multiedit file request decode failed: {error}"));
+        assert_eq!(decoded, request);
+        assert!(decoded.validate().is_ok());
+
+        let response = MultieditFileResponse {
+            file_path: "/workspace/src/main.rs".into(),
+            edits_applied: 2,
+            replacements_per_edit: vec![1, 3],
+            recoveries_per_edit: vec![None, Some(EditFileRecovery::Crlf)],
+        };
+        let json = serde_json::to_value(&response)
+            .unwrap_or_else(|error| panic!("multiedit file response encode failed: {error}"));
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "filePath": "/workspace/src/main.rs",
+                "editsApplied": 2,
+                "replacementsPerEdit": [1, 3],
+                "recoveriesPerEdit": [null, "crlf"]
+            })
+        );
+        let decoded: MultieditFileResponse = serde_json::from_value(json)
+            .unwrap_or_else(|error| panic!("multiedit file response decode failed: {error}"));
+        assert_eq!(decoded, response);
+    }
+
+    #[test]
+    fn multiedit_file_request_rejects_unknown_missing_null_and_invalid_fields() {
+        for invalid in [
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "edits": [{
+                    "oldString": "old",
+                    "newString": "new",
+                    "replaceAll": null
+                }]
+            }),
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "edits": [{ "oldString": "old" }]
+            }),
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "edits": [{ "oldString": "old", "newString": "new", "obsolete": true }]
+            }),
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "edits": [],
+                "obsolete": true
+            }),
+            serde_json::json!({ "filePath": "/tmp/file", "edits": null }),
+        ] {
+            assert!(serde_json::from_value::<MultieditFileRequest>(invalid).is_err());
+        }
+
+        let valid_edit = || {
+            EditFileOperation::Unique(EditFileUniqueOperation {
+                old_string: "old".into(),
+                new_string: "new".into(),
+            })
+        };
+        for (request, expected_error) in [
+            (
+                MultieditFileRequest {
+                    file_path: " ".into(),
+                    edits: vec![valid_edit()],
+                },
+                "filePath must be a non-empty string.",
+            ),
+            (
+                MultieditFileRequest {
+                    file_path: "/tmp/file".into(),
+                    edits: Vec::new(),
+                },
+                "edits must contain at least one edit.",
+            ),
+            (
+                MultieditFileRequest {
+                    file_path: "/tmp/file".into(),
+                    edits: vec![EditFileOperation::Unique(EditFileUniqueOperation {
+                        old_string: String::new(),
+                        new_string: "new".into(),
+                    })],
+                },
+                "edits[0].oldString must not be empty.",
+            ),
+            (
+                MultieditFileRequest {
+                    file_path: "/tmp/file".into(),
+                    edits: vec![
+                        valid_edit(),
+                        EditFileOperation::Unique(EditFileUniqueOperation {
+                            old_string: "same".into(),
+                            new_string: "same".into(),
+                        }),
+                    ],
+                },
+                "edits[1].newString must differ from oldString.",
             ),
         ] {
             assert_eq!(request.validate().unwrap_err().to_string(), expected_error);
