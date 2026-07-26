@@ -100,7 +100,7 @@ that is current at creation time.
 
 ## Managed filesystem tools
 
-The `read_file`, `list_directory`, and `ripgrep` tools execute exclusively through the
+The `read_file`, `read_media`, `list_directory`, and `ripgrep` tools execute exclusively through the
 managed `chelix-tools-service`. With sandbox mode enabled, the service runs in
 the sandbox container selected for the session. With sandbox mode disabled,
 Chelix starts the service as a host sidecar. Service and filesystem errors are
@@ -118,6 +118,19 @@ message.
 
 Binary files return a hexadecimal dump. `offset` and `limit` become byte
 parameters, tail mode reads the final bytes, and one call returns at most 512
+
+### `read_media`
+
+`read_media` requires an absolute `filePath` and handles PDF documents plus image
+files through the managed service. PDF-specific options live under an optional
+`pdf` object; `pdf.pages` accepts either a single 1-indexed page like `3` or an
+inclusive page range like `10-20`. Omit `pdf` entirely for images.
+
+Images are optimized through `chelix_media::image_ops::optimize_for_llm()` and
+returned with MIME type, dimensions, resize metadata, byte size, and a base64
+payload. PDFs are decoded through `pdf-extract` and return extracted text plus
+page metadata (`totalPages`, `pagesReturned`, `startPage`, `endPage`,
+`truncated`). Media decode failures are explicit tool errors.
 bytes. Empty and whitespace-only text files return explicit messages. Invalid
 parameters, missing files, directories, unreadable files, and relative paths
 are tool errors.

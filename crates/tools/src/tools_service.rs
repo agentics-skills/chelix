@@ -4,14 +4,14 @@ use {
     chelix_protocol::{
         CreateToolsServiceTerminalRequest, CreateToolsServiceTerminalResponse,
         ExecuteCommandRequest, ExecuteCommandResponse, ListDirectoryRequest, ListDirectoryResponse,
-        ProcessRequest, ProcessResponse, ReadFileRequest, ReadFileResponse,
-        ReadTerminalOutputRequest, ReadTerminalOutputResponse, RipgrepRequest, RipgrepResponse,
-        TOOLS_SERVICE_BINARY_ENV, TOOLS_SERVICE_EXECUTE_COMMAND_PATH, TOOLS_SERVICE_HEALTH_PATH,
-        TOOLS_SERVICE_LIST_DIRECTORY_PATH, TOOLS_SERVICE_PROCESS_PATH,
+        ProcessRequest, ProcessResponse, ReadFileRequest, ReadFileResponse, ReadMediaRequest,
+        ReadMediaResponse, ReadTerminalOutputRequest, ReadTerminalOutputResponse, RipgrepRequest,
+        RipgrepResponse, TOOLS_SERVICE_BINARY_ENV, TOOLS_SERVICE_EXECUTE_COMMAND_PATH,
+        TOOLS_SERVICE_HEALTH_PATH, TOOLS_SERVICE_LIST_DIRECTORY_PATH, TOOLS_SERVICE_PROCESS_PATH,
         TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_READ_FILE_PATH,
-        TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH, TOOLS_SERVICE_RIPGREP_PATH,
-        TOOLS_SERVICE_TERMINAL_WS_PATH, TOOLS_SERVICE_TERMINALS_PATH, ToolsServiceError,
-        ToolsServiceHealth, ToolsServiceInstanceInfo, ToolsServiceReady,
+        TOOLS_SERVICE_READ_MEDIA_PATH, TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH,
+        TOOLS_SERVICE_RIPGREP_PATH, TOOLS_SERVICE_TERMINAL_WS_PATH, TOOLS_SERVICE_TERMINALS_PATH,
+        ToolsServiceError, ToolsServiceHealth, ToolsServiceInstanceInfo, ToolsServiceReady,
         ToolsServiceTerminalAttachQuery, ToolsServiceTerminalInfo, ToolsServiceTerminalsResponse,
     },
     secrecy::ExposeSecret,
@@ -340,6 +340,20 @@ impl ManagedToolsService {
         self.call_tool(
             session_key,
             TOOLS_SERVICE_READ_FILE_PATH,
+            &request,
+            DEFAULT_REQUEST_TIMEOUT,
+        )
+        .await
+    }
+
+    pub async fn read_media(
+        &self,
+        session_key: &str,
+        request: ReadMediaRequest,
+    ) -> Result<ReadMediaResponse> {
+        self.call_tool(
+            session_key,
+            TOOLS_SERVICE_READ_MEDIA_PATH,
             &request,
             DEFAULT_REQUEST_TIMEOUT,
         )
@@ -1024,6 +1038,123 @@ mod tests {
             .unwrap_or_else(|error| panic!("read file call failed: {error}"));
 
         assert_eq!(result.result, "line 10\nline 11");
+        assert_eq!(backend.ensure_ready_calls.load(Ordering::SeqCst), 1);
+        call.assert_async().await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn read_media_calls_its_service_endpoint() {
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("POST", TOOLS_SERVICE_READ_MEDIA_PATH)
+            .match_header("authorization", "Bearer media-token")
+            .match_body(mockito::Matcher::Json(serde_json::json!({
+                "filePath": "/workspace/image.png"
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "kind": "image",
+                    "filePath": "/workspace/image.png",
+                    "mediaType": "image/png",
+                    "originalWidth": 1,
+                    "originalHeight": 1,
+                    "finalWidth": 1,
+                    "finalHeight": 1,
+                    "wasResized": false,
+                    "bytes": 68,
+                    "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create_async()
+            .await;
+        let endpoint = ToolsServiceEndpoint {
+            base_url: server.url(),
+            token: "media-token".into(),
+        };
+        let (service, backend) = test_managed_service([endpoint.clone(), endpoint]).await;
+
+        let result = service
+            .read_media("session:media", ReadMediaRequest {
+                file_path: "/workspace/image.png".into(),
+                pdf: None,
+            })
+            .await
+            .unwrap_or_else(|error| panic!("read media call failed: {error}"));
+
+        assert_eq!(result, ReadMediaResponse::Image {
+            file_path: "/workspace/image.png".into(),
+            media_type: "image/png".into(),
+            original_width: 1,
+            original_height: 1,
+            final_width: 1,
+            final_height: 1,
+            was_resized: false,
+            bytes: 68,
+            base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB".into(),
+        });
+        assert_eq!(backend.ensure_ready_calls.load(Ordering::SeqCst), 1);
+        call.assert_async().await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn read_media_preserves_nested_pdf_options_on_the_wire() {
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("POST", TOOLS_SERVICE_READ_MEDIA_PATH)
+            .match_header("authorization", "Bearer media-token")
+            .match_body(mockito::Matcher::Json(serde_json::json!({
+                "filePath": "/workspace/manual.pdf",
+                "pdf": { "pages": "2-4" }
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "kind": "pdf",
+                    "filePath": "/workspace/manual.pdf",
+                    "totalPages": 12,
+                    "pagesReturned": 3,
+                    "startPage": 2,
+                    "endPage": 4,
+                    "truncated": true,
+                    "content": "--- Page 2 ---\nBody"
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create_async()
+            .await;
+        let endpoint = ToolsServiceEndpoint {
+            base_url: server.url(),
+            token: "media-token".into(),
+        };
+        let (service, backend) = test_managed_service([endpoint.clone(), endpoint]).await;
+
+        let result = service
+            .read_media("session:media", ReadMediaRequest {
+                file_path: "/workspace/manual.pdf".into(),
+                pdf: Some(chelix_protocol::ReadMediaPdfOptions {
+                    pages: Some("2-4".into()),
+                }),
+            })
+            .await
+            .unwrap_or_else(|error| panic!("read media call failed: {error}"));
+
+        assert_eq!(result, ReadMediaResponse::Pdf {
+            file_path: "/workspace/manual.pdf".into(),
+            total_pages: 12,
+            pages_returned: 3,
+            start_page: 2,
+            end_page: 4,
+            truncated: true,
+            content: "--- Page 2 ---\nBody".into(),
+        });
         assert_eq!(backend.ensure_ready_calls.load(Ordering::SeqCst), 1);
         call.assert_async().await;
     }

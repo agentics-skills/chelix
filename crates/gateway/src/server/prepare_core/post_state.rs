@@ -547,6 +547,9 @@ pub(super) async fn complete_startup(
         tool_registry.register(Box::new(chelix_tools::read_file::ReadFileTool::new(
             Arc::clone(&tools_service),
         )));
+        tool_registry.register(Box::new(chelix_tools::read_media::ReadMediaTool::new(
+            Arc::clone(&tools_service),
+        )));
         tool_registry.register(Box::new(chelix_tools::ripgrep::RipgrepTool::new(
             Arc::clone(&tools_service),
         )));

@@ -30,6 +30,7 @@ pub mod params;
 pub mod policy;
 pub mod process;
 pub mod read_file;
+pub mod read_media;
 pub mod ripgrep;
 pub mod sandbox;
 pub mod sandbox_packages;

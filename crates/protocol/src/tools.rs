@@ -4,11 +4,12 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 9;
+pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 11;
 pub const TOOLS_SERVICE_CONTAINER_PORT: u16 = 43_271;
 pub const TOOLS_SERVICE_HEALTH_PATH: &str = "/v1/health";
 pub const TOOLS_SERVICE_LIST_DIRECTORY_PATH: &str = "/v1/list-directory";
 pub const TOOLS_SERVICE_READ_FILE_PATH: &str = "/v1/read-file";
+pub const TOOLS_SERVICE_READ_MEDIA_PATH: &str = "/v1/read-media";
 pub const TOOLS_SERVICE_RIPGREP_PATH: &str = "/v1/ripgrep";
 pub const TOOLS_SERVICE_EXECUTE_COMMAND_PATH: &str = "/v1/execute-command";
 pub const TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH: &str = "/v1/read-terminal-output";
@@ -144,6 +145,93 @@ pub enum ReadFileRequestValidationError {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReadFileResponse {
     pub result: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReadMediaRequest {
+    pub file_path: String,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub pdf: Option<ReadMediaPdfOptions>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReadMediaPdfOptions {
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub pages: Option<String>,
+}
+
+impl ReadMediaRequest {
+    /// Validate constraints that cannot be represented by serde alone.
+    pub fn validate(&self) -> Result<(), ReadMediaRequestValidationError> {
+        if self.file_path.trim().is_empty() {
+            return Err(ReadMediaRequestValidationError::EmptyFilePath);
+        }
+        if self
+            .pdf
+            .as_ref()
+            .and_then(|pdf| pdf.pages.as_ref())
+            .as_ref()
+            .is_some_and(|pages| pages.trim().is_empty())
+        {
+            return Err(ReadMediaRequestValidationError::EmptyPdfPages);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ReadMediaRequestValidationError {
+    #[error("filePath must be a non-empty string.")]
+    EmptyFilePath,
+    #[error("pdf.pages must be a non-empty string when provided.")]
+    EmptyPdfPages,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ReadMediaResponse {
+    Image {
+        #[serde(rename = "filePath")]
+        file_path: String,
+        #[serde(rename = "mediaType")]
+        media_type: String,
+        #[serde(rename = "originalWidth")]
+        original_width: u32,
+        #[serde(rename = "originalHeight")]
+        original_height: u32,
+        #[serde(rename = "finalWidth")]
+        final_width: u32,
+        #[serde(rename = "finalHeight")]
+        final_height: u32,
+        #[serde(rename = "wasResized")]
+        was_resized: bool,
+        bytes: usize,
+        base64: String,
+    },
+    Pdf {
+        #[serde(rename = "filePath")]
+        file_path: String,
+        #[serde(rename = "totalPages")]
+        total_pages: usize,
+        #[serde(rename = "pagesReturned")]
+        pages_returned: usize,
+        #[serde(rename = "startPage")]
+        start_page: usize,
+        #[serde(rename = "endPage")]
+        end_page: usize,
+        truncated: bool,
+        content: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -687,6 +775,121 @@ mod tests {
                 Err(error) => error,
             };
             assert!(error.to_string().contains(expected));
+        }
+    }
+
+    #[test]
+    fn read_media_messages_round_trip_with_camel_case_fields() {
+        let request = ReadMediaRequest {
+            file_path: "/workspace/manual.pdf".into(),
+            pdf: Some(ReadMediaPdfOptions {
+                pages: Some("2-4".into()),
+            }),
+        };
+        let json = serde_json::to_value(&request)
+            .unwrap_or_else(|error| panic!("read media request encode failed: {error}"));
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "filePath": "/workspace/manual.pdf",
+                "pdf": { "pages": "2-4" }
+            })
+        );
+        let decoded: ReadMediaRequest = serde_json::from_value(json)
+            .unwrap_or_else(|error| panic!("read media request decode failed: {error}"));
+        assert_eq!(decoded, request);
+        assert!(decoded.validate().is_ok());
+
+        let image = ReadMediaResponse::Image {
+            file_path: "/workspace/image.png".into(),
+            media_type: "image/png".into(),
+            original_width: 1,
+            original_height: 1,
+            final_width: 1,
+            final_height: 1,
+            was_resized: false,
+            bytes: 68,
+            base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB".into(),
+        };
+        let image_json = serde_json::to_value(&image)
+            .unwrap_or_else(|error| panic!("read media image encode failed: {error}"));
+        assert_eq!(
+            image_json,
+            serde_json::json!({
+                "kind": "image",
+                "filePath": "/workspace/image.png",
+                "mediaType": "image/png",
+                "originalWidth": 1,
+                "originalHeight": 1,
+                "finalWidth": 1,
+                "finalHeight": 1,
+                "wasResized": false,
+                "bytes": 68,
+                "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"
+            })
+        );
+        let decoded_image: ReadMediaResponse = serde_json::from_value(image_json)
+            .unwrap_or_else(|error| panic!("read media image decode failed: {error}"));
+        assert_eq!(decoded_image, image);
+
+        let pdf = ReadMediaResponse::Pdf {
+            file_path: "/workspace/manual.pdf".into(),
+            total_pages: 12,
+            pages_returned: 3,
+            start_page: 2,
+            end_page: 4,
+            truncated: true,
+            content: "--- Page 2 ---\nBody".into(),
+        };
+        let pdf_json = serde_json::to_value(&pdf)
+            .unwrap_or_else(|error| panic!("read media pdf encode failed: {error}"));
+        assert_eq!(
+            pdf_json,
+            serde_json::json!({
+                "kind": "pdf",
+                "filePath": "/workspace/manual.pdf",
+                "totalPages": 12,
+                "pagesReturned": 3,
+                "startPage": 2,
+                "endPage": 4,
+                "truncated": true,
+                "content": "--- Page 2 ---\nBody"
+            })
+        );
+        let decoded_pdf: ReadMediaResponse = serde_json::from_value(pdf_json)
+            .unwrap_or_else(|error| panic!("read media pdf decode failed: {error}"));
+        assert_eq!(decoded_pdf, pdf);
+    }
+
+    #[test]
+    fn read_media_request_rejects_null_unknown_and_invalid_values() {
+        for invalid in [
+            serde_json::json!({ "filePath": "/tmp/file.pdf", "pdf": null }),
+            serde_json::json!({ "filePath": "/tmp/file.pdf", "pdf": { "pages": null } }),
+            serde_json::json!({ "filePath": "/tmp/file.pdf", "pdf": { "unknown": true } }),
+            serde_json::json!({ "filePath": "/tmp/file.pdf", "obsolete": true }),
+        ] {
+            assert!(serde_json::from_value::<ReadMediaRequest>(invalid).is_err());
+        }
+
+        let invalid = [
+            (
+                serde_json::json!({ "filePath": " " }),
+                "filePath must be a non-empty string.",
+            ),
+            (
+                serde_json::json!({ "filePath": "/tmp/file.pdf", "pdf": { "pages": "   " } }),
+                "pdf.pages must be a non-empty string when provided.",
+            ),
+        ];
+        for (value, expected) in invalid {
+            let request: ReadMediaRequest = serde_json::from_value(value)
+                .unwrap_or_else(|error| panic!("read media request decode failed: {error}"));
+            let error = match request.validate() {
+                Ok(()) => panic!("request should fail validation"),
+                Err(error) => error,
+            };
+            assert_eq!(error.to_string(), expected);
         }
     }
 

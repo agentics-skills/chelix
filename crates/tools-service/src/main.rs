@@ -4,6 +4,7 @@ mod interactive_terminal;
 mod list_directory;
 mod process;
 mod read_file;
+mod read_media;
 mod ripgrep;
 mod rmux;
 mod terminal;
