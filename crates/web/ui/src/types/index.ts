@@ -51,7 +51,7 @@ export type { RpcError, RpcFrame, RpcResponse } from "./rpc";
 
 export type { RpcMethod, RpcMethodMap } from "./rpc-methods";
 
-export type { SessionMeta } from "./session";
+export type { SessionMeta, SetSessionAgentPayload } from "./session";
 export type {
 	AbortedPartialState,
 	ApprovalPayload,

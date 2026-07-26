@@ -7,7 +7,7 @@
 // `as` casts until we refine the type here.
 
 import type { ModelInfo, ProviderInfo } from "./model";
-import type { SessionMeta } from "./session";
+import type { SessionMeta, SetSessionAgentPayload } from "./session";
 
 /** Maps every RPC method to its response payload type. */
 export interface RpcMethodMap {
@@ -29,7 +29,7 @@ export interface RpcMethodMap {
 	"agents.preset.update": unknown;
 	"agents.presets_list": unknown;
 	"agents.set_default": unknown;
-	"agents.set_session": unknown;
+	"agents.set_session": SetSessionAgentPayload;
 
 	// ── Channels ────────────────────────────────────────────────
 	"channels.add": unknown;

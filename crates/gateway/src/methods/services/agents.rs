@@ -1,7 +1,7 @@
 use super::*;
 
 #[cfg(feature = "agent")]
-use crate::session_reasoning::materialize_agent_preset_session_defaults;
+use crate::session_reasoning::preset_defaults_for_agent;
 
 pub(super) fn register(reg: &mut MethodRegistry) {
     // Agent
@@ -381,12 +381,24 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     meta.upsert(session_key, None)
                         .await
                         .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e.to_string()))?;
-                    meta.set_agent_id(session_key, Some(&agent_id))
+                    let (preset_model, preset_reasoning) =
+                        preset_defaults_for_agent(&ctx.state, Some(&agent_id)).await;
+                    let entry = meta
+                        .assign_agent_with_defaults(
+                            session_key,
+                            &agent_id,
+                            preset_model.as_deref(),
+                            preset_reasoning.as_deref(),
+                        )
                         .await
                         .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e.to_string()))?;
-                    materialize_agent_preset_session_defaults(&ctx.state, session_key, &agent_id)
-                        .await;
-                    Ok(serde_json::json!({ "ok": true, "agent_id": agent_id }))
+                    Ok(serde_json::json!({
+                        "ok": true,
+                        "agent_id": agent_id,
+                        "model": entry.model,
+                        "reasoningEffort": entry.reasoning_effort,
+                        "version": entry.version,
+                    }))
                 })
             }),
         );

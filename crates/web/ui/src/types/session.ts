@@ -52,3 +52,12 @@ export interface SessionMeta {
 	/** Legacy client-side flag. */
 	replying?: boolean;
 }
+
+/** Authoritative session settings returned after assigning an agent. */
+export interface SetSessionAgentPayload {
+	ok: true;
+	agent_id: string;
+	model: string | null;
+	reasoningEffort: string | null;
+	version: number;
+}

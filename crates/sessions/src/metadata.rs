@@ -756,6 +756,43 @@ impl SqliteSessionMetadata {
         Ok(())
     }
 
+    /// Assign a session to an agent and apply any configured model defaults atomically.
+    pub async fn assign_agent_with_defaults(
+        &self,
+        key: &str,
+        agent_id: &str,
+        model: Option<&str>,
+        reasoning_effort: Option<&str>,
+    ) -> std::result::Result<SessionEntry, sqlx::Error> {
+        let now = now_ms() as i64;
+        sqlx::query(
+            r#"UPDATE sessions
+               SET agent_id = ?,
+                   model = COALESCE(?, model),
+                   reasoning_effort = COALESCE(?, reasoning_effort),
+                   updated_at = ?,
+                   version = version + 1
+               WHERE key = ?"#,
+        )
+        .bind(agent_id)
+        .bind(model)
+        .bind(reasoning_effort)
+        .bind(now)
+        .bind(key)
+        .execute(&self.pool)
+        .await?;
+        let entry = sqlx::query_as::<_, SessionRow>("SELECT * FROM sessions WHERE key = ?")
+            .bind(key)
+            .fetch_optional(&self.pool)
+            .await?
+            .map(Into::into)
+            .ok_or(sqlx::Error::RowNotFound)?;
+        self.emit(crate::session_events::SessionEvent::Patched {
+            session_key: key.to_string(),
+        });
+        Ok(entry)
+    }
+
     /// Assign (or clear) a session mode.
     pub async fn set_mode_id(&self, key: &str, mode_id: Option<&str>) -> Result<()> {
         let now = now_ms() as i64;

@@ -13,6 +13,7 @@ import {
 	fetchSessions,
 	isArchivableSession,
 	removeSessionFromClientState,
+	setSessionAgent,
 	setSessionActiveRunId,
 	setSessionReplying,
 	switchSession,
@@ -382,18 +383,11 @@ export function SessionHeader({
 				return;
 			}
 			setSwitchingAgent(true);
-			sendRpc("agents.set_session", {
-				session_key: currentKey,
-				agent_id: nextAgentId,
-			})
+			setSessionAgent(currentKey, nextAgentId)
 				.then((res) => {
 					if (!res?.ok) {
 						showToast((res?.error as { message?: string })?.message || "Failed to switch agent", "error");
 						return;
-					}
-					if (session) {
-						session.agent_id = nextAgentId;
-						session.dataVersion.value++;
 					}
 					fetchSessions();
 				})
@@ -401,7 +395,7 @@ export function SessionHeader({
 					setSwitchingAgent(false);
 				});
 		},
-		[currentAgentId, currentKey, session, switchingAgent],
+		[currentAgentId, currentKey, switchingAgent],
 	);
 
 	const onExternalAgentChange = useCallback(

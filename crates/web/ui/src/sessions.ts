@@ -25,7 +25,7 @@ export {
 	refreshWelcomeCardIfNeeded,
 	updateChatSessionHeader,
 } from "./sessions/session-render";
-export { clearActiveSession, switchSession } from "./sessions/session-switch";
+export { clearActiveSession, setSessionAgent, switchSession } from "./sessions/session-switch";
 export { markSessionTailLocallyTruncated } from "./sessions/session-tail";
 
 // ── Types ────────────────────────────────────────────────────

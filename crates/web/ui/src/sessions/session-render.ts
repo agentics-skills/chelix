@@ -27,6 +27,7 @@ import { modelStore } from "../stores/model-store";
 import { sessionStore } from "../stores/session-store";
 import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metadata";
 import { terminalContextTokens } from "../terminal-usage";
+import { showToast } from "../ui";
 import {
 	appendToolCardContextBudget,
 	appendToolCardError,
@@ -476,30 +477,36 @@ export function renderWelcomeAgentPicker(
 		let activeAgent: AgentInfo | null = null;
 		for (const agent of agents) {
 			if (!agent?.id) continue;
-			if (agent.id === effectiveActive) activeAgent = agent;
+			const agentId = agent.id;
+			if (agentId === effectiveActive) activeAgent = agent;
 			const chip = document.createElement("button");
 			chip.type = "button";
-			chip.className = agent.id === effectiveActive ? "provider-btn" : "provider-btn provider-btn-secondary";
+			chip.className = agentId === effectiveActive ? "provider-btn" : "provider-btn provider-btn-secondary";
 			chip.style.fontSize = "0.7rem";
 			chip.style.padding = "3px 8px";
 			const labelPrefix = agent.emoji ? `${agent.emoji} ` : "";
-			chip.textContent = `${labelPrefix}${agent.name || agent.id}`;
+			chip.textContent = `${labelPrefix}${agent.name || agentId}`;
 			chip.addEventListener("click", () => {
 				const key = sessionStore.activeSessionKey.value || S.activeSessionKey || "main";
-				sendRpc("agents.set_session", { session_key: key, agent_id: agent.id }).then((setRes) => {
-					if (!setRes?.ok) return;
-					const live = sessionStore.getByKey(key);
-					if (live) {
-						live.agent_id = agent.id || "";
-						live.dataVersion.value++;
-					}
-					// Lazy import to avoid circular dependency with sessions.ts
-					void import("../sessions").then(({ fetchSessions }) => fetchSessions());
-					const welcome = S.chatMsgBox?.querySelector("#welcomeCard");
-					if (welcome) {
-						welcome.remove();
-						showWelcomeCard();
-					}
+				chip.disabled = true;
+				// Lazy import to avoid circular dependency with sessions.ts
+				void import("../sessions").then(({ fetchSessions, setSessionAgent }) => {
+					setSessionAgent(key, agentId)
+						.then((setRes) => {
+							if (!setRes?.ok) {
+								showToast(setRes?.error?.message || "Failed to switch agent", "error");
+								return;
+							}
+							fetchSessions();
+							const welcome = S.chatMsgBox?.querySelector("#welcomeCard");
+							if (welcome) {
+								welcome.remove();
+								showWelcomeCard();
+							}
+						})
+						.finally(() => {
+							if (chip.isConnected) chip.disabled = false;
+						});
 				});
 			});
 			container.appendChild(chip);
