@@ -4,11 +4,12 @@ use {
     chelix_protocol::{
         CreateToolsServiceTerminalRequest, CreateToolsServiceTerminalResponse,
         ExecuteCommandRequest, ExecuteCommandResponse, ListDirectoryRequest, ListDirectoryResponse,
-        ProcessRequest, ProcessResponse, ReadFileRequest, ReadFileResponse, ReadMediaRequest,
-        ReadMediaResponse, ReadTerminalOutputRequest, ReadTerminalOutputResponse, RipgrepRequest,
-        RipgrepResponse, TOOLS_SERVICE_BINARY_ENV, TOOLS_SERVICE_EXECUTE_COMMAND_PATH,
-        TOOLS_SERVICE_HEALTH_PATH, TOOLS_SERVICE_LIST_DIRECTORY_PATH, TOOLS_SERVICE_PROCESS_PATH,
-        TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_READ_FILE_PATH,
+        OverwriteFileRequest, OverwriteFileResponse, ProcessRequest, ProcessResponse,
+        ReadFileRequest, ReadFileResponse, ReadMediaRequest, ReadMediaResponse,
+        ReadTerminalOutputRequest, ReadTerminalOutputResponse, RipgrepRequest, RipgrepResponse,
+        TOOLS_SERVICE_BINARY_ENV, TOOLS_SERVICE_EXECUTE_COMMAND_PATH, TOOLS_SERVICE_HEALTH_PATH,
+        TOOLS_SERVICE_LIST_DIRECTORY_PATH, TOOLS_SERVICE_OVERWRITE_FILE_PATH,
+        TOOLS_SERVICE_PROCESS_PATH, TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_READ_FILE_PATH,
         TOOLS_SERVICE_READ_MEDIA_PATH, TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH,
         TOOLS_SERVICE_RIPGREP_PATH, TOOLS_SERVICE_TERMINAL_WS_PATH, TOOLS_SERVICE_TERMINALS_PATH,
         ToolsServiceError, ToolsServiceHealth, ToolsServiceInstanceInfo, ToolsServiceReady,
@@ -340,6 +341,20 @@ impl ManagedToolsService {
         self.call_tool(
             session_key,
             TOOLS_SERVICE_READ_FILE_PATH,
+            &request,
+            DEFAULT_REQUEST_TIMEOUT,
+        )
+        .await
+    }
+
+    pub async fn overwrite_file(
+        &self,
+        session_key: &str,
+        request: OverwriteFileRequest,
+    ) -> Result<OverwriteFileResponse> {
+        self.call_tool(
+            session_key,
+            TOOLS_SERVICE_OVERWRITE_FILE_PATH,
             &request,
             DEFAULT_REQUEST_TIMEOUT,
         )

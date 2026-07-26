@@ -100,12 +100,12 @@ that is current at creation time.
 
 ## Managed filesystem tools
 
-The `read_file`, `read_media`, `list_directory`, and `ripgrep` tools execute exclusively through the
-managed `chelix-tools-service`. With sandbox mode enabled, the service runs in
-the sandbox container selected for the session. With sandbox mode disabled,
-Chelix starts the service as a host sidecar. Service and filesystem errors are
-returned to the tool caller; these tools never fall back from the sandbox to the
-gateway host.
+The `read_file`, `read_media`, `list_directory`, `overwrite_file`, and `ripgrep`
+tools execute exclusively through the managed `chelix-tools-service`. With
+sandbox mode enabled, the service runs in the sandbox container selected for
+the session. With sandbox mode disabled, Chelix starts the service as a host
+sidecar. Service and filesystem errors are returned to the tool caller; these
+tools never fall back from the sandbox to the gateway host.
 
 ### `read_file`
 
@@ -118,6 +118,9 @@ message.
 
 Binary files return a hexadecimal dump. `offset` and `limit` become byte
 parameters, tail mode reads the final bytes, and one call returns at most 512
+bytes. Empty and whitespace-only text files return explicit messages. Invalid
+parameters, missing files, directories, unreadable files, and relative paths
+are tool errors.
 
 ### `read_media`
 
@@ -131,9 +134,15 @@ returned with MIME type, dimensions, resize metadata, byte size, and a base64
 payload. PDFs are decoded through `pdf-extract` and return extracted text plus
 page metadata (`totalPages`, `pagesReturned`, `startPage`, `endPage`,
 `truncated`). Media decode failures are explicit tool errors.
-bytes. Empty and whitespace-only text files return explicit messages. Invalid
-parameters, missing files, directories, unreadable files, and relative paths
-are tool errors.
+
+### `overwrite_file`
+
+`overwrite_file` requires an absolute `filePath` and the complete UTF-8
+`content`. It creates a new file or atomically replaces an existing regular
+file through a temporary file in the same directory. Parent directories must
+already exist. An empty `content` truncates the target. A symbolic-link or
+non-regular target is rejected without modifying it. The result reports the
+resolved `filePath` and UTF-8 `bytesWritten`.
 
 ### `list_directory`
 

@@ -2,6 +2,7 @@ mod api;
 mod app;
 mod interactive_terminal;
 mod list_directory;
+mod overwrite_file;
 mod process;
 mod read_file;
 mod read_media;

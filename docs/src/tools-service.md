@@ -21,8 +21,9 @@ For every tool migrated to `chelix-tools-service`:
 - service unavailability is an explicit error and never triggers local
   fallback execution.
 
-The currently migrated tools are `read_file`, `list_directory`, `ripgrep`,
-`execute_command`, `read_terminal_output`, and `process`.
+The currently migrated tools are `read_file`, `read_media`, `list_directory`,
+`overwrite_file`, `ripgrep`, `execute_command`, `read_terminal_output`, and
+`process`.
 
 `execute_command`, `read_terminal_output`, and `process` exclusively use the
 same terminal pool managed by `chelix-tools-service`. `read_terminal_output`
@@ -149,14 +150,18 @@ migrated tool
 ## Protocol and authentication
 
 The shared wire types live in `chelix-protocol`. The current protocol version is
-`8`.
+`12`.
 
-| Method | Path          | Purpose                                      |
-| ------ | ------------- | -------------------------------------------- |
-| `GET`  | `/v1/health`  | Return the tools-service protocol version    |
-| `POST` | `/v1/ripgrep` | Execute the `ripgrep` tool request and reply |
+| Method | Path                 | Purpose                                         |
+| ------ | -------------------- | ----------------------------------------------- |
+| `GET`  | `/v1/health`         | Return the tools-service protocol version       |
+| `POST` | `/v1/list-directory` | List one directory                              |
+| `POST` | `/v1/overwrite-file` | Atomically create or replace one complete file  |
+| `POST` | `/v1/read-file`      | Read text or binary file content                |
+| `POST` | `/v1/read-media`     | Read an image or PDF                            |
+| `POST` | `/v1/ripgrep`        | Execute the `ripgrep` tool request and reply    |
 
-Both routes require an exact `Authorization: Bearer <token>` header. An invalid
+All routes require an exact `Authorization: Bearer <token>` header. An invalid
 or missing token returns `401 Unauthorized`. A valid `ripgrep` request that
 cannot be executed returns `422 Unprocessable Entity` with the service error
 body.
@@ -204,7 +209,7 @@ the applied `limits`, `summary`, and `exitCode`. Depending on `detail`, it also
 contains `files` or typed `matches` and `context`; `lines+submatches` includes
 typed byte-offset submatches. `truncatedReason`, `stderr`, and ripgrep `stats`
 are emitted only when present. The obsolete process `signal` field is not part
-of protocol version 8.
+of protocol version 12.
 
 Malformed JSONL, invalid base64, and invalid UTF-8 JSON output are explicit tool
 errors rather than silently skipped data. Match and context rows without a
@@ -212,7 +217,7 @@ numeric `line_number` are omitted from row-level output; a match still counts
 toward the summary and limits, matching ripgrep event semantics.
 
 Per-invocation cancellation is not exposed by the current `AgentTool` runner,
-so protocol version 8 does not invent a cancellation flag or fake cancellation
+so protocol version 12 does not invent a cancellation flag or fake cancellation
 state. Cancellation parity requires a real runner cancellation token and is
 deferred until that API exists.
 
@@ -250,7 +255,7 @@ Chelix then obtains two transport classes from the OCI runtime:
 Candidates are discovered once for each container generation and tried in that
 order. Readiness retries repeat only the authenticated `/v1/health` probes;
 they do not respawn `docker port` or `docker inspect` on every attempt. Chelix
-selects the first endpoint whose health response reports protocol version `8`.
+selects the first endpoint whose health response reports protocol version `12`.
 
 This supports both gateway topologies:
 

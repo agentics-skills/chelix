@@ -11,11 +11,12 @@ use {
     },
     chelix_protocol::{
         CreateToolsServiceTerminalRequest, CreateToolsServiceTerminalResponse,
-        ExecuteCommandRequest, ListDirectoryRequest, ListDirectoryResponse, ProcessRequest,
-        ReadFileRequest, ReadFileResponse, ReadMediaRequest, ReadTerminalOutputRequest,
-        RipgrepRequest, RipgrepResponse, TOOLS_SERVICE_EXECUTE_COMMAND_PATH,
-        TOOLS_SERVICE_HEALTH_PATH, TOOLS_SERVICE_LIST_DIRECTORY_PATH, TOOLS_SERVICE_PROCESS_PATH,
-        TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_READ_FILE_PATH,
+        ExecuteCommandRequest, ListDirectoryRequest, ListDirectoryResponse, OverwriteFileRequest,
+        ProcessRequest, ReadFileRequest, ReadFileResponse, ReadMediaRequest,
+        ReadTerminalOutputRequest, RipgrepRequest, RipgrepResponse,
+        TOOLS_SERVICE_EXECUTE_COMMAND_PATH, TOOLS_SERVICE_HEALTH_PATH,
+        TOOLS_SERVICE_LIST_DIRECTORY_PATH, TOOLS_SERVICE_OVERWRITE_FILE_PATH,
+        TOOLS_SERVICE_PROCESS_PATH, TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_READ_FILE_PATH,
         TOOLS_SERVICE_READ_MEDIA_PATH, TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH,
         TOOLS_SERVICE_RIPGREP_PATH, TOOLS_SERVICE_TERMINAL_WS_PATH, TOOLS_SERVICE_TERMINALS_PATH,
         ToolsServiceError, ToolsServiceHealth, ToolsServiceTerminalAttachQuery,
@@ -27,7 +28,7 @@ use {
 use axum::serve;
 
 use crate::{
-    interactive_terminal, list_directory, process, read_file, read_media,
+    interactive_terminal, list_directory, overwrite_file, process, read_file, read_media,
     ripgrep::{self, RipgrepRuntime},
     terminal::TerminalManager,
 };
@@ -47,6 +48,7 @@ pub fn router(
     Router::new()
         .route(TOOLS_SERVICE_HEALTH_PATH, get(health))
         .route(TOOLS_SERVICE_LIST_DIRECTORY_PATH, post(run_list_directory))
+        .route(TOOLS_SERVICE_OVERWRITE_FILE_PATH, post(run_overwrite_file))
         .route(TOOLS_SERVICE_READ_FILE_PATH, post(run_read_file))
         .route(TOOLS_SERVICE_READ_MEDIA_PATH, post(run_read_media))
         .route(TOOLS_SERVICE_RIPGREP_PATH, post(run_ripgrep))
@@ -94,6 +96,22 @@ async fn run_list_directory(
 
     match list_directory::run_tool(&request.path).await {
         Ok(result) => Json(ListDirectoryResponse { result }).into_response(),
+        Err(error) => tool_error_response(error),
+    }
+}
+
+#[tracing::instrument(skip_all)]
+async fn run_overwrite_file(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Json(request): Json<OverwriteFileRequest>,
+) -> Response {
+    if !is_authorized(&state, &headers) {
+        return unauthorized_response();
+    }
+
+    match overwrite_file::run_tool(request).await {
+        Ok(response) => Json(response).into_response(),
         Err(error) => tool_error_response(error),
     }
 }
@@ -289,8 +307,8 @@ mod tests {
     use std::net::Ipv4Addr;
 
     use chelix_protocol::{
-        ExecuteCommandResponse, ProcessAction, ProcessResponse, ReadMediaResponse,
-        ReadTerminalOutputResponse,
+        ExecuteCommandResponse, OverwriteFileResponse, ProcessAction, ProcessResponse,
+        ReadMediaResponse, ReadTerminalOutputResponse,
     };
 
     use super::*;
@@ -384,6 +402,22 @@ mod tests {
         let response = reqwest::Client::new()
             .post(format!("{base_url}{TOOLS_SERVICE_READ_FILE_PATH}"))
             .json(&serde_json::json!({ "filePath": "/tmp/file.txt" }))
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("request failed: {error}"));
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn overwrite_file_requires_authorization() {
+        let base_url = spawn_api().await;
+        let response = reqwest::Client::new()
+            .post(format!("{base_url}{TOOLS_SERVICE_OVERWRITE_FILE_PATH}"))
+            .json(&serde_json::json!({
+                "filePath": "/tmp/file.txt",
+                "content": "value"
+            }))
             .send()
             .await
             .unwrap_or_else(|error| panic!("request failed: {error}"));
@@ -714,6 +748,58 @@ mod tests {
             .await
             .unwrap_or_else(|error| panic!("response decode failed: {error}"));
         assert!(body.error.contains("failed to open file"));
+    }
+
+    #[tokio::test]
+    async fn overwrite_file_runs_with_authorization_and_surfaces_errors() {
+        let directory =
+            tempfile::tempdir().unwrap_or_else(|error| panic!("tempdir failed: {error}"));
+        let path = directory.path().join("sample.txt");
+        tokio::fs::write(&path, "old")
+            .await
+            .unwrap_or_else(|error| panic!("write failed: {error}"));
+        let base_url = spawn_api().await;
+        let client = reqwest::Client::new();
+        let response = client
+            .post(format!("{base_url}{TOOLS_SERVICE_OVERWRITE_FILE_PATH}"))
+            .bearer_auth("test-token")
+            .json(&serde_json::json!({
+                "filePath": path,
+                "content": "new value"
+            }))
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("request failed: {error}"));
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response
+            .json::<OverwriteFileResponse>()
+            .await
+            .unwrap_or_else(|error| panic!("response decode failed: {error}"));
+        assert_eq!(body.bytes_written, 9);
+        assert_eq!(
+            tokio::fs::read_to_string(&path)
+                .await
+                .unwrap_or_else(|error| panic!("read failed: {error}")),
+            "new value"
+        );
+
+        let response = client
+            .post(format!("{base_url}{TOOLS_SERVICE_OVERWRITE_FILE_PATH}"))
+            .bearer_auth("test-token")
+            .json(&serde_json::json!({
+                "filePath": "relative.txt",
+                "content": "value"
+            }))
+            .send()
+            .await
+            .unwrap_or_else(|error| panic!("request failed: {error}"));
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let body = response
+            .json::<ToolsServiceError>()
+            .await
+            .unwrap_or_else(|error| panic!("response decode failed: {error}"));
+        assert_eq!(body.error, "filePath must be absolute.");
     }
 
     #[tokio::test]

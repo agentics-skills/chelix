@@ -4,10 +4,11 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 11;
+pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 12;
 pub const TOOLS_SERVICE_CONTAINER_PORT: u16 = 43_271;
 pub const TOOLS_SERVICE_HEALTH_PATH: &str = "/v1/health";
 pub const TOOLS_SERVICE_LIST_DIRECTORY_PATH: &str = "/v1/list-directory";
+pub const TOOLS_SERVICE_OVERWRITE_FILE_PATH: &str = "/v1/overwrite-file";
 pub const TOOLS_SERVICE_READ_FILE_PATH: &str = "/v1/read-file";
 pub const TOOLS_SERVICE_READ_MEDIA_PATH: &str = "/v1/read-media";
 pub const TOOLS_SERVICE_RIPGREP_PATH: &str = "/v1/ripgrep";
@@ -48,6 +49,36 @@ pub struct ListDirectoryRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ListDirectoryResponse {
     pub result: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OverwriteFileRequest {
+    pub file_path: String,
+    pub content: String,
+}
+
+impl OverwriteFileRequest {
+    /// Validate constraints that cannot be represented by serde alone.
+    pub fn validate(&self) -> Result<(), OverwriteFileRequestValidationError> {
+        if self.file_path.trim().is_empty() {
+            return Err(OverwriteFileRequestValidationError::EmptyFilePath);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum OverwriteFileRequestValidationError {
+    #[error("filePath must be a non-empty string.")]
+    EmptyFilePath,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OverwriteFileResponse {
+    pub file_path: String,
+    pub bytes_written: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -677,6 +708,66 @@ mod tests {
         let decoded_response: ListDirectoryResponse = serde_json::from_str(&response_json)
             .unwrap_or_else(|error| panic!("response decode failed: {error}"));
         assert_eq!(decoded_response, response);
+    }
+
+    #[test]
+    fn overwrite_file_messages_round_trip_with_camel_case_fields() {
+        let request = OverwriteFileRequest {
+            file_path: "/workspace/src/main.rs".into(),
+            content: "fn main() {}\n".into(),
+        };
+        let json = serde_json::to_value(&request)
+            .unwrap_or_else(|error| panic!("overwrite file request encode failed: {error}"));
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "filePath": "/workspace/src/main.rs",
+                "content": "fn main() {}\n"
+            })
+        );
+        let decoded: OverwriteFileRequest = serde_json::from_value(json)
+            .unwrap_or_else(|error| panic!("overwrite file request decode failed: {error}"));
+        assert_eq!(decoded, request);
+        assert!(decoded.validate().is_ok());
+
+        let response = OverwriteFileResponse {
+            file_path: "/workspace/src/main.rs".into(),
+            bytes_written: 13,
+        };
+        let json = serde_json::to_value(&response)
+            .unwrap_or_else(|error| panic!("overwrite file response encode failed: {error}"));
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "filePath": "/workspace/src/main.rs",
+                "bytesWritten": 13
+            })
+        );
+    }
+
+    #[test]
+    fn overwrite_file_request_rejects_unknown_missing_and_empty_fields() {
+        for invalid in [
+            serde_json::json!({ "filePath": "/tmp/file", "content": null }),
+            serde_json::json!({ "filePath": "/tmp/file" }),
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "content": "value",
+                "obsolete": true
+            }),
+        ] {
+            assert!(serde_json::from_value::<OverwriteFileRequest>(invalid).is_err());
+        }
+
+        let request: OverwriteFileRequest = serde_json::from_value(serde_json::json!({
+            "filePath": " ",
+            "content": "value"
+        }))
+        .unwrap_or_else(|error| panic!("overwrite file request decode failed: {error}"));
+        assert_eq!(
+            request.validate().unwrap_err().to_string(),
+            "filePath must be a non-empty string."
+        );
     }
 
     #[test]
