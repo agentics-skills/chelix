@@ -62,7 +62,7 @@ async fn oversized_result_is_truncated_with_pointer_to_file() {
 
     assert!(result.starts_with("xxxx"));
     assert!(result.contains("[Truncated — full tool result (1KB) written to file."));
-    assert!(result.contains("Use the Read tool to access the content at:"));
+    assert!(result.contains("Use the read_file tool to access the content at:"));
     let content_path = dir
         .path()
         .join("tool-results")

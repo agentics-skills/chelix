@@ -699,7 +699,7 @@ test.describe("WebSocket connection lifecycle", () => {
 		const fullOutputPath = "/root/.chelix/sessions/tool-results/session_test/call_test/content.txt";
 		const truncatedResult =
 			'{"background":false,"completed":true,"exitCode":0,"message":"Command finished","output":"Line 1: XXXXX [counter=1]\\nLine 2: XXXXX [counter=2]\\nLine 3: XXXXX [counter=3]' +
-			`\n\n[Truncated — full tool result (101KB) written to file. Use the Read tool to access the content at: ${fullOutputPath}]`;
+			`\n\n[Truncated — full tool result (101KB) written to file. Use the read_file tool to access the content at: ${fullOutputPath}]`;
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
 			payload: {

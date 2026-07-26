@@ -33,6 +33,9 @@ All code must have tests with high coverage. Always check for security.
 - **Retrying external interactions, such as network requests or external commands, a controlled number of times, with every retry explicitly recorded in logs and the fact of the retries propagated to the UI.**
 - **Pre-approved data migrations when there is an explicit business need. An extra unknown configuration parameter must never create migration garbage — it must unambiguously cause refusal.**
 
+## Anti-fluff policy.
+**In documentation/comments, it is forbidden to mention what does not exist**
+
 ## Cargo Features
 
 Enable new feature flags **by default** in `crates/cli/Cargo.toml` (opt-out, not opt-in):

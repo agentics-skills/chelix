@@ -4,13 +4,14 @@ use {
     chelix_protocol::{
         CreateToolsServiceTerminalRequest, CreateToolsServiceTerminalResponse,
         ExecuteCommandRequest, ExecuteCommandResponse, ListDirectoryRequest, ListDirectoryResponse,
-        ProcessRequest, ProcessResponse, ReadTerminalOutputRequest, ReadTerminalOutputResponse,
-        RipgrepRequest, RipgrepResponse, TOOLS_SERVICE_BINARY_ENV,
-        TOOLS_SERVICE_EXECUTE_COMMAND_PATH, TOOLS_SERVICE_HEALTH_PATH,
+        ProcessRequest, ProcessResponse, ReadFileRequest, ReadFileResponse,
+        ReadTerminalOutputRequest, ReadTerminalOutputResponse, RipgrepRequest, RipgrepResponse,
+        TOOLS_SERVICE_BINARY_ENV, TOOLS_SERVICE_EXECUTE_COMMAND_PATH, TOOLS_SERVICE_HEALTH_PATH,
         TOOLS_SERVICE_LIST_DIRECTORY_PATH, TOOLS_SERVICE_PROCESS_PATH,
-        TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH,
-        TOOLS_SERVICE_RIPGREP_PATH, TOOLS_SERVICE_TERMINAL_WS_PATH, TOOLS_SERVICE_TERMINALS_PATH,
-        ToolsServiceError, ToolsServiceHealth, ToolsServiceInstanceInfo, ToolsServiceReady,
+        TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_READ_FILE_PATH,
+        TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH, TOOLS_SERVICE_RIPGREP_PATH,
+        TOOLS_SERVICE_TERMINAL_WS_PATH, TOOLS_SERVICE_TERMINALS_PATH, ToolsServiceError,
+        ToolsServiceHealth, ToolsServiceInstanceInfo, ToolsServiceReady,
         ToolsServiceTerminalAttachQuery, ToolsServiceTerminalInfo, ToolsServiceTerminalsResponse,
     },
     secrecy::ExposeSecret,
@@ -325,6 +326,20 @@ impl ManagedToolsService {
         self.call_tool(
             session_key,
             TOOLS_SERVICE_LIST_DIRECTORY_PATH,
+            &request,
+            DEFAULT_REQUEST_TIMEOUT,
+        )
+        .await
+    }
+
+    pub async fn read_file(
+        &self,
+        session_key: &str,
+        request: ReadFileRequest,
+    ) -> Result<ReadFileResponse> {
+        self.call_tool(
+            session_key,
+            TOOLS_SERVICE_READ_FILE_PATH,
             &request,
             DEFAULT_REQUEST_TIMEOUT,
         )
@@ -963,6 +978,52 @@ mod tests {
             .unwrap_or_else(|error| panic!("list directory call failed: {error}"));
 
         assert_eq!(result.result, "src/\nCargo.toml (1 line)");
+        assert_eq!(backend.ensure_ready_calls.load(Ordering::SeqCst), 1);
+        call.assert_async().await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn read_file_calls_its_service_endpoint() {
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("POST", TOOLS_SERVICE_READ_FILE_PATH)
+            .match_header("authorization", "Bearer read-token")
+            .match_body(mockito::Matcher::Json(serde_json::json!({
+                "filePath": "/workspace/src/main.rs",
+                "offset": 10,
+                "limit": 5,
+                "ranges": [],
+                "includeLineNumbers": false,
+                "numberBlankLines": false,
+                "includeRangeHeaders": false
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body("{\"result\":\"line 10\\nline 11\"}")
+            .expect(1)
+            .create_async()
+            .await;
+        let endpoint = ToolsServiceEndpoint {
+            base_url: server.url(),
+            token: "read-token".into(),
+        };
+        let (service, backend) = test_managed_service([endpoint.clone(), endpoint]).await;
+
+        let result = service
+            .read_file("session:read", ReadFileRequest {
+                file_path: "/workspace/src/main.rs".into(),
+                offset: Some(10),
+                limit: Some(5),
+                ranges: Vec::new(),
+                include_line_numbers: false,
+                number_blank_lines: false,
+                include_range_headers: false,
+            })
+            .await
+            .unwrap_or_else(|error| panic!("read file call failed: {error}"));
+
+        assert_eq!(result.result, "line 10\nline 11");
         assert_eq!(backend.ensure_ready_calls.load(Ordering::SeqCst), 1);
         call.assert_async().await;
     }

@@ -656,7 +656,9 @@ async fn adaptive_read_cap_shrinks_output_for_small_context_window() {
     assert!(next_offset > 1);
     assert_eq!(
         value["continuation_hint"],
-        format!("File output was truncated. Re-run Read with offset={next_offset} to continue.")
+        format!(
+            "File output was truncated. Re-run read_file with offset={next_offset} to continue."
+        )
     );
     let content_str = value["content"].as_str().unwrap();
     assert!(

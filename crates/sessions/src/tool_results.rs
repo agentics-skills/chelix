@@ -93,7 +93,7 @@ impl ToolResultStore {
             Ok(Value::String(text)) => ("content.txt", text, None),
             Ok(parsed) => {
                 let schema = serde_json::to_string(&to_json_schema(&parsed))?;
-                // Pretty-print: friendlier to line-based offsets in the Read tool.
+                // Pretty-print: friendlier to line-based offsets in read_file.
                 let content = serde_json::to_string_pretty(&parsed)?;
                 ("content.json", content, Some(schema))
             },

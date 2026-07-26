@@ -3,6 +3,7 @@ mod app;
 mod interactive_terminal;
 mod list_directory;
 mod process;
+mod read_file;
 mod ripgrep;
 mod rmux;
 mod terminal;

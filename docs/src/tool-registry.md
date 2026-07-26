@@ -100,12 +100,27 @@ that is current at creation time.
 
 ## Managed filesystem tools
 
-The `list_directory` and `ripgrep` tools execute exclusively through the
+The `read_file`, `list_directory`, and `ripgrep` tools execute exclusively through the
 managed `chelix-tools-service`. With sandbox mode enabled, the service runs in
 the sandbox container selected for the session. With sandbox mode disabled,
 Chelix starts the service as a host sidecar. Service and filesystem errors are
-returned to the tool caller; neither tool falls back from the sandbox to the
+returned to the tool caller; these tools never fall back from the sandbox to the
 gateway host.
+
+### `read_file`
+
+`read_file` requires an absolute `filePath`. Text files can be read by a
+1-indexed `offset` plus `limit`, by tail mode (`offset = -1`), or by multiple
+inclusive `ranges`. Range output can include source line numbers, line numbers
+for blank lines, and range headers. A text read returns at most 2,000 lines in
+offset/limit mode; an implicit or capped limit adds an explicit continuation
+message.
+
+Binary files return a hexadecimal dump. `offset` and `limit` become byte
+parameters, tail mode reads the final bytes, and one call returns at most 512
+bytes. Empty and whitespace-only text files return explicit messages. Invalid
+parameters, missing files, directories, unreadable files, and relative paths
+are tool errors.
 
 ### `list_directory`
 

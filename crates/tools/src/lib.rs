@@ -29,6 +29,7 @@ pub mod map;
 pub mod params;
 pub mod policy;
 pub mod process;
+pub mod read_file;
 pub mod ripgrep;
 pub mod sandbox;
 pub mod sandbox_packages;

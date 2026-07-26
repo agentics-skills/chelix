@@ -21,7 +21,7 @@ For every tool migrated to `chelix-tools-service`:
 - service unavailability is an explicit error and never triggers local
   fallback execution.
 
-The currently migrated tools are `list_directory`, `ripgrep`,
+The currently migrated tools are `read_file`, `list_directory`, `ripgrep`,
 `execute_command`, `read_terminal_output`, and `process`.
 
 `execute_command`, `read_terminal_output`, and `process` exclusively use the

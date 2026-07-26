@@ -4,10 +4,11 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 8;
+pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 9;
 pub const TOOLS_SERVICE_CONTAINER_PORT: u16 = 43_271;
 pub const TOOLS_SERVICE_HEALTH_PATH: &str = "/v1/health";
 pub const TOOLS_SERVICE_LIST_DIRECTORY_PATH: &str = "/v1/list-directory";
+pub const TOOLS_SERVICE_READ_FILE_PATH: &str = "/v1/read-file";
 pub const TOOLS_SERVICE_RIPGREP_PATH: &str = "/v1/ripgrep";
 pub const TOOLS_SERVICE_EXECUTE_COMMAND_PATH: &str = "/v1/execute-command";
 pub const TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH: &str = "/v1/read-terminal-output";
@@ -45,6 +46,103 @@ pub struct ListDirectoryRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ListDirectoryResponse {
+    pub result: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReadFileRange {
+    pub start_line: i64,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub end_line: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReadFileRequest {
+    pub file_path: String,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub offset: Option<i64>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_present_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub limit: Option<i64>,
+    #[serde(default)]
+    pub ranges: Vec<ReadFileRange>,
+    #[serde(default)]
+    pub include_line_numbers: bool,
+    #[serde(default)]
+    pub number_blank_lines: bool,
+    #[serde(default)]
+    pub include_range_headers: bool,
+}
+
+impl ReadFileRequest {
+    /// Validate constraints that cannot be represented by serde alone.
+    pub fn validate(&self) -> Result<(), ReadFileRequestValidationError> {
+        if self.file_path.trim().is_empty() {
+            return Err(ReadFileRequestValidationError::EmptyFilePath);
+        }
+        if let Some(offset) = self.offset {
+            if offset == 0 {
+                return Err(ReadFileRequestValidationError::ZeroOffset);
+            }
+            if offset < -1 {
+                return Err(ReadFileRequestValidationError::InvalidNegativeOffset);
+            }
+        }
+        if self.limit.is_some_and(|limit| limit < 1) {
+            return Err(ReadFileRequestValidationError::InvalidLimit);
+        }
+        if !self.ranges.is_empty() && (self.offset.is_some() || self.limit.is_some()) {
+            return Err(ReadFileRequestValidationError::MixedReadModes);
+        }
+        for (index, range) in self.ranges.iter().enumerate() {
+            if range.start_line < 1 {
+                return Err(ReadFileRequestValidationError::InvalidRangeStart(index));
+            }
+            if range.end_line.is_some_and(|end_line| end_line < 1) {
+                return Err(ReadFileRequestValidationError::InvalidRangeEnd(index));
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ReadFileRequestValidationError {
+    #[error("filePath must be a non-empty string.")]
+    EmptyFilePath,
+    #[error(
+        "offset must not be 0. Omit offset to read from the beginning, use a positive offset to read from a 1-indexed line or byte, or use -1 for tail mode."
+    )]
+    ZeroOffset,
+    #[error(
+        "offset must be a positive integer or -1 for tail mode. Other negative offsets are not supported."
+    )]
+    InvalidNegativeOffset,
+    #[error("limit must be a positive integer.")]
+    InvalidLimit,
+    #[error("Use either offset/limit or ranges, not both.")]
+    MixedReadModes,
+    #[error("ranges[{0}].startLine must be a positive integer.")]
+    InvalidRangeStart(usize),
+    #[error("ranges[{0}].endLine must be a positive integer.")]
+    InvalidRangeEnd(usize),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadFileResponse {
     pub result: String,
 }
 
@@ -491,6 +589,105 @@ mod tests {
         let decoded_response: ListDirectoryResponse = serde_json::from_str(&response_json)
             .unwrap_or_else(|error| panic!("response decode failed: {error}"));
         assert_eq!(decoded_response, response);
+    }
+
+    #[test]
+    fn read_file_messages_round_trip_with_camel_case_fields() {
+        let request = ReadFileRequest {
+            file_path: "/workspace/src/main.rs".into(),
+            offset: None,
+            limit: None,
+            ranges: vec![ReadFileRange {
+                start_line: 12,
+                end_line: Some(20),
+            }],
+            include_line_numbers: true,
+            number_blank_lines: false,
+            include_range_headers: true,
+        };
+        let json = serde_json::to_value(&request)
+            .unwrap_or_else(|error| panic!("read file request encode failed: {error}"));
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "filePath": "/workspace/src/main.rs",
+                "ranges": [{ "startLine": 12, "endLine": 20 }],
+                "includeLineNumbers": true,
+                "numberBlankLines": false,
+                "includeRangeHeaders": true
+            })
+        );
+        let decoded: ReadFileRequest = serde_json::from_value(json)
+            .unwrap_or_else(|error| panic!("read file request decode failed: {error}"));
+        assert_eq!(decoded, request);
+        assert!(decoded.validate().is_ok());
+
+        let response = ReadFileResponse {
+            result: "12\tfn main() {}".into(),
+        };
+        let json = serde_json::to_string(&response).unwrap_or_default();
+        let decoded: ReadFileResponse = serde_json::from_str(&json)
+            .unwrap_or_else(|error| panic!("read file response decode failed: {error}"));
+        assert_eq!(decoded, response);
+    }
+
+    #[test]
+    fn read_file_request_rejects_null_unknown_and_invalid_values() {
+        for invalid in [
+            serde_json::json!({ "filePath": "/tmp/file", "offset": null }),
+            serde_json::json!({ "filePath": "/tmp/file", "limit": null }),
+            serde_json::json!({ "filePath": "/tmp/file", "ranges": null }),
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "ranges": [{ "startLine": 1, "endLine": null }]
+            }),
+            serde_json::json!({ "filePath": "/tmp/file", "obsolete": true }),
+        ] {
+            assert!(serde_json::from_value::<ReadFileRequest>(invalid).is_err());
+        }
+
+        let invalid = [
+            (
+                serde_json::json!({ "filePath": " " }),
+                "filePath must be a non-empty string.",
+            ),
+            (
+                serde_json::json!({ "filePath": "/tmp/file", "offset": 0 }),
+                "offset must not be 0.",
+            ),
+            (
+                serde_json::json!({ "filePath": "/tmp/file", "offset": -2 }),
+                "offset must be a positive integer or -1",
+            ),
+            (
+                serde_json::json!({ "filePath": "/tmp/file", "limit": 0 }),
+                "limit must be a positive integer.",
+            ),
+            (
+                serde_json::json!({
+                    "filePath": "/tmp/file",
+                    "offset": 1,
+                    "ranges": [{ "startLine": 1 }]
+                }),
+                "Use either offset/limit or ranges, not both.",
+            ),
+            (
+                serde_json::json!({
+                    "filePath": "/tmp/file",
+                    "ranges": [{ "startLine": 0 }]
+                }),
+                "ranges[0].startLine must be a positive integer.",
+            ),
+        ];
+        for (value, expected) in invalid {
+            let request: ReadFileRequest = serde_json::from_value(value)
+                .unwrap_or_else(|error| panic!("read file request decode failed: {error}"));
+            let error = match request.validate() {
+                Ok(()) => panic!("request should fail validation"),
+                Err(error) => error,
+            };
+            assert!(error.to_string().contains(expected));
+        }
     }
 
     #[test]

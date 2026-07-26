@@ -81,7 +81,7 @@ fn text_payload(
         payload.insert(
             "continuation_hint".to_string(),
             json!(format!(
-                "File output was truncated. Re-run Read with offset={next_offset} to continue."
+                "File output was truncated. Re-run read_file with offset={next_offset} to continue."
             )),
         );
     }
@@ -835,7 +835,7 @@ mod tests {
         assert_eq!(value["next_offset"], 5);
         assert_eq!(
             value["continuation_hint"],
-            "File output was truncated. Re-run Read with offset=5 to continue."
+            "File output was truncated. Re-run read_file with offset=5 to continue."
         );
         let content = value["content"].as_str().unwrap();
         assert!(content.contains("line 3"));
@@ -890,7 +890,7 @@ mod tests {
         assert_eq!(value["next_offset"], 101);
         assert_eq!(
             value["continuation_hint"],
-            "File output was truncated. Re-run Read with offset=101 to continue."
+            "File output was truncated. Re-run read_file with offset=101 to continue."
         );
         let content = value["content"].as_str().unwrap();
         assert!(content.contains("line 100"));
@@ -919,7 +919,7 @@ mod tests {
         assert_eq!(
             value["continuation_hint"],
             format!(
-                "File output was truncated. Re-run Read with offset={next_offset} to continue."
+                "File output was truncated. Re-run read_file with offset={next_offset} to continue."
             )
         );
     }

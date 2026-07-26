@@ -179,7 +179,7 @@ fn append_full_output_pointer(result: &mut String, persisted: &PersistedToolResu
     let kb = persisted.content_bytes.div_ceil(1024);
     let _ = write!(
         result,
-        "\n\n[Truncated — full tool result ({kb}KB) written to file. Use the Read tool to access \
+        "\n\n[Truncated — full tool result ({kb}KB) written to file. Use the read_file tool to access \
          the content at: {}]",
         persisted.content_path.display()
     );
