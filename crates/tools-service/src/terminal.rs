@@ -605,7 +605,10 @@ async fn wait_for_run(terminal: &ManagedTerminal, run_id: &str, timeout: Duratio
                     .as_ref()
                     .ok_or_else(|| anyhow!("terminal run {run_id} disappeared"))?;
                 if run.id != run_id {
-                    bail!("terminal run {run_id} was replaced before completion");
+                    bail!(
+                        "terminal run {run_id} was replaced after completion; retrieve its result with read_terminal_output using terminalId {}",
+                        terminal.id
+                    );
                 }
                 if run.completed || output.closed {
                     return Ok(true);
