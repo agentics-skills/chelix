@@ -63,7 +63,7 @@ Current Rust workspace: ~270K LoC across 59 crates. The table below groups the m
 
 | Category | Crates | Combined LoC |
 |----------|--------|-------------|
-| Channels | `chelix-telegram`, `chelix-whatsapp`, `chelix-signal`, `chelix-discord`, `chelix-msteams`, `chelix-matrix`, `chelix-slack`, `chelix-nostr`, `chelix-channels` | 34.0K |
+| Channels | `chelix-telegram`, `chelix-whatsapp`, `chelix-signal`, `chelix-discord`, `chelix-matrix`, `chelix-slack`, `chelix-nostr`, `chelix-channels` | 41.4K |
 | Web and APIs | `chelix-web`, `chelix-graphql`, `chelix-webhooks` | 10.8K |
 | Extensibility | `chelix-mcp`, `chelix-mcp-agent-bridge`, `chelix-skills`, `chelix-plugins` | 11.5K |
 | Memory and context | `chelix-memory`, `chelix-qmd`, `chelix-code-index`, `chelix-projects` | 11.7K |
@@ -92,7 +92,7 @@ Verify releases with `gh attestation verify <artifact> -R agentics-skills/chelix
 ## Features
 
 - **AI Gateway** — Multi-provider LLM support (OpenAI Codex, GitHub Copilot, Local), streaming responses, agent loop with sub-agent delegation, session modes, parallel tool execution
-- **Communication** — Web UI, Telegram, Signal, Microsoft Teams, Discord, API access, voice I/O (8 TTS + 7 STT providers), mobile PWA with push notifications
+- **Communication** — Web UI, Telegram, Signal, Discord, API access, voice I/O (8 TTS + 7 STT providers), mobile PWA with push notifications
 - **Generative UI** — A2UI v0.9.1 basic-catalog interfaces rendered in web chat with standard event actions returned to the waiting agent tool
 - **Memory & Recall** — Per-agent memory workspaces, embeddings-powered long-term memory, hybrid vector + full-text search, session persistence with auto-compaction, cross-session recall, Cursor-compatible project context, context-file safety scanning
 - **Extensibility** — MCP servers (stdio + HTTP/SSE), skill system, 14 lifecycle hook events with circuit breaker, destructive command guard

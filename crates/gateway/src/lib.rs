@@ -50,8 +50,6 @@ pub mod session_types;
 pub mod share_store;
 pub mod ssh_probe;
 pub mod state;
-#[cfg(feature = "msteams")]
-pub mod teams_agent_tools;
 pub mod tts_phrases;
 pub mod update_check;
 pub mod updater;

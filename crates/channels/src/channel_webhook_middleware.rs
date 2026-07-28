@@ -16,7 +16,7 @@ use crate::plugin::ChannelType;
 
 /// Per-channel webhook signature verification.
 ///
-/// Each webhook channel (Slack, Teams, etc.) implements this trait to provide
+/// Each webhook channel (Slack, etc.) implements this trait to provide
 /// its platform-specific signature algorithm. The gateway's middleware pipeline
 /// calls [`verify`](Self::verify) on every inbound webhook request.
 pub trait ChannelWebhookVerifier: Send + Sync {
@@ -57,7 +57,7 @@ pub trait ChannelWebhookVerifier: Send + Sync {
 /// Output of a successfully verified webhook request.
 #[derive(Debug, Clone)]
 pub struct VerifiedChannelWebhook {
-    /// Channel-specific idempotency key (e.g. Slack `event_id`, Teams `activity.id`).
+    /// Channel-specific idempotency key (e.g. Slack `event_id`).
     /// `None` if the channel does not provide one.
     pub idempotency_key: Option<String>,
 

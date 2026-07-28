@@ -17,8 +17,6 @@ use crate::{Error, Result, config_view::ChannelConfigView};
 pub enum ChannelType {
     Telegram,
     Whatsapp,
-    #[serde(rename = "msteams")]
-    MsTeams,
     Discord,
     Slack,
     Matrix,
@@ -33,7 +31,6 @@ impl ChannelType {
         match self {
             Self::Telegram => "telegram",
             Self::Whatsapp => "whatsapp",
-            Self::MsTeams => "msteams",
             Self::Discord => "discord",
             Self::Slack => "slack",
             Self::Matrix => "matrix",
@@ -48,7 +45,6 @@ impl ChannelType {
         match self {
             Self::Telegram => "Telegram",
             Self::Whatsapp => "WhatsApp",
-            Self::MsTeams => "Microsoft Teams",
             Self::Discord => "Discord",
             Self::Slack => "Slack",
             Self::Matrix => "Matrix",
@@ -89,7 +85,6 @@ impl ChannelType {
         match self {
             Self::Telegram => &["token"],
             Self::Whatsapp => &[],
-            Self::MsTeams => &["app_password", "webhook_secret"],
             Self::Discord => &["token"],
             Self::Slack => &["bot_token", "app_token", "signing_secret"],
             Self::Matrix => &["access_token", "password"],
@@ -113,7 +108,6 @@ impl std::str::FromStr for ChannelType {
         match s {
             "telegram" => Ok(Self::Telegram),
             "whatsapp" => Ok(Self::Whatsapp),
-            "msteams" | "microsoft_teams" | "microsoft-teams" | "teams" => Ok(Self::MsTeams),
             "discord" => Ok(Self::Discord),
             "slack" => Ok(Self::Slack),
             "matrix" | "element" => Ok(Self::Matrix),
@@ -132,7 +126,6 @@ impl ChannelType {
     pub const ALL: &[ChannelType] = &[
         Self::Telegram,
         Self::Whatsapp,
-        Self::MsTeams,
         Self::Discord,
         Self::Slack,
         Self::Matrix,
@@ -175,22 +168,6 @@ impl ChannelType {
                     supports_otp: true,
                     supports_reactions: false,
                     supports_location: false,
-                },
-            },
-            Self::MsTeams => ChannelDescriptor {
-                channel_type: *self,
-                display_name: "Microsoft Teams",
-                capabilities: ChannelCapabilities {
-                    inbound_mode: InboundMode::Webhook,
-                    supports_outbound: true,
-                    supports_streaming: true,
-                    supports_interactive: true,
-                    supports_threads: true,
-                    supports_voice_ingest: false,
-                    supports_pairing: false,
-                    supports_otp: false,
-                    supports_reactions: true,
-                    supports_location: true,
                 },
             },
             Self::Discord => ChannelDescriptor {
@@ -307,7 +284,7 @@ pub enum InboundMode {
     GatewayLoop,
     /// Socket Mode connection (Slack).
     SocketMode,
-    /// HTTP webhook endpoint (Microsoft Teams).
+    /// HTTP webhook endpoint.
     Webhook,
 }
 
@@ -1184,7 +1161,6 @@ mod tests {
         for ct in [
             ChannelType::Telegram,
             ChannelType::Whatsapp,
-            ChannelType::MsTeams,
             ChannelType::Discord,
             ChannelType::Slack,
         ] {
@@ -1315,7 +1291,6 @@ mod tests {
         for (s, expected) in [
             ("telegram", ChannelType::Telegram),
             ("whatsapp", ChannelType::Whatsapp),
-            ("msteams", ChannelType::MsTeams),
             ("discord", ChannelType::Discord),
             ("slack", ChannelType::Slack),
             ("matrix", ChannelType::Matrix),
@@ -1338,7 +1313,6 @@ mod tests {
         for ct in [
             ChannelType::Telegram,
             ChannelType::Whatsapp,
-            ChannelType::MsTeams,
             ChannelType::Discord,
             ChannelType::Slack,
             ChannelType::Matrix,
@@ -1353,7 +1327,7 @@ mod tests {
     #[test]
     fn all_covers_every_variant() {
         // If a new variant is added to ChannelType, this test forces updating ALL.
-        assert_eq!(ChannelType::ALL.len(), 9);
+        assert_eq!(ChannelType::ALL.len(), 8);
         for ct in ChannelType::ALL {
             // descriptor() must not panic
             let desc = ct.descriptor();
@@ -1365,10 +1339,6 @@ mod tests {
     fn descriptor_returns_correct_display_names() {
         assert_eq!(ChannelType::Telegram.descriptor().display_name, "Telegram");
         assert_eq!(ChannelType::Whatsapp.descriptor().display_name, "WhatsApp");
-        assert_eq!(
-            ChannelType::MsTeams.descriptor().display_name,
-            "Microsoft Teams"
-        );
         assert_eq!(ChannelType::Discord.descriptor().display_name, "Discord");
         assert_eq!(ChannelType::Slack.descriptor().display_name, "Slack");
         assert_eq!(ChannelType::Matrix.descriptor().display_name, "Matrix");
@@ -1391,10 +1361,6 @@ mod tests {
     fn channel_type_secret_fields_are_declared() {
         assert_eq!(ChannelType::Telegram.secret_fields(), ["token"]);
         assert_eq!(ChannelType::Whatsapp.secret_fields(), &[] as &[&str]);
-        assert_eq!(ChannelType::MsTeams.secret_fields(), [
-            "app_password",
-            "webhook_secret"
-        ]);
         assert_eq!(ChannelType::Discord.secret_fields(), ["token"]);
         assert_eq!(ChannelType::Slack.secret_fields(), [
             "bot_token",

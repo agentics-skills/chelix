@@ -41,7 +41,7 @@ Use this when adding a new channel crate or bringing an existing one to parity.
 - Pairing in WhatsApp.
 - OTP approval flow for unknown DM users in Telegram, WhatsApp, and Matrix.
 - Reaction support in Slack and Matrix.
-- Location send or receive support in Telegram, Microsoft Teams, Discord, and
+- Location send or receive support in Telegram, Discord, and
   Matrix.
 - Access control patterns: DM policy, group or room policy, allowlists, mention
   mode, auto-join or equivalent.

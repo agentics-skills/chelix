@@ -78,9 +78,8 @@ pub(crate) async fn deliver_channel_replies(
     } else {
         targets = drained_targets;
     }
-    let is_channel_session = session_key.starts_with("telegram:")
-        || session_key.starts_with("msteams:")
-        || session_key.starts_with("discord:");
+    let is_channel_session =
+        session_key.starts_with("telegram:") || session_key.starts_with("discord:");
     if targets.is_empty() && streamed_targets.is_empty() {
         let _ = state.drain_channel_status_log(session_key).await;
         if is_channel_session {

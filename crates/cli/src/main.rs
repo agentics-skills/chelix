@@ -26,7 +26,6 @@ static malloc_conf: &[u8] = b"dirty_decay_ms:1000,muzzy_decay_ms:1000,background
 
 mod auth_commands;
 mod browser_commands;
-mod channel_commands;
 mod config_commands;
 mod data_commands;
 mod db_commands;
@@ -96,11 +95,6 @@ enum Commands {
         message: String,
         #[arg(long)]
         thinking: Option<String>,
-    },
-    /// Channel management.
-    Channels {
-        #[command(subcommand)]
-        action: channel_commands::ChannelAction,
     },
     /// Send a message.
     Send {
@@ -465,7 +459,6 @@ async fn main() -> anyhow::Result<()> {
             chelix_onboarding::wizard::run_onboarding().await?;
             Ok(())
         },
-        Some(Commands::Channels { action }) => channel_commands::handle_channels(action).await,
         Some(Commands::Auth { action }) => auth_commands::handle_auth(action).await,
         Some(Commands::Sandbox { action }) => sandbox_commands::handle_sandbox(action).await,
         Some(Commands::Browser { action }) => browser_commands::handle_browser(action),

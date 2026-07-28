@@ -14,7 +14,6 @@ import {
 	makeMatrixIcon,
 	makeProjectIcon,
 	makeSlackIcon,
-	makeTeamsIcon,
 	makeTelegramIcon,
 } from "../icons";
 import { currentPrefix, navigate, sessionPath } from "../router";
@@ -42,7 +41,6 @@ const spinnerFrames: string[] = [
 function channelSessionType(s: Session): ChannelType | null {
 	const key = s.key || "";
 	if (key.startsWith(`${ChannelType.Telegram}:`)) return ChannelType.Telegram;
-	if (key.startsWith(`${ChannelType.MsTeams}:`)) return ChannelType.MsTeams;
 	if (key.startsWith(`${ChannelType.Discord}:`)) return ChannelType.Discord;
 	if (key.startsWith(`${ChannelType.Slack}:`)) return ChannelType.Slack;
 	if (key.startsWith(`${ChannelType.Matrix}:`)) return ChannelType.Matrix;
@@ -79,7 +77,6 @@ function SessionIcon({ session, isBranch }: SessionIconProps): VNode {
 		if (isBranch) icon = makeBranchIcon();
 		else if (key.startsWith("cron:")) icon = makeCronIcon();
 		else if (channelType === ChannelType.Telegram) icon = makeTelegramIcon();
-		else if (channelType === ChannelType.MsTeams) icon = makeTeamsIcon();
 		else if (channelType === ChannelType.Discord) icon = makeDiscordIcon();
 		else if (channelType === ChannelType.Slack) icon = makeSlackIcon();
 		else if (channelType === ChannelType.Matrix) icon = makeMatrixIcon();
@@ -104,15 +101,13 @@ function SessionIcon({ session, isBranch }: SessionIconProps): VNode {
 		iconStyle.color = "var(--muted)";
 	}
 	const channelLabel =
-		channelType === ChannelType.MsTeams
-			? "Microsoft Teams"
-			: channelType === ChannelType.Discord
-				? "Discord"
-				: channelType === ChannelType.Slack
-					? "Slack"
-					: channelType === ChannelType.Matrix
-						? "Matrix"
-						: "Telegram";
+		channelType === ChannelType.Discord
+			? "Discord"
+			: channelType === ChannelType.Slack
+				? "Slack"
+				: channelType === ChannelType.Matrix
+					? "Matrix"
+					: "Telegram";
 	const baseTitle = channelBound
 		? session.activeChannel
 			? `Active ${channelLabel} session`

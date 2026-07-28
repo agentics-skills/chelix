@@ -25,7 +25,6 @@ import { AddMatrixModal } from "./channels/modals/AddMatrixModal";
 import { AddNostrModal } from "./channels/modals/AddNostrModal";
 import { AddSignalModal } from "./channels/modals/AddSignalModal";
 import { AddSlackModal } from "./channels/modals/AddSlackModal";
-import { AddTeamsModal } from "./channels/modals/AddTeamsModal";
 // ── Sub-module imports (modals + shared fields) ──────────────
 import { AddTelegramModal } from "./channels/modals/AddTelegramModal";
 import { AddWhatsAppModal } from "./channels/modals/AddWhatsAppModal";
@@ -73,14 +72,6 @@ export interface ChannelConfig {
 	allowlist?: string[];
 	model?: string;
 	model_provider?: string;
-	// Teams
-	app_id?: string;
-	app_password?: string;
-	webhook_secret?: string;
-	stream_mode?: string;
-	reply_style?: string;
-	welcome_card?: boolean;
-	bot_name?: string;
 	// Slack
 	bot_token?: string;
 	app_token?: string;
@@ -171,7 +162,6 @@ export function prefetchChannels(): Promise<void> {
 const senders: Signal<SenderEntry[]> = signal([]);
 const activeTab: Signal<string> = signal("channels");
 export const showAddTelegram: Signal<boolean> = signal(false);
-export const showAddTeams: Signal<boolean> = signal(false);
 export const showAddDiscord: Signal<boolean> = signal(false);
 export const showAddWhatsApp: Signal<boolean> = signal(false);
 export const showAddSlack: Signal<boolean> = signal(false);
@@ -195,7 +185,6 @@ export function channelType(type: string | undefined): string {
 
 export function channelLabel(type: string | undefined): string {
 	const t = channelType(type);
-	if (t === "msteams") return "Microsoft Teams";
 	if (t === "discord") return "Discord";
 	if (t === "whatsapp") return "WhatsApp";
 	if (t === "slack") return "Slack";
@@ -495,7 +484,6 @@ interface ChannelIconProps {
 
 function ChannelIcon({ type }: ChannelIconProps): VNode {
 	const t = channelType(type);
-	if (t === "msteams") return <span className="icon icon-msteams" />;
 	if (t === "discord") return <span className="icon icon-discord" />;
 	if (t === "whatsapp") return <span className="icon icon-whatsapp" />;
 	if (t === "slack") return <span className="icon icon-slack" />;
@@ -619,16 +607,6 @@ function ConnectButtons(): VNode {
 					}}
 				>
 					<span className="icon icon-telegram" /> Connect Telegram
-				</button>
-			)}
-			{offered.has("msteams") && (
-				<button
-					className="provider-btn provider-btn-secondary inline-flex items-center gap-1.5"
-					onClick={() => {
-						if (connected.value) showAddTeams.value = true;
-					}}
-				>
-					<span className="icon icon-msteams" /> Connect Microsoft Teams
 				</button>
 			)}
 			{offered.has("discord") && (
@@ -920,7 +898,6 @@ function ChannelsPageComponent(): VNode {
 			{activeTab.value === "channels" && <ChannelStorageNotice />}
 			{activeTab.value === "channels" ? <ChannelsTab /> : <SendersTab />}
 			<AddTelegramModal />
-			<AddTeamsModal />
 			<AddDiscordModal />
 			<AddSlackModal />
 			<AddMatrixModal />
@@ -942,7 +919,6 @@ export function initChannels(container: HTMLElement): void {
 	container.style.cssText = "flex-direction:column;padding:0;overflow:hidden;";
 	activeTab.value = "channels";
 	showAddTelegram.value = false;
-	showAddTeams.value = false;
 	showAddDiscord.value = false;
 	showAddSlack.value = false;
 	showAddMatrix.value = false;

@@ -31,7 +31,6 @@ default-members = [
   "crates/media",
   "crates/memory",
   "crates/metrics",
-  "crates/msteams",
   "crates/nostr",
   "crates/oauth",
   "crates/onboarding",
@@ -91,7 +90,6 @@ members = [
   "crates/media",
   "crates/memory",
   "crates/metrics",
-  "crates/msteams",
   "crates/nostr",
   "crates/oauth",
   "crates/onboarding",
@@ -360,7 +358,6 @@ chelix-mcp-agent-bridge  = { path = "crates/mcp-agent-bridge" }
 chelix-media             = { path = "crates/media" }
 chelix-memory            = { path = "crates/memory" }
 chelix-metrics           = { path = "crates/metrics" }
-chelix-msteams           = { path = "crates/msteams" }
 chelix-nostr             = { path = "crates/nostr" }
 chelix-oauth             = { path = "crates/oauth" }
 chelix-onboarding        = { path = "crates/onboarding" }

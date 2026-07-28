@@ -408,7 +408,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                     ("offered", Array(Box::new(Leaf))),
                     ("telegram", Map(Box::new(channel_account()))),
                     ("whatsapp", Map(Box::new(channel_account()))),
-                    ("msteams", Map(Box::new(channel_account()))),
                     ("discord", Map(Box::new(channel_account()))),
                     ("slack", Map(Box::new(channel_account()))),
                     ("matrix", Map(Box::new(channel_account()))),

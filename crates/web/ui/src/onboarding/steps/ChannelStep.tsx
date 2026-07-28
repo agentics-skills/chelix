@@ -8,10 +8,7 @@ import type { VNode } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import {
 	addChannel,
-	buildTeamsEndpoint,
-	defaultTeamsBaseUrl,
 	deriveMatrixAccountId,
-	generateWebhookSecretHex,
 	MATRIX_DEFAULT_HOMESERVER,
 	MATRIX_DOCS_URL,
 	MATRIX_ENCRYPTION_GUIDANCE,
@@ -31,7 +28,6 @@ import { sendRpc } from "../../helpers";
 import { t } from "../../i18n";
 import { targetChecked, targetValue } from "../../typed-events";
 import { WsEventName } from "../../types/ws-events";
-import { copyToClipboard } from "../../ui";
 import { ErrorPanel } from "../shared";
 import type { ChannelFormProps } from "./channel-forms";
 import {
@@ -789,236 +785,6 @@ function SlackForm({ onConnected, error, setError }: ChannelFormProps): VNode {
 	);
 }
 
-// ── Teams form ──────────────────────────────────────────────
-
-function TeamsForm({ onConnected, error, setError }: ChannelFormProps): VNode {
-	const [appId, setAppId] = useState("");
-	const [appPassword, setAppPassword] = useState("");
-	const [webhookSecret, setWebhookSecret] = useState("");
-	const [baseUrl, setBaseUrl] = useState(defaultTeamsBaseUrl());
-	const [bootstrapEndpoint, setBootstrapEndpoint] = useState("");
-	const [advancedConfig, setAdvancedConfig] = useState("");
-	const [saving, setSaving] = useState(false);
-
-	function onBootstrap(): void {
-		const id = appId.trim();
-		if (!id) {
-			setError("Enter App ID first.");
-			return;
-		}
-		let secret = webhookSecret.trim();
-		if (!secret) {
-			secret = generateWebhookSecretHex();
-			setWebhookSecret(secret);
-		}
-		const endpoint = buildTeamsEndpoint(baseUrl, id, secret);
-		if (!endpoint) {
-			setError("Enter a valid public base URL (e.g. https://bot.example.com).");
-			return;
-		}
-		setBootstrapEndpoint(endpoint);
-		setError(null);
-	}
-
-	function onCopyEndpoint(): void {
-		if (!bootstrapEndpoint) return;
-		copyToClipboard(bootstrapEndpoint, "Endpoint copied");
-	}
-
-	function onSubmit(e: Event): void {
-		e.preventDefault();
-		const v = validateChannelFields("msteams", appId, appPassword);
-		if (!v.valid) {
-			setError(v.error);
-			return;
-		}
-		const advancedPatch = parseChannelConfigPatch(advancedConfig);
-		if (!advancedPatch.ok) {
-			setError(advancedPatch.error);
-			return;
-		}
-		setError(null);
-		setSaving(true);
-		const config: Record<string, unknown> = {
-			app_id: appId.trim(),
-			app_password: appPassword.trim(),
-			dm_policy: "allowlist",
-			mention_mode: "mention",
-			allowlist: [],
-		};
-		if (webhookSecret.trim()) config.webhook_secret = webhookSecret.trim();
-		Object.assign(config, advancedPatch.value);
-		(
-			addChannel("msteams", appId.trim(), config) as Promise<{
-				ok?: boolean;
-				error?: { message?: string; detail?: string };
-			}>
-		).then((res) => {
-			setSaving(false);
-			if (res?.ok) {
-				onConnected(appId.trim(), "msteams");
-			} else {
-				setError((res?.error && (res.error.message || res.error.detail)) || "Failed to connect channel.");
-			}
-		});
-	}
-
-	const isLocalUrl =
-		!baseUrl ||
-		/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\])/i.test(baseUrl) ||
-		baseUrl === defaultTeamsBaseUrl();
-
-	return (
-		<form onSubmit={onSubmit} className="flex flex-col gap-3">
-			{isLocalUrl && (
-				<div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs flex flex-col gap-1">
-					<span className="font-medium text-[var(--text-strong)]">Public URL required</span>
-					<span className="text-[var(--muted)]">
-						Teams sends messages via webhook &mdash; your server must be reachable over HTTPS. Enter a public URL below.
-					</span>
-				</div>
-			)}
-			<div className="rounded-md border border-[var(--border)] bg-[var(--surface2)] p-3 text-xs text-[var(--muted)] flex flex-col gap-2">
-				<span className="font-medium text-[var(--text-strong)]">How to create a Teams bot</span>
-				<span className="font-medium text-[var(--text-strong)] text-[10px] opacity-70">
-					Option A: Teams Developer Portal (easiest)
-				</span>
-				<span>
-					1. Open{" "}
-					<a
-						href="https://dev.teams.microsoft.com/bots"
-						target="_blank"
-						rel="noopener"
-						className="text-[var(--accent)] underline"
-					>
-						Teams Developer Portal &rarr; Bot Management
-					</a>
-				</span>
-				<span>
-					2. Click <strong>+ New Bot</strong>, give it a name, and click <strong>Add</strong>
-				</span>
-				<span>
-					3. Go to <strong>Configure</strong> &mdash; copy the <strong>Bot ID</strong> (this is your App ID)
-				</span>
-				<span>
-					4. Under <strong>Client secrets</strong>, click <strong>Add a client secret</strong> and copy the value
-				</span>
-				<span className="font-medium text-[var(--text-strong)] text-[10px] opacity-70 mt-1">
-					Option B: Azure Portal
-				</span>
-				<span>
-					1. Go to{" "}
-					<a
-						href="https://portal.azure.com/#create/Microsoft.AzureBot"
-						target="_blank"
-						rel="noopener"
-						className="text-[var(--accent)] underline"
-					>
-						Azure Portal &rarr; Create Azure Bot
-					</a>
-				</span>
-				<span>
-					2. Create the bot, then go to <strong>Configuration</strong> to find the App ID
-				</span>
-				<span>
-					3. Click <strong>Manage Password</strong> &rarr; <strong>New client secret</strong> to get the App Password
-				</span>
-				<span className="mt-1">
-					After creating the bot, generate the endpoint below and paste it as the <strong>Messaging endpoint</strong> in
-					your bot settings.
-				</span>
-			</div>
-			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">App ID (Bot ID from Azure)</label>
-				<input
-					type="text"
-					className="provider-key-input w-full"
-					value={appId}
-					onInput={(e) => setAppId(targetValue(e))}
-					placeholder="e.g. 12345678-abcd-efgh-ijkl-000000000000"
-					autoComplete="off"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="teams_app_id"
-					autoFocus
-				/>
-			</div>
-			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">App Password (client secret from Azure)</label>
-				<input
-					type="password"
-					className="provider-key-input w-full"
-					value={appPassword}
-					onInput={(e) => setAppPassword(targetValue(e))}
-					placeholder="Client secret value"
-					autoComplete="new-password"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="teams_app_password"
-				/>
-			</div>
-			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">
-					Webhook Secret <span className="opacity-60">(optional &mdash; auto-generated if blank)</span>
-				</label>
-				<input
-					type="text"
-					className="provider-key-input w-full"
-					value={webhookSecret}
-					onInput={(e) => setWebhookSecret(targetValue(e))}
-					placeholder="Leave blank to auto-generate"
-				/>
-			</div>
-			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">
-					Public Base URL <span className="opacity-60">(your server&rsquo;s HTTPS address)</span>
-				</label>
-				<input
-					type="text"
-					className="provider-key-input w-full"
-					value={baseUrl}
-					onInput={(e) => setBaseUrl(targetValue(e))}
-					placeholder="https://bot.example.com"
-				/>
-				{isLocalUrl && (
-					<div className="text-[10px] text-amber-600 mt-1">
-						This looks like a local address. Teams webhooks need a publicly reachable HTTPS URL.
-					</div>
-				)}
-			</div>
-			<div className="flex gap-2">
-				<button type="button" className="provider-btn provider-btn-sm provider-btn-secondary" onClick={onBootstrap}>
-					Generate Endpoint
-				</button>
-				{bootstrapEndpoint && (
-					<button
-						type="button"
-						className="provider-btn provider-btn-sm provider-btn-secondary"
-						onClick={onCopyEndpoint}
-					>
-						Copy
-					</button>
-				)}
-			</div>
-			{bootstrapEndpoint && (
-				<div className="rounded-md border border-[var(--border)] bg-[var(--surface2)] p-2">
-					<div className="text-xs text-[var(--muted)] mb-1">
-						Messaging endpoint &mdash; paste this into your bot&rsquo;s configuration:
-					</div>
-					<code className="text-xs block break-all select-all">{bootstrapEndpoint}</code>
-				</div>
-			)}
-			<AdvancedConfigPatchField value={advancedConfig} onInput={setAdvancedConfig} />
-			{error && <ErrorPanel message={error} />}
-			<button type="submit" className="provider-btn" disabled={saving}>
-				{saving ? "Connecting\u2026" : "Connect Teams"}
-			</button>
-		</form>
-	);
-}
-
 // ── ChannelStep ─────────────────────────────────────────────
 
 export function ChannelStep({ onNext, onBack }: { onNext: () => void; onBack: () => void }): VNode {
@@ -1076,9 +842,6 @@ export function ChannelStep({ onNext, onBack }: { onNext: () => void; onBack: ()
 			)}
 			{phase === "form" && selectedType === "whatsapp" && (
 				<WhatsAppForm onConnected={onConnected} error={channelError} setError={setChannelError} />
-			)}
-			{phase === "form" && selectedType === "msteams" && (
-				<TeamsForm onConnected={onConnected} error={channelError} setError={setChannelError} />
 			)}
 			{phase === "form" && selectedType === "discord" && (
 				<DiscordForm onConnected={onConnected} error={channelError} setError={setChannelError} />

@@ -11,7 +11,6 @@ capabilities that control what features are available.
 | Telegram        | Polling                      | No                  | Streaming, voice ingest, reactions, OTP, location                                                                                        |
 | Discord         | Gateway (WebSocket)          | No                  | Streaming, interactive messages, threads, voice ingest, reactions                                                                        |
 | Matrix          | Gateway (sync loop)          | No                  | Streaming, voice ingest, interactive polls, threads, reactions, OTP, location, encrypted chats, device verification, ownership bootstrap |
-| Microsoft Teams | Webhook                      | Yes                 | Streaming, interactive messages, threads, reactions                                                                                      |
 | WhatsApp        | Gateway (WebSocket)          | No                  | Streaming, voice ingest, OTP, pairing, location                                                                                          |
 | Slack           | Socket Mode                  | No                  | Streaming, interactive messages, threads, reactions                                                                                      |
 | Nostr           | Gateway (relay subscription) | No                  | OTP, encrypted DMs (NIP-04)                                                                                                              |
@@ -39,7 +38,7 @@ No public URL needed. Used by Slack.
 
 The platform sends HTTP POST requests to a publicly reachable endpoint on your
 server. You must configure the messaging endpoint URL in the platform's
-settings. Used by Microsoft Teams.
+settings.
 
 ### None (Send-Only)
 
@@ -99,10 +98,6 @@ token = "123456:ABC-DEF..."
 dm_policy = "allowlist"
 allowlist = ["alice", "bob"]
 
-[channels.msteams.my_teams_bot]
-app_id = "..."
-app_password = "..."
-
 [channels.discord.my_discord_bot]
 token = "..."
 
@@ -124,8 +119,8 @@ http_url = "http://127.0.0.1:8080"
 ```
 
 For detailed configuration, see the per-channel pages: [Telegram](telegram.md),
-[Microsoft Teams](teams.md), [Discord](discord.md), [Slack](slack.md),
-[Matrix](matrix.md), [WhatsApp](whatsapp.md), [Nostr](nostr.md),
+[Discord](discord.md), [Slack](slack.md), [Matrix](matrix.md),
+[WhatsApp](whatsapp.md), [Nostr](nostr.md),
 [Signal](signal.md).
 
 You can also use the web UI's **Channels** tab for guided setup with each
@@ -216,7 +211,7 @@ Controls who can interact with the bot in group chats / channels / guilds.
 | `"disabled"`  | Group messages are silently ignored      |
 
 The group allowlist field name varies by channel: `group_allowlist` (Telegram,
-WhatsApp, MS Teams), `guild_allowlist` (Discord), `channel_allowlist` (Slack),
+WhatsApp), `guild_allowlist` (Discord), `channel_allowlist` (Slack),
 `room_allowlist` (Matrix).
 
 ### Mention Mode

@@ -447,7 +447,6 @@ export function isArchivableSession(session: SessionMeta): boolean {
 function isClearableSession(session: SessionMeta): boolean {
 	const isChannelSessionKey =
 		session.key.startsWith("telegram:") ||
-		session.key.startsWith("msteams:") ||
 		session.key.startsWith("discord:") ||
 		session.key.startsWith("slack:") ||
 		session.key.startsWith("matrix:");

@@ -243,7 +243,7 @@ pub struct WebhookRateLimitConfig {
     pub enabled: bool,
     /// Override max requests per minute per account. When set, overrides the
     /// channel's built-in default. Leave unset to use per-channel defaults
-    /// (Slack: 30/min, Teams: 60/min).
+    /// (Slack: 30/min).
     pub requests_per_minute: Option<u32>,
     /// Override burst allowance per account.
     pub burst: Option<u32>,

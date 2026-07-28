@@ -37,7 +37,7 @@ When `upstream_proxy` is set, the following traffic routes through the proxy:
 - **Tool HTTP requests** (web fetch, web search, Firecrawl)
 - **OAuth flows** (device auth, token exchange)
 - **MCP server auth** (OAuth for remote MCP servers)
-- **Channel outbound** (Slack streaming, MS Teams API calls)
+- **Channel outbound** (Slack streaming)
 
 Localhost and loopback addresses (`127.0.0.1`, `::1`, `localhost`) are
 automatically excluded from the proxy (`no_proxy`).

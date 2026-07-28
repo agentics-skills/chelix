@@ -100,7 +100,6 @@ full = [
   "matrix",
   "mdns",
   "metrics",
-  "msteams",
   "nostr",
   "prometheus",
   "provider-openai-codex",
@@ -150,7 +149,6 @@ local-embeddings      = ["chelix-gateway/local-embeddings"]
 matrix                = ["chelix-httpd/matrix"]
 mdns                  = ["chelix-gateway/mdns"]
 metrics               = ["chelix-httpd/metrics", "chelix-web?/metrics"]
-msteams               = ["chelix-httpd/msteams"]
 nostr                 = ["chelix-httpd/nostr"]
 prometheus            = ["chelix-httpd/prometheus"]
 provider-openai-codex = ["chelix-gateway/provider-openai-codex"]

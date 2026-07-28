@@ -78,8 +78,6 @@ pub(super) struct PostStateInputs {
     pub discovered_hooks_info: Vec<DiscoveredHookInfo>,
     pub persisted_disabled: std::collections::HashSet<String>,
     pub agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
-    #[cfg(feature = "msteams")]
-    pub msteams_webhook_plugin: Arc<tokio::sync::RwLock<chelix_msteams::MsTeamsPlugin>>,
     #[cfg(feature = "slack")]
     pub slack_webhook_plugin: Arc<tokio::sync::RwLock<chelix_slack::SlackPlugin>>,
     #[cfg(feature = "telephony")]
@@ -245,8 +243,6 @@ pub(super) async fn complete_startup(
         discovered_hooks_info,
         persisted_disabled,
         agents_config,
-        #[cfg(feature = "msteams")]
-        msteams_webhook_plugin,
         #[cfg(feature = "slack")]
         slack_webhook_plugin,
         #[cfg(feature = "telephony")]
@@ -595,25 +591,6 @@ pub(super) async fn complete_startup(
             tool_registry.register(Box::new(crate::mcp_agent_tools::McpRestartTool::new(
                 Arc::clone(&mcp),
             )));
-        }
-        #[cfg(feature = "msteams")]
-        {
-            let tp = Arc::clone(&msteams_webhook_plugin);
-            tool_registry.register(Box::new(
-                crate::teams_agent_tools::TeamsSearchMessagesTool::new(Arc::clone(&tp)),
-            ));
-            tool_registry.register(Box::new(
-                crate::teams_agent_tools::TeamsMemberInfoTool::new(Arc::clone(&tp)),
-            ));
-            tool_registry.register(Box::new(
-                crate::teams_agent_tools::TeamsPinMessageTool::new(Arc::clone(&tp)),
-            ));
-            tool_registry.register(Box::new(
-                crate::teams_agent_tools::TeamsEditMessageTool::new(Arc::clone(&tp)),
-            ));
-            tool_registry.register(Box::new(
-                crate::teams_agent_tools::TeamsReadMessageTool::new(Arc::clone(&tp)),
-            ));
         }
         tool_registry.register(Box::new(
             crate::channel_agent_tools::UpdateChannelSettingsTool::new(
@@ -996,8 +973,6 @@ pub(super) async fn complete_startup(
         state: Arc::clone(&state),
         methods: Arc::clone(&methods),
         webauthn_registry,
-        #[cfg(feature = "msteams")]
-        msteams_webhook_plugin,
         #[cfg(feature = "slack")]
         slack_webhook_plugin,
         #[cfg(feature = "telephony")]

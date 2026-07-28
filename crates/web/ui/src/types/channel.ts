@@ -5,12 +5,10 @@
 /**
  * Channel type identifier.
  * Serialised as lowercase via `#[serde(rename_all = "lowercase")]`.
- * MsTeams is serialised as `"msteams"`.
  */
 export type ChannelType =
 	| "telegram"
 	| "whatsapp"
-	| "msteams"
 	| "discord"
 	| "slack"
 	| "matrix"
@@ -25,7 +23,6 @@ export type ChannelType =
 export const ChannelType = {
 	Telegram: "telegram" as const,
 	WhatsApp: "whatsapp" as const,
-	MsTeams: "msteams" as const,
 	Discord: "discord" as const,
 	Slack: "slack" as const,
 	Matrix: "matrix" as const,

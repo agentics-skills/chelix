@@ -10,8 +10,6 @@ use crate::services::GatewayServices;
 /// needs to store in gateway state or pass to other init phases.
 pub(crate) struct ChannelInitResult {
     pub(crate) services: GatewayServices,
-    #[cfg(feature = "msteams")]
-    pub(crate) msteams_webhook_plugin: Arc<tokio::sync::RwLock<chelix_msteams::MsTeamsPlugin>>,
     #[cfg(feature = "slack")]
     pub(crate) slack_webhook_plugin: Arc<tokio::sync::RwLock<chelix_slack::SlackPlugin>>,
     #[cfg(feature = "telephony")]
@@ -72,21 +70,6 @@ pub(crate) async fn init_channels(
         ));
         registry
             .register(tg_plugin as Arc<tokio::sync::RwLock<dyn ChannelPlugin>>)
-            .await;
-    }
-
-    #[cfg(feature = "msteams")]
-    let msteams_webhook_plugin: Arc<tokio::sync::RwLock<chelix_msteams::MsTeamsPlugin>>;
-    #[cfg(feature = "msteams")]
-    {
-        let msteams_plugin = Arc::new(tokio::sync::RwLock::new(
-            chelix_msteams::MsTeamsPlugin::new()
-                .with_message_log(Arc::clone(&message_log))
-                .with_event_sink(Arc::clone(&channel_sink)),
-        ));
-        msteams_webhook_plugin = Arc::clone(&msteams_plugin);
-        registry
-            .register(msteams_plugin as Arc<tokio::sync::RwLock<dyn ChannelPlugin>>)
             .await;
     }
 
@@ -301,8 +284,6 @@ pub(crate) async fn init_channels(
 
     ChannelInitResult {
         services,
-        #[cfg(feature = "msteams")]
-        msteams_webhook_plugin,
         #[cfg(feature = "slack")]
         slack_webhook_plugin,
         #[cfg(feature = "telephony")]

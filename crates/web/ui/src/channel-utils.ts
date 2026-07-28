@@ -62,7 +62,7 @@ export function validateChannelFields(
 		}
 		return {
 			valid: false,
-			error: type === ChannelType.MsTeams ? "App password is required." : "Bot token is required.",
+			error: "Bot token is required.",
 		};
 	}
 	if (
@@ -224,63 +224,4 @@ export function addChannel(type: string, accountId: string, config: Record<strin
  */
 export function fetchChannelStatus(): Promise<unknown> {
 	return sendRpc("channels.status", {});
-}
-
-/**
- * Default base URL for Teams webhook endpoints.
- * Prefer a discovered public URL when available, otherwise fall back to the
- * current page origin.
- */
-export function defaultTeamsBaseUrl(preferredPublicUrl?: string): string {
-	const preferred = (preferredPublicUrl || "").trim();
-	if (preferred) return preferred;
-	if (typeof window === "undefined") return "";
-	return window.location?.origin || "";
-}
-
-/**
- * Normalise a user-provided base URL into `protocol://host`.
- */
-export function normalizeBaseUrlForWebhook(baseUrl: string | undefined): string {
-	let raw = (baseUrl || "").trim();
-	if (!raw) raw = defaultTeamsBaseUrl();
-	if (!raw) return "";
-	if (!/^https?:\/\//i.test(raw)) raw = `https://${raw}`;
-	try {
-		const parsed = new URL(raw);
-		return `${parsed.protocol}//${parsed.host}`;
-	} catch (_e) {
-		return "";
-	}
-}
-
-/**
- * Generate a random 48-hex-char webhook secret.
- */
-export function generateWebhookSecretHex(): string {
-	if (typeof window !== "undefined" && window.crypto?.getRandomValues) {
-		const bytes = new Uint8Array(24);
-		window.crypto.getRandomValues(bytes);
-		return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-	}
-	let value = "";
-	while (value.length < 48) {
-		value += Math.floor(Math.random() * 16).toString(16);
-	}
-	return value.slice(0, 48);
-}
-
-/**
- * Build the full Teams messaging endpoint URL.
- */
-export function buildTeamsEndpoint(
-	baseUrl: string | undefined,
-	accountId: string | undefined,
-	webhookSecret: string | undefined,
-): string {
-	const normalizedBase = normalizeBaseUrlForWebhook(baseUrl);
-	const account = (accountId || "").trim();
-	const secret = (webhookSecret || "").trim();
-	if (!(normalizedBase && account && secret)) return "";
-	return `${normalizedBase}/api/channels/msteams/${encodeURIComponent(account)}/webhook?secret=${encodeURIComponent(secret)}`;
 }

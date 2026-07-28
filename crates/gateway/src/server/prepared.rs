@@ -14,9 +14,6 @@ pub struct PreparedGatewayCore {
     pub methods: Arc<MethodRegistry>,
     /// WebAuthn registry for passkey auth.
     pub webauthn_registry: Option<SharedWebAuthnRegistry>,
-    /// MS Teams webhook plugin.
-    #[cfg(feature = "msteams")]
-    pub msteams_webhook_plugin: Arc<tokio::sync::RwLock<chelix_msteams::MsTeamsPlugin>>,
     /// Slack webhook plugin.
     #[cfg(feature = "slack")]
     pub slack_webhook_plugin: Arc<tokio::sync::RwLock<chelix_slack::SlackPlugin>>,

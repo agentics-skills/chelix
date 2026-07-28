@@ -36,7 +36,7 @@ impl AgentTool for SendMessageTool {
     }
 
     fn description(&self) -> &str {
-        "Send a proactive message to any configured channel account/chat (Telegram, Discord, Slack, Matrix, Teams, WhatsApp). Use this for alerts, reminders, and scheduled outreach."
+        "Send a proactive message to any configured channel account/chat (Telegram, Discord, Slack, Matrix, WhatsApp). Use this for alerts, reminders, and scheduled outreach."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -58,7 +58,7 @@ impl AgentTool for SendMessageTool {
                 },
                 "type": {
                     "type": "string",
-                    "enum": ["telegram", "discord", "slack", "matrix", "msteams", "whatsapp"],
+                    "enum": ["telegram", "discord", "slack", "matrix", "whatsapp"],
                     "description": "Optional channel type hint when account ids may overlap across channel types."
                 },
                 "reply_to": {
@@ -182,7 +182,7 @@ impl AgentTool for UpdateChannelSettingsTool {
                 },
                 "type": {
                     "type": "string",
-                    "enum": ["telegram", "discord", "slack", "msteams", "whatsapp"],
+                    "enum": ["telegram", "discord", "slack", "whatsapp"],
                     "description": "Optional explicit channel type hint if account ids might overlap."
                 },
                 "settings": {
@@ -200,7 +200,7 @@ impl AgentTool for UpdateChannelSettingsTool {
                         "mention_mode": {
                             "type": "string",
                             "enum": ["mention", "always", "none"],
-                            "description": "Supported by Telegram, Discord, Slack, Microsoft Teams, and WhatsApp."
+                            "description": "Supported by Telegram, Discord, Slack, and WhatsApp."
                         },
                         "model": {
                             "type": ["string", "null"],
@@ -515,11 +515,7 @@ fn ensure_supported(channel_type: ChannelType, field: &str, supported: bool) -> 
 fn supports_mention_mode(channel_type: ChannelType) -> bool {
     matches!(
         channel_type,
-        ChannelType::Telegram
-            | ChannelType::Discord
-            | ChannelType::Slack
-            | ChannelType::MsTeams
-            | ChannelType::Whatsapp
+        ChannelType::Telegram | ChannelType::Discord | ChannelType::Slack | ChannelType::Whatsapp
     )
 }
 
@@ -583,7 +579,7 @@ fn validate_stream_mode(
 
 fn group_allowlist_key(channel_type: ChannelType) -> &'static str {
     match channel_type {
-        ChannelType::Telegram | ChannelType::Whatsapp | ChannelType::MsTeams => "group_allowlist",
+        ChannelType::Telegram | ChannelType::Whatsapp => "group_allowlist",
         ChannelType::Discord => "guild_allowlist",
         ChannelType::Slack => "channel_allowlist",
         _ => "group_allowlist",

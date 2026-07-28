@@ -24,7 +24,6 @@ chelix-gateway        = { workspace = true }
 chelix-graphql        = { optional = true, workspace = true }
 chelix-matrix         = { optional = true, workspace = true }
 chelix-metrics        = { optional = true, workspace = true }
-chelix-msteams        = { optional = true, workspace = true }
 chelix-portable       = { workspace = true }
 chelix-protocol       = { workspace = true }
 chelix-service-traits = { workspace = true }
@@ -70,7 +69,6 @@ default = [
   "matrix",
   "mdns",
   "metrics",
-  "msteams",
   "nostr",
   "prometheus",
   "push-notifications",
@@ -92,7 +90,6 @@ graphql = [
 matrix = ["chelix-gateway/matrix", "dep:chelix-matrix"]
 mdns = ["chelix-gateway/mdns"]
 metrics = ["chelix-gateway/metrics", "dep:chelix-metrics"]
-msteams = ["chelix-gateway/msteams", "dep:chelix-msteams"]
 nostr = ["chelix-gateway/nostr"]
 prometheus = ["chelix-gateway/prometheus", "metrics"]
 push-notifications = ["chelix-gateway/push-notifications", "dep:chrono"]

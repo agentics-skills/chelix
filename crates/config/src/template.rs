@@ -604,10 +604,10 @@ port = {port}                           # Port number (auto-generated for this i
 # not in this file. Keep channel config here only for manual TOML management.
 
 # [channels]
-# offered = ["telegram", "whatsapp", "msteams", "discord", "slack", "matrix", "nostr", "signal"]
+# offered = ["telegram", "whatsapp", "discord", "slack", "matrix", "nostr", "signal"]
 
 # See docs or defaults.toml for full channel configuration examples
-# (WhatsApp, Telegram, Teams, Discord, Slack, Matrix, Nostr, Signal).
+# (WhatsApp, Telegram, Discord, Slack, Matrix, Nostr, Signal).
 
 # ══════════════════════════════════════════════════════════════════════════════
 # HOOKS

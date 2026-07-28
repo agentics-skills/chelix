@@ -195,7 +195,7 @@ mod tests {
         assert!(limiter.check("slack", "acct1", &policy).is_err());
 
         // Same account, different channel — separate bucket.
-        assert!(limiter.check("msteams", "acct1", &policy).is_ok());
+        assert!(limiter.check("telephony", "acct1", &policy).is_ok());
     }
 
     #[test]

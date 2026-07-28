@@ -5,12 +5,6 @@ export function makeTelegramIcon(): HTMLSpanElement {
 	return el;
 }
 
-export function makeTeamsIcon(): HTMLSpanElement {
-	const el = document.createElement("span");
-	el.className = "icon icon-msteams";
-	return el;
-}
-
 export function makeDiscordIcon(): HTMLSpanElement {
 	const el = document.createElement("span");
 	el.className = "icon icon-discord";

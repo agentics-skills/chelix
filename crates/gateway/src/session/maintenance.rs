@@ -414,11 +414,10 @@ impl LiveSessionService {
         let mut deleted = 0u32;
 
         for entry in &all {
-            // Keep main, channel-bound (telegram etc.), and cron sessions.
+            // Keep main, channel-bound (telegram) and cron sessions.
             if entry.key == "main"
                 || entry.channel_binding.is_some()
                 || entry.key.starts_with("telegram:")
-                || entry.key.starts_with("msteams:")
                 || entry.key.starts_with("cron:")
             {
                 continue;

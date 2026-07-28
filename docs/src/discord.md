@@ -29,10 +29,9 @@ persistent WebSocket connection — no public URL or webhook endpoint is require
 └──────────────────────────────────────────────────────┘
 ```
 
-The bot connects **outward** to Discord's servers. Unlike Microsoft Teams (which
-requires an inbound webhook), Discord needs no port forwarding, no public
-domain, and no TLS certificate. This makes it especially easy to run on a home
-machine or behind a NAT.
+The bot connects **outward** to Discord's servers. Discord needs no port
+forwarding, no public domain, and no TLS certificate. This makes it especially
+easy to run on a home machine or behind a NAT.
 
 ## Prerequisites
 
@@ -121,7 +120,7 @@ otp_self_approval = true
 
 ## Access Control
 
-Discord uses the same gating system as Telegram and Microsoft Teams:
+Discord uses the same gating system as Telegram:
 
 ### DM Policy
 
@@ -338,8 +337,7 @@ crates/discord/
     └── state.rs       # AccountState + AccountStateMap (includes OtpState)
 ```
 
-The crate implements the same trait set as `chelix-telegram` and
-`chelix-msteams`:
+The crate implements the same trait set as `chelix-telegram`:
 
 | Trait                   | Purpose                                   |
 | ----------------------- | ----------------------------------------- |

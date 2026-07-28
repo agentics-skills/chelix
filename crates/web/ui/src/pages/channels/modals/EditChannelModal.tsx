@@ -34,11 +34,6 @@ export function EditChannelModal(): VNode | null {
 	const allowlistItems = useSignal<string[]>([]);
 	const roomAllowlistItems = useSignal<string[]>([]);
 	const editCredential = useSignal("");
-	const editWebhookSecret = useSignal("");
-	const editStreamMode = useSignal("edit_in_place");
-	const editReplyStyle = useSignal("top_level");
-	const editWelcomeCard = useSignal(true);
-	const editBotName = useSignal("");
 	const editMatrixAuthMode = useSignal("access_token");
 	const editMatrixDeviceDisplayName = useSignal("");
 	const editMatrixOwnershipMode = useSignal("user_managed");
@@ -59,11 +54,6 @@ export function EditChannelModal(): VNode | null {
 			[]) as string[];
 		roomAllowlistItems.value = (ch?.config?.room_allowlist || ch?.config?.group_allowlist || []) as string[];
 		editCredential.value = "";
-		editWebhookSecret.value = (ch?.config?.webhook_secret as string) || "";
-		editStreamMode.value = (ch?.config?.stream_mode as string) || "edit_in_place";
-		editReplyStyle.value = (ch?.config?.reply_style as string) || "top_level";
-		editWelcomeCard.value = ch?.config?.welcome_card !== false;
-		editBotName.value = (ch?.config?.bot_name as string) || "";
 		editMatrixAuthMode.value = ch?.config?.password ? "password" : "access_token";
 		editMatrixDeviceDisplayName.value = (ch?.config?.device_display_name as string) || "";
 		editMatrixOwnershipMode.value = normalizeMatrixOwnershipMode(
@@ -91,7 +81,6 @@ export function EditChannelModal(): VNode | null {
 
 	const cfg = ch.config || {};
 	const chType = channelType(ch.type);
-	const isTeams = chType === ChannelType.MsTeams;
 	const isDiscord = chType === ChannelType.Discord;
 	const isWhatsApp = chType === ChannelType.WhatsApp;
 	const isTelegram = chType === ChannelType.Telegram;
@@ -111,11 +100,7 @@ export function EditChannelModal(): VNode | null {
 	}
 
 	function addChannelCredentials(config: ChannelConfig, form: HTMLElement): void {
-		if (isTeams) {
-			config.app_id = cfg.app_id || ch?.account_id;
-			config.app_password = editCredential.value || cfg.app_password || "";
-			if (editWebhookSecret.value.trim()) config.webhook_secret = editWebhookSecret.value.trim();
-		} else if (isDiscord) {
+		if (isDiscord) {
 			config.token = editCredential.value || cfg.token || "";
 		} else if (isTelegram) {
 			config.token = cfg.token || "";
@@ -191,12 +176,6 @@ export function EditChannelModal(): VNode | null {
 		addChannelCredentials(updateConfig, form);
 		addModelToConfig(updateConfig);
 		addAgentToConfig(updateConfig);
-		if (isTeams) {
-			updateConfig.stream_mode = editStreamMode.value;
-			updateConfig.reply_style = editReplyStyle.value;
-			updateConfig.welcome_card = editWelcomeCard.value;
-			if (editBotName.value.trim()) updateConfig.bot_name = editBotName.value.trim();
-		}
 		return updateConfig;
 	}
 
@@ -255,86 +234,6 @@ export function EditChannelModal(): VNode | null {
 					>
 						t.me/{ch.account_id}
 					</a>
-				)}
-				{isTeams && (
-					<div className="flex flex-col gap-1">
-						<label className="text-xs text-[var(--muted)]">App Password (optional: leave blank to keep existing)</label>
-						<input
-							type="password"
-							className="channel-input w-full"
-							value={editCredential.value}
-							onInput={(e) => {
-								editCredential.value = targetValue(e);
-							}}
-						/>
-					</div>
-				)}
-				{isTeams && (
-					<>
-						<div className="flex flex-col gap-1">
-							<label className="text-xs text-[var(--muted)]">Webhook Secret</label>
-							<input
-								type="text"
-								className="channel-input w-full"
-								value={editWebhookSecret.value}
-								onInput={(e) => {
-									editWebhookSecret.value = targetValue(e);
-								}}
-							/>
-						</div>
-						<div className="flex gap-3">
-							<div className="flex-1">
-								<label className="text-xs text-[var(--muted)]">Streaming</label>
-								<select
-									className="channel-select"
-									value={editStreamMode.value}
-									onChange={(e) => {
-										editStreamMode.value = targetValue(e);
-									}}
-								>
-									<option value="edit_in_place">Edit-in-place (live updates)</option>
-									<option value="off">Off (send once complete)</option>
-								</select>
-							</div>
-							<div className="flex-1">
-								<label className="text-xs text-[var(--muted)]">Reply Style</label>
-								<select
-									className="channel-select"
-									value={editReplyStyle.value}
-									onChange={(e) => {
-										editReplyStyle.value = targetValue(e);
-									}}
-								>
-									<option value="top_level">Top-level message</option>
-									<option value="thread">Reply in thread</option>
-								</select>
-							</div>
-						</div>
-						<div className="flex gap-3 items-end">
-							<div className="flex-1">
-								<label className="text-xs text-[var(--muted)]">Bot Name (for welcome card)</label>
-								<input
-									type="text"
-									className="channel-input"
-									value={editBotName.value}
-									onInput={(e) => {
-										editBotName.value = targetValue(e);
-									}}
-									placeholder="Chelix"
-								/>
-							</div>
-							<label className="flex items-center gap-2 text-xs text-[var(--muted)] pb-2 cursor-pointer">
-								<input
-									type="checkbox"
-									checked={editWelcomeCard.value}
-									onChange={(e) => {
-										editWelcomeCard.value = targetChecked(e);
-									}}
-								/>
-								Welcome card
-							</label>
-						</div>
-					</>
 				)}
 				{isDiscord && (
 					<div className="flex flex-col gap-1">

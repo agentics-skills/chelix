@@ -232,7 +232,6 @@ pub struct McpOAuthOverrideEntry {
 pub const KNOWN_CHANNEL_TYPES: &[&str] = &[
     "telegram",
     "whatsapp",
-    "msteams",
     "discord",
     "slack",
     "matrix",
@@ -282,7 +281,7 @@ pub struct ChannelToolPolicyOverride {
 #[serde(default)]
 pub struct ChannelsConfig {
     /// Which channel types are offered in the web UI (onboarding + channels page).
-    /// Defaults to `["telegram", "whatsapp", "msteams", "discord", "slack", "matrix", "nostr", "signal"]`.
+    /// Defaults to `["telegram", "whatsapp", "discord", "slack", "matrix", "nostr", "signal"]`.
     #[serde(
         default = "default_channels_offered",
         skip_serializing_if = "Vec::is_empty"
@@ -294,9 +293,6 @@ pub struct ChannelsConfig {
     /// WhatsApp linked-device accounts, keyed by account ID.
     #[serde(default)]
     pub whatsapp: HashMap<String, serde_json::Value>,
-    /// Microsoft Teams bot accounts, keyed by account ID.
-    #[serde(default)]
-    pub msteams: HashMap<String, serde_json::Value>,
     /// Discord bot accounts, keyed by account ID.
     #[serde(default)]
     pub discord: HashMap<String, serde_json::Value>,
@@ -325,11 +321,10 @@ impl ChannelsConfig {
     ///
     /// This is the single source of truth for the set of named channel types.
     /// Keep in sync with the struct fields.
-    fn named_fields(&self) -> [(&str, &HashMap<String, serde_json::Value>); 8] {
+    fn named_fields(&self) -> [(&str, &HashMap<String, serde_json::Value>); 7] {
         [
             ("telegram", &self.telegram),
             ("whatsapp", &self.whatsapp),
-            ("msteams", &self.msteams),
             ("discord", &self.discord),
             ("slack", &self.slack),
             ("nostr", &self.nostr),
@@ -372,7 +367,6 @@ fn default_channels_offered() -> Vec<String> {
     vec![
         "telegram".into(),
         "whatsapp".into(),
-        "msteams".into(),
         "discord".into(),
         "slack".into(),
         "matrix".into(),
@@ -387,7 +381,6 @@ impl Default for ChannelsConfig {
             offered: default_channels_offered(),
             telegram: HashMap::new(),
             whatsapp: HashMap::new(),
-            msteams: HashMap::new(),
             discord: HashMap::new(),
             slack: HashMap::new(),
             nostr: HashMap::new(),

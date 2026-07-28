@@ -1,7 +1,7 @@
 //! Channel webhook idempotency deduplication store.
 //!
 //! Provides TTL-based deduplication for channel webhook requests keyed by
-//! provider-specific message IDs (e.g. Slack `event_id`, Teams `activity.id`).
+//! provider-specific message IDs (e.g. Slack `event_id`).
 //!
 //! Extracted from the former `DedupeCache` in `state.rs`.
 

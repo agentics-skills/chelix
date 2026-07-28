@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
-#[cfg(any(feature = "msteams", feature = "telephony"))]
+#[cfg(feature = "telephony")]
 use chelix_channels::ChannelPlugin;
 
 use {
@@ -135,8 +135,6 @@ pub async fn prepare_gateway(
         state,
         methods,
         webauthn_registry,
-        #[cfg(feature = "msteams")]
-        msteams_webhook_plugin,
         #[cfg(feature = "slack")]
         slack_webhook_plugin,
         #[cfg(feature = "telephony")]
@@ -181,125 +179,6 @@ pub async fn prepare_gateway(
 
     let mut app = finalize_gateway_app(router, app_state, config.server.http_request_logs);
 
-    #[cfg(feature = "msteams")]
-    {
-        let teams_plugin_for_webhook = Arc::clone(&msteams_webhook_plugin);
-        let state_for_teams_webhook = Arc::clone(&state);
-        app = app.route(
-            "/api/channels/msteams/{account_id}/webhook",
-            axum::routing::post(
-                move |axum::extract::Path(account_id): axum::extract::Path<String>,
-                      axum::extract::Query(query): axum::extract::Query<HashMap<String, String>>,
-                      headers: axum::http::HeaderMap,
-                      body: axum::body::Bytes| {
-                    let teams_plugin = Arc::clone(&teams_plugin_for_webhook);
-                    let gw_state = Arc::clone(&state_for_teams_webhook);
-                    async move {
-                        // JWT pre-validation: if a JWT validator is configured,
-                        // the Authorization header is mandatory and must be valid.
-                        // A missing header is treated as an auth failure (not skipped).
-                        let jwt_validator = {
-                            let plugin = teams_plugin.read().await;
-                            plugin.jwt_validator(&account_id)
-                        };
-                        if let Some(validator) = jwt_validator {
-                            let header_str = headers
-                                .get("authorization")
-                                .and_then(|v| v.to_str().ok())
-                                .unwrap_or("");
-                            if !validator.validate(header_str).await {
-                                return (
-                                    StatusCode::UNAUTHORIZED,
-                                    Json(serde_json::json!({ "ok": false, "error": "invalid JWT" })),
-                                )
-                                    .into_response();
-                            }
-                        }
-
-                        // Get the verifier from the plugin.
-                        let verifier = {
-                            let plugin = teams_plugin.read().await;
-                            plugin.channel_webhook_verifier(&account_id)
-                        };
-                        let Some(verifier) = verifier else {
-                            return (
-                                StatusCode::NOT_FOUND,
-                                Json(serde_json::json!({ "ok": false, "error": "unknown Teams account" })),
-                            )
-                                .into_response();
-                        };
-
-                        // Inject query-param secret as header for the verifier.
-                        let mut merged_headers = headers;
-                        if let Some(secret) = query.get("secret")
-                            && let Ok(val) = secret.parse()
-                        {
-                            merged_headers.insert("x-chelix-webhook-secret", val);
-                        }
-
-                        // Run the middleware pipeline.
-                        match chelix_gateway::channel_webhook_middleware::channel_webhook_gate(
-                            verifier.as_ref(),
-                            &gw_state.channel_webhook_dedup,
-                            &gw_state.channel_webhook_rate_limiter,
-                            &account_id,
-                            &merged_headers,
-                            &body,
-                        ) {
-                            Err(rejection) => {
-                                crate::channel_webhook_middleware::rejection_into_response(
-                                    rejection,
-                                )
-                            },
-                            Ok((_, chelix_channels::ChannelWebhookDedupeResult::Duplicate)) => (
-                                StatusCode::OK,
-                                Json(serde_json::json!({ "ok": true, "deduplicated": true })),
-                            )
-                                .into_response(),
-                            Ok((verified, chelix_channels::ChannelWebhookDedupeResult::New)) => {
-                                // Parse verified body.
-                                let payload: serde_json::Value =
-                                    match serde_json::from_slice(&verified.body) {
-                                        Ok(v) => v,
-                                        Err(e) => {
-                                            return (
-                                                StatusCode::BAD_REQUEST,
-                                                Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
-                                            )
-                                                .into_response();
-                                        },
-                                    };
-
-                                // Spawn processing asynchronously and return 202
-                                // immediately. This prevents Teams from retrying
-                                // when LLM processing takes longer than ~15 seconds.
-                                let account_id_owned = account_id.clone();
-                                let teams_plugin_for_spawn = Arc::clone(&teams_plugin);
-                                tokio::spawn(async move {
-                                    let plugin = teams_plugin_for_spawn.read().await;
-                                    if let Err(e) = plugin
-                                        .ingest_verified_activity(&account_id_owned, payload)
-                                        .await
-                                    {
-                                        tracing::warn!(
-                                            account_id = account_id_owned,
-                                            "Teams webhook processing failed: {e}"
-                                        );
-                                    }
-                                });
-
-                                (
-                                    StatusCode::ACCEPTED,
-                                    Json(serde_json::json!({ "ok": true })),
-                                )
-                                    .into_response()
-                            },
-                        }
-                    }
-                },
-            ),
-        );
-    }
     #[cfg(feature = "slack")]
     {
         // Slack Events API webhook

@@ -453,8 +453,8 @@ inside the sandbox. This invariant is not configurable. Add other mounts with
 
 | Key              | Type                       | Default                                                                                | Description                                                                                                                                                                    |
 | ---------------- | -------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `offered`        | array of string            | `["telegram", "whatsapp", "msteams", "discord", "slack", "matrix", "nostr", "signal"]` | Which channel types are offered in the web UI (onboarding + channels page).                                                                                                    |
-| `<channel_type>` | map of `serde_json::Value` | `{}`                                                                                   | Account configs keyed by account name. Known types: `telegram`, `whatsapp`, `msteams`, `discord`, `slack`, `matrix`, `nostr`, `signal`. Additional types accepted via flatten. |
+| `offered`        | array of string            | `["telegram", "whatsapp", "discord", "slack", "matrix", "nostr", "signal"]` | Which channel types are offered in the web UI (onboarding + channels page).                                                                                                    |
+| `<channel_type>` | map of `serde_json::Value` | `{}`                                                                                   | Account configs keyed by account name. Known types: `telegram`, `whatsapp`, `discord`, `slack`, `matrix`, `nostr`, `signal`. Additional types accepted via flatten. |
 
 Each channel account (`channels.<channel_type>.<account_name>`) is an arbitrary
 JSON object that may contain provider-specific keys plus a `tools` sub-block
