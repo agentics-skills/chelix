@@ -36,7 +36,7 @@ struct ExecuteCommandParams {
     #[serde(default)]
     background: bool,
     #[serde(default)]
-    timeout: Option<u64>,
+    response_timeout_ms: Option<u64>,
     #[serde(default)]
     terminal_id: Option<String>,
     #[serde(rename = "_session_key", default)]
@@ -199,7 +199,7 @@ impl AgentTool for ExecuteCommandTool {
     }
 
     fn description(&self) -> &str {
-        "Execute a shell command in a persistent terminal managed in-process by chelix-tools-service. Returns terminalId for follow-up read_terminal_output calls."
+        "Execute a Bash command in a persistent terminal that preserves its working directory and environment variables across requests. Returns terminalId for follow-up read_terminal_output calls."
     }
 
     async fn agent_result(
@@ -240,9 +240,9 @@ impl AgentTool for ExecuteCommandTool {
                     "type": "boolean",
                     "description": "If true, start the command and return immediately"
                 },
-                "timeout": {
+                "responseTimeoutMs": {
                     "type": "integer",
-                    "description": format!("Milliseconds to wait for completion (default {timeout_default})")
+                    "description": format!("Blocking wait, in milliseconds, for capturing command output; when it expires, the tool detaches from the still-running command. Set this value to several times the command's expected completion time to prevent the wait from ending and detaching prematurely (default {timeout_default})")
                 },
                 "terminalId": {
                     "type": "string",
@@ -267,7 +267,7 @@ impl AgentTool for ExecuteCommandTool {
             tracing::debug!("execute_command destructive_flag provided for approval UI context");
         }
         self.approval_check(&command, &session_key).await?;
-        let timeout_millis = self.effective_timeout_millis(params.timeout)?;
+        let timeout_millis = self.effective_timeout_millis(params.response_timeout_ms)?;
         let request = ExecuteCommandRequest {
             session_key: session_key.clone(),
             command: command.clone(),

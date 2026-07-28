@@ -2,10 +2,7 @@
 
 use std::{collections::HashSet, sync::Arc};
 
-use {
-    tokio::sync::RwLock,
-    tracing::{info, warn},
-};
+use {tokio::sync::RwLock, tracing::info};
 
 #[cfg(any(target_os = "macos", test))]
 use {async_trait::async_trait, tracing::debug};
@@ -74,7 +71,7 @@ impl FailoverSandbox {
     async fn switch_to_fallback(&self, error: &Error) {
         let mut use_fallback = self.use_fallback.write().await;
         if !*use_fallback {
-            warn!(
+            tracing::warn!(
                 primary = %self.primary_backend,
                 fallback = %self.fallback_backend,
                 %error,
